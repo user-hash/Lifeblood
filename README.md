@@ -88,22 +88,25 @@ Domain never references Application. Application never references Adapters or Co
 
 ## Status
 
-Early stage. Architecture defined, core implemented, contracts hardened.
+All 10 stages of the architecture plan are implemented.
 
 | Assembly | State |
 |----------|-------|
 | **Lifeblood.Domain** | Implemented. Graph model, GraphBuilder, GraphValidator, rules, results, capabilities. |
 | **Lifeblood.Application** | Implemented. All port interfaces (left/right/graphIO/analysis/output/infrastructure), use cases. |
-| **Lifeblood.Analysis** | Implemented. CouplingAnalyzer (Robert Martin metrics), RuleValidator (architecture rules). |
-| **Lifeblood.Tests** | Implemented. xUnit test suite covering GraphBuilder, GraphValidator, CouplingAnalyzer, RuleValidator. |
-| **Lifeblood.Adapters.CSharp** | Scaffold. Project exists, references Roslyn. No adapter code yet. |
-| **Lifeblood.Reporters** | Scaffold. Project exists. No reporter code yet. |
-| **Lifeblood.CLI** | Scaffold. Prints usage. Does not execute commands yet. |
-| Connectors (MCP, Context) | Not started. Port interfaces defined in Application. |
+| **Lifeblood.Adapters.CSharp** | Implemented. Roslyn reference adapter: workspace analyzer, module discovery, symbol/edge extractors. |
+| **Lifeblood.Adapters.JsonGraph** | Implemented. JSON import/export conforming to `schemas/graph.schema.json`. |
+| **Lifeblood.Connectors.ContextPack** | Implemented. Context pack generator, CLAUDE.md generator, reading order. |
+| **Lifeblood.Connectors.Mcp** | Implemented. Symbol lookup, dependencies, dependants, blast radius. |
+| **Lifeblood.Analysis** | Implemented. CouplingAnalyzer, RuleValidator, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier. |
+| **Lifeblood.CLI** | Implemented. `analyze`, `context`, `export` commands. Roslyn + JSON graph input. |
+| **Lifeblood.Tests** | Implemented. 50+ xUnit tests across all components. |
+| **Lifeblood.Reporters** | Scaffold. Project exists. |
 
 **Schemas:** `graph.schema.json` (with evidence), `rules.schema.json`. Rule packs: hexagonal, clean-architecture.
+**Golden repos:** HexagonalApp, CycleRepo fixtures for adapter contract testing.
 
-**Next:** C# Roslyn adapter (reference implementation), CLI vertical slice, context pack connector.
+**Next:** TypeScript adapter (prove universality), golden repo certification suite, more reporters.
 
 ---
 

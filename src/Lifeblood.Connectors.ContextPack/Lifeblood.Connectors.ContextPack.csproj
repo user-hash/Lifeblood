@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Lifeblood.Connectors.ContextPack</RootNamespace>
+    <!-- RIGHT SIDE. AI context generation. The killer feature. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
+  </ItemGroup>
+</Project>
