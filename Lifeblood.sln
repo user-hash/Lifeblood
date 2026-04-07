@@ -11,8 +11,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Analysis", "src\L
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Adapters.CSharp", "src\Lifeblood.Adapters.CSharp\Lifeblood.Adapters.CSharp.csproj", "{B0000004-0000-0000-0000-000000000004}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Reporters", "src\Lifeblood.Reporters\Lifeblood.Reporters.csproj", "{B0000005-0000-0000-0000-000000000005}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.CLI", "src\Lifeblood.CLI\Lifeblood.CLI.csproj", "{B0000006-0000-0000-0000-000000000006}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Tests", "tests\Lifeblood.Tests\Lifeblood.Tests.csproj", "{B0000007-0000-0000-0000-000000000007}"
@@ -45,10 +43,6 @@ Global
 		{B0000004-0000-0000-0000-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B0000004-0000-0000-0000-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B0000004-0000-0000-0000-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B0000005-0000-0000-0000-000000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B0000005-0000-0000-0000-000000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B0000005-0000-0000-0000-000000000005}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B0000005-0000-0000-0000-000000000005}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B0000006-0000-0000-0000-000000000006}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B0000006-0000-0000-0000-000000000006}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B0000006-0000-0000-0000-000000000006}.Release|Any CPU.ActiveCfg = Release|Any CPU

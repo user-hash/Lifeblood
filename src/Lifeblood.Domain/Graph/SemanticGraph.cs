@@ -9,28 +9,26 @@ public sealed class SemanticGraph
     public Symbol[] Symbols { get; init; } = Array.Empty<Symbol>();
     public Edge[] Edges { get; init; } = Array.Empty<Edge>();
 
-    private Dictionary<string, Symbol>? _symbolById;
-    private Dictionary<string, List<int>>? _outgoing;
-    private Dictionary<string, List<int>>? _incoming;
+    private volatile GraphIndexes? _indexes;
 
     public Symbol? GetSymbol(string id)
     {
-        EnsureIndexes();
-        return _symbolById!.TryGetValue(id, out var s) ? s : null;
+        var idx = GetIndexes();
+        return idx.SymbolById.TryGetValue(id, out var s) ? s : null;
     }
 
     public ReadOnlySpan<int> GetOutgoingEdgeIndexes(string symbolId)
     {
-        EnsureIndexes();
-        return _outgoing!.TryGetValue(symbolId, out var list)
+        var idx = GetIndexes();
+        return idx.Outgoing.TryGetValue(symbolId, out var list)
             ? System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list)
             : ReadOnlySpan<int>.Empty;
     }
 
     public ReadOnlySpan<int> GetIncomingEdgeIndexes(string symbolId)
     {
-        EnsureIndexes();
-        return _incoming!.TryGetValue(symbolId, out var list)
+        var idx = GetIndexes();
+        return idx.Incoming.TryGetValue(symbolId, out var list)
             ? System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list)
             : ReadOnlySpan<int>.Empty;
     }
@@ -54,21 +52,32 @@ public sealed class SemanticGraph
         }
     }
 
-    private void EnsureIndexes()
+    private GraphIndexes GetIndexes()
     {
-        if (_symbolById != null) return;
-        _symbolById = new(Symbols.Length, StringComparer.Ordinal);
-        _outgoing = new(Symbols.Length, StringComparer.Ordinal);
-        _incoming = new(Symbols.Length, StringComparer.Ordinal);
+        var existing = _indexes;
+        if (existing != null) return existing;
+
+        var built = BuildIndexes();
+        Interlocked.CompareExchange(ref _indexes, built, null);
+        return _indexes!;
+    }
+
+    private GraphIndexes BuildIndexes()
+    {
+        var symbolById = new Dictionary<string, Symbol>(Symbols.Length, StringComparer.Ordinal);
+        var outgoing = new Dictionary<string, List<int>>(Symbols.Length, StringComparer.Ordinal);
+        var incoming = new Dictionary<string, List<int>>(Symbols.Length, StringComparer.Ordinal);
 
         for (int i = 0; i < Symbols.Length; i++)
-            _symbolById[Symbols[i].Id] = Symbols[i];
+            symbolById[Symbols[i].Id] = Symbols[i];
 
         for (int i = 0; i < Edges.Length; i++)
         {
-            AddToIndex(_outgoing, Edges[i].SourceId, i);
-            AddToIndex(_incoming, Edges[i].TargetId, i);
+            AddToIndex(outgoing, Edges[i].SourceId, i);
+            AddToIndex(incoming, Edges[i].TargetId, i);
         }
+
+        return new GraphIndexes(symbolById, outgoing, incoming);
     }
 
     private static void AddToIndex(Dictionary<string, List<int>> idx, string key, int value)
@@ -79,5 +88,15 @@ public sealed class SemanticGraph
             idx[key] = list;
         }
         list.Add(value);
+    }
+
+    private sealed class GraphIndexes(
+        Dictionary<string, Symbol> symbolById,
+        Dictionary<string, List<int>> outgoing,
+        Dictionary<string, List<int>> incoming)
+    {
+        public Dictionary<string, Symbol> SymbolById { get; } = symbolById;
+        public Dictionary<string, List<int>> Outgoing { get; } = outgoing;
+        public Dictionary<string, List<int>> Incoming { get; } = incoming;
     }
 }

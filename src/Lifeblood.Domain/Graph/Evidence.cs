@@ -1,3 +1,5 @@
+using Lifeblood.Domain.Capabilities;
+
 namespace Lifeblood.Domain.Graph;
 
 /// <summary>
@@ -10,7 +12,7 @@ public sealed class Evidence
     public EvidenceKind Kind { get; init; }
     public string AdapterName { get; init; } = "";
     public string SourceSpan { get; init; } = "";
-    public float Confidence { get; init; } = 1.0f;
+    public ConfidenceLevel Confidence { get; init; } = ConfidenceLevel.Proven;
 }
 
 public enum EvidenceKind

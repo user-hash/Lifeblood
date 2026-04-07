@@ -7,9 +7,12 @@ namespace Lifeblood.Adapters.JsonGraph;
 
 /// <summary>
 /// Exports a SemanticGraph to JSON conforming to schemas/graph.schema.json.
+/// Uses the same DTO classes as JsonGraphImporter for round-trip fidelity.
 /// </summary>
 public sealed class JsonGraphExporter : IGraphExporter
 {
+    public const string SchemaVersion = "1.0";
+
     public string Format => "json";
 
     private static readonly JsonSerializerOptions Options = new()
@@ -22,37 +25,41 @@ public sealed class JsonGraphExporter : IGraphExporter
 
     public void Export(SemanticGraph graph, Stream destination)
     {
-        var doc = new
+        var doc = new JsonGraphDocument
         {
-            version = "1.0",
-            symbols = graph.Symbols.Select(s => new
+            Version = SchemaVersion,
+            Symbols = graph.Symbols.Select(s => new JsonSymbol
             {
-                id = s.Id,
-                name = s.Name,
-                qualifiedName = s.QualifiedName,
-                kind = s.Kind.ToString().ToLowerInvariant(),
-                filePath = s.FilePath,
-                line = s.Line,
-                parentId = s.ParentId,
-                visibility = s.Visibility.ToString().ToLowerInvariant(),
-                isAbstract = s.IsAbstract,
-                isStatic = s.IsStatic,
-                properties = s.Properties.Count > 0 ? s.Properties : null,
-            }),
-            edges = graph.Edges.Select(e => new
+                Id = s.Id,
+                Name = s.Name,
+                QualifiedName = s.QualifiedName,
+                Kind = s.Kind,
+                FilePath = s.FilePath,
+                Line = s.Line,
+                ParentId = s.ParentId,
+                Visibility = s.Visibility,
+                IsAbstract = s.IsAbstract,
+                IsStatic = s.IsStatic,
+                Properties = s.Properties.Count > 0
+                    ? new Dictionary<string, string>(s.Properties)
+                    : null,
+            }).ToArray(),
+            Edges = graph.Edges.Select(e => new JsonEdge
             {
-                sourceId = e.SourceId,
-                targetId = e.TargetId,
-                kind = e.Kind.ToString().Substring(0, 1).ToLowerInvariant() + e.Kind.ToString().Substring(1),
-                evidence = new
+                SourceId = e.SourceId,
+                TargetId = e.TargetId,
+                Kind = e.Kind,
+                Evidence = new JsonEvidence
                 {
-                    kind = e.Evidence.Kind.ToString().ToLowerInvariant(),
-                    adapterName = e.Evidence.AdapterName,
-                    sourceSpan = e.Evidence.SourceSpan,
-                    confidence = e.Evidence.Confidence,
+                    Kind = e.Evidence.Kind,
+                    AdapterName = e.Evidence.AdapterName,
+                    SourceSpan = e.Evidence.SourceSpan,
+                    Confidence = e.Evidence.Confidence,
                 },
-                properties = e.Properties.Count > 0 ? e.Properties : null,
-            }),
+                Properties = e.Properties.Count > 0
+                    ? new Dictionary<string, string>(e.Properties)
+                    : null,
+            }).ToArray(),
         };
 
         JsonSerializer.Serialize(destination, doc, Options);

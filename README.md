@@ -88,25 +88,24 @@ Domain never references Application. Application never references Adapters or Co
 
 ## Status
 
-All 10 stages of the architecture plan are implemented.
+Architecture implemented. Framework hardening in progress.
 
-| Assembly | State |
-|----------|-------|
-| **Lifeblood.Domain** | Implemented. Graph model, GraphBuilder, GraphValidator, rules, results, capabilities. |
-| **Lifeblood.Application** | Implemented. All port interfaces (left/right/graphIO/analysis/output/infrastructure), use cases. |
-| **Lifeblood.Adapters.CSharp** | Implemented. Roslyn reference adapter: workspace analyzer, module discovery, symbol/edge extractors. |
-| **Lifeblood.Adapters.JsonGraph** | Implemented. JSON import/export conforming to `schemas/graph.schema.json`. |
-| **Lifeblood.Connectors.ContextPack** | Implemented. Context pack generator, CLAUDE.md generator, reading order. |
-| **Lifeblood.Connectors.Mcp** | Implemented. Symbol lookup, dependencies, dependants, blast radius. |
-| **Lifeblood.Analysis** | Implemented. CouplingAnalyzer, RuleValidator, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier. |
-| **Lifeblood.CLI** | Implemented. `analyze`, `context`, `export` commands. Roslyn + JSON graph input. |
-| **Lifeblood.Tests** | Implemented. 50+ xUnit tests across all components. |
-| **Lifeblood.Reporters** | Scaffold. Project exists. |
+| Assembly | State | Notes |
+|----------|-------|-------|
+| **Lifeblood.Domain** | **Implemented** | Graph model, GraphBuilder, GraphValidator, rules, results, capabilities |
+| **Lifeblood.Application** | **Implemented** | Port interfaces (left/right/graphIO/analysis), use cases |
+| **Lifeblood.Adapters.CSharp** | **Implemented** | Roslyn reference adapter: workspace analyzer, module discovery, symbol/edge extractors |
+| **Lifeblood.Adapters.JsonGraph** | **Implemented** | JSON import/export conforming to `schemas/graph.schema.json` |
+| **Lifeblood.Connectors.ContextPack** | **Implemented** | Context pack generator, instruction file generator, reading order |
+| **Lifeblood.Connectors.Mcp** | **Implemented** | Graph provider: symbol lookup, dependencies, dependants, blast radius |
+| **Lifeblood.Analysis** | **Implemented** | CouplingAnalyzer, RuleValidator, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier |
+| **Lifeblood.CLI** | **Implemented** | `analyze`, `context`, `export` commands. Roslyn + JSON graph input |
+| **Lifeblood.Tests** | **Implemented** | xUnit test suite across all components |
+| MCP transport | **Planned** | LifebloodMcpProvider implements the port; MCP server hosting not yet wired |
+| Reporters | **Planned** | JSON, HTML, SARIF output formatters |
+| TypeScript adapter | **Planned** | Second language to prove universality |
 
 **Schemas:** `graph.schema.json` (with evidence), `rules.schema.json`. Rule packs: hexagonal, clean-architecture.
-**Golden repos:** HexagonalApp, CycleRepo fixtures for adapter contract testing.
-
-**Next:** TypeScript adapter (prove universality), golden repo certification suite, more reporters.
 
 ---
 

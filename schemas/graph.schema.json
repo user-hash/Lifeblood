@@ -94,7 +94,7 @@
         "kind": { "type": "string", "enum": ["syntax", "semantic", "inferred"] },
         "adapterName": { "type": "string" },
         "sourceSpan": { "type": "string", "description": "e.g., src/Auth.cs:47" },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        "confidence": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] }
       }
     },
     "capabilities": {

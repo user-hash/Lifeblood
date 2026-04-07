@@ -2,6 +2,7 @@ using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -35,6 +36,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             {
                 Id = moduleId,
                 Name = module.Name,
+                QualifiedName = module.Name,
                 Kind = SymbolKind.Module,
                 Properties = module.Properties,
             });
@@ -64,6 +66,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 {
                     Id = fileId,
                     Name = Path.GetFileName(tree.FilePath),
+                    QualifiedName = $"{module.Name}/{relPath}",
                     Kind = SymbolKind.File,
                     FilePath = relPath,
                     ParentId = moduleId,
@@ -96,7 +99,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                     {
                         Kind = EvidenceKind.Semantic,
                         AdapterName = "Roslyn",
-                        Confidence = 1.0f,
+                        Confidence = ConfidenceLevel.Proven,
                     },
                 });
             }

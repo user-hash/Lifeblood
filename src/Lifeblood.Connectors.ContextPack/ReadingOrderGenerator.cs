@@ -4,41 +4,44 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Connectors.ContextPack;
 
 /// <summary>
-/// Topological sort by importance. Pure leaf files first, high-fan-in files early.
-/// Produces a reading order that gives AI agents the right context in the right sequence.
+/// Generates a reading order: stable pure-leaf files first, then their dependants.
+/// Files with zero fan-in are listed last (entry points / composition roots).
 /// </summary>
 public static class ReadingOrderGenerator
 {
     public static string[] Generate(SemanticGraph graph, CouplingMetrics[] coupling)
     {
-        // Build lookup: symbolId → coupling metrics
         var metricsById = new Dictionary<string, CouplingMetrics>(StringComparer.Ordinal);
         foreach (var m in coupling)
             metricsById[m.SymbolId] = m;
 
-        // Collect file symbols and their importance score
-        var fileScores = new List<(string filePath, float score)>();
+        var fileScores = new List<(string filePath, int fanIn, float instability)>();
 
         foreach (var symbol in graph.Symbols)
         {
-            if (symbol.Kind != SymbolKind.File) continue;
-            if (string.IsNullOrEmpty(symbol.FilePath)) continue;
+            if (symbol.Kind != SymbolKind.File || string.IsNullOrEmpty(symbol.FilePath))
+                continue;
 
-            // Score = sum of fan-in of all types in this file
-            float score = 0;
+            int totalFanIn = 0;
+            float minInstability = 1f;
+
             foreach (var child in graph.ChildrenOf(symbol.Id))
             {
                 if (metricsById.TryGetValue(child.Id, out var m))
-                    score += m.FanIn;
+                {
+                    totalFanIn += m.FanIn;
+                    if (m.Instability < minInstability) minInstability = m.Instability;
+                }
             }
 
-            fileScores.Add((symbol.FilePath, score));
+            fileScores.Add((symbol.FilePath, totalFanIn, minInstability));
         }
 
-        // Sort: stable files first (high fan-in, low instability = read first)
-        // Then unstable files (high instability = read after understanding stable core)
+        // Stable-first ordering: lowest instability first (pure leaves),
+        // then highest fan-in (most depended on). Entry points last.
         return fileScores
-            .OrderByDescending(f => f.score)
+            .OrderBy(f => f.instability)
+            .ThenByDescending(f => f.fanIn)
             .Select(f => f.filePath)
             .ToArray();
     }

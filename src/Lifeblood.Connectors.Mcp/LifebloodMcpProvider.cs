@@ -1,5 +1,6 @@
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Analysis;
 
 namespace Lifeblood.Connectors.Mcp;
 
@@ -50,26 +51,8 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
 
     public string[] GetBlastRadius(SemanticGraph graph, string symbolId, int maxDepth = 10)
     {
-        var affected = new HashSet<string>(StringComparer.Ordinal);
-        var queue = new Queue<(string id, int depth)>();
-        queue.Enqueue((symbolId, 0));
-
-        while (queue.Count > 0)
-        {
-            var (currentId, depth) = queue.Dequeue();
-            if (depth > maxDepth) continue;
-
-            foreach (int idx in graph.GetIncomingEdgeIndexes(currentId))
-            {
-                var edge = graph.Edges[idx];
-                if (edge.Kind == EdgeKind.Contains) continue;
-
-                if (affected.Add(edge.SourceId))
-                    queue.Enqueue((edge.SourceId, depth + 1));
-            }
-        }
-
-        affected.Remove(symbolId); // Don't include the target itself
-        return affected.ToArray();
+        // Delegate to the canonical analyzer — single source of truth for BFS logic.
+        var result = Analysis.BlastRadiusAnalyzer.Analyze(graph, symbolId, maxDepth);
+        return result.AffectedSymbolIds;
     }
 }

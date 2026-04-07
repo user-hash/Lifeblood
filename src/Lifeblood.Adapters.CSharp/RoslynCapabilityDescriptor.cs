@@ -18,8 +18,8 @@ public static class RoslynCapabilityDescriptor
         TypeResolution = ConfidenceLevel.Proven,
         CallResolution = ConfidenceLevel.Proven,
         ImplementationResolution = ConfidenceLevel.Proven,
-        CrossModuleReferences = ConfidenceLevel.High,
-        OverrideResolution = ConfidenceLevel.Proven,
+        CrossModuleReferences = ConfidenceLevel.BestEffort, // compilations don't share project-reference metadata
+        OverrideResolution = ConfidenceLevel.None, // Overrides edges not yet extracted
         CanExpandMacros = false,
         SupportsIncremental = false,
     };
