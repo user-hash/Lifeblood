@@ -139,6 +139,6 @@ public class GraphBuilderTests
         // 2 synthesized Contains + 1 explicit DependsOn
         Assert.Equal(3, graph.Edges.Length);
         Assert.Equal(2, graph.Edges.Count(e => e.Kind == EdgeKind.Contains));
-        Assert.Single(graph.Edges.Where(e => e.Kind == EdgeKind.DependsOn));
+        Assert.Single(graph.Edges, e => e.Kind == EdgeKind.DependsOn);
     }
 }
