@@ -61,12 +61,29 @@ class Program
     static int RunContext(string[] args)
     {
         var (projectRoot, graphPath, _) = ParseArgs(args);
+        var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
         var graph = BuildGraph(projectRoot, graphPath);
         if (graph == null) return 1;
 
         var analysis = AnalysisPipeline.Run(graph);
-        var output = new InstructionFileGenerator().Generate(graph, analysis);
-        Console.Write(output);
+
+        if (format.Equals("md", StringComparison.OrdinalIgnoreCase)
+            || format.Equals("markdown", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Write(new InstructionFileGenerator().Generate(graph, analysis));
+        }
+        else
+        {
+            // Default: structured JSON context pack (the killer feature)
+            var pack = new AgentContextGenerator().Generate(graph, analysis);
+            System.Text.Json.JsonSerializer.Serialize(
+                Console.OpenStandardOutput(), pack,
+                new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+                    WriteIndented = true,
+                });
+        }
         return 0;
     }
 
@@ -126,7 +143,8 @@ class Program
         Console.WriteLine("  lifeblood analyze --project <path>                         Analyze via Roslyn");
         Console.WriteLine("  lifeblood analyze --graph <graph.json>                     Analyze JSON graph");
         Console.WriteLine("  lifeblood analyze --project <path> --rules <rules.json>    Analyze + check rules");
-        Console.WriteLine("  lifeblood context --project <path>                         Generate AI context");
+        Console.WriteLine("  lifeblood context --project <path>                         Generate AI context pack (JSON)");
+        Console.WriteLine("  lifeblood context --project <path> --format md             Generate instruction file (markdown)");
         Console.WriteLine("  lifeblood export  --project <path>                         Export graph as JSON");
     }
 }
