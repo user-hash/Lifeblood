@@ -95,41 +95,33 @@
       font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
       text-align: center; margin-bottom: 4px;
     }
+    /* ONE hexagon — the application boundary. This is proper Ports & Adapters. */
     .hex-visual {
-      position: relative; width: 500px; height: 500px; flex-shrink: 0;
+      position: relative; width: 440px; height: 440px; flex-shrink: 0;
     }
-    .hex-ring {
-      position: absolute;
+    .hex-boundary {
+      position: absolute; inset: 0;
       clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
+      background: linear-gradient(180deg, rgba(30,42,82,0.97), rgba(18,27,52,0.98));
+      border: 2px solid rgba(123,220,255,0.3);
       display: flex; align-items: center; justify-content: center; text-align: center;
+      flex-direction: column; gap: 16px;
     }
-    .hex-ring.outer {
-      inset: 0;
-      background: linear-gradient(180deg, rgba(39,55,106,0.95), rgba(23,33,63,0.97));
+    .hex-boundary .domain-core {
+      background: rgba(123,220,255,0.08);
+      border: 1px solid rgba(123,220,255,0.25);
+      border-radius: 14px; padding: 16px 24px; text-align: center;
     }
-    .hex-ring.middle {
-      inset: 70px;
-      background: linear-gradient(180deg, rgba(27,40,78,0.97), rgba(20,29,56,0.98));
+    .hex-boundary .app-ring {
+      background: rgba(168,139,255,0.06);
+      border: 1px solid rgba(168,139,255,0.2);
+      border-radius: 10px; padding: 10px 18px; text-align: center;
     }
-    .hex-ring.inner {
-      inset: 148px;
-      background: radial-gradient(circle at 50% 35%, rgba(123,220,255,0.2), transparent 45%),
-        linear-gradient(180deg, rgba(25,35,68,0.99), rgba(17,24,44,0.99));
-      border: 1px solid rgba(123,220,255,0.28);
-    }
-    /* Ring labels: positioned OUTSIDE the clip-path so they're never clipped */
-    .hex-label {
-      position: absolute; text-align: center; font-size: 10px;
-      letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent);
-      width: 100%; pointer-events: none;
-    }
-    .hex-label.top { top: -22px; }
-    .hex-label.bottom { bottom: -22px; }
-    .hex-label.mid-top { top: 40px; color: var(--muted); font-size: 9px; letter-spacing: 0.04em; }
-    .hex-ring h2 { font-size: 26px; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
-    .hex-ring p { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 8px; padding: 0 16px; }
-    .hex-ring.inner h2 { font-size: 22px; }
-    .hex-ring.inner p { font-size: 11px; padding: 0 8px; }
+    .hex-boundary h2 { font-size: 22px; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
+    .hex-boundary h4 { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px; }
+    .hex-boundary p { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 6px 0 0; padding: 0; }
+    .hex-boundary .app-ring h4 { color: var(--accent-2); }
+    .hex-boundary .app-ring p { font-size: 10px; margin-top: 3px; }
 
     .port {
       border: 1px solid; border-radius: 12px;
@@ -230,26 +222,22 @@
             <div class="port left"><strong>IGraphImporter</strong>stream<br/><span>&#8594; GraphDocument</span></div>
           </div>
 
-          <!-- CENTER: Hexagon with external labels -->
+          <!-- CENTER: ONE hexagon — the application boundary -->
           <div class="hex-visual">
-            <div class="hex-ring outer">
-              <div style="padding: 0 60px;">
-                <h4 style="font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">Adapters &amp; Connectors</h4>
-                <p style="color:var(--muted); font-size:11px; line-height:1.35;">Roslyn, TypeScript, JSON Graph, ContextPack, MCP Server</p>
+            <div class="hex-boundary">
+              <div class="app-ring">
+                <h4>Application Layer</h4>
+                <p>AnalyzeWorkspaceUseCase<br/>GenerateContextUseCase</p>
               </div>
-            </div>
-            <div class="hex-ring middle">
-              <div>
-                <h4 style="font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">Application</h4>
-                <h2>Ports &amp;<br/>Use Cases</h2>
-                <p>IWorkspaceAnalyzer<br/>IAgentContextGenerator<br/>IMcpGraphProvider</p>
+              <div class="domain-core">
+                <h4>Domain</h4>
+                <h2>Semantic Graph</h2>
+                <p>Symbol, Edge, Evidence<br/>GraphBuilder, GraphValidator<br/>GraphDocument</p>
+                <p style="font-size:10px; margin-top:8px; color:var(--accent);">Pure. Immutable. Zero dependencies.</p>
               </div>
-            </div>
-            <div class="hex-ring inner">
-              <div>
-                <h4 style="font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">Domain</h4>
-                <h2>Semantic<br/>Graph</h2>
-                <p style="font-size:10px;">Symbol, Edge, Evidence<br/>GraphBuilder, Validator<br/>Pure. Zero deps.</p>
+              <div class="app-ring">
+                <h4>Analysis</h4>
+                <p>Coupling, BlastRadius, Cycles<br/>Tiers, RuleValidator</p>
               </div>
             </div>
           </div>
