@@ -13,7 +13,7 @@ public static class CouplingAnalyzer
     {
         var results = new List<CouplingMetrics>();
 
-        for (int i = 0; i < graph.Symbols.Length; i++)
+        for (int i = 0; i < graph.Symbols.Count; i++)
         {
             var symbol = graph.Symbols[i];
             bool match = false;

@@ -6,4 +6,8 @@
     <RootNamespace>Lifeblood.Domain</RootNamespace>
     <!-- INV-DOMAIN-001: ZERO dependencies. If a PackageReference appears, architecture is broken. -->
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lifeblood.Tests" />
+    <InternalsVisibleTo Include="Lifeblood.Adapters.JsonGraph" />
+  </ItemGroup>
 </Project>

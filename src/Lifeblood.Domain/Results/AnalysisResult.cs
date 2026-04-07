@@ -10,8 +10,6 @@ public sealed class AnalysisResult
     public Violation[] Violations { get; init; } = Array.Empty<Violation>();
     public TierAssignment[] Tiers { get; init; } = Array.Empty<TierAssignment>();
     public string[][] Cycles { get; init; } = Array.Empty<string[]>();
-    public string[] DeadSymbols { get; init; } = Array.Empty<string>();
-    public HubInfo[] Hubs { get; init; } = Array.Empty<HubInfo>();
     public BlastRadiusResult[] BlastRadii { get; init; } = Array.Empty<BlastRadiusResult>();
     public GraphMetrics Metrics { get; init; } = new();
 }
@@ -39,14 +37,6 @@ public enum ArchitectureTier
     Tooling,
 }
 
-public sealed class HubInfo
-{
-    public string SymbolId { get; init; } = "";
-    public float BetweennessCentrality { get; init; }
-    public int FanIn { get; init; }
-    public int FanOut { get; init; }
-}
-
 public sealed class BlastRadiusResult
 {
     public string TargetSymbolId { get; init; } = "";
@@ -61,10 +51,8 @@ public sealed class GraphMetrics
     public int TotalFiles { get; init; }
     public int TotalTypes { get; init; }
     public int TotalModules { get; init; }
-    public int PureModules { get; init; }
     public int ViolationCount { get; init; }
     public int CycleCount { get; init; }
-    public float AverageInstability { get; init; }
 }
 
 /// <summary>

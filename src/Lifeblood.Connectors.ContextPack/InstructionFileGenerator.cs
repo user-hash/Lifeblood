@@ -101,8 +101,8 @@ public sealed class InstructionFileGenerator : IInstructionFileGenerator
         // Metrics
         sb.AppendLine("### Metrics");
         sb.AppendLine();
-        sb.AppendLine($"- Symbols: {graph.Symbols.Length}");
-        sb.AppendLine($"- Edges: {graph.Edges.Length}");
+        sb.AppendLine($"- Symbols: {graph.Symbols.Count}");
+        sb.AppendLine($"- Edges: {graph.Edges.Count}");
         sb.AppendLine($"- Modules: {modules.Length}");
         sb.AppendLine($"- Violations: {analysis.Violations.Length}");
         sb.AppendLine($"- Cycles: {analysis.Cycles.Length}");

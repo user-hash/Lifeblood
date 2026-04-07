@@ -9,7 +9,7 @@ public static class GraphValidator
     public static GraphValidationError[] Validate(SemanticGraph graph)
     {
         var errors = new List<GraphValidationError>();
-        var symbolIds = new HashSet<string>(graph.Symbols.Length, StringComparer.Ordinal);
+        var symbolIds = new HashSet<string>(graph.Symbols.Count, StringComparer.Ordinal);
 
         ValidateSymbols(graph, symbolIds, errors);
         ValidateEdges(graph, symbolIds, errors);
@@ -21,7 +21,7 @@ public static class GraphValidator
     private static void ValidateSymbols(
         SemanticGraph graph, HashSet<string> symbolIds, List<GraphValidationError> errors)
     {
-        for (int i = 0; i < graph.Symbols.Length; i++)
+        for (int i = 0; i < graph.Symbols.Count; i++)
         {
             var s = graph.Symbols[i];
 
@@ -60,7 +60,7 @@ public static class GraphValidator
     private static void ValidateEdges(
         SemanticGraph graph, HashSet<string> symbolIds, List<GraphValidationError> errors)
     {
-        for (int i = 0; i < graph.Edges.Length; i++)
+        for (int i = 0; i < graph.Edges.Count; i++)
         {
             var e = graph.Edges[i];
 
@@ -118,7 +118,7 @@ public static class GraphValidator
 
         // Duplicate edge detection (same source + target + kind)
         var edgeSet = new HashSet<(string, string, EdgeKind)>();
-        for (int i = 0; i < graph.Edges.Length; i++)
+        for (int i = 0; i < graph.Edges.Count; i++)
         {
             var e = graph.Edges[i];
             if (!edgeSet.Add((e.SourceId, e.TargetId, e.Kind)))
@@ -136,7 +136,7 @@ public static class GraphValidator
     private static void ValidateParentReferences(
         SemanticGraph graph, HashSet<string> symbolIds, List<GraphValidationError> errors)
     {
-        for (int i = 0; i < graph.Symbols.Length; i++)
+        for (int i = 0; i < graph.Symbols.Count; i++)
         {
             var s = graph.Symbols[i];
             if (!string.IsNullOrEmpty(s.ParentId) && !symbolIds.Contains(s.ParentId))

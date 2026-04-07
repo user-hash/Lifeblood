@@ -8,7 +8,7 @@ using Lifeblood.Domain.Graph;
 namespace Lifeblood.CLI;
 
 /// <summary>
-/// Composition root. Thin dispatch: parse args → resolve adapter → call pipeline → print.
+/// Composition root. Thin dispatch: parse args → build graph → validate → act.
 /// </summary>
 class Program
 {
@@ -25,25 +25,38 @@ class Program
         };
     }
 
-    static int RunAnalyze(string[] args)
+    /// <summary>
+    /// Shared preflight: build graph → validate → return.
+    /// Every command goes through this. No command runs on unvalidated input.
+    /// </summary>
+    static (SemanticGraph? graph, GraphSource source) Preflight(string[] args)
     {
-        var (projectRoot, graphPath, rulesPath) = ParseArgs(args);
-        var (graph, _) = BuildGraph(projectRoot, graphPath);
-        if (graph == null) return 1;
+        var (projectRoot, graphPath, _) = ParseArgs(args);
+        var source = BuildGraph(projectRoot, graphPath);
+        if (source.Graph == null) return (null, source);
 
-        var errors = GraphValidator.Validate(graph);
+        var errors = GraphValidator.Validate(source.Graph);
         if (errors.Length > 0)
         {
             foreach (var e in errors.Take(10))
                 Console.Error.WriteLine($"  [{e.Code}] {e.Message}");
-            return 1;
+            return (null, source);
         }
 
+        return (source.Graph, source);
+    }
+
+    static int RunAnalyze(string[] args)
+    {
+        var (graph, _) = Preflight(args);
+        if (graph == null) return 1;
+
+        var (_, _, rulesPath) = ParseArgs(args);
         var rules = rulesPath != null && File.Exists(rulesPath) ? RulesLoader.Load(rulesPath) : null;
         var analysis = AnalysisPipeline.Run(graph, rules);
 
-        Console.WriteLine($"Symbols: {graph.Symbols.Length}");
-        Console.WriteLine($"Edges:   {graph.Edges.Length}");
+        Console.WriteLine($"Symbols: {graph.Symbols.Count}");
+        Console.WriteLine($"Edges:   {graph.Edges.Count}");
         Console.WriteLine($"Modules: {analysis.Metrics.TotalModules}");
         Console.WriteLine($"Types:   {analysis.Metrics.TotalTypes}");
         if (analysis.Violations.Length > 0)
@@ -60,11 +73,11 @@ class Program
 
     static int RunContext(string[] args)
     {
-        var (projectRoot, graphPath, rulesPath) = ParseArgs(args);
-        var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
-        var (graph, _) = BuildGraph(projectRoot, graphPath);
+        var (graph, _) = Preflight(args);
         if (graph == null) return 1;
 
+        var (_, _, rulesPath) = ParseArgs(args);
+        var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
         var rules = rulesPath != null && File.Exists(rulesPath) ? RulesLoader.Load(rulesPath) : null;
         var analysis = AnalysisPipeline.Run(graph, rules);
 
@@ -75,8 +88,6 @@ class Program
         }
         else
         {
-            // Default: structured JSON context pack (the killer feature)
-            // Route through GenerateContextUseCase — hexagonal, not direct.
             var useCase = new GenerateContextUseCase(new AgentContextGenerator());
             var pack = useCase.Execute(graph, analysis);
             System.Text.Json.JsonSerializer.Serialize(
@@ -92,39 +103,52 @@ class Program
 
     static int RunExport(string[] args)
     {
-        var (projectRoot, graphPath, _) = ParseArgs(args);
-        var (graph, capability) = BuildGraph(projectRoot, graphPath);
+        var (graph, source) = Preflight(args);
         if (graph == null) return 1;
 
+        // Preserve language from imported document, default to "csharp" for Roslyn
         var doc = new GraphDocument
         {
-            Language = "csharp",
-            Adapter = capability,
+            Language = source.Language ?? "csharp",
+            Adapter = source.Capability,
             Graph = graph,
         };
         new JsonGraphExporter().Export(doc, Console.OpenStandardOutput());
         return 0;
     }
 
-    static (SemanticGraph? graph, Domain.Capabilities.AdapterCapability? capability) BuildGraph(
-        string? projectRoot, string? graphPath)
+    static GraphSource BuildGraph(string? projectRoot, string? graphPath)
     {
         if (graphPath != null)
         {
-            if (!File.Exists(graphPath)) { Console.Error.WriteLine($"Not found: {graphPath}"); return (null, null); }
+            if (!File.Exists(graphPath))
+            {
+                Console.Error.WriteLine($"Not found: {graphPath}");
+                return new GraphSource();
+            }
             using var stream = File.OpenRead(graphPath);
             var doc = new JsonGraphImporter().ImportDocument(stream);
-            return (doc.Graph, doc.Adapter);
+            return new GraphSource
+            {
+                Graph = doc.Graph,
+                Capability = doc.Adapter,
+                Language = doc.Language,
+            };
         }
         if (projectRoot != null)
         {
             var adapter = new RoslynWorkspaceAnalyzer();
             var result = new AnalyzeWorkspaceUseCase(adapter)
                 .Execute(projectRoot, new AnalysisConfig());
-            return (result.Graph, adapter.Capability);
+            return new GraphSource
+            {
+                Graph = result.Graph,
+                Capability = adapter.Capability,
+                Language = "csharp",
+            };
         }
         Console.Error.WriteLine("Specify --project <path> or --graph <json>");
-        return (null, null);
+        return new GraphSource();
     }
 
     static (string? project, string? graph, string? rules) ParseArgs(string[] args)
@@ -159,4 +183,15 @@ class Program
         Console.WriteLine("  lifeblood context --project <path> --format md             Generate instruction file (markdown)");
         Console.WriteLine("  lifeblood export  --project <path>                         Export graph as JSON");
     }
+}
+
+/// <summary>
+/// Carries graph + metadata from the build step to consumers.
+/// Preserves language identity from imported documents.
+/// </summary>
+internal sealed class GraphSource
+{
+    public SemanticGraph? Graph { get; init; }
+    public Domain.Capabilities.AdapterCapability? Capability { get; init; }
+    public string? Language { get; init; }
 }

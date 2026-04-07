@@ -6,8 +6,23 @@ namespace Lifeblood.Domain.Graph;
 /// </summary>
 public sealed class SemanticGraph
 {
-    public Symbol[] Symbols { get; init; } = Array.Empty<Symbol>();
-    public Edge[] Edges { get; init; } = Array.Empty<Edge>();
+    private readonly Symbol[] _symbols;
+    private readonly Edge[] _edges;
+
+    public SemanticGraph()
+    {
+        _symbols = Array.Empty<Symbol>();
+        _edges = Array.Empty<Edge>();
+    }
+
+    internal SemanticGraph(Symbol[] symbols, Edge[] edges)
+    {
+        _symbols = symbols;
+        _edges = edges;
+    }
+
+    public IReadOnlyList<Symbol> Symbols => _symbols;
+    public IReadOnlyList<Edge> Edges => _edges;
 
     private volatile GraphIndexes? _indexes;
 
@@ -35,9 +50,9 @@ public sealed class SemanticGraph
 
     public IEnumerable<Symbol> SymbolsOfKind(SymbolKind kind)
     {
-        for (int i = 0; i < Symbols.Length; i++)
-            if (Symbols[i].Kind == kind)
-                yield return Symbols[i];
+        for (int i = 0; i < _symbols.Length; i++)
+            if (_symbols[i].Kind == kind)
+                yield return _symbols[i];
     }
 
     public List<Symbol> ChildrenOf(string symbolId)
@@ -50,9 +65,9 @@ public sealed class SemanticGraph
         for (int i = 0; i < edgeIndexes.Count; i++)
         {
             int idx = edgeIndexes[i];
-            if (Edges[idx].Kind == EdgeKind.Contains)
+            if (_edges[idx].Kind == EdgeKind.Contains)
             {
-                var child = GetSymbol(Edges[idx].TargetId);
+                var child = GetSymbol(_edges[idx].TargetId);
                 if (child != null) children.Add(child);
             }
         }
@@ -71,17 +86,17 @@ public sealed class SemanticGraph
 
     private GraphIndexes BuildIndexes()
     {
-        var symbolById = new Dictionary<string, Symbol>(Symbols.Length, StringComparer.Ordinal);
-        var outgoing = new Dictionary<string, List<int>>(Symbols.Length, StringComparer.Ordinal);
-        var incoming = new Dictionary<string, List<int>>(Symbols.Length, StringComparer.Ordinal);
+        var symbolById = new Dictionary<string, Symbol>(_symbols.Length, StringComparer.Ordinal);
+        var outgoing = new Dictionary<string, List<int>>(_symbols.Length, StringComparer.Ordinal);
+        var incoming = new Dictionary<string, List<int>>(_symbols.Length, StringComparer.Ordinal);
 
-        for (int i = 0; i < Symbols.Length; i++)
-            symbolById[Symbols[i].Id] = Symbols[i];
+        for (int i = 0; i < _symbols.Length; i++)
+            symbolById[_symbols[i].Id] = _symbols[i];
 
-        for (int i = 0; i < Edges.Length; i++)
+        for (int i = 0; i < _edges.Length; i++)
         {
-            AddToIndex(outgoing, Edges[i].SourceId, i);
-            AddToIndex(incoming, Edges[i].TargetId, i);
+            AddToIndex(outgoing, _edges[i].SourceId, i);
+            AddToIndex(incoming, _edges[i].TargetId, i);
         }
 
         return new GraphIndexes(symbolById, outgoing, incoming);

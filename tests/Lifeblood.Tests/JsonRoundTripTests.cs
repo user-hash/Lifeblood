@@ -22,7 +22,7 @@ public class JsonRoundTripTests
 
         var roundTripped = RoundTrip(doc);
 
-        Assert.Equal(doc.Graph.Symbols.Length, roundTripped.Graph.Symbols.Length);
+        Assert.Equal(doc.Graph.Symbols.Count, roundTripped.Graph.Symbols.Count);
         var sym = roundTripped.Graph.GetSymbol("type:Foo");
         Assert.NotNull(sym);
         Assert.Equal("Foo", sym!.Name);
