@@ -104,6 +104,7 @@ Lifeblood.Adapters.CSharp
 
 Lifeblood.Connectors.Mcp
   → Lifeblood.Application (ports only)
+  → Lifeblood.Analysis (blast radius delegation)
   → Lifeblood.Domain
 
 Lifeblood.Analysis

@@ -1,6 +1,6 @@
 # TypeScript Adapter
 
-**Status:** Not started. High priority, looking for contributors.
+**Status:** Not started. This is a contribution guide, not existing code.
 
 ## Approach
 
