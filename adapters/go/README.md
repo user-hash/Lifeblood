@@ -1,6 +1,6 @@
 # Go Adapter
 
-**Status:** Not started. Looking for contributors.
+**Status:** Not started. This is a contribution guide, not existing code.
 
 ## Approach
 

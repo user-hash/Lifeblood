@@ -2,65 +2,47 @@
 
 Compiler truth in, AI context out.
 
+Lifeblood is a hexagonal framework that connects compiler-level code intelligence to AI tools. Language adapters on the left feed semantic data into a pure universal graph. AI connectors on the right consume that graph as structured context. The core normalizes everything in between.
+
 ```
-LEFT VEINS                    HEART                   RIGHT VEINS
-(Language Adapters)        (The Core)              (AI Connectors)
-
-Roslyn (C#)       ──┐                           ┌──  MCP Server
-TS Compiler       ──┤  ┌─────────────────────┐  ├──  Context Pack (JSON)
-go/types          ──┼→ │   Semantic Graph     │ →┤──  CLAUDE.md generator
-Python ast+mypy   ──┤  │   (universal model)  │  ├──  CLI / CI
-rust-analyzer     ──┤  └─────────────────────┘  └──  JSON / REST
-Java JDT          ──┘
+Roslyn (C#)    ──┐                              ┌──  Context Pack (JSON)
+JSON graph     ──┤  ┌────────────────────────┐  ├──  Instruction File (md)
+               ──┼→ │    Semantic Graph      │ →┤──  MCP Graph Provider
+  community    ──┤  │  (symbols · edges ·    │  ├──  CLI / CI
+  adapters     ──┘  │   evidence · trust)    │  └──  (planned: MCP host,
+                    └────────────────────────┘        REST, LSP)
 ```
 
-Lifeblood is a hexagonal framework that pipes compiler-level semantics into AI tools. Language adapters feed semantic truth in. AI connectors consume structured context out. The core normalizes everything in between — pure, zero dependencies on either side.
+We build the framework and one reference implementation (C# via Roslyn). The community builds the rest. Roslyn is open source. AI can help port adapter concepts to other languages. We provide the contracts, schemas, and golden repo test fixtures.
 
-We build the framework and one reference implementation (C# + Roslyn). The community builds the rest.
-
-Born from shipping a [400k LOC Unity project](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) with AI assistance and realizing that AI agents write code but rarely verify the wiring.
+Born from shipping a [400k LOC Unity project](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) with AI assistance and realizing that AI writes code but does not verify what it wrote.
 
 ---
 
-## Why This Matters for AI-Assisted Development
+## Why This Matters
 
-AI writes code. It does not verify what it wrote. It builds backends but doesn't wire frontends. It adds methods but doesn't update callers. It refactors types but misses downstream consumers. It moves fast and never looks back.
+AI builds backends but does not wire frontends. It adds methods but does not update callers. It refactors types but misses downstream consumers. It moves fast and never looks back.
 
-That was fine when AI built simple prototypes. But AI-assisted projects are getting complex — 50k, 100k, 400k LOC. At that scale, unverified code is a liability. The prototyping era is ending. The framework era is starting.
+That was fine when AI built simple prototypes. But AI-assisted projects are getting complex. At that scale, unverified code is a liability. The prototyping era is ending. The framework era is starting.
 
-Lifeblood is built for that era. Run it on any codebase and get:
+Lifeblood is built for that era. Point it at a codebase and get a verified semantic graph:
 
-- **Zero dangling references** — every edge points to a real symbol
-- **Zero orphaned symbols** — every node is reachable in the containment tree
-- **Zero duplicate edges** — no redundant dependency claims
-- **Complete evidence** — every relationship carries proof of how it was discovered
-- **Honest capabilities** — adapters declare what they can actually prove, not what they wish
+- Every edge points to a real symbol (no dangling references)
+- Every symbol is reachable in the containment tree (no orphans)
+- No duplicate edges, no missing evidence
+- Every relationship carries proof of how it was discovered and how confident the adapter is
 
-We dogfood Lifeblood on itself. Every push, the framework analyzes its own 9 modules, 495 symbols, and 661 edges — and the graph comes back clean.
+We dogfood Lifeblood on itself:
 
 ```
-$ lifeblood analyze --project . --rules packs/lifeblood/rules.json
+$ dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json
 Symbols: 495
 Edges:   661
 Modules: 9
 Types:   80
 ```
 
-Zero violations. Zero dangling edges. Zero duplicates. [Full dogfood findings →](docs/DOGFOOD_FINDINGS.md)
-
----
-
-## What Semantic Access Gives AI Agents
-
-| Capability | Without Lifeblood | With Lifeblood |
-|------------|-------------------|----------------|
-| Find references | Grep for text | Real callers, real dependants, with proof |
-| Wiring verification | Hope it's connected | Proven: zero dangling edges, zero orphans |
-| Architecture | Hope nobody broke a boundary | Compiler-level boundary enforcement with rules |
-| Blast radius | No idea | Exact list of what breaks if you change this |
-| Context loading | Read random files | Ranked reading order — stable core first |
-| Coupling | Guess from file structure | Robert Martin metrics: fan-in, fan-out, instability |
-| Cycles | Manual inspection | Tarjan SCC detection on the real dependency graph |
+Zero violations. [Full dogfood findings](docs/DOGFOOD_FINDINGS.md)
 
 ---
 
@@ -70,29 +52,34 @@ Zero violations. Zero dangling edges. Zero duplicates. [Full dogfood findings �
 git clone https://github.com/user-hash/Lifeblood.git
 cd Lifeblood
 dotnet build
+dotnet test
 ```
 
-### Analyze a project
+Analyze a C# project:
+
 ```bash
-lifeblood analyze --project ./my-app
-lifeblood analyze --project ./my-app --rules packs/hexagonal/rules.json
+dotnet run --project src/Lifeblood.CLI -- analyze --project /path/to/your/project
+dotnet run --project src/Lifeblood.CLI -- analyze --project /path/to/your/project --rules packs/hexagonal/rules.json
 ```
 
-### Generate AI context pack (JSON)
+Generate an AI context pack (JSON):
+
 ```bash
-lifeblood context --project ./my-app
-lifeblood context --project ./my-app --format md    # markdown instruction file
+dotnet run --project src/Lifeblood.CLI -- context --project /path/to/your/project
+dotnet run --project src/Lifeblood.CLI -- context --project /path/to/your/project --format md
 ```
 
-### Export the semantic graph
+Export the semantic graph:
+
 ```bash
-lifeblood export --project ./my-app > graph.json
+dotnet run --project src/Lifeblood.CLI -- export --project /path/to/your/project > graph.json
 ```
 
-### Analyze from any language via JSON
+Analyze from any language via JSON:
+
 ```bash
-python my-parser.py ./project > graph.json
-lifeblood analyze --graph graph.json --rules rules.json
+your-parser ./project > graph.json
+dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json --rules rules.json
 ```
 
 ---
@@ -100,68 +87,72 @@ lifeblood analyze --graph graph.json --rules rules.json
 ## Architecture
 
 ```
-Lifeblood.Domain                Pure graph model. Zero deps. The absolute core.
-Lifeblood.Application           Ports + use cases. Depends only on Domain.
+Lifeblood.Domain                Pure graph model. Zero dependencies. The absolute core.
+Lifeblood.Application           Ports and use cases. Depends only on Domain.
 Lifeblood.Adapters.CSharp      Roslyn reference adapter. Left side.
 Lifeblood.Adapters.JsonGraph    Universal JSON protocol adapter. Left side.
-Lifeblood.Connectors.ContextPack  Context pack + instruction file generator. Right side.
-Lifeblood.Connectors.Mcp       MCP graph provider for AI agents. Right side.
-Lifeblood.Analysis              Optional: coupling, blast radius, cycles, tiers, rules.
+Lifeblood.Connectors.ContextPack  Context pack and instruction file generator. Right side.
+Lifeblood.Connectors.Mcp       MCP graph provider. Right side.
+Lifeblood.Analysis              Coupling, blast radius, cycles, tiers, rule validation.
 Lifeblood.CLI                   Composition root. Wires left side to right side.
 ```
 
-Domain never references Application. Application never references Adapters or Connectors. Adapters never reference other Adapters. Connectors never reference Adapters. All enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [9 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+Domain never references Application. Application never references Adapters or Connectors. Adapters never reference other Adapters. Connectors never reference Adapters. All of this is enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [9 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
-[Full architecture →](docs/ARCHITECTURE.md) · [How to build an adapter →](docs/ADAPTERS.md)
-
----
-
-## How Languages Plug In (Left Side)
-
-**Option A: In-process C# adapter.** Implement `IWorkspaceAnalyzer`. Full pipeline integration.
-
-**Option B: External process + JSON.** Write a parser in any language. Output `graph.json` conforming to `schemas/graph.schema.json`. Lifeblood reads it. No C# needed.
-
-**Option C: AI-assisted porting.** Roslyn is open source. The concepts exist in every language toolchain. AI agents can help port adapter implementations. We provide the contracts and golden repo test fixtures.
+[Full architecture](docs/ARCHITECTURE.md) and [interactive diagram](docs/architecture.html)
 
 ---
 
-## How AI Tools Plug In (Right Side)
+## How Languages Plug In
 
-**Context Pack** (the killer feature) — Structured JSON with high-value files, module boundaries, reading order, hotspots, dependency matrix, and active violations. Feed it to any AI tool.
+**In-process C# adapter:** Implement `IWorkspaceAnalyzer` from `Lifeblood.Application.Ports.Left`. The Roslyn adapter is the reference implementation.
 
-**Instruction File Generator** — Analyze a codebase, produce a CLAUDE.md / AGENTS.md section with architecture boundaries, dependency rules, and high-value files.
+**External JSON adapter:** Write a parser in any language. Output JSON conforming to `schemas/graph.schema.json`. Lifeblood reads it via `JsonGraphImporter`. No C# needed.
 
-**MCP Graph Provider** — Symbol lookup, dependencies, dependants, blast radius queries. Port interface implemented; MCP server hosting planned.
+**AI-assisted porting:** Roslyn is open source. The concepts (syntax trees, semantic models, symbol resolution) exist in every language toolchain. AI agents can help port adapter implementations. We provide the contracts and test fixtures.
+
+See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the full guide.
+
+---
+
+## What Comes Out
+
+**Context Pack** produces structured JSON with high-value files, module boundaries, reading order, hotspots, dependency matrix, and active violations. Feed it to any AI tool.
+
+**Instruction File Generator** analyzes a codebase and produces CLAUDE.md or AGENTS.md sections with architecture boundaries, dependency rules, and high-value files.
+
+**MCP Graph Provider** serves symbol lookup, dependencies, dependants, and blast radius queries. The port interface is implemented. MCP server hosting over stdio/SSE is planned.
+
+**CLI** runs analysis, validates architecture rules, generates context, and exports graphs. Designed for CI integration with exit codes.
 
 ---
 
 ## Status
 
-Dogfood-verified. Framework hardening complete. 80 tests, CI green.
+Dogfood-verified. 80 tests. CI green.
 
 | Assembly | State |
 |----------|-------|
-| **Lifeblood.Domain** | Implemented — graph model, GraphBuilder, GraphValidator, evidence, capabilities |
-| **Lifeblood.Application** | Implemented — all port interfaces, use cases |
-| **Lifeblood.Adapters.CSharp** | Implemented — Roslyn workspace analyzer, module discovery, symbol/edge extractors |
-| **Lifeblood.Adapters.JsonGraph** | Implemented — JSON import/export with round-trip fidelity |
-| **Lifeblood.Connectors.ContextPack** | Implemented — context pack, instruction file, reading order |
-| **Lifeblood.Connectors.Mcp** | Implemented — graph provider with blast radius delegation |
-| **Lifeblood.Analysis** | Implemented — coupling, rules, blast radius, cycles, tiers |
-| **Lifeblood.CLI** | Implemented — analyze, context, export with rules support |
-| **Lifeblood.Tests** | 80 tests — extractors, golden repos, round-trip, invariants |
+| Lifeblood.Domain | Implemented. GraphBuilder, GraphValidator, Evidence, ConfidenceLevel. |
+| Lifeblood.Application | Implemented. All port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase. |
+| Lifeblood.Adapters.CSharp | Implemented. Roslyn workspace analyzer, module discovery, symbol and edge extractors. |
+| Lifeblood.Adapters.JsonGraph | Implemented. Import and export with round-trip fidelity. |
+| Lifeblood.Connectors.ContextPack | Implemented. Context pack, instruction file, reading order generator. |
+| Lifeblood.Connectors.Mcp | Implemented. Graph provider with blast radius delegation to analyzers. |
+| Lifeblood.Analysis | Implemented. CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator. |
+| Lifeblood.CLI | Implemented. analyze, context, export commands with rules support. |
+| Lifeblood.Tests | 80 tests. Extractors, golden repos, round-trip, architecture invariants. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
-**Next:** Cross-module Roslyn resolution, MCP server hosting, TypeScript adapter
+**Planned:** MCP server hosting, TypeScript adapter, cross-module Roslyn resolution.
 
 ---
 
 ## Related
 
-- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — The methodology that shaped this framework
-- [Roslyn](https://github.com/dotnet/roslyn) — The C#/.NET compiler platform
+- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — The methodology framework that shaped how Lifeblood is built
+- [Roslyn](https://github.com/dotnet/roslyn) — The C# compiler platform
 - [DAWG](https://dawgtools.org) | [itch.io](https://dawg-tools.itch.io/) — The 400k LOC project where we proved these ideas
 
 ## License

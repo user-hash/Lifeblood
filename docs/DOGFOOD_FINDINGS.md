@@ -65,3 +65,16 @@ The good news: the core pipeline works. Module discovery, symbol extraction, edg
 The bad news: the output layer (JSON export, rule loading, context pack generation) had multiple bugs that were invisible to unit tests. Every one of these bugs could have been caught earlier by running the tool on a real project — including itself.
 
 **Lesson:** Unit tests prove components work in isolation. Dogfooding proves the product works as a product.
+
+## Resolution
+
+All six findings were fixed in the same session they were discovered:
+
+- **F1:** `WhenWritingDefault` replaced with `WhenWritingNull`. All enum, bool, and int fields now always serialize.
+- **F2:** Rule packs rewritten to camelCase. New `packs/lifeblood/rules.json` validates Lifeblood's own architecture.
+- **F3:** `BuildDependencyMatrix` now uses module-level DependsOn edges with cross-module member edge counting.
+- **F4:** Invariants filtered to module-level only (2 invariants instead of 57).
+- **F5:** Reading order sort uses stable-first ordering (lowest instability, then highest fan-in).
+- **F6:** Hotspot detection excludes modules (composition roots have high coupling by design).
+
+Post-fix dogfood output: 495 symbols, 661 edges, 9 modules, 0 violations, 0 dangling edges, 0 duplicates.
