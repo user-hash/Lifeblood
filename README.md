@@ -6,14 +6,14 @@ Lifeblood is a hexagonal framework that connects compiler-level code intelligenc
 
 ```
 Roslyn (C#)    ──┐                              ┌──  Context Pack (JSON)
-JSON graph     ──┤  ┌────────────────────────┐  ├──  Instruction File (md)
-               ──┼→ │    Semantic Graph      │ →┤──  MCP Graph Provider
-  community    ──┤  │  (symbols · edges ·    │  ├──  CLI / CI
-  adapters     ──┘  │   evidence · trust)    │  └──  (planned: MCP host,
-                    └────────────────────────┘        REST, LSP)
+TypeScript     ──┤  ┌────────────────────────┐  ├──  Instruction File (md)
+JSON graph     ──┼→ │    Semantic Graph      │ →┤──  MCP Server (stdio)
+               ──┤  │  (symbols · edges ·    │  ├──  CLI / CI
+  community    ──┘  │   evidence · trust)    │  └──  JSON export
+  adapters          └────────────────────────┘
 ```
 
-We build the framework and one reference implementation (C# via Roslyn). The community builds the rest. Roslyn is open source. AI can help port adapter concepts to other languages. We provide the contracts, schemas, and golden repo test fixtures.
+We build the framework and two reference adapters (C# via Roslyn, TypeScript via the TS compiler API). The community builds the rest. We provide the contracts, schemas, golden repo fixtures, and a [13-item adapter checklist](docs/ADAPTERS.md).
 
 Born from shipping a [400k LOC Unity project](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) with AI assistance and realizing that AI writes code but does not verify what it wrote.
 
@@ -32,17 +32,19 @@ Lifeblood is built for that era. Point it at a codebase and get a verified seman
 - No duplicate edges, no missing evidence
 - Every relationship carries proof of how it was discovered and how confident the adapter is
 
-We dogfood Lifeblood on itself:
+We dogfood Lifeblood on itself. Every push, the CI analyzes the framework's own codebase:
 
 ```
 $ dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 495
-Edges:   661
-Modules: 9
-Types:   80
+Symbols: 594
+Edges:   830
+Modules: 10
+Types:   98
 ```
 
-Zero violations. [Full dogfood findings](docs/DOGFOOD_FINDINGS.md)
+Zero violations. Zero dangling edges. Zero duplicates. [Full dogfood findings](docs/DOGFOOD_FINDINGS.md)
+
+The TypeScript adapter also analyzes its own source code and feeds the output through the C# CLI. That is the universal protocol proof: two languages, one graph model, one pipeline.
 
 ---
 
@@ -75,56 +77,15 @@ Export the semantic graph:
 dotnet run --project src/Lifeblood.CLI -- export --project /path/to/your/project > graph.json
 ```
 
-Analyze from any language via JSON:
+Analyze TypeScript (or any language via JSON):
 
 ```bash
-your-parser ./project > graph.json
-dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json --rules rules.json
+cd adapters/typescript && npm install && npm run build
+node dist/index.js /path/to/ts-project > graph.json
+dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json
 ```
 
----
-
-## Architecture
-
-```
-Lifeblood.Domain                Pure graph model. Zero dependencies. The absolute core.
-Lifeblood.Application           Ports and use cases. Depends only on Domain.
-Lifeblood.Adapters.CSharp      Roslyn reference adapter. Left side.
-Lifeblood.Adapters.JsonGraph    Universal JSON protocol adapter. Left side.
-Lifeblood.Connectors.ContextPack  Context pack and instruction file generator. Right side.
-Lifeblood.Connectors.Mcp       MCP graph provider. Right side.
-Lifeblood.Analysis              Coupling, blast radius, cycles, tiers, rule validation.
-Lifeblood.Server.Mcp            MCP server. Interactive AI agent sessions over stdio.
-Lifeblood.CLI                   Composition root. Wires left side to right side.
-```
-
-Domain never references Application. Application never references Adapters or Connectors. Adapters never reference other Adapters. Connectors never reference Adapters. All of this is enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [9 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
-
-![Architecture Diagram](docs/architecture-diagram.svg)
-
-[Full architecture](docs/ARCHITECTURE.md) and [interactive diagram](docs/architecture.html)
-
----
-
-## How Languages Plug In
-
-**In-process C# adapter:** Implement `IWorkspaceAnalyzer` from `Lifeblood.Application.Ports.Left`. The Roslyn adapter is the reference implementation.
-
-**External JSON adapter:** Write a parser in any language. Output JSON conforming to `schemas/graph.schema.json`. Lifeblood reads it via `JsonGraphImporter`. No C# needed.
-
-**AI-assisted porting:** Roslyn is open source. The concepts (syntax trees, semantic models, symbol resolution) exist in every language toolchain. AI agents can help port adapter implementations. We provide the contracts and test fixtures.
-
-See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the full guide.
-
----
-
-## What Comes Out
-
-**Context Pack** produces structured JSON with high-value files, module boundaries, reading order, hotspots, dependency matrix, and active violations. Feed it to any AI tool.
-
-**Instruction File Generator** analyzes a codebase and produces CLAUDE.md or AGENTS.md sections with architecture boundaries, dependency rules, and high-value files.
-
-**MCP Server** serves the semantic graph interactively over stdio (JSON-RPC 2.0). AI agents can analyze projects, look up symbols, query dependencies, and compute blast radius in real time. Connect from any MCP client:
+Connect an MCP client (Claude Code, etc.):
 
 ```json
 {
@@ -137,35 +98,88 @@ See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the full guide.
 }
 ```
 
+---
+
+## Architecture
+
+```
+Lifeblood.Domain                Pure graph model. Zero dependencies. The absolute core.
+Lifeblood.Application           Ports and use cases. Depends only on Domain.
+Lifeblood.Adapters.CSharp      Roslyn reference adapter. Left side.
+Lifeblood.Adapters.JsonGraph    Universal JSON protocol adapter. Left side.
+Lifeblood.Connectors.ContextPack  Context pack and instruction file generator. Right side.
+Lifeblood.Connectors.Mcp       MCP graph provider port. Right side.
+Lifeblood.Analysis              Coupling, blast radius, cycles, tiers, rule validation.
+Lifeblood.Server.Mcp            MCP server. Interactive AI agent sessions over stdio.
+Lifeblood.CLI                   Composition root. Wires left side to right side.
+adapters/typescript/            TypeScript adapter (standalone Node.js, JSON protocol).
+```
+
+Domain never references Application. Application never references Adapters or Connectors. Adapters never reference other Adapters. Connectors never reference Adapters. All enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+
+![Architecture Diagram](docs/architecture-diagram.svg)
+
+[Full architecture](docs/ARCHITECTURE.md) and [interactive diagram](docs/architecture.html)
+
+---
+
+## Language Adapters
+
+Two adapters ship today. The community can build more via the JSON protocol.
+
+**C# / Roslyn (reference adapter):** Compiler-grade semantic analysis. Extracts types, methods, fields, inheritance, calls, references. Proven type and call resolution. Discovers modules from .sln/.csproj files.
+
+**TypeScript (standalone Node.js):** Uses `ts.createProgram` + `TypeChecker`. High-confidence type and call resolution. Outputs `graph.json` that the C# CLI consumes directly.
+
+**Any language via JSON:** Write a parser in your language. Output JSON conforming to `schemas/graph.schema.json`. See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the contract, quality levels, and the 13-item adapter checklist.
+
+---
+
+## AI Connectors
+
+**Context Pack** produces structured JSON with high-value files, module boundaries, reading order, hotspots, dependency matrix, and active violations. Feed it to any AI tool.
+
+**Instruction File Generator** analyzes a codebase and produces CLAUDE.md or AGENTS.md sections with architecture boundaries, dependency rules, and high-value files.
+
+**MCP Server** serves the semantic graph interactively over stdio (JSON-RPC 2.0). Six tools: analyze, context, lookup, dependencies, dependants, blast radius. AI agents can load a project and query its structure in real time.
+
 **CLI** runs analysis, validates architecture rules, generates context, and exports graphs. Designed for CI integration with exit codes.
 
 ---
 
 ## Status
 
-Dogfood-verified. 80 tests. CI green.
+Dogfood-verified. 82 tests. CI green (3 jobs: build, TypeScript adapter, dogfood).
 
-| Assembly | State |
-|----------|-------|
-| Lifeblood.Domain | Implemented. GraphBuilder, GraphValidator, Evidence, ConfidenceLevel. |
+| Component | State |
+|-----------|-------|
+| Lifeblood.Domain | Implemented. Immutable graph model, GraphBuilder, GraphValidator, Evidence, ConfidenceLevel, GraphDocument. |
 | Lifeblood.Application | Implemented. All port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase. |
 | Lifeblood.Adapters.CSharp | Implemented. Roslyn workspace analyzer, module discovery, symbol and edge extractors. |
-| Lifeblood.Adapters.JsonGraph | Implemented. Import and export with round-trip fidelity. |
-| Lifeblood.Connectors.ContextPack | Implemented. Context pack, instruction file, reading order generator. |
-| Lifeblood.Connectors.Mcp | Implemented. Graph provider with blast radius delegation to analyzers. |
-| Lifeblood.Analysis | Implemented. CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator. |
-| Lifeblood.CLI | Implemented. analyze, context, export commands with rules support. |
-| Lifeblood.Tests | 80 tests. Extractors, golden repos, round-trip, architecture invariants. |
+| Lifeblood.Adapters.JsonGraph | Implemented. Import and export with full metadata round-trip. |
+| Lifeblood.Connectors.ContextPack | Implemented. Context pack with GraphSummary, instruction file, reading order. |
+| Lifeblood.Connectors.Mcp | Implemented. Graph provider with blast radius delegation. |
+| Lifeblood.Analysis | Implemented. Coupling, blast radius, cycles, tiers, rule validation. |
+| Lifeblood.Server.Mcp | Implemented. MCP server with 6 tools over stdio. |
+| Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
+| adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
+| Lifeblood.Tests | 82 tests. Extractors, golden repos, round-trip, architecture invariants. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
-**Planned:** Cross-module Roslyn resolution, additional language adapters.
+**Planned:** Cross-module Roslyn resolution, additional community adapters (Go, Python, Rust).
+
+---
+
+## Built With
+
+Human direction + [Claude Code](https://claude.ai/code) + Claude Chat, working in concert. 44 commits in one session. Every commit builds. Every commit passes tests. Dogfood clean throughout. The [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) methodology shaped the architecture.
 
 ---
 
 ## Related
 
-- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — The methodology framework that shaped how Lifeblood is built
+- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — The methodology framework
 - [Roslyn](https://github.com/dotnet/roslyn) — The C# compiler platform
 - [DAWG](https://dawgtools.org) | [itch.io](https://dawg-tools.itch.io/) — The 400k LOC project where we proved these ideas
 
