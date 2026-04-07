@@ -2,6 +2,7 @@ using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Domain.Graph;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using DomainSymbolKind = Lifeblood.Domain.Graph.SymbolKind;
 
 namespace Lifeblood.Adapters.CSharp;
 
@@ -19,8 +20,12 @@ public sealed class RoslynSymbolExtractor
         {
             switch (node)
             {
-                case BaseTypeDeclarationSyntax typeDecl:
+                case TypeDeclarationSyntax typeDecl:
                     ExtractType(model, typeDecl, relativeFilePath, fileSymbolId, symbols);
+                    break;
+
+                case EnumDeclarationSyntax enumDecl:
+                    ExtractEnum(model, enumDecl, relativeFilePath, fileSymbolId, symbols);
                     break;
 
                 case DelegateDeclarationSyntax delegateDecl:
@@ -33,26 +38,26 @@ public sealed class RoslynSymbolExtractor
     }
 
     private void ExtractType(
-        SemanticModel model, BaseTypeDeclarationSyntax typeDecl,
-        string filePath, string fileSymbolId, List<Symbol> symbols)
+        SemanticModel model, TypeDeclarationSyntax typeDecl,
+        string filePath, string parentId, List<Symbol> symbols)
     {
-        var typeSymbol = model.GetDeclaredSymbol(typeDecl);
+        var typeSymbol = model.GetDeclaredSymbol(typeDecl) as INamedTypeSymbol;
         if (typeSymbol == null) return;
 
         var typeId = SymbolIds.Type(GetFullName(typeSymbol));
-        var parentId = typeSymbol.ContainingType != null
+        var containerId = typeSymbol.ContainingType != null
             ? SymbolIds.Type(GetFullName(typeSymbol.ContainingType))
-            : fileSymbolId;
+            : parentId;
 
         symbols.Add(new Symbol
         {
             Id = typeId,
             Name = typeSymbol.Name,
             QualifiedName = GetFullName(typeSymbol),
-            Kind = SymbolKind.Type,
+            Kind = DomainSymbolKind.Type,
             FilePath = filePath,
             Line = typeDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-            ParentId = parentId,
+            ParentId = containerId,
             Visibility = MapVisibility(typeSymbol.DeclaredAccessibility),
             IsAbstract = typeSymbol.IsAbstract,
             IsStatic = typeSymbol.IsStatic,
@@ -62,7 +67,7 @@ public sealed class RoslynSymbolExtractor
             },
         });
 
-        // Extract members
+        // Extract members from TypeDeclarationSyntax (has .Members)
         foreach (var member in typeDecl.Members)
         {
             switch (member)
@@ -83,18 +88,43 @@ public sealed class RoslynSymbolExtractor
                     ExtractProperty(model, propDecl, typeId, filePath, symbols);
                     break;
 
-                case BaseTypeDeclarationSyntax nestedType:
+                case TypeDeclarationSyntax nestedType:
                     ExtractType(model, nestedType, filePath, typeId, symbols);
+                    break;
+
+                case EnumDeclarationSyntax nestedEnum:
+                    ExtractEnum(model, nestedEnum, filePath, typeId, symbols);
                     break;
             }
         }
     }
 
+    private void ExtractEnum(
+        SemanticModel model, EnumDeclarationSyntax enumDecl,
+        string filePath, string parentId, List<Symbol> symbols)
+    {
+        var enumSymbol = model.GetDeclaredSymbol(enumDecl) as INamedTypeSymbol;
+        if (enumSymbol == null) return;
+
+        symbols.Add(new Symbol
+        {
+            Id = SymbolIds.Type(GetFullName(enumSymbol)),
+            Name = enumSymbol.Name,
+            QualifiedName = GetFullName(enumSymbol),
+            Kind = DomainSymbolKind.Type,
+            FilePath = filePath,
+            Line = enumDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            ParentId = parentId,
+            Visibility = MapVisibility(enumSymbol.DeclaredAccessibility),
+            Properties = new Dictionary<string, string> { ["typeKind"] = "enum" },
+        });
+    }
+
     private void ExtractDelegate(
         SemanticModel model, DelegateDeclarationSyntax delegateDecl,
-        string filePath, string fileSymbolId, List<Symbol> symbols)
+        string filePath, string parentId, List<Symbol> symbols)
     {
-        var sym = model.GetDeclaredSymbol(delegateDecl);
+        var sym = model.GetDeclaredSymbol(delegateDecl) as INamedTypeSymbol;
         if (sym == null) return;
 
         symbols.Add(new Symbol
@@ -102,10 +132,10 @@ public sealed class RoslynSymbolExtractor
             Id = SymbolIds.Type(GetFullName(sym)),
             Name = sym.Name,
             QualifiedName = GetFullName(sym),
-            Kind = SymbolKind.Type,
+            Kind = DomainSymbolKind.Type,
             FilePath = filePath,
             Line = delegateDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-            ParentId = fileSymbolId,
+            ParentId = parentId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             Properties = new Dictionary<string, string> { ["typeKind"] = "delegate" },
         });
@@ -115,16 +145,17 @@ public sealed class RoslynSymbolExtractor
         SemanticModel model, MethodDeclarationSyntax methodDecl,
         string containingTypeId, string filePath, List<Symbol> symbols)
     {
-        var sym = model.GetDeclaredSymbol(methodDecl);
+        var sym = model.GetDeclaredSymbol(methodDecl) as IMethodSymbol;
         if (sym == null) return;
 
+        var typeName = ExtractTypeFromId(containingTypeId);
         var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(ExtractTypeFromId(containingTypeId), sym.Name, paramSig),
+            Id = SymbolIds.Method(typeName, sym.Name, paramSig),
             Name = sym.Name,
-            QualifiedName = $"{ExtractTypeFromId(containingTypeId)}.{sym.Name}",
-            Kind = SymbolKind.Method,
+            QualifiedName = $"{typeName}.{sym.Name}",
+            Kind = DomainSymbolKind.Method,
             FilePath = filePath,
             Line = methodDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,
@@ -143,16 +174,17 @@ public sealed class RoslynSymbolExtractor
         SemanticModel model, ConstructorDeclarationSyntax ctorDecl,
         string containingTypeId, string filePath, List<Symbol> symbols)
     {
-        var sym = model.GetDeclaredSymbol(ctorDecl);
+        var sym = model.GetDeclaredSymbol(ctorDecl) as IMethodSymbol;
         if (sym == null) return;
 
+        var typeName = ExtractTypeFromId(containingTypeId);
         var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(ExtractTypeFromId(containingTypeId), ".ctor", paramSig),
+            Id = SymbolIds.Method(typeName, ".ctor", paramSig),
             Name = ".ctor",
-            QualifiedName = $"{ExtractTypeFromId(containingTypeId)}..ctor",
-            Kind = SymbolKind.Method,
+            QualifiedName = $"{typeName}..ctor",
+            Kind = DomainSymbolKind.Method,
             FilePath = filePath,
             Line = ctorDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,
@@ -170,12 +202,13 @@ public sealed class RoslynSymbolExtractor
             var sym = model.GetDeclaredSymbol(variable) as IFieldSymbol;
             if (sym == null) continue;
 
+            var typeName = ExtractTypeFromId(containingTypeId);
             symbols.Add(new Symbol
             {
-                Id = SymbolIds.Field(ExtractTypeFromId(containingTypeId), sym.Name),
+                Id = SymbolIds.Field(typeName, sym.Name),
                 Name = sym.Name,
-                QualifiedName = $"{ExtractTypeFromId(containingTypeId)}.{sym.Name}",
-                Kind = SymbolKind.Field,
+                QualifiedName = $"{typeName}.{sym.Name}",
+                Kind = DomainSymbolKind.Field,
                 FilePath = filePath,
                 Line = variable.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
                 ParentId = containingTypeId,
@@ -193,15 +226,16 @@ public sealed class RoslynSymbolExtractor
         SemanticModel model, PropertyDeclarationSyntax propDecl,
         string containingTypeId, string filePath, List<Symbol> symbols)
     {
-        var sym = model.GetDeclaredSymbol(propDecl);
+        var sym = model.GetDeclaredSymbol(propDecl) as IPropertySymbol;
         if (sym == null) return;
 
+        var typeName = ExtractTypeFromId(containingTypeId);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Property(ExtractTypeFromId(containingTypeId), sym.Name),
+            Id = SymbolIds.Property(typeName, sym.Name),
             Name = sym.Name,
-            QualifiedName = $"{ExtractTypeFromId(containingTypeId)}.{sym.Name}",
-            Kind = SymbolKind.Field, // Properties map to Field in the universal model
+            QualifiedName = $"{typeName}.{sym.Name}",
+            Kind = DomainSymbolKind.Field, // Properties map to Field in the universal model
             FilePath = filePath,
             Line = propDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,
@@ -224,7 +258,7 @@ public sealed class RoslynSymbolExtractor
         {
             if (current is INamespaceSymbol ns && !string.IsNullOrEmpty(ns.Name))
                 parts.Add(ns.Name);
-            else if (current is INamedTypeSymbol || current is IMethodSymbol || current is IFieldSymbol || current is IPropertySymbol)
+            else if (current is INamedTypeSymbol or IMethodSymbol or IFieldSymbol or IPropertySymbol)
                 parts.Add(current.Name);
 
             current = current.ContainingSymbol;

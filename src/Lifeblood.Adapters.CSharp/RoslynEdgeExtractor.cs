@@ -29,7 +29,7 @@ public sealed class RoslynEdgeExtractor
         {
             switch (node)
             {
-                case BaseTypeDeclarationSyntax typeDecl:
+                case TypeDeclarationSyntax typeDecl:
                     ExtractInheritanceEdges(model, typeDecl, edges, seen);
                     break;
 
@@ -55,10 +55,10 @@ public sealed class RoslynEdgeExtractor
     }
 
     private void ExtractInheritanceEdges(
-        SemanticModel model, BaseTypeDeclarationSyntax typeDecl,
+        SemanticModel model, TypeDeclarationSyntax typeDecl,
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
     {
-        var typeSymbol = model.GetDeclaredSymbol(typeDecl) as INamedTypeSymbol;
+        var typeSymbol = model.GetDeclaredSymbol(typeDecl);
         if (typeSymbol == null) return;
 
         var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(typeSymbol));
@@ -162,16 +162,29 @@ public sealed class RoslynEdgeExtractor
 
     private static IMethodSymbol? FindContainingMethod(SemanticModel model, SyntaxNode node)
     {
-        var methodNode = node.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
-        if (methodNode == null) return null;
-        return model.GetDeclaredSymbol(methodNode) as IMethodSymbol;
+        // Try MethodDeclarationSyntax first, then ConstructorDeclarationSyntax
+        var methodNode = node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+        if (methodNode != null)
+            return model.GetDeclaredSymbol(methodNode);
+
+        var ctorNode = node.Ancestors().OfType<ConstructorDeclarationSyntax>().FirstOrDefault();
+        if (ctorNode != null)
+            return model.GetDeclaredSymbol(ctorNode);
+
+        return null;
     }
 
     private static INamedTypeSymbol? FindContainingType(SemanticModel model, SyntaxNode node)
     {
-        var typeNode = node.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
-        if (typeNode == null) return null;
-        return model.GetDeclaredSymbol(typeNode) as INamedTypeSymbol;
+        var typeNode = node.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+        if (typeNode != null)
+            return model.GetDeclaredSymbol(typeNode);
+
+        var enumNode = node.Ancestors().OfType<EnumDeclarationSyntax>().FirstOrDefault();
+        if (enumNode != null)
+            return model.GetDeclaredSymbol(enumNode);
+
+        return null;
     }
 
     private static string GetMethodId(IMethodSymbol method)
