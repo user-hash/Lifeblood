@@ -221,6 +221,8 @@ public sealed class RoslynEdgeExtractor
         string sourceId, string targetId, EdgeKind kind)
     {
         if (string.IsNullOrEmpty(sourceId) || string.IsNullOrEmpty(targetId)) return;
+        // Guard against prefix-only IDs (e.g., "type:" with no name)
+        if (sourceId.EndsWith(':') || targetId.EndsWith(':')) return;
         if (!seen.Add((sourceId, targetId, kind))) return;
 
         edges.Add(new Edge

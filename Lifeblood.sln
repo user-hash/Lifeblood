@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Connectors.Mcp", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Adapters.JsonGraph", "src\Lifeblood.Adapters.JsonGraph\Lifeblood.Adapters.JsonGraph.csproj", "{B000000A-0000-0000-0000-00000000000A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Server.Mcp", "src\Lifeblood.Server.Mcp\Lifeblood.Server.Mcp.csproj", "{B000000B-0000-0000-0000-00000000000B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,5 +65,9 @@ Global
 		{B000000A-0000-0000-0000-00000000000A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B000000A-0000-0000-0000-00000000000A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B000000A-0000-0000-0000-00000000000A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B000000B-0000-0000-0000-00000000000B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B000000B-0000-0000-0000-00000000000B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B000000B-0000-0000-0000-00000000000B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B000000B-0000-0000-0000-00000000000B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
