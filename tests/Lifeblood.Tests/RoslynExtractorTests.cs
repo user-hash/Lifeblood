@@ -3,6 +3,7 @@ using Lifeblood.Domain.Graph;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
+using DomainSymbolKind = Lifeblood.Domain.Graph.SymbolKind;
 
 namespace Lifeblood.Tests;
 
@@ -28,11 +29,11 @@ public class Foo
         var extractor = new RoslynSymbolExtractor();
         var symbols = extractor.Extract(model, root, "Foo.cs", "file:Foo.cs");
 
-        Assert.Contains(symbols, s => s.Name == "Foo" && s.Kind == SymbolKind.Type);
-        Assert.Contains(symbols, s => s.Name == "_count" && s.Kind == SymbolKind.Field);
-        Assert.Contains(symbols, s => s.Name == "Name" && s.Kind == SymbolKind.Field && s.Properties.ContainsKey("isProperty"));
-        Assert.Contains(symbols, s => s.Name == "DoWork" && s.Kind == SymbolKind.Method);
-        Assert.Contains(symbols, s => s.Name == ".ctor" && s.Kind == SymbolKind.Method);
+        Assert.Contains(symbols, s => s.Name == "Foo" && s.Kind == DomainSymbolKind.Type);
+        Assert.Contains(symbols, s => s.Name == "_count" && s.Kind == DomainSymbolKind.Field);
+        Assert.Contains(symbols, s => s.Name == "Name" && s.Kind == DomainSymbolKind.Field && s.Properties.ContainsKey("isProperty"));
+        Assert.Contains(symbols, s => s.Name == "DoWork" && s.Kind == DomainSymbolKind.Method);
+        Assert.Contains(symbols, s => s.Name == ".ctor" && s.Kind == DomainSymbolKind.Method);
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public interface IService
 
         var iface = symbols.FirstOrDefault(s => s.Name == "IService");
         Assert.NotNull(iface);
-        Assert.Equal(SymbolKind.Type, iface!.Kind);
+        Assert.Equal(DomainSymbolKind.Type, iface!.Kind);
         Assert.Equal("interface", iface.Properties["typeKind"]);
     }
 
