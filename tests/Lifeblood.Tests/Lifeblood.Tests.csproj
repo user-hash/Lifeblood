@@ -18,5 +18,6 @@
     <ProjectReference Include="..\..\src\Lifeblood.Connectors.Mcp\Lifeblood.Connectors.Mcp.csproj" />
     <ProjectReference Include="..\..\src\Lifeblood.Connectors.ContextPack\Lifeblood.Connectors.ContextPack.csproj" />
     <ProjectReference Include="..\..\src\Lifeblood.Adapters.JsonGraph\Lifeblood.Adapters.JsonGraph.csproj" />
+    <ProjectReference Include="..\..\src\Lifeblood.Adapters.CSharp\Lifeblood.Adapters.CSharp.csproj" />
   </ItemGroup>
 </Project>
