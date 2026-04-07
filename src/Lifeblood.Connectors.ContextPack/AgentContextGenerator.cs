@@ -21,6 +21,17 @@ public sealed class AgentContextGenerator : IAgentContextGenerator
 
         return new AgentContextPack
         {
+            Summary = new GraphSummary
+            {
+                TotalSymbols = graph.Symbols.Length,
+                TotalEdges = graph.Edges.Length,
+                Modules = graph.Symbols.Count(s => s.Kind == SymbolKind.Module),
+                Types = graph.Symbols.Count(s => s.Kind == SymbolKind.Type),
+                Methods = graph.Symbols.Count(s => s.Kind == SymbolKind.Method),
+                Files = graph.Symbols.Count(s => s.Kind == SymbolKind.File),
+                Cycles = analysis.Cycles.Length,
+                Violations = analysis.Violations.Length,
+            },
             HighValueFiles = IdentifyHighValueFiles(graph, couplingById, tierById),
             Boundaries = IdentifyBoundaries(graph, tierById),
             Invariants = ExtractInvariants(analysis),

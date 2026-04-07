@@ -13,6 +13,7 @@ public interface IAgentContextGenerator
 
 public sealed class AgentContextPack
 {
+    public GraphSummary Summary { get; init; } = new();
     public HighValueFile[] HighValueFiles { get; init; } = Array.Empty<HighValueFile>();
     public BoundaryInfo[] Boundaries { get; init; } = Array.Empty<BoundaryInfo>();
     public string[] Invariants { get; init; } = Array.Empty<string>();
@@ -20,6 +21,18 @@ public sealed class AgentContextPack
     public string[] ReadingOrder { get; init; } = Array.Empty<string>();
     public ModuleDependency[] DependencyMatrix { get; init; } = Array.Empty<ModuleDependency>();
     public string[] ActiveViolations { get; init; } = Array.Empty<string>();
+}
+
+public sealed class GraphSummary
+{
+    public int TotalSymbols { get; init; }
+    public int TotalEdges { get; init; }
+    public int Modules { get; init; }
+    public int Types { get; init; }
+    public int Methods { get; init; }
+    public int Files { get; init; }
+    public int Cycles { get; init; }
+    public int Violations { get; init; }
 }
 
 public sealed class HighValueFile
