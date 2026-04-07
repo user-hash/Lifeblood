@@ -135,8 +135,6 @@ JSON schemas use **camelCase**. C# models use **PascalCase**. The mapping is mec
 | `ParentId` | `parentId` | Containment hierarchy |
 | `FilePath` | `filePath` | Source location |
 | `CanDiscoverSymbols` | `discoverSymbols` | Capability: "Can" prefix dropped |
-| `CanExpandMacros` | `macroExpansion` | Capability: verb → noun |
-| `SupportsIncremental` | `incremental` | Capability: "Supports" prefix dropped |
 | `MustNotReference` | `mustNotReference` | Rule constraint |
 | `MayOnlyReference` | `mayOnlyReference` | Rule constraint |
 

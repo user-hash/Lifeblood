@@ -15,11 +15,11 @@ public static class RuleValidator
         if (rules == null || rules.Length == 0) return Array.Empty<Violation>();
 
         var violations = new List<Violation>();
-        var nsLookup = new Dictionary<string, string>(graph.Symbols.Length, StringComparer.Ordinal);
-        for (int i = 0; i < graph.Symbols.Length; i++)
+        var nsLookup = new Dictionary<string, string>(graph.Symbols.Count, StringComparer.Ordinal);
+        for (int i = 0; i < graph.Symbols.Count; i++)
             nsLookup[graph.Symbols[i].Id] = graph.Symbols[i].QualifiedName;
 
-        for (int e = 0; e < graph.Edges.Length; e++)
+        for (int e = 0; e < graph.Edges.Count; e++)
         {
             var edge = graph.Edges[e];
             if (edge.Kind == EdgeKind.Contains) continue;

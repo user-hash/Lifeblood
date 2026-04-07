@@ -96,10 +96,6 @@ public sealed class GraphBuilder
             .ThenBy(e => e.Kind)
             .ToArray();
 
-        return new SemanticGraph
-        {
-            Symbols = sortedSymbols,
-            Edges = sortedEdges,
-        };
+        return new SemanticGraph(sortedSymbols, sortedEdges);
     }
 }

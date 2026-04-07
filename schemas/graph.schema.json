@@ -106,8 +106,6 @@
         "implementationResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
         "crossModuleReferences": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
         "overrideResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
-        "macroExpansion": { "type": "boolean" },
-        "incremental": { "type": "boolean" }
       }
     }
   }

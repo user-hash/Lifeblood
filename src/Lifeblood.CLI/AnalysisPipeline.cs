@@ -39,8 +39,8 @@ internal static class AnalysisPipeline
             BlastRadii = blastRadii,
             Metrics = new GraphMetrics
             {
-                TotalSymbols = graph.Symbols.Length,
-                TotalEdges = graph.Edges.Length,
+                TotalSymbols = graph.Symbols.Count,
+                TotalEdges = graph.Edges.Count,
                 TotalFiles = graph.Symbols.Count(s => s.Kind == SymbolKind.File),
                 TotalTypes = graph.Symbols.Count(s => s.Kind == SymbolKind.Type),
                 TotalModules = graph.Symbols.Count(s => s.Kind == SymbolKind.Module),

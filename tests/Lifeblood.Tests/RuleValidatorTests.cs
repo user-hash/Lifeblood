@@ -139,16 +139,16 @@ public class RuleValidatorTests
             .AddEdge(new Edge { SourceId = "s1", TargetId = "s2", Kind = EdgeKind.References })
             .Build();
 
-        int edgeCountBefore = graph.Edges.Length;
-        int symbolCountBefore = graph.Symbols.Length;
+        int edgeCountBefore = graph.Edges.Count;
+        int symbolCountBefore = graph.Symbols.Count;
 
         RuleValidator.Validate(graph, new[]
         {
             new ArchitectureRule { Id = "R1", Source = "A", MustNotReference = "B" },
         });
 
-        Assert.Equal(edgeCountBefore, graph.Edges.Length);
-        Assert.Equal(symbolCountBefore, graph.Symbols.Length);
+        Assert.Equal(edgeCountBefore, graph.Edges.Count);
+        Assert.Equal(symbolCountBefore, graph.Symbols.Count);
     }
 
     /// <summary>

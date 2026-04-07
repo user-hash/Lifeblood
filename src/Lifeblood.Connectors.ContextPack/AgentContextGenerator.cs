@@ -23,8 +23,8 @@ public sealed class AgentContextGenerator : IAgentContextGenerator
         {
             Summary = new GraphSummary
             {
-                TotalSymbols = graph.Symbols.Length,
-                TotalEdges = graph.Edges.Length,
+                TotalSymbols = graph.Symbols.Count,
+                TotalEdges = graph.Edges.Count,
                 Modules = graph.Symbols.Count(s => s.Kind == SymbolKind.Module),
                 Types = graph.Symbols.Count(s => s.Kind == SymbolKind.Type),
                 Methods = graph.Symbols.Count(s => s.Kind == SymbolKind.Method),

@@ -14,8 +14,6 @@ public sealed class AdapterCapability
     public ConfidenceLevel ImplementationResolution { get; init; }
     public ConfidenceLevel CrossModuleReferences { get; init; }
     public ConfidenceLevel OverrideResolution { get; init; }
-    public bool CanExpandMacros { get; init; }
-    public bool SupportsIncremental { get; init; }
 }
 
 public enum ConfidenceLevel

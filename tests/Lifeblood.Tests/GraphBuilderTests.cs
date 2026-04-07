@@ -27,7 +27,7 @@ public class GraphBuilderTests
             .AddSymbols(new[] { module, file, type, method })
             .Build();
 
-        Assert.Equal(4, graph.Symbols.Length);
+        Assert.Equal(4, graph.Symbols.Count);
 
         var containsEdges = graph.Edges.Where(e => e.Kind == EdgeKind.Contains).ToArray();
         Assert.Equal(3, containsEdges.Length);
@@ -135,9 +135,9 @@ public class GraphBuilderTests
             .AddEdge(dep)
             .Build();
 
-        Assert.Equal(4, graph.Symbols.Length);
+        Assert.Equal(4, graph.Symbols.Count);
         // 2 synthesized Contains + 1 explicit DependsOn
-        Assert.Equal(3, graph.Edges.Length);
+        Assert.Equal(3, graph.Edges.Count);
         Assert.Equal(2, graph.Edges.Count(e => e.Kind == EdgeKind.Contains));
         Assert.Single(graph.Edges, e => e.Kind == EdgeKind.DependsOn);
     }
