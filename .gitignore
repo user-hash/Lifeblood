@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.DotSettings.user
+packages/
+TestResults/
+*.nupkg
+.idea/
