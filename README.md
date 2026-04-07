@@ -34,10 +34,10 @@ Lifeblood is built for that era. Point it at a codebase and get a verified seman
 
 ```
 $ dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 594
-Edges:   830
+Symbols: 634
+Edges:   888
 Modules: 10
-Types:   98
+Types:   100
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates.
@@ -159,7 +159,7 @@ Two adapters ship today. Community adapters can be built via the JSON protocol (
 | Lifeblood.Server.Mcp | Implemented. MCP server with 6 tools over stdio. |
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
-| Lifeblood.Tests | 82 tests. Extractors, golden repos, round-trip, architecture invariants. |
+| Lifeblood.Tests | 109 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
