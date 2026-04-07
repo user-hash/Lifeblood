@@ -4,7 +4,7 @@ class Program
 {
     static int Main(string[] args)
     {
-        Console.WriteLine("Lifeblood — Semantic connector for AI and code intelligence");
+        Console.WriteLine("Lifeblood — Compiler truth in, AI context out");
         Console.WriteLine("https://github.com/user-hash/Lifeblood");
         Console.WriteLine();
 
