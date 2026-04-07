@@ -4,6 +4,6 @@ namespace Lifeblood.Application.Ports.GraphIO;
 
 public interface IGraphExporter
 {
-    void Export(SemanticGraph graph, Stream destination);
+    void Export(GraphDocument document, Stream destination);
     string Format { get; }
 }

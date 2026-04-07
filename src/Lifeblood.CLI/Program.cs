@@ -28,7 +28,7 @@ class Program
     static int RunAnalyze(string[] args)
     {
         var (projectRoot, graphPath, rulesPath) = ParseArgs(args);
-        var graph = BuildGraph(projectRoot, graphPath);
+        var (graph, _) = BuildGraph(projectRoot, graphPath);
         if (graph == null) return 1;
 
         var errors = GraphValidator.Validate(graph);
@@ -62,7 +62,7 @@ class Program
     {
         var (projectRoot, graphPath, rulesPath) = ParseArgs(args);
         var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
-        var graph = BuildGraph(projectRoot, graphPath);
+        var (graph, _) = BuildGraph(projectRoot, graphPath);
         if (graph == null) return 1;
 
         var rules = rulesPath != null && File.Exists(rulesPath) ? RulesLoader.Load(rulesPath) : null;
@@ -93,29 +93,38 @@ class Program
     static int RunExport(string[] args)
     {
         var (projectRoot, graphPath, _) = ParseArgs(args);
-        var graph = BuildGraph(projectRoot, graphPath);
+        var (graph, capability) = BuildGraph(projectRoot, graphPath);
         if (graph == null) return 1;
 
-        new JsonGraphExporter().Export(graph, Console.OpenStandardOutput());
+        var doc = new GraphDocument
+        {
+            Language = "csharp",
+            Adapter = capability,
+            Graph = graph,
+        };
+        new JsonGraphExporter().Export(doc, Console.OpenStandardOutput());
         return 0;
     }
 
-    static SemanticGraph? BuildGraph(string? projectRoot, string? graphPath)
+    static (SemanticGraph? graph, Domain.Capabilities.AdapterCapability? capability) BuildGraph(
+        string? projectRoot, string? graphPath)
     {
         if (graphPath != null)
         {
-            if (!File.Exists(graphPath)) { Console.Error.WriteLine($"Not found: {graphPath}"); return null; }
+            if (!File.Exists(graphPath)) { Console.Error.WriteLine($"Not found: {graphPath}"); return (null, null); }
             using var stream = File.OpenRead(graphPath);
-            return new JsonGraphImporter().Import(stream);
+            var doc = new JsonGraphImporter().ImportDocument(stream);
+            return (doc.Graph, doc.Adapter);
         }
         if (projectRoot != null)
         {
-            var result = new AnalyzeWorkspaceUseCase(new RoslynWorkspaceAnalyzer())
+            var adapter = new RoslynWorkspaceAnalyzer();
+            var result = new AnalyzeWorkspaceUseCase(adapter)
                 .Execute(projectRoot, new AnalysisConfig());
-            return result.Graph;
+            return (result.Graph, adapter.Capability);
         }
         Console.Error.WriteLine("Specify --project <path> or --graph <json>");
-        return null;
+        return (null, null);
     }
 
     static (string? project, string? graph, string? rules) ParseArgs(string[] args)

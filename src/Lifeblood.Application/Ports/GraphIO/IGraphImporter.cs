@@ -7,6 +7,6 @@ namespace Lifeblood.Application.Ports.GraphIO;
 /// </summary>
 public interface IGraphImporter
 {
-    SemanticGraph Import(Stream source);
+    GraphDocument ImportDocument(Stream source);
     string Format { get; }
 }

@@ -54,3 +54,15 @@ Frozen choices for framework v1. These do not change without a major version bum
 **Decision:** External adapters communicate only via `schemas/graph.schema.json`.
 **Reason:** Requiring C# for adapters would kill universality. JSON is the lingua franca.
 **Enforced by:** JsonGraphImporter/Exporter + round-trip tests.
+
+## ADR-010: Duplicate symbol policy is last-write-wins
+
+**Decision:** When `GraphBuilder.AddSymbol` receives a symbol whose ID already exists, the new symbol replaces the old one. No exception, no merge.
+**Reason:** Partial types (C#), extension methods, and multi-file symbols all produce the same ID from different declarations. The adapter is responsible for merging declarations before calling AddSymbol if richer merge semantics are needed. The framework provides a simple, predictable default.
+**Enforced by:** `GraphBuilderTests.Build_DeduplicatesSymbols_ById`
+
+## ADR-011: GraphDocument is the wire format envelope
+
+**Decision:** JSON import/export uses `GraphDocument` (graph + version + language + adapter capabilities), not bare `SemanticGraph`.
+**Reason:** The JSON protocol defines more than symbols and edges. Version, language, and adapter capability metadata must survive round-trip so consumers can make trust decisions.
+**Enforced by:** `JsonRoundTripTests.RoundTrip_AdapterMetadataPreserved`
