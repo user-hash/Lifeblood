@@ -49,9 +49,13 @@
     }
     .col {
       padding: 20px;
-      border-right: 1px solid rgba(255,255,255,0.05);
     }
-    .col:last-child { border-right: none; }
+    .col:first-child {
+      border-right: 2px dashed rgba(123,220,255,0.15);
+    }
+    .col:last-child {
+      border-left: 2px dashed rgba(168,139,255,0.15);
+    }
     .col-label {
       font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
       color: var(--muted); margin-bottom: 16px; text-align: center;
@@ -95,6 +99,10 @@
       font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
       text-align: center; margin-bottom: 4px;
     }
+    .port-col-label::after {
+      content: " (stable contract)";
+      font-size: 8px; opacity: 0.6; text-transform: none; letter-spacing: 0;
+    }
     /* ONE hexagon — the application boundary. This is proper Ports & Adapters. */
     .hex-visual {
       position: relative; width: 440px; height: 440px; flex-shrink: 0;
@@ -124,13 +132,29 @@
     .hex-boundary .app-ring p { font-size: 10px; margin-top: 3px; }
 
     .port {
-      border: 1px solid; border-radius: 12px;
+      border: 2px solid; border-radius: 12px;
       padding: 10px 12px; text-align: center; font-size: 11px;
+      position: relative;
     }
-    .port.left { border-color: var(--accent); background: rgba(123,220,255,0.06); }
-    .port.right { border-color: var(--accent-2); background: rgba(168,139,255,0.06); }
+    .port.left {
+      border-color: var(--accent); background: rgba(123,220,255,0.08);
+      border-left: 4px solid var(--accent);
+    }
+    .port.right {
+      border-color: var(--accent-2); background: rgba(168,139,255,0.08);
+      border-right: 4px solid var(--accent-2);
+    }
     .port strong { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
     .port span { color: var(--muted); font-size: 10px; }
+    /* Connector arrows showing plug-in direction */
+    .port.left::before {
+      content: "\2192"; position: absolute; right: -18px; top: 50%; transform: translateY(-50%);
+      color: var(--accent); font-size: 16px; font-weight: bold;
+    }
+    .port.right::before {
+      content: "\2190"; position: absolute; left: -18px; top: 50%; transform: translateY(-50%);
+      color: var(--accent-2); font-size: 16px; font-weight: bold;
+    }
 
     .signal-card {
       border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
@@ -194,7 +218,7 @@
         </div>
 
         <div class="card">
-          <h3>Language Adapters</h3>
+          <h3>Language Adapters <span style="font-size:9px; color:var(--accent); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
           <div class="item"><strong>Roslyn / C#</strong><small>Reference adapter. Proven type/call/implementation resolution.</small></div>
           <div class="item"><strong>TypeScript</strong><small>Standalone Node.js. ts.createProgram + TypeChecker. Self-analyzing.</small></div>
           <div class="item"><strong>JSON Graph</strong><small>Universal protocol. Import + export with full metadata round-trip.</small></div>
@@ -266,7 +290,7 @@
         <div class="col-label" style="color: var(--accent-2);">Right side — AI Connectors</div>
 
         <div class="card">
-          <h3>AI Connectors</h3>
+          <h3>AI Connectors <span style="font-size:9px; color:var(--accent-2); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
           <p>Right-side connectors expose semantic truth to AI agents and tools.</p>
           <div class="item"><strong>AgentContextGenerator</strong><small>High-value files, boundaries, reading order, hotspots, dependency matrix, violations.</small></div>
           <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries.</small></div>
