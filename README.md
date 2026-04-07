@@ -24,9 +24,11 @@ Born from shipping a [400k LOC Unity project](https://github.com/user-hash/Livin
 
 ## Why This Matters for AI-Assisted Development
 
-AI agents build backends but don't wire frontends. They add methods but don't update callers. They refactor types but miss downstream consumers. **They write code — they don't verify the graph.**
+AI writes code. It does not verify what it wrote. It builds backends but doesn't wire frontends. It adds methods but doesn't update callers. It refactors types but misses downstream consumers. It moves fast and never looks back.
 
-Lifeblood catches exactly that. Run it on any codebase and get:
+That was fine when AI built simple prototypes. But AI-assisted projects are getting complex — 50k, 100k, 400k LOC. At that scale, unverified code is a liability. The prototyping era is ending. The framework era is starting.
+
+Lifeblood is built for that era. Run it on any codebase and get:
 
 - **Zero dangling references** — every edge points to a real symbol
 - **Zero orphaned symbols** — every node is reachable in the containment tree
