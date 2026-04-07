@@ -65,8 +65,8 @@
       "properties": {
         "sourceId": { "type": "string" },
         "targetId": { "type": "string" },
-        "kind": { "type": "string", "enum": ["contains", "dependsOn", "implements", "inherits", "calls", "references", "overrides", "typeReference"] },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "1.0 = proven (Roslyn), lower = heuristic" },
+        "kind": { "type": "string", "enum": ["contains", "dependsOn", "implements", "inherits", "calls", "references", "overrides"] },
+        "evidence": { "$ref": "#/$defs/evidence" },
         "properties": {
           "type": "object",
           "additionalProperties": { "type": "string" }
@@ -86,6 +86,15 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "enum": ["syntax", "semantic", "inferred"] },
+        "adapterName": { "type": "string" },
+        "sourceSpan": { "type": "string", "description": "e.g., src/Auth.cs:47" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
     "capabilities": {
