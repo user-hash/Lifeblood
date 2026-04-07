@@ -15,9 +15,5 @@ public interface IWorkspaceAnalyzer
 
 public sealed class AnalysisConfig
 {
-    public string[] IncludePatterns { get; init; } = Array.Empty<string>();
     public string[] ExcludePatterns { get; init; } = Array.Empty<string>();
-    public AnalysisDepth Depth { get; init; } = AnalysisDepth.Semantic;
 }
-
-public enum AnalysisDepth { Syntax, Semantic }

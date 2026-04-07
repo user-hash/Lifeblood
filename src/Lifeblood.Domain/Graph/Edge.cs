@@ -11,7 +11,7 @@ public sealed class Edge
     public string TargetId { get; init; } = "";
     public EdgeKind Kind { get; init; }
     public Evidence Evidence { get; init; } = Evidence.Default;
-    public Dictionary<string, string> Properties { get; init; } = new();
+    public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
 }
 
 /// <summary>

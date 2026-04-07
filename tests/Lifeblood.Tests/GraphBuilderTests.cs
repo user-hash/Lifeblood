@@ -1,3 +1,4 @@
+using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Xunit;
 
@@ -43,7 +44,7 @@ public class GraphBuilderTests
         var callEdge = new Edge
         {
             SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.Calls,
-            Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Roslyn", Confidence = 1.0f },
+            Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Roslyn" },
         };
 
         var graph = new GraphBuilder()
@@ -117,7 +118,7 @@ public class GraphBuilderTests
         var edge = Assert.Single(graph.Edges);
         Assert.Equal(EvidenceKind.Inferred, edge.Evidence.Kind);
         Assert.Equal("GraphBuilder", edge.Evidence.AdapterName);
-        Assert.Equal(1.0f, edge.Evidence.Confidence);
+        Assert.Equal(ConfidenceLevel.Proven, edge.Evidence.Confidence);
     }
 
     [Fact]

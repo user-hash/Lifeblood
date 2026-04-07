@@ -1,4 +1,5 @@
 using Lifeblood.Adapters.CSharp.Internal;
+using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -16,7 +17,7 @@ public sealed class RoslynEdgeExtractor
     {
         Kind = EvidenceKind.Semantic,
         AdapterName = "Roslyn",
-        Confidence = 1.0f,
+        Confidence = ConfidenceLevel.Proven,
     };
 
     public List<Edge> Extract(SemanticModel model, SyntaxNode root)

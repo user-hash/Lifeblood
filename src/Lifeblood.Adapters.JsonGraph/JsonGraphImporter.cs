@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lifeblood.Application.Ports.GraphIO;
+using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 
 namespace Lifeblood.Adapters.JsonGraph;
@@ -115,5 +116,5 @@ internal sealed class JsonEvidence
     public EvidenceKind Kind { get; set; }
     public string? AdapterName { get; set; }
     public string? SourceSpan { get; set; }
-    public float Confidence { get; set; } = 1.0f;
+    public ConfidenceLevel Confidence { get; set; } = ConfidenceLevel.Proven;
 }

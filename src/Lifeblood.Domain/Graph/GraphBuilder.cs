@@ -1,3 +1,5 @@
+using Lifeblood.Domain.Capabilities;
+
 namespace Lifeblood.Domain.Graph;
 
 /// <summary>
@@ -67,7 +69,7 @@ public sealed class GraphBuilder
                 {
                     Kind = EvidenceKind.Inferred,
                     AdapterName = "GraphBuilder",
-                    Confidence = 1.0f,
+                    Confidence = ConfidenceLevel.Proven,
                 },
             });
             containsPairs.Add((symbol.ParentId, symbol.Id));

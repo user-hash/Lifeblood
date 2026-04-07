@@ -139,31 +139,45 @@ public sealed class AgentContextGenerator : IAgentContextGenerator
 
     private static ModuleDependency[] BuildDependencyMatrix(SemanticGraph graph)
     {
-        var matrix = new List<ModuleDependency>();
-
+        // Build module membership: symbolId → moduleId
+        var memberOf = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var symbol in graph.Symbols)
         {
-            if (symbol.Kind != SymbolKind.Module) continue;
-
-            foreach (int idx in graph.GetOutgoingEdgeIndexes(symbol.Id))
+            if (symbol.Kind == SymbolKind.Module) continue;
+            // Walk up parentId chain to find module
+            var current = symbol;
+            while (current != null && current.Kind != SymbolKind.Module)
             {
-                var edge = graph.Edges[idx];
-                if (edge.Kind != EdgeKind.DependsOn) continue;
-
-                var target = graph.GetSymbol(edge.TargetId);
-                if (target == null) continue;
-
-                // Count how many non-Contains edges exist between children of source and target
-                int edgeCount = 1; // at least the module dependency itself
-                matrix.Add(new ModuleDependency
-                {
-                    Source = symbol.Name,
-                    Target = target.Name,
-                    EdgeCount = edgeCount,
-                });
+                if (string.IsNullOrEmpty(current.ParentId)) break;
+                current = graph.GetSymbol(current.ParentId);
             }
+            if (current?.Kind == SymbolKind.Module)
+                memberOf[symbol.Id] = current.Id;
         }
 
-        return matrix.ToArray();
+        // Count cross-module edges
+        var crossEdges = new Dictionary<(string src, string tgt), int>();
+        foreach (var edge in graph.Edges)
+        {
+            if (edge.Kind == EdgeKind.Contains) continue;
+            if (!memberOf.TryGetValue(edge.SourceId, out var srcMod)) continue;
+            if (!memberOf.TryGetValue(edge.TargetId, out var tgtMod)) continue;
+            if (srcMod == tgtMod) continue;
+
+            var key = (srcMod, tgtMod);
+            crossEdges[key] = crossEdges.GetValueOrDefault(key) + 1;
+        }
+
+        return crossEdges.Select(kv =>
+        {
+            var srcName = graph.GetSymbol(kv.Key.src)?.Name ?? kv.Key.src;
+            var tgtName = graph.GetSymbol(kv.Key.tgt)?.Name ?? kv.Key.tgt;
+            return new ModuleDependency
+            {
+                Source = srcName,
+                Target = tgtName,
+                EdgeCount = kv.Value,
+            };
+        }).ToArray();
     }
 }

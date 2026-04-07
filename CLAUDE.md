@@ -9,23 +9,22 @@ We do not build Roslyn-grade adapters for every language. We build the framework
 ## Architecture
 
 ```
-Lifeblood.Domain            # Pure. ZERO deps. Graph model, rules, results, capabilities.
-Lifeblood.Application        # Ports + use cases. Depends only on Domain.
-  ├── Ports/Left/           # IWorkspaceAnalyzer, IModuleDiscovery, ISourceProvider
-  ├── Ports/Right/          # IAgentContextGenerator, IMcpGraphProvider
-  ├── Ports/GraphIO/        # IGraphImporter, IGraphExporter, IGraphNormalizer
-  ├── Ports/Analysis/       # IAnalyzer, IRuleProvider
-  ├── Ports/Output/         # IReportSink, IProgressSink
-  ├── Ports/Infrastructure/ # IFileSystem, ICache, ILogger
-  └── UseCases/             # AnalyzeWorkspace, ValidateRules, GenerateContext
+Lifeblood.Domain                # Pure. ZERO deps. Graph model, rules, results, capabilities.
+Lifeblood.Application           # Ports + use cases. Depends only on Domain.
+  ├── Ports/Left/              # IWorkspaceAnalyzer, IModuleDiscovery
+  ├── Ports/Right/             # IAgentContextGenerator, IMcpGraphProvider, IInstructionFileGenerator
+  ├── Ports/GraphIO/           # IGraphImporter, IGraphExporter
+  ├── Ports/Analysis/          # IAnalyzer, IRuleProvider
+  ├── Ports/Output/            # IProgressSink
+  ├── Ports/Infrastructure/    # IFileSystem
+  └── UseCases/                # AnalyzeWorkspace, GenerateContext
 
-Lifeblood.Adapters.CSharp   # LEFT SIDE. Roslyn. Reference implementation.
-Lifeblood.Adapters.JsonGraph # LEFT SIDE. Universal JSON protocol.
-Lifeblood.Connectors.Mcp    # RIGHT SIDE. MCP server for AI agents.
-Lifeblood.Connectors.Context # RIGHT SIDE. Context pack + CLAUDE.md generator.
-Lifeblood.Analysis           # Optional analyzers (coupling, blast radius, tiers).
-Lifeblood.Reporters.*        # Output formatters (JSON, HTML, SARIF).
-Lifeblood.CLI                # Composition root. Wires adapters to connectors.
+Lifeblood.Adapters.CSharp      # LEFT SIDE. Roslyn. Reference implementation.
+Lifeblood.Adapters.JsonGraph    # LEFT SIDE. Universal JSON protocol.
+Lifeblood.Connectors.ContextPack # RIGHT SIDE. Context pack + CLAUDE.md generator.
+Lifeblood.Connectors.Mcp       # RIGHT SIDE. MCP graph provider for AI agents.
+Lifeblood.Analysis              # Optional analyzers (coupling, blast radius, cycles, tiers).
+Lifeblood.CLI                   # Composition root. Wires adapters to connectors.
 ```
 
 ## Invariants
@@ -103,21 +102,19 @@ Lifeblood.Domain
 ```csharp
 IWorkspaceAnalyzer.AnalyzeWorkspace(projectRoot, config) → SemanticGraph
 IModuleDiscovery.DiscoverModules(projectRoot) → ModuleInfo[]
-ISourceProvider.ReadSource(filePath) → string
 ```
 
 ### Right Side (AI Connectors)
 ```csharp
 IAgentContextGenerator.Generate(graph, analysis) → AgentContextPack
-IMcpGraphProvider.Query(request) → QueryResult
-IInstructionFileGenerator.Generate(graph) → string   // CLAUDE.md section
+IMcpGraphProvider.LookupSymbol / GetDependencies / GetDependants / GetBlastRadius
+IInstructionFileGenerator.Generate(graph, analysis) → string
 ```
 
 ### Graph I/O
 ```csharp
 IGraphImporter.Import(stream) → SemanticGraph
 IGraphExporter.Export(graph, stream)
-IGraphNormalizer.Normalize(graph) → SemanticGraph
 ```
 
 ### Analysis
