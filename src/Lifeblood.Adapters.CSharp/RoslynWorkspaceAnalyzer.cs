@@ -128,7 +128,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             .Select(f =>
             {
                 try { return CSharpSyntaxTree.ParseText(File.ReadAllText(f), path: f); }
-                catch { return null; }
+                catch (IOException) { return null; }
             })
             .Where(t => t != null)
             .ToArray();

@@ -93,7 +93,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 },
             };
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
         {
             return null;
         }
@@ -117,7 +117,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
 
             return asmName ?? Path.GetFileNameWithoutExtension(referencePath);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
         {
             return Path.GetFileNameWithoutExtension(referencePath);
         }

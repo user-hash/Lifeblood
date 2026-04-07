@@ -100,13 +100,7 @@ export function extractSymbols(
     }
 
     ts.forEachChild(node, child => {
-      if (!ts.isClassDeclaration(child) && !ts.isInterfaceDeclaration(child)
-          && !ts.isEnumDeclaration(child) && !ts.isTypeAliasDeclaration(child)
-          && !ts.isFunctionDeclaration(child)) {
-        visit(child, parentId);
-      } else {
-        visit(child, parentId);
-      }
+      visit(child, parentId);
     });
   }
 
