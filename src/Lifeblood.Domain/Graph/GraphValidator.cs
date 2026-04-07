@@ -115,6 +115,22 @@ public static class GraphValidator
                 });
             }
         }
+
+        // Duplicate edge detection (same source + target + kind)
+        var edgeSet = new HashSet<(string, string, EdgeKind)>();
+        for (int i = 0; i < graph.Edges.Length; i++)
+        {
+            var e = graph.Edges[i];
+            if (!edgeSet.Add((e.SourceId, e.TargetId, e.Kind)))
+            {
+                errors.Add(new GraphValidationError
+                {
+                    Code = "DUPLICATE_EDGE",
+                    Message = $"Edge at index {i}: duplicate {e.Kind} from '{e.SourceId}' to '{e.TargetId}'",
+                    EdgeIndex = i,
+                });
+            }
+        }
     }
 
     private static void ValidateParentReferences(

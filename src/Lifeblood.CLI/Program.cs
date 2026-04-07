@@ -60,12 +60,13 @@ class Program
 
     static int RunContext(string[] args)
     {
-        var (projectRoot, graphPath, _) = ParseArgs(args);
+        var (projectRoot, graphPath, rulesPath) = ParseArgs(args);
         var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
         var graph = BuildGraph(projectRoot, graphPath);
         if (graph == null) return 1;
 
-        var analysis = AnalysisPipeline.Run(graph);
+        var rules = rulesPath != null && File.Exists(rulesPath) ? RulesLoader.Load(rulesPath) : null;
+        var analysis = AnalysisPipeline.Run(graph, rules);
 
         if (format.Equals("md", StringComparison.OrdinalIgnoreCase)
             || format.Equals("markdown", StringComparison.OrdinalIgnoreCase))
@@ -75,7 +76,9 @@ class Program
         else
         {
             // Default: structured JSON context pack (the killer feature)
-            var pack = new AgentContextGenerator().Generate(graph, analysis);
+            // Route through GenerateContextUseCase — hexagonal, not direct.
+            var useCase = new GenerateContextUseCase(new AgentContextGenerator());
+            var pack = useCase.Execute(graph, analysis);
             System.Text.Json.JsonSerializer.Serialize(
                 Console.OpenStandardOutput(), pack,
                 new System.Text.Json.JsonSerializerOptions

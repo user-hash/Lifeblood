@@ -75,10 +75,23 @@ public sealed class GraphBuilder
             containsPairs.Add((symbol.ParentId, symbol.Id));
         }
 
+        // INV-PIPE-001: Deterministic output. Sort canonically by ID/source+target
+        // so identical input always produces identical output regardless of
+        // dictionary iteration order or file discovery order.
+        var sortedSymbols = _symbols.Values
+            .OrderBy(s => s.Id, StringComparer.Ordinal)
+            .ToArray();
+
+        var sortedEdges = allEdges
+            .OrderBy(e => e.SourceId, StringComparer.Ordinal)
+            .ThenBy(e => e.TargetId, StringComparer.Ordinal)
+            .ThenBy(e => e.Kind)
+            .ToArray();
+
         return new SemanticGraph
         {
-            Symbols = _symbols.Values.ToArray(),
-            Edges = allEdges.ToArray(),
+            Symbols = sortedSymbols,
+            Edges = sortedEdges,
         };
     }
 }
