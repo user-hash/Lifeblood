@@ -73,9 +73,8 @@ public class GraphBuilderTests
             .AddEdge(explicitContains)
             .Build();
 
-        var containsEdges = graph.Edges.Where(e => e.Kind == EdgeKind.Contains).ToArray();
-        Assert.Single(containsEdges);
-        Assert.Equal("Roslyn", containsEdges[0].Evidence.AdapterName);
+        var containsEdge = Assert.Single(graph.Edges, e => e.Kind == EdgeKind.Contains);
+        Assert.Equal("Roslyn", containsEdge.Evidence.AdapterName);
     }
 
     [Fact]

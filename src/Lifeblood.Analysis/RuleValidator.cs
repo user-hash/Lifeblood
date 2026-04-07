@@ -29,9 +29,11 @@ public static class RuleValidator
 
             for (int r = 0; r < rules.Length; r++)
             {
-                if (!MatchesPattern(srcNs, rules[r].Source)) continue;
+                var rule = rules[r];
+                if (!MatchesPattern(srcNs, rule.Source)) continue;
 
-                if (rules[r].MustNotReference != null && MatchesPattern(tgtNs, rules[r].MustNotReference!))
+                var mustNot = rule.MustNotReference;
+                if (mustNot != null && MatchesPattern(tgtNs, mustNot))
                 {
                     violations.Add(new Violation
                     {
@@ -39,13 +41,14 @@ public static class RuleValidator
                         TargetSymbolId = edge.TargetId,
                         SourceNamespace = srcNs,
                         TargetNamespace = tgtNs,
-                        RuleBroken = $"{rules[r].Id}: {rules[r].Source} must_not_reference {rules[r].MustNotReference}",
+                        RuleBroken = $"{rule.Id}: {rule.Source} must_not_reference {mustNot}",
                         EdgeIndex = e,
                     });
                     break;
                 }
 
-                if (rules[r].MayOnlyReference != null && !MatchesPattern(tgtNs, rules[r].MayOnlyReference!))
+                var mayOnly = rule.MayOnlyReference;
+                if (mayOnly != null && !MatchesPattern(tgtNs, mayOnly))
                 {
                     violations.Add(new Violation
                     {
@@ -53,7 +56,7 @@ public static class RuleValidator
                         TargetSymbolId = edge.TargetId,
                         SourceNamespace = srcNs,
                         TargetNamespace = tgtNs,
-                        RuleBroken = $"{rules[r].Id}: {rules[r].Source} may_only_reference {rules[r].MayOnlyReference}",
+                        RuleBroken = $"{rule.Id}: {rule.Source} may_only_reference {mayOnly}",
                         EdgeIndex = e,
                     });
                     break;
