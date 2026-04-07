@@ -227,7 +227,7 @@
           <div class="item"><strong>Roslyn / C#</strong><small>Reference adapter. Proven type/call/implementation resolution.</small></div>
           <div class="item"><strong>TypeScript</strong><small>Standalone Node.js. ts.createProgram + TypeChecker. Self-analyzing.</small></div>
           <div class="item"><strong>JSON Graph</strong><small>Universal protocol. Import + export with full metadata round-trip.</small></div>
-          <div class="item planned"><strong>Go / Python / Rust / Java</strong><small>Community-built via JSON protocol.</small></div>
+          <div class="item planned"><strong>Community Adapters</strong><small>Go, Python, Rust, Java — build via JSON protocol. <a href="../docs/ADAPTERS.md" style="color:var(--warning)">Contribution guides ready.</a></small></div>
         </div>
 
         <div class="card">
@@ -301,7 +301,7 @@
           <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries.</small></div>
           <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius.</small></div>
           <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 6 tools. Connect from Claude Code or any MCP client.</small></div>
-          <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services.</small></div>
+          <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services. Not yet started.</small></div>
         </div>
 
         <div class="card">
@@ -317,7 +317,7 @@
     </div>
 
     <div class="legend">
-      <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference. TypeScript is the second proof. JSON graph is the universal bridge. Community builds Go, Python, Rust, Java via the JSON protocol.</div>
+      <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference. TypeScript is the second proof. JSON graph is the universal bridge. Community adapters (Go, Python, Rust, Java) have contribution guides but no implementation yet.</div>
       <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. GraphDocument carries version, language, and adapter capabilities through the entire pipeline. All invariants enforced by tests.</div>
       <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 6 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters.</div>
     </div>
