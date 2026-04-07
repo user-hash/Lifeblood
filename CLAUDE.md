@@ -24,6 +24,7 @@ Lifeblood.Adapters.JsonGraph    # LEFT SIDE. Universal JSON protocol.
 Lifeblood.Connectors.ContextPack # RIGHT SIDE. Context pack + CLAUDE.md generator.
 Lifeblood.Connectors.Mcp       # RIGHT SIDE. MCP graph provider for AI agents.
 Lifeblood.Analysis              # Optional analyzers (coupling, blast radius, cycles, tiers).
+Lifeblood.Server.Mcp            # MCP server host. Stdio JSON-RPC. Interactive AI sessions.
 Lifeblood.CLI                   # Composition root. Wires adapters to connectors.
 ```
 

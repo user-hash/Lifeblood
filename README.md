@@ -94,6 +94,7 @@ Lifeblood.Adapters.JsonGraph    Universal JSON protocol adapter. Left side.
 Lifeblood.Connectors.ContextPack  Context pack and instruction file generator. Right side.
 Lifeblood.Connectors.Mcp       MCP graph provider. Right side.
 Lifeblood.Analysis              Coupling, blast radius, cycles, tiers, rule validation.
+Lifeblood.Server.Mcp            MCP server. Interactive AI agent sessions over stdio.
 Lifeblood.CLI                   Composition root. Wires left side to right side.
 ```
 
@@ -123,7 +124,18 @@ See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the full guide.
 
 **Instruction File Generator** analyzes a codebase and produces CLAUDE.md or AGENTS.md sections with architecture boundaries, dependency rules, and high-value files.
 
-**MCP Graph Provider** serves symbol lookup, dependencies, dependants, and blast radius queries. The port interface is implemented. MCP server hosting over stdio/SSE is planned.
+**MCP Server** serves the semantic graph interactively over stdio (JSON-RPC 2.0). AI agents can analyze projects, look up symbols, query dependencies, and compute blast radius in real time. Connect from any MCP client:
+
+```json
+{
+  "mcpServers": {
+    "lifeblood": {
+      "command": "dotnet",
+      "args": ["run", "--project", "src/Lifeblood.Server.Mcp"]
+    }
+  }
+}
+```
 
 **CLI** runs analysis, validates architecture rules, generates context, and exports graphs. Designed for CI integration with exit codes.
 
@@ -147,7 +159,7 @@ Dogfood-verified. 80 tests. CI green.
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
-**Planned:** MCP server hosting, TypeScript adapter, cross-module Roslyn resolution.
+**Planned:** Cross-module Roslyn resolution, additional language adapters.
 
 ---
 
