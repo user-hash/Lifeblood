@@ -13,6 +13,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Lifeblood.Domain\Lifeblood.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Lifeblood.Application\Lifeblood.Application.csproj" />
     <ProjectReference Include="..\..\src\Lifeblood.Analysis\Lifeblood.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\Lifeblood.Connectors.Mcp\Lifeblood.Connectors.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\Lifeblood.Connectors.ContextPack\Lifeblood.Connectors.ContextPack.csproj" />
+    <ProjectReference Include="..\..\src\Lifeblood.Adapters.JsonGraph\Lifeblood.Adapters.JsonGraph.csproj" />
   </ItemGroup>
 </Project>

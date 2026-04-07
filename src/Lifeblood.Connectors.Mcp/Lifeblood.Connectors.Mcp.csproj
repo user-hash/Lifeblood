@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Lifeblood.Connectors.Mcp</RootNamespace>
+    <!-- RIGHT SIDE. MCP server for AI agents. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
+  </ItemGroup>
+</Project>

@@ -12,6 +12,9 @@
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
     <ProjectReference Include="..\Lifeblood.Analysis\Lifeblood.Analysis.csproj" />
     <ProjectReference Include="..\Lifeblood.Adapters.CSharp\Lifeblood.Adapters.CSharp.csproj" />
+    <ProjectReference Include="..\Lifeblood.Adapters.JsonGraph\Lifeblood.Adapters.JsonGraph.csproj" />
+    <ProjectReference Include="..\Lifeblood.Connectors.ContextPack\Lifeblood.Connectors.ContextPack.csproj" />
+    <ProjectReference Include="..\Lifeblood.Connectors.Mcp\Lifeblood.Connectors.Mcp.csproj" />
     <ProjectReference Include="..\Lifeblood.Reporters\Lifeblood.Reporters.csproj" />
   </ItemGroup>
 </Project>
