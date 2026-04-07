@@ -2,9 +2,9 @@ using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
-
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using DomainSymbolKind = Lifeblood.Domain.Graph.SymbolKind;
 
 namespace Lifeblood.Adapters.CSharp;
 
@@ -37,7 +37,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 Id = moduleId,
                 Name = module.Name,
                 QualifiedName = module.Name,
-                Kind = SymbolKind.Module,
+                Kind = DomainSymbolKind.Module,
                 Properties = module.Properties,
             });
 
@@ -67,7 +67,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                     Id = fileId,
                     Name = Path.GetFileName(tree.FilePath),
                     QualifiedName = $"{module.Name}/{relPath}",
-                    Kind = SymbolKind.File,
+                    Kind = DomainSymbolKind.File,
                     FilePath = relPath,
                     ParentId = moduleId,
                 });
@@ -135,13 +135,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
         if (trees.Length == 0) return null;
 
-        // Core reference: System.Object at minimum
         var references = new List<MetadataReference>();
         var objectAssembly = typeof(object).Assembly.Location;
         if (!string.IsNullOrEmpty(objectAssembly) && File.Exists(objectAssembly))
             references.Add(MetadataReference.CreateFromFile(objectAssembly));
 
-        // Try to add System.Runtime for netcore
         var runtimeDir = Path.GetDirectoryName(objectAssembly);
         if (runtimeDir != null)
         {
