@@ -78,3 +78,26 @@ All six findings were fixed in the same session they were discovered:
 - **F6:** Hotspot detection excludes modules (composition roots have high coupling by design).
 
 Post-fix dogfood output: 495 symbols, 661 edges, 9 modules, 0 violations, 0 dangling edges, 0 duplicates.
+
+## Second Dogfood: TypeScript Adapter
+
+The TypeScript adapter was the second major dogfood milestone. It analyzed its own source code (a TypeScript project) and produced valid `graph.json` that the C# CLI consumed without modification.
+
+```
+# TS adapter analyzes itself
+node adapters/typescript/dist/index.js adapters/typescript > graph.json
+
+# Lifeblood C# CLI reads the JSON graph
+dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json
+Symbols: 49
+Edges:   51
+Modules: 1
+Types:   9
+```
+
+Zero dangling edges. Zero duplicate symbols. Full adapter metadata round-trips (version, language, capabilities).
+
+This proved three things:
+1. The JSON protocol works for non-C# languages without modification
+2. External process adapters integrate cleanly through `graph.json`
+3. The universal model handles TypeScript semantics (classes, interfaces, type aliases, enums, heritage clauses)
