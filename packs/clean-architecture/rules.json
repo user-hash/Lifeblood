@@ -1,0 +1,37 @@
+{
+  "name": "Clean Architecture",
+  "description": "Dependency rule: inner layers must not reference outer layers.",
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "CLEAN-001",
+      "description": "Entities must not reference Use Cases",
+      "source": "*.Entities",
+      "must_not_reference": "*.UseCases"
+    },
+    {
+      "id": "CLEAN-002",
+      "description": "Entities must not reference Interface Adapters",
+      "source": "*.Entities",
+      "must_not_reference": "*.Adapters"
+    },
+    {
+      "id": "CLEAN-003",
+      "description": "Entities must not reference Frameworks",
+      "source": "*.Entities",
+      "must_not_reference": "*.Frameworks"
+    },
+    {
+      "id": "CLEAN-004",
+      "description": "Use Cases must not reference Interface Adapters",
+      "source": "*.UseCases",
+      "must_not_reference": "*.Adapters"
+    },
+    {
+      "id": "CLEAN-005",
+      "description": "Use Cases must not reference Frameworks",
+      "source": "*.UseCases",
+      "must_not_reference": "*.Frameworks"
+    }
+  ]
+}
