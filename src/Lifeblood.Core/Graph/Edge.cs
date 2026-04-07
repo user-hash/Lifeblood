@@ -25,6 +25,9 @@ public sealed class Edge
     /// <summary>True if this edge violates an architecture rule. Set by RuleValidator.</summary>
     public bool IsViolation { get; set; }
 
+    /// <summary>Provenance: how this edge was discovered, by whom, with what certainty.</summary>
+    public Evidence? Evidence { get; init; }
+
     /// <summary>Optional metadata (e.g., which rule was violated).</summary>
     public Dictionary<string, string> Properties { get; init; } = new();
 }

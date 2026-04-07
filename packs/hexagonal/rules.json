@@ -1,0 +1,43 @@
+{
+  "name": "Hexagonal Architecture",
+  "description": "Ports & Adapters. Domain is pure, infrastructure implements ports.",
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "HEX-001",
+      "description": "Domain must not reference Infrastructure",
+      "source": "*.Domain",
+      "must_not_reference": "*.Infrastructure"
+    },
+    {
+      "id": "HEX-002",
+      "description": "Domain must not reference Adapters",
+      "source": "*.Domain",
+      "must_not_reference": "*.Adapters"
+    },
+    {
+      "id": "HEX-003",
+      "description": "Domain must not reference Presentation",
+      "source": "*.Domain",
+      "must_not_reference": "*.Presentation"
+    },
+    {
+      "id": "HEX-004",
+      "description": "App layer must not reference Infrastructure directly",
+      "source": "*.App",
+      "must_not_reference": "*.Infrastructure"
+    },
+    {
+      "id": "HEX-005",
+      "description": "Domain must not reference platform/engine types",
+      "source": "*.Domain",
+      "must_not_reference": "UnityEngine"
+    },
+    {
+      "id": "HEX-006",
+      "description": "Domain must not reference platform/engine types",
+      "source": "*.Domain",
+      "must_not_reference": "System.Net.*"
+    }
+  ]
+}
