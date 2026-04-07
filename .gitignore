@@ -8,3 +8,7 @@ packages/
 TestResults/
 *.nupkg
 .idea/
+docs/MASTERPLAN.md
+docs/MASTERPLAN_CHAT_ADDITIONS.md
+docs/AUDIT_HOLES.md
+.planning/

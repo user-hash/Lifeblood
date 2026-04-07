@@ -82,19 +82,17 @@ Lifeblood.Reporters.*          JSON, HTML, SARIF output.
 Lifeblood.CLI                  Composition root. Wires everything.
 ```
 
-Domain never references Application. Application never references Adapters or Connectors. Both sides plug into Application ports. [Full architecture](docs/ARCHITECTURE.md) | [Masterplan](docs/MASTERPLAN.md)
+Domain never references Application. Application never references Adapters or Connectors. Both sides plug into Application ports. [Full architecture](docs/ARCHITECTURE.md)
 
 ---
 
 ## Status
 
-Early stage. Architecture defined, core model implemented, executing the [10-stage masterplan](docs/MASTERPLAN.md).
+Early stage. Architecture defined, core model implemented.
 
-**Done:** Domain model (Symbol, Edge, Evidence, SemanticGraph), port interfaces (both sides), JSON schema, rule packs, golden repo structure.
+**Done:** Domain model (Symbol, Edge, Evidence, SemanticGraph), port interfaces (left + right side), Domain/Application hexagonal split, JSON schema, rule packs.
 
-**In progress:** Domain/Application split, contract hardening, audit fixes.
-
-**Next:** C# Roslyn adapter (reference implementation), CLI vertical slice, context pack generator.
+**Next:** C# Roslyn adapter (reference implementation), context pack connector, CLI vertical slice.
 
 ---
 
@@ -107,7 +105,7 @@ dotnet build
 ```
 
 Read [CLAUDE.md](CLAUDE.md) for architecture rules and invariants.
-Read [docs/MASTERPLAN.md](docs/MASTERPLAN.md) for the full plan.
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the hexagonal design.
 Read [docs/ADAPTERS.md](docs/ADAPTERS.md) to build a language adapter.
 
 ---
