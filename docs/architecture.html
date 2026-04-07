@@ -96,7 +96,7 @@
       text-align: center; margin-bottom: 4px;
     }
     .hex-visual {
-      position: relative; width: 420px; height: 420px; flex-shrink: 0;
+      position: relative; width: 500px; height: 500px; flex-shrink: 0;
     }
     .hex-ring {
       position: absolute;
@@ -108,11 +108,11 @@
       background: linear-gradient(180deg, rgba(39,55,106,0.95), rgba(23,33,63,0.97));
     }
     .hex-ring.middle {
-      inset: 56px;
+      inset: 70px;
       background: linear-gradient(180deg, rgba(27,40,78,0.97), rgba(20,29,56,0.98));
     }
     .hex-ring.inner {
-      inset: 118px;
+      inset: 148px;
       background: radial-gradient(circle at 50% 35%, rgba(123,220,255,0.2), transparent 45%),
         linear-gradient(180deg, rgba(25,35,68,0.99), rgba(17,24,44,0.99));
       border: 1px solid rgba(123,220,255,0.28);
@@ -232,21 +232,26 @@
 
           <!-- CENTER: Hexagon with external labels -->
           <div class="hex-visual">
-            <div class="hex-label top">Application Ring &mdash; Ports &amp; Use Cases</div>
-            <div class="hex-ring outer"></div>
+            <div class="hex-ring outer">
+              <div style="padding: 0 60px;">
+                <h4 style="font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">Adapters &amp; Connectors</h4>
+                <p style="color:var(--muted); font-size:11px; line-height:1.35;">Roslyn, TypeScript, JSON Graph, ContextPack, MCP Server</p>
+              </div>
+            </div>
             <div class="hex-ring middle">
               <div>
-                <h2>Semantic<br/>Graph</h2>
-                <p>Symbol, Edge, Evidence<br/>GraphBuilder, GraphValidator<br/>GraphDocument</p>
+                <h4 style="font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">Application</h4>
+                <h2>Ports &amp;<br/>Use Cases</h2>
+                <p>IWorkspaceAnalyzer<br/>IAgentContextGenerator<br/>IMcpGraphProvider</p>
               </div>
             </div>
             <div class="hex-ring inner">
               <div>
-                <h2>Domain</h2>
-                <p>Pure. Immutable.<br/>Zero dependencies.</p>
+                <h4 style="font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">Domain</h4>
+                <h2>Semantic<br/>Graph</h2>
+                <p style="font-size:10px;">Symbol, Edge, Evidence<br/>GraphBuilder, Validator<br/>Pure. Zero deps.</p>
               </div>
             </div>
-            <div class="hex-label bottom">Lifeblood.Domain &mdash; Zero external dependencies</div>
           </div>
 
           <!-- RIGHT: Outbound ports -->
