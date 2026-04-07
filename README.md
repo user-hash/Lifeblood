@@ -1,21 +1,27 @@
 # Lifeblood
 
-See the lifeblood of any codebase. Language-agnostic semantic code analysis.
+Pipe Roslyn-grade semantics into any AI agent.
 
-Grep finds strings. Lifeblood sees meaning. What depends on what, what is alive, what is dead, what violates your architecture, and what breaks if you change something.
+Lifeblood is not an analysis tool. It is the glue between compiler-level code understanding and AI. It normalizes semantic data from language-specific compilers (Roslyn, TypeScript compiler, go/types) into one universal graph that any AI agent can consume.
 
-Born from building a [400k LOC project with AI assistance](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) and realizing that [Roslyn](https://github.com/dotnet/roslyn) (C#/.NET compiler platform) is the single most underused tool in AI-assisted development. Every language deserves the same capability. This is our attempt to make that happen.
+Without it, AI agents work at text level. Grep and guess.
+With it, AI agents see the codebase the way an IDE does. Types, references, boundaries, flow.
+
+Born from building a [400k LOC project with AI assistance](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) and realizing that [Roslyn](https://github.com/dotnet/roslyn) is the single most underused tool in AI-assisted development. Every language deserves the same capability.
 
 ---
 
 ## What It Does
 
-Feed it a codebase. Get back a semantic graph. Run analysis on the graph.
+Feed it a codebase. Get back a semantic graph. Pipe it to your AI.
 
 ```
-Source Code  →  [Language Adapter]  →  Semantic Graph  →  [Analysis]  →  Results
-   any              ICodeParser           universal        pure core      actionable
-language            or JSON                                stateless
+Roslyn / TS Compiler / go/types        Any AI agent
+              ↓                              ↑
+        [Lifeblood]  →  Semantic Graph  →  Context Pack
+              ↓                              ↑
+         universal                     IDE-like access
+          graph                        for any AI tool
 ```
 
 **What semantic analysis gives AI agents:**
@@ -29,17 +35,9 @@ language            or JSON                                stateless
 | Type checking | Is a string being passed where an int is expected? Are generic constraints satisfied? |
 | Pipeline stages | Does the signal flow through all stages in the right order? Is the filter applied before or after saturation? |
 
-**Architecture analysis on top of that:**
+**Optional analysis on top of the graph:**
 
-| Analysis | What it tells you |
-|----------|-------------------|
-| Coupling | Fan-in, fan-out, instability per node |
-| Blast radius | What breaks if you change this file/type/method |
-| Dead code | What is unreachable from entry points |
-| Architecture rules | "Domain must not reference Infrastructure" violations |
-| Tier classification | Pure / Boundary / Runtime / Tooling per file |
-| Circular dependencies | Cycles in the dependency graph |
-| Hub detection | God classes and bottleneck nodes (betweenness centrality) |
+Lifeblood also ships analyzers (coupling, blast radius, dead code, tiers, cycles, hubs). These are useful but they are the addon, not the core product. The core product is the graph and the context pack.
 
 ---
 
