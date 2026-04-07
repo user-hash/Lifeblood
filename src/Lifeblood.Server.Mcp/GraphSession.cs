@@ -1,0 +1,113 @@
+using Lifeblood.Adapters.CSharp;
+using Lifeblood.Adapters.JsonGraph;
+using Lifeblood.Application.Ports.Left;
+using Lifeblood.Application.UseCases;
+using Lifeblood.Domain.Capabilities;
+using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Rules;
+using Lifeblood.Analysis;
+
+namespace Lifeblood.Server.Mcp;
+
+/// <summary>
+/// Holds the current graph session: loaded graph + analysis results.
+/// Separate from tool dispatch for single responsibility.
+/// </summary>
+public sealed class GraphSession
+{
+    public SemanticGraph? Graph { get; private set; }
+    public AnalysisResult? Analysis { get; private set; }
+    public AdapterCapability? Capability { get; private set; }
+    public string? Language { get; private set; }
+
+    public bool IsLoaded => Graph != null;
+
+    public string Load(string? projectPath, string? graphPath, string? rulesPath)
+    {
+        SemanticGraph graph;
+        AdapterCapability? capability = null;
+        string language = "unknown";
+
+        if (!string.IsNullOrEmpty(graphPath))
+        {
+            if (!File.Exists(graphPath))
+                return $"Graph file not found: {graphPath}";
+
+            using var stream = File.OpenRead(graphPath);
+            var doc = new JsonGraphImporter().ImportDocument(stream);
+            graph = doc.Graph;
+            capability = doc.Adapter;
+            language = doc.Language;
+        }
+        else if (!string.IsNullOrEmpty(projectPath))
+        {
+            if (!Directory.Exists(projectPath))
+                return $"Project directory not found: {projectPath}";
+
+            var adapter = new RoslynWorkspaceAnalyzer();
+            var result = new AnalyzeWorkspaceUseCase(adapter)
+                .Execute(projectPath, new AnalysisConfig());
+            graph = result.Graph;
+            capability = adapter.Capability;
+            language = "csharp";
+        }
+        else
+        {
+            return "Specify projectPath or graphPath";
+        }
+
+        // Validate
+        var errors = GraphValidator.Validate(graph);
+        if (errors.Length > 0)
+            return $"Graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
+
+        // Analyze
+        ArchitectureRule[]? rules = null;
+        if (!string.IsNullOrEmpty(rulesPath) && File.Exists(rulesPath))
+        {
+            var json = File.ReadAllText(rulesPath);
+            var rulesDoc = System.Text.Json.JsonSerializer.Deserialize<RulesDoc>(json,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+            rules = rulesDoc?.Rules;
+        }
+
+        var coupling = CouplingAnalyzer.Analyze(graph, new[] { SymbolKind.Type, SymbolKind.Module });
+        var cycles = CircularDependencyDetector.Detect(graph);
+        var tiers = TierClassifier.Classify(graph);
+        var blastRadii = coupling.Where(c => c.FanIn >= 3)
+            .Select(c => BlastRadiusAnalyzer.Analyze(graph, c.SymbolId)).ToArray();
+        var violations = rules is { Length: > 0 }
+            ? RuleValidator.Validate(graph, rules) : Array.Empty<Violation>();
+
+        Graph = graph;
+        Capability = capability;
+        Language = language;
+        Analysis = new AnalysisResult
+        {
+            Coupling = coupling,
+            Violations = violations,
+            Tiers = tiers,
+            Cycles = cycles,
+            BlastRadii = blastRadii,
+            Metrics = new GraphMetrics
+            {
+                TotalSymbols = graph.Symbols.Count,
+                TotalEdges = graph.Edges.Count,
+                TotalFiles = graph.Symbols.Count(s => s.Kind == SymbolKind.File),
+                TotalTypes = graph.Symbols.Count(s => s.Kind == SymbolKind.Type),
+                TotalModules = graph.Symbols.Count(s => s.Kind == SymbolKind.Module),
+                ViolationCount = violations.Length,
+                CycleCount = cycles.Length,
+            },
+        };
+
+        return $"Loaded: {graph.Symbols.Count} symbols, {graph.Edges.Count} edges, " +
+               $"{Analysis.Metrics.TotalModules} modules, {violations.Length} violations";
+    }
+
+    private sealed class RulesDoc
+    {
+        public ArchitectureRule[]? Rules { get; set; }
+    }
+}
