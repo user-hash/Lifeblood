@@ -8,6 +8,9 @@
     <!-- Composition root. Wires left side to right side. -->
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Lifeblood.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
     <ProjectReference Include="..\Lifeblood.Analysis\Lifeblood.Analysis.csproj" />
