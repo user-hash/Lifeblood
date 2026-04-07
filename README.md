@@ -24,7 +24,7 @@ language            or JSON                                stateless
 |------------|---------------|
 | IDE-like access | Go-to-definition, find-all-references, safe rename. The AI sees code the way an IDE does, not the way grep does. |
 | Flow checking | Trace a value through the entire call chain. Verify a signal reaches the right destination. Catch wet-into-dry buffer mistakes. |
-| Math verification | Check calculations, formulas, argument ordering. Catch `Multiply(b, a)` when it should be `Multiply(a, b)`. |
+| Math verification | Check calculations, formulas, argument ordering. We found a case where the precise math function was both faster AND 17% more accurate than the approximation an AI agent chose. Roslyn sees the semantic contract, not just the syntax. |
 | Logic verification | Does this branch handle all cases? Are all enum values covered? Is this cast safe? |
 | Type checking | Is a string being passed where an int is expected? Are generic constraints satisfied? |
 | Pipeline stages | Does the signal flow through all stages in the right order? Is the filter applied before or after saturation? |
