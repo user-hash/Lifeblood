@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Lifeblood.Analysis</RootNamespace>
+    <!-- Optional addon. Depends only on Domain. Not the core product. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
+  </ItemGroup>
+</Project>

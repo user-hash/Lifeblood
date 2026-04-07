@@ -1,17 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Lifeblood.CLI</RootNamespace>
+    <!-- Composition root. Wires left side to right side. -->
   </PropertyGroup>
-
   <ItemGroup>
-    <ProjectReference Include="..\Lifeblood.Core\Lifeblood.Core.csproj" />
+    <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
+    <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
+    <ProjectReference Include="..\Lifeblood.Analysis\Lifeblood.Analysis.csproj" />
     <ProjectReference Include="..\Lifeblood.Adapters.CSharp\Lifeblood.Adapters.CSharp.csproj" />
     <ProjectReference Include="..\Lifeblood.Reporters\Lifeblood.Reporters.csproj" />
   </ItemGroup>
-
 </Project>

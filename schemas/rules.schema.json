@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rules.schema.json",
+  "title": "Lifeblood Architecture Rules",
+  "description": "Architecture rules for validating dependency edges in the semantic graph.",
+  "type": "object",
+  "required": ["rules"],
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "version": { "type": "string" },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "source"],
+        "properties": {
+          "id": { "type": "string", "description": "Rule identifier (e.g., HEX-001)" },
+          "description": { "type": "string" },
+          "source": { "type": "string", "description": "Glob pattern for source symbols" },
+          "mustNotReference": { "type": "string", "description": "Glob pattern for forbidden targets" },
+          "mayOnlyReference": { "type": "string", "description": "Glob pattern for allowed targets" }
+        }
+      }
+    }
+  }
+}

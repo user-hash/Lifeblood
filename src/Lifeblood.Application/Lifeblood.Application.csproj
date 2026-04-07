@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Lifeblood.Application</RootNamespace>
+    <!-- INV-APP-001: Depends only on Domain. Never on adapters, connectors, or CLI. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
+  </ItemGroup>
+</Project>

@@ -4,7 +4,7 @@ class Program
 {
     static int Main(string[] args)
     {
-        Console.WriteLine("Lifeblood — Semantic Code Analysis");
+        Console.WriteLine("Lifeblood — Semantic connector for AI and code intelligence");
         Console.WriteLine("https://github.com/user-hash/Lifeblood");
         Console.WriteLine();
 
@@ -14,19 +14,18 @@ class Program
             return 0;
         }
 
-        // TODO: implement commands (analyze, graph, rules, report)
         Console.WriteLine($"Command: {args[0]}");
-        Console.WriteLine("Not yet implemented. See README.md for project status.");
+        Console.WriteLine("Not yet implemented. See docs/MASTERPLAN.md for project status.");
         return 1;
     }
 
     static void PrintUsage()
     {
         Console.WriteLine("Usage:");
-        Console.WriteLine("  lifeblood analyze --project <path> --rules <rules.json>");
-        Console.WriteLine("  lifeblood analyze --graph <graph.json> --rules <rules.json>");
-        Console.WriteLine("  lifeblood graph --project <path> --output <graph.json>");
-        Console.WriteLine();
-        Console.WriteLine("The --graph option accepts pre-built JSON from any language adapter.");
+        Console.WriteLine("  lifeblood analyze --project <path>              Analyze via Roslyn adapter");
+        Console.WriteLine("  lifeblood analyze --graph <graph.json>          Analyze pre-built JSON graph");
+        Console.WriteLine("  lifeblood context --project <path>              Generate AI context pack");
+        Console.WriteLine("  lifeblood rules --project <path> --rules <json> Validate architecture rules");
+        Console.WriteLine("  lifeblood export --project <path> --output <f>  Export semantic graph");
     }
 }

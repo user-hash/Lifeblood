@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Lifeblood.Domain</RootNamespace>
+    <!-- INV-DOMAIN-001: ZERO dependencies. If a PackageReference appears, architecture is broken. -->
+  </PropertyGroup>
+</Project>
