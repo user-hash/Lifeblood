@@ -14,7 +14,7 @@ Lifeblood.Application           # Ports + use cases. Depends only on Domain.
   ├── Ports/Left/              # IWorkspaceAnalyzer, IModuleDiscovery
   ├── Ports/Right/             # IAgentContextGenerator, IMcpGraphProvider, IInstructionFileGenerator
   ├── Ports/GraphIO/           # IGraphImporter, IGraphExporter
-  ├── Ports/Analysis/          # IAnalyzer, IRuleProvider
+  ├── Ports/Analysis/          # IRuleProvider
   ├── Ports/Output/            # IProgressSink
   ├── Ports/Infrastructure/    # IFileSystem
   └── UseCases/                # AnalyzeWorkspace, GenerateContext
@@ -75,7 +75,6 @@ Lifeblood.CLI
   → Lifeblood.Adapters.JsonGraph
   → Lifeblood.Connectors.*
   → Lifeblood.Analysis
-  → Lifeblood.Reporters.*
 
 Lifeblood.Adapters.CSharp
   → Lifeblood.Application (ports only)
@@ -119,7 +118,7 @@ IGraphExporter.Export(graph, stream)
 
 ### Analysis
 ```csharp
-IAnalyzer<TConfig, TResult>.Analyze(graph, config) → TResult
+// Analyzers use static methods: CouplingAnalyzer.Analyze(), BlastRadiusAnalyzer.Analyze(), etc.
 IRuleProvider.LoadRules(path) → ArchitectureRule[]
 ```
 
@@ -162,9 +161,8 @@ Rule: JSON serializers should use `System.Text.Json` with `JsonNamingPolicy.Came
 2. **New analysis** → Lifeblood.Analysis. Stateless. Graph in, result out.
 3. **New language adapter** → Lifeblood.Adapters.{Language}/ or external JSON.
 4. **New AI connector** → Lifeblood.Connectors.{Name}/
-5. **New output format** → Lifeblood.Reporters.{Format}/
-6. **New CLI command** → Lifeblood.CLI/
-7. **New use case** → Lifeblood.Application/UseCases/
+5. **New CLI command** → Lifeblood.CLI/
+6. **New use case** → Lifeblood.Application/UseCases/
 
 ## What NOT to Do
 
