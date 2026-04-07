@@ -1,6 +1,6 @@
 # Dogfood Findings
 
-First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules, 494 symbols, 659 edges). These are the real issues discovered by running our own tool on ourselves.
+First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 10). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
 ## F1: JSON Exporter Silently Drops Fields
 
