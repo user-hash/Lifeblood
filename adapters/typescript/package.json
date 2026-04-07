@@ -1,0 +1,21 @@
+{
+  "name": "@lifeblood/adapter-typescript",
+  "version": "1.0.0",
+  "description": "Lifeblood TypeScript adapter. Extracts semantic graph using the TS compiler API.",
+  "main": "dist/index.js",
+  "bin": {
+    "lifeblood-ts": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["lifeblood", "typescript", "semantic-graph", "code-analysis"],
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "typescript": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

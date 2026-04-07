@@ -1,15 +1,35 @@
 # TypeScript Adapter
 
-**Status:** Not started. This is a contribution guide, not existing code.
+**Status:** Implemented. Second language adapter proving Lifeblood's universal protocol.
 
-## Approach
+Uses the TypeScript compiler API (`ts.createProgram` + `TypeChecker`) to extract a semantic graph and output it as `graph.json` conforming to `schemas/graph.schema.json`.
 
-TypeScript has a full compiler API (`ts.createProgram`, `CompilerHost`, `SourceFile`). This is the closest thing to Roslyn outside of .NET. A strong adapter would:
+## Usage
 
-1. Use `ts.createProgram` to get the full type-checked program
-2. Walk `SourceFile` nodes for symbols
-3. Use the `TypeChecker` for semantic resolution
-4. Output `graph.json` conforming to `schemas/graph.schema.json`
+```bash
+cd adapters/typescript
+npm install
+npm run build
+
+# Analyze a TypeScript project
+node dist/index.js /path/to/ts-project > graph.json
+
+# Feed into Lifeblood
+dotnet run --project ../../src/Lifeblood.CLI -- analyze --graph graph.json
+```
+
+Self-analysis (the adapter analyzes itself):
+```bash
+node dist/index.js . > graph.json
+dotnet run --project ../../src/Lifeblood.CLI -- analyze --graph graph.json
+# Symbols: 49, Edges: 51, zero violations
+```
+
+## What It Extracts
+
+- **Symbols:** modules, files, classes, interfaces, enums, type aliases, methods, properties, constructors
+- **Edges:** inherits, implements, calls, references, contains
+- **Evidence:** semantic (from TypeChecker), confidence: high
 
 ## Capability Profile
 
@@ -18,13 +38,23 @@ TypeScript has a full compiler API (`ts.createProgram`, `CompilerHost`, `SourceF
   "discoverSymbols": true,
   "typeResolution": "high",
   "callResolution": "high",
+  "implementationResolution": "high",
   "crossModuleReferences": "high",
-  "overrideResolution": "high"
+  "overrideResolution": "none"
 }
 ```
 
-TypeScript's compiler API is mature enough for `"high"` across the board. With careful implementation, some capabilities could reach `"proven"`.
+## Architecture
 
-## Getting Started
+```
+src/types.ts            Schema types matching graph.schema.json
+src/symbol-extractor.ts Symbol extraction from AST + TypeChecker
+src/edge-extractor.ts   Edge extraction with IsFromSource filtering
+src/index.ts            Entry point, tsconfig parsing, deterministic output
+```
 
-See [docs/ADAPTERS.md](../../docs/ADAPTERS.md) for the full guide.
+Follows the same patterns as the Roslyn reference adapter:
+- `IsFromSource` filter (no edges to node_modules / lib types)
+- Deterministic output (sorted symbols and edges)
+- Last-write-wins dedup for symbols
+- Contains edges synthesized from parentId
