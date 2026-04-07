@@ -79,13 +79,24 @@
       color: var(--warning); text-transform: uppercase;
     }
 
-    /* Center hex area */
+    /* Center hex area: ports LEFT — hex CENTER — ports RIGHT */
     .hex-area {
       display: flex; flex-direction: column; align-items: center;
       justify-content: flex-start; padding-top: 10px;
     }
+    .hex-row {
+      display: flex; align-items: center; justify-content: center; gap: 20px;
+      width: 100%;
+    }
+    .port-col {
+      display: flex; flex-direction: column; gap: 12px; flex: 0 0 155px;
+    }
+    .port-col-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+      text-align: center; margin-bottom: 4px;
+    }
     .hex-visual {
-      position: relative; width: 520px; height: 520px; margin: 0 auto;
+      position: relative; width: 420px; height: 420px; flex-shrink: 0;
     }
     .hex-ring {
       position: absolute;
@@ -97,33 +108,32 @@
       background: linear-gradient(180deg, rgba(39,55,106,0.95), rgba(23,33,63,0.97));
     }
     .hex-ring.middle {
-      inset: 68px;
+      inset: 56px;
       background: linear-gradient(180deg, rgba(27,40,78,0.97), rgba(20,29,56,0.98));
     }
     .hex-ring.inner {
-      inset: 142px;
+      inset: 118px;
       background: radial-gradient(circle at 50% 35%, rgba(123,220,255,0.2), transparent 45%),
         linear-gradient(180deg, rgba(25,35,68,0.99), rgba(17,24,44,0.99));
       border: 1px solid rgba(123,220,255,0.28);
     }
-    .hex-ring h4 { font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
-    .hex-ring h2 { font-size: 24px; letter-spacing: -0.03em; line-height: 1.1; }
-    .hex-ring p { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 8px; padding: 0 20px; }
-    .hex-ring.inner h2 { font-size: 20px; }
-    .hex-ring.inner p { font-size: 11px; padding: 0 10px; }
+    /* Ring labels: positioned OUTSIDE the clip-path so they're never clipped */
+    .hex-label {
+      position: absolute; text-align: center; font-size: 10px;
+      letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent);
+      width: 100%; pointer-events: none;
+    }
+    .hex-label.top { top: -22px; }
+    .hex-label.bottom { bottom: -22px; }
+    .hex-label.mid-top { top: 40px; color: var(--muted); font-size: 9px; letter-spacing: 0.04em; }
+    .hex-ring h2 { font-size: 26px; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
+    .hex-ring p { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 8px; padding: 0 16px; }
+    .hex-ring.inner h2 { font-size: 22px; }
+    .hex-ring.inner p { font-size: 11px; padding: 0 8px; }
 
-    .port-row {
-      display: flex; gap: 14px; justify-content: center;
-      margin: 16px 0;
-    }
-    .port-row-label {
-      text-align: center; font-size: 10px; text-transform: uppercase;
-      letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px;
-    }
     .port {
       border: 1px solid; border-radius: 12px;
-      padding: 10px 14px; text-align: center; font-size: 11px;
-      flex: 0 0 auto; width: 175px;
+      padding: 10px 12px; text-align: center; font-size: 11px;
     }
     .port.left { border-color: var(--accent); background: rgba(123,220,255,0.06); }
     .port.right { border-color: var(--accent-2); background: rgba(168,139,255,0.06); }
@@ -210,41 +220,41 @@
 
       <!-- CENTER COLUMN -->
       <div class="col hex-area" style="border-right: 1px solid rgba(255,255,255,0.05);">
-        <div class="col-label">Domain + Application</div>
+        <div class="col-label">&nbsp;</div>
 
-        <div class="port-row-label" style="color: var(--accent);">Inbound Ports (left side)</div>
-        <div class="port-row">
-          <div class="port left"><strong>IWorkspaceAnalyzer</strong>project + config<br/><span>&#8594; SemanticGraph</span></div>
-          <div class="port left"><strong>IGraphImporter</strong>stream<br/><span>&#8594; GraphDocument</span></div>
-        </div>
+        <div class="hex-row">
+          <!-- LEFT: Inbound ports -->
+          <div class="port-col">
+            <div class="port-col-label" style="color: var(--accent);">Inbound Ports</div>
+            <div class="port left"><strong>IWorkspaceAnalyzer</strong>project + config<br/><span>&#8594; SemanticGraph</span></div>
+            <div class="port left"><strong>IGraphImporter</strong>stream<br/><span>&#8594; GraphDocument</span></div>
+          </div>
 
-        <div class="hex-visual">
-          <div class="hex-ring outer">
-            <div>
-              <h4>Lifeblood.Application</h4>
-              <h2>Ports &amp;<br/>Use Cases</h2>
-              <p>Left ports, right ports, graph I/O,<br/>orchestration use cases</p>
+          <!-- CENTER: Hexagon with external labels -->
+          <div class="hex-visual">
+            <div class="hex-label top">Application Ring &mdash; Ports &amp; Use Cases</div>
+            <div class="hex-ring outer"></div>
+            <div class="hex-ring middle">
+              <div>
+                <h2>Semantic<br/>Graph</h2>
+                <p>Symbol, Edge, Evidence<br/>GraphBuilder, GraphValidator<br/>GraphDocument</p>
+              </div>
             </div>
-          </div>
-          <div class="hex-ring middle">
-            <div>
-              <h4>Lifeblood.Domain</h4>
-              <h2>Semantic<br/>Graph</h2>
-              <p>Symbol, Edge, Evidence<br/>GraphBuilder, GraphValidator<br/>Pure. Immutable. Zero deps.</p>
+            <div class="hex-ring inner">
+              <div>
+                <h2>Domain</h2>
+                <p>Pure. Immutable.<br/>Zero dependencies.</p>
+              </div>
             </div>
+            <div class="hex-label bottom">Lifeblood.Domain &mdash; Zero external dependencies</div>
           </div>
-          <div class="hex-ring inner">
-            <div>
-              <h4>Pure heart</h4>
-              <h2>Zero<br/>deps</h2>
-            </div>
-          </div>
-        </div>
 
-        <div class="port-row-label" style="color: var(--accent-2);">Outbound Ports (right side)</div>
-        <div class="port-row">
-          <div class="port right"><strong>IAgentContextGenerator</strong>graph + analysis<br/><span>&#8594; AgentContextPack</span></div>
-          <div class="port right"><strong>IMcpGraphProvider</strong>LookupSymbol<br/><span>GetDependencies, GetBlastRadius</span></div>
+          <!-- RIGHT: Outbound ports -->
+          <div class="port-col">
+            <div class="port-col-label" style="color: var(--accent-2);">Outbound Ports</div>
+            <div class="port right"><strong>IAgentContextGenerator</strong>graph + analysis<br/><span>&#8594; AgentContextPack</span></div>
+            <div class="port right"><strong>IMcpGraphProvider</strong>LookupSymbol<br/><span>GetDependencies, GetBlastRadius</span></div>
+          </div>
         </div>
 
         <div class="signal-card">
