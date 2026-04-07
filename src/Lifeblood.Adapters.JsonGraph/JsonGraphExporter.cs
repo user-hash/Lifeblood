@@ -6,13 +6,12 @@ using Lifeblood.Domain.Graph;
 namespace Lifeblood.Adapters.JsonGraph;
 
 /// <summary>
-/// Exports a SemanticGraph to JSON conforming to schemas/graph.schema.json.
+/// Exports a GraphDocument to JSON conforming to schemas/graph.schema.json.
+/// Preserves protocol metadata: version, language, adapter capabilities.
 /// Uses the same DTO classes as JsonGraphImporter for round-trip fidelity.
 /// </summary>
 public sealed class JsonGraphExporter : IGraphExporter
 {
-    public const string SchemaVersion = "1.0";
-
     public string Format => "json";
 
     private static readonly JsonSerializerOptions Options = new()
@@ -23,11 +22,29 @@ public sealed class JsonGraphExporter : IGraphExporter
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public void Export(SemanticGraph graph, Stream destination)
+    public void Export(GraphDocument document, Stream destination)
     {
+        var graph = document.Graph;
+        var adapter = document.Adapter;
+
         var doc = new JsonGraphDocument
         {
-            Version = SchemaVersion,
+            Version = document.Version,
+            Language = !string.IsNullOrEmpty(document.Language) ? document.Language : null,
+            Adapter = adapter != null ? new JsonAdapter
+            {
+                Name = adapter.AdapterName,
+                Version = adapter.AdapterVersion,
+                Capabilities = new JsonCapabilities
+                {
+                    DiscoverSymbols = adapter.CanDiscoverSymbols,
+                    TypeResolution = adapter.TypeResolution,
+                    CallResolution = adapter.CallResolution,
+                    ImplementationResolution = adapter.ImplementationResolution,
+                    CrossModuleReferences = adapter.CrossModuleReferences,
+                    OverrideResolution = adapter.OverrideResolution,
+                },
+            } : null,
             Symbols = graph.Symbols.Select(s => new JsonSymbol
             {
                 Id = s.Id,
@@ -41,8 +58,7 @@ public sealed class JsonGraphExporter : IGraphExporter
                 IsAbstract = s.IsAbstract,
                 IsStatic = s.IsStatic,
                 Properties = s.Properties.Count > 0
-                    ? new Dictionary<string, string>(s.Properties)
-                    : null,
+                    ? new Dictionary<string, string>(s.Properties) : null,
             }).ToArray(),
             Edges = graph.Edges.Select(e => new JsonEdge
             {
@@ -57,8 +73,7 @@ public sealed class JsonGraphExporter : IGraphExporter
                     Confidence = e.Evidence.Confidence,
                 },
                 Properties = e.Properties.Count > 0
-                    ? new Dictionary<string, string>(e.Properties)
-                    : null,
+                    ? new Dictionary<string, string>(e.Properties) : null,
             }).ToArray(),
         };
 

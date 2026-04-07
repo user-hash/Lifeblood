@@ -7,27 +7,27 @@ using Lifeblood.Domain.Graph;
 namespace Lifeblood.Adapters.JsonGraph;
 
 /// <summary>
-/// Imports a SemanticGraph from JSON conforming to schemas/graph.schema.json.
+/// Imports a GraphDocument from JSON conforming to schemas/graph.schema.json.
+/// Preserves protocol metadata: version, language, adapter capabilities.
 /// INV-ADAPT-003: External adapters communicate via JSON graph schema only.
 /// </summary>
 public sealed class JsonGraphImporter : IGraphImporter
 {
     public string Format => "json";
 
-    private static readonly JsonSerializerOptions Options = new()
+    internal static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    public SemanticGraph Import(Stream source)
+    public GraphDocument ImportDocument(Stream source)
     {
         var doc = JsonSerializer.Deserialize<JsonGraphDocument>(source, Options)
             ?? throw new InvalidOperationException("Failed to deserialize graph JSON");
 
         var builder = new GraphBuilder();
 
-        // Import symbols
         if (doc.Symbols != null)
         {
             foreach (var js in doc.Symbols)
@@ -49,7 +49,6 @@ public sealed class JsonGraphImporter : IGraphImporter
             }
         }
 
-        // Import edges (explicit — GraphBuilder will add Contains from ParentId)
         if (doc.Edges != null)
         {
             foreach (var je in doc.Edges)
@@ -73,7 +72,31 @@ public sealed class JsonGraphImporter : IGraphImporter
             }
         }
 
-        return builder.Build();
+        // Map adapter metadata if present
+        AdapterCapability? capability = null;
+        if (doc.Adapter != null)
+        {
+            capability = new AdapterCapability
+            {
+                Language = doc.Language ?? "",
+                AdapterName = doc.Adapter.Name ?? "",
+                AdapterVersion = doc.Adapter.Version ?? "",
+                CanDiscoverSymbols = doc.Adapter.Capabilities?.DiscoverSymbols ?? false,
+                TypeResolution = doc.Adapter.Capabilities?.TypeResolution ?? ConfidenceLevel.None,
+                CallResolution = doc.Adapter.Capabilities?.CallResolution ?? ConfidenceLevel.None,
+                ImplementationResolution = doc.Adapter.Capabilities?.ImplementationResolution ?? ConfidenceLevel.None,
+                CrossModuleReferences = doc.Adapter.Capabilities?.CrossModuleReferences ?? ConfidenceLevel.None,
+                OverrideResolution = doc.Adapter.Capabilities?.OverrideResolution ?? ConfidenceLevel.None,
+            };
+        }
+
+        return new GraphDocument
+        {
+            Version = doc.Version ?? GraphDocument.CurrentVersion,
+            Language = doc.Language ?? "",
+            Adapter = capability,
+            Graph = builder.Build(),
+        };
     }
 }
 
@@ -83,8 +106,26 @@ internal sealed class JsonGraphDocument
 {
     public string? Version { get; set; }
     public string? Language { get; set; }
+    public JsonAdapter? Adapter { get; set; }
     public JsonSymbol[]? Symbols { get; set; }
     public JsonEdge[]? Edges { get; set; }
+}
+
+internal sealed class JsonAdapter
+{
+    public string? Name { get; set; }
+    public string? Version { get; set; }
+    public JsonCapabilities? Capabilities { get; set; }
+}
+
+internal sealed class JsonCapabilities
+{
+    public bool DiscoverSymbols { get; set; }
+    public ConfidenceLevel TypeResolution { get; set; }
+    public ConfidenceLevel CallResolution { get; set; }
+    public ConfidenceLevel ImplementationResolution { get; set; }
+    public ConfidenceLevel CrossModuleReferences { get; set; }
+    public ConfidenceLevel OverrideResolution { get; set; }
 }
 
 internal sealed class JsonSymbol

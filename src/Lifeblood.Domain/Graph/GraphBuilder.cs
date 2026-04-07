@@ -4,14 +4,22 @@ namespace Lifeblood.Domain.Graph;
 
 /// <summary>
 /// Constructs a SemanticGraph with proper containment hierarchy.
-/// AUDIT FIX (Hole 5): Synthesizes Contains edges from Symbol.ParentId relationships.
-/// Deduplicates symbols by ID. Preserves explicit edges.
+/// Synthesizes Contains edges from Symbol.ParentId relationships.
+/// Deduplicates symbols by ID (last-write-wins policy).
+/// Sorts output deterministically (INV-PIPE-001).
 /// </summary>
 public sealed class GraphBuilder
 {
     private readonly Dictionary<string, Symbol> _symbols = new(StringComparer.Ordinal);
     private readonly List<Edge> _edges = new();
 
+    /// <summary>
+    /// Adds a symbol. If a symbol with the same ID already exists, it is replaced
+    /// (last-write-wins). This handles partial types: multiple declarations of the
+    /// same type produce the same ID, and the last one seen wins. Adapters are
+    /// responsible for merging partial declarations before calling AddSymbol if
+    /// they need richer merge semantics.
+    /// </summary>
     public GraphBuilder AddSymbol(Symbol symbol)
     {
         _symbols[symbol.Id] = symbol;

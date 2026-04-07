@@ -67,12 +67,12 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .OrderBy(f => f, StringComparer.Ordinal)
                 .ToArray();
 
-            // Project references → dependencies (deduplicated)
+            // Project references → dependencies by AssemblyName (not filename)
             var deps = doc.Descendants()
                 .Where(el => el.Name.LocalName == "ProjectReference")
                 .Select(el => el.Attribute("Include")?.Value)
                 .Where(v => v != null)
-                .Select(v => Path.GetFileNameWithoutExtension(v!))
+                .Select(v => ResolveReferencedAssemblyName(v!, projectDir))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
@@ -96,6 +96,30 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a ProjectReference path to the referenced project's AssemblyName.
+    /// Falls back to filename if the referenced .csproj can't be read.
+    /// </summary>
+    private static string ResolveReferencedAssemblyName(string referencePath, string projectDir)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(projectDir, referencePath));
+            if (!File.Exists(fullPath))
+                return Path.GetFileNameWithoutExtension(referencePath);
+
+            var refDoc = XDocument.Load(fullPath);
+            var asmName = refDoc.Descendants()
+                .FirstOrDefault(el => el.Name.LocalName == "AssemblyName")?.Value;
+
+            return asmName ?? Path.GetFileNameWithoutExtension(referencePath);
+        }
+        catch
+        {
+            return Path.GetFileNameWithoutExtension(referencePath);
         }
     }
 }
