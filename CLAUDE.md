@@ -2,133 +2,160 @@
 
 ## What This Project Is
 
-Lifeblood is a language-agnostic semantic code analysis framework. It lets you see the lifeblood flowing through any codebase: what depends on what, what is alive, what is dead, what violates your architecture rules.
+Lifeblood is a hexagonal framework that pipes compiler-level semantics into AI agents. Language adapters on the left, AI connectors on the right, pure universal graph in the middle.
 
-The core is pure. Zero language-specific dependencies. Language support comes through adapters that implement a single port interface. The C# adapter (wrapping Roslyn) is the reference implementation.
+We do not build Roslyn-grade adapters for every language. We build the framework and the C# reference implementation. The community builds adapters for other languages.
 
-## Architecture: Hexagonal (Ports & Adapters)
+## Architecture
 
 ```
-Lifeblood.Core          # Pure. Zero language deps. ALL analysis lives here.
-  ├── Graph/            # Universal semantic graph model
-  ├── Analysis/         # Coupling, blast radius, dead code, tiers, hubs
-  ├── Rules/            # Architecture rule validation
-  └── Ports/            # IWorkspaceAnalyzer, IGraphImporter, IAgentContextGenerator,
-                        # IReportSink, IGraphExporter, IFileSystem, IRuleSource
+Lifeblood.Domain            # Pure. ZERO deps. Graph model, rules, results, capabilities.
+Lifeblood.Application        # Ports + use cases. Depends only on Domain.
+  ├── Ports/Left/           # IWorkspaceAnalyzer, IModuleDiscovery, ISourceProvider
+  ├── Ports/Right/          # IAgentContextGenerator, IMcpGraphProvider
+  ├── Ports/GraphIO/        # IGraphImporter, IGraphExporter, IGraphNormalizer
+  ├── Ports/Analysis/       # IAnalyzer, IRuleProvider
+  ├── Ports/Output/         # IReportSink, IProgressSink
+  ├── Ports/Infrastructure/ # IFileSystem, ICache, ILogger
+  └── UseCases/             # AnalyzeWorkspace, ValidateRules, GenerateContext
 
-Lifeblood.Adapters.*    # Language-specific. Implements IWorkspaceAnalyzer.
-  └── CSharp/           # Reference adapter wrapping Roslyn
-
-Lifeblood.Reporters     # Output formatters (JSON, HTML, CI)
-
-Lifeblood.CLI           # Entry point. Wires adapters to core.
+Lifeblood.Adapters.CSharp   # LEFT SIDE. Roslyn. Reference implementation.
+Lifeblood.Adapters.JsonGraph # LEFT SIDE. Universal JSON protocol.
+Lifeblood.Connectors.Mcp    # RIGHT SIDE. MCP server for AI agents.
+Lifeblood.Connectors.Context # RIGHT SIDE. Context pack + CLAUDE.md generator.
+Lifeblood.Analysis           # Optional analyzers (coupling, blast radius, tiers).
+Lifeblood.Reporters.*        # Output formatters (JSON, HTML, SARIF).
+Lifeblood.CLI                # Composition root. Wires adapters to connectors.
 ```
 
 ## Invariants
 
-### Core Purity
-- **INV-CORE-001**: `Lifeblood.Core` has zero references to any language-specific library (no Roslyn, no TypeScript compiler, no ast). If it compiles with language deps, the architecture is broken.
-- **INV-CORE-002**: `Lifeblood.Core` has zero references to `Lifeblood.Adapters.*`. Core never knows which language it is analyzing.
-- **INV-CORE-003**: All analysis algorithms operate on `SemanticGraph` only. They never touch source code, file contents, or language syntax.
+### Domain Purity
+- **INV-DOMAIN-001**: `Lifeblood.Domain` has ZERO dependencies. Not Roslyn, not JSON, not System.IO, not anything. If a PackageReference appears, the architecture is broken.
+- **INV-DOMAIN-002**: Domain never references Application, Adapters, Connectors, or CLI.
+
+### Application Layer
+- **INV-APP-001**: Application depends only on Domain.
+- **INV-APP-002**: Application never references concrete adapters or connectors. Only port interfaces.
 
 ### Graph Model
-- **INV-GRAPH-001**: `SymbolKind` enum is language-agnostic. No `MonoBehaviour`, no `decorator`, no `trait`. Only universal concepts: Module, File, Namespace, Type, Method, Field, Parameter.
-- **INV-GRAPH-002**: Language-specific metadata goes in `Symbol.Properties` dictionary, never in new fields on Symbol.
-- **INV-GRAPH-003**: Symbols are identified by `Id` (string, globally unique within a graph). Format: `{filePath}:{kind}:{qualifiedName}`.
-- **INV-GRAPH-004**: Edges are directional. `Source` depends on / references / calls `Target`.
+- **INV-GRAPH-001**: SymbolKind enum is language-agnostic. No C#-isms, no Python-isms.
+- **INV-GRAPH-002**: Language-specific metadata goes in `Symbol.Properties` dictionary.
+- **INV-GRAPH-003**: Every edge carries Evidence (kind, adapter, confidence, source span).
+- **INV-GRAPH-004**: Analyzers do NOT modify the graph. Results are separate objects. The graph is read-only after construction.
 
-### Adapters
-- **INV-ADAPTER-001**: Every adapter implements `ICodeParser` and optionally `IProjectDiscovery`. No other coupling to core.
-- **INV-ADAPTER-002**: Adapters can also be external processes that output graph JSON conforming to `schemas/graph.schema.json`. The core reads JSON graphs. This enables adapters in any language.
-- **INV-ADAPTER-003**: The C# adapter is the reference. It must be the most complete and best tested. Other adapters follow its patterns.
+### Left Side (Language Adapters)
+- **INV-ADAPT-001**: Every adapter declares capabilities honestly via AdapterCapability.
+- **INV-ADAPT-002**: C# adapter is the reference. Most complete, best tested.
+- **INV-ADAPT-003**: External adapters communicate via JSON graph schema only.
+- **INV-ADAPT-004**: No adapter code leaks into Domain or Application.
+
+### Right Side (AI Connectors)
+- **INV-CONN-001**: Connectors depend on Application ports, not on adapters.
+- **INV-CONN-002**: MCP connector serves the graph read-only.
+- **INV-CONN-003**: Context pack generator produces AI-consumable JSON, not human prose.
 
 ### Analysis
-- **INV-ANALYSIS-001**: All analyzers are stateless. Input: `SemanticGraph` + config. Output: `AnalysisResult`. No side effects.
-- **INV-ANALYSIS-002**: No analyzer modifies the graph. Analysis is read-only.
-- **INV-ANALYSIS-003**: Coupling metrics follow Robert C. Martin's definitions. Fan-in = afferent coupling (Ca). Fan-out = efferent coupling (Ce). Instability = Ce / (Ca + Ce).
+- **INV-ANALYSIS-001**: All analyzers are stateless. Input: graph + config. Output: typed result.
+- **INV-ANALYSIS-002**: No analyzer modifies the graph. Read-only.
+- **INV-ANALYSIS-003**: CouplingAnalyzer counts distinct dependants, not edge count.
 
-### Rules
-- **INV-RULES-001**: Architecture rules are defined in `lifeblood.rules.json` (or `xray.json` for backward compat). JSON format, no YAML.
-- **INV-RULES-002**: Rule validation produces `Violation[]` with source, target, and the exact rule broken. Machine-readable.
+### Testing
+- **INV-TEST-001**: Every adapter passes the same golden repo contract tests.
+- **INV-TEST-002**: Every analyzer is tested against golden repos.
 
-## Assembly / Project Dependency Rules
+### Pipeline
+- **INV-PIPE-001**: The pipeline is deterministic. Same input = same output.
+
+## Dependency Rules
 
 ```
 Lifeblood.CLI
-  → Lifeblood.Core
+  → Lifeblood.Application
   → Lifeblood.Adapters.CSharp
-  → Lifeblood.Reporters
+  → Lifeblood.Adapters.JsonGraph
+  → Lifeblood.Connectors.*
+  → Lifeblood.Analysis
+  → Lifeblood.Reporters.*
 
 Lifeblood.Adapters.CSharp
-  → Lifeblood.Core
+  → Lifeblood.Application (ports only)
+  → Lifeblood.Domain
   → Microsoft.CodeAnalysis.CSharp (Roslyn)
 
-Lifeblood.Reporters
-  → Lifeblood.Core
+Lifeblood.Connectors.Mcp
+  → Lifeblood.Application (ports only)
+  → Lifeblood.Domain
 
-Lifeblood.Core
-  → (nothing. Leaf dependency. Pure.)
+Lifeblood.Analysis
+  → Lifeblood.Domain
+
+Lifeblood.Application
+  → Lifeblood.Domain
+
+Lifeblood.Domain
+  → (nothing. Pure leaf. Forever.)
 ```
 
 ## Port Interfaces
 
-### Primary adapter port (workspace-scoped):
-
+### Left Side (Language Adapters)
 ```csharp
 IWorkspaceAnalyzer.AnalyzeWorkspace(projectRoot, config) → SemanticGraph
+IModuleDiscovery.DiscoverModules(projectRoot) → ModuleInfo[]
+ISourceProvider.ReadSource(filePath) → string
 ```
 
-INV-PORT-001: The primary contract is workspace → graph, not file → symbols.
-File-level parsing is internal to adapters.
-
-### Input ports:
+### Right Side (AI Connectors)
 ```csharp
-IGraphImporter.Import(stream) → SemanticGraph     // Read JSON graph from external adapter
-IRuleSource.LoadRules(path) → ArchitectureRule[]   // Where rules come from
+IAgentContextGenerator.Generate(graph, analysis) → AgentContextPack
+IMcpGraphProvider.Query(request) → QueryResult
+IInstructionFileGenerator.Generate(graph) → string   // CLAUDE.md section
 ```
 
-### Output ports:
+### Graph I/O
 ```csharp
-IReportSink.Report(AnalysisResult, stream)         // Analysis results output
-IGraphExporter.Export(SemanticGraph, stream)        // Graph serialization
-IAgentContextGenerator.Generate(graph, analysis) → AgentContextPack  // THE KILLER FEATURE
+IGraphImporter.Import(stream) → SemanticGraph
+IGraphExporter.Export(graph, stream)
+IGraphNormalizer.Normalize(graph) → SemanticGraph
 ```
 
-### Infrastructure ports:
+### Analysis
 ```csharp
-IFileSystem.ReadAllText(path) → string             // Abstracts disk access
-IFileSystem.FindFiles(dir, pattern) → string[]     // Enables in-memory testing
+IAnalyzer<TConfig, TResult>.Analyze(graph, config) → TResult
+IRuleProvider.LoadRules(path) → ArchitectureRule[]
 ```
-
-## JSON as the Universal Adapter Protocol
-
-Any language can be an adapter. Write a parser in Python/Go/Rust/whatever that outputs JSON conforming to `schemas/graph.schema.json`. The CLI reads it. All core analysis runs on the JSON graph.
-
-This means: you do NOT need to write C# to add a language. You write a parser in whatever language is natural, output JSON, done.
 
 ## Naming Conventions
 
 | Pattern | Usage |
 |---------|-------|
-| `*Analyzer` | Stateless analysis pass (CouplingAnalyzer, BlastRadiusAnalyzer) |
-| `*Classifier` | Categorizes nodes (TierClassifier) |
-| `*Detector` | Finds patterns (CircularDependencyDetector, HubBridgeDetector) |
-| `*Validator` | Checks rules (RuleValidator) |
-| `*Builder` | Constructs complex objects (GraphBuilder) |
-| `I*` | Port interface (ICodeParser, IReporter) |
+| `*Analyzer` | Stateless analysis pass |
+| `*Classifier` | Categorizes nodes |
+| `*Detector` | Finds patterns |
+| `*Validator` | Checks rules |
+| `*Builder` | Constructs complex objects |
+| `*Generator` | Produces output artifacts |
+| `*Provider` | Supplies data (read-oriented) |
+| `*Importer/*Exporter` | Serialization ports |
+| `I*` | Port interface |
 
 ## Rules for Adding Features
 
-1. **New analysis** → `Lifeblood.Core/Analysis/`. Must be stateless. Input: graph. Output: result.
-2. **New graph concept** → check INV-GRAPH-001 first. If language-specific, use Properties.
-3. **New language adapter** → `Lifeblood.Adapters.{Language}/` or external JSON process.
-4. **New output format** → `Lifeblood.Reporters/`.
-5. **New CLI command** → `Lifeblood.CLI/`.
+1. **New graph concept** → Domain. Check INV-GRAPH-001 first. Language-specific = Properties.
+2. **New analysis** → Lifeblood.Analysis. Stateless. Graph in, result out.
+3. **New language adapter** → Lifeblood.Adapters.{Language}/ or external JSON.
+4. **New AI connector** → Lifeblood.Connectors.{Name}/
+5. **New output format** → Lifeblood.Reporters.{Format}/
+6. **New CLI command** → Lifeblood.CLI/
+7. **New use case** → Lifeblood.Application/UseCases/
 
 ## What NOT to Do
 
-- Do not put language-specific logic in Core. Ever.
+- Do not put language-specific logic in Domain or Application. Ever.
 - Do not make analyzers stateful or mutable.
-- Do not add Roslyn references anywhere except the C# adapter.
-- Do not hardcode file extensions, import keywords, or syntax patterns in Core.
+- Do not let adapters reference other adapters.
+- Do not let connectors reference adapters.
+- Do not hardcode file extensions or syntax patterns in Domain.
 - Do not require adapters to be written in C#. JSON is the universal protocol.
+- Do not add "AI features" to the graph model. The graph is pure data. AI consumption happens in connectors.

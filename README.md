@@ -1,209 +1,122 @@
 # Lifeblood
 
-Pipe Roslyn-grade semantics into any AI agent.
+Pipe compiler-level semantics into any AI agent. For any language.
 
-Lifeblood is not an analysis tool. It is the glue between compiler-level code understanding and AI. It normalizes semantic data from language-specific compilers (Roslyn, TypeScript compiler, go/types) into one universal graph that any AI agent can consume.
+```
+LEFT SIDE                     CORE                    RIGHT SIDE
+(Language Adapters)        (The Pipe)              (AI Connectors)
 
-Without it, AI agents work at text level. Grep and guess.
-With it, AI agents see the codebase the way an IDE does. Types, references, boundaries, flow.
+Roslyn (C#)       ──┐                           ┌──  MCP Server
+TS Compiler       ──┤  ┌─────────────────────┐  ├──  CLAUDE.md generator
+go/types          ──┼→ │   Semantic Graph     │ →┤──  Context Pack API
+Python ast+mypy   ──┤  │   (universal model)  │  ├──  LSP Bridge
+rust-analyzer     ──┤  └─────────────────────┘  ├──  CLI / CI
+Java JDT          ──┘                           └──  JSON / REST
+```
 
-Born from building a [400k LOC project with AI assistance](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) and realizing that [Roslyn](https://github.com/dotnet/roslyn) is the single most underused tool in AI-assisted development. Every language deserves the same capability.
+Lifeblood is a hexagonal framework. Language adapters plug into the left side and feed semantic data in. AI connectors plug into the right side and consume the graph. The core normalizes everything in between. Pure. Zero dependencies on either side.
+
+We do not build Roslyn-grade adapters for every language. We build the framework and one reference implementation (C# + Roslyn). The community builds the rest. Roslyn is open source. AI can help port concepts to other languages.
+
+Born from shipping a [400k LOC Unity project](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) with AI assistance and realizing that [Roslyn](https://github.com/dotnet/roslyn) is the most underused tool in AI-assisted development.
 
 ---
 
-## What It Does
+## What Semantic Access Gives AI Agents
 
-Feed it a codebase. Get back a semantic graph. Pipe it to your AI.
+| Capability | Without Lifeblood | With Lifeblood |
+|------------|-------------------|----------------|
+| Find references | Grep for text | Real callers, real dependants, with proof |
+| Flow checking | Read code and guess | Trace values through the full call chain |
+| Math verification | Trust the AI | Verify calculations, argument ordering, formulas |
+| Architecture | Hope nobody broke a boundary | Compiler-level boundary enforcement |
+| Dead code | "I think this is unused" | Proven reachability from entry points |
+| Blast radius | No idea | Exact list of what breaks if you change this |
+| Context loading | Read random files | Ranked reading order by importance |
 
+We found a case where the precise math function was both faster AND 17% more accurate than the approximation an AI agent chose. Roslyn sees the semantic contract, not just the syntax.
+
+---
+
+## How Languages Plug In (Left Side)
+
+**Option A: In-process C# adapter.** Implement `IWorkspaceAnalyzer`. Full pipeline integration.
+
+**Option B: External process + JSON.** Write a parser in any language. Output `graph.json` conforming to `schemas/graph.schema.json`. Lifeblood reads it. No C# needed.
+
+```bash
+python lifeblood-python ./my-project > graph.json
+lifeblood analyze --graph graph.json
 ```
-Roslyn / TS Compiler / go/types        Any AI agent
-              ↓                              ↑
-        [Lifeblood]  →  Semantic Graph  →  Context Pack
-              ↓                              ↑
-         universal                     IDE-like access
-          graph                        for any AI tool
+
+**Option C: AI-assisted porting.** Roslyn is open source. The concepts exist in every language toolchain. AI agents can help port adapter implementations.
+
+---
+
+## How AI Tools Plug In (Right Side)
+
+**MCP Server** — Like our Unity MCP setup but for any codebase. AI agent calls tools:
+```
+lifeblood-mcp:symbol-lookup     "What is AuthService?"
+lifeblood-mcp:blast-radius      "What breaks if I change IUserRepository?"
+lifeblood-mcp:context-pack      "Give me context for src/auth/"
 ```
 
-**What semantic analysis gives AI agents:**
+**Context Pack Generator** — Produces an AI-consumable JSON with high-value files, boundaries, reading order, hotspots, blast radius map.
 
-| Capability | What it means |
-|------------|---------------|
-| IDE-like access | Go-to-definition, find-all-references, safe rename. The AI sees code the way an IDE does, not the way grep does. |
-| Flow checking | Trace a value through the entire call chain. Verify a signal reaches the right destination. Catch wet-into-dry buffer mistakes. |
-| Math verification | Check calculations, formulas, argument ordering. We found a case where the precise math function was both faster AND 17% more accurate than the approximation an AI agent chose. Roslyn sees the semantic contract, not just the syntax. |
-| Logic verification | Does this branch handle all cases? Are all enum values covered? Is this cast safe? |
-| Type checking | Is a string being passed where an int is expected? Are generic constraints satisfied? |
-| Pipeline stages | Does the signal flow through all stages in the right order? Is the filter applied before or after saturation? |
-
-**Optional analysis on top of the graph:**
-
-Lifeblood also ships analyzers (coupling, blast radius, dead code, tiers, cycles, hubs). These are useful but they are the addon, not the core product. The core product is the graph and the context pack.
+**CLAUDE.md Generator** — Analyze a codebase, produce architecture sections for your AI instruction file.
 
 ---
 
 ## Architecture
 
-Hexagonal from day one. The core is pure.
-
 ```
-Lifeblood.Core              # Zero language dependencies. All analysis here.
-  ├── Graph/                # Universal: Symbol, Edge, SemanticGraph
-  ├── Analysis/             # Stateless analyzers
-  ├── Rules/                # Architecture rule validation
-  └── Ports/                # ICodeParser, IProjectDiscovery
-
-Lifeblood.Adapters.CSharp   # Reference adapter. Wraps Roslyn.
-Lifeblood.Reporters          # JSON, HTML, CI output
-Lifeblood.CLI                # Entry point
+Lifeblood.Domain              Pure graph model. Zero deps. The absolute core.
+Lifeblood.Application          Ports + use cases. Depends only on Domain.
+Lifeblood.Adapters.CSharp     Reference adapter. Roslyn. Left side.
+Lifeblood.Adapters.JsonGraph   Universal protocol adapter. Left side.
+Lifeblood.Connectors.Mcp      MCP server for AI agents. Right side.
+Lifeblood.Connectors.Context   Context pack + CLAUDE.md generator. Right side.
+Lifeblood.Analysis             Optional analyzers (coupling, blast radius, tiers).
+Lifeblood.Reporters.*          JSON, HTML, SARIF output.
+Lifeblood.CLI                  Composition root. Wires everything.
 ```
 
-**Core never knows which language it is analyzing.** It receives a graph and runs analysis. That is all it does.
-
----
-
-## Two Ways to Add a Language
-
-### Option A: Write a C# adapter
-
-Implement `ICodeParser`. Get full integration with the CLI and analysis pipeline.
-
-```csharp
-public class PythonParser : ICodeParser
-{
-    public ParseResult Parse(string filePath, string sourceText) { ... }
-}
-```
-
-### Option B: Write a parser in any language, output JSON
-
-Write your parser in Python, Go, Rust, whatever feels natural. Output a JSON file conforming to `schemas/graph.schema.json`. The CLI reads it and runs all analysis.
-
-```bash
-# Your Python parser outputs the graph
-python parse_project.py ./my-project > graph.json
-
-# Lifeblood analyzes it
-lifeblood analyze --graph graph.json --rules rules.json
-```
-
-**You do not need C# to add a language.** JSON is the universal adapter protocol.
-
----
-
-## The Graph Model
-
-Everything is symbols and edges. Language-agnostic.
-
-**Symbols** (nodes):
-
-| Kind | What it represents |
-|------|-------------------|
-| Module | Assembly, package, crate, npm package |
-| File | Source file |
-| Namespace | Namespace, package, module path |
-| Type | Class, struct, interface, enum, trait |
-| Method | Method, function, property accessor |
-| Field | Field, constant, variable |
-
-**Edges** (relationships):
-
-| Kind | Meaning |
-|------|---------|
-| Contains | Parent holds child (file contains type, type contains method) |
-| DependsOn | Import/using dependency |
-| Implements | Type implements interface/trait |
-| Inherits | Type extends base type |
-| Calls | Method invokes method |
-| References | Code uses a type (new, cast, generic argument, field type) |
-| Overrides | Method overrides base method |
-
-Language-specific metadata goes in `Symbol.Properties` (dictionary), never in new fields.
-
----
-
-## Architecture Rules
-
-Define rules in JSON. Same format as [X-Ray PRO](https://github.com/user-hash/LivingDocFramework/blob/main/docs/ROSLYN.md):
-
-```json
-{
-  "rules": [
-    { "source": "MyApp.Domain", "must_not_reference": "MyApp.Infrastructure" },
-    { "source": "MyApp.Domain", "must_not_reference": "UnityEngine" },
-    { "source": "*.Tests", "may_reference": "*" }
-  ]
-}
-```
-
-Violations are machine-readable: source file, target file, source namespace, target namespace, rule broken.
+Domain never references Application. Application never references Adapters or Connectors. Both sides plug into Application ports. [Full architecture](docs/ARCHITECTURE.md) | [Masterplan](docs/MASTERPLAN.md)
 
 ---
 
 ## Status
 
-**Early stage.** Architecture defined, core model implemented, C# adapter in progress.
+Early stage. Architecture defined, core model implemented, executing the [10-stage masterplan](docs/MASTERPLAN.md).
 
-What exists:
-- Graph model (Symbol, Edge, SemanticGraph)
-- Port interfaces (ICodeParser, IProjectDiscovery)
-- JSON schema for cross-language adapters
-- Architecture documentation
-- CLAUDE.md for AI-assisted development
+**Done:** Domain model (Symbol, Edge, Evidence, SemanticGraph), port interfaces (both sides), JSON schema, rule packs, golden repo structure.
 
-What is needed:
-- [ ] Core analysis algorithms (coupling, blast radius, dead code, tiers)
-- [ ] C# adapter (Roslyn integration)
-- [ ] CLI tool
-- [ ] JSON reporter
-- [ ] First community adapter (TypeScript? Python?)
+**In progress:** Domain/Application split, contract hardening, audit fixes.
 
----
-
-## Why This Matters
-
-Most AI coding tools work at the text level. They grep, they pattern-match, they guess. When they claim something is "unused," they miss indirect callers. When they refactor, they break boundaries they cannot see.
-
-Roslyn proved that semantic understanding changes everything for C#/.NET. We spent a week chasing a rogue frequency in a DSP pipeline. Roslyn found it in seconds by tracing the actual signal flow. Three times an AI claimed code was dead. Three times it broke callers grep could not see.
-
-Every language deserves this. Lifeblood is the framework that makes it possible.
+**Next:** C# Roslyn adapter (reference implementation), CLI vertical slice, context pack generator.
 
 ---
 
 ## Getting Started
 
 ```bash
-# Clone
 git clone https://github.com/user-hash/Lifeblood.git
 cd Lifeblood
-
-# Build
 dotnet build
-
-# Run (once CLI is ready)
-lifeblood analyze --project ./my-csharp-project --rules rules.json
 ```
 
----
-
-## Contributing
-
-The highest-value contributions right now:
-
-1. **Language adapters.** Pick a language, implement `ICodeParser` or build a JSON-outputting parser.
-2. **Analysis algorithms.** Port concepts from the [case study](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md).
-3. **Testing.** Real-world codebases as test fixtures.
-
-Read [CLAUDE.md](CLAUDE.md) first. It has all the invariants and architecture rules.
+Read [CLAUDE.md](CLAUDE.md) for architecture rules and invariants.
+Read [docs/MASTERPLAN.md](docs/MASTERPLAN.md) for the full plan.
+Read [docs/ADAPTERS.md](docs/ADAPTERS.md) to build a language adapter.
 
 ---
 
 ## Related
 
-- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — The methodology that led to this tool
+- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — The methodology
 - [Roslyn](https://github.com/dotnet/roslyn) — The C#/.NET compiler platform that inspired everything
-- [DAWG](https://dawgtools.org) — The 400k LOC project where we proved these ideas
-
----
+- [DAWG](https://dawgtools.org) | [itch.io](https://dawg-tools.itch.io/) — The 400k LOC project where we proved these ideas
 
 ## License
 

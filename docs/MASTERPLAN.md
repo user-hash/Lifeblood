@@ -1,336 +1,351 @@
-# Lifeblood Architecture Masterplan
+# Lifeblood Masterplan
 
-10 stages from founding scaffold to 10/10 semantic architecture engine.
-
----
-
-## Current State (v0.1)
-
-What exists: graph model, port stubs, 3 partial analyzers, JSON schema, rules packs, no working adapter, no working CLI. Architecture is directionally right but the primary port (`ICodeParser` at file level) is too narrow for real semantic analysis. Roslyn needs workspace/compilation scope, not single-file parsing.
-
-What the chat agent flagged correctly: "the repo is architecturally ahead of its implementation." True. Fix that.
+The semantic pipe between compiler-level code understanding and AI agents.
 
 ---
 
-## The Fix: Workspace-Level Primary Port
+## What Lifeblood Is
 
-The current `ICodeParser.Parse(filePath, sourceText)` is a file-at-a-time contract. That works for syntax extraction but breaks for semantic resolution. Roslyn resolves types across the entire compilation. A file in isolation cannot tell you if `Foo` is `MyApp.Domain.Foo` or `MyApp.Infrastructure.Foo`.
+Lifeblood is a hexagonal framework with two sides:
 
-**The primary adapter port must be workspace-scoped:**
+```
+LEFT SIDE                        CORE                      RIGHT SIDE
+(Language Adapters)           (The Pipe)                (AI Connectors)
 
-```csharp
-IWorkspaceAnalyzer
-  AnalyzeWorkspace(projectRoot, config) → SemanticGraph
-
-// ICodeParser stays as an internal helper inside adapters,
-// not as the primary contract.
+Roslyn (C#)         ──┐                             ┌──  MCP Server
+TS Compiler API     ──┤   ┌───────────────────┐    ├──  CLAUDE.md generator
+go/types            ──┼─→ │  Semantic Graph    │ ─→─┤──  Context Pack API
+Python ast + mypy   ──┤   │  (universal model) │    ├──  LSP Bridge
+rust-analyzer       ──┤   └───────────────────┘    ├──  CLI / CI
+Java JDT            ──┘                             └──  JSON / REST API
 ```
 
-This is the single biggest architectural correction.
+**Left side:** compilers and language tools feed semantic data in.
+**Core:** normalizes everything into one universal graph. Pure. Zero dependencies on either side.
+**Right side:** AI tools and workflows consume the graph.
+
+Both sides are ports. Both sides are pluggable. We build the framework and the reference implementations. The community builds the rest. Roslyn is open source. AI can help port concepts to other languages. We do not need to build Roslyn-grade quality for every language ourselves.
 
 ---
 
-## Full Port Map (Maximum Granularity)
+## What We Build vs What the Community Builds
 
-### Input Ports (how data enters the core)
+| We build | Community builds |
+|----------|-----------------|
+| The core graph model | Language adapters for Python, Go, Rust, Java |
+| The port interfaces (both sides) | IDE extensions |
+| The C# Roslyn adapter (reference) | Visualization dashboards |
+| The JSON adapter (universal protocol) | Custom reporters |
+| MCP server connector (reference) | CI integrations |
+| CLAUDE.md / context pack generator | Organization-specific rule packs |
+| CLI tool | Cloud/SaaS wrappers |
+| Golden repo test suite | Language-specific test fixtures |
+| Hexagonal, Clean Architecture rule packs | Domain-specific rule packs |
 
-```
-IWorkspaceAnalyzer          Primary adapter port. Workspace → SemanticGraph.
-                            Roslyn adapter, TS adapter, Go adapter all implement this.
+We are the framework. We set the standard. We build one killer path end to end (C# + Roslyn + MCP/CLI). Everything else plugs in.
 
-IGraphImporter              Read a pre-built graph from JSON.
-                            This is how external adapters (Python, Rust) feed the core.
-                            They run as separate processes, output graph.json, core reads it.
+---
 
-IRuleSource                 Where architecture rules come from.
-                            File-based (lifeblood.rules.json), embedded pack, or API.
-```
+## The Model: How Unity MCP Works
 
-### Output Ports (how results leave the core)
-
-```
-IReportSink                 Where analysis results go.
-                            JSON file, HTML report, CI output, stdout.
-
-IGraphExporter              Serialize the graph for external consumption.
-                            JSON (for visualization), DOT (for Graphviz), custom formats.
-
-IAgentContextGenerator      THE KILLER FEATURE.
-                            Generates context packs for AI agents:
-                            high-value files, boundaries, invariants, hotspots,
-                            reading order, blast radius, dependency map.
-                            This is what makes Lifeblood the glue between AI and codebases.
-```
-
-### Query Ports (how consumers ask questions about the graph)
+Our Unity setup is the blueprint for Lifeblood's AI integration. Here is what we already have working:
 
 ```
-ISymbolQuery                Find symbols, resolve references, navigate the graph.
-                            "Give me all types in this module."
-                            "What does this symbol depend on?"
-
-IDependencyQuery            Dependency-specific queries.
-                            "What is the blast radius of changing this file?"
-                            "Show me all reverse dependencies of this interface."
-
-IRuleQuery                  Rule-specific queries.
-                            "Which rules apply to this symbol?"
-                            "Is this edge violating any rule?"
+Unity Editor
+  ↓ (Roslyn + reflection + MCP tools)
+MCP Server (30+ tools)
+  ↓
+Claude Code (reads CLAUDE.md, uses MCP tools, sees the codebase semantically)
 ```
 
-### Infrastructure Ports (environment abstractions)
+The AI agent does not grep. It calls `execute_code` with Roslyn compilation. It calls `manage_script` to validate changes. It calls `read_console` to check for errors. It has IDE-level access through MCP.
+
+**Lifeblood generalizes this pattern for any language and any AI tool.**
+
+Instead of Unity MCP being a one-off integration, Lifeblood makes it a protocol. Any language adapter on the left, any AI connector on the right, same graph in the middle.
+
+---
+
+## Architecture
+
+### Domain (pure, zero deps, the absolute core)
 
 ```
-IFileSystem                 Read source files. Abstracts disk access.
-                            Enables testing with in-memory file systems.
+Lifeblood.Domain/
+  ├── Graph/
+  │   ├── Symbol.cs              # Node: file, type, method, field
+  │   ├── Edge.cs                # Relationship: depends, calls, implements
+  │   ├── Evidence.cs            # Provenance: syntax/semantic/inferred + confidence
+  │   ├── SemanticGraph.cs       # The universal graph with indexed lookups
+  │   └── GraphValidator.cs      # Rejects malformed graphs before analysis
+  │
+  ├── Rules/
+  │   ├── ArchitectureRule.cs    # must_not_reference, may_only_reference
+  │   └── Violation.cs           # Machine-readable violation with proof
+  │
+  ├── Results/
+  │   ├── CouplingMetrics.cs     # Fan-in, fan-out, instability
+  │   ├── TierAssignment.cs      # Pure / Boundary / Runtime / Tooling
+  │   ├── BlastRadiusResult.cs   # What breaks if you change this
+  │   └── GraphMetrics.cs        # Aggregate stats
+  │
+  └── Capabilities/
+      ├── AdapterCapability.cs   # What the adapter can actually do
+      └── ConfidenceLevel.cs     # Proven / High / BestEffort / None
+```
 
-ILogger                     Logging. Analysis should not use Console.Write directly.
+**INV-DOMAIN-001:** This project has ZERO dependencies. Not on Roslyn, not on JSON, not on System.IO. If a PackageReference appears here, the architecture is broken.
 
-IClock                      Time. For cache invalidation, staleness detection, timestamps.
+### Application (orchestration, depends only on Domain + ports)
 
-ICache                      Cache parsed results. Incremental analysis reads from cache
-                            instead of re-parsing unchanged files.
+```
+Lifeblood.Application/
+  ├── Ports/
+  │   │
+  │   ├── Left Side (Language Adapters)
+  │   │   ├── IWorkspaceAnalyzer.cs      # Primary: workspace → graph
+  │   │   ├── IModuleDiscovery.cs        # Find modules/assemblies/packages
+  │   │   └── ISourceProvider.cs         # Read source files
+  │   │
+  │   ├── Right Side (AI Connectors)
+  │   │   ├── IAgentContextGenerator.cs  # Graph → context pack for AI
+  │   │   ├── IMcpGraphProvider.cs       # Serve graph over MCP protocol
+  │   │   └── IInstructionFileGenerator.cs # Graph → CLAUDE.md content
+  │   │
+  │   ├── Graph I/O
+  │   │   ├── IGraphImporter.cs          # Read graph from JSON/external
+  │   │   ├── IGraphExporter.cs          # Write graph to JSON/DOT/etc
+  │   │   └── IGraphNormalizer.cs        # Deduplicate, validate, clean
+  │   │
+  │   ├── Analysis
+  │   │   ├── IAnalyzer.cs               # Generic: graph → typed result
+  │   │   ├── IRuleProvider.cs           # Where rules come from
+  │   │   └── IEntryPointProvider.cs     # For dead code analysis
+  │   │
+  │   ├── Output
+  │   │   ├── IReportSink.cs             # Where results go
+  │   │   └── IProgressSink.cs           # Progress for long analysis
+  │   │
+  │   └── Infrastructure
+  │       ├── IFileSystem.cs             # Abstracts disk
+  │       ├── ICache.cs                  # Incremental analysis cache
+  │       └── ILogger.cs                 # Logging
+  │
+  ├── UseCases/
+  │   ├── AnalyzeWorkspaceUseCase.cs     # The main pipeline
+  │   ├── ValidateRulesUseCase.cs        # Check rules against graph
+  │   ├── GenerateContextUseCase.cs      # Produce AI context pack
+  │   ├── ExportGraphUseCase.cs          # Serialize graph
+  │   └── CompareSnapshotsUseCase.cs     # Diff two graphs
+  │
+  └── Pipeline/
+      └── AnalysisPipeline.cs            # Deterministic execution order
+```
+
+**INV-APP-001:** Application depends only on Domain. Never on adapters, reporters, or CLI.
+
+### Left Side Adapters (Language-Specific)
+
+```
+Lifeblood.Adapters.CSharp/          # Reference implementation
+  ├── RoslynWorkspaceAnalyzer.cs     # IWorkspaceAnalyzer via Roslyn
+  ├── RoslynModuleDiscovery.cs       # .csproj / .sln / .asmdef discovery
+  ├── RoslynSymbolExtractor.cs       # Types, methods, fields from semantic model
+  ├── RoslynEdgeExtractor.cs         # References, calls, implements from semantic model
+  ├── RoslynCapability.cs            # Declares: proven for type/call/override resolution
+  └── Internal/
+      └── RoslynFileParser.cs        # Per-file syntax parsing (internal helper)
+
+Lifeblood.Adapters.JsonGraph/       # Universal protocol adapter
+  ├── JsonGraphImporter.cs           # Read graph.json from any external parser
+  ├── JsonGraphExporter.cs           # Write graph.json
+  ├── JsonSchemaValidator.cs         # Validate against schemas/graph.schema.json
+  └── JsonCapabilityReader.cs        # Read capability metadata from JSON
+
+# Community adapters (we provide the port, they implement):
+# Lifeblood.Adapters.TypeScript/    # ts.createProgram + TypeChecker
+# Lifeblood.Adapters.Go/            # go/analysis + go/types
+# Lifeblood.Adapters.Python/        # ast + mypy
+# Lifeblood.Adapters.Rust/          # syn + rust-analyzer
+# Lifeblood.Adapters.Java/          # JDT / javac tree API
+```
+
+### Right Side Connectors (AI-Facing)
+
+```
+Lifeblood.Connectors.Mcp/           # MCP server that serves the graph
+  ├── McpGraphProvider.cs            # AI agent queries graph via MCP tools
+  ├── McpSymbolLookup.cs             # "What does this type depend on?"
+  ├── McpBlastRadius.cs              # "What breaks if I change this?"
+  └── McpContextPack.cs              # "Give me the context for this file"
+
+Lifeblood.Connectors.ContextPack/   # CLAUDE.md / AI instruction generator
+  ├── AgentContextGenerator.cs       # Graph → context pack JSON
+  ├── InstructionFileGenerator.cs    # Graph → CLAUDE.md section
+  └── ReadingOrderGenerator.cs       # Topological sort by importance
+
+Lifeblood.Connectors.Lsp/           # (future) LSP bridge for IDE integration
+```
+
+### Analysis (optional addon, not the core product)
+
+```
+Lifeblood.Analysis/
+  ├── CouplingAnalyzer.cs
+  ├── BlastRadiusAnalyzer.cs
+  ├── DeadCodeAnalyzer.cs
+  ├── CircularDependencyDetector.cs
+  ├── TierClassifier.cs
+  ├── HubBridgeDetector.cs
+  ├── BoundaryLeakAnalyzer.cs
+  └── RuleValidator.cs
+```
+
+### Reporters + CLI
+
+```
+Lifeblood.Reporters.Json/
+Lifeblood.Reporters.Html/
+Lifeblood.Reporters.Sarif/          # CI/code-scanning standard
+
+Lifeblood.CLI/                      # Composition root. Wires everything.
+```
+
+### Testing
+
+```
+Lifeblood.TestKit/                   # Adapter contract test helpers
+Lifeblood.GoldenRepos/               # Fixture repos with expected outputs
 ```
 
 ---
 
-## Full Analysis Pass Map
+## The Pipeline
 
-All stateless. Input: SemanticGraph + config. Output: typed result. No side effects.
+When you run `lifeblood analyze`, this happens:
 
-### Structural Analysis
 ```
-CouplingAnalyzer            Fan-in, fan-out, instability per symbol.
-CircularDependencyDetector  Tarjan's SCC. Cycles in the dependency graph.
-HubBridgeDetector           Betweenness centrality. God classes and bottlenecks.
-DeadCodeAnalyzer            Unreachable from entry points.
-```
-
-### Architecture Analysis
-```
-TierClassifier              Pure / Boundary / Runtime / Tooling per module and file.
-BoundaryLeakAnalyzer        Finds edges that cross tier boundaries illegally.
-RuleValidator               Checks edges against architecture rules.
-InvariantVerifier           Checks if INV-xxx rules hold in actual code.
-```
-
-### Risk Analysis
-```
-BlastRadiusAnalyzer         What breaks if you change this symbol.
-ChangeRiskAnalyzer          Combines coupling + complexity + churn frequency.
-StabilityAnalyzer           Tracks instability trends across snapshots over time.
-```
-
-### AI Context
-```
-AgentContextBuilder         Produces context packs for AI agents.
-                            Most impactful output of the entire system.
+1. CLI resolves workspace root
+2. Module discovery (IModuleDiscovery)
+3. Source enumeration (ISourceProvider)
+4. Language adapter produces SemanticGraph (IWorkspaceAnalyzer)
+   OR: JSON graph imported (IGraphImporter)
+5. Graph normalized and validated (IGraphNormalizer, GraphValidator)
+6. Rules loaded (IRuleProvider)
+7. Analysis passes run (IAnalyzer[])
+8. Results aggregated with confidence levels
+9. Output: report (IReportSink) + context pack (IAgentContextGenerator)
 ```
 
 ---
 
-## Application Layer (Use Cases)
+## How Other Languages Plug In
 
-Orchestrate adapters, core, and output. No business logic here.
+### Option A: In-process C# adapter
+Write a C# class that implements `IWorkspaceAnalyzer`. Get full pipeline integration. This is what the Roslyn adapter does.
+
+### Option B: External process + JSON
+Write a parser in any language. Output `graph.json`. Lifeblood reads it via `JsonGraphImporter`. This is how Python, Go, Rust, Java plug in without writing C#.
+
+```bash
+# Python community builds a parser
+python lifeblood-python ./my-project > graph.json
+
+# Lifeblood consumes it
+lifeblood analyze --graph graph.json --rules hexagonal.json
+```
+
+### Option C: AI-assisted porting
+Roslyn is open source. The concepts (syntax trees, semantic models, symbol resolution) exist in every language's toolchain. AI agents can help port adapter implementations. We provide the port interface and golden repo tests. The community (with AI help) implements the adapters.
+
+---
+
+## How AI Tools Plug In (Right Side)
+
+### MCP Server
+Like our Unity MCP setup but for any codebase. AI agent calls MCP tools to query the graph:
 
 ```
-AnalyzeWorkspaceUseCase     Discover modules → parse → build graph → run all analysis → report.
-                            This is the main CLI command.
+lifeblood-mcp:symbol-lookup     "What is AuthService?"
+lifeblood-mcp:dependencies      "What does Domain depend on?"
+lifeblood-mcp:blast-radius      "What breaks if I change IUserRepository?"
+lifeblood-mcp:context-pack      "Give me context for src/auth/"
+lifeblood-mcp:violations        "What architecture rules are broken?"
+```
 
-ValidateRulesUseCase        Load rules → validate against graph → report violations.
-                            CI integration: exit code 0 = clean, 1 = violations.
+### CLAUDE.md Generator
+Analyze a codebase, produce a CLAUDE.md section with architecture boundaries, invariants, high-value files, reading order. Paste into your AI instruction file.
 
-CompareSnapshotsUseCase     Load two graphs (before/after) → diff → report changes.
-                            "What changed architecturally since last release?"
+### Context Pack API
+JSON output designed for AI consumption. Feed it to any AI tool.
 
-GenerateAgentContextUseCase Analyze graph → produce context pack for AI.
-                            Output: JSON with high-value files, boundaries, reading order.
+### LSP Bridge (future)
+IDE extension that shows tiers, coupling, violations inline. AI agents that support LSP get semantic info automatically.
 
-ExportGraphUseCase          Serialize graph to JSON/DOT/custom format.
-                            For visualization tools, dashboards, external analysis.
+---
+
+## 10-Stage Plan
+
+### Stage 1: Domain + Application Split
+Split current Lifeblood.Core into Lifeblood.Domain (pure graph model) and Lifeblood.Application (ports + use cases). Fix the 8 audit holes. No features.
+
+### Stage 2: Contract Hardening
+Add rules.schema.json. Add evidence to graph.schema.json. Reconcile JSON/C# naming. GraphValidator rejects malformed graphs. Fix RuleValidator to not mutate graph. Fix GraphBuilder to wire containment. Fix CouplingAnalyzer to count distinct dependants.
+
+### Stage 3: C# Roslyn Adapter
+Reference implementation. Workspace-scoped. Module discovery from .csproj/.sln/.asmdef. Symbol extraction via Roslyn semantic model. Evidence on every edge. Capability declaration: proven.
+
+### Stage 4: JSON Graph Adapter
+Equal citizen. Schema validation. Import/export parity with Roslyn path. This is what makes "any language can plug in" real.
+
+### Stage 5: CLI + JSON Reporter
+End-to-end vertical slice. `lifeblood analyze --project ./my-app` works. `lifeblood analyze --graph graph.json` works. JSON output. Exit codes for CI.
+
+### Stage 6: Golden Repo Test Suite
+Contract tests every adapter must pass. Fixture repos with expected outputs. Adapter certification. The backbone for community quality.
+
+### Stage 7: Context Pack Generator (The Killer Feature)
+`lifeblood context --project ./my-app` produces an AI-consumable context pack. High-value files, boundaries, reading order, hotspots, blast radius map. Paste into CLAUDE.md or feed to any AI tool.
+
+### Stage 8: MCP Server Connector
+Lifeblood as an MCP server. AI agents query the graph through MCP tools. Same pattern as our Unity MCP setup but for any codebase, any language.
+
+### Stage 9: Analysis Suite + Rule Packs
+Full analyzer suite. Hexagonal, Clean Architecture, DDD, Monorepo rule packs. `lifeblood rules --pack hexagonal` applies a built-in pack.
+
+### Stage 10: TypeScript Adapter + Ecosystem
+Second language proves universality. Contributor guide. Plugin discovery. CI templates. The community takes over.
+
+---
+
+## Invariants
+
+```
+INV-DOMAIN-001:  Domain has zero dependencies. Not Roslyn, not JSON, not System.IO.
+INV-DOMAIN-002:  Domain never references Application, Adapters, Connectors, or CLI.
+INV-APP-001:     Application depends only on Domain.
+INV-APP-002:     Application never references concrete adapters or connectors.
+INV-GRAPH-001:   SymbolKind enum is language-agnostic.
+INV-GRAPH-002:   Language-specific metadata goes in Properties, not new fields.
+INV-GRAPH-003:   Every edge carries Evidence (kind, adapter, confidence).
+INV-GRAPH-004:   Analyzers do not modify the graph. Results are separate.
+INV-ADAPT-001:   Every adapter declares capabilities honestly.
+INV-ADAPT-002:   C# adapter is the reference. Most complete, best tested.
+INV-ADAPT-003:   External adapters communicate via JSON graph schema only.
+INV-CONN-001:    Right-side connectors depend on Application ports, not on adapters.
+INV-CONN-002:    MCP connector serves the graph, does not modify it.
+INV-TEST-001:    Every adapter passes the same golden repo contract tests.
+INV-PIPE-001:    The pipeline is deterministic. Same input = same output.
 ```
 
 ---
 
-## 10-Stage Masterplan
+## The Vision
 
-### Stage 1: Architecture Correction
-**Fix the foundation before building on it.**
+Lifeblood becomes the standard way to give AI agents semantic understanding of codebases. Not text search. Not embeddings. Real compiler-level understanding, normalized into one universal graph, consumable by any AI tool.
 
-- [ ] Promote primary port from `ICodeParser` (file) to `IWorkspaceAnalyzer` (workspace)
-- [ ] Demote `ICodeParser` to internal adapter helper
-- [ ] Add `IGraphImporter` port (read JSON graphs from external adapters)
-- [ ] Add `IReportSink` port
-- [ ] Add `IFileSystem` port (enable testability)
-- [ ] Add `IAgentContextGenerator` port (define the killer feature early)
-- [ ] Update CLAUDE.md invariants for new port structure
-- [ ] Verify: Core.csproj still has ZERO dependencies
+The left side grows as communities build language adapters.
+The right side grows as AI tools adopt MCP and context pack protocols.
+The core stays pure. Forever.
 
-**Exit criteria:** All ports defined. Core compiles. No adapter code in core.
-
-### Stage 2: C# Roslyn Adapter (Reference Implementation)
-**Prove the architecture works on real code.**
-
-- [ ] Implement `RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer`
-- [ ] Module discovery from .csproj / .sln / .asmdef files
-- [ ] File parsing: symbols (types, methods, fields) + edges (imports, inheritance)
-- [ ] Roslyn semantic model: type resolution, call resolution, implementation edges
-- [ ] Evidence on every edge (syntax vs semantic, source span, confidence)
-- [ ] Capability declaration: proven for type/call/override resolution
-- [ ] Test on a small real C# project (not DAWG yet, something small first)
-
-**Exit criteria:** Parse a real C# project. Produce a valid SemanticGraph. All edges carry evidence.
-
-### Stage 3: CLI + JSON Reporter (End-to-End Path)
-**Make it runnable. Someone types a command, gets a result.**
-
-- [ ] `lifeblood analyze --project <path>` uses Roslyn adapter
-- [ ] `lifeblood analyze --graph <json>` uses JSON importer (external adapters)
-- [ ] `lifeblood rules --project <path> --rules <rules.json>` validates rules
-- [ ] `lifeblood export --project <path> --output graph.json` exports graph
-- [ ] JSON reporter: machine-readable output
-- [ ] Human-readable console summary
-- [ ] Exit codes: 0 = clean, 1 = violations, 2 = error
-
-**Exit criteria:** `lifeblood analyze --project ./my-app --rules hexagonal.json` works end to end.
-
-### Stage 4: Golden Repo Test Suite
-**Trust through testing. Every adapter must pass the same contract.**
-
-- [ ] TinyHexagonalApp fixture: 3 modules (Domain pure, App, Infrastructure)
-- [ ] CircularDependencyRepo fixture: intentional cycles
-- [ ] DeadCodeRepo fixture: unreachable symbols
-- [ ] BoundaryViolationRepo fixture: forbidden cross-tier edges
-- [ ] `expected.json` per fixture: what analysis MUST find
-- [ ] Contract test runner: adapter produces graph, verify against expected
-- [ ] C# adapter passes all fixtures
-
-**Exit criteria:** `dotnet test` passes. All fixtures verified. Any new adapter can be tested the same way.
-
-### Stage 5: Core Analyzers (Full Suite)
-**The analysis that makes the graph valuable.**
-
-- [ ] CouplingAnalyzer: fan-in, fan-out, instability (already started)
-- [ ] CircularDependencyDetector: Tarjan's SCC (already started)
-- [ ] BlastRadiusAnalyzer: reverse dependency walk (already started)
-- [ ] TierClassifier: Pure/Boundary/Runtime/Tooling (already started)
-- [ ] DeadCodeAnalyzer: mark entry points, walk reachability, report unreachable
-- [ ] HubBridgeDetector: Brandes betweenness centrality
-- [ ] BoundaryLeakAnalyzer: find edges crossing tier boundaries
-- [ ] RuleValidator: must_not_reference, may_only_reference (already started)
-- [ ] All analyzers tested against golden repos
-
-**Exit criteria:** All 8 analyzers work. Golden repo tests verify each one.
-
-### Stage 6: Agent Context Generation (The Killer Feature)
-**This is what makes Lifeblood the glue between AI and codebases.**
-
-- [ ] `IAgentContextGenerator` implementation
-- [ ] Output: JSON context pack containing:
-  - High-value files (highest coupling, most dependants)
-  - Architecture boundaries (which modules are pure, which are coupled)
-  - Invariants extracted from rules
-  - Hotspots (high complexity + high coupling + high change frequency)
-  - Recommended reading order (topological sort by importance)
-  - Blast radius map for critical symbols
-  - Dependency matrix summary
-- [ ] `lifeblood context --project <path>` CLI command
-- [ ] Format designed to be pasted into CLAUDE.md or AI instruction files
-- [ ] Test: generate context for golden repo, verify it is useful
-
-**Exit criteria:** `lifeblood context --project ./my-app` produces a context pack an AI agent can consume.
-
-### Stage 7: Snapshot Diff
-**Track architecture over time. Catch drift.**
-
-- [ ] `lifeblood snapshot --project <path> --output snapshot-v1.json`
-- [ ] `lifeblood diff --before snapshot-v1.json --after snapshot-v2.json`
-- [ ] Diff output: new symbols, removed symbols, new edges, removed edges, new violations, resolved violations
-- [ ] Integration: run in CI, fail if new violations appear
-- [ ] Ratchet support: violation count can only decrease
-
-**Exit criteria:** Diff two snapshots. Report what changed. CI can enforce ratchets.
-
-### Stage 8: Rules Engine Upgrade + Packs
-**From simple glob matching to a real declarative rule system.**
-
-- [ ] YAML rule format (in addition to JSON):
-  ```yaml
-  tiers:
-    Domain:
-      may_depend_on: []
-    App:
-      may_depend_on: [Domain]
-    Infrastructure:
-      may_depend_on: [App, Domain]
-  ```
-- [ ] Tier-aware rules (not just namespace patterns)
-- [ ] Naming constraints (e.g., "ports must start with I")
-- [ ] Forbidden symbol reference rules (e.g., "no Debug.Log in Domain")
-- [ ] Rule packs: hexagonal, clean-architecture, DDD, monorepo
-- [ ] `lifeblood rules --pack hexagonal` applies a built-in pack
-- [ ] Custom rule packs: users define their own
-
-**Exit criteria:** Rule packs work. Users can apply hexagonal rules with one flag.
-
-### Stage 9: TypeScript Adapter (Prove Universality)
-**Second language proves the architecture is truly language-agnostic.**
-
-- [ ] TypeScript adapter using `ts.createProgram` and `TypeChecker`
-- [ ] Module discovery from `tsconfig.json` / `package.json`
-- [ ] Symbol extraction: types, functions, imports, exports
-- [ ] Semantic edges: type resolution, call resolution, implementation
-- [ ] Capability declaration: high for type/call resolution
-- [ ] Passes all golden repo fixtures (TypeScript versions)
-- [ ] CLI works: `lifeblood analyze --project ./my-ts-app`
-
-**Exit criteria:** Analyze a real TypeScript project. Same analyzers, same rules, same output format.
-
-### Stage 10: Extension Points + Ecosystem
-**Make it extensible. Let the community build on it.**
-
-- [ ] Plugin system: drop an adapter DLL, it is discovered automatically
-- [ ] CI templates: GitHub Actions, GitLab CI, Azure DevOps
-- [ ] IDE integration: VS Code extension that shows tier/coupling in editor
-- [ ] Visualization: web dashboard reading graph.json
-- [ ] NuGet package: Lifeblood.Core as a library others can embed
-- [ ] Contributor guide: how to build an adapter, how to add an analyzer
-- [ ] Adapter certification: automated test that verifies adapter quality
-
-**Exit criteria:** External contributors can build and publish adapters without touching core.
-
----
-
-## The Killer Positioning
-
-Lifeblood is not a linter. Not a code reviewer. Not a documentation tool.
-
-**Lifeblood is the semantic layer between AI agents and codebases.**
-
-Without it, AI agents work at text level. They grep, they guess, they break things they cannot see.
-
-With it, AI agents see the codebase the way an IDE does: types, references, boundaries, dependencies, blast radius, authority. They know what matters before they write code.
-
-**Stage 6 (Agent Context Generation) is the feature that makes this real.** Everything before it is infrastructure. Everything after it is scale.
-
----
-
-## Architecture Invariants (updated for masterplan)
-
-```
-INV-CORE-001:  Core has zero external dependencies. Ever.
-INV-CORE-002:  Core has zero references to any adapter.
-INV-CORE-003:  All analysis operates on SemanticGraph only.
-INV-CORE-004:  All analyzers are stateless. No side effects.
-INV-PORT-001:  Primary adapter port is workspace-scoped, not file-scoped.
-INV-PORT-002:  File parsing is internal to adapters, not a core contract.
-INV-PORT-003:  External adapters communicate via JSON graph schema only.
-INV-GRAPH-001: SymbolKind enum is language-agnostic.
-INV-GRAPH-002: Language-specific metadata goes in Properties, not new fields.
-INV-GRAPH-003: Every edge carries Evidence (kind, adapter, confidence, source span).
-INV-ADAPT-001: Every adapter declares capabilities honestly.
-INV-ADAPT-002: C# adapter is the reference. Most complete, best tested.
-INV-ADAPT-003: Adapters can be in-process (C#) or out-of-process (any language → JSON).
-INV-TEST-001:  Every adapter passes the same golden repo contract tests.
-INV-TEST-002:  Every analyzer is tested against golden repos.
-```
+We are the lifeblood.
