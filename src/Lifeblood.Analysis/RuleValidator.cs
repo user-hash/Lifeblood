@@ -31,7 +31,7 @@ public static class RuleValidator
             {
                 if (!MatchesPattern(srcNs, rules[r].Source)) continue;
 
-                if (rules[r].MustNotReference != null && MatchesPattern(tgtNs, rules[r].MustNotReference))
+                if (rules[r].MustNotReference != null && MatchesPattern(tgtNs, rules[r].MustNotReference!))
                 {
                     violations.Add(new Violation
                     {
@@ -45,7 +45,7 @@ public static class RuleValidator
                     break;
                 }
 
-                if (rules[r].MayOnlyReference != null && !MatchesPattern(tgtNs, rules[r].MayOnlyReference))
+                if (rules[r].MayOnlyReference != null && !MatchesPattern(tgtNs, rules[r].MayOnlyReference!))
                 {
                     violations.Add(new Violation
                     {

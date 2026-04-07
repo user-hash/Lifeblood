@@ -63,19 +63,21 @@ public sealed class RoslynEdgeExtractor
 
         var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(typeSymbol));
 
-        // Base type → Inherits
+        // Base type → Inherits (only source-defined bases)
         if (typeSymbol.BaseType != null
             && typeSymbol.BaseType.SpecialType != SpecialType.System_Object
             && typeSymbol.BaseType.SpecialType != SpecialType.System_ValueType
-            && typeSymbol.BaseType.SpecialType != SpecialType.System_Enum)
+            && typeSymbol.BaseType.SpecialType != SpecialType.System_Enum
+            && IsFromSource(typeSymbol.BaseType))
         {
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(typeSymbol.BaseType));
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Inherits);
         }
 
-        // Interfaces → Implements
+        // Interfaces → Implements (only source-defined interfaces)
         foreach (var iface in typeSymbol.Interfaces)
         {
+            if (!IsFromSource(iface)) continue;
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(iface));
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Implements);
         }
@@ -88,6 +90,7 @@ public sealed class RoslynEdgeExtractor
         var symbolInfo = model.GetSymbolInfo(invocation);
         var target = symbolInfo.Symbol as IMethodSymbol;
         if (target?.ContainingType == null) return;
+        if (!IsFromSource(target)) return;
 
         var caller = FindContainingMethod(model, invocation);
         if (caller == null) return;
@@ -108,6 +111,7 @@ public sealed class RoslynEdgeExtractor
         var symbolInfo = model.GetSymbolInfo(creation);
         var target = symbolInfo.Symbol as IMethodSymbol;
         if (target?.ContainingType == null) return;
+        if (!IsFromSource(target.ContainingType)) return;
 
         var caller = FindContainingMethod(model, creation);
         if (caller == null) return;
@@ -129,8 +133,9 @@ public sealed class RoslynEdgeExtractor
         var referencedSymbol = symbolInfo.Symbol;
         if (referencedSymbol == null) return;
 
-        // Only track references to types
+        // Only track references to source-defined types
         if (referencedSymbol is not INamedTypeSymbol referencedType) return;
+        if (!IsFromSource(referencedType)) return;
 
         var containingType = FindContainingType(model, identifier);
         if (containingType == null) return;
@@ -149,6 +154,7 @@ public sealed class RoslynEdgeExtractor
         var symbolInfo = model.GetSymbolInfo(memberAccess);
         var target = symbolInfo.Symbol;
         if (target?.ContainingType == null) return;
+        if (!IsFromSource(target.ContainingType)) return;
 
         var containingType = FindContainingType(model, memberAccess);
         if (containingType == null) return;
@@ -193,6 +199,21 @@ public sealed class RoslynEdgeExtractor
         return SymbolIds.Method(
             RoslynSymbolExtractor.GetFullName(method.ContainingType),
             method.Name, paramSig);
+    }
+
+    /// <summary>
+    /// Returns true if the symbol is defined in source (not from a metadata/BCL reference).
+    /// Only creates edges to source-defined symbols to avoid dangling targets.
+    /// Filters out System.* types that appear source-like due to compiler-generated code.
+    /// </summary>
+    private static bool IsFromSource(ISymbol? symbol)
+    {
+        if (symbol == null) return false;
+        if (symbol.DeclaringSyntaxReferences.Length == 0) return false;
+        // ValueTuple is compiler-generated — treat as external
+        var ns = symbol.ContainingNamespace?.ToDisplayString() ?? "";
+        if (ns.StartsWith("System", StringComparison.Ordinal)) return false;
+        return true;
     }
 
     private static void AddEdge(

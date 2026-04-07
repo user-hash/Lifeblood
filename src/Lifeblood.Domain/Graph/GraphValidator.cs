@@ -102,7 +102,10 @@ public static class GraphValidator
                 });
             }
 
-            if (!string.IsNullOrEmpty(e.SourceId) && e.SourceId == e.TargetId)
+            // Self-referencing Calls edges are valid (recursion).
+            // Only flag self-referencing dependency/structural edges.
+            if (!string.IsNullOrEmpty(e.SourceId) && e.SourceId == e.TargetId
+                && e.Kind != EdgeKind.Calls)
             {
                 errors.Add(new GraphValidationError
                 {
