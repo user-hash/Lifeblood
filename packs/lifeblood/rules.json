@@ -1,0 +1,73 @@
+{
+  "name": "Lifeblood Hexagonal",
+  "description": "Architecture rules for the Lifeblood framework itself. Enforces hexagonal boundaries.",
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "LB-001",
+      "description": "Domain must not reference Application",
+      "source": "Lifeblood.Domain",
+      "mustNotReference": "Lifeblood.Application"
+    },
+    {
+      "id": "LB-002",
+      "description": "Domain must not reference Adapters",
+      "source": "Lifeblood.Domain",
+      "mustNotReference": "Lifeblood.Adapters"
+    },
+    {
+      "id": "LB-003",
+      "description": "Domain must not reference Connectors",
+      "source": "Lifeblood.Domain",
+      "mustNotReference": "Lifeblood.Connectors"
+    },
+    {
+      "id": "LB-004",
+      "description": "Domain must not reference CLI",
+      "source": "Lifeblood.Domain",
+      "mustNotReference": "Lifeblood.CLI"
+    },
+    {
+      "id": "LB-005",
+      "description": "Domain must not reference Analysis",
+      "source": "Lifeblood.Domain",
+      "mustNotReference": "Lifeblood.Analysis"
+    },
+    {
+      "id": "LB-006",
+      "description": "Application must not reference Adapters",
+      "source": "Lifeblood.Application",
+      "mustNotReference": "Lifeblood.Adapters"
+    },
+    {
+      "id": "LB-007",
+      "description": "Application must not reference Connectors",
+      "source": "Lifeblood.Application",
+      "mustNotReference": "Lifeblood.Connectors"
+    },
+    {
+      "id": "LB-008",
+      "description": "Application must not reference CLI",
+      "source": "Lifeblood.Application",
+      "mustNotReference": "Lifeblood.CLI"
+    },
+    {
+      "id": "LB-009",
+      "description": "Adapters must not reference Connectors",
+      "source": "Lifeblood.Adapters",
+      "mustNotReference": "Lifeblood.Connectors"
+    },
+    {
+      "id": "LB-010",
+      "description": "Connectors must not reference CSharp Adapter",
+      "source": "Lifeblood.Connectors",
+      "mustNotReference": "Lifeblood.Adapters.CSharp"
+    },
+    {
+      "id": "LB-011",
+      "description": "Connectors must not reference JsonGraph Adapter",
+      "source": "Lifeblood.Connectors",
+      "mustNotReference": "Lifeblood.Adapters.JsonGraph"
+    }
+  ]
+}

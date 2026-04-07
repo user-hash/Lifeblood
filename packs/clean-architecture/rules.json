@@ -7,31 +7,31 @@
       "id": "CLEAN-001",
       "description": "Entities must not reference Use Cases",
       "source": "*.Entities",
-      "must_not_reference": "*.UseCases"
+      "mustNotReference": "*.UseCases"
     },
     {
       "id": "CLEAN-002",
       "description": "Entities must not reference Interface Adapters",
       "source": "*.Entities",
-      "must_not_reference": "*.Adapters"
+      "mustNotReference": "*.Adapters"
     },
     {
       "id": "CLEAN-003",
       "description": "Entities must not reference Frameworks",
       "source": "*.Entities",
-      "must_not_reference": "*.Frameworks"
+      "mustNotReference": "*.Frameworks"
     },
     {
       "id": "CLEAN-004",
       "description": "Use Cases must not reference Interface Adapters",
       "source": "*.UseCases",
-      "must_not_reference": "*.Adapters"
+      "mustNotReference": "*.Adapters"
     },
     {
       "id": "CLEAN-005",
       "description": "Use Cases must not reference Frameworks",
       "source": "*.UseCases",
-      "must_not_reference": "*.Frameworks"
+      "mustNotReference": "*.Frameworks"
     }
   ]
 }

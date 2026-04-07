@@ -7,37 +7,37 @@
       "id": "HEX-001",
       "description": "Domain must not reference Infrastructure",
       "source": "*.Domain",
-      "must_not_reference": "*.Infrastructure"
+      "mustNotReference": "*.Infrastructure"
     },
     {
       "id": "HEX-002",
       "description": "Domain must not reference Adapters",
       "source": "*.Domain",
-      "must_not_reference": "*.Adapters"
+      "mustNotReference": "*.Adapters"
     },
     {
       "id": "HEX-003",
       "description": "Domain must not reference Presentation",
       "source": "*.Domain",
-      "must_not_reference": "*.Presentation"
+      "mustNotReference": "*.Presentation"
     },
     {
       "id": "HEX-004",
       "description": "App layer must not reference Infrastructure directly",
       "source": "*.App",
-      "must_not_reference": "*.Infrastructure"
+      "mustNotReference": "*.Infrastructure"
     },
     {
       "id": "HEX-005",
       "description": "Domain must not reference platform/engine types",
       "source": "*.Domain",
-      "must_not_reference": "UnityEngine"
+      "mustNotReference": "UnityEngine"
     },
     {
       "id": "HEX-006",
       "description": "Domain must not reference platform/engine types",
       "source": "*.Domain",
-      "must_not_reference": "System.Net.*"
+      "mustNotReference": "System.Net.*"
     }
   ]
 }

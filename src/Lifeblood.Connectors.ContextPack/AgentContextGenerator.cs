@@ -113,11 +113,16 @@ public sealed class AgentContextGenerator : IAgentContextGenerator
     {
         var invariants = new List<string>();
 
+        // Only report module-level purity — that's architecturally significant.
+        // Leaf types being "pure" is trivially obvious and adds noise.
         foreach (var tier in analysis.Tiers)
         {
-            if (tier.Tier == ArchitectureTier.Pure)
+            if (tier.Tier == ArchitectureTier.Pure && tier.SymbolId.StartsWith("mod:"))
                 invariants.Add($"{tier.SymbolId} is pure (zero dependencies)");
         }
+
+        if (analysis.Cycles.Length > 0)
+            invariants.Add($"{analysis.Cycles.Length} circular dependency cycles detected");
 
         if (analysis.Violations.Length == 0)
             invariants.Add("No architecture violations detected");
@@ -129,7 +134,10 @@ public sealed class AgentContextGenerator : IAgentContextGenerator
 
     private static string[] IdentifyHotspots(Dictionary<string, CouplingMetrics> coupling)
     {
+        // Exclude modules — composition roots and test projects have high coupling by design.
+        // Hotspots should surface type-level problems, not structural roles.
         return coupling.Values
+            .Where(c => !c.SymbolId.StartsWith("mod:"))
             .Where(c => c.FanIn + c.FanOut > 5 && c.Instability > 0.5f)
             .OrderByDescending(c => c.FanIn + c.FanOut)
             .Take(20)
@@ -139,45 +147,70 @@ public sealed class AgentContextGenerator : IAgentContextGenerator
 
     private static ModuleDependency[] BuildDependencyMatrix(SemanticGraph graph)
     {
-        // Build module membership: symbolId → moduleId
-        var memberOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        var matrix = new List<ModuleDependency>();
+
+        // Use module-level DependsOn edges (reliable, from csproj parsing).
+        // Cross-module type-level edges depend on compilation fidelity
+        // and may be incomplete — module-level is always truthful.
         foreach (var symbol in graph.Symbols)
         {
-            if (symbol.Kind == SymbolKind.Module) continue;
-            // Walk up parentId chain to find module
-            var current = symbol;
-            while (current != null && current.Kind != SymbolKind.Module)
+            if (symbol.Kind != SymbolKind.Module) continue;
+
+            // Count type-level cross-module edges where available
+            var memberIds = CollectModuleMembers(graph, symbol.Id);
+
+            foreach (int idx in graph.GetOutgoingEdgeIndexes(symbol.Id))
             {
-                if (string.IsNullOrEmpty(current.ParentId)) break;
-                current = graph.GetSymbol(current.ParentId);
+                var edge = graph.Edges[idx];
+                if (edge.Kind != EdgeKind.DependsOn) continue;
+
+                var target = graph.GetSymbol(edge.TargetId);
+                if (target == null) continue;
+
+                var targetMembers = CollectModuleMembers(graph, target.Id);
+
+                // Count how many non-Contains edges cross from our members to their members
+                int crossEdgeCount = 0;
+                foreach (var memberId in memberIds)
+                {
+                    foreach (int eidx in graph.GetOutgoingEdgeIndexes(memberId))
+                    {
+                        var e = graph.Edges[eidx];
+                        if (e.Kind == EdgeKind.Contains) continue;
+                        if (targetMembers.Contains(e.TargetId))
+                            crossEdgeCount++;
+                    }
+                }
+
+                matrix.Add(new ModuleDependency
+                {
+                    Source = symbol.Name,
+                    Target = target.Name,
+                    // Use cross-edge count if available, otherwise 1 (the module DependsOn edge itself)
+                    EdgeCount = crossEdgeCount > 0 ? crossEdgeCount : 1,
+                });
             }
-            if (current?.Kind == SymbolKind.Module)
-                memberOf[symbol.Id] = current.Id;
         }
 
-        // Count cross-module edges
-        var crossEdges = new Dictionary<(string src, string tgt), int>();
-        foreach (var edge in graph.Edges)
-        {
-            if (edge.Kind == EdgeKind.Contains) continue;
-            if (!memberOf.TryGetValue(edge.SourceId, out var srcMod)) continue;
-            if (!memberOf.TryGetValue(edge.TargetId, out var tgtMod)) continue;
-            if (srcMod == tgtMod) continue;
+        return matrix.ToArray();
+    }
 
-            var key = (srcMod, tgtMod);
-            crossEdges[key] = crossEdges.GetValueOrDefault(key) + 1;
-        }
+    private static HashSet<string> CollectModuleMembers(SemanticGraph graph, string moduleId)
+    {
+        var members = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<string>();
+        queue.Enqueue(moduleId);
 
-        return crossEdges.Select(kv =>
+        while (queue.Count > 0)
         {
-            var srcName = graph.GetSymbol(kv.Key.src)?.Name ?? kv.Key.src;
-            var tgtName = graph.GetSymbol(kv.Key.tgt)?.Name ?? kv.Key.tgt;
-            return new ModuleDependency
+            var current = queue.Dequeue();
+            foreach (var child in graph.ChildrenOf(current))
             {
-                Source = srcName,
-                Target = tgtName,
-                EdgeCount = kv.Value,
-            };
-        }).ToArray();
+                if (members.Add(child.Id))
+                    queue.Enqueue(child.Id);
+            }
+        }
+
+        return members;
     }
 }
