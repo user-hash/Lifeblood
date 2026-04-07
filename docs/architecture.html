@@ -6,14 +6,19 @@
   <title>Lifeblood — Architecture</title>
   <style>
     :root {
-      --bg: #0b1020;
-      --text: #e8ecf8;
-      --muted: #9fb0d9;
-      --accent: #7bdcff;
-      --accent-2: #a88bff;
-      --accent-3: #8cf0b5;
-      --warning: #ffd37b;
-      --shadow: 0 12px 30px rgba(0,0,0,0.25);
+      /* OKLab-derived palette — perceptually uniform, from the original SVG diagram */
+      --bg: oklch(0.13 0.02 260);           /* #0d1117 deep space */
+      --card: oklch(0.17 0.02 260);          /* #161b22 card surface */
+      --border: oklch(0.30 0.015 260);       /* #30363d subtle borders */
+      --text: oklch(0.93 0.01 260);          /* #e6edf3 primary text */
+      --muted: oklch(0.65 0.02 260);         /* #8b949e muted text */
+      --accent: oklch(0.72 0.12 230);        /* #6ba3d6 left/blue */
+      --accent-2: oklch(0.68 0.18 290);      /* #a88bff right/purple */
+      --accent-3: oklch(0.82 0.14 160);      /* #8cf0b5 green */
+      --warning: oklch(0.85 0.12 80);        /* #ffd37b yellow */
+      --hex-fill: oklch(0.16 0.03 260);      /* #131d2e hex outer */
+      --hex-core: oklch(0.14 0.04 260);      /* #0d1a2d hex inner glow */
+      --shadow: 0 12px 30px oklch(0 0 0 / 0.3);
       --radius: 18px;
       --inactive: 0.35;
     }
@@ -25,18 +30,18 @@
     }
     .frame {
       max-width: 1400px; margin: 0 auto;
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 24px;
+      border: 1px solid var(--border); border-radius: 24px;
       background: rgba(12,18,34,0.9); overflow: hidden;
     }
     .header {
       padding: 22px 28px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      border-bottom: 1px solid var(--border);
     }
     .header h1 { font-size: 26px; letter-spacing: -0.03em; }
     .header p { color: var(--muted); font-size: 14px; margin-top: 8px; line-height: 1.5; }
     .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .pill {
-      border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border); background: oklch(1 0 0 / 0.04);
       border-radius: 999px; padding: 6px 12px; font-size: 11px; color: var(--text);
     }
 
@@ -51,10 +56,10 @@
       padding: 20px;
     }
     .col:first-child {
-      border-right: 2px dashed rgba(123,220,255,0.15);
+      border-right: 2px dashed oklch(0.72 0.12 230 / 0.2);
     }
     .col:last-child {
-      border-left: 2px dashed rgba(168,139,255,0.15);
+      border-left: 2px dashed oklch(0.68 0.18 290 / 0.2);
     }
     .col-label {
       font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
@@ -62,15 +67,15 @@
     }
 
     .card {
-      border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius);
-      background: rgba(255,255,255,0.03); padding: 16px; margin-bottom: 14px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: oklch(1 0 0 / 0.03); padding: 16px; margin-bottom: 14px;
     }
     .card h3 { font-size: 15px; margin-bottom: 8px; letter-spacing: -0.01em; }
     .card p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 
     .item {
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
-      background: rgba(255,255,255,0.03); padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: oklch(1 0 0 / 0.03); padding: 10px 12px;
       margin-top: 8px; font-size: 12px;
     }
     .item strong { display: block; font-size: 12px; margin-bottom: 2px; }
@@ -110,19 +115,19 @@
     .hex-boundary {
       position: absolute; inset: 0;
       clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
-      background: linear-gradient(180deg, rgba(30,42,82,0.97), rgba(18,27,52,0.98));
-      border: 2px solid rgba(123,220,255,0.3);
+      background: linear-gradient(180deg, var(--hex-fill), var(--hex-core));
+      border: 2px solid oklch(0.72 0.12 230 / 0.35);
       display: flex; align-items: center; justify-content: center; text-align: center;
       flex-direction: column; gap: 16px;
     }
     .hex-boundary .domain-core {
-      background: rgba(123,220,255,0.08);
-      border: 1px solid rgba(123,220,255,0.25);
+      background: oklch(0.72 0.12 230 / 0.1);
+      border: 1px solid oklch(0.72 0.12 230 / 0.3);
       border-radius: 14px; padding: 16px 24px; text-align: center;
     }
     .hex-boundary .app-ring {
-      background: rgba(168,139,255,0.06);
-      border: 1px solid rgba(168,139,255,0.2);
+      background: oklch(0.68 0.18 290 / 0.08);
+      border: 1px solid oklch(0.68 0.18 290 / 0.25);
       border-radius: 10px; padding: 10px 18px; text-align: center;
     }
     .hex-boundary h2 { font-size: 22px; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
@@ -137,11 +142,11 @@
       position: relative;
     }
     .port.left {
-      border-color: var(--accent); background: rgba(123,220,255,0.08);
+      border-color: var(--accent); background: oklch(0.72 0.12 230 / 0.1);
       border-left: 4px solid var(--accent);
     }
     .port.right {
-      border-color: var(--accent-2); background: rgba(168,139,255,0.08);
+      border-color: var(--accent-2); background: oklch(0.68 0.18 290 / 0.1);
       border-right: 4px solid var(--accent-2);
     }
     .port strong { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
@@ -157,8 +162,8 @@
     }
 
     .signal-card {
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
-      background: rgba(255,255,255,0.03); padding: 12px 16px;
+      border: 1px solid var(--border); border-radius: 14px;
+      background: oklch(1 0 0 / 0.03); padding: 12px 16px;
       margin-top: 12px; width: 100%;
     }
     .signal-card strong {
@@ -170,18 +175,18 @@
     /* Footer */
     .legend {
       padding: 20px 28px;
-      border-top: 1px solid rgba(255,255,255,0.05);
+      border-top: 1px solid var(--border);
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
     }
     .legend-item {
-      border: 1px solid rgba(255,255,255,0.06); border-radius: 14px;
-      background: rgba(255,255,255,0.02); padding: 12px; font-size: 11px;
+      border: 1px solid var(--border); border-radius: 14px;
+      background: oklch(1 0 0 / 0.02); padding: 12px; font-size: 11px;
       color: var(--muted); line-height: 1.5;
     }
     .legend-item b { display: block; color: var(--text); margin-bottom: 4px; }
     .footer {
       padding: 14px 28px; color: var(--muted); font-size: 11px;
-      border-top: 1px solid rgba(255,255,255,0.05);
+      border-top: 1px solid var(--border);
     }
   </style>
 </head>
@@ -235,7 +240,7 @@
       </div>
 
       <!-- CENTER COLUMN -->
-      <div class="col hex-area" style="border-right: 1px solid rgba(255,255,255,0.05);">
+      <div class="col hex-area" style="border-right: 1px solid var(--border);">
         <div class="col-label">&nbsp;</div>
 
         <div class="hex-row">
