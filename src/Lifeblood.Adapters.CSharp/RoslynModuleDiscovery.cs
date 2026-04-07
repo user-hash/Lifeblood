@@ -56,8 +56,8 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             var projectDir = Path.GetDirectoryName(csprojPath)!;
 
             // Assembly name
-            var assemblyName = doc.Descendants(ns + "AssemblyName").FirstOrDefault()?.Value
-                ?? doc.Descendants("AssemblyName").FirstOrDefault()?.Value
+            var assemblyName = doc.Descendants()
+                .FirstOrDefault(el => el.Name.LocalName == "AssemblyName")?.Value
                 ?? Path.GetFileNameWithoutExtension(csprojPath);
 
             // Source files
@@ -66,18 +66,19 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                          && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
                 .ToArray();
 
-            // Project references → dependencies
-            var deps = doc.Descendants(ns + "ProjectReference")
-                .Concat(doc.Descendants("ProjectReference"))
+            // Project references → dependencies (deduplicated)
+            var deps = doc.Descendants()
+                .Where(el => el.Name.LocalName == "ProjectReference")
                 .Select(el => el.Attribute("Include")?.Value)
                 .Where(v => v != null)
                 .Select(v => Path.GetFileNameWithoutExtension(v!))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            // Pure detection (noEngineReferences or similar)
+            // Pure detection: no PackageReference or assembly Reference
             bool isPure = !doc.Descendants().Any(el =>
-                el.Name.LocalName == "PackageReference" ||
-                el.Name.LocalName == "Reference");
+                el.Name.LocalName == "PackageReference"
+                || el.Name.LocalName == "Reference");
 
             return new ModuleInfo
             {
