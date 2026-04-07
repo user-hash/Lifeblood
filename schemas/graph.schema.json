@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "graph.schema.json",
   "title": "Lifeblood Semantic Graph",
-  "description": "Language-agnostic semantic graph. Any language adapter can output this format. The CLI reads it and runs all analysis.",
+  "description": "Language-agnostic semantic graph. Any language adapter can output this format. The CLI reads it and runs all analysis. JSON uses camelCase; C# models use PascalCase. Capability fields have manual names (see CLAUDE.md Serialization Naming).",
   "type": "object",
   "required": ["version", "symbols", "edges"],
   "properties": {

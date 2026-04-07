@@ -126,6 +126,25 @@ IAnalyzer<TConfig, TResult>.Analyze(graph, config) → TResult
 IRuleProvider.LoadRules(path) → ArchitectureRule[]
 ```
 
+## Serialization Naming
+
+JSON schemas use **camelCase**. C# models use **PascalCase**. The mapping is mechanical:
+
+| C# Property | JSON Field | Notes |
+|-------------|-----------|-------|
+| `SourceId` | `sourceId` | Edge reference |
+| `TargetId` | `targetId` | Edge reference |
+| `QualifiedName` | `qualifiedName` | Symbol FQN |
+| `ParentId` | `parentId` | Containment hierarchy |
+| `FilePath` | `filePath` | Source location |
+| `CanDiscoverSymbols` | `discoverSymbols` | Capability: "Can" prefix dropped |
+| `CanExpandMacros` | `macroExpansion` | Capability: verb → noun |
+| `SupportsIncremental` | `incremental` | Capability: "Supports" prefix dropped |
+| `MustNotReference` | `mustNotReference` | Rule constraint |
+| `MayOnlyReference` | `mayOnlyReference` | Rule constraint |
+
+Rule: JSON serializers should use `System.Text.Json` with `JsonNamingPolicy.CamelCase`. Capability fields have manual names (documented in `schemas/graph.schema.json`).
+
 ## Naming Conventions
 
 | Pattern | Usage |
