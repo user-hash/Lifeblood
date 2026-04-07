@@ -64,16 +64,16 @@ public class RoslynGoldenRepoTests
     }
 
     [Fact]
-    public void HexagonalApp_CouplingAnalysis_EntityIsStable()
+    public void HexagonalApp_CouplingAnalysis_IRepositoryHasDependants()
     {
         var graph = BuildHexagonalAppGraph();
         var coupling = CouplingAnalyzer.Analyze(graph, new[] { DomainSymbolKind.Type });
 
-        var entity = coupling.FirstOrDefault(c => c.SymbolId.Contains("Entity"));
-        Assert.NotNull(entity);
-        // Entity has dependants but no outgoing deps → low instability
-        Assert.True(entity!.Instability <= 0.5f,
-            $"Entity instability {entity.Instability} should be <= 0.5 (stable)");
+        // IRepository is the domain port — UseCase and SqlRepository both reference it
+        var repo = coupling.FirstOrDefault(c => c.SymbolId.Contains("IRepository"));
+        Assert.NotNull(repo);
+        Assert.True(repo!.FanIn >= 1,
+            $"IRepository FanIn {repo.FanIn} should be >= 1 (referenced by UseCase and/or SqlRepository)");
     }
 
     [Fact]

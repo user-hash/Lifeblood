@@ -64,14 +64,36 @@ public static class RuleValidator
         return violations.ToArray();
     }
 
+    /// <summary>
+    /// Matches a qualified name against a rule pattern.
+    ///   "Foo.Bar"     → exact match OR value starts with "Foo.Bar."
+    ///   "*.Domain"    → value contains ".Domain." segment OR ends with ".Domain" OR equals "Domain"
+    ///   "Foo.*"       → value starts with "Foo."
+    ///   "*"           → matches everything
+    /// Designed so "*.Domain" catches both "App.Domain" and "App.Domain.Entity".
+    /// </summary>
     private static bool MatchesPattern(string value, string pattern)
     {
         if (string.IsNullOrEmpty(pattern)) return false;
         if (pattern == "*") return true;
+
         if (pattern.StartsWith("*."))
-            return value.EndsWith(pattern.Substring(1), StringComparison.OrdinalIgnoreCase);
+        {
+            // *.Domain → matches anything that IS or is INSIDE a .Domain segment
+            var segment = pattern.Substring(1); // ".Domain"
+            return value.EndsWith(segment, StringComparison.OrdinalIgnoreCase)
+                || value.Contains(segment + ".", StringComparison.OrdinalIgnoreCase)
+                || value.Equals(segment.Substring(1), StringComparison.OrdinalIgnoreCase);
+        }
+
         if (pattern.EndsWith(".*"))
-            return value.StartsWith(pattern.Substring(0, pattern.Length - 2), StringComparison.OrdinalIgnoreCase);
+        {
+            var prefix = pattern.Substring(0, pattern.Length - 2);
+            return value.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase)
+                || value.Equals(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Exact or prefix match
         return value.Equals(pattern, StringComparison.OrdinalIgnoreCase)
             || value.StartsWith(pattern + ".", StringComparison.OrdinalIgnoreCase);
     }

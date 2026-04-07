@@ -60,10 +60,11 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .FirstOrDefault(el => el.Name.LocalName == "AssemblyName")?.Value
                 ?? Path.GetFileNameWithoutExtension(csprojPath);
 
-            // Source files
+            // Source files — sorted for deterministic output (INV-PIPE-001)
             var sourceFiles = Directory.GetFiles(projectDir, "*.cs", SearchOption.AllDirectories)
                 .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
                          && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+                .OrderBy(f => f, StringComparer.Ordinal)
                 .ToArray();
 
             // Project references → dependencies (deduplicated)
