@@ -88,11 +88,22 @@ Domain never references Application. Application never references Adapters or Co
 
 ## Status
 
-Early stage. Architecture defined, core model implemented.
+Early stage. Architecture defined, core implemented, contracts hardened.
 
-**Done:** Domain model (Symbol, Edge, Evidence, SemanticGraph), port interfaces (left + right side), Domain/Application hexagonal split, JSON schema, rule packs.
+| Assembly | State |
+|----------|-------|
+| **Lifeblood.Domain** | Implemented. Graph model, GraphBuilder, GraphValidator, rules, results, capabilities. |
+| **Lifeblood.Application** | Implemented. All port interfaces (left/right/graphIO/analysis/output/infrastructure), use cases. |
+| **Lifeblood.Analysis** | Implemented. CouplingAnalyzer (Robert Martin metrics), RuleValidator (architecture rules). |
+| **Lifeblood.Tests** | Implemented. xUnit test suite covering GraphBuilder, GraphValidator, CouplingAnalyzer, RuleValidator. |
+| **Lifeblood.Adapters.CSharp** | Scaffold. Project exists, references Roslyn. No adapter code yet. |
+| **Lifeblood.Reporters** | Scaffold. Project exists. No reporter code yet. |
+| **Lifeblood.CLI** | Scaffold. Prints usage. Does not execute commands yet. |
+| Connectors (MCP, Context) | Not started. Port interfaces defined in Application. |
 
-**Next:** C# Roslyn adapter (reference implementation), context pack connector, CLI vertical slice.
+**Schemas:** `graph.schema.json` (with evidence), `rules.schema.json`. Rule packs: hexagonal, clean-architecture.
+
+**Next:** C# Roslyn adapter (reference implementation), CLI vertical slice, context pack connector.
 
 ---
 
