@@ -117,7 +117,7 @@ adapters/typescript/            TypeScript adapter (standalone Node.js, JSON pro
 
 Domain never references Application. Application never references Adapters or Connectors. Adapters never reference other Adapters. Connectors never reference Adapters. All enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
-![Architecture Diagram](docs/architecture-diagram.svg)
+![Architecture Diagram](docs/architecture-screenshot.png)
 
 [Full architecture](docs/ARCHITECTURE.md) and [interactive diagram](docs/architecture.html)
 
