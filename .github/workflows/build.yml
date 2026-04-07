@@ -18,24 +18,59 @@ jobs:
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release --verbosity normal
 
+  typescript-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build TypeScript adapter
+        working-directory: adapters/typescript
+        run: npm install && npm run build
+      - name: Self-analysis (TS adapter analyzes itself)
+        working-directory: adapters/typescript
+        run: node dist/index.js . > ts-self-graph.json
+      - name: Validate graph structure
+        working-directory: adapters/typescript
+        run: |
+          node -e "
+            const d = require('./ts-self-graph.json');
+            const ids = new Set(d.symbols.map(s => s.id));
+            const dangling = d.edges.filter(e => !ids.has(e.sourceId) || !ids.has(e.targetId));
+            if (dangling.length > 0) { console.error('Dangling edges:', dangling.length); process.exit(1); }
+            if (!d.version || !d.language || !d.adapter) { console.error('Missing metadata'); process.exit(1); }
+            console.log('Symbols:', d.symbols.length, 'Edges:', d.edges.length, 'Clean.');
+          "
+
   dogfood:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, typescript-adapter]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: dotnet build --configuration Release --verbosity quiet
 
-      - name: Self-analysis with rules
+      - name: C# self-analysis with rules
         run: dotnet run --project src/Lifeblood.CLI --configuration Release -- analyze --project . --rules packs/lifeblood/rules.json
 
       - name: Generate context pack
         run: dotnet run --project src/Lifeblood.CLI --configuration Release -- context --project . > context-pack.json
 
-      - name: Export semantic graph
-        run: dotnet run --project src/Lifeblood.CLI --configuration Release -- export --project . > graph.json
+      - name: Export C# semantic graph
+        run: dotnet run --project src/Lifeblood.CLI --configuration Release -- export --project . > graph-csharp.json
+
+      - name: Build TS adapter and cross-language proof
+        run: |
+          cd adapters/typescript && npm install && npm run build
+          node dist/index.js . > ../../graph-typescript.json
+          cd ../..
+          dotnet run --project src/Lifeblood.CLI --configuration Release -- analyze --graph graph-typescript.json
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -43,5 +78,6 @@ jobs:
           name: lifeblood-dogfood
           path: |
             context-pack.json
-            graph.json
+            graph-csharp.json
+            graph-typescript.json
           retention-days: 30

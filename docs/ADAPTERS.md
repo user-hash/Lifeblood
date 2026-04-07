@@ -1,69 +1,72 @@
 # Building a Language Adapter
 
-Two options. Pick whichever fits your language.
+Lifeblood adapters translate language-specific code intelligence into the universal semantic graph. Two paths exist: JSON (any language) or C# (in-process).
 
-## Option A: JSON Adapter (any language)
+## Option A: JSON Adapter (any language, recommended)
 
-Write a parser in your language. Output JSON conforming to `schemas/graph.schema.json`.
+Write a parser in your language. Output JSON conforming to `schemas/graph.schema.json`. Lifeblood reads it via `JsonGraphImporter`. No C# needed.
 
 ```bash
-# Your parser outputs the graph
-python my_parser.py ./project > graph.json
+your-parser ./project > graph.json
+dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json
+```
 
-# Lifeblood consumes it
-lifeblood analyze --graph graph.json --rules rules.json
+The TypeScript adapter (`adapters/typescript/`) is a working example of this approach.
+
+### Required JSON structure
+
+```json
+{
+  "version": "1.0",
+  "language": "your-language",
+  "adapter": {
+    "name": "your-adapter",
+    "version": "1.0.0",
+    "capabilities": {
+      "discoverSymbols": true,
+      "typeResolution": "bestEffort",
+      "callResolution": "bestEffort",
+      "implementationResolution": "none",
+      "crossModuleReferences": "none",
+      "overrideResolution": "none"
+    }
+  },
+  "symbols": [...],
+  "edges": [...]
+}
 ```
 
 ### Minimum viable adapter
 
 Your JSON must contain:
 - `version`: `"1.0"`
+- `language`: your language name
+- `adapter`: with honest capability declarations
 - `symbols[]`: at least File and Type symbols with `id`, `name`, `kind`
-- `edges[]`: at least `dependsOn` edges between files
+- `edges[]`: at least `dependsOn` edges between modules/files
 
-That is enough for coupling analysis, circular dependency detection, and architecture rule checking.
+That is enough for coupling analysis, cycle detection, and architecture rules.
 
 ### Full adapter
 
-Add these for richer context:
+Add these for richer analysis:
 - Method and Field symbols with `parentId` for containment hierarchy
 - `calls`, `references`, `implements`, `inherits` edges
-- `evidence` on edges (how was this relationship discovered, and how confident)
-- `adapter.capabilities` declaring what you can actually do
-
-### Capability declaration
-
-Be honest. If your parser cannot resolve types, say so:
-
-```json
-{
-  "adapter": {
-    "name": "python-ast-adapter",
-    "version": "0.1.0",
-    "capabilities": {
-      "discoverSymbols": true,
-      "typeResolution": "bestEffort",
-      "callResolution": "bestEffort",
-      "crossModuleReferences": "none"
-    }
-  }
-}
-```
-
-Consumers know what to trust. No fake authority.
+- `evidence` on every edge (kind, adapterName, confidence)
+- All symbols sorted by ID, all edges sorted by source+target+kind (deterministic output)
 
 ## Option B: C# Adapter (in-process)
 
 Implement `IWorkspaceAnalyzer` from `Lifeblood.Application.Ports.Left`:
 
 ```csharp
-public class MyLanguageAdapter : IWorkspaceAnalyzer
+public class MyAdapter : IWorkspaceAnalyzer
 {
     public AdapterCapability Capability => new AdapterCapability
     {
         Language = "python",
         AdapterName = "python-ast",
-        AdapterVersion = "0.1.0",
+        AdapterVersion = "1.0.0",
         CanDiscoverSymbols = true,
         TypeResolution = ConfidenceLevel.BestEffort,
         CallResolution = ConfidenceLevel.BestEffort,
@@ -71,37 +74,76 @@ public class MyLanguageAdapter : IWorkspaceAnalyzer
 
     public SemanticGraph AnalyzeWorkspace(string projectRoot, AnalysisConfig config)
     {
-        // Discover modules, extract symbols, build edges
         var builder = new GraphBuilder();
-
-        // Add symbols with ParentId for containment hierarchy
-        // GraphBuilder will synthesize Contains edges automatically
-
+        // Add symbols with ParentId — GraphBuilder synthesizes Contains edges
         return builder.Build();
     }
 }
 ```
 
-Optionally implement `IModuleDiscovery` to provide module/package structure.
+The Roslyn adapter (`src/Lifeblood.Adapters.CSharp/`) is the reference implementation.
 
 ## Adapter Quality Levels
 
-| Level | What you provide | What it unlocks |
-|-------|-----------------|----------------|
-| **Syntax** | Files + imports | Coupling, circular deps, architecture rules |
-| **Structural** | + Types + inheritance | Tier classification, hub detection, boundary checks |
-| **Semantic** | + Methods + calls + references | Dead code, blast radius, invariant verification |
-| **Compiler-grade** | + Type resolution + overloads | Everything, with Proven confidence |
+| Level | What you provide | What it unlocks | Confidence |
+|-------|-----------------|----------------|------------|
+| **Syntax** | Files, imports, basic structure | Coupling, cycles, architecture rules | bestEffort |
+| **Structural** | Types, inheritance, interfaces | Tier classification, boundary checks | high |
+| **Semantic** | Methods, calls, references | Blast radius, dead code detection | high |
+| **Compiler-grade** | Type resolution, overloads | Everything, full trust | proven |
 
-Start with Syntax. It is already useful. Improve from there.
+Start with Syntax. It is already useful. Upgrade confidence claims as you add capabilities.
 
-## Testing Your Adapter
+## Adapter Checklist
 
-The `tests/GoldenRepos/` directory will contain golden repo fixtures. Every adapter should be tested against them:
+Before shipping an adapter, verify:
 
-- Resolves file-level dependencies
-- Discovers types and methods
-- Handles circular references gracefully
-- Reports capabilities honestly
-- Produces valid JSON conforming to the schema
-- GraphValidator returns no errors for the output graph
+- [ ] Output conforms to `schemas/graph.schema.json`
+- [ ] `version` is `"1.0"`
+- [ ] `language` and `adapter` metadata are present
+- [ ] Capability claims are honest (do not claim `proven` for things you guess)
+- [ ] Every edge has `evidence` with `kind`, `adapterName`, and `confidence`
+- [ ] No dangling edges (every sourceId and targetId exists in symbols)
+- [ ] No duplicate symbols (unique IDs)
+- [ ] No duplicate edges (unique source+target+kind)
+- [ ] Symbols with `parentId` reference existing symbols
+- [ ] Output is deterministic (same input produces same JSON)
+- [ ] `IsFromSource` filtering applied (no edges to external/stdlib types)
+- [ ] Self-analysis works (adapter can analyze its own source code)
+- [ ] Output passes through `dotnet run --project src/Lifeblood.CLI -- analyze --graph your-output.json`
+
+## Symbol ID Convention
+
+Adapters should use these ID prefixes for consistency:
+
+| Kind | Prefix | Example |
+|------|--------|---------|
+| Module | `mod:` | `mod:MyApp` |
+| File | `file:` | `file:src/auth.ts` |
+| Namespace | `ns:` | `ns:MyApp.Auth` |
+| Type | `type:` | `type:MyApp.Auth.AuthService` |
+| Method | `method:` | `method:MyApp.Auth.AuthService.login` |
+| Field | `field:` | `field:MyApp.Auth.AuthService.token` |
+
+## Evidence Guidelines
+
+Every edge should carry evidence. The confidence level must be honest:
+
+| Confidence | Meaning | Example |
+|-----------|---------|---------|
+| `none` | Not supported by this adapter | Override detection in a syntax-only parser |
+| `bestEffort` | Inferred from patterns, may be wrong | Import-based dependency in Python |
+| `high` | Resolved by language tooling, reliable | TypeChecker resolution in TypeScript |
+| `proven` | Compiler-grade, guaranteed correct | Roslyn semantic model resolution |
+
+## Testing Against Golden Repos
+
+The `tests/GoldenRepos/` directory contains fixture projects:
+- **HexagonalApp/** — 3-layer hexagonal architecture (Domain, Application, Infrastructure)
+- **CycleRepo/** — Two services with circular dependencies
+
+Run your adapter against these and verify:
+- Expected types are discovered
+- Inheritance and implementation edges are correct
+- Circular dependencies are detectable in the output
+- Graph validates cleanly through GraphValidator
