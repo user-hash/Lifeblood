@@ -71,15 +71,14 @@ lifeblood-mcp:context-pack      "Give me context for src/auth/"
 ## Architecture
 
 ```
-Lifeblood.Domain              Pure graph model. Zero deps. The absolute core.
-Lifeblood.Application          Ports + use cases. Depends only on Domain.
-Lifeblood.Adapters.CSharp     Reference adapter. Roslyn. Left side.
-Lifeblood.Adapters.JsonGraph   Universal protocol adapter. Left side.
-Lifeblood.Connectors.Mcp      MCP server for AI agents. Right side.
-Lifeblood.Connectors.Context   Context pack + CLAUDE.md generator. Right side.
-Lifeblood.Analysis             Optional analyzers (coupling, blast radius, tiers).
-Lifeblood.Reporters.*          JSON, HTML, SARIF output.
-Lifeblood.CLI                  Composition root. Wires everything.
+Lifeblood.Domain                Pure graph model. Zero deps. The absolute core.
+Lifeblood.Application           Ports + use cases. Depends only on Domain.
+Lifeblood.Adapters.CSharp      Reference adapter. Roslyn. Left side.
+Lifeblood.Adapters.JsonGraph    Universal protocol adapter. Left side.
+Lifeblood.Connectors.ContextPack  Context pack + instruction file generator. Right side.
+Lifeblood.Connectors.Mcp       MCP graph provider for AI agents. Right side.
+Lifeblood.Analysis              Optional analyzers (coupling, blast radius, cycles, tiers).
+Lifeblood.CLI                   Composition root. Wires everything.
 ```
 
 Domain never references Application. Application never references Adapters or Connectors. Both sides plug into Application ports. [Full architecture](docs/ARCHITECTURE.md)

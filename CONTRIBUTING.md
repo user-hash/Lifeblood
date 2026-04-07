@@ -10,7 +10,6 @@ Lifeblood is an open hexagonal framework. Contributions plug into well-defined r
 | **AI connector** | Right-side vein for your AI tool | `src/Lifeblood.Connectors.{Name}/` |
 | **Pack author** | Architecture/onboarding/refactor packs | `packs/{name}/` |
 | **Analyzer** | Optional analysis pass | `src/Lifeblood.Analysis/` |
-| **Reporter** | Output format (JSON, HTML, SARIF) | `src/Lifeblood.Reporters.{Format}/` |
 | **Core** | Domain model, evidence, trust | `src/Lifeblood.Domain/` |
 | **Contract** | Port interfaces, use cases | `src/Lifeblood.Application/` |
 
