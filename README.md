@@ -18,7 +18,18 @@ Source Code  →  [Language Adapter]  →  Semantic Graph  →  [Analysis]  → 
 language            or JSON                                stateless
 ```
 
-**Analysis capabilities:**
+**What semantic analysis gives AI agents:**
+
+| Capability | What it means |
+|------------|---------------|
+| IDE-like access | Go-to-definition, find-all-references, safe rename. The AI sees code the way an IDE does, not the way grep does. |
+| Flow checking | Trace a value through the entire call chain. Verify a signal reaches the right destination. Catch wet-into-dry buffer mistakes. |
+| Math verification | Check calculations, formulas, argument ordering. Catch `Multiply(b, a)` when it should be `Multiply(a, b)`. |
+| Logic verification | Does this branch handle all cases? Are all enum values covered? Is this cast safe? |
+| Type checking | Is a string being passed where an int is expected? Are generic constraints satisfied? |
+| Pipeline stages | Does the signal flow through all stages in the right order? Is the filter applied before or after saturation? |
+
+**Architecture analysis on top of that:**
 
 | Analysis | What it tells you |
 |----------|-------------------|
@@ -29,7 +40,6 @@ language            or JSON                                stateless
 | Tier classification | Pure / Boundary / Runtime / Tooling per file |
 | Circular dependencies | Cycles in the dependency graph |
 | Hub detection | God classes and bottleneck nodes (betweenness centrality) |
-| Invariant verification | Check if INV-xxx rules hold in actual code |
 
 ---
 
