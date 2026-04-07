@@ -40,16 +40,23 @@ public sealed class SemanticGraph
                 yield return Symbols[i];
     }
 
-    public IEnumerable<Symbol> ChildrenOf(string symbolId)
+    public List<Symbol> ChildrenOf(string symbolId)
     {
-        foreach (int idx in GetOutgoingEdgeIndexes(symbolId))
+        var children = new List<Symbol>();
+        var indexes = GetIndexes();
+        if (!indexes.Outgoing.TryGetValue(symbolId, out var edgeIndexes))
+            return children;
+
+        for (int i = 0; i < edgeIndexes.Count; i++)
         {
+            int idx = edgeIndexes[i];
             if (Edges[idx].Kind == EdgeKind.Contains)
             {
                 var child = GetSymbol(Edges[idx].TargetId);
-                if (child != null) yield return child;
+                if (child != null) children.Add(child);
             }
         }
+        return children;
     }
 
     private GraphIndexes GetIndexes()
