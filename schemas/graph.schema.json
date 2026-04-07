@@ -105,7 +105,7 @@
         "callResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
         "implementationResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
         "crossModuleReferences": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
-        "overrideResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
+        "overrideResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] }
       }
     }
   }
