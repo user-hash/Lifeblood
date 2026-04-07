@@ -13,9 +13,10 @@ Lifeblood.Core          # Pure. Zero language deps. ALL analysis lives here.
   ├── Graph/            # Universal semantic graph model
   ├── Analysis/         # Coupling, blast radius, dead code, tiers, hubs
   ├── Rules/            # Architecture rule validation
-  └── Ports/            # ICodeParser, IProjectDiscovery, IReporter
+  └── Ports/            # IWorkspaceAnalyzer, IGraphImporter, IAgentContextGenerator,
+                        # IReportSink, IGraphExporter, IFileSystem, IRuleSource
 
-Lifeblood.Adapters.*    # Language-specific. Implements ICodeParser.
+Lifeblood.Adapters.*    # Language-specific. Implements IWorkspaceAnalyzer.
   └── CSharp/           # Reference adapter wrapping Roslyn
 
 Lifeblood.Reporters     # Output formatters (JSON, HTML, CI)
@@ -71,20 +72,32 @@ Lifeblood.Core
 
 ## Port Interfaces
 
-Two required ports per adapter:
+### Primary adapter port (workspace-scoped):
 
 ```csharp
-ICodeParser.Parse(filePath, sourceText) → ParseResult
-  ParseResult contains: Symbol[], Edge[], FileMetadata
-
-IProjectDiscovery.DiscoverModules(projectRoot) → ModuleInfo[]
-  ModuleInfo contains: name, filePaths, dependencies, flags
+IWorkspaceAnalyzer.AnalyzeWorkspace(projectRoot, config) → SemanticGraph
 ```
 
-One optional port for output:
+INV-PORT-001: The primary contract is workspace → graph, not file → symbols.
+File-level parsing is internal to adapters.
 
+### Input ports:
 ```csharp
-IReporter.Report(AnalysisResult, outputPath) → void
+IGraphImporter.Import(stream) → SemanticGraph     // Read JSON graph from external adapter
+IRuleSource.LoadRules(path) → ArchitectureRule[]   // Where rules come from
+```
+
+### Output ports:
+```csharp
+IReportSink.Report(AnalysisResult, stream)         // Analysis results output
+IGraphExporter.Export(SemanticGraph, stream)        // Graph serialization
+IAgentContextGenerator.Generate(graph, analysis) → AgentContextPack  // THE KILLER FEATURE
+```
+
+### Infrastructure ports:
+```csharp
+IFileSystem.ReadAllText(path) → string             // Abstracts disk access
+IFileSystem.FindFiles(dir, pattern) → string[]     // Enables in-memory testing
 ```
 
 ## JSON as the Universal Adapter Protocol
