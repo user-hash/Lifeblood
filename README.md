@@ -99,6 +99,8 @@ Lifeblood.CLI                   Composition root. Wires left side to right side.
 
 Domain never references Application. Application never references Adapters or Connectors. Adapters never reference other Adapters. Connectors never reference Adapters. All of this is enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [9 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
+![Architecture Diagram](docs/architecture-diagram.svg)
+
 [Full architecture](docs/ARCHITECTURE.md) and [interactive diagram](docs/architecture.html)
 
 ---

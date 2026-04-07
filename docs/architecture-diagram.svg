@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#6ba3d6" />
+    </marker>
+    <marker id="arrowR" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#a88bff" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="620" rx="16" fill="#0d1117" />
+
+  <!-- Title -->
+  <text x="550" y="36" text-anchor="middle" fill="#e6edf3" font-size="18" font-weight="bold">Lifeblood — Hexagonal Architecture</text>
+  <text x="550" y="56" text-anchor="middle" fill="#8b949e" font-size="12">Solid = implemented and tested. Dashed = planned.</text>
+
+  <!-- LEFT COLUMN LABEL -->
+  <text x="145" y="88" text-anchor="middle" fill="#6ba3d6" font-size="11" font-weight="bold" letter-spacing="1">LEFT SIDE</text>
+  <text x="145" y="102" text-anchor="middle" fill="#8b949e" font-size="10">Language Adapters</text>
+
+  <!-- LEFT: Implemented adapters -->
+  <rect x="30" y="118" width="230" height="52" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="145" y="140" text-anchor="middle" fill="#e6edf3" font-size="12" font-weight="600">Roslyn / C#</text>
+  <text x="145" y="157" text-anchor="middle" fill="#8b949e" font-size="10">Reference adapter. Proven confidence.</text>
+
+  <rect x="30" y="180" width="230" height="52" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="145" y="202" text-anchor="middle" fill="#e6edf3" font-size="12" font-weight="600">JSON Graph Import</text>
+  <text x="145" y="219" text-anchor="middle" fill="#8b949e" font-size="10">Universal protocol. Any language.</text>
+
+  <!-- LEFT: Planned adapters -->
+  <rect x="30" y="248" width="230" height="42" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.4" />
+  <text x="145" y="266" text-anchor="middle" fill="#8b949e" font-size="11">TypeScript (planned)</text>
+  <rect x="30" y="298" width="230" height="42" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.4" />
+  <text x="145" y="316" text-anchor="middle" fill="#8b949e" font-size="11">Go / Python / Rust (planned)</text>
+
+  <!-- LEFT PORTS -->
+  <rect x="290" y="130" width="140" height="44" rx="8" fill="#1a2233" stroke="#6ba3d6" stroke-width="1.5" />
+  <text x="360" y="148" text-anchor="middle" fill="#6ba3d6" font-size="10" font-weight="bold">IWorkspaceAnalyzer</text>
+  <text x="360" y="163" text-anchor="middle" fill="#8b949e" font-size="9">project -> graph</text>
+
+  <rect x="290" y="192" width="140" height="44" rx="8" fill="#1a2233" stroke="#6ba3d6" stroke-width="1.5" />
+  <text x="360" y="210" text-anchor="middle" fill="#6ba3d6" font-size="10" font-weight="bold">IGraphImporter</text>
+  <text x="360" y="225" text-anchor="middle" fill="#8b949e" font-size="9">JSON stream -> graph</text>
+
+  <!-- HEXAGONAL CORE -->
+  <!-- Outer hex (Application) -->
+  <polygon points="550,80 730,140 730,320 550,380 370,320 370,140" fill="#131d2e" stroke="#30363d" stroke-width="2" />
+  <text x="550" y="114" text-anchor="middle" fill="#6ba3d6" font-size="10" font-weight="bold" letter-spacing="1">APPLICATION</text>
+  <text x="460" y="168" text-anchor="middle" fill="#8b949e" font-size="9">Ports</text>
+  <text x="640" y="168" text-anchor="middle" fill="#8b949e" font-size="9">Use Cases</text>
+
+  <!-- Inner hex (Domain) -->
+  <polygon points="550,150 650,185 650,275 550,310 450,275 450,185" fill="#0d1a2d" stroke="#6ba3d6" stroke-width="1.5" />
+  <text x="550" y="200" text-anchor="middle" fill="#7bdcff" font-size="11" font-weight="bold">DOMAIN</text>
+  <text x="550" y="218" text-anchor="middle" fill="#e6edf3" font-size="12" font-weight="600">Semantic Graph</text>
+  <text x="550" y="236" text-anchor="middle" fill="#8b949e" font-size="9">Symbol  Edge  Evidence</text>
+  <text x="550" y="252" text-anchor="middle" fill="#8b949e" font-size="9">GraphBuilder  GraphValidator</text>
+  <text x="550" y="268" text-anchor="middle" fill="#8b949e" font-size="9">Zero dependencies</text>
+
+  <!-- RIGHT PORTS -->
+  <rect x="670" y="130" width="152" height="44" rx="8" fill="#1f1a33" stroke="#a88bff" stroke-width="1.5" />
+  <text x="746" y="148" text-anchor="middle" fill="#a88bff" font-size="10" font-weight="bold">IAgentContextGenerator</text>
+  <text x="746" y="163" text-anchor="middle" fill="#8b949e" font-size="9">graph -> context pack</text>
+
+  <rect x="670" y="192" width="152" height="44" rx="8" fill="#1f1a33" stroke="#a88bff" stroke-width="1.5" />
+  <text x="746" y="210" text-anchor="middle" fill="#a88bff" font-size="10" font-weight="bold">IMcpGraphProvider</text>
+  <text x="746" y="225" text-anchor="middle" fill="#8b949e" font-size="9">queries + blast radius</text>
+
+  <!-- RIGHT COLUMN LABEL -->
+  <text x="955" y="88" text-anchor="middle" fill="#a88bff" font-size="11" font-weight="bold" letter-spacing="1">RIGHT SIDE</text>
+  <text x="955" y="102" text-anchor="middle" fill="#8b949e" font-size="10">AI Connectors</text>
+
+  <!-- RIGHT: Implemented connectors -->
+  <rect x="840" y="118" width="230" height="52" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="955" y="140" text-anchor="middle" fill="#e6edf3" font-size="12" font-weight="600">AgentContextGenerator</text>
+  <text x="955" y="157" text-anchor="middle" fill="#8b949e" font-size="10">Structured JSON context pack</text>
+
+  <rect x="840" y="180" width="230" height="52" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="955" y="202" text-anchor="middle" fill="#e6edf3" font-size="12" font-weight="600">InstructionFileGenerator</text>
+  <text x="955" y="219" text-anchor="middle" fill="#8b949e" font-size="10">CLAUDE.md / AGENTS.md sections</text>
+
+  <rect x="840" y="242" width="230" height="52" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="955" y="264" text-anchor="middle" fill="#e6edf3" font-size="12" font-weight="600">LifebloodMcpProvider</text>
+  <text x="955" y="281" text-anchor="middle" fill="#8b949e" font-size="10">Lookup, deps, blast radius</text>
+
+  <!-- RIGHT: Planned connectors -->
+  <rect x="840" y="310" width="230" height="42" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.4" />
+  <text x="955" y="328" text-anchor="middle" fill="#8b949e" font-size="11">MCP Server Host (planned)</text>
+  <rect x="840" y="360" width="230" height="42" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.4" />
+  <text x="955" y="378" text-anchor="middle" fill="#8b949e" font-size="11">REST / LSP Bridge (planned)</text>
+
+  <!-- WIRES: Left -->
+  <line x1="260" y1="148" x2="288" y2="148" stroke="#6ba3d6" stroke-width="2" marker-end="url(#arrow)" />
+  <line x1="260" y1="210" x2="288" y2="210" stroke="#6ba3d6" stroke-width="2" marker-end="url(#arrow)" />
+  <line x1="430" y1="152" x2="450" y2="175" stroke="#6ba3d6" stroke-width="1.5" marker-end="url(#arrow)" />
+  <line x1="430" y1="214" x2="450" y2="210" stroke="#6ba3d6" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- WIRES: Right -->
+  <line x1="650" y1="175" x2="668" y2="152" stroke="#a88bff" stroke-width="1.5" marker-end="url(#arrowR)" />
+  <line x1="650" y1="210" x2="668" y2="214" stroke="#a88bff" stroke-width="1.5" marker-end="url(#arrowR)" />
+  <line x1="822" y1="148" x2="838" y2="148" stroke="#a88bff" stroke-width="2" marker-end="url(#arrowR)" />
+  <line x1="822" y1="210" x2="838" y2="210" stroke="#a88bff" stroke-width="2" marker-end="url(#arrowR)" />
+  <line x1="822" y1="210" x2="838" y2="268" stroke="#a88bff" stroke-width="1.5" marker-end="url(#arrowR)" />
+
+  <!-- ANALYSIS (below hex) -->
+  <rect x="370" y="400" width="360" height="58" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5" />
+  <text x="550" y="420" text-anchor="middle" fill="#8cf0b5" font-size="11" font-weight="bold">Lifeblood.Analysis (optional addon)</text>
+  <text x="550" y="438" text-anchor="middle" fill="#8b949e" font-size="10">CouplingAnalyzer  BlastRadiusAnalyzer  CircularDependencyDetector</text>
+  <text x="550" y="450" text-anchor="middle" fill="#8b949e" font-size="10">TierClassifier  RuleValidator</text>
+  <line x1="550" y1="380" x2="550" y2="398" stroke="#8cf0b5" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- CLI (below analysis) -->
+  <rect x="370" y="476" width="360" height="48" rx="10" fill="#161b22" stroke="#ffd37b" stroke-width="1.5" />
+  <text x="550" y="496" text-anchor="middle" fill="#ffd37b" font-size="11" font-weight="bold">Lifeblood.CLI (composition root)</text>
+  <text x="550" y="514" text-anchor="middle" fill="#8b949e" font-size="10">analyze --project . --rules rules.json  |  context  |  export</text>
+
+  <!-- INVARIANTS -->
+  <rect x="130" y="548" width="840" height="52" rx="10" fill="#0d1117" stroke="#30363d" stroke-width="1" />
+  <text x="550" y="568" text-anchor="middle" fill="#8b949e" font-size="11">Domain: zero deps  |  Adapters never reference adapters  |  Connectors never reference adapters</text>
+  <text x="550" y="586" text-anchor="middle" fill="#8b949e" font-size="11">Output is deterministic  |  Graph is read-only after construction  |  82 tests  |  CI dogfood gate</text>
+</svg>
