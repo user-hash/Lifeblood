@@ -13,372 +13,285 @@
       --accent-2: #a88bff;
       --accent-3: #8cf0b5;
       --warning: #ffd37b;
-      --shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
-      --radius: 22px;
+      --shadow: 0 12px 30px rgba(0,0,0,0.25);
+      --radius: 18px;
       --inactive: 0.35;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; }
     body {
-      margin: 0;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-      background: radial-gradient(circle at 15% 20%, rgba(123,220,255,0.12), transparent 22%),
-        radial-gradient(circle at 85% 18%, rgba(168,139,255,0.12), transparent 24%),
-        linear-gradient(180deg, #09101e 0%, #0b1020 100%);
-      color: var(--text); min-height: 100vh; padding: 28px;
+      background: linear-gradient(180deg, #09101e, #0b1020);
+      color: var(--text); padding: 24px;
     }
     .frame {
-      max-width: 1640px; margin: 0 auto;
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 28px;
-      background: rgba(12,18,34,0.82); backdrop-filter: blur(14px);
-      box-shadow: var(--shadow); overflow: hidden;
+      max-width: 1400px; margin: 0 auto;
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 24px;
+      background: rgba(12,18,34,0.9); overflow: hidden;
     }
     .header {
-      padding: 26px 30px 18px; border-bottom: 1px solid rgba(255,255,255,0.08);
-      display: flex; justify-content: space-between; gap: 16px; align-items: flex-start;
+      padding: 22px 28px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
-    .title-wrap h1 { margin: 0; font-size: 30px; line-height: 1.1; letter-spacing: -0.04em; }
-    .title-wrap p { margin: 10px 0 0; max-width: 920px; color: var(--muted); font-size: 15px; line-height: 1.5; }
-    .pill-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+    .header h1 { font-size: 26px; letter-spacing: -0.03em; }
+    .header p { color: var(--muted); font-size: 14px; margin-top: 8px; line-height: 1.5; }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .pill {
       border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
-      color: var(--text); border-radius: 999px; padding: 10px 14px; font-size: 12px; white-space: nowrap;
+      border-radius: 999px; padding: 6px 12px; font-size: 11px; color: var(--text);
     }
-    .canvas { position: relative; min-height: 1060px; padding: 26px; overflow: auto; }
-    .board {
-      position: relative; width: 1580px; min-height: 1000px; margin: 0 auto; border-radius: 24px;
-      background: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px),
-        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-      background-size: 36px 36px, 36px 36px, auto;
-      border: 1px solid rgba(255,255,255,0.06);
+
+    /* Three-column layout */
+    .columns {
+      display: grid;
+      grid-template-columns: 280px 1fr 280px;
+      gap: 0;
+      min-height: 800px;
     }
-    .label {
-      position: absolute; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
-      color: var(--muted); background: rgba(10,15,28,0.88); padding: 6px 10px;
-      border-radius: 999px; border: 1px solid rgba(255,255,255,0.08);
+    .col {
+      padding: 20px;
+      border-right: 1px solid rgba(255,255,255,0.05);
     }
-    .section-card, .stack-card, .port, .signal, .legend-card {
-      position: absolute; border-radius: var(--radius);
-      border: 1px solid rgba(255,255,255,0.08); box-shadow: var(--shadow);
+    .col:last-child { border-right: none; }
+    .col-label {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 16px; text-align: center;
     }
-    .section-card {
-      background: linear-gradient(180deg, rgba(20,29,56,0.95), rgba(15,22,44,0.94)); padding: 18px;
+
+    .card {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius);
+      background: rgba(255,255,255,0.03); padding: 16px; margin-bottom: 14px;
     }
-    .section-card h3, .stack-card h3, .legend-card h3 { margin: 0 0 10px; font-size: 18px; letter-spacing: -0.02em; }
-    .section-card p, .stack-card p, .legend-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .mini-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
-    .mini-item {
-      border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04);
-      border-radius: 16px; padding: 12px 14px; font-size: 13px; line-height: 1.4; color: var(--text);
+    .card h3 { font-size: 15px; margin-bottom: 8px; letter-spacing: -0.01em; }
+    .card p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .item {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+      background: rgba(255,255,255,0.03); padding: 10px 12px;
+      margin-top: 8px; font-size: 12px;
     }
-    .mini-item span { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .stack-card { background: linear-gradient(180deg, rgba(23,33,62,0.98), rgba(18,26,48,0.98)); padding: 18px; }
-    .adapter-list, .connector-list { display: grid; gap: 10px; margin-top: 14px; }
-    .adapter, .connector {
-      background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08);
-      padding: 12px 14px; border-radius: 16px; font-size: 13px; line-height: 1.4;
-    }
-    .adapter strong, .connector strong { display: block; margin-bottom: 4px; font-size: 13px; }
-    .adapter small, .connector small { color: var(--muted); font-size: 11px; display: block; line-height: 1.35; }
-    .planned { opacity: var(--inactive); border-style: dashed !important; }
+    .item strong { display: block; font-size: 12px; margin-bottom: 2px; }
+    .item small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .item span { display: block; color: var(--muted); font-size: 10px; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .planned { opacity: var(--inactive); border-style: dashed; }
     .planned strong::after {
-      content: " (planned)"; font-weight: normal; font-size: 10px;
-      color: var(--warning); text-transform: uppercase; letter-spacing: 0.06em;
+      content: " (planned)"; font-weight: normal; font-size: 9px;
+      color: var(--warning); text-transform: uppercase;
     }
-    .port {
-      background: linear-gradient(180deg, rgba(31,42,84,0.98), rgba(20,29,56,0.98));
-      padding: 12px 16px; width: 178px; text-align: center; font-size: 12px;
-      line-height: 1.35; color: var(--text); border-radius: 18px;
+
+    /* Center hex area */
+    .hex-area {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: flex-start; padding-top: 10px;
     }
-    .port strong { display: block; font-size: 12px; letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 4px; }
-    .port span { color: var(--muted); display: block; font-size: 11px; }
-    .hex-wrap { position: absolute; left: 560px; top: 120px; width: 460px; height: 460px; }
-    .hex {
-      position: absolute; inset: 0;
+    .hex-visual {
+      position: relative; width: 520px; height: 520px; margin: 0 auto;
+    }
+    .hex-ring {
+      position: absolute;
       clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
       display: flex; align-items: center; justify-content: center; text-align: center;
-      box-shadow: var(--shadow);
     }
-    .hex.outer { background: linear-gradient(180deg, rgba(39,55,106,0.95), rgba(23,33,63,0.97)); }
-    .hex.middle { inset: 58px; background: linear-gradient(180deg, rgba(27,40,78,0.97), rgba(20,29,56,0.98)); }
-    .hex.inner {
-      inset: 122px;
+    .hex-ring.outer {
+      inset: 0;
+      background: linear-gradient(180deg, rgba(39,55,106,0.95), rgba(23,33,63,0.97));
+    }
+    .hex-ring.middle {
+      inset: 68px;
+      background: linear-gradient(180deg, rgba(27,40,78,0.97), rgba(20,29,56,0.98));
+    }
+    .hex-ring.inner {
+      inset: 142px;
       background: radial-gradient(circle at 50% 35%, rgba(123,220,255,0.2), transparent 45%),
         linear-gradient(180deg, rgba(25,35,68,0.99), rgba(17,24,44,0.99));
       border: 1px solid rgba(123,220,255,0.28);
     }
-    .hex-content { padding: 28px 34px; max-width: 78%; }
-    .hex-content h2 { margin: 0 0 10px; font-size: 26px; letter-spacing: -0.04em; line-height: 1.05; }
-    .hex-content h4 { margin: 0 0 8px; font-size: 14px; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
-    .hex-content p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .signal {
-      position: absolute; padding: 12px 16px;
-      background: linear-gradient(180deg, rgba(18,27,52,0.95), rgba(15,21,41,0.95));
-      font-size: 12px; line-height: 1.4; color: var(--text);
-      border-radius: var(--radius); border: 1px solid rgba(255,255,255,0.08); box-shadow: var(--shadow);
+    .hex-ring h4 { font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+    .hex-ring h2 { font-size: 24px; letter-spacing: -0.03em; line-height: 1.1; }
+    .hex-ring p { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 8px; padding: 0 20px; }
+    .hex-ring.inner h2 { font-size: 20px; }
+    .hex-ring.inner p { font-size: 11px; padding: 0 10px; }
+
+    .port-row {
+      display: flex; gap: 14px; justify-content: center;
+      margin: 16px 0;
     }
-    .signal strong { display: block; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; font-size: 11px; color: var(--accent-3); }
-    .signal span { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
-    .legend-card {
-      position: absolute; background: linear-gradient(180deg, rgba(18,27,52,0.96), rgba(14,20,38,0.96));
-      padding: 18px; border-radius: var(--radius); border: 1px solid rgba(255,255,255,0.08); box-shadow: var(--shadow);
+    .port-row-label {
+      text-align: center; font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px;
     }
-    .legend-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 12px; }
+    .port {
+      border: 1px solid; border-radius: 12px;
+      padding: 10px 14px; text-align: center; font-size: 11px;
+      flex: 0 0 auto; width: 175px;
+    }
+    .port.left { border-color: var(--accent); background: rgba(123,220,255,0.06); }
+    .port.right { border-color: var(--accent-2); background: rgba(168,139,255,0.06); }
+    .port strong { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+    .port span { color: var(--muted); font-size: 10px; }
+
+    .signal-card {
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
+      background: rgba(255,255,255,0.03); padding: 12px 16px;
+      margin-top: 12px; width: 100%;
+    }
+    .signal-card strong {
+      display: block; font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.06em; margin-bottom: 4px; color: var(--accent-3);
+    }
+    .signal-card span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+
+    /* Footer */
+    .legend {
+      padding: 20px 28px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    }
     .legend-item {
-      border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
-      background: rgba(255,255,255,0.04); padding: 12px 14px; font-size: 12px; line-height: 1.5; color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.06); border-radius: 14px;
+      background: rgba(255,255,255,0.02); padding: 12px; font-size: 11px;
+      color: var(--muted); line-height: 1.5;
     }
-    .legend-item b { display: block; color: var(--text); margin-bottom: 4px; font-size: 12px; }
-    svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-    .wire { fill: none; stroke-width: 3.5; opacity: 0.95; }
-    .wire.left { stroke: var(--accent); }
-    .wire.right { stroke: var(--accent-2); }
-    .wire-label { font-size: 11px; fill: #c9d6fb; letter-spacing: 0.06em; text-transform: uppercase; }
-    .caption {
-      position: absolute; font-size: 11px; color: var(--muted);
-      letter-spacing: 0.08em; text-transform: uppercase;
-      background: rgba(10,15,28,0.88); border: 1px solid rgba(255,255,255,0.08);
-      padding: 5px 9px; border-radius: 999px;
+    .legend-item b { display: block; color: var(--text); margin-bottom: 4px; }
+    .footer {
+      padding: 14px 28px; color: var(--muted); font-size: 11px;
+      border-top: 1px solid rgba(255,255,255,0.05);
     }
-    .footer-note { padding: 0 30px 26px; color: var(--muted); font-size: 13px; line-height: 1.5; }
-    @media (max-width: 1700px) { .canvas { overflow-x: auto; } }
   </style>
 </head>
 <body>
   <div class="frame">
     <div class="header">
-      <div class="title-wrap">
-        <h1>Lifeblood — Hexagonal Architecture</h1>
-        <p>
-          Architecture diagram matching the actual codebase. Solid items are implemented and dogfood-verified.
-          <span style="opacity:0.5;">Faded dashed items</span> are planned but not yet built.
-          10 assemblies + 1 TS adapter, 594 symbols, 830 edges, 82 tests, CI green.
-        </p>
-      </div>
-      <div class="pill-row">
-        <div class="pill">Hexagonal / Ports &amp; Adapters</div>
+      <h1>Lifeblood — Hexagonal Architecture</h1>
+      <p>
+        Architecture diagram matching the actual codebase. Solid items are implemented and dogfood-verified.
+        <span style="opacity:0.5">Faded dashed items</span> are planned but not yet built.
+      </p>
+      <div class="pills">
+        <div class="pill">10 assemblies + 1 TS adapter</div>
+        <div class="pill">594 symbols, 830 edges</div>
+        <div class="pill">82 tests / CI green</div>
         <div class="pill">Roslyn + TypeScript</div>
         <div class="pill">MCP Server</div>
         <div class="pill">Dogfood verified</div>
-        <div class="pill">82 tests / CI green</div>
       </div>
     </div>
 
-    <div class="canvas">
-      <div class="board">
-        <div class="label" style="left: 54px; top: 36px;">Left side — language adapters</div>
-        <div class="label" style="left: 665px; top: 36px;">Domain + Application</div>
-        <div class="label" style="right: 54px; top: 36px;">Right side — AI connectors</div>
+    <div class="columns">
+      <!-- LEFT COLUMN -->
+      <div class="col">
+        <div class="col-label" style="color: var(--accent);">Left side — Language Adapters</div>
 
-        <!-- LEFT: What comes in -->
-        <div class="section-card" style="left: 44px; top: 86px; width: 280px;">
+        <div class="card">
           <h3>What comes in</h3>
-          <p>C# projects via Roslyn, TypeScript via TS compiler API, or any language via JSON.</p>
-          <div class="mini-grid">
-            <div class="mini-item">.sln / .csproj discovery<span>RoslynModuleDiscovery</span></div>
-            <div class="mini-item">C# source via CSharpCompilation<span>RoslynSymbolExtractor + RoslynEdgeExtractor</span></div>
-            <div class="mini-item">TypeScript via ts.createProgram<span>adapters/typescript (standalone Node.js)</span></div>
-            <div class="mini-item">External <code>graph.json</code> import<span>JsonGraphImporter (any language)</span></div>
-          </div>
+          <p>C# projects via Roslyn, TypeScript via TS compiler API, or any language via JSON graph.</p>
+          <div class="item"><strong>.sln / .csproj discovery</strong><span>RoslynModuleDiscovery</span></div>
+          <div class="item"><strong>C# source via CSharpCompilation</strong><span>RoslynSymbolExtractor + RoslynEdgeExtractor</span></div>
+          <div class="item"><strong>TypeScript via ts.createProgram</strong><span>adapters/typescript (standalone Node.js)</span></div>
+          <div class="item"><strong>External graph.json import</strong><span>JsonGraphImporter (any language)</span></div>
         </div>
 
-        <!-- LEFT: Adapters -->
-        <div class="stack-card" style="left: 44px; top: 400px; width: 310px;">
+        <div class="card">
           <h3>Language Adapters</h3>
-          <p>Left-side adapters translate language-specific truth into the universal semantic model.</p>
-          <div class="adapter-list">
-            <div class="adapter">
-              <strong>Roslyn / C#</strong>
-              <small>Reference adapter. Proven type/call/implementation resolution.</small>
-            </div>
-            <div class="adapter">
-              <strong>TypeScript</strong>
-              <small>Standalone Node.js. ts.createProgram + TypeChecker. High confidence. Self-analyzing.</small>
-            </div>
-            <div class="adapter">
-              <strong>JSON Graph</strong>
-              <small>Universal protocol. Import + export with full metadata round-trip.</small>
-            </div>
-            <div class="adapter planned">
-              <strong>Go / Python / Rust / Java</strong>
-              <small>Community-built adapters via JSON protocol. Contracts and fixtures ready.</small>
-            </div>
-          </div>
+          <div class="item"><strong>Roslyn / C#</strong><small>Reference adapter. Proven type/call/implementation resolution.</small></div>
+          <div class="item"><strong>TypeScript</strong><small>Standalone Node.js. ts.createProgram + TypeChecker. Self-analyzing.</small></div>
+          <div class="item"><strong>JSON Graph</strong><small>Universal protocol. Import + export with full metadata round-trip.</small></div>
+          <div class="item planned"><strong>Go / Python / Rust / Java</strong><small>Community-built via JSON protocol.</small></div>
         </div>
 
-        <!-- LEFT PORTS -->
-        <div class="port" style="left: 410px; top: 202px;">
-          <strong>IWorkspaceAnalyzer</strong>
-          Primary left-side port
-          <span>projectRoot + config → SemanticGraph</span>
-        </div>
-
-        <div class="port" style="left: 392px; top: 380px;">
-          <strong>IGraphImporter</strong>
-          Graph I/O port
-          <span>stream → GraphDocument</span>
-        </div>
-
-        <!-- HEXAGONAL CORE -->
-        <div class="hex-wrap">
-          <div class="hex outer">
-            <div class="hex-content">
-              <h4>Lifeblood.Application</h4>
-              <h2>Ports &amp;<br/>Use Cases</h2>
-              <p>
-                IWorkspaceAnalyzer, IAgentContextGenerator, IMcpGraphProvider, IGraphImporter/Exporter,
-                AnalyzeWorkspaceUseCase, GenerateContextUseCase.
-              </p>
-            </div>
-          </div>
-          <div class="hex middle">
-            <div class="hex-content">
-              <h4>Lifeblood.Domain</h4>
-              <h2>Semantic Graph</h2>
-              <p>
-                Symbol, Edge, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, GraphDocument.
-                Pure. Zero deps. Immutable. Thread-safe.
-              </p>
-            </div>
-          </div>
-          <div class="hex inner">
-            <div class="hex-content">
-              <h4>Pure heart</h4>
-              <h2>Zero deps</h2>
-              <p>
-                If a PackageReference appears here, the architecture is broken.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- ANALYSIS -->
-        <div class="signal" style="left: 575px; top: 618px; width: 430px;">
-          <strong>Lifeblood.Analysis (optional addon)</strong>
-          CouplingAnalyzer · BlastRadiusAnalyzer · CircularDependencyDetector · TierClassifier · RuleValidator
-          <span>All stateless. Graph in, results out. Depends only on Domain.</span>
-        </div>
-
-        <!-- INVARIANTS -->
-        <div class="signal" style="left: 560px; top: 720px; width: 470px;">
-          <strong>Enforced invariants (tested)</strong>
-          Domain has zero deps. Application depends only on Domain. No adapter↔adapter refs.
-          No connector→adapter refs. Graph is immutable after construction. Output is deterministic.
-          <span>Architecture invariant tests + 11 frozen ADRs.</span>
-        </div>
-
-        <!-- RIGHT PORTS -->
-        <div class="port" style="left: 1032px; top: 202px;">
-          <strong>IAgentContextGenerator</strong>
-          Primary right-side port
-          <span>graph + analysis → AgentContextPack</span>
-        </div>
-
-        <div class="port" style="left: 1048px; top: 380px;">
-          <strong>IMcpGraphProvider</strong>
-          Query port
-          <span>LookupSymbol · GetDependencies · GetBlastRadius</span>
-        </div>
-
-        <!-- RIGHT: Connectors -->
-        <div class="stack-card" style="left: 1208px; top: 112px; width: 326px;">
-          <h3>AI Connectors</h3>
-          <p>Right-side connectors expose semantic truth to AI agents and tools.</p>
-          <div class="connector-list">
-            <div class="connector">
-              <strong>AgentContextGenerator</strong>
-              <small>High-value files, boundaries, reading order, hotspots, dependency matrix, violations.</small>
-            </div>
-            <div class="connector">
-              <strong>InstructionFileGenerator</strong>
-              <small>CLAUDE.md / AGENTS.md sections with module boundaries and high-value files.</small>
-            </div>
-            <div class="connector">
-              <strong>LifebloodMcpProvider</strong>
-              <small>Symbol lookup, dependencies, dependants, blast radius. Delegates to analyzers.</small>
-            </div>
-            <div class="connector">
-              <strong>MCP Server (stdio)</strong>
-              <small>JSON-RPC 2.0 server. 6 tools. Connect from Claude Code or any MCP client.</small>
-            </div>
-            <div class="connector planned">
-              <strong>REST / LSP Bridge</strong>
-              <small>Machine-facing integration for IDE extensions and web services.</small>
-            </div>
-          </div>
-        </div>
-
-        <!-- RIGHT: What comes out -->
-        <div class="section-card" style="left: 1218px; top: 610px; width: 304px;">
-          <h3>What comes out</h3>
-          <p>Verified, capability-aware context for AI systems.</p>
-          <div class="mini-grid">
-            <div class="mini-item">Context pack JSON<span>structured AI-consumable output</span></div>
-            <div class="mini-item">Instruction file markdown<span>CLAUDE.md architecture sections</span></div>
-            <div class="mini-item">MCP interactive queries<span>6 tools over stdio</span></div>
-            <div class="mini-item">Exported graph.json<span>portable semantic graph + metadata</span></div>
-            <div class="mini-item">CLI analysis report<span>symbols, edges, violations, cycles</span></div>
-          </div>
-        </div>
-
-        <!-- COMPOSITION ROOT -->
-        <div class="section-card" style="left: 44px; top: 740px; width: 310px;">
+        <div class="card">
           <h3>Lifeblood.CLI</h3>
           <p>Composition root. Thin dispatch with centralized validation.</p>
-          <div class="mini-grid">
-            <div class="mini-item"><code>analyze --project . --rules rules.json</code><span>Roslyn → graph → validate → analysis → report</span></div>
-            <div class="mini-item"><code>context --project . [--format md]</code><span>graph → context pack or instruction file</span></div>
-            <div class="mini-item"><code>export --project . > graph.json</code><span>graph → GraphDocument JSON</span></div>
+          <div class="item"><code style="font-size:11px">analyze --project . --rules rules.json</code></div>
+          <div class="item"><code style="font-size:11px">context --project . [--format md]</code></div>
+          <div class="item"><code style="font-size:11px">export --project . > graph.json</code></div>
+        </div>
+      </div>
+
+      <!-- CENTER COLUMN -->
+      <div class="col hex-area" style="border-right: 1px solid rgba(255,255,255,0.05);">
+        <div class="col-label">Domain + Application</div>
+
+        <div class="port-row-label" style="color: var(--accent);">Inbound Ports (left side)</div>
+        <div class="port-row">
+          <div class="port left"><strong>IWorkspaceAnalyzer</strong>project + config<br/><span>&#8594; SemanticGraph</span></div>
+          <div class="port left"><strong>IGraphImporter</strong>stream<br/><span>&#8594; GraphDocument</span></div>
+        </div>
+
+        <div class="hex-visual">
+          <div class="hex-ring outer">
+            <div>
+              <h4>Lifeblood.Application</h4>
+              <h2>Ports &amp;<br/>Use Cases</h2>
+              <p>Left ports, right ports, graph I/O,<br/>orchestration use cases</p>
+            </div>
+          </div>
+          <div class="hex-ring middle">
+            <div>
+              <h4>Lifeblood.Domain</h4>
+              <h2>Semantic<br/>Graph</h2>
+              <p>Symbol, Edge, Evidence<br/>GraphBuilder, GraphValidator<br/>Pure. Immutable. Zero deps.</p>
+            </div>
+          </div>
+          <div class="hex-ring inner">
+            <div>
+              <h4>Pure heart</h4>
+              <h2>Zero<br/>deps</h2>
+            </div>
           </div>
         </div>
 
-        <!-- CAPTIONS -->
-        <div class="caption" style="left: 372px; top: 164px;">Left ports</div>
-        <div class="caption" style="left: 1075px; top: 164px;">Right ports</div>
-        <div class="caption" style="left: 665px; top: 590px;">Analysis layer</div>
-
-        <!-- LEGEND -->
-        <div class="legend-card" style="left: 340px; top: 870px; width: 900px;">
-          <h3>How to read this diagram</h3>
-          <p>
-            Solid items are implemented, tested, and dogfood-verified.
-            Faded dashed items are planned but not yet built. Lifeblood is the hexagonal glue layer
-            that normalizes language intelligence on the left and routes it into AI-facing surfaces on the right.
-          </p>
-          <div class="legend-grid">
-            <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference. TypeScript is the second proof. JSON graph is the universal bridge. Community builds Go, Python, Rust, Java.</div>
-            <div class="legend-item"><b>Ports (center)</b>Stable application seams. Left ports accept semantic intake. Right ports expose connector-ready truth. GraphDocument carries full metadata.</div>
-            <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 6 interactive tools, CLI with CI exit codes. They depend inward, never on adapters.</div>
-          </div>
+        <div class="port-row-label" style="color: var(--accent-2);">Outbound Ports (right side)</div>
+        <div class="port-row">
+          <div class="port right"><strong>IAgentContextGenerator</strong>graph + analysis<br/><span>&#8594; AgentContextPack</span></div>
+          <div class="port right"><strong>IMcpGraphProvider</strong>LookupSymbol<br/><span>GetDependencies, GetBlastRadius</span></div>
         </div>
 
-        <!-- WIRES -->
-        <svg class="wires" viewBox="0 0 1580 1000" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <marker id="arrowLeft" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-              <path d="M0,0 L12,6 L0,12 Z" fill="#7bdcff" />
-            </marker>
-            <marker id="arrowRight" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-              <path d="M0,0 L12,6 L0,12 Z" fill="#a88bff" />
-            </marker>
-          </defs>
-          <path class="wire left" marker-end="url(#arrowLeft)" d="M324 228 C370 228, 380 228, 410 228" />
-          <path class="wire left" marker-end="url(#arrowLeft)" d="M354 540 C392 540, 398 430, 392 408" />
-          <path class="wire left" marker-end="url(#arrowLeft)" d="M456 228 C504 228, 532 228, 560 228" />
-          <path class="wire left" marker-end="url(#arrowLeft)" d="M562 400 C528 400, 496 400, 470 400" />
-          <path class="wire right" marker-end="url(#arrowRight)" d="M1020 228 C1080 228, 1096 228, 1208 228" />
-          <path class="wire right" marker-end="url(#arrowRight)" d="M1048 406 C1090 406, 1140 428, 1208 470" />
-          <text x="438" y="214" class="wire-label">SemanticGraph</text>
-          <text x="414" y="368" class="wire-label">GraphDocument</text>
-          <text x="1082" y="214" class="wire-label">AgentContextPack</text>
-          <text x="1098" y="450" class="wire-label">queries + blast radius</text>
-        </svg>
+        <div class="signal-card">
+          <strong>Lifeblood.Analysis (optional addon)</strong>
+          <span>CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator. All stateless. Depends only on Domain.</span>
+        </div>
+
+        <div class="signal-card">
+          <strong>Enforced invariants (tested)</strong>
+          <span>Domain: zero deps. Application: Domain only. No adapter&#8596;adapter refs. No connector&#8594;adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 82 tests. 3 CI jobs.</span>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div class="col">
+        <div class="col-label" style="color: var(--accent-2);">Right side — AI Connectors</div>
+
+        <div class="card">
+          <h3>AI Connectors</h3>
+          <p>Right-side connectors expose semantic truth to AI agents and tools.</p>
+          <div class="item"><strong>AgentContextGenerator</strong><small>High-value files, boundaries, reading order, hotspots, dependency matrix, violations.</small></div>
+          <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries.</small></div>
+          <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius.</small></div>
+          <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 6 tools. Connect from Claude Code or any MCP client.</small></div>
+          <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services.</small></div>
+        </div>
+
+        <div class="card">
+          <h3>What comes out</h3>
+          <p>Verified, capability-aware context for AI systems.</p>
+          <div class="item"><strong>Context pack JSON</strong><span>structured AI-consumable output</span></div>
+          <div class="item"><strong>Instruction file markdown</strong><span>CLAUDE.md architecture sections</span></div>
+          <div class="item"><strong>MCP interactive queries</strong><span>6 tools over stdio</span></div>
+          <div class="item"><strong>Exported graph.json</strong><span>portable semantic graph + metadata</span></div>
+          <div class="item"><strong>CLI analysis report</strong><span>symbols, edges, violations, cycles</span></div>
+        </div>
       </div>
     </div>
 
-    <div class="footer-note">
-      This diagram is code-editable HTML/CSS/SVG. Solid = implemented. Dashed/faded = planned.
-      The architecture is enforced by invariant tests and 11 frozen ADRs, not just convention.
+    <div class="legend">
+      <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference. TypeScript is the second proof. JSON graph is the universal bridge. Community builds Go, Python, Rust, Java via the JSON protocol.</div>
+      <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. GraphDocument carries version, language, and adapter capabilities through the entire pipeline. All invariants enforced by tests.</div>
+      <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 6 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters.</div>
+    </div>
+
+    <div class="footer">
+      Solid = implemented and dogfood-verified. Dashed/faded = planned.
       Self-analysis: <code>dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json</code>
     </div>
   </div>
