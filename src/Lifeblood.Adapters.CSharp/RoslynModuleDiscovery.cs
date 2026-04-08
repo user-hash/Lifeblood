@@ -67,20 +67,62 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 ?? Path.GetFileNameWithoutExtension(csprojPath);
 
             // Source files — sorted for deterministic output (INV-PIPE-001)
-            // Filter bin/obj with both separator styles for cross-platform robustness
-            var sourceFiles = _fs.FindFiles(projectDir, "*.cs", recursive: true)
-                .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
-                         && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
-                         && !f.Contains("/bin/") && !f.Contains("/obj/"))
-                .OrderBy(f => f, StringComparer.Ordinal)
+            // Two strategies:
+            //   SDK-style projects (modern .NET): no <Compile> items, scan filesystem.
+            //   Old-format projects (Unity-generated): explicit <Compile Include="..."/> items.
+            // Unity csproj files list every .cs file explicitly. Scanning the filesystem
+            // would be catastrophically slow (75 projects × full recursive scan of project root).
+            var compileItems = doc.Descendants()
+                .Where(el => el.Name.LocalName == "Compile")
+                .Select(el => el.Attribute("Include")?.Value)
+                .Where(v => v != null && v.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                .Select(v => Path.GetFullPath(Path.Combine(projectDir, v!)))
+                .Where(_fs.FileExists)
                 .ToArray();
 
+            string[] sourceFiles;
+            if (compileItems.Length > 0)
+            {
+                // Old-format project with explicit Compile items (Unity, legacy .NET Framework)
+                sourceFiles = compileItems
+                    .OrderBy(f => f, StringComparer.Ordinal)
+                    .ToArray();
+            }
+            else
+            {
+                // SDK-style project — no Compile items, scan filesystem
+                sourceFiles = _fs.FindFiles(projectDir, "*.cs", recursive: true)
+                    .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                             && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                             && !f.Contains("/bin/") && !f.Contains("/obj/"))
+                    .OrderBy(f => f, StringComparer.Ordinal)
+                    .ToArray();
+            }
+
             // Project references → dependencies by AssemblyName (not filename)
-            var deps = doc.Descendants()
+            // SDK-style: <ProjectReference Include="..."/>
+            // Unity-style: no ProjectReference, but <Reference Include="AssemblyName"/>
+            var projectRefs = doc.Descendants()
                 .Where(el => el.Name.LocalName == "ProjectReference")
                 .Select(el => el.Attribute("Include")?.Value)
                 .Where(v => v != null)
-                .Select(v => ResolveReferencedAssemblyName(v!, projectDir))
+                .Select(v => ResolveReferencedAssemblyName(v!, projectDir));
+
+            // For Unity projects: <Reference Include="Nebulae.BeatGrid.Domain">
+            // These are assembly references to other project assemblies in the same solution.
+            var assemblyRefs = doc.Descendants()
+                .Where(el => el.Name.LocalName == "Reference")
+                .Select(el => el.Attribute("Include")?.Value)
+                .Where(v => v != null && !v.StartsWith("System", StringComparison.Ordinal)
+                          && !v.StartsWith("Microsoft", StringComparison.Ordinal)
+                          && !v.StartsWith("Unity", StringComparison.Ordinal)
+                          && !v.StartsWith("Mono", StringComparison.Ordinal)
+                          && !v.StartsWith("mscorlib", StringComparison.Ordinal)
+                          && !v.StartsWith("netstandard", StringComparison.Ordinal)
+                          && !v.StartsWith("nunit", StringComparison.OrdinalIgnoreCase)
+                          && !v.StartsWith("Newtonsoft", StringComparison.Ordinal));
+
+            var deps = projectRefs.Concat(assemblyRefs!.Select(v => v!))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
