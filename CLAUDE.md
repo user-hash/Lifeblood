@@ -176,6 +176,19 @@ Rule: JSON serializers should use `System.Text.Json` with `JsonNamingPolicy.Came
 5. **New CLI command** → Lifeblood.CLI/
 6. **New use case** → Lifeblood.Application/UseCases/
 
+## Streaming Compilation Architecture (v0.2.2)
+
+- **INV-STREAM-001**: `ModuleCompilationBuilder.ProcessInOrder` compiles one module at a time in topological order. After extraction, `Emit()` → `MetadataReference.CreateFromImage()` downgrades the full compilation (~200MB) to a lightweight PE reference (~10-100KB). Peak memory: O(1 compilation), not O(N).
+- **INV-STREAM-002**: `SharedMetadataReferenceCache` deduplicates NuGet MetadataReferences across modules. One instance per `AnalyzeWorkspace` call.
+- **INV-STREAM-003**: `AnalysisConfig.RetainCompilations` controls mode. `false` (default, CLI) = streaming/memory-safe. `true` (MCP server) = retained for write-side tools.
+- **INV-STREAM-004**: Unity csproj support: if `<Compile Include>` items exist (old-format), use them. If absent (SDK-style), scan filesystem.
+- **INV-STREAM-005**: `GraphBuilder.Build()` deduplicates ALL edges by `(sourceId, targetId, kind)`. Partial classes emit duplicate edges — the builder is the authoritative dedup boundary.
+
+## 16 MCP Tools (v0.2.2)
+
+Read-side (6): analyze, context, lookup, dependencies, dependants, blast_radius
+Write-side (10): execute, diagnose, compile_check, find_references, find_definition, find_implementations, symbol_at_position, documentation, rename, format
+
 ## What NOT to Do
 
 - Do not put language-specific logic in Domain or Application. Ever.

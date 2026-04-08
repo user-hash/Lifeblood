@@ -56,6 +56,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
         // IL generation
         "Reflection.Emit",
         "AssemblyBuilder",
+        // Expression tree compilation — produces unblockable delegates
+        ".Compile()",
         // Thread operations
         "Thread.Abort",
         // P/Invoke — native code execution
