@@ -267,7 +267,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                         var dllPath = Path.Combine(folder, pkgId.ToLowerInvariant(), relativeDll);
                         if (!seen.Add(dllPath)) continue;
 
-                        if (File.Exists(dllPath) && !IsNativeDll(dllPath))
+                        if (_fs.FileExists(dllPath) && !IsNativeDll(dllPath))
                         {
                             try
                             {
@@ -281,9 +281,9 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
             return references.ToArray();
         }
-        catch
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
         {
-            return Array.Empty<MetadataReference>(); // Graceful degradation
+            return Array.Empty<MetadataReference>(); // Graceful degradation for I/O and JSON parse errors
         }
     }
 

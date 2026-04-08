@@ -7,6 +7,9 @@
     <!-- LEFT SIDE. Roslyn reference adapter. -->
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Lifeblood.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
   </ItemGroup>
   <ItemGroup>

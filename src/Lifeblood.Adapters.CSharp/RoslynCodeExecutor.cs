@@ -19,10 +19,23 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     private static readonly HashSet<string> BlockedPatterns = new(StringComparer.OrdinalIgnoreCase)
     {
         "System.IO.File.Delete",
+        "System.IO.File.WriteAllText",
+        "System.IO.File.WriteAllBytes",
+        "System.IO.File.Move",
+        "System.IO.File.Copy",
         "System.IO.Directory.Delete",
+        "System.IO.Directory.CreateDirectory",
         "Process.Start",
         "Process.Kill",
         "Environment.Exit",
+        "Environment.SetEnvironmentVariable",
+        "Assembly.Load",
+        "Assembly.LoadFile",
+        "Assembly.LoadFrom",
+        "Assembly.UnsafeLoadFrom",
+        "Reflection.Emit",
+        "AssemblyBuilder",
+        "Thread.Abort",
     };
 
     private static readonly string[] DefaultImports =

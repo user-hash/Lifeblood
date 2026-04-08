@@ -16,18 +16,21 @@ namespace Lifeblood.Adapters.CSharp;
 public sealed class RoslynCompilationHost : ICompilationHost
 {
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
-    private AdhocWorkspace? _workspace;
-    private Solution? _solution;
+    private readonly Lazy<RoslynWorkspaceManager> _manager;
 
     public RoslynCompilationHost(IReadOnlyDictionary<string, CSharpCompilation> compilations)
     {
         _compilations = compilations;
+        _manager = new Lazy<RoslynWorkspaceManager>(() => new RoslynWorkspaceManager(compilations));
     }
 
     public bool IsAvailable => _compilations.Count > 0;
 
     public DiagnosticInfo[] GetDiagnostics(string? moduleName = null)
     {
+        if (moduleName != null && !_compilations.ContainsKey(moduleName))
+            return Array.Empty<DiagnosticInfo>();
+
         var results = new List<DiagnosticInfo>();
 
         var compilations = moduleName != null && _compilations.TryGetValue(moduleName, out var single)
@@ -123,13 +126,13 @@ public sealed class RoslynCompilationHost : ICompilationHost
 
     public DomainReferenceLocation[] FindReferences(string symbolId)
     {
-        EnsureWorkspace();
-        if (_solution == null) return Array.Empty<DomainReferenceLocation>();
+        var mgr = _manager.Value;
+        if (mgr.Solution == null) return Array.Empty<DomainReferenceLocation>();
 
-        var roslynSymbol = ResolveSymbol(symbolId);
+        var roslynSymbol = mgr.ResolveSymbol(symbolId, fallbackToStandalone: true);
         if (roslynSymbol == null) return Array.Empty<DomainReferenceLocation>();
 
-        var references = SymbolFinder.FindReferencesAsync(roslynSymbol, _solution).GetAwaiter().GetResult();
+        var references = SymbolFinder.FindReferencesAsync(roslynSymbol, mgr.Solution).GetAwaiter().GetResult();
         var results = new List<DomainReferenceLocation>();
 
         foreach (var refSymbol in references)
@@ -160,108 +163,6 @@ public sealed class RoslynCompilationHost : ICompilationHost
         if (moduleName != null)
             return _compilations.TryGetValue(moduleName, out var c) ? c : null;
         return _compilations.Values.FirstOrDefault();
-    }
-
-    /// <summary>
-    /// Resolve a symbol from the workspace solution's project compilations.
-    /// Must use workspace-owned compilations — standalone _compilations produce symbols
-    /// that Renamer/SymbolFinder cannot match against the Solution.
-    /// </summary>
-    private ISymbol? ResolveSymbol(string symbolId)
-    {
-        var (kind, parts) = ParseSymbolId(symbolId);
-        if (kind == null || parts == null) return null;
-
-        // Resolve from workspace projects so the symbol belongs to the Solution
-        if (_solution != null)
-        {
-            foreach (var project in _solution.Projects)
-            {
-                var compilation = project.GetCompilationAsync().GetAwaiter().GetResult();
-                if (compilation == null) continue;
-
-                var found = FindInCompilation(compilation, kind, parts);
-                if (found != null) return found;
-            }
-        }
-
-        // Fallback to standalone compilations (for non-workspace operations)
-        foreach (var compilation in _compilations.Values)
-        {
-            var found = FindInCompilation(compilation, kind, parts);
-            if (found != null) return found;
-        }
-
-        return null;
-    }
-
-    private static ISymbol? FindInCompilation(Compilation compilation, string kind, string[] parts)
-    {
-        INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
-
-        foreach (var part in parts)
-        {
-            var member = current.GetMembers(part).FirstOrDefault();
-            if (member is INamespaceOrTypeSymbol ns)
-                current = ns;
-            else if (member != null)
-                return member;
-            else
-                break;
-        }
-
-        if (!SymbolEqualityComparer.Default.Equals(current, compilation.GlobalNamespace))
-        {
-            if (kind == "type" && current is INamedTypeSymbol) return current;
-            if (kind == "method") return current.GetMembers().OfType<IMethodSymbol>().FirstOrDefault();
-            if (kind == "field") return current.GetMembers().OfType<IFieldSymbol>().FirstOrDefault();
-        }
-
-        return null;
-    }
-
-    private static (string? kind, string[]? parts) ParseSymbolId(string symbolId)
-    {
-        var prefix = symbolId.IndexOf(':');
-        if (prefix < 0) return (null, null);
-
-        var kind = symbolId.Substring(0, prefix);
-        var qualifiedName = symbolId.Substring(prefix + 1);
-
-        var parenIdx = qualifiedName.IndexOf('(');
-        var nameOnly = parenIdx >= 0 ? qualifiedName.Substring(0, parenIdx) : qualifiedName;
-        return (kind, nameOnly.Split('.'));
-    }
-
-    private void EnsureWorkspace()
-    {
-        if (_workspace != null) return;
-
-        _workspace = new AdhocWorkspace();
-        var solutionInfo = SolutionInfo.Create(SolutionId.CreateNewId(), VersionStamp.Default);
-        _workspace.AddSolution(solutionInfo);
-
-        foreach (var (name, compilation) in _compilations)
-        {
-            var projectId = ProjectId.CreateNewId(name);
-            var projectInfo = ProjectInfo.Create(
-                projectId, VersionStamp.Default, name, name, LanguageNames.CSharp,
-                metadataReferences: compilation.References);
-            _workspace.AddProject(projectInfo);
-
-            foreach (var tree in compilation.SyntaxTrees)
-            {
-                var docId = DocumentId.CreateNewId(projectId);
-                var docInfo = DocumentInfo.Create(docId,
-                    Path.GetFileName(tree.FilePath ?? "unknown.cs"),
-                    sourceCodeKind: SourceCodeKind.Regular,
-                    loader: TextLoader.From(TextAndVersion.Create(tree.GetText(), VersionStamp.Default)),
-                    filePath: tree.FilePath);
-                _workspace.AddDocument(docInfo);
-            }
-        }
-
-        _solution = _workspace.CurrentSolution;
     }
 
     private static DomainDiagnosticSeverity MapSeverity(Microsoft.CodeAnalysis.DiagnosticSeverity severity) =>

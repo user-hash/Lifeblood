@@ -43,6 +43,17 @@ class Program
                 Console.WriteLine(json);
                 Console.Out.Flush();
             }
+            catch (System.Text.Json.JsonException ex)
+            {
+                // JSON-RPC 2.0: parse error → respond with -32700, id: null
+                Console.Error.WriteLine($"Parse error: {ex.Message}");
+                var errorResponse = JsonSerializer.Serialize(new JsonRpcResponse
+                {
+                    Error = new JsonRpcError { Code = -32700, Message = "Parse error" },
+                }, JsonOpts);
+                Console.WriteLine(errorResponse);
+                Console.Out.Flush();
+            }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error processing message: {ex.Message}");
@@ -52,7 +63,7 @@ class Program
         Console.Error.WriteLine("Lifeblood MCP server stopped.");
     }
 
-    static JsonRpcResponse Dispatch(JsonRpcRequest request, ToolHandler handler)
+    static JsonRpcResponse? Dispatch(JsonRpcRequest request, ToolHandler handler)
     {
         var response = new JsonRpcResponse { Id = request.Id };
 
@@ -70,11 +81,9 @@ class Program
                 break;
 
             case "initialized":
-                // Notification, no response needed. But send empty result if ID present.
-                if (request.Id != null)
-                    response.Result = new { };
-                else
-                    return null!; // notifications don't get responses
+                // Notification (no ID) gets no response per JSON-RPC 2.0
+                if (request.Id == null) return null;
+                response.Result = new { };
                 break;
 
             case "tools/list":

@@ -122,10 +122,10 @@ We test Lifeblood on itself. The MCP server loads its own source code, executes 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 797
-Edges:   1971
+Symbols: 838
+Edges:   2047
 Modules: 10
-Types:   118
+Types:   120
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates.
@@ -171,7 +171,7 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 121 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline. |
+| Lifeblood.Tests | 162 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
