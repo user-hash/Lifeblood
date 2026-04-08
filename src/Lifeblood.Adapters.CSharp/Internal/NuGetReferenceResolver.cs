@@ -16,7 +16,13 @@ internal sealed class NuGetReferenceResolver
 
     public NuGetReferenceResolver(IFileSystem fs) => _fs = fs;
 
-    public MetadataReference[] Resolve(ModuleInfo module, string projectRoot)
+    /// <summary>
+    /// Resolve NuGet references for a module, deduplicating via shared cache.
+    /// Without the cache, 100 modules sharing the same NuGet packages create
+    /// 100 independent MetadataReference objects per shared DLL.
+    /// </summary>
+    public MetadataReference[] Resolve(ModuleInfo module, string projectRoot,
+        SharedMetadataReferenceCache? cache = null)
     {
         if (!module.Properties.TryGetValue("projectFile", out var relCsproj))
             return Array.Empty<MetadataReference>();
@@ -81,7 +87,10 @@ internal sealed class NuGetReferenceResolver
                         {
                             try
                             {
-                                references.Add(MetadataReference.CreateFromFile(dllPath));
+                                var reference = cache != null
+                                    ? cache.GetOrCreate(dllPath)
+                                    : MetadataReference.CreateFromFile(dllPath);
+                                references.Add(reference);
                             }
                             catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { }
                         }
