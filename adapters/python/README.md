@@ -1,14 +1,34 @@
 # Python Adapter
 
-**Status:** Not started. This is a contribution guide, not existing code.
+**Status:** Implemented. Standalone `ast`-based analyzer with zero external dependencies.
 
-## Approach
+## Usage
 
-Python has `ast` (built-in) for syntax and `mypy` for optional type checking. A good adapter would:
+```bash
+cd adapters/python
+python -m lifeblood_python /path/to/python-project > graph.json
+```
 
-1. Use `ast` to discover files, classes, functions, imports
-2. Optionally use `mypy` for type resolution (higher confidence)
-3. Output `graph.json` conforming to `schemas/graph.schema.json`
+Then validate with the CLI:
+
+```bash
+lifeblood analyze --graph graph.json
+```
+
+## What It Extracts
+
+**Symbols:**
+- Modules (project root)
+- Files (all `.py` files, excluding `__pycache__`, `.venv`, etc.)
+- Classes → `type` symbols with visibility, abstract detection
+- Methods/functions → `method` symbols with parameter signatures
+- Class-level annotated fields → `field` symbols
+
+**Edges:**
+- Class inheritance (`class Foo(Bar)` → Inherits)
+- Import references (`from x import Y` → References)
+- Type annotation references (`field: SomeType` → References)
+- Constructor calls to known types → References
 
 ## Capability Profile
 
@@ -17,13 +37,24 @@ Python has `ast` (built-in) for syntax and `mypy` for optional type checking. A 
   "discoverSymbols": true,
   "typeResolution": "bestEffort",
   "callResolution": "bestEffort",
+  "implementationResolution": "bestEffort",
   "crossModuleReferences": "bestEffort",
   "overrideResolution": "none"
 }
 ```
 
-With mypy integration, `typeResolution` could reach `"high"`.
+All capabilities are `bestEffort` because Python's `ast` module provides syntax-level analysis without full type inference. For `proven` resolution, a mypy-based adapter would be needed.
 
-## Getting Started
+## Self-Analysis
 
-See [docs/ADAPTERS.md](../../docs/ADAPTERS.md) for the full guide.
+The adapter analyzes itself:
+
+```bash
+python -m lifeblood_python . > graph.json
+```
+
+## Architecture
+
+- `__main__.py` — Entry point, orchestration, deduplication, JSON output
+- `analyzer.py` — File discovery, AST-based symbol and edge extraction
+- No external dependencies — uses only Python's built-in `ast` and `os` modules

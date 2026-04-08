@@ -53,9 +53,36 @@ jobs:
             console.log('Symbols:', d.symbols.length, 'Edges:', d.edges.length, 'Clean.');
           "
 
+  python-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Self-analysis (Python adapter analyzes itself)
+        working-directory: adapters/python
+        run: python -m lifeblood_python . > py-self-graph.json
+      - name: Validate graph structure
+        working-directory: adapters/python
+        run: |
+          python -c "
+          import json, sys
+          d = json.load(open('py-self-graph.json'))
+          ids = set(s['id'] for s in d['symbols'])
+          dangling = [e for e in d['edges'] if e['sourceId'] not in ids or e['targetId'] not in ids]
+          if dangling:
+              print(f'Dangling edges: {len(dangling)}', file=sys.stderr)
+              sys.exit(1)
+          if not d.get('version') or not d.get('language') or not d.get('adapter'):
+              print('Missing metadata', file=sys.stderr)
+              sys.exit(1)
+          print(f'Symbols: {len(d[\"symbols\"])} Edges: {len(d[\"edges\"])} Clean.')
+          "
+
   dogfood:
     runs-on: ubuntu-latest
-    needs: [build, typescript-adapter]
+    needs: [build, typescript-adapter, python-adapter]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -64,6 +91,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: dotnet build --configuration Release --verbosity quiet
 
       - name: C# self-analysis with rules
@@ -75,12 +105,19 @@ jobs:
       - name: Export C# semantic graph
         run: dotnet run --project src/Lifeblood.CLI --configuration Release -- export --project . > graph-csharp.json
 
-      - name: Build TS adapter and cross-language proof
+      - name: TypeScript cross-language proof
         run: |
           cd adapters/typescript && npm install && npm run build
           node dist/index.js . > ../../graph-typescript.json
           cd ../..
           dotnet run --project src/Lifeblood.CLI --configuration Release -- analyze --graph graph-typescript.json
+
+      - name: Python cross-language proof
+        run: |
+          cd adapters/python
+          python -m lifeblood_python . > ../../graph-python.json
+          cd ../..
+          dotnet run --project src/Lifeblood.CLI --configuration Release -- analyze --graph graph-python.json
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -90,4 +127,5 @@ jobs:
             context-pack.json
             graph-csharp.json
             graph-typescript.json
+            graph-python.json
           retention-days: 30
