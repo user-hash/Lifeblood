@@ -17,9 +17,8 @@ public class WriteSideIntegrationTests
     private static readonly string GoldenRepoPath = FindGoldenRepo();
 
     /// <summary>
-    /// Require a valid golden repo analysis. Returns false if the golden repo
-    /// can't be analyzed (CI without restore, path not found). Tests that call
-    /// this should return early when it returns false.
+    /// Require a valid golden repo analysis. Skips the test (via Skip.If) if the golden repo
+    /// is not available (CI without restore, path not found).
     /// </summary>
     private static bool TryAnalyze(out SemanticGraph graph, out RoslynWorkspaceAnalyzer adapter)
     {
@@ -27,7 +26,10 @@ public class WriteSideIntegrationTests
         adapter = null!;
 
         if (!Directory.Exists(GoldenRepoPath) || !File.Exists(Path.Combine(GoldenRepoPath, "WriteSideApp.sln")))
+        {
+            Console.Error.WriteLine("SKIP: Golden repo WriteSideApp not found or not restored");
             return false;
+        }
 
         var fs = new PhysicalFileSystem();
         adapter = new RoslynWorkspaceAnalyzer(fs);
@@ -240,7 +242,7 @@ public class WriteSideIntegrationTests
                 && !t.FilePath.Contains("Formal"))
             ?.FilePath;
 
-        if (greeterFile == null) return; // Skip if file not found (shouldn't happen)
+        if (greeterFile == null) { Console.Error.WriteLine("SKIP: Greeter.cs not found in compilation syntax trees"); return; }
 
         // Line 6 should be "public class Greeter : IGreeter" (after namespace + doc comment)
         var result = host.GetSymbolAtPosition(greeterFile, 6, 14);

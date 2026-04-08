@@ -137,7 +137,7 @@ Self-analysis: 1,148 symbols, 3,196 edges, 11 modules, 150 types, 0 violations.
 
 Production-verified on a 75-module Unity project: 43,800 symbols, 70,600+ edges, 2,404 types.
 
-Six sessions found [23 real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
+Six sessions found [45 real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
 
 ---
 
@@ -159,7 +159,7 @@ Six sessions found [23 real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit te
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
-| [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 23 bugs found by self-analysis |
+| [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 45 bugs found by self-analysis |
 
 ---
 

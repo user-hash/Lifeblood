@@ -119,7 +119,7 @@ Compilations only had BCL references and cross-module CompilationReferences, but
 
 **Fix:** Replaced all symbol comparisons with `SymbolEqualityComparer.Default.Equals()`.
 
-## Hardening Pass (2026-04-08, post v0.3.1)
+## Hardening Pass (2026-04-08, post v0.2.0)
 
 7-phase deep audit. All 7 phases clean. 3 additional bugs found and fixed, plus 3 preventive fixes.
 

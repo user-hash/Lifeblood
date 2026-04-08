@@ -231,7 +231,10 @@ namespace Nebulae.LifebloodBridge
                         _process.Kill();
                 }
             }
-            catch { /* best effort cleanup */ }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // Best effort cleanup — process may already be gone
+            }
 
             _process?.Dispose();
             _process = null;

@@ -1,3 +1,4 @@
+# .NET
 bin/
 obj/
 .vs/
@@ -8,7 +9,19 @@ packages/
 TestResults/
 *.nupkg
 artifacts/
+
+# IDE
 .idea/
+
+# TypeScript adapter
+adapters/typescript/node_modules/
+adapters/typescript/dist/
+
+# Python adapter
+__pycache__/
+*.egg-info/
+
+# Internal docs (not for public repo)
 docs/MASTERPLAN.md
 docs/MASTERPLAN_CHAT_ADDITIONS.md
 docs/AUDIT_HOLES.md

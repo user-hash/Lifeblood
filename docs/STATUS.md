@@ -50,4 +50,4 @@ Types:   2,404
 Cycles:  34
 ```
 
-Six dogfood sessions found [23 real bugs](DOGFOOD_FINDINGS.md) — security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types, memory architecture. All fixed in-session.
+Six dogfood sessions found [45 real bugs](DOGFOOD_FINDINGS.md) — security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types, memory architecture. All fixed in-session.

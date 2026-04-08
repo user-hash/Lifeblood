@@ -475,7 +475,7 @@ namespace TestApp
     {
         var srcRoot = FindSrcRoot();
         var csproj = Path.Combine(srcRoot, "Lifeblood.Analysis", "Lifeblood.Analysis.csproj");
-        if (!File.Exists(csproj)) return;
+        if (!File.Exists(csproj)) { Console.Error.WriteLine("SKIP: Lifeblood.Analysis.csproj not found"); return; }
 
         var doc = System.Xml.Linq.XDocument.Load(csproj);
         var projectRefs = doc.Descendants("ProjectReference")

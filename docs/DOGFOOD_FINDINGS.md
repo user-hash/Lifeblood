@@ -46,6 +46,14 @@ All 5 fixed in-session. 201 tests pass (was 197). Build: 0 warnings, 0 errors.
 
 All 5 fixed in-session. 209 tests pass (was 201). Build: 0 warnings, 0 errors.
 
+### Session 5 Dogfood Findings (2026-04-08, passes 46-55)
+
+**DF-S5-1: Local function calls produced dangling edges** — `FindContainingMethodOrLocal` returned the local function's `IMethodSymbol`, but local functions aren't extracted as graph symbols. Calls inside local functions had source IDs like `method:Type.LocalFunc()` that didn't exist in the graph, so GraphBuilder silently dropped them. Fixed: changed `LocalFunctionStatementSyntax` case from `return` to `continue` (same pattern as `AccessorDeclarationSyntax`), attributing calls to the enclosing method instead.
+
+**DF-S5-2: CI python-adapter path doubled up** — `working-directory: adapters/python` + argument `adapters/python/test-fixtures/mini-app` resolved to `adapters/python/adapters/python/test-fixtures/mini-app`. Fixed argument to `test-fixtures/mini-app`.
+
+Both fixed in-session. 210 tests pass (was 209). Build: 0 warnings, 0 errors.
+
 ### Session 6 Dogfood Findings (2026-04-08, passes 56-65)
 
 **DF-S6-1: ReconstructMemberChain stopped at InvocationExpressionSyntax — chained calls bypassed security scanner** — `Process.GetCurrentProcess().Kill()` passed both security layers unblocked. The AST scanner's `ReconstructMemberChain` walked `MemberAccessExpressionSyntax` nodes but stopped at `InvocationExpressionSyntax`, producing only `"Kill"` instead of `"Process.GetCurrentProcess.Kill"`. The string blocklist also missed it: `"Process.GetCurrentProcess().Kill()"` doesn't contain `"Process.Kill"` as a contiguous substring. Fixed architecturally: (1) `ReconstructMemberChainParts` now walks through `InvocationExpressionSyntax` to reconstruct the full chain, (2) `IsBlockedStaticCall` replaced substring `Contains()` with structured `BlockedReceiverMethods` dictionary — receiver+method pairs checked against chain parts. The terminal method is matched against the blocked set, and the receiver type is checked anywhere earlier in the chain.
@@ -65,14 +73,6 @@ Both fixed in-session. 214 tests pass (was 210 + 4 new). Build: 0 warnings, 0 er
 **DF-S6-7: Duplicate edges from partial classes** — `typeSymbol.GetMembers()` returns ALL members including from other partial declarations. Each file's `Extract()` call has its own dedup set. Partial classes caused the same Overrides/Inherits/Implements edges to be emitted once per partial file. On DAWG: 11,423 duplicate edge validation errors. Fixed: `GraphBuilder.Build()` now deduplicates ALL edges by `(sourceId, targetId, kind)` using a Dictionary (first-write-wins, consistent with symbol dedup). The per-file `seen` set remains as a fast first-pass filter.
 
 241 tests pass. 1057 symbols, 2594 edges (self). 43,800 symbols, 70,600 edges (DAWG). 0 violations. Build: 0 warnings, 0 errors.
-
-### Session 5 Dogfood Findings (2026-04-08, passes 46-55)
-
-**DF-S5-1: Local function calls produced dangling edges** — `FindContainingMethodOrLocal` returned the local function's `IMethodSymbol`, but local functions aren't extracted as graph symbols. Calls inside local functions had source IDs like `method:Type.LocalFunc()` that didn't exist in the graph, so GraphBuilder silently dropped them. Fixed: changed `LocalFunctionStatementSyntax` case from `return` to `continue` (same pattern as `AccessorDeclarationSyntax`), attributing calls to the enclosing method instead.
-
-**DF-S5-2: CI python-adapter path doubled up** — `working-directory: adapters/python` + argument `adapters/python/test-fixtures/mini-app` resolved to `adapters/python/adapters/python/test-fixtures/mini-app`. Fixed argument to `test-fixtures/mini-app`.
-
-Both fixed in-session. 210 tests pass (was 209). Build: 0 warnings, 0 errors.
 
 ### Session 2 Dogfood Findings (2026-04-08)
 

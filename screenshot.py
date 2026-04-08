@@ -1,7 +1,16 @@
+"""Generate architecture screenshot from docs/architecture.html.
+
+Usage: python screenshot.py
+Requires: pip install playwright && playwright install chromium
+"""
+
+import os
+from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-html_path = "file:///D:/Projekti/Lifeblood/docs/architecture.html"
-output_path = "D:/Projekti/Lifeblood/docs/architecture-screenshot.png"
+script_dir = Path(__file__).resolve().parent
+html_path = (script_dir / "docs" / "architecture.html").as_uri()
+output_path = str(script_dir / "docs" / "architecture-screenshot.png")
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
