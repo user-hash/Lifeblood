@@ -188,6 +188,7 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 ---
 
 ## Built With
+The [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) methodology shaped the architecture.
 
 ---
 
