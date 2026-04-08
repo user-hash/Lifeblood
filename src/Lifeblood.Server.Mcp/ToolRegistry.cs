@@ -48,6 +48,7 @@ public static class ToolRegistry
                     graphPath = new { type = "string", description = "Path to a graph.json file (alternative to projectPath)" },
                     rulesPath = new { type = "string", description = "Optional: built-in pack name (hexagonal, clean-architecture, lifeblood) or path to a rules.json file" },
                     incremental = new { type = "boolean", description = "When true, only recompiles modules with changed files since the last analysis. Much faster for iterative work. Falls back to full analysis if no previous analysis exists or if modules were added/removed. Default: false." },
+                    readOnly = new { type = "boolean", description = "When true, uses streaming compilation (much lower memory — ~4GB vs ~7GB for large projects). Write-side tools (execute, find-references, rename, etc.) will be unavailable. Use for large projects when you only need read-side tools. Default: false." },
                 },
             },
         },

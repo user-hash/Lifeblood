@@ -10,6 +10,9 @@
     <PackageId>Lifeblood.Server.Mcp</PackageId>
     <PackageDescription>Lifeblood MCP Server — interactive semantic graph for AI agents over stdio.</PackageDescription>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Server GC handles large Roslyn heaps (7GB+ on big projects) without thrashing.
+         Workstation GC spends most of its time in full collections at that scale. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
     <!-- MCP server host. Composition root for interactive AI agent sessions. -->
   </PropertyGroup>
   <ItemGroup>
