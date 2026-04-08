@@ -29,6 +29,18 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     /// </summary>
     private static readonly Lazy<MetadataReference[]> BclReferences = new(LoadBclReferences);
 
+    /// <summary>
+    /// Retained after AnalyzeWorkspace — available for write-side tools (diagnostics, execution, refactoring).
+    /// Previously discarded after extraction. Now preserved for bidirectional Roslyn support.
+    /// </summary>
+    private Dictionary<string, CSharpCompilation>? _compilations;
+
+    /// <summary>
+    /// Compilations built during analysis, keyed by module (assembly) name.
+    /// Null before AnalyzeWorkspace is called. Available for write-side operations after analysis.
+    /// </summary>
+    public IReadOnlyDictionary<string, CSharpCompilation>? Compilations => _compilations;
+
     public RoslynWorkspaceAnalyzer(IFileSystem fs)
     {
         _fs = fs;
@@ -41,7 +53,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     {
         var modules = _discovery.DiscoverModules(projectRoot);
         var builder = new GraphBuilder();
-        var compilations = new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal);
+        _compilations = new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal);
 
         // Phase 1: Create module symbols
         foreach (var module in modules)
@@ -63,19 +75,19 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         foreach (var module in sorted)
         {
             var depCompilations = module.Dependencies
-                .Where(compilations.ContainsKey)
-                .Select(d => compilations[d])
+                .Where(_compilations.ContainsKey)
+                .Select(d => _compilations[d])
                 .ToArray();
 
             var compilation = CreateCompilation(module, projectRoot, config, depCompilations);
             if (compilation != null)
-                compilations[module.Name] = compilation;
+                _compilations[module.Name] = compilation;
         }
 
         // Phase 2: Extract symbols and edges from each compilation
         foreach (var module in modules)
         {
-            if (!compilations.TryGetValue(module.Name, out var compilation)) continue;
+            if (!_compilations.TryGetValue(module.Name, out var compilation)) continue;
 
             var moduleId = SymbolIds.Module(module.Name);
 
