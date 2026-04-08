@@ -32,6 +32,15 @@ namespace Nebulae.LifebloodBridge
         private bool _analyzed;
         private readonly object _lock = new();
 
+        /// <summary>
+        /// Timeout for individual tool calls. DAWG analysis takes ~90s,
+        /// so 5 minutes covers large projects with margin.
+        /// </summary>
+        private const int ToolCallTimeoutMs = 300_000;
+
+        /// <summary>Timeout for the MCP initialize handshake.</summary>
+        private const int InitTimeoutMs = 15_000;
+
         /// <summary>Whether the Lifeblood server has been started and initialized.</summary>
         public bool IsConnected => _process is { HasExited: false } && _initialized;
 
@@ -97,12 +106,12 @@ namespace Nebulae.LifebloodBridge
                     _stdin.WriteLine(request.ToString(Formatting.None));
                     _stdin.Flush();
 
-                    // Read response — Lifeblood writes one JSON line per response
-                    var line = _stdout.ReadLine();
+                    // Read response with timeout — prevents hanging forever if server dies
+                    var line = ReadLineWithTimeout(_stdout, ToolCallTimeoutMs);
                     if (line == null)
                     {
                         Kill();
-                        return ErrorResult("Lifeblood server closed unexpectedly");
+                        return ErrorResult("Lifeblood server closed or timed out");
                     }
 
                     var response = JObject.Parse(line);
@@ -199,9 +208,9 @@ namespace Nebulae.LifebloodBridge
             _stdin.WriteLine(initRequest.ToString(Formatting.None));
             _stdin.Flush();
 
-            var initResponse = _stdout.ReadLine();
+            var initResponse = ReadLineWithTimeout(_stdout, InitTimeoutMs);
             if (initResponse == null)
-                throw new InvalidOperationException("Lifeblood server failed to respond to initialize");
+                throw new InvalidOperationException("Lifeblood server failed to respond to initialize (timed out after 15s)");
 
             // Send initialized notification (no id = notification)
             _stdin.WriteLine(new JObject
@@ -240,6 +249,41 @@ namespace Nebulae.LifebloodBridge
             _process = null;
             _stdin = null;
             _stdout = null;
+        }
+
+        /// <summary>
+        /// Read a line from the server with timeout and process health monitoring.
+        /// Returns null if the server process exits, the stream closes, or the timeout
+        /// expires. On timeout, kills the server to unblock the pipe reader.
+        /// </summary>
+        private string ReadLineWithTimeout(StreamReader reader, int timeoutMs)
+        {
+            var readTask = System.Threading.Tasks.Task.Run(() =>
+            {
+                try { return reader.ReadLine(); }
+                catch (ObjectDisposedException) { return null; }
+                catch (IOException) { return null; }
+            });
+
+            // Poll: either the read completes, the process dies, or we time out.
+            // Polling at 100ms is fine — this is editor code, not audio thread.
+            var deadline = System.Environment.TickCount + timeoutMs;
+            while (System.Environment.TickCount < deadline)
+            {
+                if (readTask.IsCompleted)
+                    return readTask.Result;
+
+                // Early exit: process died while we were waiting
+                if (_process == null || _process.HasExited)
+                    return null;
+
+                System.Threading.Thread.Sleep(100);
+            }
+
+            // Timeout — kill the server to unblock the pipe
+            Debug.LogWarning($"[Lifeblood] Response timed out after {timeoutMs / 1000}s — killing server");
+            Kill();
+            return null;
         }
 
         private static JObject ErrorResult(string message)
