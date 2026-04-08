@@ -52,4 +52,4 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: dotnet build
-      - run: dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json
+      - run: dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules lifeblood
