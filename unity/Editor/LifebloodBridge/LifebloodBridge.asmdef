@@ -1,0 +1,19 @@
+{
+    "name": "LifebloodBridge",
+    "rootNamespace": "Nebulae.LifebloodBridge",
+    "references": [
+        "GUID:98f702da6ca044be59a864a9419c4eab"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "overrideReferences": false,
+    "precompiledReferences": [
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
