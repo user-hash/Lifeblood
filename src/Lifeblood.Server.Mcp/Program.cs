@@ -93,7 +93,7 @@ class Program
                     ServerInfo = new McpServerInfo
                     {
                         Name = "lifeblood",
-                        Version = "1.0.0",
+                        Version = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
                     },
                 };
                 break;

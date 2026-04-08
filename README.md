@@ -137,7 +137,7 @@ Self-analysis: 1,148 symbols, 3,196 edges, 11 modules, 150 types, 0 violations.
 
 Production-verified on a 75-module Unity project: 43,800 symbols, 70,600+ edges, 2,404 types.
 
-Six sessions found [23 real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
+Six sessions found [45 real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
 
 ---
 

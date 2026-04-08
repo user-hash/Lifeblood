@@ -207,8 +207,8 @@ public class HardeningTests
     public void ProcessIsolatedExecutor_SimpleExpression_ReturnsResult()
     {
         var scriptHostPath = FindScriptHostProject();
-        if (scriptHostPath == null) return;
-        if (!TryBuildScriptHost(scriptHostPath)) return;
+        if (scriptHostPath == null) { Console.Error.WriteLine("SKIP: ScriptHost project not found"); return; }
+        if (!TryBuildScriptHost(scriptHostPath)) { Console.Error.WriteLine("SKIP: ScriptHost failed to build"); return; }
 
         var executor = new ProcessIsolatedCodeExecutor(scriptHostPath);
         var result = executor.Execute("return 2 + 3;", timeoutMs: 15000);
@@ -221,8 +221,8 @@ public class HardeningTests
     public void ProcessIsolatedExecutor_Timeout_KillsProcess()
     {
         var scriptHostPath = FindScriptHostProject();
-        if (scriptHostPath == null) return;
-        if (!TryBuildScriptHost(scriptHostPath)) return;
+        if (scriptHostPath == null) { Console.Error.WriteLine("SKIP: ScriptHost project not found"); return; }
+        if (!TryBuildScriptHost(scriptHostPath)) { Console.Error.WriteLine("SKIP: ScriptHost failed to build"); return; }
 
         var executor = new ProcessIsolatedCodeExecutor(scriptHostPath);
         var result = executor.Execute("while(true) { }", timeoutMs: 3000);
@@ -246,7 +246,8 @@ public class HardeningTests
             });
             return build != null && build.WaitForExit(30000) && build.ExitCode == 0;
         }
-        catch { return false; }
+        catch (System.ComponentModel.Win32Exception) { return false; }
+        catch (InvalidOperationException) { return false; }
     }
 
     // ──────────────────────────────────────────────────────────────

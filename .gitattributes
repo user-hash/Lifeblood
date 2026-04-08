@@ -1,0 +1,18 @@
+# Auto-detect text files and normalize line endings
+* text=auto eol=lf
+
+# Windows-specific files
+*.sln text eol=crlf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.nupkg binary
+*.dll binary
+*.exe binary
+*.pdf binary
