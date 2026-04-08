@@ -8,7 +8,6 @@ using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Lifeblood.Domain.Rules;
-using Lifeblood.Analysis;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -98,13 +97,7 @@ public sealed class GraphSession
             rules = rulesDoc?.Rules;
         }
 
-        var coupling = CouplingAnalyzer.Analyze(graph, new[] { SymbolKind.Type, SymbolKind.Module });
-        var cycles = CircularDependencyDetector.Detect(graph);
-        var tiers = TierClassifier.Classify(graph);
-        var blastRadii = coupling.Where(c => c.FanIn >= 3)
-            .Select(c => BlastRadiusAnalyzer.Analyze(graph, c.SymbolId)).ToArray();
-        var violations = rules is { Length: > 0 }
-            ? RuleValidator.Validate(graph, rules) : Array.Empty<Violation>();
+        var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
 
         // Commit all state atomically — only after successful validation + analysis
         CompilationHost = newCompilationHost;
@@ -113,27 +106,10 @@ public sealed class GraphSession
         Graph = graph;
         Capability = capability;
         Language = language;
-        Analysis = new AnalysisResult
-        {
-            Coupling = coupling,
-            Violations = violations,
-            Tiers = tiers,
-            Cycles = cycles,
-            BlastRadii = blastRadii,
-            Metrics = new GraphMetrics
-            {
-                TotalSymbols = graph.Symbols.Count,
-                TotalEdges = graph.Edges.Count,
-                TotalFiles = graph.Symbols.Count(s => s.Kind == SymbolKind.File),
-                TotalTypes = graph.Symbols.Count(s => s.Kind == SymbolKind.Type),
-                TotalModules = graph.Symbols.Count(s => s.Kind == SymbolKind.Module),
-                ViolationCount = violations.Length,
-                CycleCount = cycles.Length,
-            },
-        };
+        Analysis = analysis;
 
         return $"Loaded: {graph.Symbols.Count} symbols, {graph.Edges.Count} edges, " +
-               $"{Analysis.Metrics.TotalModules} modules, {violations.Length} violations";
+               $"{analysis.Metrics.TotalModules} modules, {analysis.Violations.Length} violations";
     }
 
     private sealed class RulesDoc
