@@ -56,7 +56,7 @@
         "properties": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "Language-specific metadata"
+          "description": "Language-specific metadata. Well-known keys: typeKind (class/struct/enum/interface/delegate/record), returnType, paramCount, fieldType, propertyType, isProperty, isEvent, isIndexer, isOperator, eventType"
         }
       }
     },

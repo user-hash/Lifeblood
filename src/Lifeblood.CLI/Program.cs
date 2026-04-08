@@ -184,10 +184,13 @@ class Program
         Console.WriteLine("Usage:");
         Console.WriteLine("  lifeblood analyze --project <path>                         Analyze via Roslyn");
         Console.WriteLine("  lifeblood analyze --graph <graph.json>                     Analyze JSON graph");
-        Console.WriteLine("  lifeblood analyze --project <path> --rules <rules.json>    Analyze + check rules");
+        Console.WriteLine("  lifeblood analyze --project <path> --rules hexagonal        Analyze + built-in rules");
+        Console.WriteLine("  lifeblood analyze --project <path> --rules <rules.json>    Analyze + custom rules");
         Console.WriteLine("  lifeblood context --project <path>                         Generate AI context pack (JSON)");
         Console.WriteLine("  lifeblood context --project <path> --format md             Generate instruction file (markdown)");
         Console.WriteLine("  lifeblood export  --project <path>                         Export graph as JSON");
+        Console.WriteLine();
+        Console.WriteLine($"Built-in rule packs: {string.Join(", ", Analysis.RulePacks.BuiltIn)}");
     }
 }
 

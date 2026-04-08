@@ -26,11 +26,16 @@ class Program
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
         var handler = new ToolHandler(session, blastRadius);
 
+        // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
+
         Console.Error.WriteLine("Lifeblood MCP server starting...");
 
         using var reader = new StreamReader(Console.OpenStandardInput());
 
-        while (true)
+        while (!cts.IsCancellationRequested)
         {
             var line = await reader.ReadLineAsync();
             if (line == null) break; // stdin closed
@@ -71,6 +76,8 @@ class Program
             }
         }
 
+        // Clean up write-side resources (AdhocWorkspace, compilations)
+        session.Dispose();
         Console.Error.WriteLine("Lifeblood MCP server stopped.");
     }
 

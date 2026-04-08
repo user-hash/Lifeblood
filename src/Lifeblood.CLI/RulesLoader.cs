@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Domain.Rules;
@@ -6,29 +5,29 @@ using Lifeblood.Domain.Rules;
 namespace Lifeblood.CLI;
 
 /// <summary>
-/// Loads architecture rules from a JSON file conforming to schemas/rules.schema.json.
-/// Implements IRuleProvider — previously a static class with direct File.ReadAllText.
+/// Resolves rules from built-in pack names or file paths.
+/// Built-in resolution delegates to <see cref="Analysis.RulePacks"/>.
+/// File I/O stays here (composition root owns I/O).
 /// </summary>
 internal sealed class RulesLoader : IRuleProvider
 {
     private readonly IFileSystem _fs;
 
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
-
     public RulesLoader(IFileSystem fs) => _fs = fs;
 
-    public ArchitectureRule[] LoadRules(string path)
+    public ArchitectureRule[] LoadRules(string nameOrPath)
     {
-        var json = _fs.ReadAllText(path);
-        var doc = JsonSerializer.Deserialize<RulesDocument>(json, Options);
-        return doc?.Rules ?? Array.Empty<ArchitectureRule>();
-    }
+        // Built-in pack? (e.g. "hexagonal", "clean-architecture", "lifeblood")
+        var builtIn = Analysis.RulePacks.ResolveBuiltIn(nameOrPath);
+        if (builtIn != null) return builtIn;
 
-    private sealed class RulesDocument
-    {
-        public ArchitectureRule[]? Rules { get; set; }
+        // File path — must exist (typos should fail loudly)
+        if (!_fs.FileExists(nameOrPath))
+            throw new FileNotFoundException(
+                $"'{nameOrPath}' is not a built-in rule pack ({string.Join(", ", Analysis.RulePacks.BuiltIn)}) and file was not found.",
+                nameOrPath);
+
+        var json = _fs.ReadAllText(nameOrPath);
+        return Analysis.RulePacks.ParseJson(json) ?? Array.Empty<ArchitectureRule>();
     }
 }
