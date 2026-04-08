@@ -93,6 +93,64 @@ internal sealed class WriteToolHandler
         return TextResult(formatted);
     }
 
+    public McpToolResult HandleFindDefinition(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+
+        var symbolId = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(symbolId))
+            return ErrorResult("symbolId is required");
+
+        var def = _session.CompilationHost!.FindDefinition(symbolId);
+        if (def == null)
+            return ErrorResult($"Definition not found: {symbolId}");
+
+        return TextResult(JsonSerializer.Serialize(def, _jsonOpts));
+    }
+
+    public McpToolResult HandleFindImplementations(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+
+        var symbolId = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(symbolId))
+            return ErrorResult("symbolId is required");
+
+        var impls = _session.CompilationHost!.FindImplementations(symbolId);
+        return TextResult(JsonSerializer.Serialize(new { symbolId, count = impls.Length, implementations = impls }, _jsonOpts));
+    }
+
+    public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+
+        var filePath = GetString(args, "filePath");
+        var line = GetInt(args, "line");
+        var column = GetInt(args, "column");
+        if (string.IsNullOrEmpty(filePath) || line == null || column == null)
+            return ErrorResult("filePath, line, and column are required");
+
+        var symbol = _session.CompilationHost!.GetSymbolAtPosition(filePath, line.Value, column.Value);
+        if (symbol == null)
+            return ErrorResult($"No symbol at {filePath}:{line}:{column}");
+
+        return TextResult(JsonSerializer.Serialize(symbol, _jsonOpts));
+    }
+
+    public McpToolResult HandleGetDocumentation(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+
+        var symbolId = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(symbolId))
+            return ErrorResult("symbolId is required");
+
+        var doc = _session.CompilationHost!.GetDocumentation(symbolId);
+        return TextResult(string.IsNullOrEmpty(doc)
+            ? $"No documentation found for {symbolId}"
+            : doc);
+    }
+
     private McpToolResult? CompilationStateError()
     {
         if (_session.HasCompilationState) return null;

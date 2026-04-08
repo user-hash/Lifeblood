@@ -19,7 +19,7 @@ Born from shipping a [400k LOC Unity project](https://github.com/user-hash/Livin
 
 ## What AI Agents Get
 
-Connect an MCP client. Load a C# project. The AI agent now has **12 tools** in one session. 6 read, 6 write:
+Connect an MCP client. Load a C# project. The AI agent now has **16 tools** in one session. 6 read, 6 write:
 
 ### Write-side (compiler-as-a-service)
 
@@ -122,10 +122,10 @@ We test Lifeblood on itself. The MCP server loads its own source code, executes 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 1000
-Edges:   2455
+Symbols: 1048
+Edges:   2579
 Modules: 11
-Types:   141
+Types:   143
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates.
@@ -146,7 +146,7 @@ Lifeblood.Adapters.JsonGraph    Universal JSON protocol adapter. Left side.
 Lifeblood.Connectors.ContextPack  Context pack and instruction file generator. Right side.
 Lifeblood.Connectors.Mcp       MCP graph provider port. Right side.
 Lifeblood.Analysis              Coupling, blast radius, cycles, tiers, rule validation.
-Lifeblood.Server.Mcp            MCP server. 12 tools over stdio. Bidirectional Roslyn.
+Lifeblood.Server.Mcp            MCP server. 16 tools over stdio. Bidirectional Roslyn.
 Lifeblood.CLI                   Composition root. Wires left side to right side.
 adapters/typescript/            TypeScript adapter (standalone Node.js, JSON protocol).
 adapters/python/                Python adapter (standalone, zero dependencies).
@@ -160,7 +160,7 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 
 ## Status
 
-Dogfood-verified. 229 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 241 tests. 16 MCP tools (6 read + 10 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -171,11 +171,11 @@ Dogfood-verified. 229 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: 
 | Lifeblood.Connectors.ContextPack | Implemented. Context pack with GraphSummary, instruction file, reading order. |
 | Lifeblood.Connectors.Mcp | Implemented. Graph provider with blast radius delegation. |
 | Lifeblood.Analysis | Implemented. Coupling, blast radius, cycles, tiers, rule validation. |
-| Lifeblood.Server.Mcp | Implemented. MCP server with 12 tools over stdio. Bidirectional Roslyn. |
+| Lifeblood.Server.Mcp | Implemented. MCP server with 16 tools over stdio. Bidirectional Roslyn. |
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 229 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration. |
+| Lifeblood.Tests | 241 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 

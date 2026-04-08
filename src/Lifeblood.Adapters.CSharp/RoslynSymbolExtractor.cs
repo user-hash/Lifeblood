@@ -100,6 +100,18 @@ public sealed class RoslynSymbolExtractor
                     ExtractEventField(model, eventFieldDecl, typeId, filePath, symbols);
                     break;
 
+                case OperatorDeclarationSyntax operatorDecl:
+                    ExtractOperator(model, operatorDecl, typeId, filePath, symbols);
+                    break;
+
+                case ConversionOperatorDeclarationSyntax conversionDecl:
+                    ExtractConversionOperator(model, conversionDecl, typeId, filePath, symbols);
+                    break;
+
+                case DestructorDeclarationSyntax destructorDecl:
+                    ExtractDestructor(model, destructorDecl, typeId, filePath, symbols);
+                    break;
+
                 case TypeDeclarationSyntax nestedType:
                     ExtractType(model, nestedType, filePath, typeId, symbols);
                     break;
@@ -287,6 +299,83 @@ public sealed class RoslynSymbolExtractor
                 ["propertyType"] = sym.Type.ToDisplayString(),
                 ["isIndexer"] = "true",
             },
+        });
+    }
+
+    private void ExtractOperator(
+        SemanticModel model, OperatorDeclarationSyntax operatorDecl,
+        string containingTypeId, string filePath, List<Symbol> symbols)
+    {
+        var sym = model.GetDeclaredSymbol(operatorDecl) as IMethodSymbol;
+        if (sym == null) return;
+
+        var typeName = ExtractTypeFromId(containingTypeId);
+        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        symbols.Add(new Symbol
+        {
+            Id = SymbolIds.Method(typeName, sym.Name, paramSig),
+            Name = sym.Name,
+            QualifiedName = $"{typeName}.{sym.Name}",
+            Kind = DomainSymbolKind.Method,
+            FilePath = filePath,
+            Line = operatorDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            ParentId = containingTypeId,
+            Visibility = MapVisibility(sym.DeclaredAccessibility),
+            IsStatic = true,
+            Properties = new Dictionary<string, string>
+            {
+                ["returnType"] = sym.ReturnType.ToDisplayString(),
+                ["isOperator"] = "true",
+            },
+        });
+    }
+
+    private void ExtractConversionOperator(
+        SemanticModel model, ConversionOperatorDeclarationSyntax conversionDecl,
+        string containingTypeId, string filePath, List<Symbol> symbols)
+    {
+        var sym = model.GetDeclaredSymbol(conversionDecl) as IMethodSymbol;
+        if (sym == null) return;
+
+        var typeName = ExtractTypeFromId(containingTypeId);
+        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        symbols.Add(new Symbol
+        {
+            Id = SymbolIds.Method(typeName, sym.Name, paramSig),
+            Name = sym.Name,
+            QualifiedName = $"{typeName}.{sym.Name}",
+            Kind = DomainSymbolKind.Method,
+            FilePath = filePath,
+            Line = conversionDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            ParentId = containingTypeId,
+            Visibility = MapVisibility(sym.DeclaredAccessibility),
+            IsStatic = true,
+            Properties = new Dictionary<string, string>
+            {
+                ["returnType"] = sym.ReturnType.ToDisplayString(),
+                ["isOperator"] = "true",
+            },
+        });
+    }
+
+    private void ExtractDestructor(
+        SemanticModel model, DestructorDeclarationSyntax destructorDecl,
+        string containingTypeId, string filePath, List<Symbol> symbols)
+    {
+        var sym = model.GetDeclaredSymbol(destructorDecl) as IMethodSymbol;
+        if (sym == null) return;
+
+        var typeName = ExtractTypeFromId(containingTypeId);
+        symbols.Add(new Symbol
+        {
+            Id = SymbolIds.Method(typeName, "Finalize", ""),
+            Name = "Finalize",
+            QualifiedName = $"{typeName}.Finalize",
+            Kind = DomainSymbolKind.Method,
+            FilePath = filePath,
+            Line = destructorDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            ParentId = containingTypeId,
+            Visibility = Visibility.Protected,
         });
     }
 

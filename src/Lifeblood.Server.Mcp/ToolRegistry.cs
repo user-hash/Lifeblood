@@ -20,7 +20,9 @@ public static class ToolRegistry
                 if (tool.Name.StartsWith("lifeblood_execute") ||
                     tool.Name.StartsWith("lifeblood_diagnose") ||
                     tool.Name.StartsWith("lifeblood_compile_check") ||
-                    tool.Name.StartsWith("lifeblood_find_references") ||
+                    tool.Name.StartsWith("lifeblood_find_") ||
+                    tool.Name.StartsWith("lifeblood_symbol_") ||
+                    tool.Name.StartsWith("lifeblood_documentation") ||
                     tool.Name.StartsWith("lifeblood_rename") ||
                     tool.Name.StartsWith("lifeblood_format"))
                 {
@@ -169,6 +171,64 @@ public static class ToolRegistry
                 properties = new
                 {
                     symbolId = new { type = "string", description = "Symbol ID (e.g., type:MyApp.AuthService)" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_find_definition",
+            Description = "Find where a symbol is declared. Returns file path, line, column, display name, and documentation.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "symbolId" },
+                properties = new
+                {
+                    symbolId = new { type = "string", description = "Symbol ID (e.g., type:MyApp.AuthService)" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_find_implementations",
+            Description = "Find all types/methods that implement an interface or override a virtual member.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "symbolId" },
+                properties = new
+                {
+                    symbolId = new { type = "string", description = "Interface, abstract class, or virtual method ID" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_symbol_at_position",
+            Description = "Resolve what symbol is at a specific source position. Returns symbol ID, name, kind, qualified name, and documentation.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "filePath", "line", "column" },
+                properties = new
+                {
+                    filePath = new { type = "string", description = "Source file path (absolute or relative)" },
+                    line = new { type = "integer", description = "Line number (1-based)" },
+                    column = new { type = "integer", description = "Column number (1-based)" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_documentation",
+            Description = "Get XML documentation for a symbol. Returns the summary content.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "symbolId" },
+                properties = new
+                {
+                    symbolId = new { type = "string", description = "Symbol ID" },
                 },
             },
         },
