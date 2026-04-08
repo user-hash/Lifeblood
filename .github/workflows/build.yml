@@ -145,8 +145,8 @@ jobs:
           python-version: '3.12'
       - run: dotnet build --configuration Release --verbosity quiet
 
-      - name: C# self-analysis with rules
-        run: dotnet run --project src/Lifeblood.CLI --configuration Release -- analyze --project . --rules packs/lifeblood/rules.json
+      - name: C# self-analysis with built-in rules
+        run: dotnet run --project src/Lifeblood.CLI --configuration Release -- analyze --project . --rules lifeblood
 
       - name: Generate context pack
         run: dotnet run --project src/Lifeblood.CLI --configuration Release -- context --project . > context-pack.json

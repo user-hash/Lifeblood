@@ -58,7 +58,7 @@ class Program
         if (graph == null) return 1;
 
         var (_, _, rulesPath) = ParseArgs(args);
-        var rules = rulesPath != null && Fs.FileExists(rulesPath) ? Rules.LoadRules(rulesPath) : null;
+        var rules = rulesPath != null ? Rules.LoadRules(rulesPath) : null;
         var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
 
         Console.WriteLine($"Symbols: {graph.Symbols.Count}");
@@ -84,7 +84,7 @@ class Program
 
         var (_, _, rulesPath) = ParseArgs(args);
         var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
-        var rules = rulesPath != null && Fs.FileExists(rulesPath) ? Rules.LoadRules(rulesPath) : null;
+        var rules = rulesPath != null ? Rules.LoadRules(rulesPath) : null;
         var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
 
         if (format.Equals("md", StringComparison.OrdinalIgnoreCase)

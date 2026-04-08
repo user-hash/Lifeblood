@@ -1,0 +1,38 @@
+name: Publish to NuGet
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - run: dotnet restore
+
+      - run: dotnet build --no-restore --configuration Release
+
+      # Restore golden repo so WriteSideIntegrationTests can analyze it
+      - run: dotnet restore tests/GoldenRepos/WriteSideApp/WriteSideApp.sln
+
+      - run: dotnet test --no-build --configuration Release --verbosity normal
+
+      - name: Dogfood — self-analysis with built-in rules
+        run: dotnet run --project src/Lifeblood.CLI --no-build --configuration Release -- analyze --project . --rules lifeblood
+
+      - name: Pack CLI tool
+        run: dotnet pack src/Lifeblood.CLI/Lifeblood.CLI.csproj --no-build --configuration Release --output ./artifacts
+
+      - name: Pack MCP server tool
+        run: dotnet pack src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj --no-build --configuration Release --output ./artifacts
+
+      - name: Push to NuGet
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

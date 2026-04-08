@@ -90,10 +90,13 @@ Or from source:
 
 ```bash
 lifeblood analyze --project /path/to/your/project
-lifeblood analyze --project /path/to/your/project --rules packs/hexagonal/rules.json
+lifeblood analyze --project /path/to/your/project --rules hexagonal
+lifeblood analyze --project /path/to/your/project --rules /path/to/custom-rules.json
 lifeblood context --project /path/to/your/project
 lifeblood export  --project /path/to/your/project > graph.json
 ```
+
+Built-in rule packs: `hexagonal`, `clean-architecture`, `lifeblood`. Or pass a path to your own `rules.json`.
 
 ### Build from source
 
@@ -125,7 +128,7 @@ Language adapters feed compiler-level semantics into a universal graph model. Th
 We test Lifeblood on itself. The MCP server loads its own source code, executes queries against its own types, and validates its own architecture:
 
 ```
-$ lifeblood analyze --project . --rules packs/lifeblood/rules.json
+$ lifeblood analyze --project . --rules lifeblood
 Symbols: 1057
 Edges:   2594
 Modules: 11
