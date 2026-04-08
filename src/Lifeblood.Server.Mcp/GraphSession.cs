@@ -3,6 +3,7 @@ using Lifeblood.Adapters.JsonGraph;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
+using Microsoft.CodeAnalysis.CSharp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
@@ -28,11 +29,25 @@ public sealed class GraphSession
 
     public bool IsLoaded => Graph != null;
 
+    /// <summary>
+    /// Write-side Roslyn capabilities. Only available when loaded via projectPath (Roslyn adapter).
+    /// Null when loaded from JSON graph (no compilation state).
+    /// </summary>
+    public ICompilationHost? CompilationHost { get; private set; }
+    public ICodeExecutor? CodeExecutor { get; private set; }
+    public IWorkspaceRefactoring? Refactoring { get; private set; }
+    public bool HasCompilationState => CompilationHost != null;
+
     public string Load(string? projectPath, string? graphPath, string? rulesPath)
     {
         SemanticGraph graph;
         AdapterCapability? capability = null;
         string language = "unknown";
+
+        // Reset write-side state
+        CompilationHost = null;
+        CodeExecutor = null;
+        Refactoring = null;
 
         if (!string.IsNullOrEmpty(graphPath))
         {
@@ -56,6 +71,14 @@ public sealed class GraphSession
             graph = result.Graph;
             capability = adapter.Capability;
             language = "csharp";
+
+            // Wire write-side Roslyn capabilities from retained compilations
+            if (adapter.Compilations is { Count: > 0 })
+            {
+                CompilationHost = new RoslynCompilationHost(adapter.Compilations);
+                CodeExecutor = new RoslynCodeExecutor(adapter.Compilations);
+                Refactoring = new RoslynWorkspaceRefactoring(adapter.Compilations);
+            }
         }
         else
         {

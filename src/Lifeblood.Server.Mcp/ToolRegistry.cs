@@ -86,5 +86,95 @@ public static class ToolRegistry
                 },
             },
         },
+
+        // ── Write-side tools (require Roslyn compilation state) ──
+
+        new()
+        {
+            Name = "lifeblood_execute",
+            Description = "Execute C# code against the loaded workspace. Code runs in-process with access to all project types. Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "code" },
+                properties = new
+                {
+                    code = new { type = "string", description = "C# code to compile and execute" },
+                    imports = new { type = "array", items = new { type = "string" }, description = "Additional using namespaces" },
+                    timeoutMs = new { type = "integer", description = "Execution timeout in milliseconds (default: 5000)" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_diagnose",
+            Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Optionally filter by module name.",
+            InputSchema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    moduleName = new { type = "string", description = "Specific module to diagnose, or omit for all" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_compile_check",
+            Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "code" },
+                properties = new
+                {
+                    code = new { type = "string", description = "C# code to compile-check" },
+                    moduleName = new { type = "string", description = "Module context for type resolution" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_find_references",
+            Description = "Find all references to a symbol across the loaded workspace. Returns file paths, line numbers, and span text.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "symbolId" },
+                properties = new
+                {
+                    symbolId = new { type = "string", description = "Symbol ID (e.g., type:MyApp.AuthService)" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_rename",
+            Description = "Rename a symbol across the workspace. Returns text edits (does NOT apply them). The caller decides whether to apply.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "symbolId", "newName" },
+                properties = new
+                {
+                    symbolId = new { type = "string", description = "Symbol ID to rename" },
+                    newName = new { type = "string", description = "The new name" },
+                },
+            },
+        },
+        new()
+        {
+            Name = "lifeblood_format",
+            Description = "Format C# code using Roslyn's formatter. Returns the formatted code string.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "code" },
+                properties = new
+                {
+                    code = new { type = "string", description = "C# code to format" },
+                },
+            },
+        },
     };
 }
