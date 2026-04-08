@@ -116,10 +116,15 @@ public sealed class RoslynEdgeExtractor
                 {
                     var typeFqn = RoslynSymbolExtractor.GetFullName(prop.ContainingType);
                     var baseFqn = RoslynSymbolExtractor.GetFullName(prop.OverriddenProperty.ContainingType);
-                    AddEdge(edges, seen,
-                        SymbolIds.Property(typeFqn, prop.Name),
-                        SymbolIds.Property(baseFqn, prop.OverriddenProperty.Name),
-                        EdgeKind.Overrides);
+                    // Indexers use "this[paramSig]" in their symbol ID (matching ExtractIndexer),
+                    // while regular properties use just the name.
+                    var propSourceId = prop.IsIndexer
+                        ? SymbolIds.Property(typeFqn, $"this[{string.Join(",", prop.Parameters.Select(p => p.Type.ToDisplayString()))}]")
+                        : SymbolIds.Property(typeFqn, prop.Name);
+                    var propTargetId = prop.OverriddenProperty.IsIndexer
+                        ? SymbolIds.Property(baseFqn, $"this[{string.Join(",", prop.OverriddenProperty.Parameters.Select(p => p.Type.ToDisplayString()))}]")
+                        : SymbolIds.Property(baseFqn, prop.OverriddenProperty.Name);
+                    AddEdge(edges, seen, propSourceId, propTargetId, EdgeKind.Overrides);
                     break;
                 }
                 case IEventSymbol evt when evt.OverriddenEvent != null
