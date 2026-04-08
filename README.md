@@ -36,8 +36,8 @@ We dogfood Lifeblood on itself. Every push, the CI analyzes the framework's own 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 791
-Edges:   1920
+Symbols: 797
+Edges:   1971
 Modules: 10
 Types:   118
 ```

@@ -103,6 +103,9 @@ Lifeblood.Domain
 ```csharp
 IWorkspaceAnalyzer.AnalyzeWorkspace(projectRoot, config) → SemanticGraph
 IModuleDiscovery.DiscoverModules(projectRoot) → ModuleInfo[]
+ICompilationHost.GetDiagnostics / CompileCheck / FindReferences  // Roslyn-backed
+ICodeExecutor.Execute(code, imports, timeoutMs) → CodeExecutionResult
+IWorkspaceRefactoring.Rename(symbolId, newName) → TextEdit[] / Format(code) → string
 ```
 
 ### Right Side (AI Connectors)

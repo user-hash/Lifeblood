@@ -43,11 +43,9 @@ public sealed class GraphSession
         SemanticGraph graph;
         AdapterCapability? capability = null;
         string language = "unknown";
-
-        // Reset write-side state
-        CompilationHost = null;
-        CodeExecutor = null;
-        Refactoring = null;
+        ICompilationHost? newCompilationHost = null;
+        ICodeExecutor? newCodeExecutor = null;
+        IWorkspaceRefactoring? newRefactoring = null;
 
         if (!string.IsNullOrEmpty(graphPath))
         {
@@ -75,9 +73,9 @@ public sealed class GraphSession
             // Wire write-side Roslyn capabilities from retained compilations
             if (adapter.Compilations is { Count: > 0 })
             {
-                CompilationHost = new RoslynCompilationHost(adapter.Compilations);
-                CodeExecutor = new RoslynCodeExecutor(adapter.Compilations);
-                Refactoring = new RoslynWorkspaceRefactoring(adapter.Compilations);
+                newCompilationHost = new RoslynCompilationHost(adapter.Compilations);
+                newCodeExecutor = new RoslynCodeExecutor(adapter.Compilations);
+                newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations);
             }
         }
         else
@@ -108,6 +106,10 @@ public sealed class GraphSession
         var violations = rules is { Length: > 0 }
             ? RuleValidator.Validate(graph, rules) : Array.Empty<Violation>();
 
+        // Commit all state atomically — only after successful validation + analysis
+        CompilationHost = newCompilationHost;
+        CodeExecutor = newCodeExecutor;
+        Refactoring = newRefactoring;
         Graph = graph;
         Capability = capability;
         Language = language;

@@ -45,6 +45,7 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator | Application |
 | **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius) | Application, Analysis |
 | **Lifeblood.Analysis** | CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator | Domain |
+| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. 12 tools (6 read + 6 write). Bidirectional Roslyn. | Application, Adapters.CSharp, Connectors |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch | Everything |
 
 ## Domain Model
@@ -65,6 +66,9 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 ### Left Side (Language Adapters)
 - `IWorkspaceAnalyzer` — primary: projectRoot + config → SemanticGraph
 - `IModuleDiscovery` — module/project discovery → ModuleInfo[]
+- `ICompilationHost` — diagnostics, compile-checking, reference finding (Roslyn-backed)
+- `ICodeExecutor` — execute code snippets against loaded workspace
+- `IWorkspaceRefactoring` — rename (returns edits, does NOT apply), format
 - `IGraphImporter` — stream → SemanticGraph (JSON protocol)
 - `IGraphExporter` — SemanticGraph → stream
 

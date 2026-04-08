@@ -81,33 +81,59 @@ public sealed class RoslynWorkspaceRefactoring : IWorkspaceRefactoring
         return formatted.ToFullString();
     }
 
+    /// <summary>
+    /// Resolve a symbol from the workspace solution's project compilations.
+    /// Must use workspace-owned compilations — standalone _compilations produce symbols
+    /// that Renamer cannot match against the Solution.
+    /// </summary>
     private ISymbol? ResolveSymbol(string symbolId)
     {
         var prefix = symbolId.IndexOf(':');
         if (prefix < 0) return null;
 
+        var kind = symbolId.Substring(0, prefix);
         var qualifiedName = symbolId.Substring(prefix + 1);
         var parenIdx = qualifiedName.IndexOf('(');
         var nameOnly = parenIdx >= 0 ? qualifiedName.Substring(0, parenIdx) : qualifiedName;
         var parts = nameOnly.Split('.');
 
-        foreach (var compilation in _compilations.Values)
+        // Resolve from workspace projects so the symbol belongs to the Solution
+        if (_solution != null)
         {
-            INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
-
-            foreach (var part in parts)
+            foreach (var project in _solution.Projects)
             {
-                var member = current.GetMembers(part).FirstOrDefault();
-                if (member is INamespaceOrTypeSymbol ns)
-                    current = ns;
-                else if (member != null)
-                    return member;
-                else
-                    break;
-            }
+                var compilation = project.GetCompilationAsync().GetAwaiter().GetResult();
+                if (compilation == null) continue;
 
-            if (current != compilation.GlobalNamespace && current is INamedTypeSymbol)
-                return current;
+                var found = FindInCompilation(compilation, kind, parts);
+                if (found != null) return found;
+            }
+        }
+
+        return null;
+    }
+
+    private static ISymbol? FindInCompilation(Compilation compilation, string kind, string[] parts)
+    {
+        INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
+
+        foreach (var part in parts)
+        {
+            var member = current.GetMembers(part).FirstOrDefault();
+            if (member is INamespaceOrTypeSymbol ns)
+                current = ns;
+            else if (member != null)
+                return member;
+            else
+                break;
+        }
+
+        if (!SymbolEqualityComparer.Default.Equals(current, compilation.GlobalNamespace))
+        {
+            if (kind == "type" && current is INamedTypeSymbol) return current;
+            if (kind == "method") return current.GetMembers().OfType<IMethodSymbol>().FirstOrDefault();
+            if (kind == "field") return current.GetMembers().OfType<IFieldSymbol>().FirstOrDefault();
+            if (kind == "property") return current.GetMembers().OfType<IPropertySymbol>().FirstOrDefault();
         }
 
         return null;

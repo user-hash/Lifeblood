@@ -31,14 +31,16 @@ public sealed class RoslynCompilationHost : ICompilationHost
         var results = new List<DiagnosticInfo>();
 
         var compilations = moduleName != null && _compilations.TryGetValue(moduleName, out var single)
-            ? new[] { single }
-            : _compilations.Values.ToArray();
+            ? new[] { (name: moduleName, comp: single) }
+            : _compilations.Select(kv => (name: kv.Key, comp: kv.Value)).ToArray();
 
-        foreach (var compilation in compilations)
+        foreach (var (name, compilation) in compilations)
         {
             foreach (var diag in compilation.GetDiagnostics())
             {
                 if (diag.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Hidden) continue;
+                // Skip Info-level diagnostics by default (noise from nullable contexts, etc.)
+                if (diag.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Info) continue;
 
                 var lineSpan = diag.Location.GetMappedLineSpan();
                 results.Add(new DiagnosticInfo
@@ -49,6 +51,7 @@ public sealed class RoslynCompilationHost : ICompilationHost
                     FilePath = lineSpan.Path ?? "",
                     Line = lineSpan.StartLinePosition.Line + 1,
                     Column = lineSpan.StartLinePosition.Character + 1,
+                    Module = name,
                 });
             }
         }
@@ -73,14 +76,26 @@ public sealed class RoslynCompilationHost : ICompilationHost
                 }},
             };
 
+        // Collect pre-existing diagnostic IDs so we only report NEW diagnostics from the snippet
+        var preExistingIds = new HashSet<string>(
+            targetCompilation.GetDiagnostics()
+                .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+                .Select(d => $"{d.Id}:{d.Location.GetMappedLineSpan().Path}:{d.Location.GetMappedLineSpan().StartLinePosition.Line}"));
+
         var tree = CSharpSyntaxTree.ParseText(code);
         var testCompilation = targetCompilation.AddSyntaxTrees(tree);
 
         using var ms = new MemoryStream();
         var emitResult = testCompilation.Emit(ms);
 
-        var diagnostics = emitResult.Diagnostics
+        // Filter to only diagnostics introduced by the snippet (not pre-existing in the compilation)
+        var snippetDiagnostics = emitResult.Diagnostics
             .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+            .Where(d =>
+            {
+                var key = $"{d.Id}:{d.Location.GetMappedLineSpan().Path}:{d.Location.GetMappedLineSpan().StartLinePosition.Line}";
+                return !preExistingIds.Contains(key);
+            })
             .Select(d =>
             {
                 var lineSpan = d.Location.GetMappedLineSpan();
@@ -96,10 +111,13 @@ public sealed class RoslynCompilationHost : ICompilationHost
             })
             .ToArray();
 
+        // Success = no NEW errors from the snippet (pre-existing errors don't count)
+        var hasNewErrors = snippetDiagnostics.Any(d => d.Severity == DomainDiagnosticSeverity.Error);
+
         return new CompileCheckResult
         {
-            Success = emitResult.Success,
-            Diagnostics = diagnostics,
+            Success = !hasNewErrors,
+            Diagnostics = snippetDiagnostics,
         };
     }
 
@@ -144,44 +162,75 @@ public sealed class RoslynCompilationHost : ICompilationHost
         return _compilations.Values.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Resolve a symbol from the workspace solution's project compilations.
+    /// Must use workspace-owned compilations — standalone _compilations produce symbols
+    /// that Renamer/SymbolFinder cannot match against the Solution.
+    /// </summary>
     private ISymbol? ResolveSymbol(string symbolId)
     {
-        // Parse symbol ID: "type:Namespace.ClassName" or "method:Namespace.ClassName.MethodName(...)"
+        var (kind, parts) = ParseSymbolId(symbolId);
+        if (kind == null || parts == null) return null;
+
+        // Resolve from workspace projects so the symbol belongs to the Solution
+        if (_solution != null)
+        {
+            foreach (var project in _solution.Projects)
+            {
+                var compilation = project.GetCompilationAsync().GetAwaiter().GetResult();
+                if (compilation == null) continue;
+
+                var found = FindInCompilation(compilation, kind, parts);
+                if (found != null) return found;
+            }
+        }
+
+        // Fallback to standalone compilations (for non-workspace operations)
+        foreach (var compilation in _compilations.Values)
+        {
+            var found = FindInCompilation(compilation, kind, parts);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
+
+    private static ISymbol? FindInCompilation(Compilation compilation, string kind, string[] parts)
+    {
+        INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
+
+        foreach (var part in parts)
+        {
+            var member = current.GetMembers(part).FirstOrDefault();
+            if (member is INamespaceOrTypeSymbol ns)
+                current = ns;
+            else if (member != null)
+                return member;
+            else
+                break;
+        }
+
+        if (!SymbolEqualityComparer.Default.Equals(current, compilation.GlobalNamespace))
+        {
+            if (kind == "type" && current is INamedTypeSymbol) return current;
+            if (kind == "method") return current.GetMembers().OfType<IMethodSymbol>().FirstOrDefault();
+            if (kind == "field") return current.GetMembers().OfType<IFieldSymbol>().FirstOrDefault();
+        }
+
+        return null;
+    }
+
+    private static (string? kind, string[]? parts) ParseSymbolId(string symbolId)
+    {
         var prefix = symbolId.IndexOf(':');
-        if (prefix < 0) return null;
+        if (prefix < 0) return (null, null);
 
         var kind = symbolId.Substring(0, prefix);
         var qualifiedName = symbolId.Substring(prefix + 1);
 
-        // Strip parameter signature for methods
         var parenIdx = qualifiedName.IndexOf('(');
         var nameOnly = parenIdx >= 0 ? qualifiedName.Substring(0, parenIdx) : qualifiedName;
-        var parts = nameOnly.Split('.');
-
-        foreach (var compilation in _compilations.Values)
-        {
-            INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
-
-            foreach (var part in parts)
-            {
-                var member = current.GetMembers(part).FirstOrDefault();
-                if (member is INamespaceOrTypeSymbol ns)
-                    current = ns;
-                else if (member != null)
-                    return member; // Found a method/field/property
-                else
-                    break;
-            }
-
-            if (current != compilation.GlobalNamespace)
-            {
-                if (kind == "type" && current is INamedTypeSymbol) return current;
-                if (kind == "method") return current.GetMembers().OfType<IMethodSymbol>().FirstOrDefault();
-                if (kind == "field") return current.GetMembers().OfType<IFieldSymbol>().FirstOrDefault();
-            }
-        }
-
-        return null;
+        return (kind, nameOnly.Split('.'));
     }
 
     private void EnsureWorkspace()
