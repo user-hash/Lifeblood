@@ -5,6 +5,43 @@ All notable changes to Lifeblood are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-08
+
+Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanner, 180 tests.
+
+### Fixed
+
+- **Property symbol ID collision**: `SymbolIds.Property` generated `field:` prefix — properties silently failed on FindReferences/Rename. Now uses separate `property:` prefix.
+- **GetDiagnostics silent fallback**: Requesting non-existent module returned ALL diagnostics instead of empty.
+- **File.Exists bypassing IFileSystem port**: NuGet resolver used raw `File.Exists` instead of the injected port.
+- **Property accessor dangling edges**: Edge extractor used `get_X`/`set_X` as edge sources with no matching symbol. Now skips to enclosing method.
+- **MCP parse error response**: Malformed JSON-RPC input caused no response (client hang). Now returns JSON-RPC -32700 error.
+- **Notification null leak**: `Dispatch()` returned `null!` for notifications. Now properly typed as `JsonRpcResponse?`.
+- **NuGet catch-all too broad**: Bare `catch {}` in NuGet resolution masked JSON schema changes. Narrowed to `IOException | JsonException | UnauthorizedAccessException`.
+- **BCL loader bare catches**: Two remaining bare catches in DLL loading narrowed to typed exceptions.
+
+### Added
+
+- **ScriptSecurityScanner**: Roslyn AST-based security layer. Detects reflection (`GetMethod`, `Invoke`, `SetValue`, `DynamicInvoke`), `unsafe` blocks, pointer types. Two-layer defense: string blocklist + AST scan.
+- **RoslynWorkspaceManager**: Shared workspace infrastructure extracted from CompilationHost and WorkspaceRefactoring (~80 LOC dedup).
+- **BclReferenceLoader**: Extracted static BCL assembly loading + `IsNativeDll`.
+- **NuGetReferenceResolver**: Extracted `project.assets.json` parsing.
+- **ModuleCompilationBuilder**: Extracted compilation creation + topological sort.
+- **WriteToolHandler**: Extracted 6 write-side MCP handlers with shared guard.
+- **AnalysisPipeline**: Moved to `Lifeblood.Analysis` — single source of truth for CLI and MCP server.
+- **Architecture invariant test**: Analysis depends only on Domain (was untested).
+- **59 new tests**: Write-side tools (19), AST security scanner (11), symbol ID parsing (7), pipeline integration (3), blocked patterns (5), architecture (1), edge cases (13).
+
+### Changed
+
+- Blocked patterns expanded: 5 → 18 (`File.Write*`, `Assembly.Load*`, `Reflection.Emit`, etc.).
+- Tests: 121 → 180.
+- Source files: 58 → 63.
+- Average LOC/file: 84 → 80.
+- Files > 200 LOC: 6 → 4.
+- Dogfood: 797 symbols / 1971 edges → 878 symbols / 2139 edges.
+- Zero bare catches remaining (was 4).
+
 ## [0.3.1] - 2026-04-08
 
 Dogfood: code execution. 7 bugs fixed, NuGet resolution, 30/30 MCP integration tests.
