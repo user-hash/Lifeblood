@@ -9,4 +9,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Built-in rule packs. Single source of truth lives in packs/, linked here as resources. -->
+    <EmbeddedResource Include="..\..\packs\hexagonal\rules.json" LogicalName="RulePacks.hexagonal" />
+    <EmbeddedResource Include="..\..\packs\clean-architecture\rules.json" LogicalName="RulePacks.clean-architecture" />
+    <EmbeddedResource Include="..\..\packs\lifeblood\rules.json" LogicalName="RulePacks.lifeblood" />
+  </ItemGroup>
 </Project>

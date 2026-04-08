@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
 using Lifeblood.Application.Ports.Infrastructure;
@@ -14,15 +13,10 @@ namespace Lifeblood.Server.Mcp;
 /// MCP-specific session wrapper. Delegates state to WorkspaceSession.
 /// Owns the load orchestration: parse args → build graph → validate → analyze → attach services.
 /// </summary>
-public sealed class GraphSession
+public sealed class GraphSession : IDisposable
 {
     private readonly IFileSystem _fs;
     private readonly WorkspaceSession _session = new();
-
-    private static readonly JsonSerializerOptions RulesJsonOpts = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
 
     public GraphSession(IFileSystem fs) => _fs = fs;
 
@@ -89,13 +83,13 @@ public sealed class GraphSession
             return "Specify projectPath or graphPath";
         }
 
-        // Analyze (rules are optional)
+        // Analyze (rules are optional — resolve built-in name first, then file path)
         ArchitectureRule[]? rules = null;
-        if (!string.IsNullOrEmpty(rulesPath) && _fs.FileExists(rulesPath))
+        if (!string.IsNullOrEmpty(rulesPath))
         {
-            var json = _fs.ReadAllText(rulesPath);
-            var rulesDoc = JsonSerializer.Deserialize<RulesDoc>(json, RulesJsonOpts);
-            rules = rulesDoc?.Rules;
+            rules = Lifeblood.Analysis.RulePacks.ResolveBuiltIn(rulesPath);
+            if (rules == null && _fs.FileExists(rulesPath))
+                rules = Lifeblood.Analysis.RulePacks.ParseJson(_fs.ReadAllText(rulesPath));
         }
 
         var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
@@ -110,8 +104,5 @@ public sealed class GraphSession
                $"{analysis.Metrics.TotalModules} modules, {analysis.Violations.Length} violations";
     }
 
-    private sealed class RulesDoc
-    {
-        public ArchitectureRule[]? Rules { get; set; }
-    }
+    public void Dispose() => _session.Clear();
 }
