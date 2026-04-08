@@ -96,7 +96,19 @@ public sealed class GraphBuilder
             .OrderBy(s => s.Id, StringComparer.Ordinal)
             .ToArray();
 
-        var sortedEdges = allEdges
+        // Deduplicate all edges by (source, target, kind).
+        // Partial classes cause the same edge (especially Overrides, Inherits, Implements)
+        // to be emitted once per partial file — typeSymbol.GetMembers() returns all members
+        // including from other partial declarations, and each file's Extract() call has
+        // its own dedup set. The builder is the single source of truth for deduplication.
+        var dedupedEdges = new Dictionary<(string, string, EdgeKind), Edge>();
+        foreach (var edge in allEdges)
+        {
+            var key = (edge.SourceId, edge.TargetId, edge.Kind);
+            dedupedEdges.TryAdd(key, edge); // first-write-wins, consistent with symbol dedup
+        }
+
+        var sortedEdges = dedupedEdges.Values
             .OrderBy(e => e.SourceId, StringComparer.Ordinal)
             .ThenBy(e => e.TargetId, StringComparer.Ordinal)
             .ThenBy(e => e.Kind)
