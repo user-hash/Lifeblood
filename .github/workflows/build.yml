@@ -41,7 +41,7 @@ jobs:
       - name: Self-analysis (TS adapter analyzes itself)
         working-directory: adapters/typescript
         run: node dist/index.js . > ts-self-graph.json
-      - name: Validate graph structure
+      - name: Validate self-analysis graph
         working-directory: adapters/typescript
         run: |
           node -e "
@@ -50,7 +50,30 @@ jobs:
             const dangling = d.edges.filter(e => !ids.has(e.sourceId) || !ids.has(e.targetId));
             if (dangling.length > 0) { console.error('Dangling edges:', dangling.length); process.exit(1); }
             if (!d.version || !d.language || !d.adapter) { console.error('Missing metadata'); process.exit(1); }
-            console.log('Symbols:', d.symbols.length, 'Edges:', d.edges.length, 'Clean.');
+            console.log('Self-analysis — Symbols:', d.symbols.length, 'Edges:', d.edges.length, 'Clean.');
+          "
+      - name: Golden repo test (mini-app)
+        working-directory: adapters/typescript
+        run: |
+          node dist/index.js test-fixtures/mini-app > mini-app-graph.json
+          node -e "
+            const d = require('./mini-app-graph.json');
+            const ids = new Set(d.symbols.map(s => s.id));
+            const types = d.symbols.filter(s => s.kind === 'type');
+            const methods = d.symbols.filter(s => s.kind === 'method');
+            const refs = d.edges.filter(e => e.kind === 'references');
+            const errors = [];
+            if (types.length < 3) errors.push('Expected >= 3 types, got ' + types.length);
+            if (methods.length < 2) errors.push('Expected >= 2 methods, got ' + methods.length);
+            if (refs.length < 2) errors.push('Expected >= 2 reference edges, got ' + refs.length);
+            if (!types.find(t => t.id.includes('Entity'))) errors.push('Missing Entity type');
+            if (!types.find(t => t.id.includes('IRepository'))) errors.push('Missing IRepository type');
+            if (!types.find(t => t.id.includes('UserService'))) errors.push('Missing UserService type');
+            if (!refs.find(e => e.sourceId.includes('UserService') && e.targetId.includes('IRepository'))) errors.push('Missing UserService -> IRepository edge');
+            const dangling = d.edges.filter(e => !ids.has(e.sourceId) || !ids.has(e.targetId));
+            if (dangling.length > 0) errors.push('Dangling edges: ' + dangling.length);
+            if (errors.length > 0) { errors.forEach(e => console.error(e)); process.exit(1); }
+            console.log('Golden repo — Types:', types.length, 'Methods:', methods.length, 'Refs:', refs.length, 'PASS');
           "
 
   python-adapter:
@@ -63,7 +86,7 @@ jobs:
       - name: Self-analysis (Python adapter analyzes itself)
         working-directory: adapters/python
         run: python -m lifeblood_python . > py-self-graph.json
-      - name: Validate graph structure
+      - name: Validate self-analysis graph
         working-directory: adapters/python
         run: |
           python -c "
@@ -77,7 +100,33 @@ jobs:
           if not d.get('version') or not d.get('language') or not d.get('adapter'):
               print('Missing metadata', file=sys.stderr)
               sys.exit(1)
-          print(f'Symbols: {len(d[\"symbols\"])} Edges: {len(d[\"edges\"])} Clean.')
+          print(f'Self-analysis — Symbols: {len(d[\"symbols\"])} Edges: {len(d[\"edges\"])} Clean.')
+          "
+      - name: Golden repo test (mini-app)
+        working-directory: adapters/python
+        run: |
+          python -m lifeblood_python test-fixtures/mini-app > mini-app-graph.json
+          python -c "
+          import json, sys
+          d = json.load(open('mini-app-graph.json'))
+          ids = set(s['id'] for s in d['symbols'])
+          types = [s for s in d['symbols'] if s['kind'] == 'type']
+          methods = [s for s in d['symbols'] if s['kind'] == 'method']
+          refs = [e for e in d['edges'] if e['kind'] == 'references']
+          errors = []
+          if len(types) < 3: errors.append(f'Expected >= 3 types, got {len(types)}')
+          if len(methods) < 2: errors.append(f'Expected >= 2 methods, got {len(methods)}')
+          if len(refs) < 2: errors.append(f'Expected >= 2 reference edges, got {len(refs)}')
+          if not any('Entity' in t['id'] for t in types): errors.append('Missing Entity type')
+          if not any('IRepository' in t['id'] for t in types): errors.append('Missing IRepository type')
+          if not any('UserService' in t['id'] for t in types): errors.append('Missing UserService type')
+          if not any('UserService' in e['sourceId'] and 'IRepository' in e['targetId'] for e in refs): errors.append('Missing UserService -> IRepository edge')
+          dangling = [e for e in d['edges'] if e['sourceId'] not in ids or e['targetId'] not in ids]
+          if dangling: errors.append(f'Dangling edges: {len(dangling)}')
+          if errors:
+              for e in errors: print(e, file=sys.stderr)
+              sys.exit(1)
+          print(f'Golden repo — Types: {len(types)} Methods: {len(methods)} Refs: {len(refs)} PASS')
           "
 
   dogfood:

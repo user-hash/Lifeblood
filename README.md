@@ -34,8 +34,8 @@ Lifeblood is built for that era. Point it at a codebase and get a verified seman
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 697
-Edges:   1746
+Symbols: 700
+Edges:   1755
 Modules: 10
 Types:   106
 ```
@@ -177,7 +177,7 @@ Three adapters ship today. Community adapters can be built via the JSON protocol
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 109 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline. |
+| Lifeblood.Tests | 117 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, use cases. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 

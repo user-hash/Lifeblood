@@ -10,6 +10,8 @@ namespace Lifeblood.Adapters.CSharp;
 /// <summary>
 /// Extracts dependency edges from Roslyn's semantic model.
 /// Inherits, Implements, Calls, References — all with semantic Evidence.
+/// Handles: inheritance, interfaces, method calls, constructor calls, member access,
+/// type references, generic type arguments, typeof() expressions, attribute types.
 /// </summary>
 public sealed class RoslynEdgeExtractor
 {
@@ -47,6 +49,18 @@ public sealed class RoslynEdgeExtractor
 
                 case MemberAccessExpressionSyntax memberAccess:
                     ExtractMemberAccessEdge(model, memberAccess, edges, seen);
+                    break;
+
+                case GenericNameSyntax genericName:
+                    ExtractGenericTypeArgEdges(model, genericName, edges, seen);
+                    break;
+
+                case TypeOfExpressionSyntax typeofExpr:
+                    ExtractTypeOfEdge(model, typeofExpr, edges, seen);
+                    break;
+
+                case AttributeSyntax attribute:
+                    ExtractAttributeEdge(model, attribute, edges, seen);
                     break;
             }
         }
@@ -92,7 +106,7 @@ public sealed class RoslynEdgeExtractor
         if (target?.ContainingType == null) return;
         if (!IsFromSource(target)) return;
 
-        var caller = FindContainingMethod(model, invocation);
+        var caller = FindContainingMethodOrLocal(model, invocation);
         if (caller == null) return;
 
         var sourceId = GetMethodId(caller);
@@ -113,7 +127,7 @@ public sealed class RoslynEdgeExtractor
         if (target?.ContainingType == null) return;
         if (!IsFromSource(target.ContainingType)) return;
 
-        var caller = FindContainingMethod(model, creation);
+        var caller = FindContainingMethodOrLocal(model, creation);
         if (caller == null) return;
 
         var sourceId = GetMethodId(caller);
@@ -166,17 +180,102 @@ public sealed class RoslynEdgeExtractor
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
     }
 
-    private static IMethodSymbol? FindContainingMethod(SemanticModel model, SyntaxNode node)
+    /// <summary>
+    /// Extract References edges for generic type arguments.
+    /// List&lt;IRepository&gt; creates a dependency on IRepository.
+    /// Task&lt;AnalysisResult&gt; creates a dependency on AnalysisResult.
+    /// Covers Dictionary&lt;K,V&gt;, IEnumerable&lt;T&gt;, etc.
+    /// </summary>
+    private void ExtractGenericTypeArgEdges(
+        SemanticModel model, GenericNameSyntax genericName,
+        List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
     {
-        // Try MethodDeclarationSyntax first, then ConstructorDeclarationSyntax
-        var methodNode = node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-        if (methodNode != null)
-            return model.GetDeclaredSymbol(methodNode);
+        var containingType = FindContainingType(model, genericName);
+        if (containingType == null) return;
 
-        var ctorNode = node.Ancestors().OfType<ConstructorDeclarationSyntax>().FirstOrDefault();
-        if (ctorNode != null)
-            return model.GetDeclaredSymbol(ctorNode);
+        var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
 
+        foreach (var typeArg in genericName.TypeArgumentList.Arguments)
+        {
+            var typeInfo = model.GetTypeInfo(typeArg);
+            var argType = typeInfo.Type as INamedTypeSymbol;
+            if (argType == null) continue;
+            if (!IsFromSource(argType)) continue;
+
+            var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(argType));
+            if (sourceId != targetId)
+                AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+        }
+    }
+
+    /// <summary>
+    /// Extract References edges for typeof() expressions.
+    /// typeof(MyHandler) creates a dependency on MyHandler.
+    /// Common in attribute arguments: [ServiceFilter(typeof(MyFilter))]
+    /// </summary>
+    private void ExtractTypeOfEdge(
+        SemanticModel model, TypeOfExpressionSyntax typeofExpr,
+        List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
+    {
+        var typeInfo = model.GetTypeInfo(typeofExpr.Type);
+        var referencedType = typeInfo.Type as INamedTypeSymbol;
+        if (referencedType == null) return;
+        if (!IsFromSource(referencedType)) return;
+
+        var containingType = FindContainingType(model, typeofExpr);
+        if (containingType == null) return;
+
+        var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
+        var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(referencedType));
+
+        if (sourceId != targetId)
+            AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+    }
+
+    /// <summary>
+    /// Extract References edges for attribute types.
+    /// [Obsolete] references System.ObsoleteAttribute (filtered by IsFromSource).
+    /// [MyCustomAttribute] references the source-defined attribute class.
+    /// </summary>
+    private void ExtractAttributeEdge(
+        SemanticModel model, AttributeSyntax attribute,
+        List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
+    {
+        var attrInfo = model.GetSymbolInfo(attribute);
+        var attrCtor = attrInfo.Symbol as IMethodSymbol;
+        if (attrCtor?.ContainingType == null) return;
+        if (!IsFromSource(attrCtor.ContainingType)) return;
+
+        var containingType = FindContainingType(model, attribute);
+        if (containingType == null) return;
+
+        var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
+        var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(attrCtor.ContainingType));
+
+        if (sourceId != targetId)
+            AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+    }
+
+    /// <summary>
+    /// Find the containing method, constructor, or local function for a syntax node.
+    /// Extended from the original FindContainingMethod to also handle local functions.
+    /// </summary>
+    private static IMethodSymbol? FindContainingMethodOrLocal(SemanticModel model, SyntaxNode node)
+    {
+        foreach (var ancestor in node.Ancestors())
+        {
+            switch (ancestor)
+            {
+                case LocalFunctionStatementSyntax localFunc:
+                    return model.GetDeclaredSymbol(localFunc);
+                case MethodDeclarationSyntax method:
+                    return model.GetDeclaredSymbol(method);
+                case ConstructorDeclarationSyntax ctor:
+                    return model.GetDeclaredSymbol(ctor);
+                case AccessorDeclarationSyntax accessor:
+                    return model.GetDeclaredSymbol(accessor);
+            }
+        }
         return null;
     }
 
