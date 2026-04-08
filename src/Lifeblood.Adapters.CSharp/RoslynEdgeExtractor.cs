@@ -95,6 +95,20 @@ public sealed class RoslynEdgeExtractor
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(iface));
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Implements);
         }
+
+        // Method overrides → Overrides (virtual dispatch chain)
+        // Walk all members to find override methods. Each override points to
+        // the specific base method it overrides — not just the base type.
+        foreach (var member in typeSymbol.GetMembers())
+        {
+            if (member is not IMethodSymbol method) continue;
+            if (method.OverriddenMethod == null) continue;
+            if (!IsFromSource(method.OverriddenMethod)) continue;
+
+            var overrideSourceId = GetMethodId(method);
+            var overrideTargetId = GetMethodId(method.OverriddenMethod);
+            AddEdge(edges, seen, overrideSourceId, overrideTargetId, EdgeKind.Overrides);
+        }
     }
 
     private void ExtractCallEdge(

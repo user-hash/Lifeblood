@@ -276,6 +276,110 @@ public class Service
             && e.TargetId.Contains("Result"));
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // Override edge extraction
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_MethodOverride()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Base { public virtual void Run() { } }
+public class Derived : Base { public override void Run() { } }");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Overrides
+            && e.SourceId.Contains("Derived") && e.SourceId.Contains("Run")
+            && e.TargetId.Contains("Base") && e.TargetId.Contains("Run"));
+    }
+
+    [Fact]
+    public void ExtractEdges_MultiLevelOverride()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class A { public virtual void Do() { } }
+public class B : A { public override void Do() { } }
+public class C : B { public override void Do() { } }");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        // C.Do overrides B.Do (immediate base), not A.Do
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Overrides
+            && e.SourceId.Contains("C") && e.TargetId.Contains("B"));
+        // B.Do overrides A.Do
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Overrides
+            && e.SourceId.Contains("B") && e.TargetId.Contains("A"));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Event symbol extraction
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractSymbols_EventField()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Notifier
+{
+    public event System.EventHandler? Changed;
+}");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Notifier.cs", "file:Notifier.cs");
+
+        var evt = symbols.FirstOrDefault(s => s.Name == "Changed");
+        Assert.NotNull(evt);
+        Assert.Equal(DomainSymbolKind.Property, evt!.Kind);
+        Assert.Equal("true", evt.Properties["isEvent"]);
+    }
+
+    [Fact]
+    public void ExtractSymbols_InterfaceEvent()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IObservable
+{
+    event System.EventHandler? Updated;
+}");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "IObservable.cs", "file:IObservable.cs");
+
+        Assert.Contains(symbols, s => s.Name == "Updated"
+            && s.Properties.ContainsKey("isEvent") && s.Properties["isEvent"] == "true");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Indexer extraction
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractSymbols_Indexer()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Collection
+{
+    public string this[int index] => """";
+}");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Collection.cs", "file:Collection.cs");
+
+        var indexer = symbols.FirstOrDefault(s =>
+            s.Properties.TryGetValue("isIndexer", out var v) && v == "true");
+        Assert.NotNull(indexer);
+        Assert.Equal("this[]", indexer!.Name);
+        Assert.Contains("this[", indexer.Id);
+    }
+
     private static (SemanticModel model, SyntaxNode root) Compile(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source);
