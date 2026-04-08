@@ -258,8 +258,10 @@ public sealed class RoslynEdgeExtractor
     }
 
     /// <summary>
-    /// Find the containing method, constructor, or local function for a syntax node.
-    /// Extended from the original FindContainingMethod to also handle local functions.
+    /// Find the containing method or constructor for a syntax node.
+    /// Local functions and property accessors are skipped — they don't have matching
+    /// symbols in the graph, so edges from them would be dangling. We attribute
+    /// their calls to the enclosing method instead.
     /// </summary>
     private static IMethodSymbol? FindContainingMethodOrLocal(SemanticModel model, SyntaxNode node)
     {
@@ -267,8 +269,10 @@ public sealed class RoslynEdgeExtractor
         {
             switch (ancestor)
             {
-                case LocalFunctionStatementSyntax localFunc:
-                    return model.GetDeclaredSymbol(localFunc);
+                case LocalFunctionStatementSyntax:
+                    // Local functions aren't extracted as graph symbols — attributing edges
+                    // to them creates dangling sources. Skip to the enclosing method.
+                    continue;
                 case MethodDeclarationSyntax method:
                     return model.GetDeclaredSymbol(method);
                 case ConstructorDeclarationSyntax ctor:
