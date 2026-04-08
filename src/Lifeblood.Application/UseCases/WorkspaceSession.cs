@@ -57,9 +57,14 @@ public sealed class WorkspaceSession
 
     /// <summary>
     /// Clear all state. Called before a new load to ensure atomic replacement.
+    /// Disposes write-side services if they implement IDisposable (e.g., AdhocWorkspace).
+    /// Port interfaces don't extend IDisposable — the composition root checks concrete types.
     /// </summary>
     public void Clear()
     {
+        (CompilationHost as IDisposable)?.Dispose();
+        (CodeExecutor as IDisposable)?.Dispose();
+        (Refactoring as IDisposable)?.Dispose();
         Graph = null;
         Analysis = null;
         Capability = null;

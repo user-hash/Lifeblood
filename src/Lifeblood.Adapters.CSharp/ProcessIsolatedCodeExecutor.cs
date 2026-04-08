@@ -36,8 +36,8 @@ public sealed class ProcessIsolatedCodeExecutor : ICodeExecutor
         var request = JsonSerializer.Serialize(new { code, imports }, JsonOpts);
 
         var (command, args) = _scriptHostPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
-            ? ("dotnet", _scriptHostPath)
-            : ("dotnet", $"run --project {_scriptHostPath} --no-build");
+            ? ("dotnet", $"\"{_scriptHostPath}\"")
+            : ("dotnet", $"run --project \"{_scriptHostPath}\" --no-build");
 
         var psi = new ProcessStartInfo
         {

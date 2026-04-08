@@ -43,6 +43,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
         // Process operations
         "Process.Start",
         "Process.Kill",
+        "new Process",           // prevents var p = new Process(); p.Start() bypass
+        "new ProcessStartInfo",  // prevents implicit Process.Start via StartInfo
         // Environment
         "Environment.Exit",
         "Environment.SetEnvironmentVariable",
@@ -85,10 +87,13 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     {
         var startTime = DateTime.UtcNow;
 
-        // Layer 1: String-based blocklist (fast, catches obvious patterns)
+        // Layer 1: String-based blocklist (fast, catches obvious patterns).
+        // Normalize whitespace around dots to prevent bypass via "Process . Start".
+        // C# allows arbitrary whitespace between member-access tokens.
+        var normalizedCode = NormalizeMemberAccess(code);
         foreach (var pattern in BlockedPatterns)
         {
-            if (code.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            if (normalizedCode.Contains(pattern, StringComparison.OrdinalIgnoreCase))
                 return new CodeExecutionResult
                 {
                     Success = false,
@@ -213,5 +218,36 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 ElapsedMs = Math.Round(elapsed, 1),
             };
         }
+    }
+
+    /// <summary>
+    /// Collapse whitespace around member-access dots so "Process . Start" becomes "Process.Start".
+    /// This prevents trivial bypass of string-based blocklist patterns.
+    /// Only normalizes for pattern matching — the original code is still executed.
+    /// </summary>
+    private static string NormalizeMemberAccess(string code)
+    {
+        // Collapse: "foo . bar" → "foo.bar", "foo .bar" → "foo.bar", "foo. bar" → "foo.bar"
+        // Also collapse "new  FileInfo" → "new FileInfo" (multi-space between new and type)
+        var sb = new System.Text.StringBuilder(code.Length);
+        for (int i = 0; i < code.Length; i++)
+        {
+            char c = code[i];
+            if (c == '.' && sb.Length > 0)
+            {
+                // Trim trailing whitespace before dot
+                while (sb.Length > 0 && char.IsWhiteSpace(sb[sb.Length - 1]))
+                    sb.Length--;
+                sb.Append('.');
+                // Skip leading whitespace after dot
+                while (i + 1 < code.Length && char.IsWhiteSpace(code[i + 1]))
+                    i++;
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
     }
 }

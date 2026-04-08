@@ -49,10 +49,37 @@ internal static class ScriptSecurityScanner
                     break;
                 }
 
-                // Block 'dynamic' keyword — bypasses compile-time checks
-                case IdentifierNameSyntax id when id.Identifier.Text == "dynamic"
-                    && id.Parent is TypeSyntax:
+                // Block 'dynamic' keyword — bypasses compile-time checks.
+                // Roslyn parses `dynamic` as IdentifierNameSyntax (contextual keyword).
+                // Don't check parent type — `dynamic x = ...;` has parent VariableDeclarationSyntax
+                // (not TypeSyntax), so the old parent check missed the most common pattern.
+                case IdentifierNameSyntax id when id.Identifier.Text == "dynamic":
                     return "Blocked: 'dynamic' keyword — bypasses type safety";
+
+                // Block dangerous object creation — immune to comment/whitespace injection.
+                // String blocklist catches "new FileInfo" but comments bypass it.
+                case ObjectCreationExpressionSyntax creation:
+                {
+                    var typeName = creation.Type.ToString().Replace(" ", "");
+                    if (IsBlockedCreationType(typeName))
+                        return $"Blocked: 'new {typeName}' — restricted type";
+                    break;
+                }
+
+                // Block target-typed new: "Process p = new();" bypasses ObjectCreationExpressionSyntax.
+                // Walk up to the variable declaration to find the declared type.
+                case ImplicitObjectCreationExpressionSyntax implicitNew:
+                {
+                    if (implicitNew.Parent is EqualsValueClauseSyntax
+                        && implicitNew.Parent.Parent is VariableDeclaratorSyntax
+                        && implicitNew.Parent.Parent.Parent is VariableDeclarationSyntax varDecl)
+                    {
+                        var typeName = varDecl.Type.ToString().Replace(" ", "");
+                        if (IsBlockedCreationType(typeName))
+                            return $"Blocked: 'new {typeName}()' — restricted type";
+                    }
+                    break;
+                }
 
                 // Block unsafe keyword
                 case UnsafeStatementSyntax:
@@ -84,15 +111,44 @@ internal static class ScriptSecurityScanner
         _ => false,
     };
 
+    /// <summary>
+    /// Blocked types for object creation. Mirrors "new X" patterns from string blocklist
+    /// but immune to comment/whitespace injection in the type name.
+    /// </summary>
+    private static bool IsBlockedCreationType(string typeName) =>
+        typeName.EndsWith("FileInfo") || typeName.EndsWith("DirectoryInfo")
+        || typeName.EndsWith("StreamWriter") || typeName.EndsWith("FileStream")
+        || typeName.EndsWith("HttpClient") || typeName.EndsWith("TcpClient")
+        || typeName.EndsWith("Socket")
+        || typeName == "Process" || typeName.EndsWith(".Process") // blocks `new Process()` — prevents `p.Start()` bypass
+        || typeName.EndsWith("ProcessStartInfo");
+
     private static bool IsBlockedStaticCall(MemberAccessExpressionSyntax memberAccess)
     {
-        var fullText = memberAccess.ToString();
+        // Reconstruct the member chain from AST nodes — immune to whitespace/comment injection.
+        // "Process . Start" and "Process/**/. Start" both produce "Process.Start".
+        var fullText = ReconstructMemberChain(memberAccess);
 
         // Process-related
         if (fullText.Contains("Process.Start") || fullText.Contains("Process.Kill"))
             return true;
 
-        // Assembly loading
+        // File system mutations — mirrors string blocklist but immune to comment/whitespace bypass
+        if (fullText.Contains("File.Delete") || fullText.Contains("File.WriteAll")
+            || fullText.Contains("File.AppendAll") || fullText.Contains("File.Create")
+            || fullText.Contains("File.Move") || fullText.Contains("File.Copy")
+            || fullText.Contains("File.SetAttributes"))
+            return true;
+
+        if (fullText.Contains("Directory.Delete") || fullText.Contains("Directory.CreateDirectory")
+            || fullText.Contains("Directory.Move"))
+            return true;
+
+        // Environment
+        if (fullText.Contains("Environment.Exit") || fullText.Contains("Environment.SetEnvironmentVariable"))
+            return true;
+
+        // Assembly loading (all Load* variants)
         if (fullText.Contains("Assembly.Load") || fullText.Contains("Assembly.UnsafeLoad"))
             return true;
 
@@ -108,6 +164,36 @@ internal static class ScriptSecurityScanner
         if (fullText.Contains("Thread.Abort"))
             return true;
 
+        // P/Invoke / Marshal
+        if (fullText.Contains("Marshal.Copy") || fullText.Contains("Marshal.PtrToStructure"))
+            return true;
+
+        // Network
+        if (fullText.Contains("WebRequest.Create"))
+            return true;
+
         return false;
+    }
+
+    /// <summary>
+    /// Reconstruct a member access chain from AST nodes, stripping all trivia.
+    /// "Process . Start" → "Process.Start", "System . IO . File" → "System.IO.File".
+    /// </summary>
+    private static string ReconstructMemberChain(MemberAccessExpressionSyntax memberAccess)
+    {
+        var parts = new List<string>();
+        SyntaxNode current = memberAccess;
+
+        while (current is MemberAccessExpressionSyntax ma)
+        {
+            parts.Add(ma.Name.Identifier.Text);
+            current = ma.Expression;
+        }
+
+        if (current is IdentifierNameSyntax id)
+            parts.Add(id.Identifier.Text);
+
+        parts.Reverse();
+        return string.Join(".", parts);
     }
 }

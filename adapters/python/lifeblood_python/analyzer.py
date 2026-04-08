@@ -77,7 +77,7 @@ def analyze_project(project_root: str) -> tuple[list[dict], list[dict]]:
         except SyntaxError:
             continue
 
-        file_edges = _extract_edges(tree, py_module, known_types)
+        file_edges = _extract_edges(tree, py_module, known_types, rel_path)
         edges.extend(file_edges)
 
     return symbols, edges
@@ -240,6 +240,7 @@ def _extract_edges(
     tree: ast.Module,
     py_module: str,
     known_types: dict[str, str],
+    rel_path: str = "",
 ) -> list[dict]:
     """Extract inheritance, reference, and call edges from an AST."""
     edges: list[dict] = []
@@ -293,10 +294,10 @@ def _extract_edges(
                 for alias in node.names:
                     name = alias.name
                     if name in known_types:
-                        # Edge from file to referenced type
-                        file_module = py_module
+                        # Use rel_path (matches the file symbol ID) instead of
+                        # py_module heuristic which produces wrong IDs for __init__.py
                         edges.append({
-                            "sourceId": f"file:{py_module.replace('.', '/')}.py",
+                            "sourceId": f"file:{rel_path}",
                             "targetId": known_types[name],
                             "kind": "references",
                             "evidence": evidence,

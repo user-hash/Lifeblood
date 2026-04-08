@@ -70,6 +70,7 @@ public sealed class GraphBuilder
         foreach (var symbol in _symbols.Values)
         {
             if (string.IsNullOrEmpty(symbol.ParentId)) continue;
+            if (symbol.ParentId == symbol.Id) continue; // self-reference guard
             if (!_symbols.ContainsKey(symbol.ParentId)) continue;
             if (containsPairs.Contains((symbol.ParentId, symbol.Id))) continue;
 

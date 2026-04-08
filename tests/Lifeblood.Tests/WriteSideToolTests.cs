@@ -537,6 +537,16 @@ namespace TestApp
     }
 
     [Theory]
+    [InlineData("dynamic x = 1;", "dynamic")]
+    [InlineData("dynamic d = new object();", "dynamic")]
+    public void SecurityScanner_BlocksDynamic(string code, string expectedKeyword)
+    {
+        var result = ScriptSecurityScanner.Scan(code);
+        Assert.NotNull(result);
+        Assert.Contains(expectedKeyword, result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
     [InlineData("unsafe { int* p = null; }", "unsafe")]
     [InlineData("int* ptr = &x;", "pointer")]
     public void SecurityScanner_BlocksUnsafe(string code, string expectedKeyword)
@@ -544,6 +554,41 @@ namespace TestApp
         var result = ScriptSecurityScanner.Scan(code);
         Assert.NotNull(result);
         Assert.Contains(expectedKeyword, result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("Process . Start(\"cmd\")", "restricted")]
+    [InlineData("Assembly . Load(\"evil\")", "restricted")]
+    [InlineData("Thread . Abort()", "restricted")]
+    [InlineData("File./*comment*/Delete(\"x\")", "restricted")]
+    [InlineData("Environment.Exit(1)", "restricted")]
+    [InlineData("new ProcessStartInfo(\"cmd\")", "restricted")]
+    [InlineData("new Process()", "restricted")]
+    [InlineData("new FileInfo(\"x\")", "restricted")]
+    [InlineData("new HttpClient()", "restricted")]
+    public void SecurityScanner_BlocksWhitespaceBypass(string code, string expectedKeyword)
+    {
+        var result = ScriptSecurityScanner.Scan(code);
+        Assert.NotNull(result);
+        Assert.Contains(expectedKeyword, result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CodeExecutor_BlocksWhitespaceBypass_StringBlocklist()
+    {
+        var executor = new RoslynCodeExecutor(BuildTestCompilations());
+        var result = executor.Execute("System . IO . File . Delete(\"test.txt\");");
+        Assert.False(result.Success);
+        Assert.Contains("Blocked pattern", result.Error);
+    }
+
+    [Fact]
+    public void SecurityScanner_BlocksTargetTypedNew()
+    {
+        // C# 9 target-typed new: "Process p = new();" uses ImplicitObjectCreationExpressionSyntax
+        var result = ScriptSecurityScanner.Scan("System.Diagnostics.Process p = new();");
+        Assert.NotNull(result);
+        Assert.Contains("restricted", result, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

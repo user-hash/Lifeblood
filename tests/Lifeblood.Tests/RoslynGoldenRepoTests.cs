@@ -93,9 +93,11 @@ public class RoslynGoldenRepoTests
         var blastB = BlastRadiusAnalyzer.Analyze(graph,
             graph.Symbols.First(s => s.Name == "ServiceB").Id);
 
-        // In a cycle, changing either affects the other
-        Assert.True(blastA.AffectedCount > 0 || blastB.AffectedCount > 0,
-            "Cycle members should appear in each other's blast radius");
+        // In a cycle, changing either affects the other — BOTH must have affected symbols
+        Assert.True(blastA.AffectedCount > 0,
+            $"ServiceA blast radius should affect ServiceB, but AffectedCount={blastA.AffectedCount}");
+        Assert.True(blastB.AffectedCount > 0,
+            $"ServiceB blast radius should affect ServiceA, but AffectedCount={blastB.AffectedCount}");
     }
 
     // --- Graph builders using in-memory compilation ---

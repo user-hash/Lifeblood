@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
 using Lifeblood.Application.Ports.Infrastructure;
@@ -17,6 +18,11 @@ public sealed class GraphSession
 {
     private readonly IFileSystem _fs;
     private readonly WorkspaceSession _session = new();
+
+    private static readonly JsonSerializerOptions RulesJsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     public GraphSession(IFileSystem fs) => _fs = fs;
 
@@ -88,8 +94,7 @@ public sealed class GraphSession
         if (!string.IsNullOrEmpty(rulesPath) && _fs.FileExists(rulesPath))
         {
             var json = _fs.ReadAllText(rulesPath);
-            var rulesDoc = System.Text.Json.JsonSerializer.Deserialize<RulesDoc>(json,
-                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+            var rulesDoc = JsonSerializer.Deserialize<RulesDoc>(json, RulesJsonOpts);
             rules = rulesDoc?.Rules;
         }
 
