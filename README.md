@@ -36,10 +36,10 @@ We dogfood Lifeblood on itself. Every push, the CI analyzes the framework's own 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 704
-Edges:   1772
+Symbols: 791
+Edges:   1920
 Modules: 10
-Types:   106
+Types:   118
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates. Cross-module resolution is proven — compilations are built in dependency order with full project-to-project references.
@@ -160,7 +160,7 @@ Three adapters ship today. Community adapters can be built via the JSON protocol
 
 **Instruction File Generator** analyzes a codebase and produces CLAUDE.md or AGENTS.md sections with architecture boundaries, dependency rules, and high-value files.
 
-**MCP Server** serves the semantic graph interactively over stdio (JSON-RPC 2.0). Six tools: analyze, context, lookup, dependencies, dependants, blast radius. AI agents can load a project and query its structure in real time.
+**MCP Server** exposes Roslyn as a full compiler-as-a-service over stdio (JSON-RPC 2.0). 12 tools: 6 read-side (analyze, context, lookup, dependencies, dependants, blast radius) and 6 write-side (execute C# code, diagnose, compile-check, find references, rename, format). AI agents can load a project, understand its architecture, execute code against it, and perform refactoring.
 
 **CLI** runs analysis, validates architecture rules, generates context, and exports graphs. Designed for CI integration with exit codes.
 
@@ -168,7 +168,7 @@ Three adapters ship today. Community adapters can be built via the JSON protocol
 
 ## Status
 
-Dogfood-verified. 121 tests. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 121 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -179,7 +179,7 @@ Dogfood-verified. 121 tests. CI green (4 jobs: build, TypeScript adapter, Python
 | Lifeblood.Connectors.ContextPack | Implemented. Context pack with GraphSummary, instruction file, reading order. |
 | Lifeblood.Connectors.Mcp | Implemented. Graph provider with blast radius delegation. |
 | Lifeblood.Analysis | Implemented. Coupling, blast radius, cycles, tiers, rule validation. |
-| Lifeblood.Server.Mcp | Implemented. MCP server with 6 tools over stdio. |
+| Lifeblood.Server.Mcp | Implemented. MCP server with 12 tools over stdio (6 read + 6 write). Bidirectional Roslyn. |
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |

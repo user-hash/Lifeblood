@@ -193,12 +193,13 @@
       </p>
       <div class="pills">
         <div class="pill">10 assemblies + 2 standalone adapters</div>
-        <div class="pill">700 symbols, 1760 edges</div>
+        <div class="pill">791 symbols, 1920 edges</div>
         <div class="pill">121 tests / CI green</div>
         <div class="pill">C# + TypeScript + Python</div>
         <div class="pill">Cross-module: Proven</div>
-        <div class="pill">10/10 ports wired</div>
-        <div class="pill">MCP Server</div>
+        <div class="pill">13/13 ports wired</div>
+        <div class="pill">12 MCP tools (6R + 6W)</div>
+        <div class="pill">Roslyn bidirectional</div>
         <div class="pill">dotnet tool</div>
       </div>
     </div>
@@ -281,7 +282,7 @@
 
         <div class="signal-card">
           <strong>Enforced invariants (tested)</strong>
-          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 121 tests. 4 CI jobs. Golden repos for all 3 adapters.</span>
+          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 121 tests. 12 MCP tools. 4 CI jobs. Golden repos for all 3 adapters.</span>
         </div>
       </div>
 
@@ -295,7 +296,7 @@
           <div class="item"><strong>AgentContextGenerator</strong><small>High-value files, boundaries, reading order, hotspots, dependency matrix, violations.</small></div>
           <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries and architecture rules.</small></div>
           <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius.</small></div>
-          <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 6 tools. Connect from Claude Code or any MCP client.</small></div>
+          <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 12 tools (6 read + 6 write). Bidirectional Roslyn. Connect from Claude Code or any MCP client.</small></div>
           <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services. Not yet started.</small></div>
         </div>
 
@@ -307,6 +308,9 @@
           <div class="item"><strong>MCP interactive queries</strong><span>6 tools over stdio</span></div>
           <div class="item"><strong>Exported graph.json</strong><span>portable semantic graph + metadata</span></div>
           <div class="item"><strong>CLI analysis report</strong><span>symbols, edges, violations, cycles</span></div>
+          <div class="item"><strong>Code execution</strong><span>CSharpScript.RunAsync via MCP</span></div>
+          <div class="item"><strong>Diagnostics + compile check</strong><span>Roslyn compiler-as-a-service</span></div>
+          <div class="item"><strong>Find references + rename</strong><span>workspace-aware refactoring</span></div>
         </div>
 
         <div class="card">
@@ -327,7 +331,7 @@
     <div class="footer">
       Solid = implemented and dogfood-verified. Dashed/faded = planned.
       Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-      → 700 symbols, 1760 edges, 10 modules, 106 types, 0 violations.
+      → 791 symbols, 1920 edges, 10 modules, 118 types, 0 violations. 12 MCP tools.
     </div>
   </div>
 </body>

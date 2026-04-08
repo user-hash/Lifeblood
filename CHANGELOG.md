@@ -5,6 +5,30 @@ All notable changes to Lifeblood are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-08
+
+Bidirectional Roslyn — compiler-as-a-service via MCP.
+
+### Added
+
+- **Bidirectional Roslyn**: 6 write-side MCP tools — execute C# code, diagnose, compile-check, find references, rename, format. Roslyn exposed as full compiler-as-a-service.
+- **Domain result types**: DiagnosticInfo, CompileCheckResult, CodeExecutionResult, ReferenceLocation, TextEdit (pure, zero deps).
+- **3 new port interfaces**: ICodeExecutor, ICompilationHost, IWorkspaceRefactoring (language-agnostic).
+- **3 Roslyn implementations**: RoslynCodeExecutor (CSharpScript), RoslynCompilationHost (diagnostics/emit/SymbolFinder), RoslynWorkspaceRefactoring (Renamer/Formatter via AdhocWorkspace).
+- **Compilation preservation**: RoslynWorkspaceAnalyzer retains compilations after analysis for write-side reuse.
+- **Edge extraction tests**: 4 new unit tests for generics, typeof, attributes, return types.
+- **Return type edges**: Fixed MethodDeclarationSyntax filter that blocked return type references.
+- **Golden repo tests**: mini-app fixtures for TypeScript and Python adapters with pattern assertions in CI.
+- **Python .gitignore**: Exclude __pycache__ and build artifacts.
+
+### Changed
+
+- MCP tool count: 6 → 12 (6 read + 6 write).
+- Port count: 10 → 13 (3 new write-side ports).
+- NuGet: added Microsoft.CodeAnalysis.CSharp.Scripting 4.12.*, Microsoft.CodeAnalysis.CSharp.Workspaces 4.12.*.
+- Dogfood: 704 symbols / 1772 edges → 791 symbols / 1920 edges.
+- Tests: 117 → 121.
+
 ## [0.2.0] - 2026-04-08
 
 Cross-module resolution, Python adapter, hexagonal port sealing.
