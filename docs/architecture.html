@@ -192,12 +192,12 @@
         All 13 port interfaces have concrete implementations. All hexagonal boundaries enforced by tests.
       </p>
       <div class="pills">
-        <div class="pill">10 assemblies + 2 standalone adapters</div>
-        <div class="pill">797 symbols, 1971 edges</div>
-        <div class="pill">121 tests / CI green</div>
+        <div class="pill">11 assemblies + 2 standalone adapters</div>
+        <div class="pill">972 symbols, 2371 edges</div>
+        <div class="pill">210 tests / CI green</div>
         <div class="pill">C# + TypeScript + Python</div>
-        <div class="pill">Cross-module: Proven</div>
-        <div class="pill">13/13 ports wired</div>
+        <div class="pill">Cross-module: BestEffort</div>
+        <div class="pill">14/14 ports wired</div>
         <div class="pill">12 MCP tools (6R + 6W)</div>
         <div class="pill">Roslyn bidirectional</div>
         <div class="pill">dotnet tool</div>
@@ -285,7 +285,7 @@
 
         <div class="signal-card">
           <strong>Enforced invariants (tested)</strong>
-          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 121 tests. 12 MCP tools. 4 CI jobs. Golden repos for all 3 adapters.</span>
+          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 210 tests. 12 MCP tools. 4 CI jobs. Golden repos for all 3 adapters.</span>
         </div>
       </div>
 
@@ -334,7 +334,7 @@
     <div class="footer">
       Solid = implemented and dogfood-verified. Dashed/faded = planned.
       Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-      → 797 symbols, 1971 edges, 10 modules, 118 types, 0 violations. 13 ports, 12 MCP tools.
+      → 972 symbols, 2371 edges, 11 modules, 140 types, 0 violations. 14 ports, 12 MCP tools.
     </div>
   </div>
 </body>

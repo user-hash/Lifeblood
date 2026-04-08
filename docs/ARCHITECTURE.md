@@ -28,7 +28,7 @@ CLI (composition root)
   → Adapters.CSharp → Application
   → Adapters.JsonGraph → Application
   → Connectors.ContextPack → Application
-  → Connectors.Mcp → Application + Analysis
+  → Connectors.Mcp → Application (blast radius via IBlastRadiusProvider port)
   → Analysis → Domain
 ```
 
@@ -43,16 +43,17 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | **Lifeblood.Adapters.CSharp** | Roslyn reference adapter: workspace analyzer, module discovery, symbol/edge extraction | Application, Roslyn |
 | **Lifeblood.Adapters.JsonGraph** | JSON import/export with round-trip fidelity | Application |
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator | Application |
-| **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius) | Application, Analysis |
+| **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius) | Application |
 | **Lifeblood.Analysis** | CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator | Domain |
 | **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. 12 tools (6 read + 6 write). Bidirectional Roslyn. | Application, Adapters.CSharp, Connectors |
+| **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. | Roslyn Scripting only |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch | Everything |
 
 ## Domain Model
 
 The domain is pure. No Roslyn, no JSON, no System.IO.
 
-- **Symbol** — a node: module, file, namespace, type, method, field, parameter
+- **Symbol** — a node: module, file, namespace, type, method, field, property, parameter
 - **Edge** — a directed relationship: contains, dependsOn, implements, inherits, calls, references, overrides
 - **Evidence** — provenance: syntax/semantic/inferred + adapter name + ConfidenceLevel
 - **GraphBuilder** — constructs graphs, synthesizes Contains edges from ParentId, deduplicates symbols, sorts output deterministically
@@ -86,7 +87,7 @@ Current Roslyn adapter capabilities:
 - TypeResolution: Proven
 - CallResolution: Proven
 - ImplementationResolution: Proven
-- CrossModuleReferences: Proven (compilations built in dependency order with CompilationReferences)
+- CrossModuleReferences: BestEffort (compilations built in dependency order, but cycles are broken by skipping — degraded in cyclic graphs)
 - OverrideResolution: None (not yet extracted)
 
 ## Deterministic Output

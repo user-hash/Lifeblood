@@ -122,8 +122,8 @@ We test Lifeblood on itself. The MCP server loads its own source code, executes 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 959
-Edges:   2348
+Symbols: 972
+Edges:   2371
 Modules: 11
 Types:   140
 ```
