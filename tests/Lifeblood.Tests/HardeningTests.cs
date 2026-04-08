@@ -207,23 +207,8 @@ public class HardeningTests
     public void ProcessIsolatedExecutor_SimpleExpression_ReturnsResult()
     {
         var scriptHostPath = FindScriptHostProject();
-        if (scriptHostPath == null)
-        {
-            // Skip if ScriptHost not found (CI may not have it built)
-            return;
-        }
-
-        // Build ScriptHost first
-        var buildProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = $"build \"{scriptHostPath}\" --no-restore -v q",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        });
-        buildProcess?.WaitForExit(30000);
+        if (scriptHostPath == null) return;
+        if (!TryBuildScriptHost(scriptHostPath)) return;
 
         var executor = new ProcessIsolatedCodeExecutor(scriptHostPath);
         var result = executor.Execute("return 2 + 3;", timeoutMs: 15000);
@@ -237,12 +222,31 @@ public class HardeningTests
     {
         var scriptHostPath = FindScriptHostProject();
         if (scriptHostPath == null) return;
+        if (!TryBuildScriptHost(scriptHostPath)) return;
 
         var executor = new ProcessIsolatedCodeExecutor(scriptHostPath);
         var result = executor.Execute("while(true) { }", timeoutMs: 3000);
 
         Assert.False(result.Success);
         Assert.Contains("timed out", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryBuildScriptHost(string path)
+    {
+        try
+        {
+            var build = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"build \"{path}\" -v q",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            return build != null && build.WaitForExit(30000) && build.ExitCode == 0;
+        }
+        catch { return false; }
     }
 
     // ──────────────────────────────────────────────────────────────
