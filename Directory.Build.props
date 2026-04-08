@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Authors>Matic</Authors>
+    <Company>Lifeblood</Company>
+    <Product>Lifeblood</Product>
+    <Copyright>Copyright (c) 2026 Matic</Copyright>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/user-hash/Lifeblood</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/user-hash/Lifeblood</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>semantic-graph;code-analysis;ai;mcp;hexagonal</PackageTags>
+    <Description>Compiler truth in, AI context out. Hexagonal framework connecting compiler-level code intelligence to AI tools.</Description>
+  </PropertyGroup>
+</Project>

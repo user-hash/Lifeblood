@@ -1,3 +1,4 @@
+using Lifeblood.Adapters.CSharp;
 using Lifeblood.CLI;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
@@ -18,6 +19,8 @@ public class CliTests : IDisposable
         _tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-cli-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
     }
+
+    private readonly RulesLoader _rulesLoader = new(new PhysicalFileSystem());
 
     public void Dispose()
     {
@@ -152,7 +155,7 @@ public class CliTests : IDisposable
         }
         """);
 
-        var rules = RulesLoader.Load(rulesPath);
+        var rules = _rulesLoader.LoadRules(rulesPath);
 
         Assert.Single(rules);
         Assert.Equal("R1", rules[0].Id);
@@ -166,7 +169,7 @@ public class CliTests : IDisposable
         var rulesPath = Path.Combine(_tempDir, "empty-rules.json");
         File.WriteAllText(rulesPath, """{ "rules": [] }""");
 
-        var rules = RulesLoader.Load(rulesPath);
+        var rules = _rulesLoader.LoadRules(rulesPath);
 
         Assert.Empty(rules);
     }
@@ -184,7 +187,7 @@ public class CliTests : IDisposable
         }
         """);
 
-        var rules = RulesLoader.Load(rulesPath);
+        var rules = _rulesLoader.LoadRules(rulesPath);
 
         Assert.Equal(2, rules.Length);
         Assert.Equal("R2", rules[1].Id);
@@ -195,6 +198,6 @@ public class CliTests : IDisposable
     public void RulesLoader_Load_MissingFile_Throws()
     {
         Assert.Throws<FileNotFoundException>(() =>
-            RulesLoader.Load(Path.Combine(_tempDir, "does-not-exist.json")));
+            _rulesLoader.LoadRules(Path.Combine(_tempDir, "does-not-exist.json")));
     }
 }

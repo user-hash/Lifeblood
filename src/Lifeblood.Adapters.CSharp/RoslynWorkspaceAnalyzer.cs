@@ -1,4 +1,5 @@
 using Lifeblood.Adapters.CSharp.Internal;
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
@@ -16,9 +17,16 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 {
-    private readonly RoslynModuleDiscovery _discovery = new();
+    private readonly IFileSystem _fs;
+    private readonly RoslynModuleDiscovery _discovery;
     private readonly RoslynSymbolExtractor _symbolExtractor = new();
     private readonly RoslynEdgeExtractor _edgeExtractor = new();
+
+    public RoslynWorkspaceAnalyzer(IFileSystem fs)
+    {
+        _fs = fs;
+        _discovery = new RoslynModuleDiscovery(fs);
+    }
 
     public AdapterCapability Capability => RoslynCapabilityDescriptor.Capability;
 
@@ -108,12 +116,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         return builder.Build();
     }
 
-    private static CSharpCompilation? CreateCompilation(
+    private CSharpCompilation? CreateCompilation(
         ModuleInfo module, string projectRoot, AnalysisConfig config)
     {
         var sourceFiles = module.FilePaths
             .Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            .Where(File.Exists);
+            .Where(_fs.FileExists);
 
         if (config.ExcludePatterns.Length > 0)
         {
@@ -127,7 +135,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         var trees = sourceFiles
             .Select(f =>
             {
-                try { return CSharpSyntaxTree.ParseText(File.ReadAllText(f), path: f); }
+                try { return CSharpSyntaxTree.ParseText(_fs.ReadAllText(f), path: f); }
                 catch (IOException) { return null; }
             })
             .Where(t => t != null)

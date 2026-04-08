@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Lifeblood.Adapters.CSharp;
+using Lifeblood.Application.Ports.Infrastructure;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -16,7 +18,9 @@ class Program
 
     static async Task Main()
     {
-        var handler = new ToolHandler();
+        IFileSystem fs = new PhysicalFileSystem();
+        var session = new GraphSession(fs);
+        var handler = new ToolHandler(session);
 
         Console.Error.WriteLine("Lifeblood MCP server starting...");
 

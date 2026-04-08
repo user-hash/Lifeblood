@@ -5,8 +5,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Lifeblood.Server.Mcp</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>lifeblood-mcp</ToolCommandName>
+    <PackageId>Lifeblood.Server.Mcp</PackageId>
+    <PackageDescription>Lifeblood MCP Server — interactive semantic graph for AI agents over stdio.</PackageDescription>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- MCP server host. Composition root for interactive AI agent sessions. -->
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />

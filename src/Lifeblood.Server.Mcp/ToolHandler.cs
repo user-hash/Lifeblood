@@ -11,8 +11,10 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public sealed class ToolHandler
 {
-    private readonly GraphSession _session = new();
+    private readonly GraphSession _session;
     private readonly LifebloodMcpProvider _provider = new();
+
+    public ToolHandler(GraphSession session) => _session = session;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
