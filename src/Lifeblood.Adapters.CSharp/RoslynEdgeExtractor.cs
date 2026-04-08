@@ -96,18 +96,44 @@ public sealed class RoslynEdgeExtractor
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Implements);
         }
 
-        // Method overrides → Overrides (virtual dispatch chain)
-        // Walk all members to find override methods. Each override points to
-        // the specific base method it overrides — not just the base type.
+        // Member overrides → Overrides (virtual dispatch chain)
+        // Walk all members to find overrides. Each override points to
+        // the specific base member it overrides — not just the base type.
         foreach (var member in typeSymbol.GetMembers())
         {
-            if (member is not IMethodSymbol method) continue;
-            if (method.OverriddenMethod == null) continue;
-            if (!IsFromSource(method.OverriddenMethod)) continue;
-
-            var overrideSourceId = GetMethodId(method);
-            var overrideTargetId = GetMethodId(method.OverriddenMethod);
-            AddEdge(edges, seen, overrideSourceId, overrideTargetId, EdgeKind.Overrides);
+            switch (member)
+            {
+                case IMethodSymbol method when method.OverriddenMethod != null
+                    && IsFromSource(method.OverriddenMethod):
+                {
+                    AddEdge(edges, seen,
+                        GetMethodId(method), GetMethodId(method.OverriddenMethod),
+                        EdgeKind.Overrides);
+                    break;
+                }
+                case IPropertySymbol prop when prop.OverriddenProperty != null
+                    && IsFromSource(prop.OverriddenProperty):
+                {
+                    var typeFqn = RoslynSymbolExtractor.GetFullName(prop.ContainingType);
+                    var baseFqn = RoslynSymbolExtractor.GetFullName(prop.OverriddenProperty.ContainingType);
+                    AddEdge(edges, seen,
+                        SymbolIds.Property(typeFqn, prop.Name),
+                        SymbolIds.Property(baseFqn, prop.OverriddenProperty.Name),
+                        EdgeKind.Overrides);
+                    break;
+                }
+                case IEventSymbol evt when evt.OverriddenEvent != null
+                    && IsFromSource(evt.OverriddenEvent):
+                {
+                    var typeFqn = RoslynSymbolExtractor.GetFullName(evt.ContainingType);
+                    var baseFqn = RoslynSymbolExtractor.GetFullName(evt.OverriddenEvent.ContainingType);
+                    AddEdge(edges, seen,
+                        SymbolIds.Property(typeFqn, evt.Name),
+                        SymbolIds.Property(baseFqn, evt.OverriddenEvent.Name),
+                        EdgeKind.Overrides);
+                    break;
+                }
+            }
         }
     }
 

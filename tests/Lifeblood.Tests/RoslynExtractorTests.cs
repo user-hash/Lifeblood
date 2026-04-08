@@ -380,6 +380,174 @@ public class Collection
         Assert.Contains("this[", indexer.Id);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // Roslyn capability audit — verify edge extraction for all C# patterns
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_NullConditionalAccess()
+    {
+        // a?.Method() uses ConditionalAccessExpressionSyntax, not MemberAccessExpressionSyntax
+        var (model, root) = Compile(@"
+namespace App;
+public class Logger { public void Log(string msg) { } }
+public class Service
+{
+    private Logger? _log;
+    public void Run() { _log?.Log(""hello""); }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service")
+            && e.TargetId.Contains("Logger"));
+    }
+
+    [Fact]
+    public void ExtractEdges_CastExpression()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface ITarget { }
+public class Service
+{
+    public void Run(object obj) { var t = (ITarget)obj; }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service")
+            && e.TargetId.Contains("ITarget"));
+    }
+
+    [Fact]
+    public void ExtractEdges_PatternMatching()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Target { }
+public class Service
+{
+    public void Run(object obj) { if (obj is Target t) { } }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service")
+            && e.TargetId.Contains("Target"));
+    }
+
+    [Fact]
+    public void ExtractEdges_AsCast()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Target { }
+public class Service
+{
+    public void Run(object obj) { var t = obj as Target; }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service")
+            && e.TargetId.Contains("Target"));
+    }
+
+    [Fact]
+    public void ExtractEdges_BaseMethodCall()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Base { public virtual void Run() { } }
+public class Derived : Base
+{
+    public override void Run() { base.Run(); }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Derived") && e.SourceId.Contains("Run")
+            && e.TargetId.Contains("Base") && e.TargetId.Contains("Run"));
+    }
+
+    [Fact]
+    public void ExtractEdges_NullConditionalCall_CreatesCallEdge()
+    {
+        // Sharper: verify the method CALL through ?. is captured, not just the type reference
+        var (model, root) = Compile(@"
+namespace App;
+public class Logger { public void Log(string msg) { } }
+public class Service
+{
+    private Logger? _log;
+    public void Run() { _log?.Log(""hello""); }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        // ?. uses ConditionalAccessExpressionSyntax → InvocationExpressionSyntax inside
+        // The Calls edge should still resolve through Roslyn's semantic model
+        var hasCallEdge = edges.Any(e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Run")
+            && e.TargetId.Contains("Log"));
+        // This test documents whether we capture the call or not.
+        // If it fails, we need to add ConditionalAccessExpressionSyntax handling.
+        Assert.True(hasCallEdge, "Null-conditional call _log?.Log() should produce a Calls edge");
+    }
+
+    [Fact]
+    public void ExtractSymbols_OperatorOverload_ExtractedAsMethod()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Money
+{
+    public decimal Amount { get; init; }
+    public static Money operator +(Money a, Money b) => new Money { Amount = a.Amount + b.Amount };
+}");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Money.cs", "file:Money.cs");
+
+        // OperatorDeclarationSyntax — should be extracted as a method symbol
+        var opSymbol = symbols.FirstOrDefault(s => s.Kind == DomainSymbolKind.Method
+            && s.Name.Contains("op_"));
+        // This documents whether operators are captured. If null, we need to add them.
+        Assert.NotNull(opSymbol);
+    }
+
+    [Fact]
+    public void ExtractSymbols_Destructor_ExtractedAsMethod()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Resource
+{
+    ~Resource() { }
+}");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Resource.cs", "file:Resource.cs");
+
+        // DestructorDeclarationSyntax — should be extracted as a method symbol
+        var dtor = symbols.FirstOrDefault(s => s.Kind == DomainSymbolKind.Method
+            && (s.Name == "Finalize" || s.Name == "~Resource"));
+        // This documents whether destructors are captured. If null, we need to add them.
+        Assert.NotNull(dtor);
+    }
+
     private static (SemanticModel model, SyntaxNode root) Compile(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source);

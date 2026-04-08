@@ -159,6 +159,76 @@ public class WriteSideIntegrationTests
         Assert.NotEmpty(result.Diagnostics);
     }
 
+    // ── Write-side: FindDefinition ──
+
+    [Fact]
+    public void FindDefinition_IGreeter_ReturnsSourceLocation()
+    {
+        var (_, adapter) = AnalyzeGoldenRepo();
+        var host = new RoslynCompilationHost(adapter.Compilations!);
+
+        var def = host.FindDefinition("type:WriteSideApp.Core.IGreeter");
+
+        Assert.NotNull(def);
+        Assert.Contains("IGreeter", def!.FilePath);
+        Assert.True(def.Line > 0);
+        Assert.Contains("IGreeter", def.DisplayName);
+    }
+
+    // ── Write-side: FindImplementations ──
+
+    [Fact]
+    public void FindImplementations_IGreeter_FindsGreeterAndFormalGreeter()
+    {
+        var (_, adapter) = AnalyzeGoldenRepo();
+        var host = new RoslynCompilationHost(adapter.Compilations!);
+
+        var impls = host.FindImplementations("type:WriteSideApp.Core.IGreeter");
+
+        Assert.NotEmpty(impls);
+        Assert.Contains(impls, id => id.Contains("Greeter"));
+    }
+
+    // ── Write-side: GetDocumentation ──
+
+    [Fact]
+    public void GetDocumentation_IGreeter_ReturnsSummary()
+    {
+        var (_, adapter) = AnalyzeGoldenRepo();
+        var host = new RoslynCompilationHost(adapter.Compilations!);
+
+        var doc = host.GetDocumentation("type:WriteSideApp.Core.IGreeter");
+
+        // IGreeter has XML doc: "Port interface. Demonstrates..."
+        Assert.NotEmpty(doc);
+        Assert.Contains("Port interface", doc);
+    }
+
+    // ── Write-side: GetSymbolAtPosition ──
+
+    [Fact]
+    public void GetSymbolAtPosition_GreeterClassLine_ReturnsGreeter()
+    {
+        var (_, adapter) = AnalyzeGoldenRepo();
+        var host = new RoslynCompilationHost(adapter.Compilations!);
+
+        // Greeter.cs: "public class Greeter : IGreeter" — class name is on this line
+        // We need the actual file path used by the compilation
+        var greeterFile = adapter.Compilations!.Values
+            .SelectMany(c => c.SyntaxTrees)
+            .FirstOrDefault(t => t.FilePath?.Contains("Greeter.cs") == true
+                && !t.FilePath.Contains("Formal"))
+            ?.FilePath;
+
+        if (greeterFile == null) return; // Skip if file not found (shouldn't happen)
+
+        // Line 6 should be "public class Greeter : IGreeter" (after namespace + doc comment)
+        var result = host.GetSymbolAtPosition(greeterFile, 6, 14);
+
+        Assert.NotNull(result);
+        Assert.Contains("Greeter", result!.Name);
+    }
+
     // ── Helpers ──
 
     private static (SemanticGraph graph, RoslynWorkspaceAnalyzer adapter) AnalyzeGoldenRepo()

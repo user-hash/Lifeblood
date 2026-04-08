@@ -45,7 +45,7 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator | Application |
 | **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius) | Application |
 | **Lifeblood.Analysis** | CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator | Domain |
-| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. 12 tools (6 read + 6 write). Bidirectional Roslyn. | Application, Adapters.CSharp, Connectors |
+| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. 16 tools (6 read + 10 write). Bidirectional Roslyn. | Application, Adapters.CSharp, Connectors |
 | **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. | Roslyn Scripting only |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch | Everything |
 

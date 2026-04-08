@@ -58,3 +58,28 @@ public sealed class TextEdit
     public required int EndColumn { get; init; }
     public required string NewText { get; init; }
 }
+
+/// <summary>
+/// Where a symbol is defined (declaration site).
+/// </summary>
+public sealed class DefinitionLocation
+{
+    public required string SymbolId { get; init; }
+    public required string FilePath { get; init; }
+    public required int Line { get; init; }
+    public required int Column { get; init; }
+    public string DisplayName { get; init; } = "";
+    public string Documentation { get; init; } = "";
+}
+
+/// <summary>
+/// A symbol resolved from a source position (line/column).
+/// </summary>
+public sealed class SymbolAtPosition
+{
+    public required string SymbolId { get; init; }
+    public required string Name { get; init; }
+    public required string Kind { get; init; }
+    public string QualifiedName { get; init; } = "";
+    public string Documentation { get; init; } = "";
+}

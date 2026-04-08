@@ -269,6 +269,10 @@ public class UseCaseTests
         public DiagnosticInfo[] GetDiagnostics(string? moduleName = null) => Array.Empty<DiagnosticInfo>();
         public CompileCheckResult CompileCheck(string code, string? moduleName = null) => new() { Success = true };
         public ReferenceLocation[] FindReferences(string symbolId) => Array.Empty<ReferenceLocation>();
+        public DefinitionLocation? FindDefinition(string symbolId) => null;
+        public string[] FindImplementations(string symbolId) => Array.Empty<string>();
+        public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column) => null;
+        public string GetDocumentation(string symbolId) => "";
     }
 
     private sealed class StubCodeExecutor : ICodeExecutor
