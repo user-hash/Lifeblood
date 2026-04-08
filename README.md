@@ -2,7 +2,8 @@
 
 Compiler-as-a-service for AI agents.
 
-Lifeblood gives AI agents direct access to what compilers know. Type resolution, call graphs, diagnostics, reference finding, code execution. All over a standard MCP connection. No IDE required. Load a project, ask the compiler, get verified answers.
+Lifeblood gives AI agents direct access to what compilers know. Type resolution, call graphs, diagnostics, reference finding, code execution. All over a standard MCP connection. No IDE required. Load a project, ask the compiler, get verified answers. 
+Compilers already know everything about your code, just pipe that truth to AI agents instead of letting them grep and guess.
 
 ```
 Roslyn (C#)    ──┐                              ┌──  Execute code against project types
