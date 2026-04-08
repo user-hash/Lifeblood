@@ -139,9 +139,10 @@ public sealed class RoslynEdgeExtractor
         SemanticModel model, IdentifierNameSyntax identifier,
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
     {
-        // Skip identifiers that are part of declarations
+        // Skip identifiers that are part of type declarations (class/struct/enum name)
+        // Note: method return types ARE IdentifierNameSyntax with parent MethodDeclarationSyntax —
+        // we intentionally DO extract those as References edges.
         if (identifier.Parent is BaseTypeDeclarationSyntax) return;
-        if (identifier.Parent is MethodDeclarationSyntax) return;
 
         var symbolInfo = model.GetSymbolInfo(identifier);
         var referencedSymbol = symbolInfo.Symbol;
