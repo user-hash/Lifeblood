@@ -80,21 +80,35 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Where(_fs.FileExists)
                 .ToArray();
 
+            // Filesystem scan (always needed — either as primary or to catch files
+            // not yet in the csproj after adding new scripts in Unity)
+            var filesOnDisk = _fs.FindFiles(projectDir, "*.cs", recursive: true)
+                .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                         && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                         && !f.Contains("/bin/") && !f.Contains("/obj/"))
+                .ToArray();
+
             string[] sourceFiles;
             if (compileItems.Length > 0)
             {
-                // Old-format project with explicit Compile items (Unity, legacy .NET Framework)
-                sourceFiles = compileItems
+                // Old-format project with explicit Compile items (Unity, legacy .NET Framework).
+                // Merge: csproj list + any .cs files on disk not yet in the csproj.
+                // This handles new scripts added between csproj regenerations.
+                var known = new HashSet<string>(compileItems, StringComparer.OrdinalIgnoreCase);
+                var merged = new List<string>(compileItems);
+                foreach (var f in filesOnDisk)
+                {
+                    if (!known.Contains(f))
+                        merged.Add(f);
+                }
+                sourceFiles = merged
                     .OrderBy(f => f, StringComparer.Ordinal)
                     .ToArray();
             }
             else
             {
-                // SDK-style project — no Compile items, scan filesystem
-                sourceFiles = _fs.FindFiles(projectDir, "*.cs", recursive: true)
-                    .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
-                             && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
-                             && !f.Contains("/bin/") && !f.Contains("/obj/"))
+                // SDK-style project — no Compile items, use filesystem scan
+                sourceFiles = filesOnDisk
                     .OrderBy(f => f, StringComparer.Ordinal)
                     .ToArray();
             }
