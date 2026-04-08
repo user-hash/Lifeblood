@@ -134,12 +134,14 @@ Types:   145
 
 Zero violations. Zero dangling edges. Zero duplicates.
 
-**Tested on a real 100+ assembly Unity project (40k+ LOC):**
+**Tested on a real 75-module Unity project (400k+ LOC, 2,404 types):**
 ```
 $ lifeblood analyze --project /path/to/unity-project
-Symbols: ~15,000+
-Edges:   ~40,000+
-Modules: 75+
+Symbols: 43,800
+Edges:   70,600
+Modules: 75
+Types:   2,404
+Cycles:  34
 ```
 Peak memory: ~4GB (down from 32GB before streaming architecture). Streaming compilation with downgrading processes modules one at a time, emitting lightweight PE metadata references for downstream modules.
 
@@ -248,9 +250,9 @@ dotnet run --project src/Lifeblood.Server.Mcp
 
 Streaming compilation with downgrading keeps memory bounded:
 
-| Project size | Peak memory |
-|---|---|
-| ~10 modules (Lifeblood itself) | ~200 MB |
+| Project size | Peak memory | Graph |
+|---|---|---|
+| ~10 modules (Lifeblood itself) | ~200 MB | 1,057 symbols, 2,594 edges |
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 
