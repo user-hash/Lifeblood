@@ -2,7 +2,7 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-08, session 6, 65 passes):** 976 symbols, 2386 edges, 11 modules, 140 types, 0 violations (17 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction. Security scanner handles chained invocations. Edge extractor handles C# 9 target-typed `new()`.
+**Current state (2026-04-08, session 6, 70 passes):** 1048 symbols, 2578 edges, 11 modules, 143 types, 0 violations (17 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. 16 MCP tools (6 read + 10 write). All Roslyn capabilities at Proven. Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction. Security scanner handles chained invocations. Edge extractor handles C# 9 target-typed `new()`. Self-referencing edges filtered at extraction.
 
 ### Session 3 Dogfood Findings (2026-04-08, passes 16-25)
 
@@ -53,6 +53,10 @@ All 5 fixed in-session. 209 tests pass (was 201). Build: 0 warnings, 0 errors.
 **DF-S6-2: RoslynEdgeExtractor missed ImplicitObjectCreationExpressionSyntax (C# 9 target-typed new)** — Same bug class as DF-S4-4 in the security scanner. `ObjectCreationExpressionSyntax` was handled but C# 9's `Foo x = new()` uses `ImplicitObjectCreationExpressionSyntax`, a separate AST node type. Constructor call edges for all target-typed `new()` usage were silently dropped. Fixed: changed the `case` from `ObjectCreationExpressionSyntax` to `BaseObjectCreationExpressionSyntax` (common base in Roslyn 4.x), and updated `ExtractConstructorCallEdge` parameter type to match. +9 edges recovered in self-analysis (2371 → 2382, now 2386 with test additions).
 
 Both fixed in-session. 214 tests pass (was 210 + 4 new). Build: 0 warnings, 0 errors.
+
+**DF-S6-3: Self-referencing Calls edge for recursive methods** — `RoslynSymbolExtractor.ExtractType` calls itself recursively for nested types. The edge extractor created a self-loop Calls edge (`method:X → method:X`). Discovered by exporting the self-analysis graph and checking for `sourceId == targetId`. Self-referencing edges carry no dependency information (a symbol always depends on itself), so they waste space and could mislead analysis. Fixed: added `if (sourceId == targetId) return;` guard in `AddEdge`. The GraphValidator already allows self-referencing Calls (recursion is valid structurally), but the adapter correctly filters them as analytically useless.
+
+241 tests pass after full Roslyn max-out (was 214). 16 MCP tools (was 12). Build: 0 warnings, 0 errors.
 
 ### Session 5 Dogfood Findings (2026-04-08, passes 46-55)
 

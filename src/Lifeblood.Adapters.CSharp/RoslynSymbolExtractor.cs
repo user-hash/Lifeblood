@@ -214,6 +214,10 @@ public sealed class RoslynSymbolExtractor
             ParentId = containingTypeId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsStatic = sym.IsStatic,
+            Properties = new Dictionary<string, string>
+            {
+                ["paramCount"] = sym.Parameters.Length.ToString(),
+            },
         });
     }
 
@@ -376,6 +380,10 @@ public sealed class RoslynSymbolExtractor
             Line = destructorDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,
             Visibility = Visibility.Protected,
+            Properties = new Dictionary<string, string>
+            {
+                ["paramCount"] = "0",
+            },
         });
     }
 
