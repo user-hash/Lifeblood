@@ -35,7 +35,7 @@ public sealed class GraphSession : IDisposable
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
     public bool CanIncremental => _roslynAdapter?.HasSnapshot == true;
 
-    public string Load(string? projectPath, string? graphPath, string? rulesPath, bool incremental = false)
+    public string Load(string? projectPath, string? graphPath, string? rulesPath, bool incremental = false, bool readOnly = false)
     {
         // Incremental path: reuse existing adapter, only recompile changed modules
         if (incremental && CanIncremental
@@ -79,8 +79,9 @@ public sealed class GraphSession : IDisposable
                 return $"Project directory not found: {projectPath}";
 
             var adapter = new RoslynWorkspaceAnalyzer(_fs);
+            var retainCompilations = !readOnly;
             var result = new AnalyzeWorkspaceUseCase(adapter)
-                .Execute(projectPath, new AnalysisConfig { RetainCompilations = true });
+                .Execute(projectPath, new AnalysisConfig { RetainCompilations = retainCompilations });
             graph = result.Graph;
             capability = adapter.Capability;
             language = "csharp";

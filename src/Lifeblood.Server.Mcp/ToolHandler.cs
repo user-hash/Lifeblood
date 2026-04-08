@@ -70,8 +70,9 @@ public sealed class ToolHandler
         var graphPath = WriteToolHandler.GetString(args, "graphPath");
         var rulesPath = WriteToolHandler.GetString(args, "rulesPath");
         var incremental = WriteToolHandler.GetBool(args, "incremental") ?? false;
+        var readOnly = WriteToolHandler.GetBool(args, "readOnly") ?? false;
 
-        var result = _session.Load(projectPath, graphPath, rulesPath, incremental);
+        var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly);
         return TextResult(result);
     }
 
