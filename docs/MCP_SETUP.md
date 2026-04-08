@@ -136,10 +136,32 @@ Call a tool:
 
 ---
 
+## Unity Editor
+
+Lifeblood integrates with Unity via the [MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. The bridge runs Lifeblood as a sidecar process alongside the Unity Editor.
+
+**Setup:**
+
+1. Build Lifeblood: `cd /path/to/Lifeblood && dotnet build`
+2. Create a directory junction from your Unity project to the bridge:
+
+   Windows: `mklink /J "Assets\Editor\LifebloodBridge" "\path\to\Lifeblood\unity\Editor\LifebloodBridge"`
+
+   macOS/Linux: `ln -s /path/to/Lifeblood/unity/Editor/LifebloodBridge Assets/Editor/LifebloodBridge`
+
+3. Add to `.gitignore`: `Assets/Editor/LifebloodBridge/` and `Assets/Editor/LifebloodBridge.meta`
+4. The bridge auto-discovers via `[McpForUnityTool]`. All 17 tools appear in Unity MCP.
+
+The server DLL is found automatically if Lifeblood is a sibling directory. Override via `EditorPrefs("Lifeblood_ServerPath")` or `LIFEBLOOD_SERVER_DLL` env var.
+
+---
+
 ## First steps after connecting
 
 1. Call `lifeblood_analyze` with your project path to load the semantic graph
 2. Use `lifeblood_lookup`, `lifeblood_dependencies`, `lifeblood_blast_radius` to query it
-3. Use `lifeblood_find_references`, `lifeblood_execute`, `lifeblood_compile_check` for write-side Roslyn features
+3. Use `lifeblood_file_impact` to check which files break if you change a given file
+4. Use `lifeblood_find_references`, `lifeblood_execute`, `lifeblood_compile_check` for write-side Roslyn features
+5. After code changes, call `lifeblood_analyze` with `incremental: true` for fast re-analysis (only changed modules recompile)
 
 The graph stays in memory for the session. All 17 tools share the same loaded workspace.

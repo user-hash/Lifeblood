@@ -56,9 +56,10 @@ The domain is pure. No Roslyn, no JSON, no System.IO.
 - **Symbol** — a node: module, file, namespace, type, method, field, property (including events via `isEvent` and indexers via `isIndexer`), parameter
 - **Edge** — a directed relationship: contains, dependsOn, implements, inherits, calls, references, overrides
 - **Evidence** — provenance: syntax/semantic/inferred + adapter name + ConfidenceLevel
-- **GraphBuilder** — constructs graphs, synthesizes Contains edges from ParentId, deduplicates symbols, sorts output deterministically
+- **GraphBuilder** — constructs graphs, synthesizes Contains edges from ParentId, deduplicates symbols, derives file-level edges from symbol-level edges (INV-FILE-EDGE-001), sorts output deterministically
 - **GraphValidator** — rejects malformed graphs: dangling edges, duplicates, orphaned parents, self-references
 - **SemanticGraph** — the immutable graph with thread-safe lazy indexes
+- **AnalysisSnapshot** (adapter-level) — caches per-file extraction results for incremental re-analyze
 
 Properties are `IReadOnlyDictionary` on the public surface. The graph is read-only after construction.
 
@@ -76,7 +77,7 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 ### Right Side (AI Connectors)
 - `IAgentContextGenerator` — graph + analysis → AgentContextPack
 - `IInstructionFileGenerator` — graph + analysis → markdown string
-- `IMcpGraphProvider` — LookupSymbol, GetDependencies, GetDependants, GetBlastRadius
+- `IMcpGraphProvider` — LookupSymbol, GetDependencies, GetDependants, GetBlastRadius, GetFileImpact
 
 ## Capability-Aware
 
@@ -89,6 +90,27 @@ Current Roslyn adapter capabilities:
 - ImplementationResolution: Proven
 - CrossModuleReferences: BestEffort (compilations built in dependency order, but cycles are broken by skipping — degraded in cyclic graphs)
 - OverrideResolution: Proven (virtual dispatch chain via IMethodSymbol.OverriddenMethod)
+
+## File-Level Edge Derivation
+
+GraphBuilder.Build() derives `file:X → file:Y References` edges from symbol-level edges. For each non-Contains edge between symbols in different files, a file-level edge is emitted with an `edgeCount` property. These edges are derived truth (Evidence: Inferred, adapter: GraphBuilder). This enables `lifeblood_file_impact` — "if I change this file, what other files break?"
+
+## Incremental Re-Analyze
+
+After a full analysis, subsequent calls with `incremental: true` only recompile modules whose source files changed. The `AnalysisSnapshot` caches per-file extraction results (symbols, edges, timestamps). Changed files are detected via filesystem timestamps and surgically replaced. Module additions/removals fall back to full re-analyze.
+
+v1 limitation: does not cascade to dependent modules when an API surface changes.
+
+## Unity Bridge
+
+The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes all 17 tools to Unity MCP.
+
+```
+Unity Editor ──→ Unity MCP (scenes, GameObjects, assets)
+                     │
+                     └── [McpForUnityTool] ──→ Lifeblood MCP (child process)
+                         └── 17 semantic tools over JSON-RPC
+```
 
 ## Deterministic Output
 
