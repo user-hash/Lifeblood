@@ -122,15 +122,15 @@ We test Lifeblood on itself. The MCP server loads its own source code, executes 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 972
-Edges:   2371
+Symbols: 976
+Edges:   2386
 Modules: 11
 Types:   140
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates.
 
-The first dogfood run found [6 real issues](docs/DOGFOOD_FINDINGS.md), including 2 critical. The code execution dogfood found [7 more bugs](docs/DOGFOOD_CODE_EXECUTION.md) that 121 unit tests missed. All fixed in the same session. Every bug was invisible to unit tests and would have hit real users on first connection.
+Six dogfood sessions found [20 real bugs](docs/DOGFOOD_FINDINGS.md) — security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types. All fixed in-session. Every bug was invisible to unit tests and would have hit real users.
 
 ---
 
@@ -160,7 +160,7 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 
 ## Status
 
-Dogfood-verified. 210 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 214 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -175,7 +175,7 @@ Dogfood-verified. 210 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: 
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 210 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession. |
+| Lifeblood.Tests | 214 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 

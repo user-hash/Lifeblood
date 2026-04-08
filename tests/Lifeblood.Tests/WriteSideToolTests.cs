@@ -27,6 +27,8 @@ namespace TestApp
         private int _count;
         public string Greet() { _count++; return $""Hello {Name}""; }
         public static int Add(int a, int b) => a + b;
+        public static int Add(int a, int b, int c) => a + b + c;
+        public static string Add(string a, string b) => a + b;
     }
 
     public interface IService
@@ -600,6 +602,63 @@ namespace TestApp
     {
         var result = ScriptSecurityScanner.Scan(code);
         Assert.Null(result);
+    }
+
+    [Theory]
+    [InlineData("Process.GetCurrentProcess().Kill();")]
+    [InlineData("System.Diagnostics.Process.GetCurrentProcess().Kill();")]
+    public void SecurityScanner_BlocksChainedCallBypass(string code)
+    {
+        // DF-S6-1: ReconstructMemberChain stops at InvocationExpressionSyntax,
+        // so chained calls like Process.GetCurrentProcess().Kill() bypass the AST scanner.
+        // The blocked pattern "Process.Kill" requires the chain to be reconstructed
+        // through intermediate invocations.
+        var result = ScriptSecurityScanner.Scan(code);
+        Assert.NotNull(result);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Overload disambiguation tests
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FindInCompilation_OverloadDisambiguation_MatchesByParamSignature()
+    {
+        var compilations = BuildTestCompilations();
+        var compilation = compilations["TestApp"];
+
+        // Add(int,int) — 2 params
+        var parsed2 = RoslynWorkspaceManager.ParseSymbolId("method:TestApp.Greeter.Add(int,int)");
+        var found2 = RoslynWorkspaceManager.FindInCompilation(compilation, parsed2);
+        Assert.NotNull(found2);
+        Assert.IsAssignableFrom<IMethodSymbol>(found2);
+        Assert.Equal(2, ((IMethodSymbol)found2).Parameters.Length);
+
+        // Add(int,int,int) — 3 params
+        var parsed3 = RoslynWorkspaceManager.ParseSymbolId("method:TestApp.Greeter.Add(int,int,int)");
+        var found3 = RoslynWorkspaceManager.FindInCompilation(compilation, parsed3);
+        Assert.NotNull(found3);
+        Assert.IsAssignableFrom<IMethodSymbol>(found3);
+        Assert.Equal(3, ((IMethodSymbol)found3).Parameters.Length);
+
+        // Add(string,string) — different types
+        var parsedS = RoslynWorkspaceManager.ParseSymbolId("method:TestApp.Greeter.Add(string,string)");
+        var foundS = RoslynWorkspaceManager.FindInCompilation(compilation, parsedS);
+        Assert.NotNull(foundS);
+        Assert.IsAssignableFrom<IMethodSymbol>(foundS);
+        Assert.Equal("String", ((IMethodSymbol)foundS).Parameters[0].Type.Name);
+    }
+
+    [Fact]
+    public void FindInCompilation_OverloadWithoutSignature_ReturnsSomething()
+    {
+        var compilations = BuildTestCompilations();
+        var compilation = compilations["TestApp"];
+
+        // No param signature — should still resolve (returns first overload)
+        var parsed = RoslynWorkspaceManager.ParseSymbolId("method:TestApp.Greeter.Add");
+        var found = RoslynWorkspaceManager.FindInCompilation(compilation, parsed);
+        Assert.NotNull(found);
     }
 
     // ──────────────────────────────────────────────────────────────

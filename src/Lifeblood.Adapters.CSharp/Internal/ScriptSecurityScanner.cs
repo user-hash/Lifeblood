@@ -123,77 +123,95 @@ internal static class ScriptSecurityScanner
         || typeName == "Process" || typeName.EndsWith(".Process") // blocks `new Process()` — prevents `p.Start()` bypass
         || typeName.EndsWith("ProcessStartInfo");
 
+    /// <summary>
+    /// Blocked (receiver-type, method-name) pairs. If the terminal method matches
+    /// AND any earlier part of the expression chain matches the receiver, it's blocked.
+    /// This catches chained calls like Process.GetCurrentProcess().Kill()
+    /// where "Kill" is the terminal and "Process" appears earlier in the chain.
+    /// </summary>
+    private static readonly Dictionary<string, HashSet<string>> BlockedReceiverMethods = new(StringComparer.Ordinal)
+    {
+        ["Process"] = new(StringComparer.Ordinal) { "Start", "Kill" },
+        ["File"] = new(StringComparer.Ordinal)
+        {
+            "Delete", "WriteAllText", "WriteAllBytes", "WriteAllLines",
+            "AppendAllText", "AppendAllLines", "Create", "Move", "Copy", "SetAttributes",
+        },
+        ["Directory"] = new(StringComparer.Ordinal) { "Delete", "CreateDirectory", "Move" },
+        ["Environment"] = new(StringComparer.Ordinal) { "Exit", "SetEnvironmentVariable" },
+        ["Assembly"] = new(StringComparer.Ordinal) { "Load", "LoadFile", "LoadFrom", "UnsafeLoadFrom" },
+        ["AppDomain"] = new(StringComparer.Ordinal) { "CreateDomain" },
+        ["Thread"] = new(StringComparer.Ordinal) { "Abort" },
+        ["Marshal"] = new(StringComparer.Ordinal) { "Copy", "PtrToStructure" },
+        ["WebRequest"] = new(StringComparer.Ordinal) { "Create" },
+    };
+
     private static bool IsBlockedStaticCall(MemberAccessExpressionSyntax memberAccess)
     {
-        // Reconstruct the member chain from AST nodes — immune to whitespace/comment injection.
-        // "Process . Start" and "Process/**/. Start" both produce "Process.Start".
-        var fullText = ReconstructMemberChain(memberAccess);
+        // Reconstruct the full member chain, walking through invocations.
+        // Immune to whitespace injection, comment injection, AND chained-call bypass.
+        var parts = ReconstructMemberChainParts(memberAccess);
+        if (parts.Count < 2) return false;
 
-        // Process-related
-        if (fullText.Contains("Process.Start") || fullText.Contains("Process.Kill"))
-            return true;
+        var terminalMethod = parts[parts.Count - 1];
 
-        // File system mutations — mirrors string blocklist but immune to comment/whitespace bypass
-        if (fullText.Contains("File.Delete") || fullText.Contains("File.WriteAll")
-            || fullText.Contains("File.AppendAll") || fullText.Contains("File.Create")
-            || fullText.Contains("File.Move") || fullText.Contains("File.Copy")
-            || fullText.Contains("File.SetAttributes"))
-            return true;
+        // Structured receiver+method check: if the terminal method is dangerous
+        // for a given receiver type, and that receiver appears anywhere earlier
+        // in the chain, block it. Catches both direct (Process.Kill) and
+        // chained (Process.GetCurrentProcess().Kill) patterns.
+        foreach (var (receiver, methods) in BlockedReceiverMethods)
+        {
+            if (!methods.Contains(terminalMethod)) continue;
+            for (int i = 0; i < parts.Count - 1; i++)
+            {
+                if (parts[i] == receiver) return true;
+            }
+        }
 
-        if (fullText.Contains("Directory.Delete") || fullText.Contains("Directory.CreateDirectory")
-            || fullText.Contains("Directory.Move"))
-            return true;
-
-        // Environment
-        if (fullText.Contains("Environment.Exit") || fullText.Contains("Environment.SetEnvironmentVariable"))
-            return true;
-
-        // Assembly loading (all Load* variants)
-        if (fullText.Contains("Assembly.Load") || fullText.Contains("Assembly.UnsafeLoad"))
-            return true;
-
-        // AppDomain
-        if (fullText.Contains("AppDomain.CreateDomain"))
-            return true;
-
-        // IL generation
-        if (fullText.Contains("Emit") && fullText.Contains("OpCode"))
-            return true;
-
-        // Thread abort
-        if (fullText.Contains("Thread.Abort"))
-            return true;
-
-        // P/Invoke / Marshal
-        if (fullText.Contains("Marshal.Copy") || fullText.Contains("Marshal.PtrToStructure"))
-            return true;
-
-        // Network
-        if (fullText.Contains("WebRequest.Create"))
-            return true;
+        // Special case: IL generation (Emit + OpCode co-occurrence in the chain)
+        bool hasEmit = false, hasOpCode = false;
+        foreach (var part in parts)
+        {
+            if (part.Contains("Emit")) hasEmit = true;
+            if (part.Contains("OpCode")) hasOpCode = true;
+        }
+        if (hasEmit && hasOpCode) return true;
 
         return false;
     }
 
     /// <summary>
-    /// Reconstruct a member access chain from AST nodes, stripping all trivia.
-    /// "Process . Start" → "Process.Start", "System . IO . File" → "System.IO.File".
+    /// Reconstruct a member access chain from AST nodes, stripping all trivia
+    /// and walking through invocations. Handles chained calls:
+    /// "Process.GetCurrentProcess().Kill()" → ["Process", "GetCurrentProcess", "Kill"]
+    /// "System . IO . File . Delete" → ["System", "IO", "File", "Delete"]
     /// </summary>
-    private static string ReconstructMemberChain(MemberAccessExpressionSyntax memberAccess)
+    private static List<string> ReconstructMemberChainParts(MemberAccessExpressionSyntax memberAccess)
     {
         var parts = new List<string>();
         SyntaxNode current = memberAccess;
 
-        while (current is MemberAccessExpressionSyntax ma)
+        while (true)
         {
-            parts.Add(ma.Name.Identifier.Text);
-            current = ma.Expression;
+            if (current is MemberAccessExpressionSyntax ma)
+            {
+                parts.Add(ma.Name.Identifier.Text);
+                current = ma.Expression;
+            }
+            else if (current is InvocationExpressionSyntax inv)
+            {
+                // Walk through invocations to reach the full chain.
+                // Process.GetCurrentProcess().Kill → invocation wraps GetCurrentProcess(),
+                // we need to walk past it to find Process.
+                current = inv.Expression;
+            }
+            else break;
         }
 
         if (current is IdentifierNameSyntax id)
             parts.Add(id.Identifier.Text);
 
         parts.Reverse();
-        return string.Join(".", parts);
+        return parts;
     }
 }
