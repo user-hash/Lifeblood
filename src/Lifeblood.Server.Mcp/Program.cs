@@ -28,8 +28,8 @@ class Program
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)
         using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; try { cts.Cancel(); } catch (ObjectDisposedException) { } };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { cts.Cancel(); } catch (ObjectDisposedException) { } };
 
         Console.Error.WriteLine("Lifeblood MCP server starting...");
 
