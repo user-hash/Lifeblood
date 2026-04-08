@@ -83,7 +83,7 @@ internal sealed class NuGetReferenceResolver
                             {
                                 references.Add(MetadataReference.CreateFromFile(dllPath));
                             }
-                            catch { /* Skip unloadable assemblies */ }
+                            catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { }
                         }
                     }
                 }

@@ -20,7 +20,7 @@ internal static class BclReferenceLoader
             .Select(path =>
             {
                 try { return (MetadataReference)MetadataReference.CreateFromFile(path); }
-                catch { return null; }
+                catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { return null; }
             })
             .Where(r => r != null)
             .ToArray()!;
@@ -39,7 +39,7 @@ internal static class BclReferenceLoader
             using var peReader = new System.Reflection.PortableExecutable.PEReader(stream);
             return !peReader.HasMetadata;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException)
         {
             return true; // If we can't read it, treat as native
         }

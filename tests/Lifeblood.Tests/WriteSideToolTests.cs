@@ -4,6 +4,7 @@ using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
+using ScriptSecurityScanner = Lifeblood.Adapters.CSharp.Internal.ScriptSecurityScanner;
 
 namespace Lifeblood.Tests;
 
@@ -305,6 +306,47 @@ namespace TestApp
     }
 
     // ──────────────────────────────────────────────────────────────
+    // AST-based security scanner tests
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void CodeExecutor_Execute_ReflectionGetMethod_Blocked()
+    {
+        var executor = new RoslynCodeExecutor(BuildTestCompilations());
+        var result = executor.Execute("typeof(System.IO.File).GetMethod(\"Delete\");");
+        Assert.False(result.Success);
+        Assert.Contains("reflection", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CodeExecutor_Execute_ReflectionInvoke_Blocked()
+    {
+        var executor = new RoslynCodeExecutor(BuildTestCompilations());
+        var result = executor.Execute("var m = typeof(string).GetMethod(\"Concat\"); m.Invoke(null, null);");
+        Assert.False(result.Success);
+        Assert.Contains("reflection", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CodeExecutor_Execute_UnsafeBlock_Blocked()
+    {
+        var executor = new RoslynCodeExecutor(BuildTestCompilations());
+        var result = executor.Execute("unsafe { int* p = null; }");
+        Assert.False(result.Success);
+        Assert.Contains("unsafe", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CodeExecutor_Execute_SafeReflection_Allowed()
+    {
+        // GetProperties (read-only inspection) and GetType() should be allowed
+        var executor = new RoslynCodeExecutor(BuildTestCompilations());
+        var result = executor.Execute("return typeof(string).Name;");
+        Assert.True(result.Success);
+        Assert.Equal("String", result.ReturnValue);
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // RoslynWorkspaceRefactoring tests
     // ──────────────────────────────────────────────────────────────
 
@@ -421,6 +463,108 @@ namespace TestApp
 
         Assert.All(projectRefs, r => Assert.Contains("Domain", r));
         Assert.Empty(packageRefs);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // AnalysisPipeline integration
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AnalysisPipeline_Run_WithNullRules_ProducesResult()
+    {
+        var graph = BuildMinimalGraph();
+        var result = Lifeblood.Analysis.AnalysisPipeline.Run(graph, null);
+        Assert.NotNull(result);
+        Assert.Empty(result.Violations);
+        Assert.NotNull(result.Coupling);
+        Assert.NotNull(result.Tiers);
+    }
+
+    [Fact]
+    public void AnalysisPipeline_Run_EmptyGraph_NoErrors()
+    {
+        var graph = new Lifeblood.Domain.Graph.GraphBuilder().Build();
+        var result = Lifeblood.Analysis.AnalysisPipeline.Run(graph);
+        Assert.Equal(0, result.Metrics.TotalSymbols);
+        Assert.Equal(0, result.Metrics.TotalEdges);
+        Assert.Empty(result.Cycles);
+    }
+
+    [Fact]
+    public void AnalysisPipeline_Run_MetricsMatchGraph()
+    {
+        var graph = BuildMinimalGraph();
+        var result = Lifeblood.Analysis.AnalysisPipeline.Run(graph);
+        Assert.Equal(graph.Symbols.Count, result.Metrics.TotalSymbols);
+        Assert.Equal(graph.Edges.Count, result.Metrics.TotalEdges);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // ScriptSecurityScanner unit tests
+    // ──────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("typeof(File).GetMethod(\"Delete\")", "reflection")]
+    [InlineData("methodInfo.Invoke(null, args)", "reflection")]
+    [InlineData("field.SetValue(obj, val)", "reflection")]
+    [InlineData("del.DynamicInvoke(args)", "reflection")]
+    [InlineData("Activator.CreateInstance(type)", "reflection")]
+    public void SecurityScanner_BlocksReflection(string code, string expectedKeyword)
+    {
+        var result = ScriptSecurityScanner.Scan(code);
+        Assert.NotNull(result);
+        Assert.Contains(expectedKeyword, result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("unsafe { int* p = null; }", "unsafe")]
+    [InlineData("int* ptr = &x;", "pointer")]
+    public void SecurityScanner_BlocksUnsafe(string code, string expectedKeyword)
+    {
+        var result = ScriptSecurityScanner.Scan(code);
+        Assert.NotNull(result);
+        Assert.Contains(expectedKeyword, result, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("return 42;")]
+    [InlineData("var x = new List<int>(); x.Add(1);")]
+    [InlineData("Console.WriteLine(\"hello\");")]
+    [InlineData("return typeof(string).Name;")]
+    public void SecurityScanner_AllowsSafeCode(string code)
+    {
+        var result = ScriptSecurityScanner.Scan(code);
+        Assert.Null(result);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────────────────────────
+
+    private static Lifeblood.Domain.Graph.SemanticGraph BuildMinimalGraph()
+    {
+        var builder = new Lifeblood.Domain.Graph.GraphBuilder();
+        builder.AddSymbol(new Lifeblood.Domain.Graph.Symbol
+        {
+            Id = "mod:TestMod", Name = "TestMod", QualifiedName = "TestMod",
+            Kind = Lifeblood.Domain.Graph.SymbolKind.Module,
+        });
+        builder.AddSymbol(new Lifeblood.Domain.Graph.Symbol
+        {
+            Id = "type:TestMod.Foo", Name = "Foo", QualifiedName = "TestMod.Foo",
+            Kind = Lifeblood.Domain.Graph.SymbolKind.Type, ParentId = "mod:TestMod",
+        });
+        builder.AddSymbol(new Lifeblood.Domain.Graph.Symbol
+        {
+            Id = "type:TestMod.Bar", Name = "Bar", QualifiedName = "TestMod.Bar",
+            Kind = Lifeblood.Domain.Graph.SymbolKind.Type, ParentId = "mod:TestMod",
+        });
+        builder.AddEdge(new Lifeblood.Domain.Graph.Edge
+        {
+            SourceId = "type:TestMod.Bar", TargetId = "type:TestMod.Foo",
+            Kind = Lifeblood.Domain.Graph.EdgeKind.References,
+        });
+        return builder.Build();
     }
 
     private static string FindSrcRoot()
