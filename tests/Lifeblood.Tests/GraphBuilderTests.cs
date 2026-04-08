@@ -44,7 +44,7 @@ public class GraphBuilderTests
         var callEdge = new Edge
         {
             SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.Calls,
-            Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Roslyn" },
+            Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Roslyn", Confidence = ConfidenceLevel.Proven },
         };
 
         var graph = new GraphBuilder()
@@ -65,7 +65,7 @@ public class GraphBuilderTests
         var explicitContains = new Edge
         {
             SourceId = "type:Parent", TargetId = "method:Parent.Do", Kind = EdgeKind.Contains,
-            Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Roslyn" },
+            Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Roslyn", Confidence = ConfidenceLevel.Proven },
         };
 
         var graph = new GraphBuilder()
@@ -118,6 +118,45 @@ public class GraphBuilderTests
         Assert.Equal(EvidenceKind.Inferred, edge.Evidence.Kind);
         Assert.Equal("GraphBuilder", edge.Evidence.AdapterName);
         Assert.Equal(ConfidenceLevel.Proven, edge.Evidence.Confidence);
+    }
+
+    [Fact]
+    public void Build_DropsDanglingEdges()
+    {
+        var typeA = new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type };
+        var danglingEdge = new Edge
+        {
+            SourceId = "type:A", TargetId = "type:NonExistent", Kind = EdgeKind.References,
+        };
+
+        var graph = new GraphBuilder()
+            .AddSymbol(typeA)
+            .AddEdge(danglingEdge)
+            .Build();
+
+        Assert.Single(graph.Symbols);
+        Assert.Empty(graph.Edges); // dangling edge dropped
+    }
+
+    [Fact]
+    public void Build_DropsDanglingEdges_BothDirections()
+    {
+        var typeA = new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type };
+        var typeB = new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type };
+        var validEdge = new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.References };
+        var danglingSource = new Edge { SourceId = "type:Missing", TargetId = "type:A", Kind = EdgeKind.References };
+        var danglingTarget = new Edge { SourceId = "type:A", TargetId = "type:Missing", Kind = EdgeKind.References };
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { typeA, typeB })
+            .AddEdge(validEdge)
+            .AddEdge(danglingSource)
+            .AddEdge(danglingTarget)
+            .Build();
+
+        Assert.Single(graph.Edges); // only the valid edge survives
+        Assert.Equal("type:A", graph.Edges[0].SourceId);
+        Assert.Equal("type:B", graph.Edges[0].TargetId);
     }
 
     [Fact]

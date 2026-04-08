@@ -19,7 +19,7 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleExecute(JsonElement? args)
     {
-        if (!EnsureCompilationState(out var error)) return error;
+        if (CompilationStateError() is { } error) return error;
 
         var code = GetString(args, "code");
         if (string.IsNullOrEmpty(code))
@@ -36,7 +36,7 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleDiagnose(JsonElement? args)
     {
-        if (!EnsureCompilationState(out var error)) return error;
+        if (CompilationStateError() is { } error) return error;
 
         var moduleName = GetString(args, "moduleName");
         var diagnostics = _session.CompilationHost!.GetDiagnostics(moduleName);
@@ -45,7 +45,7 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleCompileCheck(JsonElement? args)
     {
-        if (!EnsureCompilationState(out var error)) return error;
+        if (CompilationStateError() is { } error) return error;
 
         var code = GetString(args, "code");
         if (string.IsNullOrEmpty(code))
@@ -58,7 +58,7 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleFindReferences(JsonElement? args)
     {
-        if (!EnsureCompilationState(out var error)) return error;
+        if (CompilationStateError() is { } error) return error;
 
         var symbolId = GetString(args, "symbolId");
         if (string.IsNullOrEmpty(symbolId))
@@ -70,7 +70,7 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleRename(JsonElement? args)
     {
-        if (!EnsureCompilationState(out var error)) return error;
+        if (CompilationStateError() is { } error) return error;
 
         var symbolId = GetString(args, "symbolId");
         var newName = GetString(args, "newName");
@@ -83,7 +83,7 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleFormat(JsonElement? args)
     {
-        if (!EnsureCompilationState(out var error)) return error;
+        if (CompilationStateError() is { } error) return error;
 
         var code = GetString(args, "code");
         if (string.IsNullOrEmpty(code))
@@ -93,15 +93,10 @@ internal sealed class WriteToolHandler
         return TextResult(formatted);
     }
 
-    private bool EnsureCompilationState(out McpToolResult error)
+    private McpToolResult? CompilationStateError()
     {
-        if (_session.HasCompilationState)
-        {
-            error = default!;
-            return true;
-        }
-        error = ErrorResult("Write-side tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first.");
-        return false;
+        if (_session.HasCompilationState) return null;
+        return ErrorResult("Write-side tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first.");
     }
 
     internal static string? GetString(JsonElement? args, string key)

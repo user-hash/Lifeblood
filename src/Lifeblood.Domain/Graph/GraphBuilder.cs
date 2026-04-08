@@ -53,9 +53,14 @@ public sealed class GraphBuilder
         var allEdges = new List<Edge>(_edges.Count + _symbols.Count);
         var containsPairs = new HashSet<(string, string)>();
 
-        // Index existing Contains edges to avoid duplicates
+        // Only include edges where both source and target exist as symbols.
+        // Dangling edges (e.g., references to external System.* types) are dropped —
+        // they inflate coupling metrics and pollute cycle detection.
         foreach (var edge in _edges)
         {
+            if (!_symbols.ContainsKey(edge.SourceId) || !_symbols.ContainsKey(edge.TargetId))
+                continue;
+
             allEdges.Add(edge);
             if (edge.Kind == EdgeKind.Contains)
                 containsPairs.Add((edge.SourceId, edge.TargetId));

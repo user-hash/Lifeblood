@@ -412,9 +412,9 @@ namespace TestApp
     [InlineData("ns:App.Services", "ns", new[] { "App", "Services" })]
     public void ParseSymbolId_ValidFormats(string symbolId, string expectedKind, string[] expectedParts)
     {
-        var (kind, parts) = RoslynWorkspaceManager.ParseSymbolId(symbolId);
-        Assert.Equal(expectedKind, kind);
-        Assert.Equal(expectedParts, parts);
+        var parsed = RoslynWorkspaceManager.ParseSymbolId(symbolId);
+        Assert.Equal(expectedKind, parsed.Kind);
+        Assert.Equal(expectedParts, parsed.Parts);
     }
 
     [Theory]
@@ -423,25 +423,45 @@ namespace TestApp
     [InlineData("justAWord")]
     public void ParseSymbolId_NoColon_ReturnsNull(string symbolId)
     {
-        var (kind, parts) = RoslynWorkspaceManager.ParseSymbolId(symbolId);
-        Assert.Null(kind);
-        Assert.Null(parts);
+        var parsed = RoslynWorkspaceManager.ParseSymbolId(symbolId);
+        Assert.Null(parsed.Kind);
+        Assert.Null(parsed.Parts);
     }
 
     [Fact]
     public void ParseSymbolId_ColonOnly_ReturnsEmptyKind()
     {
-        var (kind, parts) = RoslynWorkspaceManager.ParseSymbolId(":");
-        Assert.Equal("", kind);
-        Assert.NotNull(parts);
+        var parsed = RoslynWorkspaceManager.ParseSymbolId(":");
+        Assert.Equal("", parsed.Kind);
+        Assert.NotNull(parsed.Parts);
     }
 
     [Fact]
-    public void ParseSymbolId_MethodWithParams_StripsParens()
+    public void ParseSymbolId_MethodWithParams_PreservesSignature()
     {
-        var (kind, parts) = RoslynWorkspaceManager.ParseSymbolId("method:App.Foo.Bar(int, string)");
-        Assert.Equal("method", kind);
-        Assert.Equal(new[] { "App", "Foo", "Bar" }, parts);
+        // Real format: extractors use comma WITHOUT space (ToDisplayString default)
+        var parsed = RoslynWorkspaceManager.ParseSymbolId("method:App.Foo.Bar(int,string)");
+        Assert.Equal("method", parsed.Kind);
+        Assert.Equal(new[] { "App", "Foo", "Bar" }, parsed.Parts);
+        Assert.Equal("int,string", parsed.ParamSignature);
+    }
+
+    [Fact]
+    public void ParseSymbolId_MethodEmptyParams_EmptySignature()
+    {
+        var parsed = RoslynWorkspaceManager.ParseSymbolId("method:App.Foo.Bar()");
+        Assert.Equal("method", parsed.Kind);
+        Assert.Equal(new[] { "App", "Foo", "Bar" }, parsed.Parts);
+        Assert.Equal("", parsed.ParamSignature);
+    }
+
+    [Fact]
+    public void ParseSymbolId_MethodWithoutParams_NullSignature()
+    {
+        var parsed = RoslynWorkspaceManager.ParseSymbolId("method:App.Foo.Bar");
+        Assert.Equal("method", parsed.Kind);
+        Assert.Equal(new[] { "App", "Foo", "Bar" }, parsed.Parts);
+        Assert.Null(parsed.ParamSignature);
     }
 
     // ──────────────────────────────────────────────────────────────

@@ -15,8 +15,7 @@ public sealed class Edge
 }
 
 /// <summary>
-/// AUDIT FIX (Hole 8): Removed TypeReference. Merged into References.
-/// All edge kinds are language-agnostic.
+/// Language-agnostic edge kinds. INV-GRAPH-001.
 /// </summary>
 public enum EdgeKind
 {

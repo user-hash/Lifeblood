@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
 using Lifeblood.Connectors.Mcp;
@@ -11,7 +12,7 @@ namespace Lifeblood.Server.Mcp;
 public sealed class ToolHandler
 {
     private readonly GraphSession _session;
-    private readonly LifebloodMcpProvider _provider = new();
+    private readonly LifebloodMcpProvider _provider;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -20,9 +21,10 @@ public sealed class ToolHandler
         WriteIndented = true,
     };
 
-    public ToolHandler(GraphSession session)
+    public ToolHandler(GraphSession session, IBlastRadiusProvider blastRadius)
     {
         _session = session;
+        _provider = new LifebloodMcpProvider(blastRadius);
         _write = new WriteToolHandler(session, JsonOpts);
     }
 

@@ -18,7 +18,7 @@ public static class BlastRadiusAnalyzer
         while (queue.Count > 0)
         {
             var (current, depth) = queue.Dequeue();
-            if (depth > maxDepth) continue;
+            if (depth >= maxDepth) continue; // depth limit: don't traverse edges beyond maxDepth
 
             foreach (int idx in graph.GetIncomingEdgeIndexes(current))
             {

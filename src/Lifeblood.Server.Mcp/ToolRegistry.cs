@@ -6,7 +6,32 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class ToolRegistry
 {
-    public static McpToolInfo[] GetTools() => new McpToolInfo[]
+    /// <summary>
+    /// Returns all tools. When hasCompilationState is false, write-side tools are
+    /// annotated as unavailable so agents know not to call them before loading a project.
+    /// </summary>
+    public static McpToolInfo[] GetTools(bool hasCompilationState = true)
+    {
+        var tools = GetAllTools();
+        if (!hasCompilationState)
+        {
+            foreach (var tool in tools)
+            {
+                if (tool.Name.StartsWith("lifeblood_execute") ||
+                    tool.Name.StartsWith("lifeblood_diagnose") ||
+                    tool.Name.StartsWith("lifeblood_compile_check") ||
+                    tool.Name.StartsWith("lifeblood_find_references") ||
+                    tool.Name.StartsWith("lifeblood_rename") ||
+                    tool.Name.StartsWith("lifeblood_format"))
+                {
+                    tool.Description = "[Unavailable — load a project with lifeblood_analyze first] " + tool.Description;
+                }
+            }
+        }
+        return tools;
+    }
+
+    private static McpToolInfo[] GetAllTools() => new McpToolInfo[]
     {
         new()
         {
@@ -92,7 +117,7 @@ public static class ToolRegistry
         new()
         {
             Name = "lifeblood_execute",
-            Description = "Execute C# code against the loaded workspace. Code runs in-process with access to all project types. Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath.",
+            Description = "Execute C# code against the loaded workspace. Code runs in-process (trusted local sandbox — blocklist + AST security checks, not process-isolated). Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath.",
             InputSchema = new
             {
                 type = "object",

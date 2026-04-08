@@ -53,14 +53,9 @@ public class RoslynGoldenRepoTests
     public void HexagonalApp_GraphValidatesClean()
     {
         var graph = BuildHexagonalAppGraph();
+        // GraphBuilder.Build() drops dangling edges, so validation should be clean.
         var errors = GraphValidator.Validate(graph);
-        // Dangling edges to external BCL types (System.*, etc.) are expected
-        // when compiling without full framework references. Only check for
-        // non-system dangling edges.
-        var realErrors = errors.Where(e =>
-            e.Code != "DANGLING_EDGE_TARGET" && e.Code != "DANGLING_EDGE_SOURCE"
-            || (e.Message != null && !e.Message.Contains("System."))).ToArray();
-        Assert.Empty(realErrors);
+        Assert.Empty(errors);
     }
 
     [Fact]

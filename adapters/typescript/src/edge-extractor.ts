@@ -4,7 +4,7 @@ import { GraphEdge, Evidence } from './types';
 const SEMANTIC_EVIDENCE: Evidence = {
   kind: 'semantic',
   adapterName: 'TypeScript',
-  confidence: 'high',
+  confidence: 'proven',
 };
 
 /**
@@ -69,7 +69,7 @@ export function extractEdges(
                   const targetFqn = getTypeFqn(targetSym);
                   const targetId = `type:${targetFqn}`;
                   const edgeKind = clause.token === ts.SyntaxKind.ExtendsKeyword
-                    ? (ts.isInterfaceDeclaration(node) ? 'inherits' as const : 'inherits' as const)
+                    ? 'inherits' as const
                     : 'implements' as const;
                   addEdge(sourceId, targetId, edgeKind);
                 }

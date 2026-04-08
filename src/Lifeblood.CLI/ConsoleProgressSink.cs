@@ -9,7 +9,4 @@ internal sealed class ConsoleProgressSink : IProgressSink
 {
     public void Report(string phase, int current, int total) =>
         Console.Error.WriteLine($"[{current}/{total}] {phase}");
-
-    public void Log(string message) =>
-        Console.Error.WriteLine(message);
 }

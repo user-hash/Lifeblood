@@ -44,7 +44,8 @@ def analyze_project(project_root: str) -> tuple[list[dict], list[dict]]:
         })
 
         try:
-            source = open(abs_path, encoding="utf-8", errors="replace").read()
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                source = f.read()
             tree = ast.parse(source, filename=abs_path)
         except SyntaxError:
             continue
@@ -57,9 +58,12 @@ def analyze_project(project_root: str) -> tuple[list[dict], list[dict]]:
 
         for sym in file_symbols:
             if sym["kind"] == "type":
-                short_name = sym["qualifiedName"].rsplit(".", 1)[-1]
-                known_types[short_name] = sym["id"]
+                # Qualified name is authoritative; short name is convenience fallback.
+                # If two classes share a short name, qualified name always resolves correctly.
                 known_types[sym["qualifiedName"]] = sym["id"]
+                short_name = sym["qualifiedName"].rsplit(".", 1)[-1]
+                if short_name not in known_types:
+                    known_types[short_name] = sym["id"]
 
     # Second pass: extract edges (needs known_types for resolution)
     for abs_path in sorted(py_files):
@@ -67,7 +71,8 @@ def analyze_project(project_root: str) -> tuple[list[dict], list[dict]]:
         py_module = _file_to_module(rel_path)
 
         try:
-            source = open(abs_path, encoding="utf-8", errors="replace").read()
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                source = f.read()
             tree = ast.parse(source, filename=abs_path)
         except SyntaxError:
             continue
@@ -83,7 +88,7 @@ def _discover_files(root: str) -> list[str]:
     skip_dirs = {
         "__pycache__", ".venv", "venv", ".git", ".tox",
         "node_modules", ".mypy_cache", ".pytest_cache",
-        "build", "dist", ".eggs", "*.egg-info",
+        "build", "dist", ".eggs",
     }
     result = []
     for dirpath, dirnames, filenames in os.walk(root):

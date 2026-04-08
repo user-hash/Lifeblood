@@ -105,7 +105,6 @@ Lifeblood.Adapters.CSharp
 
 Lifeblood.Connectors.Mcp
   → Lifeblood.Application (ports only)
-  → Lifeblood.Analysis (blast radius delegation)
   → Lifeblood.Domain
 
 Lifeblood.Analysis
@@ -113,6 +112,16 @@ Lifeblood.Analysis
 
 Lifeblood.Application
   → Lifeblood.Domain
+
+Lifeblood.Server.Mcp
+  → Lifeblood.Application
+  → Lifeblood.Adapters.CSharp
+  → Lifeblood.Adapters.JsonGraph
+  → Lifeblood.Connectors.*
+  → Lifeblood.Analysis
+
+Lifeblood.ScriptHost
+  → (nothing. Isolated process. Microsoft.CodeAnalysis.CSharp.Scripting only.)
 
 Lifeblood.Domain
   → (nothing. Pure leaf. Forever.)
@@ -144,8 +153,8 @@ IGraphExporter.Export(graph, stream)
 
 ### Analysis
 ```csharp
-// Analyzers use static methods: CouplingAnalyzer.Analyze(), BlastRadiusAnalyzer.Analyze(), etc.
 IRuleProvider.LoadRules(path) → ArchitectureRule[]
+IBlastRadiusProvider.Analyze(graph, symbolId, maxDepth) → BlastRadiusResult
 ```
 
 ## Serialization Naming

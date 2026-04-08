@@ -34,7 +34,7 @@ These are non-negotiable and enforced by tests:
 - Every edge carries `Evidence` (kind, adapter, confidence level)
 - Output is deterministic. Same input produces the same graph.
 
-See [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) for the 9 frozen ADRs.
+See [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) for the 11 frozen ADRs.
 
 ## Code Style
 
@@ -43,6 +43,12 @@ See [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) for the 9 f
 - Tests in `tests/Lifeblood.Tests/` using xUnit
 
 ## Before Submitting
+
+1. All existing tests pass: `dotnet test`
+2. New code has tests
+3. `GraphValidator.Validate()` returns no errors for any graph you produce
+4. Architecture invariants are not violated (check CLAUDE.md)
+5. Dogfood passes:
 
 ```bash
 dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json

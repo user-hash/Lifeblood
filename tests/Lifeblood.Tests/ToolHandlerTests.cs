@@ -1,7 +1,10 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Analysis;
+using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 using Lifeblood.Server.Mcp;
 using Xunit;
 
@@ -58,8 +61,14 @@ public class ToolHandlerTests : IDisposable
 
     private static readonly PhysicalFileSystem Fs = new();
 
+    private sealed class TestBlastRadiusProvider : IBlastRadiusProvider
+    {
+        public BlastRadiusResult Analyze(SemanticGraph graph, string targetSymbolId, int maxDepth = 10)
+            => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
+    }
+
     private static ToolHandler CreateHandler() =>
-        new(new GraphSession(Fs));
+        new(new GraphSession(Fs), new TestBlastRadiusProvider());
 
     private static JsonElement? MakeArgs(object obj)
     {
@@ -227,7 +236,7 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns6Tools()
+    public void ToolRegistry_Returns12Tools()
     {
         var tools = ToolRegistry.GetTools();
 
@@ -256,5 +265,30 @@ public class ToolHandlerTests : IDisposable
             Assert.False(string.IsNullOrEmpty(tool.Name));
             Assert.False(string.IsNullOrEmpty(tool.Description));
         }
+    }
+
+    [Fact]
+    public void ToolRegistry_WithoutCompilationState_WriteSideToolsMarkedUnavailable()
+    {
+        var tools = ToolRegistry.GetTools(hasCompilationState: false);
+        var writeSideNames = new[] { "lifeblood_execute", "lifeblood_diagnose", "lifeblood_compile_check",
+            "lifeblood_find_references", "lifeblood_rename", "lifeblood_format" };
+
+        foreach (var name in writeSideNames)
+        {
+            var tool = Assert.Single(tools, t => t.Name == name);
+            Assert.StartsWith("[Unavailable", tool.Description);
+        }
+
+        // Read-side tools should NOT be marked unavailable
+        var analyze = Assert.Single(tools, t => t.Name == "lifeblood_analyze");
+        Assert.DoesNotContain("Unavailable", analyze.Description);
+    }
+
+    [Fact]
+    public void ToolRegistry_WithCompilationState_NoUnavailableMarkers()
+    {
+        var tools = ToolRegistry.GetTools(hasCompilationState: true);
+        Assert.All(tools, t => Assert.DoesNotContain("[Unavailable", t.Description));
     }
 }

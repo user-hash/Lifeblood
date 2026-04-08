@@ -33,8 +33,8 @@ internal sealed class RoslynWorkspaceManager
     /// </summary>
     public ISymbol? ResolveSymbol(string symbolId, bool fallbackToStandalone = false)
     {
-        var (kind, parts) = ParseSymbolId(symbolId);
-        if (kind == null || parts == null) return null;
+        var parsed = ParseSymbolId(symbolId);
+        if (parsed.Kind == null || parsed.Parts == null) return null;
 
         EnsureWorkspace();
 
@@ -46,7 +46,7 @@ internal sealed class RoslynWorkspaceManager
                 var compilation = project.GetCompilationAsync().GetAwaiter().GetResult();
                 if (compilation == null) continue;
 
-                var found = FindInCompilation(compilation, kind, parts);
+                var found = FindInCompilation(compilation, parsed);
                 if (found != null) return found;
             }
         }
@@ -56,7 +56,7 @@ internal sealed class RoslynWorkspaceManager
         {
             foreach (var compilation in _compilations.Values)
             {
-                var found = FindInCompilation(compilation, kind, parts);
+                var found = FindInCompilation(compilation, parsed);
                 if (found != null) return found;
             }
         }
@@ -64,11 +64,11 @@ internal sealed class RoslynWorkspaceManager
         return null;
     }
 
-    internal static ISymbol? FindInCompilation(Compilation compilation, string kind, string[] parts)
+    internal static ISymbol? FindInCompilation(Compilation compilation, ParsedSymbolId parsed)
     {
         INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
 
-        foreach (var part in parts)
+        foreach (var part in parsed.Parts!)
         {
             var member = current.GetMembers(part).FirstOrDefault();
             if (member is INamespaceOrTypeSymbol ns)
@@ -81,27 +81,63 @@ internal sealed class RoslynWorkspaceManager
 
         if (!SymbolEqualityComparer.Default.Equals(current, compilation.GlobalNamespace))
         {
-            if (kind == "type" && current is INamedTypeSymbol) return current;
-            if (kind == "method") return current.GetMembers().OfType<IMethodSymbol>().FirstOrDefault();
-            if (kind == "field") return current.GetMembers().OfType<IFieldSymbol>().FirstOrDefault();
-            if (kind == "property") return current.GetMembers().OfType<IPropertySymbol>().FirstOrDefault();
+            if (parsed.Kind == "type" && current is INamedTypeSymbol) return current;
+            if (parsed.Kind == "method")
+            {
+                var methods = current.GetMembers().OfType<IMethodSymbol>().ToArray();
+                if (methods.Length == 0) return null;
+                if (methods.Length == 1) return methods[0];
+
+                // Overload disambiguation: match parameter signature if provided.
+                // Must use same format as SymbolExtractor/EdgeExtractor: default ToDisplayString + comma separator (no space).
+                if (parsed.ParamSignature != null)
+                {
+                    foreach (var m in methods)
+                    {
+                        var sig = string.Join(",", m.Parameters.Select(p => p.Type.ToDisplayString()));
+                        if (sig == parsed.ParamSignature) return m;
+                    }
+                }
+                return methods[0]; // fallback to first if no match
+            }
+            if (parsed.Kind == "field") return current.GetMembers().OfType<IFieldSymbol>().FirstOrDefault();
+            if (parsed.Kind == "property") return current.GetMembers().OfType<IPropertySymbol>().FirstOrDefault();
         }
 
         return null;
     }
 
-    internal static (string? kind, string[]? parts) ParseSymbolId(string symbolId)
+    /// <summary>
+    /// Parse a symbol ID into kind, namespace parts, and optional parameter signature.
+    /// Format: "kind:Ns.Type.Member(param1, param2)"
+    /// </summary>
+    internal static ParsedSymbolId ParseSymbolId(string symbolId)
     {
         var prefix = symbolId.IndexOf(':');
-        if (prefix < 0) return (null, null);
+        if (prefix < 0) return default;
 
         var kind = symbolId.Substring(0, prefix);
         var qualifiedName = symbolId.Substring(prefix + 1);
 
+        string? paramSignature = null;
         var parenIdx = qualifiedName.IndexOf('(');
-        var nameOnly = parenIdx >= 0 ? qualifiedName.Substring(0, parenIdx) : qualifiedName;
-        return (kind, nameOnly.Split('.'));
+        string nameOnly;
+        if (parenIdx >= 0)
+        {
+            nameOnly = qualifiedName.Substring(0, parenIdx);
+            var closeIdx = qualifiedName.LastIndexOf(')');
+            if (closeIdx > parenIdx)
+                paramSignature = qualifiedName.Substring(parenIdx + 1, closeIdx - parenIdx - 1);
+        }
+        else
+        {
+            nameOnly = qualifiedName;
+        }
+
+        return new ParsedSymbolId(kind, nameOnly.Split('.'), paramSignature);
     }
+
+    internal readonly record struct ParsedSymbolId(string? Kind, string[]? Parts, string? ParamSignature);
 
     private void EnsureWorkspace()
     {

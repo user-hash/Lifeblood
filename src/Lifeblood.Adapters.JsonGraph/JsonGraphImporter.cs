@@ -157,5 +157,5 @@ internal sealed class JsonEvidence
     public EvidenceKind Kind { get; set; }
     public string? AdapterName { get; set; }
     public string? SourceSpan { get; set; }
-    public ConfidenceLevel Confidence { get; set; } = ConfidenceLevel.Proven;
+    public ConfidenceLevel Confidence { get; set; } = ConfidenceLevel.BestEffort;
 }

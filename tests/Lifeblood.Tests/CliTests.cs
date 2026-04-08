@@ -1,4 +1,5 @@
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Analysis;
 using Lifeblood.CLI;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
@@ -128,12 +129,12 @@ public class CliTests : IDisposable
             .AddEdge(new Edge
             {
                 SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.DependsOn,
-                Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test" },
+                Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test", Confidence = ConfidenceLevel.Proven },
             })
             .AddEdge(new Edge
             {
                 SourceId = "type:B", TargetId = "type:A", Kind = EdgeKind.DependsOn,
-                Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test" },
+                Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test", Confidence = ConfidenceLevel.Proven },
             })
             .Build();
 

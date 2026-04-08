@@ -27,9 +27,9 @@ With rust-analyzer:
 ```json
 {
   "discoverSymbols": true,
-  "typeResolution": "high",
-  "callResolution": "high",
-  "crossModuleReferences": "high"
+  "typeResolution": "proven",
+  "callResolution": "proven",
+  "crossModuleReferences": "proven"
 }
 ```
 

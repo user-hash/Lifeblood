@@ -4,7 +4,7 @@ import { GraphSymbol, Visibility, Evidence } from './types';
 const SEMANTIC_EVIDENCE: Evidence = {
   kind: 'semantic',
   adapterName: 'TypeScript',
-  confidence: 'high',
+  confidence: 'proven',
 };
 
 /**
@@ -127,16 +127,15 @@ export function extractSymbols(
 
     if (ts.isPropertyDeclaration(member) || ts.isPropertySignature(member)) {
       symbols.push({
-        id: `field:${typeFqn}.${name}`,
+        id: `property:${typeFqn}.${name}`,
         name,
         qualifiedName: `${typeFqn}.${name}`,
-        kind: 'field',
+        kind: 'property',
         filePath: relPath,
         line,
         parentId: typeId,
         visibility: getVisibility(member),
         isStatic: !!(ts.getCombinedModifierFlags(member as ts.Declaration) & ts.ModifierFlags.Static),
-        properties: { isProperty: 'true' },
       });
     }
 

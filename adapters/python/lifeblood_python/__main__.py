@@ -31,10 +31,12 @@ def main() -> None:
         symbol_map[sym["id"]] = sym
     sorted_symbols = sorted(symbol_map.values(), key=lambda s: s["id"])
 
-    # Deduplicate edges
+    # Deduplicate edges + drop dangling (both source and target must exist as symbols)
     edge_set = set()
     deduped_edges = []
     for edge in edges:
+        if edge["sourceId"] not in symbol_map or edge["targetId"] not in symbol_map:
+            continue
         key = (edge["sourceId"], edge["targetId"], edge["kind"])
         if key not in edge_set:
             edge_set.add(key)
@@ -79,7 +81,7 @@ def main() -> None:
                 "typeResolution": "bestEffort",
                 "callResolution": "bestEffort",
                 "implementationResolution": "bestEffort",
-                "crossModuleReferences": "bestEffort",
+                "crossModuleReferences": "none",
                 "overrideResolution": "none",
             },
         },

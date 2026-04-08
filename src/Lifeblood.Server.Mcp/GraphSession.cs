@@ -3,8 +3,6 @@ using Lifeblood.Adapters.JsonGraph;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
-using Microsoft.CodeAnalysis.CSharp;
-using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Lifeblood.Domain.Rules;
@@ -12,35 +10,29 @@ using Lifeblood.Domain.Rules;
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
-/// Holds the current graph session: loaded graph + analysis results.
-/// Separate from tool dispatch for single responsibility.
+/// MCP-specific session wrapper. Delegates state to WorkspaceSession.
+/// Owns the load orchestration: parse args → build graph → validate → analyze → attach services.
 /// </summary>
 public sealed class GraphSession
 {
     private readonly IFileSystem _fs;
+    private readonly WorkspaceSession _session = new();
 
     public GraphSession(IFileSystem fs) => _fs = fs;
 
-    public SemanticGraph? Graph { get; private set; }
-    public AnalysisResult? Analysis { get; private set; }
-    public AdapterCapability? Capability { get; private set; }
-    public string? Language { get; private set; }
-
-    public bool IsLoaded => Graph != null;
-
-    /// <summary>
-    /// Write-side Roslyn capabilities. Only available when loaded via projectPath (Roslyn adapter).
-    /// Null when loaded from JSON graph (no compilation state).
-    /// </summary>
-    public ICompilationHost? CompilationHost { get; private set; }
-    public ICodeExecutor? CodeExecutor { get; private set; }
-    public IWorkspaceRefactoring? Refactoring { get; private set; }
-    public bool HasCompilationState => CompilationHost != null;
+    // Delegate all state queries to the unified session
+    public SemanticGraph? Graph => _session.Graph;
+    public AnalysisResult? Analysis => _session.Analysis;
+    public bool IsLoaded => _session.IsLoaded;
+    public ICompilationHost? CompilationHost => _session.CompilationHost;
+    public ICodeExecutor? CodeExecutor => _session.CodeExecutor;
+    public IWorkspaceRefactoring? Refactoring => _session.Refactoring;
+    public bool HasCompilationState => _session.HasCompilationState;
 
     public string Load(string? projectPath, string? graphPath, string? rulesPath)
     {
         SemanticGraph graph;
-        AdapterCapability? capability = null;
+        Domain.Capabilities.AdapterCapability? capability = null;
         string language = "unknown";
         ICompilationHost? newCompilationHost = null;
         ICodeExecutor? newCodeExecutor = null;
@@ -48,6 +40,7 @@ public sealed class GraphSession
 
         if (!string.IsNullOrEmpty(graphPath))
         {
+            // JSON graph path: import + validate here (no use case involved)
             if (!_fs.FileExists(graphPath))
                 return $"Graph file not found: {graphPath}";
 
@@ -56,9 +49,15 @@ public sealed class GraphSession
             graph = doc.Graph;
             capability = doc.Adapter;
             language = doc.Language;
+
+            // Validate — JSON graphs don't go through AnalyzeWorkspaceUseCase
+            var errors = GraphValidator.Validate(graph);
+            if (errors.Length > 0)
+                return $"Graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
         }
         else if (!string.IsNullOrEmpty(projectPath))
         {
+            // Roslyn path: AnalyzeWorkspaceUseCase validates internally
             if (!_fs.DirectoryExists(projectPath))
                 return $"Project directory not found: {projectPath}";
 
@@ -69,7 +68,9 @@ public sealed class GraphSession
             capability = adapter.Capability;
             language = "csharp";
 
-            // Wire write-side Roslyn capabilities from retained compilations
+            // Wire write-side Roslyn capabilities from retained compilations.
+            // Uses in-process RoslynCodeExecutor (trusted-local sandbox).
+            // For process-isolated execution, swap to ProcessIsolatedCodeExecutor.
             if (adapter.Compilations is { Count: > 0 })
             {
                 newCompilationHost = new RoslynCompilationHost(adapter.Compilations);
@@ -82,12 +83,7 @@ public sealed class GraphSession
             return "Specify projectPath or graphPath";
         }
 
-        // Validate
-        var errors = GraphValidator.Validate(graph);
-        if (errors.Length > 0)
-            return $"Graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
-
-        // Analyze
+        // Analyze (rules are optional)
         ArchitectureRule[]? rules = null;
         if (!string.IsNullOrEmpty(rulesPath) && _fs.FileExists(rulesPath))
         {
@@ -99,14 +95,11 @@ public sealed class GraphSession
 
         var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
 
-        // Commit all state atomically — only after successful validation + analysis
-        CompilationHost = newCompilationHost;
-        CodeExecutor = newCodeExecutor;
-        Refactoring = newRefactoring;
-        Graph = graph;
-        Capability = capability;
-        Language = language;
-        Analysis = analysis;
+        // Commit atomically via WorkspaceSession
+        _session.Clear();
+        _session.Load(graph, analysis, capability, language);
+        if (newCompilationHost != null)
+            _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
 
         return $"Loaded: {graph.Symbols.Count} symbols, {graph.Edges.Count} edges, " +
                $"{analysis.Metrics.TotalModules} modules, {analysis.Violations.Length} violations";
