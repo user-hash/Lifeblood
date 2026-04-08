@@ -113,6 +113,20 @@ public static class ToolRegistry
                 },
             },
         },
+        new()
+        {
+            Name = "lifeblood_file_impact",
+            Description = "Get file-level impact: which files depend on this file and which files this file depends on. Derived from symbol-level edges. Answers 'if I change this file, what other files are affected?'",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "filePath" },
+                properties = new
+                {
+                    filePath = new { type = "string", description = "Relative file path (e.g., src/MyApp/AuthService.cs)" },
+                },
+            },
+        },
 
         // ── Write-side tools (require Roslyn compilation state) ──
 

@@ -41,6 +41,7 @@ public sealed class ToolHandler
                 "lifeblood_dependencies" => HandleDependencies(arguments),
                 "lifeblood_dependants" => HandleDependants(arguments),
                 "lifeblood_blast_radius" => HandleBlastRadius(arguments),
+                "lifeblood_file_impact" => HandleFileImpact(arguments),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -152,6 +153,32 @@ public sealed class ToolHandler
         var maxDepth = WriteToolHandler.GetInt(args, "maxDepth") ?? 10;
         var affected = _provider.GetBlastRadius(_session.Graph!, symbolId, maxDepth);
         return TextResult(JsonSerializer.Serialize(new { symbolId, maxDepth, affectedCount = affected.Length, affected }, JsonOpts));
+    }
+
+    private McpToolResult HandleFileImpact(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var filePath = WriteToolHandler.GetString(args, "filePath");
+        if (string.IsNullOrEmpty(filePath))
+            return ErrorResult("filePath is required");
+
+        var fileId = "file:" + filePath.Replace('\\', '/');
+        var symbol = _session.Graph!.GetSymbol(fileId);
+        if (symbol == null)
+            return ErrorResult($"File not found in graph: {filePath} (tried ID: {fileId})");
+
+        var result = _provider.GetFileImpact(_session.Graph!, fileId);
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            result.FileId,
+            result.FilePath,
+            dependsOnCount = result.DependsOn.Length,
+            dependedOnByCount = result.DependedOnBy.Length,
+            result.DependsOn,
+            result.DependedOnBy,
+        }, JsonOpts));
     }
 
     private static McpToolResult TextResult(string text) => new()

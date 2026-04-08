@@ -209,9 +209,11 @@ Rule: JSON serializers should use `System.Text.Json` with `JsonNamingPolicy.Came
 
 - **INV-STREAM-005**: `GraphBuilder.Build()` deduplicates ALL edges by `(sourceId, targetId, kind)`. Partial classes emit duplicate edges — the builder is the authoritative dedup boundary.
 
-## 16 MCP Tools (v0.2.2)
+- **INV-FILE-EDGE-001**: `GraphBuilder.Build()` derives file-level `References` edges from symbol-level edges. For each non-Contains edge between symbols in different files, a `file:X → file:Y References` edge is emitted with an `edgeCount` property. Evidence: `Inferred`, adapter: `GraphBuilder`. File edges are derived truth — not primary.
 
-Read-side (6): analyze, context, lookup, dependencies, dependants, blast_radius
+## 17 MCP Tools (v0.3.0)
+
+Read-side (7): analyze, context, lookup, dependencies, dependants, blast_radius, file_impact
 Write-side (10): execute, diagnose, compile_check, find_references, find_definition, find_implementations, symbol_at_position, documentation, rename, format
 
 ## What NOT to Do
