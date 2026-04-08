@@ -57,7 +57,7 @@ internal sealed class ModuleCompilationBuilder
         {
             sourceFiles = sourceFiles.Where(f =>
             {
-                var rel = Path.GetRelativePath(projectRoot, f);
+                var rel = Path.GetRelativePath(projectRoot, f).Replace('\\', '/');
                 return !config.ExcludePatterns.Any(p => rel.Contains(p, StringComparison.OrdinalIgnoreCase));
             });
         }
