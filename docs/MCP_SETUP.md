@@ -1,6 +1,6 @@
 # MCP Server Setup
 
-Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 16 tools over stdio JSON-RPC. This page has copy-paste configs for every major MCP client.
+Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 17 tools over stdio JSON-RPC. This page has copy-paste configs for every major MCP client.
 
 ## Prerequisites
 
@@ -142,4 +142,4 @@ Call a tool:
 2. Use `lifeblood_lookup`, `lifeblood_dependencies`, `lifeblood_blast_radius` to query it
 3. Use `lifeblood_find_references`, `lifeblood_execute`, `lifeblood_compile_check` for write-side Roslyn features
 
-The graph stays in memory for the session. All 16 tools share the same loaded workspace.
+The graph stays in memory for the session. All 17 tools share the same loaded workspace.

@@ -19,7 +19,7 @@ Born from shipping a [400k LOC Unity project](https://github.com/user-hash/Livin
 
 ## What AI Agents Get
 
-Connect an MCP client. Load a C# project. The AI agent now has **16 tools** in one session. 6 read, 10 write:
+Connect an MCP client. Load a C# project. The AI agent now has **17 tools** in one session. 7 read, 10 write:
 
 ### Write-side (compiler-as-a-service)
 
@@ -46,6 +46,7 @@ Connect an MCP client. Load a C# project. The AI agent now has **16 tools** in o
 | **Dependencies** | What does this symbol depend on? |
 | **Dependants** | What depends on this symbol? |
 | **Blast radius** | Change this symbol, what breaks? Transitive BFS over the dependency graph. |
+| **File impact** | Change this file, what other files break? Derived from symbol-level edges. |
 
 The difference: the AI agent doesn't guess what your code does. It **asks the compiler**.
 
@@ -164,7 +165,7 @@ Lifeblood.Adapters.JsonGraph    Universal JSON protocol adapter. Left side.
 Lifeblood.Connectors.ContextPack  Context pack and instruction file generator. Right side.
 Lifeblood.Connectors.Mcp       MCP graph provider port. Right side.
 Lifeblood.Analysis              Coupling, blast radius, cycles, tiers, rule validation.
-Lifeblood.Server.Mcp            MCP server. 16 tools over stdio. Bidirectional Roslyn.
+Lifeblood.Server.Mcp            MCP server. 17 tools over stdio. Bidirectional Roslyn.
 Lifeblood.CLI                   Composition root. Wires left side to right side.
 adapters/typescript/            TypeScript adapter (standalone Node.js, JSON protocol).
 adapters/python/                Python adapter (standalone, zero dependencies).
@@ -178,7 +179,7 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 
 ## Status
 
-Dogfood-verified. 241 tests. 16 MCP tools (6 read + 10 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 241 tests. 17 MCP tools (7 read + 10 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -189,7 +190,7 @@ Dogfood-verified. 241 tests. 16 MCP tools (6 read + 10 write). CI green (4 jobs:
 | Lifeblood.Connectors.ContextPack | Implemented. Context pack with GraphSummary, instruction file, reading order. |
 | Lifeblood.Connectors.Mcp | Implemented. Graph provider with blast radius delegation. |
 | Lifeblood.Analysis | Implemented. Coupling, blast radius, cycles, tiers, rule validation. |
-| Lifeblood.Server.Mcp | Implemented. MCP server with 16 tools over stdio. Bidirectional Roslyn. |
+| Lifeblood.Server.Mcp | Implemented. MCP server with 17 tools over stdio. Bidirectional Roslyn. |
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |

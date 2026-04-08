@@ -183,10 +183,11 @@ Rule: JSON serializers should use `System.Text.Json` with `JsonNamingPolicy.Came
 - **INV-STREAM-003**: `AnalysisConfig.RetainCompilations` controls mode. `false` (default, CLI) = streaming/memory-safe. `true` (MCP server) = retained for write-side tools.
 - **INV-STREAM-004**: Unity csproj support: if `<Compile Include>` items exist (old-format), use them. If absent (SDK-style), scan filesystem.
 - **INV-STREAM-005**: `GraphBuilder.Build()` deduplicates ALL edges by `(sourceId, targetId, kind)`. Partial classes emit duplicate edges — the builder is the authoritative dedup boundary.
+- **INV-FILE-EDGE-001**: `GraphBuilder.Build()` derives file-level `References` edges from symbol-level edges. For each non-Contains edge between symbols in different files, a `file:X → file:Y References` edge is emitted with an `edgeCount` property. Evidence: `Inferred`, adapter: `GraphBuilder`. File edges are derived truth — not primary.
 
-## 16 MCP Tools (v0.2.2)
+## 17 MCP Tools (v0.3.0)
 
-Read-side (6): analyze, context, lookup, dependencies, dependants, blast_radius
+Read-side (7): analyze, context, lookup, dependencies, dependants, blast_radius, file_impact
 Write-side (10): execute, diagnose, compile_check, find_references, find_definition, find_implementations, symbol_at_position, documentation, rename, format
 
 ## What NOT to Do

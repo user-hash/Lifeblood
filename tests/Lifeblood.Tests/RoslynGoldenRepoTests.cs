@@ -100,6 +100,71 @@ public class RoslynGoldenRepoTests
             $"ServiceB blast radius should affect ServiceA, but AffectedCount={blastB.AffectedCount}");
     }
 
+    // ── File-level edge tests ──
+
+    [Fact]
+    public void HexagonalApp_FileEdges_ApplicationDependsOnDomain()
+    {
+        var graph = BuildHexagonalAppGraph();
+
+        // UseCase.cs references types in Entity.cs (IRepository, Entity)
+        var fileEdge = graph.Edges.FirstOrDefault(e =>
+            e.SourceId == "file:Application/UseCase.cs"
+            && e.TargetId == "file:Domain/Entity.cs"
+            && e.Kind == EdgeKind.References);
+
+        Assert.NotNull(fileEdge);
+        Assert.Equal(EvidenceKind.Inferred, fileEdge!.Evidence.Kind);
+        Assert.True(int.Parse(fileEdge.Properties["edgeCount"]) >= 1,
+            $"UseCase.cs should have multiple symbol-level edges to Entity.cs");
+    }
+
+    [Fact]
+    public void HexagonalApp_FileEdges_InfrastructureDependsOnDomain()
+    {
+        var graph = BuildHexagonalAppGraph();
+
+        // SqlRepository.cs references types in Entity.cs (IRepository, Entity)
+        var fileEdge = graph.Edges.FirstOrDefault(e =>
+            e.SourceId == "file:Infrastructure/SqlRepository.cs"
+            && e.TargetId == "file:Domain/Entity.cs"
+            && e.Kind == EdgeKind.References);
+
+        Assert.NotNull(fileEdge);
+        Assert.True(int.Parse(fileEdge!.Properties["edgeCount"]) >= 1);
+    }
+
+    [Fact]
+    public void CycleRepo_FileEdges_BidirectionalCycle()
+    {
+        var graph = BuildCycleRepoGraph();
+
+        // ServiceA.cs and ServiceB.cs reference each other
+        Assert.Contains(graph.Edges, e =>
+            e.SourceId == "file:ServiceA.cs"
+            && e.TargetId == "file:ServiceB.cs"
+            && e.Kind == EdgeKind.References);
+
+        Assert.Contains(graph.Edges, e =>
+            e.SourceId == "file:ServiceB.cs"
+            && e.TargetId == "file:ServiceA.cs"
+            && e.Kind == EdgeKind.References);
+    }
+
+    [Fact]
+    public void HexagonalApp_FileEdges_DomainHasNoDependencies()
+    {
+        var graph = BuildHexagonalAppGraph();
+
+        // Entity.cs (domain) should not depend on any other file
+        var domainOutgoing = graph.Edges.Where(e =>
+            e.SourceId == "file:Domain/Entity.cs"
+            && e.Kind == EdgeKind.References
+            && e.TargetId.StartsWith("file:")).ToArray();
+
+        Assert.Empty(domainOutgoing);
+    }
+
     // --- Graph builders using in-memory compilation ---
 
     private static SemanticGraph BuildHexagonalAppGraph()

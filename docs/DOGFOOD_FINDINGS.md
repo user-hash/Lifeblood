@@ -2,7 +2,7 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-08, session 6, 80 passes):** 1057 symbols, 2594 edges, 11 modules, 145 types, 0 violations (17 rules). Verified on a real 400k+ LOC Unity project: 43,800 symbols, 70,600 edges, 75 modules, 2,404 types, 34 cycles, ~4GB peak memory. Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. 16 MCP tools (6 read + 10 write). All Roslyn capabilities at Proven. Streaming compilation with downgrading. Unity csproj support (old-format + SDK-style). GraphBuilder deduplicates all edges. Security scanner handles chained invocations.
+**Current state (2026-04-08, session 6, 80 passes):** 1057 symbols, 2594 edges, 11 modules, 145 types, 0 violations (17 rules). Verified on a real 400k+ LOC Unity project: 43,800 symbols, 70,600 edges, 75 modules, 2,404 types, 34 cycles, ~4GB peak memory. Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. 17 MCP tools (7 read + 10 write). All Roslyn capabilities at Proven. Streaming compilation with downgrading. Unity csproj support (old-format + SDK-style). GraphBuilder deduplicates all edges. Security scanner handles chained invocations.
 
 ### Session 3 Dogfood Findings (2026-04-08, passes 16-25)
 

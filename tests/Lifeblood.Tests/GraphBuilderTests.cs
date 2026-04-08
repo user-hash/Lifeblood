@@ -177,8 +177,8 @@ public class GraphBuilderTests
     public void Build_MixedExplicitAndSynthesized()
     {
         var mod = new Symbol { Id = "mod:Core", Name = "Core", Kind = SymbolKind.Module };
-        var file = new Symbol { Id = "file:Foo.cs", Name = "Foo.cs", Kind = SymbolKind.File, ParentId = "mod:Core" };
-        var typeA = new Symbol { Id = "type:Foo", Name = "Foo", Kind = SymbolKind.Type, ParentId = "file:Foo.cs" };
+        var file = new Symbol { Id = "file:Foo.cs", Name = "Foo.cs", Kind = SymbolKind.File, ParentId = "mod:Core", FilePath = "Foo.cs" };
+        var typeA = new Symbol { Id = "type:Foo", Name = "Foo", Kind = SymbolKind.Type, ParentId = "file:Foo.cs", FilePath = "Foo.cs" };
         var typeB = new Symbol { Id = "type:Bar", Name = "Bar", Kind = SymbolKind.Type };
         var dep = new Edge { SourceId = "type:Foo", TargetId = "type:Bar", Kind = EdgeKind.DependsOn };
 
@@ -188,9 +188,115 @@ public class GraphBuilderTests
             .Build();
 
         Assert.Equal(4, graph.Symbols.Count);
-        // 2 synthesized Contains + 1 explicit DependsOn
+        // 2 synthesized Contains + 1 explicit DependsOn (no file edge — typeB has no file)
         Assert.Equal(3, graph.Edges.Count);
         Assert.Equal(2, graph.Edges.Count(e => e.Kind == EdgeKind.Contains));
         Assert.Single(graph.Edges, e => e.Kind == EdgeKind.DependsOn);
+    }
+
+    // ── File-Level Edge Derivation ──
+
+    [Fact]
+    public void Build_DerivesFileEdges_BetweenDifferentFiles()
+    {
+        var fileA = new Symbol { Id = "file:A.cs", Name = "A.cs", Kind = SymbolKind.File, FilePath = "A.cs" };
+        var fileB = new Symbol { Id = "file:B.cs", Name = "B.cs", Kind = SymbolKind.File, FilePath = "B.cs" };
+        var typeA = new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type, ParentId = "file:A.cs", FilePath = "A.cs" };
+        var typeB = new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type, ParentId = "file:B.cs", FilePath = "B.cs" };
+        var refEdge = new Edge
+        {
+            SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.References,
+            Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Roslyn", Confidence = ConfidenceLevel.Proven },
+        };
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { fileA, fileB, typeA, typeB })
+            .AddEdge(refEdge)
+            .Build();
+
+        var fileEdge = graph.Edges.FirstOrDefault(e =>
+            e.SourceId == "file:A.cs" && e.TargetId == "file:B.cs" && e.Kind == EdgeKind.References);
+        Assert.NotNull(fileEdge);
+        Assert.Equal(EvidenceKind.Inferred, fileEdge!.Evidence.Kind);
+        Assert.Equal("GraphBuilder", fileEdge.Evidence.AdapterName);
+        Assert.True(fileEdge.Properties.ContainsKey("edgeCount"));
+        Assert.Equal("1", fileEdge.Properties["edgeCount"]);
+    }
+
+    [Fact]
+    public void Build_FileEdges_AggregateEdgeCount()
+    {
+        var fileA = new Symbol { Id = "file:A.cs", Name = "A.cs", Kind = SymbolKind.File, FilePath = "A.cs" };
+        var fileB = new Symbol { Id = "file:B.cs", Name = "B.cs", Kind = SymbolKind.File, FilePath = "B.cs" };
+        var typeA = new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type, ParentId = "file:A.cs", FilePath = "A.cs" };
+        var typeB = new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type, ParentId = "file:B.cs", FilePath = "B.cs" };
+        var methodA = new Symbol { Id = "method:A.Do()", Name = "Do", Kind = SymbolKind.Method, ParentId = "type:A", FilePath = "A.cs" };
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { fileA, fileB, typeA, typeB, methodA })
+            .AddEdge(new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.References })
+            .AddEdge(new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.Implements })
+            .AddEdge(new Edge { SourceId = "method:A.Do()", TargetId = "type:B", Kind = EdgeKind.Calls })
+            .Build();
+
+        var fileEdge = graph.Edges.FirstOrDefault(e =>
+            e.SourceId == "file:A.cs" && e.TargetId == "file:B.cs" && e.Kind == EdgeKind.References);
+        Assert.NotNull(fileEdge);
+        Assert.Equal("3", fileEdge!.Properties["edgeCount"]);
+    }
+
+    [Fact]
+    public void Build_FileEdges_NoSelfReferences()
+    {
+        var file = new Symbol { Id = "file:Same.cs", Name = "Same.cs", Kind = SymbolKind.File, FilePath = "Same.cs" };
+        var typeA = new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type, ParentId = "file:Same.cs", FilePath = "Same.cs" };
+        var typeB = new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type, ParentId = "file:Same.cs", FilePath = "Same.cs" };
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { file, typeA, typeB })
+            .AddEdge(new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.References })
+            .Build();
+
+        // No file-level self-reference edge
+        Assert.DoesNotContain(graph.Edges, e =>
+            e.SourceId == "file:Same.cs" && e.TargetId == "file:Same.cs" && e.Kind == EdgeKind.References);
+    }
+
+    [Fact]
+    public void Build_FileEdges_SkipsSymbolsWithoutFilePath()
+    {
+        var fileA = new Symbol { Id = "file:A.cs", Name = "A.cs", Kind = SymbolKind.File, FilePath = "A.cs" };
+        var typeA = new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type, ParentId = "file:A.cs", FilePath = "A.cs" };
+        var typeB = new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type }; // no FilePath
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { fileA, typeA, typeB })
+            .AddEdge(new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.References })
+            .Build();
+
+        // No file-level edge derived — typeB has no file
+        var fileEdges = graph.Edges.Where(e =>
+            e.SourceId.StartsWith("file:") && e.TargetId.StartsWith("file:")).ToArray();
+        Assert.Empty(fileEdges);
+    }
+
+    [Fact]
+    public void Build_FileEdges_BidirectionalCycle()
+    {
+        var fileA = new Symbol { Id = "file:A.cs", Name = "A.cs", Kind = SymbolKind.File, FilePath = "A.cs" };
+        var fileB = new Symbol { Id = "file:B.cs", Name = "B.cs", Kind = SymbolKind.File, FilePath = "B.cs" };
+        var typeA = new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type, FilePath = "A.cs" };
+        var typeB = new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type, FilePath = "B.cs" };
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { fileA, fileB, typeA, typeB })
+            .AddEdge(new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.References })
+            .AddEdge(new Edge { SourceId = "type:B", TargetId = "type:A", Kind = EdgeKind.References })
+            .Build();
+
+        Assert.Contains(graph.Edges, e =>
+            e.SourceId == "file:A.cs" && e.TargetId == "file:B.cs" && e.Kind == EdgeKind.References);
+        Assert.Contains(graph.Edges, e =>
+            e.SourceId == "file:B.cs" && e.TargetId == "file:A.cs" && e.Kind == EdgeKind.References);
     }
 }
