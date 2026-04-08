@@ -1,0 +1,133 @@
+using System.Text.Json;
+
+namespace Lifeblood.Server.Mcp;
+
+/// <summary>
+/// Handles write-side MCP tool calls (require compilation state).
+/// Execute, Diagnose, CompileCheck, FindReferences, Rename, Format.
+/// </summary>
+internal sealed class WriteToolHandler
+{
+    private readonly GraphSession _session;
+    private readonly JsonSerializerOptions _jsonOpts;
+
+    public WriteToolHandler(GraphSession session, JsonSerializerOptions jsonOpts)
+    {
+        _session = session;
+        _jsonOpts = jsonOpts;
+    }
+
+    public McpToolResult HandleExecute(JsonElement? args)
+    {
+        if (!EnsureCompilationState(out var error)) return error;
+
+        var code = GetString(args, "code");
+        if (string.IsNullOrEmpty(code))
+            return ErrorResult("code is required");
+
+        var timeoutMs = GetInt(args, "timeoutMs") ?? 5000;
+        string[]? imports = null;
+        if (args?.TryGetProperty("imports", out var importsEl) == true && importsEl.ValueKind == JsonValueKind.Array)
+            imports = importsEl.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s != "").ToArray();
+
+        var result = _session.CodeExecutor!.Execute(code, imports, timeoutMs);
+        return TextResult(JsonSerializer.Serialize(result, _jsonOpts));
+    }
+
+    public McpToolResult HandleDiagnose(JsonElement? args)
+    {
+        if (!EnsureCompilationState(out var error)) return error;
+
+        var moduleName = GetString(args, "moduleName");
+        var diagnostics = _session.CompilationHost!.GetDiagnostics(moduleName);
+        return TextResult(JsonSerializer.Serialize(new { count = diagnostics.Length, diagnostics }, _jsonOpts));
+    }
+
+    public McpToolResult HandleCompileCheck(JsonElement? args)
+    {
+        if (!EnsureCompilationState(out var error)) return error;
+
+        var code = GetString(args, "code");
+        if (string.IsNullOrEmpty(code))
+            return ErrorResult("code is required");
+
+        var moduleName = GetString(args, "moduleName");
+        var result = _session.CompilationHost!.CompileCheck(code, moduleName);
+        return TextResult(JsonSerializer.Serialize(result, _jsonOpts));
+    }
+
+    public McpToolResult HandleFindReferences(JsonElement? args)
+    {
+        if (!EnsureCompilationState(out var error)) return error;
+
+        var symbolId = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(symbolId))
+            return ErrorResult("symbolId is required");
+
+        var locations = _session.CompilationHost!.FindReferences(symbolId);
+        return TextResult(JsonSerializer.Serialize(new { symbolId, count = locations.Length, locations }, _jsonOpts));
+    }
+
+    public McpToolResult HandleRename(JsonElement? args)
+    {
+        if (!EnsureCompilationState(out var error)) return error;
+
+        var symbolId = GetString(args, "symbolId");
+        var newName = GetString(args, "newName");
+        if (string.IsNullOrEmpty(symbolId)) return ErrorResult("symbolId is required");
+        if (string.IsNullOrEmpty(newName)) return ErrorResult("newName is required");
+
+        var edits = _session.Refactoring!.Rename(symbolId, newName);
+        return TextResult(JsonSerializer.Serialize(new { symbolId, newName, editCount = edits.Length, edits }, _jsonOpts));
+    }
+
+    public McpToolResult HandleFormat(JsonElement? args)
+    {
+        if (!EnsureCompilationState(out var error)) return error;
+
+        var code = GetString(args, "code");
+        if (string.IsNullOrEmpty(code))
+            return ErrorResult("code is required");
+
+        var formatted = _session.Refactoring!.Format(code);
+        return TextResult(formatted);
+    }
+
+    private bool EnsureCompilationState(out McpToolResult error)
+    {
+        if (_session.HasCompilationState)
+        {
+            error = default!;
+            return true;
+        }
+        error = ErrorResult("Write-side tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first.");
+        return false;
+    }
+
+    internal static string? GetString(JsonElement? args, string key)
+    {
+        if (args == null) return null;
+        if (args.Value.TryGetProperty(key, out var val) && val.ValueKind == JsonValueKind.String)
+            return val.GetString();
+        return null;
+    }
+
+    internal static int? GetInt(JsonElement? args, string key)
+    {
+        if (args == null) return null;
+        if (args.Value.TryGetProperty(key, out var val) && val.ValueKind == JsonValueKind.Number)
+            return val.GetInt32();
+        return null;
+    }
+
+    private static McpToolResult TextResult(string text) => new()
+    {
+        Content = new[] { new McpContent { Type = "text", Text = text } },
+    };
+
+    private static McpToolResult ErrorResult(string message) => new()
+    {
+        Content = new[] { new McpContent { Type = "text", Text = message } },
+        IsError = true,
+    };
+}
