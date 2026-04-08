@@ -88,6 +88,18 @@ public sealed class RoslynSymbolExtractor
                     ExtractProperty(model, propDecl, typeId, filePath, symbols);
                     break;
 
+                case IndexerDeclarationSyntax indexerDecl:
+                    ExtractIndexer(model, indexerDecl, typeId, filePath, symbols);
+                    break;
+
+                case EventDeclarationSyntax eventDecl:
+                    ExtractEvent(model, eventDecl, typeId, filePath, symbols);
+                    break;
+
+                case EventFieldDeclarationSyntax eventFieldDecl:
+                    ExtractEventField(model, eventFieldDecl, typeId, filePath, symbols);
+                    break;
+
                 case TypeDeclarationSyntax nestedType:
                     ExtractType(model, nestedType, filePath, typeId, symbols);
                     break;
@@ -250,6 +262,89 @@ public sealed class RoslynSymbolExtractor
         });
     }
 
+    private void ExtractIndexer(
+        SemanticModel model, IndexerDeclarationSyntax indexerDecl,
+        string containingTypeId, string filePath, List<Symbol> symbols)
+    {
+        var sym = model.GetDeclaredSymbol(indexerDecl) as IPropertySymbol;
+        if (sym == null) return;
+
+        var typeName = ExtractTypeFromId(containingTypeId);
+        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        symbols.Add(new Symbol
+        {
+            Id = SymbolIds.Property(typeName, $"this[{paramSig}]"),
+            Name = "this[]",
+            QualifiedName = $"{typeName}.this[]",
+            Kind = DomainSymbolKind.Property,
+            FilePath = filePath,
+            Line = indexerDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            ParentId = containingTypeId,
+            Visibility = MapVisibility(sym.DeclaredAccessibility),
+            IsAbstract = sym.IsAbstract,
+            Properties = new Dictionary<string, string>
+            {
+                ["propertyType"] = sym.Type.ToDisplayString(),
+                ["isIndexer"] = "true",
+            },
+        });
+    }
+
+    /// <summary>
+    /// Explicit event declaration: event EventHandler Changed { add { } remove { } }
+    /// </summary>
+    private void ExtractEvent(
+        SemanticModel model, EventDeclarationSyntax eventDecl,
+        string containingTypeId, string filePath, List<Symbol> symbols)
+    {
+        var sym = model.GetDeclaredSymbol(eventDecl) as IEventSymbol;
+        if (sym == null) return;
+
+        ExtractEventSymbol(sym, containingTypeId, filePath, eventDecl.GetLocation(), symbols);
+    }
+
+    /// <summary>
+    /// Field-like event declaration: event EventHandler? Changed;
+    /// One declaration can declare multiple events (rare but valid).
+    /// </summary>
+    private void ExtractEventField(
+        SemanticModel model, EventFieldDeclarationSyntax eventFieldDecl,
+        string containingTypeId, string filePath, List<Symbol> symbols)
+    {
+        foreach (var variable in eventFieldDecl.Declaration.Variables)
+        {
+            var sym = model.GetDeclaredSymbol(variable) as IEventSymbol;
+            if (sym == null) continue;
+
+            ExtractEventSymbol(sym, containingTypeId, filePath, variable.GetLocation(), symbols);
+        }
+    }
+
+    private void ExtractEventSymbol(
+        IEventSymbol sym, string containingTypeId, string filePath,
+        Location location, List<Symbol> symbols)
+    {
+        var typeName = ExtractTypeFromId(containingTypeId);
+        symbols.Add(new Symbol
+        {
+            Id = SymbolIds.Property(typeName, sym.Name),
+            Name = sym.Name,
+            QualifiedName = $"{typeName}.{sym.Name}",
+            Kind = DomainSymbolKind.Property,
+            FilePath = filePath,
+            Line = location.GetLineSpan().StartLinePosition.Line + 1,
+            ParentId = containingTypeId,
+            Visibility = MapVisibility(sym.DeclaredAccessibility),
+            IsAbstract = sym.IsAbstract,
+            IsStatic = sym.IsStatic,
+            Properties = new Dictionary<string, string>
+            {
+                ["eventType"] = sym.Type.ToDisplayString(),
+                ["isEvent"] = "true",
+            },
+        });
+    }
+
     internal static string GetFullName(ISymbol symbol)
     {
         var parts = new List<string>();
@@ -258,7 +353,7 @@ public sealed class RoslynSymbolExtractor
         {
             if (current is INamespaceSymbol ns && !string.IsNullOrEmpty(ns.Name))
                 parts.Add(ns.Name);
-            else if (current is INamedTypeSymbol or IMethodSymbol or IFieldSymbol or IPropertySymbol)
+            else if (current is INamedTypeSymbol or IMethodSymbol or IFieldSymbol or IPropertySymbol or IEventSymbol)
                 parts.Add(current.Name);
 
             current = current.ContainingSymbol;

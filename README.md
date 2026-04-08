@@ -122,10 +122,10 @@ We test Lifeblood on itself. The MCP server loads its own source code, executes 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 976
-Edges:   2386
+Symbols: 1000
+Edges:   2455
 Modules: 11
-Types:   140
+Types:   141
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates.
@@ -160,7 +160,7 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 
 ## Status
 
-Dogfood-verified. 214 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 229 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -175,7 +175,7 @@ Dogfood-verified. 214 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: 
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 214 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner. |
+| Lifeblood.Tests | 229 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 

@@ -53,7 +53,7 @@ Adapters and Connectors depend inward on Application ports. They never reference
 
 The domain is pure. No Roslyn, no JSON, no System.IO.
 
-- **Symbol** — a node: module, file, namespace, type, method, field, property, parameter
+- **Symbol** — a node: module, file, namespace, type, method, field, property (including events via `isEvent` and indexers via `isIndexer`), parameter
 - **Edge** — a directed relationship: contains, dependsOn, implements, inherits, calls, references, overrides
 - **Evidence** — provenance: syntax/semantic/inferred + adapter name + ConfidenceLevel
 - **GraphBuilder** — constructs graphs, synthesizes Contains edges from ParentId, deduplicates symbols, sorts output deterministically
@@ -88,7 +88,7 @@ Current Roslyn adapter capabilities:
 - CallResolution: Proven
 - ImplementationResolution: Proven
 - CrossModuleReferences: BestEffort (compilations built in dependency order, but cycles are broken by skipping — degraded in cyclic graphs)
-- OverrideResolution: None (not yet extracted)
+- OverrideResolution: Proven (virtual dispatch chain via IMethodSymbol.OverriddenMethod)
 
 ## Deterministic Output
 

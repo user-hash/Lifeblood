@@ -19,6 +19,6 @@ public static class RoslynCapabilityDescriptor
         CallResolution = ConfidenceLevel.Proven,
         ImplementationResolution = ConfidenceLevel.Proven,
         CrossModuleReferences = ConfidenceLevel.BestEffort, // compilations built in dependency order; cycles broken by skipping — degraded in cyclic graphs
-        OverrideResolution = ConfidenceLevel.None, // Overrides edges not yet extracted
+        OverrideResolution = ConfidenceLevel.Proven, // virtual dispatch chain via IMethodSymbol.OverriddenMethod
     };
 }
