@@ -69,7 +69,7 @@ public sealed class GraphSession
 
             var adapter = new RoslynWorkspaceAnalyzer(_fs);
             var result = new AnalyzeWorkspaceUseCase(adapter)
-                .Execute(projectPath, new AnalysisConfig());
+                .Execute(projectPath, new AnalysisConfig { RetainCompilations = true });
             graph = result.Graph;
             capability = adapter.Capability;
             language = "csharp";

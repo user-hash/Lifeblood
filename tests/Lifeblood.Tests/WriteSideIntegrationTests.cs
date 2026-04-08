@@ -235,7 +235,7 @@ public class WriteSideIntegrationTests
     {
         var fs = new PhysicalFileSystem();
         var adapter = new RoslynWorkspaceAnalyzer(fs);
-        var graph = adapter.AnalyzeWorkspace(GoldenRepoPath, new AnalysisConfig());
+        var graph = adapter.AnalyzeWorkspace(GoldenRepoPath, new AnalysisConfig { RetainCompilations = true });
         return (graph, adapter);
     }
 

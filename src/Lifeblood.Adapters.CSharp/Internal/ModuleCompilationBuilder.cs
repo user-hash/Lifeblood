@@ -7,47 +7,118 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 
 /// <summary>
 /// Builds CSharpCompilations for modules in dependency order.
-/// Handles topological sorting, BCL references, NuGet resolution, and cross-module linking.
+/// Supports two modes:
+///   Streaming (default): compile → extract → downgrade → next module. O(1) compilation memory.
+///   Retained: compile → extract → keep in memory for write-side tools. O(N) compilation memory.
+///
+/// Compilation downgrading: after extraction, Emit() to a byte[] and create a lightweight
+/// MetadataReference.CreateFromImage(). Downstream modules reference the PE image (~10-100KB)
+/// instead of the full compilation (~200MB). The full compilation becomes eligible for GC.
 /// </summary>
 internal sealed class ModuleCompilationBuilder
 {
     private readonly IFileSystem _fs;
     private readonly NuGetReferenceResolver _nuget;
+    private readonly SharedMetadataReferenceCache _refCache;
 
-    public ModuleCompilationBuilder(IFileSystem fs)
+    public ModuleCompilationBuilder(IFileSystem fs, SharedMetadataReferenceCache? refCache = null)
     {
         _fs = fs;
         _nuget = new NuGetReferenceResolver(fs);
+        _refCache = refCache ?? new SharedMetadataReferenceCache();
     }
 
     /// <summary>
-    /// Build compilations for all modules in dependency order.
-    /// Returns a dictionary keyed by module (assembly) name.
+    /// Callback invoked for each module after its compilation is built.
+    /// The compilation is valid only during the callback — after return,
+    /// it may be downgraded to a lightweight metadata reference.
     /// </summary>
-    public Dictionary<string, CSharpCompilation> BuildAll(
-        ModuleInfo[] modules, string projectRoot, AnalysisConfig config)
+    internal delegate void CompilationProcessor(
+        ModuleInfo module, CSharpCompilation compilation);
+
+    /// <summary>
+    /// Process modules in dependency order, one at a time.
+    /// For each module: build compilation → invoke processor → downgrade or retain.
+    /// </summary>
+    /// <param name="modules">Discovered modules from IModuleDiscovery.</param>
+    /// <param name="projectRoot">Workspace root path.</param>
+    /// <param name="config">Analysis configuration (exclude patterns, retention flag).</param>
+    /// <param name="processor">Called with each compilation for symbol/edge extraction.</param>
+    /// <returns>
+    /// Retained compilations if config.RetainCompilations is true; null otherwise.
+    /// When null, compilations have been downgraded — only the graph survives.
+    /// </returns>
+    public Dictionary<string, CSharpCompilation>? ProcessInOrder(
+        ModuleInfo[] modules,
+        string projectRoot,
+        AnalysisConfig config,
+        CompilationProcessor processor)
     {
-        var compilations = new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal);
         var sorted = TopologicalSort(modules);
+
+        // Downgraded references: lightweight PE images for completed modules.
+        // Downstream modules reference these instead of full compilations.
+        var downgraded = new Dictionary<string, MetadataReference>(StringComparer.Ordinal);
+
+        // Only allocated when retaining for write-side tools.
+        Dictionary<string, CSharpCompilation>? retained = config.RetainCompilations
+            ? new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal)
+            : null;
 
         foreach (var module in sorted)
         {
-            var depCompilations = module.Dependencies
-                .Where(compilations.ContainsKey)
-                .Select(d => compilations[d])
+            // Collect dependencies: use downgraded refs (lightweight) for completed modules.
+            var depRefs = module.Dependencies
+                .Where(downgraded.ContainsKey)
+                .Select(d => downgraded[d])
                 .ToArray();
 
-            var compilation = CreateCompilation(module, projectRoot, config, depCompilations);
-            if (compilation != null)
-                compilations[module.Name] = compilation;
+            var compilation = CreateCompilation(module, projectRoot, config, depRefs);
+            if (compilation == null) continue;
+
+            // Invoke the processor (symbol/edge extraction happens here).
+            processor(module, compilation);
+
+            // Retain full compilation if write-side tools are needed.
+            if (retained != null)
+                retained[module.Name] = compilation;
+
+            // Downgrade: emit to PE bytes → lightweight MetadataReference.
+            // Downstream modules only need the type metadata, not the full compilation.
+            var downgradedRef = DowngradeCompilation(compilation);
+            downgraded[module.Name] = downgradedRef;
         }
 
-        return compilations;
+        return retained;
+    }
+
+    /// <summary>
+    /// Emit the compilation to a PE image and wrap it as a MetadataReference.
+    /// Falls back to ToMetadataReference() if emit fails (compilation errors).
+    /// The fallback keeps the full compilation alive — acceptable for the few
+    /// modules that have errors, while most modules get the memory savings.
+    /// </summary>
+    private static MetadataReference DowngradeCompilation(CSharpCompilation compilation)
+    {
+        try
+        {
+            using var ms = new MemoryStream();
+            var emitResult = compilation.Emit(ms);
+            if (emitResult.Success)
+                return MetadataReference.CreateFromImage(ms.ToArray());
+        }
+        catch
+        {
+            // Emit can throw for pathological compilations. Fall back gracefully.
+        }
+
+        // Fallback: wrap the in-memory compilation. More expensive but correct.
+        return compilation.ToMetadataReference();
     }
 
     private CSharpCompilation? CreateCompilation(
         ModuleInfo module, string projectRoot, AnalysisConfig config,
-        CSharpCompilation[] dependencyCompilations)
+        MetadataReference[] dependencyRefs)
     {
         var sourceFiles = module.FilePaths
             .Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
@@ -74,10 +145,8 @@ internal sealed class ModuleCompilationBuilder
         if (trees.Length == 0) return null;
 
         var references = new List<MetadataReference>(BclReferenceLoader.References.Value);
-        references.AddRange(_nuget.Resolve(module, projectRoot));
-
-        foreach (var dep in dependencyCompilations)
-            references.Add(dep.ToMetadataReference());
+        references.AddRange(_nuget.Resolve(module, projectRoot, _refCache));
+        references.AddRange(dependencyRefs);
 
         return CSharpCompilation.Create(
             module.Name,

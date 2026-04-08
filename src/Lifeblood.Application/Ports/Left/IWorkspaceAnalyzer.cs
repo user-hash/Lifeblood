@@ -16,4 +16,12 @@ public interface IWorkspaceAnalyzer
 public sealed class AnalysisConfig
 {
     public string[] ExcludePatterns { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// When true, the adapter retains full CSharpCompilation objects after graph extraction.
+    /// Required for write-side tools (FindReferences, Rename, Execute, CompileCheck).
+    /// When false (default), compilations are downgraded to lightweight metadata references
+    /// after extraction — dramatically reducing memory for large workspaces.
+    /// </summary>
+    public bool RetainCompilations { get; init; }
 }
