@@ -133,6 +133,26 @@ public class JsonRoundTripTests
         Assert.Equal(ConfidenceLevel.None, roundTripped.Adapter.OverrideResolution);
     }
 
+    [Fact]
+    public void RoundTrip_PropertyKind_Preserved()
+    {
+        var doc = MakeDocument(new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Foo", Name = "Foo", Kind = SymbolKind.Type })
+            .AddSymbol(new Symbol
+            {
+                Id = "property:Foo.Name", Name = "Name", Kind = SymbolKind.Property,
+                ParentId = "type:Foo", FilePath = "Foo.cs", Line = 5,
+            })
+            .Build());
+
+        var roundTripped = RoundTrip(doc);
+
+        var prop = roundTripped.Graph.GetSymbol("property:Foo.Name");
+        Assert.NotNull(prop);
+        Assert.Equal(SymbolKind.Property, prop!.Kind);
+        Assert.Equal("Foo.cs", prop.FilePath);
+    }
+
     private static GraphDocument MakeDocument(SemanticGraph graph)
         => new() { Graph = graph };
 

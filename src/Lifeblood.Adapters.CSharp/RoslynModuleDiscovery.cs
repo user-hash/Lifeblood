@@ -67,9 +67,11 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 ?? Path.GetFileNameWithoutExtension(csprojPath);
 
             // Source files — sorted for deterministic output (INV-PIPE-001)
+            // Filter bin/obj with both separator styles for cross-platform robustness
             var sourceFiles = _fs.FindFiles(projectDir, "*.cs", recursive: true)
                 .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
-                         && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+                         && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                         && !f.Contains("/bin/") && !f.Contains("/obj/"))
                 .OrderBy(f => f, StringComparer.Ordinal)
                 .ToArray();
 

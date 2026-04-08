@@ -1,5 +1,6 @@
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
+using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
@@ -58,7 +59,7 @@ class Program
 
         var (_, _, rulesPath) = ParseArgs(args);
         var rules = rulesPath != null && Fs.FileExists(rulesPath) ? Rules.LoadRules(rulesPath) : null;
-        var analysis = AnalysisPipeline.Run(graph, rules);
+        var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
 
         Console.WriteLine($"Symbols: {graph.Symbols.Count}");
         Console.WriteLine($"Edges:   {graph.Edges.Count}");
@@ -84,7 +85,7 @@ class Program
         var (_, _, rulesPath) = ParseArgs(args);
         var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
         var rules = rulesPath != null && Fs.FileExists(rulesPath) ? Rules.LoadRules(rulesPath) : null;
-        var analysis = AnalysisPipeline.Run(graph, rules);
+        var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
 
         if (format.Equals("md", StringComparison.OrdinalIgnoreCase)
             || format.Equals("markdown", StringComparison.OrdinalIgnoreCase))

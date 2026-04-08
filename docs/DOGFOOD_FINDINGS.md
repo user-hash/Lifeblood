@@ -1,8 +1,46 @@
 # Dogfood Findings
 
-First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 10). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
+First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-08):** 700 symbols, 1755 edges, 10 modules, 106 types, 0 violations. Cross-module resolution upgraded to Proven (compilations built in dependency order with CompilationReferences). Edge extraction expanded: generic type arguments, typeof() expressions, attribute types, local function awareness. Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated.
+**Current state (2026-04-08, session 2, 15 passes):** 958 symbols, 2339 edges, 11 modules, 140 types, 0 violations (16 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction.
+
+### Session 2 Dogfood Findings (2026-04-08)
+
+**DF-S2-1: BlastRadiusAnalyzer depth boundary off-by-one** — maxDepth=1 was including nodes at depth 2. BFS used `> maxDepth` but enqueue happened before depth check. Fixed to `>= maxDepth`. Found by strengthening a weak test that only checked inclusion, not exclusion.
+
+**DF-S2-2: SymbolKind.Property missing from domain enum** — Properties were mapped to `Field` kind but used `property:` ID prefix. Mismatch between graph model and symbol identity. Added `Property` to SymbolKind enum and JSON schema.
+
+**DF-S2-3: Evidence.Default confidence was Proven** — Domain default for all evidence was `ConfidenceLevel.Proven`. Edges without explicit evidence got `Proven` confidence for free. Fixed: evidence must always set confidence explicitly (no default).
+
+**DF-S2-4: JsonEvidence DTO defaulted to Proven** — External adapters that omitted confidence got `Proven`. Fixed default to `BestEffort`.
+
+**DF-S2-5: ProcessIsolatedCodeExecutor pipe deadlock** — WaitForExit called before ReadToEnd. If child process writes more than pipe buffer, WaitForExit hangs forever. Fixed: read stdout/stderr asynchronously before waiting.
+
+**DF-S2-6: AnalyzeWorkspaceUseCase had no validation** — Graph could pass through use case without validation. GraphSession and CLI validated independently, but the use case itself didn't. Fixed: added GraphValidator.Validate() call in use case.
+
+**DF-S2-7: TypeScript adapter used 'high' confidence (removed from enum)** — Schema change removed `high` from ConfidenceLevel. TS compiler caught the mismatch at build time. Fixed capabilities to `proven`/`bestEffort`.
+
+All fixed in-session. Total: 7 findings, 7 fixes, 0 remaining.
+
+### Session 2 Late Findings (passes 6-15)
+
+**DF-S2-8: TS/Python adapters didn't filter dangling edges** — Same bug class as GraphBuilder. Edges to non-existent symbols inflated metrics. Fixed in both adapter output pipelines.
+
+**DF-S2-9: IsFromSource false positive on "System" prefix** — `ns.StartsWith("System")` also filtered user namespaces like `SystemManager`. Fixed to segment-based check: `ns == "System" || ns.StartsWith("System.")`.
+
+**DF-S2-10: TS/Python crossModuleReferences claimed "bestEffort"** — Both are single-module adapters, cannot do cross-module resolution. Fixed to `"none"`.
+
+**DF-S2-11: TS symbol-extractor used `kind: 'field'` for properties** — After adding `SymbolKind.Property` to C# domain, TS adapter wasn't updated. Fixed to `kind: 'property'` with `id: 'property:...'`.
+
+**DF-S2-12: FileInfo/DirectoryInfo/DllImport bypassed blocklist** — Instance methods and P/Invoke not covered by string blocklist. Added `new FileInfo`, `new DirectoryInfo`, `DllImport`, `Marshal.*` patterns.
+
+**DF-S2-13: Lifeblood rule pack incomplete** — Only 11 rules, missing Analysis→Application, Connectors→Analysis boundaries. Expanded to 16 rules covering full hexagonal boundary.
+
+**DF-S2-14: Stale `high` confidence in 4 adapter READMEs + ADAPTERS.md** — Removed `high` from ConfidenceLevel enum but didn't update documentation. Fixed in Go, Rust, TypeScript READMEs and ADAPTERS.md.
+
+**DF-S2-15: CONTRIBUTING.md said "9 frozen ADRs"** — Same drift as ARCHITECTURE.md, fixed to 11.
+
+All fixed in-session. Total: 15 additional findings, 15 fixes, 0 remaining.
 
 ## F1: JSON Exporter Silently Drops Fields
 

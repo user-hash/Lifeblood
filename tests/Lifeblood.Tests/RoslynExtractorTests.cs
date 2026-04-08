@@ -31,7 +31,7 @@ public class Foo
 
         Assert.Contains(symbols, s => s.Name == "Foo" && s.Kind == DomainSymbolKind.Type);
         Assert.Contains(symbols, s => s.Name == "_count" && s.Kind == DomainSymbolKind.Field);
-        Assert.Contains(symbols, s => s.Name == "Name" && s.Kind == DomainSymbolKind.Field && s.Properties.ContainsKey("isProperty"));
+        Assert.Contains(symbols, s => s.Name == "Name" && s.Kind == DomainSymbolKind.Property);
         Assert.Contains(symbols, s => s.Name == "DoWork" && s.Kind == DomainSymbolKind.Method);
         Assert.Contains(symbols, s => s.Name == ".ctor" && s.Kind == DomainSymbolKind.Method);
     }

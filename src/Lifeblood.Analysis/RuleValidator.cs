@@ -5,8 +5,8 @@ using Lifeblood.Domain.Rules;
 namespace Lifeblood.Analysis;
 
 /// <summary>
-/// AUDIT FIX (Hole 4): Returns violations as separate objects. Does NOT mutate the graph.
-/// INV-GRAPH-004: Graph is read-only after construction.
+/// Validates architecture rules against graph edges. Returns violations as separate result objects.
+/// INV-GRAPH-004: Does NOT mutate the graph.
 /// </summary>
 public static class RuleValidator
 {

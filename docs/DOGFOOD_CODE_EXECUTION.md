@@ -2,7 +2,7 @@
 
 Third dogfood milestone. Lifeblood's write-side MCP tools (6 tools, shipped in v0.3.0) were tested against Lifeblood itself. The MCP server loaded the Lifeblood solution, then each tool was exercised on Lifeblood's own types, symbols, and code.
 
-**Setup:** MCP server over stdio (JSON-RPC 2.0). `lifeblood_analyze` loads the Lifeblood project at `D:\Projekti\Lifeblood`, building Roslyn compilations for all 10 modules. Write-side tools operate against those retained compilations.
+**Setup:** MCP server over stdio (JSON-RPC 2.0). `lifeblood_analyze` loads the Lifeblood project at `D:\Projekti\Lifeblood`, building Roslyn compilations for all 11 modules. Write-side tools operate against those retained compilations. Session 2 expanded to 194 tests, 16 architecture rules, `required` Evidence fields.
 
 ## Test Matrix
 

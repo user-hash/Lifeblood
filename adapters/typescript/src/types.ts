@@ -3,11 +3,11 @@
  * Matches schemas/graph.schema.json exactly.
  */
 
-export type SymbolKind = 'module' | 'file' | 'namespace' | 'type' | 'method' | 'field' | 'parameter';
+export type SymbolKind = 'module' | 'file' | 'namespace' | 'type' | 'method' | 'field' | 'property' | 'parameter';
 export type EdgeKind = 'contains' | 'dependsOn' | 'implements' | 'inherits' | 'calls' | 'references' | 'overrides';
 export type Visibility = 'public' | 'internal' | 'protected' | 'private';
 export type EvidenceKind = 'syntax' | 'semantic' | 'inferred';
-export type ConfidenceLevel = 'none' | 'bestEffort' | 'high' | 'proven';
+export type ConfidenceLevel = 'none' | 'bestEffort' | 'proven';
 
 export interface GraphSymbol {
   id: string;

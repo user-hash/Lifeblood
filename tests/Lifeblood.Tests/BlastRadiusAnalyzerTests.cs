@@ -65,18 +65,34 @@ public class BlastRadiusAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_RespectsMaxDepth()
+    public void Analyze_RespectsMaxDepth_IncludesWithinDepth()
     {
         var graph = new GraphBuilder()
             .AddSymbol(new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type })
             .AddSymbol(new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type })
             .AddSymbol(new Symbol { Id = "type:C", Name = "C", Kind = SymbolKind.Type })
-            .AddEdge(new Edge { SourceId = "type:B", TargetId = "type:A", Kind = EdgeKind.DependsOn })
-            .AddEdge(new Edge { SourceId = "type:C", TargetId = "type:B", Kind = EdgeKind.DependsOn })
+            .AddSymbol(new Symbol { Id = "type:D", Name = "D", Kind = SymbolKind.Type })
+            .AddEdge(new Edge { SourceId = "type:B", TargetId = "type:A", Kind = EdgeKind.DependsOn }) // depth 1
+            .AddEdge(new Edge { SourceId = "type:C", TargetId = "type:B", Kind = EdgeKind.DependsOn }) // depth 2
+            .AddEdge(new Edge { SourceId = "type:D", TargetId = "type:C", Kind = EdgeKind.DependsOn }) // depth 3
             .Build();
 
         var result = BlastRadiusAnalyzer.Analyze(graph, "type:A", maxDepth: 1);
         Assert.Contains("type:B", result.AffectedSymbolIds);
-        // C is depth 2 — may or may not be included depending on traversal
+        Assert.DoesNotContain("type:C", result.AffectedSymbolIds); // depth 2 — excluded
+        Assert.DoesNotContain("type:D", result.AffectedSymbolIds); // depth 3 — excluded
+    }
+
+    [Fact]
+    public void Analyze_MaxDepthZero_ReturnsEmpty()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:B", Name = "B", Kind = SymbolKind.Type })
+            .AddEdge(new Edge { SourceId = "type:B", TargetId = "type:A", Kind = EdgeKind.DependsOn })
+            .Build();
+
+        var result = BlastRadiusAnalyzer.Analyze(graph, "type:A", maxDepth: 0);
+        Assert.Empty(result.AffectedSymbolIds);
     }
 }

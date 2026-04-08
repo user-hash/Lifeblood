@@ -19,24 +19,52 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
 
     private static readonly HashSet<string> BlockedPatterns = new(StringComparer.OrdinalIgnoreCase)
     {
+        // File write/mutate operations
         "System.IO.File.Delete",
         "System.IO.File.WriteAllText",
         "System.IO.File.WriteAllBytes",
+        "System.IO.File.WriteAllLines",
+        "System.IO.File.AppendAllText",
+        "System.IO.File.AppendAllLines",
+        "System.IO.File.Create",
         "System.IO.File.Move",
         "System.IO.File.Copy",
+        "System.IO.File.SetAttributes",
+        // Directory mutate operations
         "System.IO.Directory.Delete",
         "System.IO.Directory.CreateDirectory",
+        "System.IO.Directory.Move",
+        // Instance method bypass — FileInfo/DirectoryInfo skip static File/Directory checks
+        "new FileInfo",
+        "new DirectoryInfo",
+        // Stream writers (can write to arbitrary paths)
+        "new StreamWriter",
+        "new FileStream",
+        // Process operations
         "Process.Start",
         "Process.Kill",
+        // Environment
         "Environment.Exit",
         "Environment.SetEnvironmentVariable",
+        // Assembly loading
         "Assembly.Load",
         "Assembly.LoadFile",
         "Assembly.LoadFrom",
         "Assembly.UnsafeLoadFrom",
+        // IL generation
         "Reflection.Emit",
         "AssemblyBuilder",
+        // Thread operations
         "Thread.Abort",
+        // P/Invoke — native code execution
+        "DllImport",
+        "Marshal.Copy",
+        "Marshal.PtrToStructure",
+        // Network
+        "new HttpClient",
+        "new TcpClient",
+        "new Socket",
+        "WebRequest.Create",
     };
 
     private static readonly string[] DefaultImports =
@@ -104,7 +132,9 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 .WithReferences(uniqueRefs)
                 .WithImports(allImports);
 
-            // Redirect Console output
+            // Redirect Console output.
+            // Thread-unsafe: global Console.Out/Error. Safe only because MCP server
+            // is single-threaded. ProcessIsolatedCodeExecutor avoids this entirely.
             var stdout = new StringWriter();
             var stderr = new StringWriter();
             var origOut = Console.Out;

@@ -86,10 +86,11 @@ function main(): void {
     symbolMap.set(sym.id, sym);
   }
 
-  // Deduplicate edges
+  // Deduplicate edges + drop dangling (both source and target must exist as symbols)
   const edgeSet = new Set<string>();
   const dedupedEdges: GraphEdge[] = [];
   for (const edge of edges) {
+    if (!symbolMap.has(edge.sourceId) || !symbolMap.has(edge.targetId)) continue;
     const key = `${edge.sourceId}|${edge.targetId}|${edge.kind}`;
     if (!edgeSet.has(key)) {
       edgeSet.add(key);
@@ -133,10 +134,10 @@ function main(): void {
       version: ADAPTER_VERSION,
       capabilities: {
         discoverSymbols: true,
-        typeResolution: 'high',
-        callResolution: 'high',
-        implementationResolution: 'high',
-        crossModuleReferences: 'high',
+        typeResolution: 'proven',
+        callResolution: 'proven',
+        implementationResolution: 'proven',
+        crossModuleReferences: 'none',
         overrideResolution: 'none',
       },
     },

@@ -1,6 +1,9 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Infrastructure;
+using Lifeblood.Application.Ports.Analysis;
+using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -20,7 +23,8 @@ class Program
     {
         IFileSystem fs = new PhysicalFileSystem();
         var session = new GraphSession(fs);
-        var handler = new ToolHandler(session);
+        IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
+        var handler = new ToolHandler(session, blastRadius);
 
         Console.Error.WriteLine("Lifeblood MCP server starting...");
 
@@ -37,7 +41,7 @@ class Program
                 var request = JsonSerializer.Deserialize<JsonRpcRequest>(line, JsonOpts);
                 if (request == null) continue;
 
-                var response = Dispatch(request, handler);
+                var response = Dispatch(request, handler, session);
                 if (response == null) continue; // Notifications get no response
                 var json = JsonSerializer.Serialize(response, JsonOpts);
                 Console.WriteLine(json);
@@ -56,14 +60,21 @@ class Program
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error processing message: {ex.Message}");
+                // JSON-RPC 2.0: internal error → respond with -32603
+                Console.Error.WriteLine($"Internal error: {ex.Message}");
+                var internalError = JsonSerializer.Serialize(new JsonRpcResponse
+                {
+                    Error = new JsonRpcError { Code = -32603, Message = $"Internal error: {ex.Message}" },
+                }, JsonOpts);
+                Console.WriteLine(internalError);
+                Console.Out.Flush();
             }
         }
 
         Console.Error.WriteLine("Lifeblood MCP server stopped.");
     }
 
-    static JsonRpcResponse? Dispatch(JsonRpcRequest request, ToolHandler handler)
+    static JsonRpcResponse? Dispatch(JsonRpcRequest request, ToolHandler handler, GraphSession session)
     {
         var response = new JsonRpcResponse { Id = request.Id };
 
@@ -87,21 +98,27 @@ class Program
                 break;
 
             case "tools/list":
-                response.Result = new { tools = ToolRegistry.GetTools() };
+                response.Result = new { tools = ToolRegistry.GetTools(session.HasCompilationState) };
                 break;
 
             case "tools/call":
-                var toolName = "";
-                JsonElement? arguments = null;
-
-                if (request.Params.HasValue)
+                if (!request.Params.HasValue)
                 {
-                    var p = request.Params.Value;
-                    if (p.TryGetProperty("name", out var nameEl))
-                        toolName = nameEl.GetString() ?? "";
-                    if (p.TryGetProperty("arguments", out var argsEl))
-                        arguments = argsEl;
+                    response.Error = new JsonRpcError { Code = -32602, Message = "params is required for tools/call" };
+                    break;
                 }
+                var callParams = request.Params.Value;
+
+                if (!callParams.TryGetProperty("name", out var nameEl) || nameEl.ValueKind != JsonValueKind.String)
+                {
+                    response.Error = new JsonRpcError { Code = -32602, Message = "name (string) is required in tools/call params" };
+                    break;
+                }
+
+                var toolName = nameEl.GetString() ?? "";
+                JsonElement? arguments = null;
+                if (callParams.TryGetProperty("arguments", out var argsEl))
+                    arguments = argsEl;
 
                 response.Result = handler.Handle(toolName, arguments);
                 break;
@@ -120,5 +137,15 @@ class Program
         }
 
         return response;
+    }
+
+    /// <summary>
+    /// Composition root bridge: delegates to Analysis.BlastRadiusAnalyzer
+    /// without letting Connectors.Mcp depend on Analysis directly.
+    /// </summary>
+    private sealed class BlastRadiusBridge : IBlastRadiusProvider
+    {
+        public BlastRadiusResult Analyze(SemanticGraph graph, string targetSymbolId, int maxDepth = 10)
+            => Analysis.BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
     }
 }

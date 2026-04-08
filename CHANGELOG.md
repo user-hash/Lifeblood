@@ -35,7 +35,7 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 ### Changed
 
 - Blocked patterns expanded: 5 → 18 (`File.Write*`, `Assembly.Load*`, `Reflection.Emit`, etc.).
-- Tests: 121 → 180.
+- Tests: 121 → 183.
 - Source files: 58 → 63.
 - Average LOC/file: 84 → 80.
 - Files > 200 LOC: 6 → 4.

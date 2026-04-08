@@ -29,17 +29,17 @@ dotnet run --project ../../src/Lifeblood.CLI -- analyze --graph graph.json
 
 - **Symbols:** modules, files, classes, interfaces, enums, type aliases, methods, properties, constructors
 - **Edges:** inherits, implements, calls, references, contains
-- **Evidence:** semantic (from TypeChecker), confidence: high
+- **Evidence:** semantic (from TypeChecker), confidence: proven
 
 ## Capability Profile
 
 ```json
 {
   "discoverSymbols": true,
-  "typeResolution": "high",
-  "callResolution": "high",
-  "implementationResolution": "high",
-  "crossModuleReferences": "high",
+  "typeResolution": "proven",
+  "callResolution": "proven",
+  "implementationResolution": "proven",
+  "crossModuleReferences": "none",
   "overrideResolution": "none"
 }
 ```

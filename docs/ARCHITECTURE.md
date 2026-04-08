@@ -97,6 +97,6 @@ GraphBuilder sorts symbols by ID and edges by source+target+kind before producin
 
 Architecture rules are not just documented. They are tested:
 - `ArchitectureInvariantTests` verifies dependency direction on every build
-- 9 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
+- 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries

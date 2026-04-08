@@ -1,21 +1,23 @@
+using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
-using Lifeblood.Analysis;
 
 namespace Lifeblood.Connectors.Mcp;
 
 /// <summary>
 /// Implements IMcpGraphProvider. Serves the semantic graph to AI agents via MCP tools.
 /// INV-CONN-002: Read-only. Does not modify the graph.
-///
-/// MCP tool surface:
-///   lifeblood:symbol-lookup     — "What is AuthService?"
-///   lifeblood:dependencies      — "What does Domain depend on?"
-///   lifeblood:dependants        — "What depends on IUserRepository?"
-///   lifeblood:blast-radius      — "What breaks if I change this?"
+/// INV-CONN-001: Depends on Application ports only — never on Analysis or Adapters directly.
 /// </summary>
 public sealed class LifebloodMcpProvider : IMcpGraphProvider
 {
+    private readonly IBlastRadiusProvider _blastRadius;
+
+    public LifebloodMcpProvider(IBlastRadiusProvider blastRadius)
+    {
+        _blastRadius = blastRadius;
+    }
+
     public Symbol? LookupSymbol(SemanticGraph graph, string symbolId)
     {
         return graph.GetSymbol(symbolId);
@@ -51,8 +53,7 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
 
     public string[] GetBlastRadius(SemanticGraph graph, string symbolId, int maxDepth = 10)
     {
-        // Delegate to the canonical analyzer — single source of truth for BFS logic.
-        var result = Analysis.BlastRadiusAnalyzer.Analyze(graph, symbolId, maxDepth);
+        var result = _blastRadius.Analyze(graph, symbolId, maxDepth);
         return result.AffectedSymbolIds;
     }
 }

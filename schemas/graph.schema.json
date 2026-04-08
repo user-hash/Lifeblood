@@ -26,7 +26,8 @@
     },
     "modules": {
       "type": "array",
-      "items": { "$ref": "#/$defs/module" }
+      "items": { "$ref": "#/$defs/module" },
+      "description": "Deprecated: modules are now represented as symbols with kind=module. This field is ignored by importers but retained for backwards compatibility."
     },
     "symbols": {
       "type": "array",
@@ -45,7 +46,7 @@
         "id": { "type": "string", "description": "Globally unique within this graph" },
         "name": { "type": "string", "description": "Short display name" },
         "qualifiedName": { "type": "string", "description": "Fully qualified name" },
-        "kind": { "type": "string", "enum": ["module", "file", "namespace", "type", "method", "field", "parameter"] },
+        "kind": { "type": "string", "enum": ["module", "file", "namespace", "type", "method", "field", "property", "parameter"] },
         "filePath": { "type": "string", "description": "Source file path (relative)" },
         "line": { "type": "integer", "minimum": 0, "description": "Line number (1-based)" },
         "parentId": { "type": "string", "description": "Parent symbol ID in containment hierarchy" },
@@ -90,22 +91,23 @@
     },
     "evidence": {
       "type": "object",
+      "required": ["kind", "adapterName", "confidence"],
       "properties": {
         "kind": { "type": "string", "enum": ["syntax", "semantic", "inferred"] },
         "adapterName": { "type": "string" },
         "sourceSpan": { "type": "string", "description": "e.g., src/Auth.cs:47" },
-        "confidence": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] }
+        "confidence": { "type": "string", "enum": ["none", "bestEffort", "proven"] }
       }
     },
     "capabilities": {
       "type": "object",
       "properties": {
         "discoverSymbols": { "type": "boolean" },
-        "typeResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
-        "callResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
-        "implementationResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
-        "crossModuleReferences": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] },
-        "overrideResolution": { "type": "string", "enum": ["none", "bestEffort", "high", "proven"] }
+        "typeResolution": { "type": "string", "enum": ["none", "bestEffort", "proven"] },
+        "callResolution": { "type": "string", "enum": ["none", "bestEffort", "proven"] },
+        "implementationResolution": { "type": "string", "enum": ["none", "bestEffort", "proven"] },
+        "crossModuleReferences": { "type": "string", "enum": ["none", "bestEffort", "proven"] },
+        "overrideResolution": { "type": "string", "enum": ["none", "bestEffort", "proven"] }
       }
     }
   }

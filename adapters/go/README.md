@@ -16,10 +16,10 @@ Go has `go/analysis`, `go/types`, and `go/packages`. Clean, modular analyzer fra
 ```json
 {
   "discoverSymbols": true,
-  "typeResolution": "high",
-  "callResolution": "high",
-  "crossModuleReferences": "high",
-  "overrideResolution": "high"
+  "typeResolution": "proven",
+  "callResolution": "proven",
+  "crossModuleReferences": "proven",
+  "overrideResolution": "proven"
 }
 ```
 

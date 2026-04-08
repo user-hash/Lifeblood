@@ -122,10 +122,10 @@ We test Lifeblood on itself. The MCP server loads its own source code, executes 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 838
-Edges:   2047
-Modules: 10
-Types:   120
+Symbols: 959
+Edges:   2348
+Modules: 11
+Types:   140
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates.
@@ -136,11 +136,11 @@ The first dogfood run found [6 real issues](docs/DOGFOOD_FINDINGS.md), including
 
 ## Architecture
 
-Hexagonal. Pure domain core with zero dependencies. Language adapters on the left, AI connectors on the right. 13 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+Hexagonal. Pure domain core with zero dependencies. Language adapters on the left, AI connectors on the right. 14 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ```
 Lifeblood.Domain                Pure graph model. Zero dependencies. The absolute core.
-Lifeblood.Application           13 port interfaces + use cases. Depends only on Domain.
+Lifeblood.Application           14 port interfaces + use cases. Depends only on Domain.
 Lifeblood.Adapters.CSharp      Roslyn reference adapter. Bidirectional: analysis + code execution.
 Lifeblood.Adapters.JsonGraph    Universal JSON protocol adapter. Left side.
 Lifeblood.Connectors.ContextPack  Context pack and instruction file generator. Right side.
@@ -160,12 +160,12 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 
 ## Status
 
-Dogfood-verified. 162 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 195 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
 | Lifeblood.Domain | Implemented. Immutable graph model, GraphBuilder, GraphValidator, Evidence, ConfidenceLevel. |
-| Lifeblood.Application | Implemented. 13 port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase. |
+| Lifeblood.Application | Implemented. 14 port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase. |
 | Lifeblood.Adapters.CSharp | Implemented. Roslyn workspace analyzer + bidirectional compiler-as-a-service (execute, diagnose, compile-check, find references, rename, format). |
 | Lifeblood.Adapters.JsonGraph | Implemented. Import and export with full metadata round-trip. |
 | Lifeblood.Connectors.ContextPack | Implemented. Context pack with GraphSummary, instruction file, reading order. |
@@ -175,7 +175,7 @@ Dogfood-verified. 162 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: 
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 162 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline. |
+| Lifeblood.Tests | 195 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
@@ -183,7 +183,7 @@ Dogfood-verified. 162 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: 
 
 ## Roadmap
 
-- **Community adapters**: contribution guides exist for [Go](adapters/go/) and [Rust](adapters/rust/), but no implementation code yet.
+- **Community adapters**: contribution guides exist for [Go](adapters/go/) and [Rust](adapters/rust/) — contract + checklist only, no implementation code yet.
 - **REST / LSP bridge**: expose the graph to IDE extensions and web services.
 - **NuGet publishing**: packages are built in CI, but not yet published to nuget.org.
 

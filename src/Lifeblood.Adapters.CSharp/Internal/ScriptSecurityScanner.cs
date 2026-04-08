@@ -25,7 +25,9 @@ internal static class ScriptSecurityScanner
         }
         catch
         {
-            return null; // Parse errors are handled later by the script engine
+            // Unparseable code must NOT pass security — could be obfuscation attempt.
+            // The script engine will also reject it, but we block early as defense-in-depth.
+            return "Blocked: code failed to parse — possible obfuscation attempt";
         }
 
         var root = tree.GetRoot();
@@ -72,7 +74,7 @@ internal static class ScriptSecurityScanner
         "GetField" => true,
         "GetFields" => true,
         "GetProperty" => true,
-        "GetProperties" when false => true, // GetProperties is commonly used for inspection — allow
+        // GetProperties intentionally allowed — commonly used for read-only inspection
         "InvokeMember" => true,
         "Invoke" => true, // MethodInfo.Invoke
         "SetValue" => true, // FieldInfo/PropertyInfo.SetValue

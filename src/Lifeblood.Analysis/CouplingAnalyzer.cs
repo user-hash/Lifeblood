@@ -4,8 +4,8 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Analysis;
 
 /// <summary>
-/// AUDIT FIX (Hole 6): Counts DISTINCT dependants, not edge count.
-/// INV-ANALYSIS-003: Follows Robert Martin's definitions.
+/// Computes coupling metrics (fan-in, fan-out, instability).
+/// INV-ANALYSIS-003: Counts distinct dependants, not edge count.
 /// </summary>
 public static class CouplingAnalyzer
 {

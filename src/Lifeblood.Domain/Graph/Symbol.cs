@@ -28,6 +28,7 @@ public enum SymbolKind
     Type,
     Method,
     Field,
+    Property,
     Parameter,
 }
 

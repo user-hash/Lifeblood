@@ -313,9 +313,12 @@ public sealed class RoslynEdgeExtractor
     {
         if (symbol == null) return false;
         if (symbol.DeclaringSyntaxReferences.Length == 0) return false;
-        // ValueTuple is compiler-generated — treat as external
+        // Filter BCL types — check for "System" as a complete namespace segment.
+        // Must not filter user namespaces like "SystemManager" or "SystemConfig".
         var ns = symbol.ContainingNamespace?.ToDisplayString() ?? "";
-        if (ns.StartsWith("System", StringComparison.Ordinal)) return false;
+        if (ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal)) return false;
+        // Microsoft.* is also BCL/framework
+        if (ns.StartsWith("Microsoft.", StringComparison.Ordinal)) return false;
         return true;
     }
 

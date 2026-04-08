@@ -235,7 +235,7 @@ public sealed class RoslynSymbolExtractor
             Id = SymbolIds.Property(typeName, sym.Name),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
-            Kind = DomainSymbolKind.Field, // Properties map to Field in the universal model
+            Kind = DomainSymbolKind.Property,
             FilePath = filePath,
             Line = propDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,

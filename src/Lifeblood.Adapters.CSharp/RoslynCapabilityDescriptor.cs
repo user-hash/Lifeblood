@@ -3,7 +3,7 @@ using Lifeblood.Domain.Capabilities;
 namespace Lifeblood.Adapters.CSharp;
 
 /// <summary>
-/// Declares what the Roslyn adapter can do. Honest. Proven.
+/// Declares what the Roslyn adapter can do. Honest.
 /// INV-ADAPT-001: Every adapter declares capabilities honestly.
 /// INV-ADAPT-002: C# adapter is the reference. Most complete, best tested.
 /// </summary>
@@ -18,7 +18,7 @@ public static class RoslynCapabilityDescriptor
         TypeResolution = ConfidenceLevel.Proven,
         CallResolution = ConfidenceLevel.Proven,
         ImplementationResolution = ConfidenceLevel.Proven,
-        CrossModuleReferences = ConfidenceLevel.Proven, // compilations built in dependency order with CompilationReferences
+        CrossModuleReferences = ConfidenceLevel.BestEffort, // compilations built in dependency order; cycles broken by skipping — degraded in cyclic graphs
         OverrideResolution = ConfidenceLevel.None, // Overrides edges not yet extracted
     };
 }

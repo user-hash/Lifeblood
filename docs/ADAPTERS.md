@@ -88,8 +88,8 @@ The Roslyn adapter (`src/Lifeblood.Adapters.CSharp/`) is the reference implement
 | Level | What you provide | What it unlocks | Confidence |
 |-------|-----------------|----------------|------------|
 | **Syntax** | Files, imports, basic structure | Coupling, cycles, architecture rules | bestEffort |
-| **Structural** | Types, inheritance, interfaces | Tier classification, boundary checks | high |
-| **Semantic** | Methods, calls, references | Blast radius, dead code detection | high |
+| **Structural** | Types, inheritance, interfaces | Tier classification, boundary checks | bestEffort |
+| **Semantic** | Methods, calls, references | Blast radius, dead code detection | proven |
 | **Compiler-grade** | Type resolution, overloads | Everything, full trust | proven |
 
 Start with Syntax. It is already useful. Upgrade confidence claims as you add capabilities.
@@ -123,7 +123,8 @@ Adapters should use these ID prefixes for consistency:
 | Namespace | `ns:` | `ns:MyApp.Auth` |
 | Type | `type:` | `type:MyApp.Auth.AuthService` |
 | Method | `method:` | `method:MyApp.Auth.AuthService.login` |
-| Field | `field:` | `field:MyApp.Auth.AuthService.token` |
+| Field | `field:` | `field:MyApp.Auth.AuthService._token` |
+| Property | `property:` | `property:MyApp.Auth.AuthService.Name` |
 
 ## Evidence Guidelines
 
@@ -133,8 +134,7 @@ Every edge should carry evidence. The confidence level must be honest:
 |-----------|---------|---------|
 | `none` | Not supported by this adapter | Override detection in a syntax-only parser |
 | `bestEffort` | Inferred from patterns, may be wrong | Import-based dependency in Python |
-| `high` | Resolved by language tooling, reliable | TypeChecker resolution in TypeScript |
-| `proven` | Compiler-grade, guaranteed correct | Roslyn semantic model resolution |
+| `proven` | Verified by compiler/type system, guaranteed correct | Roslyn semantic model, TypeScript TypeChecker |
 
 ## Testing Against Golden Repos
 

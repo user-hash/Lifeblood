@@ -1,8 +1,7 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Domain", "src\Lifeblood.Domain\Lifeblood.Domain.csproj", "{B0000001-0000-0000-0000-000000000001}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Application", "src\Lifeblood.Application\Lifeblood.Application.csproj", "{B0000002-0000-0000-0000-000000000002}"
@@ -22,6 +21,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Adapters.JsonGraph", "src\Lifeblood.Adapters.JsonGraph\Lifeblood.Adapters.JsonGraph.csproj", "{B000000A-0000-0000-0000-00000000000A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Server.Mcp", "src\Lifeblood.Server.Mcp\Lifeblood.Server.Mcp.csproj", "{B000000B-0000-0000-0000-00000000000B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B3E10B52-FD74-47AF-9D69-A1E2F6989853}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.ScriptHost", "src\Lifeblood.ScriptHost\Lifeblood.ScriptHost.csproj", "{4D43ACA6-77A1-4B41-AE2F-3CCA4B9BE253}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -69,5 +72,12 @@ Global
 		{B000000B-0000-0000-0000-00000000000B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B000000B-0000-0000-0000-00000000000B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B000000B-0000-0000-0000-00000000000B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D43ACA6-77A1-4B41-AE2F-3CCA4B9BE253}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D43ACA6-77A1-4B41-AE2F-3CCA4B9BE253}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D43ACA6-77A1-4B41-AE2F-3CCA4B9BE253}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D43ACA6-77A1-4B41-AE2F-3CCA4B9BE253}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4D43ACA6-77A1-4B41-AE2F-3CCA4B9BE253} = {B3E10B52-FD74-47AF-9D69-A1E2F6989853}
 	EndGlobalSection
 EndGlobal

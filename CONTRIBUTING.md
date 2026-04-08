@@ -34,7 +34,7 @@ These are non-negotiable and enforced by tests:
 - Every edge carries `Evidence` (kind, adapter, confidence level)
 - Output is deterministic. Same input produces the same graph.
 
-See [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) for the 9 frozen ADRs.
+See [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) for the 11 frozen ADRs.
 
 ## Code Style
 

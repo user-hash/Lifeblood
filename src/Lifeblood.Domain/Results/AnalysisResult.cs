@@ -56,8 +56,8 @@ public sealed class GraphMetrics
 }
 
 /// <summary>
-/// AUDIT FIX (Hole 4): Violation is a result object, not a graph mutation.
-/// RuleValidator returns these. Edge.IsViolation removed.
+/// A rule violation. Result object, not a graph mutation.
+/// INV-GRAPH-004: Analyzers do not modify the graph.
 /// </summary>
 public sealed class Violation
 {

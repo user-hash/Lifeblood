@@ -1,12 +1,21 @@
+using Lifeblood.Analysis;
+using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 using Xunit;
 
 namespace Lifeblood.Tests;
 
 public class McpProviderTests
 {
-    private readonly LifebloodMcpProvider _provider = new();
+    private readonly LifebloodMcpProvider _provider = new(new TestBlastRadiusProvider());
+
+    private sealed class TestBlastRadiusProvider : IBlastRadiusProvider
+    {
+        public BlastRadiusResult Analyze(SemanticGraph graph, string targetSymbolId, int maxDepth = 10)
+            => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
+    }
 
     [Fact]
     public void LookupSymbol_Found()
