@@ -80,7 +80,10 @@ public sealed class GraphSession : IDisposable
 
             var adapter = new RoslynWorkspaceAnalyzer(_fs);
             var retainCompilations = !readOnly;
-            var result = new AnalyzeWorkspaceUseCase(adapter)
+            var progress = new StderrProgressSink();
+            adapter.OnModuleProgress = (name, i, total) =>
+                Console.Error.WriteLine($"[{i}/{total}] Compiling {name}");
+            var result = new AnalyzeWorkspaceUseCase(adapter, progress)
                 .Execute(projectPath, new AnalysisConfig { RetainCompilations = retainCompilations });
             graph = result.Graph;
             capability = adapter.Capability;
@@ -168,4 +171,14 @@ public sealed class GraphSession : IDisposable
     }
 
     public void Dispose() => _session.Clear();
+
+    /// <summary>
+    /// Writes analysis progress to stderr so MCP clients can show status.
+    /// Stderr is the correct channel — stdout is reserved for JSON-RPC.
+    /// </summary>
+    private sealed class StderrProgressSink : Application.Ports.Output.IProgressSink
+    {
+        public void Report(string phase, int current, int total) =>
+            Console.Error.WriteLine($"[{current}/{total}] {phase}");
+    }
 }
