@@ -5,6 +5,36 @@ All notable changes to Lifeblood are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-08
+
+### Fixed
+
+- **Native DLL metadata error**: `LoadBclReferences` now filters non-.NET DLLs via `PEReader.HasMetadata`. Was causing CS0009 on all write-side tools.
+
+- **Session corruption on failed analyze**: `GraphSession.Load` now commits state atomically — failed loads no longer destroy the active session.
+
+- **Symbol resolution from wrong compilation**: `FindReferences` and `Rename` now resolve symbols from workspace projects, not standalone compilations. Fixes 0-result find-references and rename exceptions.
+
+- **CompileCheck false negatives**: Pre-existing compilation diagnostics are now filtered out. Only snippet-introduced errors affect the success flag.
+
+- **Timeout bypass**: Script execution now uses `Task.Run` + `Task.Wait` for hard thread-level timeout enforcement. `Thread.Sleep` / `while(true)` can no longer escape the timeout.
+
+- **Notification null leak**: `Program.cs` no longer serializes `null` to stdout for `initialized` notifications.
+
+- **RS1024 warning**: All Roslyn symbol comparisons use `SymbolEqualityComparer.Default.Equals()`.
+
+### Added
+
+- **NuGet package resolution**: Compilations now resolve NuGet packages from `obj/project.assets.json`. Diagnostics dropped from 1569 → 1143.
+
+- **DiagnosticInfo.Module**: Diagnostics now include the source module name.
+
+- **Dogfood doc**
+
+- **Architecture screenshot**: Regenerated 2x DPI, updated stats (797 symbols, 1971 edges, 13 ports).
+
+### Changed
+
 ## [0.3.0] - 2026-04-08
 
 Bidirectional Roslyn — compiler-as-a-service via MCP.

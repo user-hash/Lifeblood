@@ -14,6 +14,7 @@ public sealed class DiagnosticInfo
     public string FilePath { get; init; } = "";
     public int Line { get; init; }
     public int Column { get; init; }
+    public string? Module { get; init; }
 }
 
 public enum DiagnosticSeverity

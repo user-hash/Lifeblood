@@ -91,10 +91,27 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Console.SetOut(stdout);
                 Console.SetError(stderr);
 
+                // Run on a separate thread so we can enforce hard timeout.
+                // CancellationToken alone can't interrupt synchronous blocking
+                // (Thread.Sleep, while(true){}, etc.) inside the script.
                 using var cts = new CancellationTokenSource(timeoutMs);
-                var scriptState = CSharpScript.RunAsync(code, options, cancellationToken: cts.Token)
-                    .GetAwaiter().GetResult();
+                var scriptTask = Task.Run(() =>
+                    CSharpScript.RunAsync(code, options, cancellationToken: cts.Token)
+                        .GetAwaiter().GetResult(),
+                    cts.Token);
 
+                if (!scriptTask.Wait(timeoutMs))
+                {
+                    cts.Cancel();
+                    return new CodeExecutionResult
+                    {
+                        Success = false,
+                        Error = $"Execution timed out after {timeoutMs}ms",
+                        ElapsedMs = timeoutMs,
+                    };
+                }
+
+                var scriptState = scriptTask.Result;
                 var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
                 var returnValue = scriptState.ReturnValue;
 

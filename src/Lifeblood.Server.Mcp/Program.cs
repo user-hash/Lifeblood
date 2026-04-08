@@ -38,6 +38,7 @@ class Program
                 if (request == null) continue;
 
                 var response = Dispatch(request, handler);
+                if (response == null) continue; // Notifications get no response
                 var json = JsonSerializer.Serialize(response, JsonOpts);
                 Console.WriteLine(json);
                 Console.Out.Flush();
