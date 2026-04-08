@@ -190,8 +190,7 @@ Dogfood-verified. 121 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: 
 ---
 
 ## Built With
-
-Human direction + [Claude Code](https://claude.ai/code) + Claude Chat, working in concert. Every commit builds. Every commit passes tests. Dogfood clean throughout. The [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) methodology shaped the architecture.
+The [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) methodology shaped the architecture.
 
 ---
 
