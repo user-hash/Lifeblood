@@ -1,5 +1,6 @@
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
@@ -12,6 +13,10 @@ namespace Lifeblood.CLI;
 /// </summary>
 class Program
 {
+    private static readonly IFileSystem Fs = new PhysicalFileSystem();
+    private static readonly RulesLoader Rules = new(Fs);
+    private static readonly ConsoleProgressSink Progress = new();
+
     static int Main(string[] args)
     {
         if (args.Length == 0) { PrintBanner(); PrintUsage(); return 0; }
@@ -52,7 +57,7 @@ class Program
         if (graph == null) return 1;
 
         var (_, _, rulesPath) = ParseArgs(args);
-        var rules = rulesPath != null && File.Exists(rulesPath) ? RulesLoader.Load(rulesPath) : null;
+        var rules = rulesPath != null && Fs.FileExists(rulesPath) ? Rules.LoadRules(rulesPath) : null;
         var analysis = AnalysisPipeline.Run(graph, rules);
 
         Console.WriteLine($"Symbols: {graph.Symbols.Count}");
@@ -78,7 +83,7 @@ class Program
 
         var (_, _, rulesPath) = ParseArgs(args);
         var format = args.SkipWhile(a => a != "--format").Skip(1).FirstOrDefault() ?? "json";
-        var rules = rulesPath != null && File.Exists(rulesPath) ? RulesLoader.Load(rulesPath) : null;
+        var rules = rulesPath != null && Fs.FileExists(rulesPath) ? Rules.LoadRules(rulesPath) : null;
         var analysis = AnalysisPipeline.Run(graph, rules);
 
         if (format.Equals("md", StringComparison.OrdinalIgnoreCase)
@@ -121,12 +126,12 @@ class Program
     {
         if (graphPath != null)
         {
-            if (!File.Exists(graphPath))
+            if (!Fs.FileExists(graphPath))
             {
                 Console.Error.WriteLine($"Not found: {graphPath}");
                 return new GraphSource();
             }
-            using var stream = File.OpenRead(graphPath);
+            using var stream = Fs.OpenRead(graphPath);
             var doc = new JsonGraphImporter().ImportDocument(stream);
             return new GraphSource
             {
@@ -137,8 +142,8 @@ class Program
         }
         if (projectRoot != null)
         {
-            var adapter = new RoslynWorkspaceAnalyzer();
-            var result = new AnalyzeWorkspaceUseCase(adapter)
+            var adapter = new RoslynWorkspaceAnalyzer(Fs);
+            var result = new AnalyzeWorkspaceUseCase(adapter, Progress)
                 .Execute(projectRoot, new AnalysisConfig());
             return new GraphSource
             {

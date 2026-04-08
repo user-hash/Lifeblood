@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 
 namespace Lifeblood.Adapters.CSharp;
@@ -9,15 +10,19 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 public sealed class RoslynModuleDiscovery : IModuleDiscovery
 {
+    private readonly IFileSystem _fs;
+
+    public RoslynModuleDiscovery(IFileSystem fs) => _fs = fs;
+
     public ModuleInfo[] DiscoverModules(string projectRoot)
     {
         // Try .sln first
-        var slnFiles = Directory.GetFiles(projectRoot, "*.sln", SearchOption.TopDirectoryOnly);
+        var slnFiles = _fs.FindFiles(projectRoot, "*.sln", recursive: false);
         if (slnFiles.Length > 0)
             return DiscoverFromSolution(slnFiles[0], projectRoot);
 
         // Fall back to .csproj files
-        var csprojFiles = Directory.GetFiles(projectRoot, "*.csproj", SearchOption.AllDirectories);
+        var csprojFiles = _fs.FindFiles(projectRoot, "*.csproj", recursive: true);
         return csprojFiles.Select(f => ParseProject(f, projectRoot)).Where(m => m != null).ToArray()!;
     }
 
@@ -26,7 +31,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
         var slnDir = Path.GetDirectoryName(slnPath)!;
         var modules = new List<ModuleInfo>();
 
-        foreach (var line in File.ReadLines(slnPath))
+        foreach (var line in _fs.ReadLines(slnPath))
         {
             // Match: Project("{...}") = "Name", "Path.csproj", "{...}"
             if (!line.StartsWith("Project(")) continue;
@@ -38,7 +43,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             if (!relativePath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)) continue;
 
             var fullPath = Path.GetFullPath(Path.Combine(slnDir, relativePath));
-            if (!File.Exists(fullPath)) continue;
+            if (!_fs.FileExists(fullPath)) continue;
 
             var module = ParseProject(fullPath, projectRoot);
             if (module != null) modules.Add(module);
@@ -51,7 +56,8 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     {
         try
         {
-            var doc = XDocument.Load(csprojPath);
+            var xml = _fs.ReadAllText(csprojPath);
+            var doc = XDocument.Parse(xml);
             var ns = doc.Root?.Name.Namespace ?? XNamespace.None;
             var projectDir = Path.GetDirectoryName(csprojPath)!;
 
@@ -61,7 +67,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 ?? Path.GetFileNameWithoutExtension(csprojPath);
 
             // Source files — sorted for deterministic output (INV-PIPE-001)
-            var sourceFiles = Directory.GetFiles(projectDir, "*.cs", SearchOption.AllDirectories)
+            var sourceFiles = _fs.FindFiles(projectDir, "*.cs", recursive: true)
                 .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
                          && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
                 .OrderBy(f => f, StringComparer.Ordinal)
@@ -103,15 +109,16 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     /// Resolves a ProjectReference path to the referenced project's AssemblyName.
     /// Falls back to filename if the referenced .csproj can't be read.
     /// </summary>
-    private static string ResolveReferencedAssemblyName(string referencePath, string projectDir)
+    private string ResolveReferencedAssemblyName(string referencePath, string projectDir)
     {
         try
         {
             var fullPath = Path.GetFullPath(Path.Combine(projectDir, referencePath));
-            if (!File.Exists(fullPath))
+            if (!_fs.FileExists(fullPath))
                 return Path.GetFileNameWithoutExtension(referencePath);
 
-            var refDoc = XDocument.Load(fullPath);
+            var xml = _fs.ReadAllText(fullPath);
+            var refDoc = XDocument.Parse(xml);
             var asmName = refDoc.Descendants()
                 .FirstOrDefault(el => el.Name.LocalName == "AssemblyName")?.Value;
 

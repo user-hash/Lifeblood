@@ -52,42 +52,57 @@ The first dogfood run found 6 real issues, including 2 critical (JSON exporter s
 
 ## Quick Start
 
+### Install as a dotnet tool
+
+```bash
+dotnet tool install --global Lifeblood
+dotnet tool install --global Lifeblood.Server.Mcp
+```
+
+Then run directly:
+
+```bash
+lifeblood analyze --project /path/to/your/project
+lifeblood analyze --project /path/to/your/project --rules packs/hexagonal/rules.json
+lifeblood context --project /path/to/your/project
+lifeblood context --project /path/to/your/project --format md
+lifeblood export  --project /path/to/your/project > graph.json
+```
+
+### Or build from source
+
 ```bash
 git clone https://github.com/user-hash/Lifeblood.git
 cd Lifeblood
 dotnet build
 dotnet test
-```
-
-Analyze a C# project:
-
-```bash
 dotnet run --project src/Lifeblood.CLI -- analyze --project /path/to/your/project
-dotnet run --project src/Lifeblood.CLI -- analyze --project /path/to/your/project --rules packs/hexagonal/rules.json
 ```
 
-Generate an AI context pack (JSON):
-
-```bash
-dotnet run --project src/Lifeblood.CLI -- context --project /path/to/your/project
-dotnet run --project src/Lifeblood.CLI -- context --project /path/to/your/project --format md
-```
-
-Export the semantic graph:
-
-```bash
-dotnet run --project src/Lifeblood.CLI -- export --project /path/to/your/project > graph.json
-```
-
-Analyze TypeScript (or any language via JSON):
+### Analyze TypeScript (or any language via JSON)
 
 ```bash
 cd adapters/typescript && npm install && npm run build
 node dist/index.js /path/to/ts-project > graph.json
-dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json
+lifeblood analyze --graph graph.json
 ```
 
-Connect an MCP client (Claude Code, etc.):
+### Connect an MCP client (Claude Code, etc.)
+
+Using the installed tool:
+
+```json
+{
+  "mcpServers": {
+    "lifeblood": {
+      "command": "lifeblood-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Or from source:
 
 ```json
 {

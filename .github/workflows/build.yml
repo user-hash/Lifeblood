@@ -17,6 +17,16 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release --verbosity normal
+      - name: Pack dotnet tools
+        run: |
+          dotnet pack src/Lifeblood.CLI/Lifeblood.CLI.csproj --no-build --configuration Release --output ./artifacts
+          dotnet pack src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj --no-build --configuration Release --output ./artifacts
+      - name: Upload NuGet packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/*.nupkg
+          retention-days: 30
 
   typescript-adapter:
     runs-on: ubuntu-latest

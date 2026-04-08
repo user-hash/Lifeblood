@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lifeblood.Adapters.CSharp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Server.Mcp;
@@ -55,6 +56,11 @@ public class ToolHandlerTests : IDisposable
             Directory.Delete(_tempDir, recursive: true);
     }
 
+    private static readonly PhysicalFileSystem Fs = new();
+
+    private static ToolHandler CreateHandler() =>
+        new(new GraphSession(Fs));
+
     private static JsonElement? MakeArgs(object obj)
     {
         var json = JsonSerializer.Serialize(obj);
@@ -64,7 +70,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_UnknownTool_ReturnsError()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         var result = handler.Handle("nonexistent_tool", null);
 
         Assert.True(result.IsError);
@@ -74,7 +80,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Analyze_LoadsGraph()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         var result = handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         Assert.Null(result.IsError);
@@ -85,7 +91,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Analyze_MissingPath_ReturnsMessage()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         var result = handler.Handle("lifeblood_analyze", null);
 
         Assert.Contains("Specify", result.Content[0].Text);
@@ -94,7 +100,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Analyze_InvalidPath_ReturnsError()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         var result = handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = "/nonexistent/path.json" }));
 
         Assert.Contains("not found", result.Content[0].Text);
@@ -103,7 +109,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Context_WithoutLoad_ReturnsError()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         var result = handler.Handle("lifeblood_context", null);
 
         Assert.True(result.IsError);
@@ -113,7 +119,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Context_AfterLoad_ReturnsJson()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_context", null);
@@ -126,7 +132,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Lookup_WithoutLoad_ReturnsError()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         var result = handler.Handle("lifeblood_lookup", MakeArgs(new { symbolId = "type:Core.Foo" }));
 
         Assert.True(result.IsError);
@@ -136,7 +142,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Lookup_Found()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_lookup", MakeArgs(new { symbolId = "type:Core.Foo" }));
@@ -149,7 +155,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Lookup_NotFound()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_lookup", MakeArgs(new { symbolId = "type:DoesNotExist" }));
@@ -161,7 +167,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Lookup_MissingSymbolId_ReturnsError()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_lookup", null);
@@ -173,7 +179,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Dependencies_ReturnsDeps()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_dependencies", MakeArgs(new { symbolId = "type:Core.Foo" }));
@@ -185,7 +191,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_Dependants_ReturnsDependants()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_dependants", MakeArgs(new { symbolId = "type:Core.Bar" }));
@@ -197,7 +203,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_BlastRadius_ReturnsAffected()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_blast_radius", MakeArgs(new { symbolId = "type:Core.Bar" }));
@@ -211,7 +217,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_BlastRadius_WithMaxDepth()
     {
-        var handler = new ToolHandler();
+        var handler = CreateHandler();
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
 
         var result = handler.Handle("lifeblood_blast_radius", MakeArgs(new { symbolId = "type:Core.Bar", maxDepth = 1 }));

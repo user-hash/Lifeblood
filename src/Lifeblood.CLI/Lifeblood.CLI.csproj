@@ -5,10 +5,18 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Lifeblood.CLI</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>lifeblood</ToolCommandName>
+    <PackageId>Lifeblood</PackageId>
+    <PackageDescription>Lifeblood CLI — analyze codebases, generate AI context packs, export semantic graphs.</PackageDescription>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Composition root. Wires left side to right side. -->
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Lifeblood.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
