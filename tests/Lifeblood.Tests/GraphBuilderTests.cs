@@ -160,6 +160,20 @@ public class GraphBuilderTests
     }
 
     [Fact]
+    public void Build_SelfReferenceParentId_NoSelfContains()
+    {
+        // A symbol with ParentId == Id should NOT produce a self-referencing Contains edge
+        var selfRef = new Symbol { Id = "type:Self", Name = "Self", Kind = SymbolKind.Type, ParentId = "type:Self" };
+
+        var graph = new GraphBuilder()
+            .AddSymbol(selfRef)
+            .Build();
+
+        Assert.Single(graph.Symbols);
+        Assert.Empty(graph.Edges); // no self-referencing Contains edge
+    }
+
+    [Fact]
     public void Build_MixedExplicitAndSynthesized()
     {
         var mod = new Symbol { Id = "mod:Core", Name = "Core", Kind = SymbolKind.Module };

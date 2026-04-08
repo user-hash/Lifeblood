@@ -13,7 +13,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// Rename returns TextEdits (does NOT apply). Format returns formatted code string.
 /// Uses shared RoslynWorkspaceManager for workspace lifecycle and symbol resolution.
 /// </summary>
-public sealed class RoslynWorkspaceRefactoring : IWorkspaceRefactoring
+public sealed class RoslynWorkspaceRefactoring : IWorkspaceRefactoring, IDisposable
 {
     private readonly Lazy<RoslynWorkspaceManager> _manager;
 
@@ -76,5 +76,11 @@ public sealed class RoslynWorkspaceRefactoring : IWorkspaceRefactoring
         var root = tree.GetRoot();
         var formatted = Formatter.Format(root, mgr.GetWorkspace());
         return formatted.ToFullString();
+    }
+
+    public void Dispose()
+    {
+        if (_manager.IsValueCreated)
+            _manager.Value.Dispose();
     }
 }

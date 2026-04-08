@@ -59,9 +59,15 @@
     },
     {
       "id": "LB-010",
-      "description": "Application must not reference CLI or Server",
+      "description": "Application must not reference CLI",
       "source": "Lifeblood.Application",
       "mustNotReference": "Lifeblood.CLI"
+    },
+    {
+      "id": "LB-010a",
+      "description": "Application must not reference Server",
+      "source": "Lifeblood.Application",
+      "mustNotReference": "Lifeblood.Server"
     },
     {
       "id": "LB-011",

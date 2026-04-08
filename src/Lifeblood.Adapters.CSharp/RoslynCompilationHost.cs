@@ -13,7 +13,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// Roslyn-backed compilation host. Provides diagnostics, compile-checking, and reference finding.
 /// Built from retained compilations after workspace analysis.
 /// </summary>
-public sealed class RoslynCompilationHost : ICompilationHost
+public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
 {
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
     private readonly Lazy<RoslynWorkspaceManager> _manager;
@@ -174,4 +174,10 @@ public sealed class RoslynCompilationHost : ICompilationHost
             Microsoft.CodeAnalysis.DiagnosticSeverity.Error => DomainDiagnosticSeverity.Error,
             _ => DomainDiagnosticSeverity.Info,
         };
+
+    public void Dispose()
+    {
+        if (_manager.IsValueCreated)
+            _manager.Value.Dispose();
+    }
 }

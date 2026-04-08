@@ -2,7 +2,49 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-08, session 2, 15 passes):** 958 symbols, 2339 edges, 11 modules, 140 types, 0 violations (16 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction.
+**Current state (2026-04-08, session 4, 45 passes):** 971 symbols, 2368 edges, 11 modules, 140 types, 0 violations (17 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction.
+
+### Session 3 Dogfood Findings (2026-04-08, passes 16-25)
+
+**DF-S3-1: ScriptSecurityScanner `dynamic` keyword check was ineffective** — The AST check `id.Parent is TypeSyntax` failed for the most common usage `dynamic x = ...;` because the parent of the `IdentifierNameSyntax("dynamic")` is `VariableDeclarationSyntax`, not a `TypeSyntax`. The `dynamic` keyword — which bypasses compile-time checks and enables late-bound calls that evade the string blocklist — passed the scanner unchallenged. Fixed by removing the parent type check. Added 2 test cases that would have caught this.
+
+**DF-S3-2: RoslynWorkspaceManager.FindInCompilation bypassed overload disambiguation** — When resolving a method symbol like `method:Ns.Type.Foo(int,string)`, the traversal loop used `GetMembers(part).FirstOrDefault()` and returned the first matching method immediately, ignoring the `ParamSignature`. The overload disambiguation code (lines 86-101) was unreachable. FindReferences and Rename on overloaded methods would operate on the wrong overload. Fixed to check for multiple overloads and match by param signature before returning.
+
+**DF-S3-3: ProcessIsolatedCodeExecutor path with spaces** — The ScriptHost path was interpolated into dotnet CLI arguments without quotes: `run --project {path} --no-build`. Paths containing spaces would break argument parsing. Fixed to quote the path.
+
+**DF-S3-4: Rules pack LB-010 description/enforcement mismatch** — Description said "Application must not reference CLI or Server" but `mustNotReference` only enforced "Lifeblood.CLI". Added LB-010a for "Lifeblood.Server". Rule count: 16 → 17.
+
+**DF-S3-5: Python adapter import edges used wrong file ID for `__init__.py`** — `_extract_edges` generated sourceId from `py_module.replace('.', '/') + '.py'`, producing `file:pkg.py` for `__init__.py` files instead of `file:pkg/__init__.py`. The edge source didn't match any symbol and was silently dropped by the dangling-edge filter. Fixed by passing `rel_path` to `_extract_edges` and using it directly.
+
+All 5 fixed in-session. 197 tests pass (was 195). Build: 0 warnings, 0 errors.
+
+### Session 3 Late Findings (passes 26-35)
+
+**DF-S3-6: String blocklist bypassed by whitespace between tokens** — `code.Contains("Process.Start")` does not match `"Process . Start"`. C# allows arbitrary whitespace between member-access tokens, so `System . IO . File . Delete("x")` compiles fine and bypasses every pattern in the blocklist. Fixed by normalizing whitespace around dots before pattern matching. New `NormalizeMemberAccess` collapses `"foo . bar"` → `"foo.bar"` for checking without modifying the executed code.
+
+**DF-S3-7: AST IsBlockedStaticCall bypassed by whitespace/comments** — `memberAccess.ToString()` preserves trivia (whitespace, comments), so `"Process . Start"` produces `Contains("Process.Start")` = false. Fixed by reconstructing the member chain from AST nodes (`ReconstructMemberChain`), which strips all trivia and produces the canonical dotted name.
+
+**DF-S3-8: AdhocWorkspace resource leak on MCP server reload** — `RoslynWorkspaceManager` created `AdhocWorkspace` (IDisposable) lazily but never disposed it. Each MCP `Load()` created new `RoslynCompilationHost` and `RoslynWorkspaceRefactoring`, each with their own workspace. Old instances leaked until GC. Fixed: `RoslynWorkspaceManager : IDisposable`, `RoslynCompilationHost : IDisposable`, `RoslynWorkspaceRefactoring : IDisposable`. `WorkspaceSession.Clear()` now disposes old services via `(x as IDisposable)?.Dispose()`.
+
+**DF-S3-9: Weak assertion in CycleRepo blast radius test** — Used `blastA.AffectedCount > 0 || blastB.AffectedCount > 0` (OR) instead of asserting BOTH. In a true A↔B cycle, both must have affected symbols. Fixed to assert each independently.
+
+**DF-S3-10: GraphSession allocated new JsonSerializerOptions per Load()** — `new JsonSerializerOptions { ... }` inside `Load()` instead of a static field. Fixed by hoisting to `static readonly RulesJsonOpts`.
+
+All 5 fixed in-session. 201 tests pass (was 197). Build: 0 warnings, 0 errors.
+
+### Session 4 Dogfood Findings (2026-04-08, passes 36-45)
+
+**DF-S4-1: Comment injection bypassed string blocklist for patterns not in AST scanner** — `File./**/Delete("x")` normalizes whitespace around dots but not comments. The AST scanner only checked `Process.Start`, `Assembly.Load`, `Thread.Abort` — not `File.Delete`, `Environment.Exit`, `Marshal.*`, `WebRequest.Create`, etc. Fixed: added all file/directory/environment/marshal/network patterns to `IsBlockedStaticCall`, which uses `ReconstructMemberChain` (trivia-immune).
+
+**DF-S4-2: Object creation not checked by AST scanner** — `new FileInfo(...)`, `new HttpClient()`, `new Socket()` were only in the string blocklist. The AST scanner had no `ObjectCreationExpressionSyntax` case. Fixed: added creation type check with `IsBlockedCreationType` for all dangerous types including `Process` and `ProcessStartInfo`.
+
+**DF-S4-3: `new Process()` + `p.Start()` bypass** — `var p = new Process(); p.Start()` bypassed both layers: the string blocklist had `Process.Start` but not `new Process`, and `p.Start()` doesn't match the pattern because the call is on a variable. Fixed: added `"new Process"` and `"new ProcessStartInfo"` to string blocklist, added `Process` to `IsBlockedCreationType`.
+
+**DF-S4-4: C# 9 target-typed `new()` bypassed object creation check** — `Process p = new();` uses `ImplicitObjectCreationExpressionSyntax`, not `ObjectCreationExpressionSyntax`. Fixed: added case for implicit creation that walks up to the variable declaration to find the declared type.
+
+**DF-S4-5: GraphBuilder created self-referencing Contains edge on `ParentId == Id`** — If a symbol's ParentId equals its own Id, the builder would synthesize a self-referencing Contains edge (caught by validator downstream but architecturally wrong). Fixed: added `symbol.ParentId == symbol.Id` early-exit guard.
+
+All 5 fixed in-session. 209 tests pass (was 201). Build: 0 warnings, 0 errors.
 
 ### Session 2 Dogfood Findings (2026-04-08)
 

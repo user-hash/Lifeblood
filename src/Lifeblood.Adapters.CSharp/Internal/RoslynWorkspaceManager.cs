@@ -8,7 +8,7 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 /// Owns the AdhocWorkspace lifecycle, symbol resolution, and ID parsing.
 /// Used by both RoslynCompilationHost and RoslynWorkspaceRefactoring.
 /// </summary>
-internal sealed class RoslynWorkspaceManager
+internal sealed class RoslynWorkspaceManager : IDisposable
 {
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
     private AdhocWorkspace? _workspace;
@@ -74,7 +74,24 @@ internal sealed class RoslynWorkspaceManager
             if (member is INamespaceOrTypeSymbol ns)
                 current = ns;
             else if (member != null)
+            {
+                // For methods, disambiguate overloads by parameter signature before returning.
+                // Without this, FirstOrDefault() always returns the first overload,
+                // making FindReferences/Rename operate on the wrong method.
+                if (parsed.Kind == "method" && member is IMethodSymbol && parsed.ParamSignature != null)
+                {
+                    var overloads = current.GetMembers(part).OfType<IMethodSymbol>().ToArray();
+                    if (overloads.Length > 1)
+                    {
+                        foreach (var m in overloads)
+                        {
+                            var sig = string.Join(",", m.Parameters.Select(p => p.Type.ToDisplayString()));
+                            if (sig == parsed.ParamSignature) return m;
+                        }
+                    }
+                }
                 return member;
+            }
             else
                 break;
         }
@@ -168,5 +185,12 @@ internal sealed class RoslynWorkspaceManager
         }
 
         Solution = _workspace.CurrentSolution;
+    }
+
+    public void Dispose()
+    {
+        _workspace?.Dispose();
+        _workspace = null;
+        Solution = null;
     }
 }
