@@ -2,7 +2,7 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-08, session 6, 75 passes):** 1057 symbols, 2594 edges, 11 modules, 145 types, 0 violations (17 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. 16 MCP tools (6 read + 10 write). All Roslyn capabilities at Proven. Streaming compilation with downgrading (32GB → 4GB for 100+ assembly projects). Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction. Security scanner handles chained invocations. Edge extractor handles C# 9 target-typed `new()`. Self-referencing edges filtered at extraction.
+**Current state (2026-04-08, session 6, 80 passes):** 1057 symbols, 2594 edges, 11 modules, 145 types, 0 violations (17 rules). Verified on a real 400k+ LOC Unity project: 43,800 symbols, 70,600 edges, 75 modules, 2,404 types, 34 cycles, ~4GB peak memory. Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. 16 MCP tools (6 read + 10 write). All Roslyn capabilities at Proven. Streaming compilation with downgrading. Unity csproj support (old-format + SDK-style). GraphBuilder deduplicates all edges. Security scanner handles chained invocations.
 
 ### Session 3 Dogfood Findings (2026-04-08, passes 16-25)
 
@@ -60,7 +60,11 @@ Both fixed in-session. 214 tests pass (was 210 + 4 new). Build: 0 warnings, 0 er
 
 **DF-S6-5: Memory architecture — 32GB OOM on 100+ assembly project** — Analyzing a 75-module Unity project consumed 32GB RAM and crashed the .NET host. Root causes: (1) ALL compilations loaded simultaneously in a Dictionary, (2) NuGet MetadataReferences duplicated per-module with no cross-module cache, (3) no streaming — everything at once. Fixed architecturally: streaming compilation with downgrading. Each module is compiled, extracted, then `Emit()` → `MetadataReference.CreateFromImage()` produces a ~10-100KB PE reference instead of keeping the ~200MB full compilation. `SharedMetadataReferenceCache` deduplicates NuGet references across modules. `RetainCompilations` flag on `AnalysisConfig` controls whether full compilations are kept (MCP server) or released (CLI). Memory: 32GB → 4GB for the same project.
 
-241 tests pass. 1057 symbols, 2594 edges, 0 violations. 16 MCP tools (6 read + 10 write). Build: 0 warnings, 0 errors.
+**DF-S6-6: Unity csproj filesystem scan hang** — Unity-generated .csproj files use old MSBuild format with explicit `<Compile Include="..."/>` items. Module discovery ignored those and did `FindFiles("*.cs", recursive: true)` instead — 75 projects all rooted at the same directory caused 75 full recursive scans of the entire Unity project. Hung indefinitely. Fixed: detect `<Compile Include>` items in the csproj XML. If present (Unity/legacy format), use those. If absent (SDK-style), fall back to filesystem scan. Also extract `<Reference Include>` for Unity assembly-level dependencies.
+
+**DF-S6-7: Duplicate edges from partial classes** — `typeSymbol.GetMembers()` returns ALL members including from other partial declarations. Each file's `Extract()` call has its own dedup set. Partial classes caused the same Overrides/Inherits/Implements edges to be emitted once per partial file. On DAWG: 11,423 duplicate edge validation errors. Fixed: `GraphBuilder.Build()` now deduplicates ALL edges by `(sourceId, targetId, kind)` using a Dictionary (first-write-wins, consistent with symbol dedup). The per-file `seen` set remains as a fast first-pass filter.
+
+241 tests pass. 1057 symbols, 2594 edges (self). 43,800 symbols, 70,600 edges (DAWG). 0 violations. Build: 0 warnings, 0 errors.
 
 ### Session 5 Dogfood Findings (2026-04-08, passes 46-55)
 
