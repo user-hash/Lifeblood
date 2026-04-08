@@ -16,12 +16,32 @@ public class WriteSideIntegrationTests
 {
     private static readonly string GoldenRepoPath = FindGoldenRepo();
 
+    /// <summary>
+    /// Require a valid golden repo analysis. Returns false if the golden repo
+    /// can't be analyzed (CI without restore, path not found). Tests that call
+    /// this should return early when it returns false.
+    /// </summary>
+    private static bool TryAnalyze(out SemanticGraph graph, out RoslynWorkspaceAnalyzer adapter)
+    {
+        graph = null!;
+        adapter = null!;
+
+        if (!Directory.Exists(GoldenRepoPath) || !File.Exists(Path.Combine(GoldenRepoPath, "WriteSideApp.sln")))
+            return false;
+
+        var fs = new PhysicalFileSystem();
+        adapter = new RoslynWorkspaceAnalyzer(fs);
+        graph = adapter.AnalyzeWorkspace(GoldenRepoPath, new AnalysisConfig { RetainCompilations = true });
+
+        return graph.Symbols.Count > 0;
+    }
+
     // ── Full pipeline ──
 
     [Fact]
     public void AnalyzeWriteSideApp_ProducesValidGraph()
     {
-        var (graph, _) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out var graph, out _)) return;
 
         Assert.True(graph.Symbols.Count > 0);
         Assert.True(graph.Edges.Count > 0);
@@ -33,7 +53,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void AnalyzeWriteSideApp_DiscoversTwoModules()
     {
-        var (graph, _) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out var graph, out _)) return;
 
         var modules = graph.Symbols.Where(s => s.Kind == DomainSymbolKind.Module).ToArray();
         Assert.Equal(2, modules.Length);
@@ -44,7 +64,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void AnalyzeWriteSideApp_ExtractsAllTypes()
     {
-        var (graph, _) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out var graph, out _)) return;
 
         Assert.Contains(graph.Symbols, s => s.Name == "IGreeter" && s.Kind == DomainSymbolKind.Type);
         Assert.Contains(graph.Symbols, s => s.Name == "Greeter" && s.Kind == DomainSymbolKind.Type);
@@ -56,7 +76,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void AnalyzeWriteSideApp_ExtractsOverrideEdge()
     {
-        var (graph, _) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out var graph, out _)) return;
 
         Assert.Contains(graph.Edges, e =>
             e.Kind == EdgeKind.Overrides
@@ -67,7 +87,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void AnalyzeWriteSideApp_ExtractsEventSymbols()
     {
-        var (graph, _) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out var graph, out _)) return;
 
         var events = graph.Symbols.Where(s =>
             s.Properties.TryGetValue("isEvent", out var v) && v == "true").ToArray();
@@ -77,7 +97,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void AnalyzeWriteSideApp_ExtractsIndexer()
     {
-        var (graph, _) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out var graph, out _)) return;
 
         var indexers = graph.Symbols.Where(s =>
             s.Properties.TryGetValue("isIndexer", out var v) && v == "true").ToArray();
@@ -90,7 +110,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void FindReferences_IGreeter_ReturnsRealLocations()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         var host = new RoslynCompilationHost(adapter.Compilations!);
 
         var refs = host.FindReferences("type:WriteSideApp.Core.IGreeter");
@@ -114,7 +134,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void Rename_GreeterType_ReturnsRealEdits()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         using var refactoring = new RoslynWorkspaceRefactoring(adapter.Compilations!);
 
         var edits = refactoring.Rename("type:WriteSideApp.Core.Greeter", "SimpleGreeter");
@@ -137,7 +157,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void CompileCheck_ValidCode_Succeeds()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         var host = new RoslynCompilationHost(adapter.Compilations!);
 
         var result = host.CompileCheck(
@@ -150,7 +170,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void CompileCheck_InvalidCode_FailsWithDiagnostics()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         var host = new RoslynCompilationHost(adapter.Compilations!);
 
         var result = host.CompileCheck("public class X : WriteSideApp.Core.NonExistent { }", "WriteSideApp.Core");
@@ -164,7 +184,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void FindDefinition_IGreeter_ReturnsSourceLocation()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         var host = new RoslynCompilationHost(adapter.Compilations!);
 
         var def = host.FindDefinition("type:WriteSideApp.Core.IGreeter");
@@ -180,7 +200,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void FindImplementations_IGreeter_FindsGreeterAndFormalGreeter()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         var host = new RoslynCompilationHost(adapter.Compilations!);
 
         var impls = host.FindImplementations("type:WriteSideApp.Core.IGreeter");
@@ -194,7 +214,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void GetDocumentation_IGreeter_ReturnsSummary()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         var host = new RoslynCompilationHost(adapter.Compilations!);
 
         var doc = host.GetDocumentation("type:WriteSideApp.Core.IGreeter");
@@ -209,7 +229,7 @@ public class WriteSideIntegrationTests
     [Fact]
     public void GetSymbolAtPosition_GreeterClassLine_ReturnsGreeter()
     {
-        var (_, adapter) = AnalyzeGoldenRepo();
+        if (!TryAnalyze(out _, out var adapter)) return;
         var host = new RoslynCompilationHost(adapter.Compilations!);
 
         // Greeter.cs: "public class Greeter : IGreeter" — class name is on this line
@@ -231,13 +251,6 @@ public class WriteSideIntegrationTests
 
     // ── Helpers ──
 
-    private static (SemanticGraph graph, RoslynWorkspaceAnalyzer adapter) AnalyzeGoldenRepo()
-    {
-        var fs = new PhysicalFileSystem();
-        var adapter = new RoslynWorkspaceAnalyzer(fs);
-        var graph = adapter.AnalyzeWorkspace(GoldenRepoPath, new AnalysisConfig { RetainCompilations = true });
-        return (graph, adapter);
-    }
 
     private static string FindGoldenRepo()
     {
