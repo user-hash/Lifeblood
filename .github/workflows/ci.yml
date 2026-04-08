@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m lifeblood_python adapters/python/test-fixtures/mini-app
+      - run: python -m lifeblood_python test-fixtures/mini-app
         working-directory: adapters/python
 
   dogfood:

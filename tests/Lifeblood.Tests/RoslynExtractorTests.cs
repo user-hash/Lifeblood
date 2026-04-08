@@ -232,6 +232,32 @@ public class Service { }");
     }
 
     [Fact]
+    public void ExtractEdges_LocalFunctionCall_AttributedToEnclosingMethod()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Logger { public void Log(string msg) { } }
+public class Service
+{
+    private Logger _log = new Logger();
+    public void Run()
+    {
+        void Inner() { _log.Log(""from local""); }
+        Inner();
+    }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        // Call inside local function Inner() should be attributed to enclosing method Run(),
+        // not to a dangling "Inner" symbol that doesn't exist in the graph.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Run")
+            && e.TargetId.Contains("Log"));
+    }
+
+    [Fact]
     public void ExtractEdges_ReturnType()
     {
         var (model, root) = Compile(@"

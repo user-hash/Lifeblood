@@ -160,7 +160,7 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 
 ## Status
 
-Dogfood-verified. 209 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 210 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -175,7 +175,7 @@ Dogfood-verified. 209 tests. 12 MCP tools (6 read + 6 write). CI green (4 jobs: 
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 209 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession. |
+| Lifeblood.Tests | 210 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 

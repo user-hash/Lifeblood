@@ -2,7 +2,7 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-08, session 4, 45 passes):** 971 symbols, 2368 edges, 11 modules, 140 types, 0 violations (17 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction.
+**Current state (2026-04-08, session 5, 55 passes):** 972 symbols, 2371 edges, 11 modules, 140 types, 0 violations (17 rules). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. Process-isolated code execution sandbox added. Evidence.Kind and Evidence.Confidence enforced as `required` at compile time. GraphBuilder drops dangling edges at construction.
 
 ### Session 3 Dogfood Findings (2026-04-08, passes 16-25)
 
@@ -45,6 +45,14 @@ All 5 fixed in-session. 201 tests pass (was 197). Build: 0 warnings, 0 errors.
 **DF-S4-5: GraphBuilder created self-referencing Contains edge on `ParentId == Id`** — If a symbol's ParentId equals its own Id, the builder would synthesize a self-referencing Contains edge (caught by validator downstream but architecturally wrong). Fixed: added `symbol.ParentId == symbol.Id` early-exit guard.
 
 All 5 fixed in-session. 209 tests pass (was 201). Build: 0 warnings, 0 errors.
+
+### Session 5 Dogfood Findings (2026-04-08, passes 46-55)
+
+**DF-S5-1: Local function calls produced dangling edges** — `FindContainingMethodOrLocal` returned the local function's `IMethodSymbol`, but local functions aren't extracted as graph symbols. Calls inside local functions had source IDs like `method:Type.LocalFunc()` that didn't exist in the graph, so GraphBuilder silently dropped them. Fixed: changed `LocalFunctionStatementSyntax` case from `return` to `continue` (same pattern as `AccessorDeclarationSyntax`), attributing calls to the enclosing method instead.
+
+**DF-S5-2: CI python-adapter path doubled up** — `working-directory: adapters/python` + argument `adapters/python/test-fixtures/mini-app` resolved to `adapters/python/adapters/python/test-fixtures/mini-app`. Fixed argument to `test-fixtures/mini-app`.
+
+Both fixed in-session. 210 tests pass (was 209). Build: 0 warnings, 0 errors.
 
 ### Session 2 Dogfood Findings (2026-04-08)
 
