@@ -21,4 +21,6 @@ public sealed class PhysicalFileSystem : IFileSystem
     public string[] FindFiles(string directory, string pattern, bool recursive = true) =>
         Directory.GetFiles(directory, pattern,
             recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+
+    public DateTime GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
 }

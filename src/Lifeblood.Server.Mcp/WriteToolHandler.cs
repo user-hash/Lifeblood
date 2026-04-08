@@ -173,6 +173,15 @@ internal sealed class WriteToolHandler
         return null;
     }
 
+    internal static bool? GetBool(JsonElement? args, string key)
+    {
+        if (args == null) return null;
+        if (args.Value.TryGetProperty(key, out var val) &&
+            (val.ValueKind == JsonValueKind.True || val.ValueKind == JsonValueKind.False))
+            return val.GetBoolean();
+        return null;
+    }
+
     private static McpToolResult TextResult(string text) => new()
     {
         Content = new[] { new McpContent { Type = "text", Text = text } },

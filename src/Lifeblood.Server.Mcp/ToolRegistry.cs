@@ -47,6 +47,7 @@ public static class ToolRegistry
                     projectPath = new { type = "string", description = "Path to C# project root (with .sln or .csproj)" },
                     graphPath = new { type = "string", description = "Path to a graph.json file (alternative to projectPath)" },
                     rulesPath = new { type = "string", description = "Optional: built-in pack name (hexagonal, clean-architecture, lifeblood) or path to a rules.json file" },
+                    incremental = new { type = "boolean", description = "When true, only recompiles modules with changed files since the last analysis. Much faster for iterative work. Falls back to full analysis if no previous analysis exists or if modules were added/removed. Default: false." },
                 },
             },
         },

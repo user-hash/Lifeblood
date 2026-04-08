@@ -8,4 +8,5 @@ public interface IFileSystem
     bool FileExists(string path);
     bool DirectoryExists(string path);
     string[] FindFiles(string directory, string pattern, bool recursive = true);
+    DateTime GetLastWriteTimeUtc(string path);
 }

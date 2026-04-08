@@ -17,6 +17,9 @@ public sealed class GraphSession : IDisposable
 {
     private readonly IFileSystem _fs;
     private readonly WorkspaceSession _session = new();
+    private RoslynWorkspaceAnalyzer? _roslynAdapter;
+    private string? _lastProjectPath;
+    private string? _lastRulesPath;
 
     public GraphSession(IFileSystem fs) => _fs = fs;
 
@@ -29,8 +32,19 @@ public sealed class GraphSession : IDisposable
     public IWorkspaceRefactoring? Refactoring => _session.Refactoring;
     public bool HasCompilationState => _session.HasCompilationState;
 
-    public string Load(string? projectPath, string? graphPath, string? rulesPath)
+    /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
+    public bool CanIncremental => _roslynAdapter?.HasSnapshot == true;
+
+    public string Load(string? projectPath, string? graphPath, string? rulesPath, bool incremental = false)
     {
+        // Incremental path: reuse existing adapter, only recompile changed modules
+        if (incremental && CanIncremental
+            && !string.IsNullOrEmpty(projectPath)
+            && string.Equals(projectPath, _lastProjectPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return LoadIncremental(projectPath, rulesPath);
+        }
+
         SemanticGraph graph;
         Domain.Capabilities.AdapterCapability? capability = null;
         string language = "unknown";
@@ -54,6 +68,9 @@ public sealed class GraphSession : IDisposable
             var errors = GraphValidator.Validate(graph);
             if (errors.Length > 0)
                 return $"Graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
+
+            _roslynAdapter = null;
+            _lastProjectPath = null;
         }
         else if (!string.IsNullOrEmpty(projectPath))
         {
@@ -77,6 +94,10 @@ public sealed class GraphSession : IDisposable
                 newCodeExecutor = new RoslynCodeExecutor(adapter.Compilations);
                 newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations);
             }
+
+            // Retain adapter for incremental re-analyze
+            _roslynAdapter = adapter;
+            _lastProjectPath = projectPath;
         }
         else
         {
@@ -84,13 +105,8 @@ public sealed class GraphSession : IDisposable
         }
 
         // Analyze (rules are optional — resolve built-in name first, then file path)
-        ArchitectureRule[]? rules = null;
-        if (!string.IsNullOrEmpty(rulesPath))
-        {
-            rules = Lifeblood.Analysis.RulePacks.ResolveBuiltIn(rulesPath);
-            if (rules == null && _fs.FileExists(rulesPath))
-                rules = Lifeblood.Analysis.RulePacks.ParseJson(_fs.ReadAllText(rulesPath));
-        }
+        ArchitectureRule[]? rules = ResolveRules(rulesPath);
+        _lastRulesPath = rulesPath;
 
         var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
 
@@ -102,6 +118,52 @@ public sealed class GraphSession : IDisposable
 
         return $"Loaded: {graph.Symbols.Count} symbols, {graph.Edges.Count} edges, " +
                $"{analysis.Metrics.TotalModules} modules, {analysis.Violations.Length} violations";
+    }
+
+    private string LoadIncremental(string projectPath, string? rulesPath)
+    {
+        var config = new AnalysisConfig { RetainCompilations = true };
+        var (graph, changedFileCount) = _roslynAdapter!.IncrementalAnalyze(config);
+
+        if (changedFileCount == 0)
+            return $"Incremental: 0 files changed. Graph unchanged ({graph.Symbols.Count} symbols, {graph.Edges.Count} edges)";
+
+        // Validate the rebuilt graph
+        var errors = GraphValidator.Validate(graph);
+        if (errors.Length > 0)
+            return $"Incremental graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
+
+        // Rebuild write-side services from updated compilations
+        ICompilationHost? newCompilationHost = null;
+        ICodeExecutor? newCodeExecutor = null;
+        IWorkspaceRefactoring? newRefactoring = null;
+
+        if (_roslynAdapter.Compilations is { Count: > 0 })
+        {
+            newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations);
+            newCodeExecutor = new RoslynCodeExecutor(_roslynAdapter.Compilations);
+            newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations);
+        }
+
+        ArchitectureRule[]? rules = ResolveRules(rulesPath ?? _lastRulesPath);
+        var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
+
+        _session.Clear();
+        _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
+        if (newCompilationHost != null)
+            _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+
+        return $"Incremental: {changedFileCount} files changed. Loaded: {graph.Symbols.Count} symbols, {graph.Edges.Count} edges, " +
+               $"{analysis.Metrics.TotalModules} modules, {analysis.Violations.Length} violations";
+    }
+
+    private ArchitectureRule[]? ResolveRules(string? rulesPath)
+    {
+        if (string.IsNullOrEmpty(rulesPath)) return null;
+        var rules = Lifeblood.Analysis.RulePacks.ResolveBuiltIn(rulesPath);
+        if (rules == null && _fs.FileExists(rulesPath))
+            rules = Lifeblood.Analysis.RulePacks.ParseJson(_fs.ReadAllText(rulesPath));
+        return rules;
     }
 
     public void Dispose() => _session.Clear();
