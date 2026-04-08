@@ -1,6 +1,9 @@
 <Project>
   <PropertyGroup>
-    <Version>0.3.0</Version>
+    <!-- Version auto-derived from git tags via MinVer.
+         Tag v1.2.3 → Version=1.2.3. Commits after tag → 1.2.3-alpha.N.
+         No manual bumping needed. Just tag and push. -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
     <Authors>DAWG Tools</Authors>
     <Company>DAWG Tools</Company>
     <Product>Lifeblood</Product>
@@ -12,4 +15,10 @@
     <PackageTags>semantic-graph;code-analysis;ai;mcp;hexagonal</PackageTags>
     <Description>Compiler truth in, AI context out. Hexagonal framework connecting compiler-level code intelligence to AI tools.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="7.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>
