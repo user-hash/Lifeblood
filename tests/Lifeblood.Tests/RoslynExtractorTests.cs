@@ -176,6 +176,80 @@ public class Service
             && e.TargetId.Contains("Config"));
     }
 
+    [Fact]
+    public void ExtractEdges_GenericTypeArgument()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Entity { }
+public class Service
+{
+    private System.Collections.Generic.List<Entity> _entities;
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service")
+            && e.TargetId.Contains("Entity"));
+    }
+
+    [Fact]
+    public void ExtractEdges_TypeOfExpression()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Filter { }
+public class Handler
+{
+    private System.Type _type = typeof(Filter);
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Handler")
+            && e.TargetId.Contains("Filter"));
+    }
+
+    [Fact]
+    public void ExtractEdges_AttributeType()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class MyAttribute : System.Attribute { }
+[My]
+public class Service { }");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service")
+            && e.TargetId.Contains("MyAttribute"));
+    }
+
+    [Fact]
+    public void ExtractEdges_ReturnType()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Result { }
+public class Service
+{
+    public Result GetResult() { return null; }
+}");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service")
+            && e.TargetId.Contains("Result"));
+    }
+
     private static (SemanticModel model, SyntaxNode root) Compile(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source);

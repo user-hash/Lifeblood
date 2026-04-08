@@ -6,18 +6,17 @@
   <title>Lifeblood — Architecture</title>
   <style>
     :root {
-      /* OKLab-derived palette — perceptually uniform, from the original SVG diagram */
-      --bg: oklch(0.13 0.02 260);           /* #0d1117 deep space */
-      --card: oklch(0.17 0.02 260);          /* #161b22 card surface */
-      --border: oklch(0.30 0.015 260);       /* #30363d subtle borders */
-      --text: oklch(0.93 0.01 260);          /* #e6edf3 primary text */
-      --muted: oklch(0.65 0.02 260);         /* #8b949e muted text */
-      --accent: oklch(0.72 0.12 230);        /* #6ba3d6 left/blue */
-      --accent-2: oklch(0.68 0.18 290);      /* #a88bff right/purple */
-      --accent-3: oklch(0.82 0.14 160);      /* #8cf0b5 green */
-      --warning: oklch(0.85 0.12 80);        /* #ffd37b yellow */
-      --hex-fill: oklch(0.16 0.03 260);      /* #131d2e hex outer */
-      --hex-core: oklch(0.14 0.04 260);      /* #0d1a2d hex inner glow */
+      --bg: oklch(0.13 0.02 260);
+      --card: oklch(0.17 0.02 260);
+      --border: oklch(0.30 0.015 260);
+      --text: oklch(0.93 0.01 260);
+      --muted: oklch(0.65 0.02 260);
+      --accent: oklch(0.72 0.12 230);
+      --accent-2: oklch(0.68 0.18 290);
+      --accent-3: oklch(0.82 0.14 160);
+      --warning: oklch(0.85 0.12 80);
+      --hex-fill: oklch(0.16 0.03 260);
+      --hex-core: oklch(0.14 0.04 260);
       --shadow: 0 12px 30px oklch(0 0 0 / 0.3);
       --radius: 18px;
       --inactive: 0.35;
@@ -45,22 +44,15 @@
       border-radius: 999px; padding: 6px 12px; font-size: 11px; color: var(--text);
     }
 
-    /* Three-column layout */
     .columns {
       display: grid;
       grid-template-columns: 280px 1fr 280px;
       gap: 0;
       min-height: 800px;
     }
-    .col {
-      padding: 20px;
-    }
-    .col:first-child {
-      border-right: 2px dashed oklch(0.72 0.12 230 / 0.2);
-    }
-    .col:last-child {
-      border-left: 2px dashed oklch(0.68 0.18 290 / 0.2);
-    }
+    .col { padding: 20px; }
+    .col:first-child { border-right: 2px dashed oklch(0.72 0.12 230 / 0.2); }
+    .col:last-child { border-left: 2px dashed oklch(0.68 0.18 290 / 0.2); }
     .col-label {
       font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
       color: var(--muted); margin-bottom: 16px; text-align: center;
@@ -88,7 +80,6 @@
       color: var(--warning); text-transform: uppercase;
     }
 
-    /* Center hex area: ports LEFT — hex CENTER — ports RIGHT */
     .hex-area {
       display: flex; flex-direction: column; align-items: center;
       justify-content: flex-start; padding-top: 10px;
@@ -98,7 +89,7 @@
       width: 100%;
     }
     .port-col {
-      display: flex; flex-direction: column; gap: 12px; flex: 0 0 155px;
+      display: flex; flex-direction: column; gap: 10px; flex: 0 0 155px;
     }
     .port-col-label {
       font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
@@ -108,7 +99,6 @@
       content: " (stable contract)";
       font-size: 8px; opacity: 0.6; text-transform: none; letter-spacing: 0;
     }
-    /* ONE hexagon — the application boundary. This is proper Ports & Adapters. */
     .hex-visual {
       position: relative; width: 440px; height: 440px; flex-shrink: 0;
     }
@@ -138,7 +128,7 @@
 
     .port {
       border: 2px solid; border-radius: 12px;
-      padding: 10px 12px; text-align: center; font-size: 11px;
+      padding: 8px 10px; text-align: center; font-size: 11px;
       position: relative;
     }
     .port.left {
@@ -149,9 +139,12 @@
       border-color: var(--accent-2); background: oklch(0.68 0.18 290 / 0.1);
       border-right: 4px solid var(--accent-2);
     }
+    .port.infra {
+      border-color: var(--accent-3); background: oklch(0.82 0.14 160 / 0.1);
+      border-bottom: 4px solid var(--accent-3);
+    }
     .port strong { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
     .port span { color: var(--muted); font-size: 10px; }
-    /* Connector arrows showing plug-in direction */
     .port.left::before {
       content: "\2192"; position: absolute; right: -18px; top: 50%; transform: translateY(-50%);
       color: var(--accent); font-size: 16px; font-weight: bold;
@@ -172,7 +165,6 @@
     }
     .signal-card span { color: var(--muted); font-size: 11px; line-height: 1.4; }
 
-    /* Footer */
     .legend {
       padding: 20px 28px;
       border-top: 1px solid var(--border);
@@ -197,14 +189,17 @@
       <p>
         Architecture diagram matching the actual codebase. Solid items are implemented and dogfood-verified.
         <span style="opacity:0.5">Faded dashed items</span> are planned but not yet built.
+        All 10 port interfaces have concrete implementations. All hexagonal boundaries enforced by tests.
       </p>
       <div class="pills">
-        <div class="pill">10 assemblies + 1 TS adapter</div>
-        <div class="pill">634 symbols, 888 edges</div>
-        <div class="pill">109 tests / CI green</div>
-        <div class="pill">Roslyn + TypeScript</div>
+        <div class="pill">10 assemblies + 2 standalone adapters</div>
+        <div class="pill">700 symbols, 1760 edges</div>
+        <div class="pill">121 tests / CI green</div>
+        <div class="pill">C# + TypeScript + Python</div>
+        <div class="pill">Cross-module: Proven</div>
+        <div class="pill">10/10 ports wired</div>
         <div class="pill">MCP Server</div>
-        <div class="pill">Dogfood verified</div>
+        <div class="pill">dotnet tool</div>
       </div>
     </div>
 
@@ -214,28 +209,25 @@
         <div class="col-label" style="color: var(--accent);">Left side — Language Adapters</div>
 
         <div class="card">
-          <h3>What comes in</h3>
-          <p>C# projects via Roslyn, TypeScript via TS compiler API, or any language via JSON graph.</p>
-          <div class="item"><strong>.sln / .csproj discovery</strong><span>RoslynModuleDiscovery</span></div>
-          <div class="item"><strong>C# source via CSharpCompilation</strong><span>RoslynSymbolExtractor + RoslynEdgeExtractor</span></div>
-          <div class="item"><strong>TypeScript via ts.createProgram</strong><span>adapters/typescript (standalone Node.js)</span></div>
-          <div class="item"><strong>External graph.json import</strong><span>JsonGraphImporter (any language)</span></div>
-        </div>
-
-        <div class="card">
           <h3>Language Adapters <span style="font-size:9px; color:var(--accent); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
-          <div class="item"><strong>Roslyn / C#</strong><small>Reference adapter. Proven type/call/implementation resolution.</small></div>
-          <div class="item"><strong>TypeScript</strong><small>Standalone Node.js. ts.createProgram + TypeChecker. Self-analyzing.</small></div>
+          <div class="item"><strong>Roslyn / C#</strong><small>Reference adapter. Proven type/call/cross-module resolution. Topological sort + CompilationReference. Generics, typeof, attributes.</small></div>
+          <div class="item"><strong>TypeScript</strong><small>Standalone Node.js. ts.createProgram + TypeChecker. High-confidence. Self-analyzing.</small></div>
+          <div class="item"><strong>Python</strong><small>Standalone ast-based. Zero dependencies. Classes, functions, imports, inheritance. Self-analyzing.</small></div>
           <div class="item"><strong>JSON Graph</strong><small>Universal protocol. Import + export with full metadata round-trip.</small></div>
-          <div class="item planned"><strong>Community Adapters</strong><small>Go, Python, Rust, Java — build via JSON protocol. <a href="../docs/ADAPTERS.md" style="color:var(--warning)">Contribution guides ready.</a></small></div>
+          <div class="item planned"><strong>Community</strong><small>Go, Rust — build via JSON protocol. <a href="../docs/ADAPTERS.md" style="color:var(--warning)">Guides ready.</a></small></div>
         </div>
 
         <div class="card">
-          <h3>Lifeblood.CLI</h3>
-          <p>Composition root. Thin dispatch with centralized validation.</p>
-          <div class="item"><code style="font-size:11px">analyze --project . --rules rules.json</code></div>
-          <div class="item"><code style="font-size:11px">context --project . [--format md]</code></div>
-          <div class="item"><code style="font-size:11px">export --project . > graph.json</code></div>
+          <h3>Infrastructure Ports <span style="font-size:9px; color:var(--accent-3); font-weight:normal; text-transform:uppercase;">sealed</span></h3>
+          <div class="item"><strong>IFileSystem</strong><small>ReadAllText, ReadLines, OpenRead, FileExists, DirectoryExists, FindFiles. Impl: PhysicalFileSystem.</small></div>
+          <div class="item"><strong>IProgressSink</strong><small>Report(phase, current, total), Log(message). Impl: ConsoleProgressSink (stderr).</small></div>
+          <div class="item"><strong>IRuleProvider</strong><small>LoadRules(path) → ArchitectureRule[]. Impl: RulesLoader (JSON deserialization).</small></div>
+        </div>
+
+        <div class="card">
+          <h3>Composition Roots</h3>
+          <div class="item"><strong>Lifeblood.CLI</strong><small>dotnet tool: <code>lifeblood</code>. analyze, context, export. CI exit codes.</small></div>
+          <div class="item"><strong>Lifeblood.Server.Mcp</strong><small>dotnet tool: <code>lifeblood-mcp</code>. Stdio JSON-RPC. 6 interactive tools.</small></div>
         </div>
       </div>
 
@@ -247,8 +239,10 @@
           <!-- LEFT: Inbound ports -->
           <div class="port-col">
             <div class="port-col-label" style="color: var(--accent);">Inbound Ports</div>
-            <div class="port left"><strong>IWorkspaceAnalyzer</strong>project + config<br/><span>&#8594; SemanticGraph</span></div>
-            <div class="port left"><strong>IGraphImporter</strong>stream<br/><span>&#8594; GraphDocument</span></div>
+            <div class="port left"><strong>IWorkspaceAnalyzer</strong><span>project → SemanticGraph</span></div>
+            <div class="port left"><strong>IModuleDiscovery</strong><span>root → ModuleInfo[]</span></div>
+            <div class="port left"><strong>IGraphImporter</strong><span>stream → GraphDocument</span></div>
+            <div class="port left"><strong>IGraphExporter</strong><span>graph → stream</span></div>
           </div>
 
           <!-- CENTER: ONE hexagon — the application boundary -->
@@ -256,7 +250,7 @@
             <div class="hex-boundary">
               <div class="app-ring">
                 <h4>Application Layer</h4>
-                <p>AnalyzeWorkspaceUseCase<br/>GenerateContextUseCase</p>
+                <p>AnalyzeWorkspaceUseCase<br/>GenerateContextUseCase<br/><span style="font-size:9px">10 port interfaces — all wired</span></p>
               </div>
               <div class="domain-core">
                 <h4>Domain</h4>
@@ -274,8 +268,9 @@
           <!-- RIGHT: Outbound ports -->
           <div class="port-col">
             <div class="port-col-label" style="color: var(--accent-2);">Outbound Ports</div>
-            <div class="port right"><strong>IAgentContextGenerator</strong>graph + analysis<br/><span>&#8594; AgentContextPack</span></div>
-            <div class="port right"><strong>IMcpGraphProvider</strong>LookupSymbol<br/><span>GetDependencies, GetBlastRadius</span></div>
+            <div class="port right"><strong>IAgentContextGenerator</strong><span>graph → AgentContextPack</span></div>
+            <div class="port right"><strong>IMcpGraphProvider</strong><span>Lookup, Deps, BlastRadius</span></div>
+            <div class="port right"><strong>IInstructionFileGenerator</strong><span>graph → markdown</span></div>
           </div>
         </div>
 
@@ -286,7 +281,7 @@
 
         <div class="signal-card">
           <strong>Enforced invariants (tested)</strong>
-          <span>Domain: zero deps. Application: Domain only. No adapter&#8596;adapter refs. No connector&#8594;adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 109 tests. 3 CI jobs.</span>
+          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 121 tests. 4 CI jobs. Golden repos for all 3 adapters.</span>
         </div>
       </div>
 
@@ -298,7 +293,7 @@
           <h3>AI Connectors <span style="font-size:9px; color:var(--accent-2); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
           <p>Right-side connectors expose semantic truth to AI agents and tools.</p>
           <div class="item"><strong>AgentContextGenerator</strong><small>High-value files, boundaries, reading order, hotspots, dependency matrix, violations.</small></div>
-          <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries.</small></div>
+          <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries and architecture rules.</small></div>
           <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius.</small></div>
           <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 6 tools. Connect from Claude Code or any MCP client.</small></div>
           <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services. Not yet started.</small></div>
@@ -313,18 +308,26 @@
           <div class="item"><strong>Exported graph.json</strong><span>portable semantic graph + metadata</span></div>
           <div class="item"><strong>CLI analysis report</strong><span>symbols, edges, violations, cycles</span></div>
         </div>
+
+        <div class="card">
+          <h3>Quality gates</h3>
+          <div class="item"><strong>Golden repos</strong><small>C# (HexagonalApp, CycleRepo), TS (mini-app), Python (mini-app). Assert specific types + edges.</small></div>
+          <div class="item"><strong>Self-dogfood</strong><small>Every push: analyze own codebase, validate rules, export graph, cross-language proof.</small></div>
+          <div class="item"><strong>Architecture invariant tests</strong><small>Domain zero deps, Application→Domain only, no adapter↔adapter, no connector→adapter.</small></div>
+        </div>
       </div>
     </div>
 
     <div class="legend">
-      <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference. TypeScript is the second proof. JSON graph is the universal bridge. Community adapters (Go, Python, Rust, Java) have contribution guides but no implementation yet.</div>
-      <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. GraphDocument carries version, language, and adapter capabilities through the entire pipeline. All invariants enforced by tests.</div>
-      <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 6 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters.</div>
+      <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference with cross-module resolution. TypeScript and Python are standalone adapters. JSON graph is the universal bridge. Community adapters (Go, Rust) have contribution guides.</div>
+      <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. 10 port interfaces — all sealed with concrete implementations. GraphDocument carries version, language, and adapter capabilities. All invariants enforced by tests.</div>
+      <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 6 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters. Packaged as dotnet tools.</div>
     </div>
 
     <div class="footer">
       Solid = implemented and dogfood-verified. Dashed/faded = planned.
-      Self-analysis: <code>dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json</code>
+      Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
+      → 700 symbols, 1760 edges, 10 modules, 106 types, 0 violations.
     </div>
   </div>
 </body>

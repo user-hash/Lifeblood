@@ -36,8 +36,8 @@ We dogfood Lifeblood on itself. Every push, the CI analyzes the framework's own 
 
 ```
 $ lifeblood analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 700
-Edges:   1755
+Symbols: 704
+Edges:   1772
 Modules: 10
 Types:   106
 ```
@@ -168,7 +168,7 @@ Three adapters ship today. Community adapters can be built via the JSON protocol
 
 ## Status
 
-Dogfood-verified. 117 tests. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
+Dogfood-verified. 121 tests. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -183,7 +183,7 @@ Dogfood-verified. 117 tests. CI green (4 jobs: build, TypeScript adapter, Python
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 117 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, use cases. |
+| Lifeblood.Tests | 121 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, use cases. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
