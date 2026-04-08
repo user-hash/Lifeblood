@@ -54,6 +54,9 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
     public AdapterCapability Capability => RoslynCapabilityDescriptor.Capability;
 
+    /// <summary>Optional per-module progress callback. Set before calling AnalyzeWorkspace.</summary>
+    public Action<string, int, int>? OnModuleProgress { get; set; }
+
     public SemanticGraph AnalyzeWorkspace(string projectRoot, AnalysisConfig config)
     {
         var modules = _discovery.DiscoverModules(projectRoot);
@@ -85,6 +88,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
         _compilations = compilationBuilder.ProcessInOrder(
             modules, projectRoot, config,
+            onModuleProgress: OnModuleProgress,
             processor: (module, compilation) =>
             {
                 var moduleId = SymbolIds.Module(module.Name);

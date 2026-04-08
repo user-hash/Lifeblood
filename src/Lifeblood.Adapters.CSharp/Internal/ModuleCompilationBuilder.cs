@@ -52,7 +52,8 @@ internal sealed class ModuleCompilationBuilder
         ModuleInfo[] modules,
         string projectRoot,
         AnalysisConfig config,
-        CompilationProcessor processor)
+        CompilationProcessor processor,
+        Action<string, int, int>? onModuleProgress = null)
     {
         var sorted = TopologicalSort(modules);
 
@@ -65,8 +66,11 @@ internal sealed class ModuleCompilationBuilder
             ? new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal)
             : null;
 
-        foreach (var module in sorted)
+        for (int i = 0; i < sorted.Length; i++)
         {
+            var module = sorted[i];
+            onModuleProgress?.Invoke(module.Name, i + 1, sorted.Length);
+
             // Collect dependencies: use downgraded refs (lightweight) for completed modules.
             var depRefs = module.Dependencies
                 .Where(downgraded.ContainsKey)
@@ -107,7 +111,7 @@ internal sealed class ModuleCompilationBuilder
             if (emitResult.Success)
                 return MetadataReference.CreateFromImage(ms.ToArray());
         }
-        catch
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or BadImageFormatException)
         {
             // Emit can throw for pathological compilations. Fall back gracefully.
         }
