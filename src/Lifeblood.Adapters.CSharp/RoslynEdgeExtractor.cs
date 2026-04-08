@@ -378,6 +378,9 @@ public sealed class RoslynEdgeExtractor
         if (string.IsNullOrEmpty(sourceId) || string.IsNullOrEmpty(targetId)) return;
         // Guard against prefix-only IDs (e.g., "type:" with no name)
         if (sourceId.EndsWith(':') || targetId.EndsWith(':')) return;
+        // Self-referencing edges carry no dependency information (recursion is valid C#
+        // but a symbol always depends on itself — no analytical value).
+        if (sourceId == targetId) return;
         if (!seen.Add((sourceId, targetId, kind))) return;
 
         edges.Add(new Edge
