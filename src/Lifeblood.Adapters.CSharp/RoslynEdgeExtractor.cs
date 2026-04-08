@@ -39,7 +39,7 @@ public sealed class RoslynEdgeExtractor
                     ExtractCallEdge(model, invocation, edges, seen);
                     break;
 
-                case ObjectCreationExpressionSyntax creation:
+                case BaseObjectCreationExpressionSyntax creation:
                     ExtractConstructorCallEdge(model, creation, edges, seen);
                     break;
 
@@ -118,8 +118,13 @@ public sealed class RoslynEdgeExtractor
         AddEdge(edges, seen, sourceId, targetId, EdgeKind.Calls);
     }
 
+    /// <summary>
+    /// Handles both explicit new (ObjectCreationExpressionSyntax) and
+    /// target-typed new() (ImplicitObjectCreationExpressionSyntax, C# 9).
+    /// Both share the base type BaseObjectCreationExpressionSyntax.
+    /// </summary>
     private void ExtractConstructorCallEdge(
-        SemanticModel model, ObjectCreationExpressionSyntax creation,
+        SemanticModel model, BaseObjectCreationExpressionSyntax creation,
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
     {
         var symbolInfo = model.GetSymbolInfo(creation);
