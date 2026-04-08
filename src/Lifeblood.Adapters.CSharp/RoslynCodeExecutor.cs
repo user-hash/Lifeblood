@@ -1,3 +1,4 @@
+using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
@@ -56,7 +57,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     {
         var startTime = DateTime.UtcNow;
 
-        // Safety check
+        // Layer 1: String-based blocklist (fast, catches obvious patterns)
         foreach (var pattern in BlockedPatterns)
         {
             if (code.Contains(pattern, StringComparison.OrdinalIgnoreCase))
@@ -67,6 +68,16 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                     ElapsedMs = 0,
                 };
         }
+
+        // Layer 2: AST-based security scan (catches reflection, dynamic, unsafe)
+        var astBlock = ScriptSecurityScanner.Scan(code);
+        if (astBlock != null)
+            return new CodeExecutionResult
+            {
+                Success = false,
+                Error = astBlock,
+                ElapsedMs = 0,
+            };
 
         try
         {
