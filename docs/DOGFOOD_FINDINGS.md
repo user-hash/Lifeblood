@@ -2,6 +2,8 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 10). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
+**Current state (2026-04-08):** 700 symbols, 1755 edges, 10 modules, 106 types, 0 violations. Cross-module resolution upgraded to Proven (compilations built in dependency order with CompilationReferences). Edge extraction expanded: generic type arguments, typeof() expressions, attribute types, local function awareness. Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated.
+
 ## F1: JSON Exporter Silently Drops Fields
 
 **Severity:** Critical — silent data loss

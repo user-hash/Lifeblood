@@ -82,7 +82,7 @@ Current Roslyn adapter capabilities:
 - TypeResolution: Proven
 - CallResolution: Proven
 - ImplementationResolution: Proven
-- CrossModuleReferences: BestEffort (compilations don't share project-reference metadata)
+- CrossModuleReferences: Proven (compilations built in dependency order with CompilationReferences)
 - OverrideResolution: None (not yet extracted)
 
 ## Deterministic Output
