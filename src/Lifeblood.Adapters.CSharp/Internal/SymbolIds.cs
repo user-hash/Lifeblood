@@ -21,7 +21,7 @@ internal static class SymbolIds
         => $"field:{containingType}.{name}";
 
     public static string Property(string containingType, string name)
-        => $"field:{containingType}.{name}"; // Properties map to SymbolKind.Field in the universal model
+        => $"property:{containingType}.{name}";
 
     private static string Normalize(string path)
         => path.Replace('\\', '/');

@@ -119,6 +119,57 @@ Compilations only had BCL references and cross-module CompilationReferences, but
 
 **Fix:** Replaced all symbol comparisons with `SymbolEqualityComparer.Default.Equals()`.
 
+## Hardening Pass (2026-04-08, post v0.3.1)
+
+7-phase deep audit. All 7 phases clean. 3 additional bugs found and fixed, plus 3 preventive fixes.
+
+### B8: Property Symbol ID Collision (SymbolIds.cs)
+
+**Severity:** High — FindReferences and Rename silently failed for properties
+
+`SymbolIds.Property()` generated `field:` prefix, making property IDs indistinguishable from field IDs. `FindInCompilation` looked for `IFieldSymbol` when kind="field", missing `IPropertySymbol` entirely. Properties silently returned 0 references and 0 rename edits.
+
+**Fix:** Separate `property:` prefix in `SymbolIds.Property()`. Added `IPropertySymbol` handler in `FindInCompilation`. The `property:` check in `RoslynWorkspaceRefactoring` was dead code (unreachable because properties used `field:` prefix).
+
+### B9: GetDiagnostics Silent Fallback (RoslynCompilationHost.cs)
+
+**Severity:** Medium — misleading diagnostic results
+
+When `GetDiagnostics("nonexistent_module")` was called with a module name that didn't exist, the ternary condition `moduleName != null && TryGetValue(...)` evaluated to `false`, falling through to scan ALL compilations. The caller got diagnostics from every module instead of empty.
+
+**Fix:** Early return `Array.Empty<DiagnosticInfo>()` when `moduleName != null && !_compilations.ContainsKey(moduleName)`.
+
+### B10: File.Exists Bypassing IFileSystem Port (RoslynWorkspaceAnalyzer.cs)
+
+**Severity:** Medium — broke testability, violated hexagonal architecture
+
+`ResolveNuGetReferences` used raw `File.Exists(dllPath)` instead of the injected `_fs.FileExists(dllPath)`. The `IFileSystem` port existed specifically to abstract filesystem access, but this call bypassed it.
+
+**Fix:** Replaced with `_fs.FileExists(dllPath)`.
+
+### Preventive Fixes
+
+**P1: Blocked patterns expanded** (RoslynCodeExecutor.cs) — Added 13 patterns: `File.WriteAllText`, `File.WriteAllBytes`, `File.Move`, `File.Copy`, `Directory.CreateDirectory`, `Environment.SetEnvironmentVariable`, `Assembly.Load`, `Assembly.LoadFile`, `Assembly.LoadFrom`, `Assembly.UnsafeLoadFrom`, `Reflection.Emit`, `AssemblyBuilder`, `Thread.Abort`. Total: 5 → 18 patterns.
+
+**P2: Property accessor dangling edges** (RoslynEdgeExtractor.cs) — `FindContainingMethodOrLocal` returned compiler-generated accessor methods (`get_X`/`set_X`) as edge sources, but the symbol extractor emits properties, not accessors. Changed to `continue` past `AccessorDeclarationSyntax` so edges source from the enclosing method instead.
+
+**P3: NuGet catch-all narrowed** (RoslynWorkspaceAnalyzer.cs) — Bare `catch {}` in `ResolveNuGetReferences` could mask JSON schema changes in `project.assets.json`. Narrowed to `catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)`.
+
+**P4: MCP parse error response** (Program.cs) — Malformed JSON-RPC input was logged to stderr but no response was sent. MCP client would hang. Added JSON-RPC 2.0 parse error response (code -32700). Also fixed `null!` return to proper nullable `JsonRpcResponse?`.
+
+### Refactoring
+
+**RoslynWorkspaceManager extracted** — `EnsureWorkspace()`, `ResolveSymbol()`, `FindInCompilation()`, and `ParseSymbolId()` were duplicated verbatim between `RoslynCompilationHost` and `RoslynWorkspaceRefactoring` (~80 LOC each). Extracted to shared `Internal/RoslynWorkspaceManager.cs`. Both consumers now use `Lazy<RoslynWorkspaceManager>`.
+
+### Test Coverage
+
+41 new tests (121 → 162):
+- RoslynCompilationHost: 8 tests
+- RoslynCodeExecutor: 11 tests (including all blocked patterns + timeout)
+- RoslynWorkspaceRefactoring: 4 tests
+- SymbolId parsing: 7 tests
+- Architecture invariant (Analysis deps): 1 test
+
 ## Remaining Known Limitations
 
 1. **Diagnose count (1143):** NuGet resolution from `project.assets.json` resolves direct packages but not all transitive dependencies. Modules that depend on many NuGet packages (Server.Mcp, Tests) still have unresolved types. This is a best-effort approach — full MSBuild resolution would require hosting MSBuild, which is intentionally avoided.

@@ -273,8 +273,11 @@ public sealed class RoslynEdgeExtractor
                     return model.GetDeclaredSymbol(method);
                 case ConstructorDeclarationSyntax ctor:
                     return model.GetDeclaredSymbol(ctor);
-                case AccessorDeclarationSyntax accessor:
-                    return model.GetDeclaredSymbol(accessor);
+                case AccessorDeclarationSyntax:
+                    // Property accessors (get_X/set_X) are compiler-generated methods with no
+                    // matching symbol in the graph. Skip to the containing method/type instead
+                    // to avoid dangling edge sources.
+                    continue;
             }
         }
         return null;
