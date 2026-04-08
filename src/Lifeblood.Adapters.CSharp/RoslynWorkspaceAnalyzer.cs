@@ -13,6 +13,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// Reference implementation. Left-side adapter. Workspace-scoped.
 /// Parses .csproj files directly (no MSBuild dependency).
 /// Uses Roslyn CSharpCompilation for semantic analysis.
+/// Cross-module resolution: compilations built in dependency order with CompilationReferences.
 /// INV-ADAPT-002: C# adapter is the reference. Most complete, best tested.
 /// </summary>
 public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
@@ -21,6 +22,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     private readonly RoslynModuleDiscovery _discovery;
     private readonly RoslynSymbolExtractor _symbolExtractor = new();
     private readonly RoslynEdgeExtractor _edgeExtractor = new();
+
+    /// <summary>
+    /// BCL references loaded once, reused for all compilations.
+    /// Uses the runtime directory to get all framework assemblies.
+    /// </summary>
+    private static readonly Lazy<MetadataReference[]> BclReferences = new(LoadBclReferences);
 
     public RoslynWorkspaceAnalyzer(IFileSystem fs)
     {
@@ -36,20 +43,31 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         var builder = new GraphBuilder();
         var compilations = new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal);
 
-        // Phase 1: Create module symbols and compilations
+        // Phase 1: Create module symbols
         foreach (var module in modules)
         {
-            var moduleId = SymbolIds.Module(module.Name);
             builder.AddSymbol(new Symbol
             {
-                Id = moduleId,
+                Id = SymbolIds.Module(module.Name),
                 Name = module.Name,
                 QualifiedName = module.Name,
                 Kind = DomainSymbolKind.Module,
                 Properties = module.Properties,
             });
+        }
 
-            var compilation = CreateCompilation(module, projectRoot, config);
+        // Phase 1.5: Topological sort — build leaf modules first so dependents can reference them
+        var sorted = TopologicalSort(modules);
+
+        // Phase 1.6: Build compilations in dependency order with cross-module references
+        foreach (var module in sorted)
+        {
+            var depCompilations = module.Dependencies
+                .Where(compilations.ContainsKey)
+                .Select(d => compilations[d])
+                .ToArray();
+
+            var compilation = CreateCompilation(module, projectRoot, config, depCompilations);
             if (compilation != null)
                 compilations[module.Name] = compilation;
         }
@@ -116,8 +134,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         return builder.Build();
     }
 
+    /// <summary>
+    /// Build a CSharpCompilation for a module, with full BCL + cross-module references.
+    /// Dependency compilations are passed in so Roslyn can resolve types across project boundaries.
+    /// </summary>
     private CSharpCompilation? CreateCompilation(
-        ModuleInfo module, string projectRoot, AnalysisConfig config)
+        ModuleInfo module, string projectRoot, AnalysisConfig config,
+        CSharpCompilation[] dependencyCompilations)
     {
         var sourceFiles = module.FilePaths
             .Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
@@ -143,23 +166,80 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
         if (trees.Length == 0) return null;
 
-        var references = new List<MetadataReference>();
-        var objectAssembly = typeof(object).Assembly.Location;
-        if (!string.IsNullOrEmpty(objectAssembly) && File.Exists(objectAssembly))
-            references.Add(MetadataReference.CreateFromFile(objectAssembly));
+        // BCL references (cached, loaded once)
+        var references = new List<MetadataReference>(BclReferences.Value);
 
-        var runtimeDir = Path.GetDirectoryName(objectAssembly);
-        if (runtimeDir != null)
-        {
-            var systemRuntime = Path.Combine(runtimeDir, "System.Runtime.dll");
-            if (File.Exists(systemRuntime))
-                references.Add(MetadataReference.CreateFromFile(systemRuntime));
-        }
+        // Cross-module references: add CompilationReference for each resolved dependency
+        foreach (var dep in dependencyCompilations)
+            references.Add(dep.ToMetadataReference());
 
         return CSharpCompilation.Create(
             module.Name,
             trees!,
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    /// <summary>
+    /// Load all .NET runtime assemblies as metadata references.
+    /// Cached once — same for all modules in the workspace.
+    /// </summary>
+    private static MetadataReference[] LoadBclReferences()
+    {
+        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+        if (runtimeDir == null) return Array.Empty<MetadataReference>();
+
+        return Directory.GetFiles(runtimeDir, "*.dll")
+            .Select(path =>
+            {
+                try { return (MetadataReference)MetadataReference.CreateFromFile(path); }
+                catch { return null; }
+            })
+            .Where(r => r != null)
+            .ToArray()!;
+    }
+
+    /// <summary>
+    /// Topological sort: returns modules in dependency-first order.
+    /// Leaf modules (no deps) come first, dependents come last.
+    /// Handles cycles gracefully — breaks them by processing what's available.
+    /// </summary>
+    private static ModuleInfo[] TopologicalSort(ModuleInfo[] modules)
+    {
+        var lookup = modules.ToDictionary(m => m.Name, StringComparer.Ordinal);
+        var visited = new Dictionary<string, bool>(StringComparer.Ordinal); // true = permanent, false = temporary
+        var result = new List<ModuleInfo>();
+
+        foreach (var module in modules)
+        {
+            if (!visited.ContainsKey(module.Name))
+                Visit(module, lookup, visited, result);
+        }
+
+        return result.ToArray();
+    }
+
+    private static void Visit(
+        ModuleInfo module,
+        Dictionary<string, ModuleInfo> lookup,
+        Dictionary<string, bool> visited,
+        List<ModuleInfo> result)
+    {
+        if (visited.TryGetValue(module.Name, out var permanent))
+        {
+            if (permanent) return; // already processed
+            return; // cycle detected — break it by skipping (dependency order is best-effort)
+        }
+
+        visited[module.Name] = false; // temporary mark
+
+        foreach (var dep in module.Dependencies)
+        {
+            if (lookup.TryGetValue(dep, out var depModule))
+                Visit(depModule, lookup, visited, result);
+        }
+
+        visited[module.Name] = true; // permanent mark
+        result.Add(module);
     }
 }

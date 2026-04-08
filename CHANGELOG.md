@@ -5,6 +5,29 @@ All notable changes to Lifeblood are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-08
+
+Cross-module resolution, Python adapter, hexagonal port sealing.
+
+### Added
+
+- **Cross-module Roslyn resolution**: Compilations built in dependency order via topological sort. `CompilationReference` links projects so Roslyn resolves types across boundaries. `CrossModuleReferences` capability upgraded from `BestEffort` to `Proven`. Edge count jumped from 985 to 1746 on self-analysis (+77%).
+- **Python adapter**: Standalone `ast`-based analyzer in `adapters/python/`. Zero external dependencies. Extracts classes, functions, methods, fields, inheritance, imports, type annotations. Self-analyzing.
+- **IFileSystem wired**: Expanded interface (added `ReadLines`, `OpenRead`, `DirectoryExists`). `PhysicalFileSystem` implementation in Adapters.CSharp. Injected into RoslynModuleDiscovery, RoslynWorkspaceAnalyzer, GraphSession, RulesLoader, CLI.
+- **IRuleProvider wired**: `RulesLoader` converted from static class to `IRuleProvider` implementation with `IFileSystem` injection.
+- **IProgressSink wired**: `ConsoleProgressSink` writes progress to stderr. Injected into `AnalyzeWorkspaceUseCase` via CLI.
+- **Use case tests**: 8 new tests for `AnalyzeWorkspaceUseCase` and `GenerateContextUseCase` with hand-rolled stubs.
+- **Dotnet tool packaging**: `Directory.Build.props` with centralized v0.1.0 versioning. CLI packaged as `lifeblood`, MCP Server as `lifeblood-mcp`. CI pack step producing `.nupkg` artifacts.
+- **CHANGELOG.md**: Version history.
+
+### Changed
+
+- All 10 application port interfaces now have concrete implementations (was 7/10).
+- BCL references: full runtime directory loaded instead of just `System.Runtime.dll`.
+- CI: 4 parallel jobs (build, TypeScript adapter, Python adapter, dogfood with 3-language cross-proof).
+- Tests: 109 → 117.
+- Dogfood: 634 symbols / 888 edges → 697 symbols / 1746 edges.
+
 ## [0.1.0] - 2026-04-07
 
 First public release. Framework is dogfood-verified and CI-green.

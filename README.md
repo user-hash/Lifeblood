@@ -13,7 +13,7 @@ JSON graph     ──┼→ │    Semantic Graph      │ →┤──  MCP Ser
   adapters          └────────────────────────┘
 ```
 
-We build the framework and two reference adapters (C# via Roslyn, TypeScript via the TS compiler API). The community builds the rest. We provide the contracts, schemas, golden repo fixtures, and a [13-item adapter checklist](docs/ADAPTERS.md).
+We build the framework and three reference adapters (C# via Roslyn, TypeScript via the TS compiler API, Python via `ast`). The community builds the rest. We provide the contracts, schemas, golden repo fixtures, and a [13-item adapter checklist](docs/ADAPTERS.md).
 
 Born from shipping a [400k LOC Unity project](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) with AI assistance and realizing that AI writes code but does not verify what it wrote.
 
@@ -35,18 +35,18 @@ Lifeblood is built for that era. Point it at a codebase and get a verified seman
 We dogfood Lifeblood on itself. Every push, the CI analyzes the framework's own codebase:
 
 ```
-$ dotnet run --project src/Lifeblood.CLI -- analyze --project . --rules packs/lifeblood/rules.json
-Symbols: 634
-Edges:   888
+$ lifeblood analyze --project . --rules packs/lifeblood/rules.json
+Symbols: 697
+Edges:   1746
 Modules: 10
-Types:   100
+Types:   106
 ```
 
-Zero violations. Zero dangling edges. Zero duplicates.
+Zero violations. Zero dangling edges. Zero duplicates. Cross-module resolution is proven — compilations are built in dependency order with full project-to-project references.
 
 The first dogfood run found 6 real issues, including 2 critical (JSON exporter silently dropping edges, rule packs not loading). All were fixed in the same session. That is exactly what dogfooding is for. [Full findings published](docs/DOGFOOD_FINDINGS.md).
 
-**Cross-language proof:** The TypeScript adapter analyzes its own source code, exports a JSON graph, and the C# CLI imports and validates it. Two languages, one graph model, one pipeline. This runs on every push.
+**Cross-language proof:** Three adapters (C#, TypeScript, Python) each analyze their own source code, export JSON graphs, and the C# CLI imports and validates them. Three languages, one graph model, one pipeline. This runs on every push.
 
 ---
 
@@ -142,11 +142,13 @@ Domain never references Application. Application never references Adapters or Co
 
 ## Language Adapters
 
-Two adapters ship today. Community adapters can be built via the JSON protocol ([contribution guides](docs/ADAPTERS.md) and [schema](schemas/graph.schema.json) are ready, no implementation code yet).
+Three adapters ship today. Community adapters can be built via the JSON protocol ([contribution guides](docs/ADAPTERS.md) and [schema](schemas/graph.schema.json) are ready).
 
-**C# / Roslyn (reference adapter):** Compiler-grade semantic analysis. Extracts types, methods, fields, inheritance, calls, references. Proven type and call resolution. Discovers modules from .sln/.csproj files.
+**C# / Roslyn (reference adapter):** Compiler-grade semantic analysis with cross-module resolution. Compilations built in dependency order with project-to-project references. Extracts types, methods, fields, inheritance, calls, references. Proven type, call, and cross-module resolution. Discovers modules from .sln/.csproj files.
 
 **TypeScript (standalone Node.js):** Uses `ts.createProgram` + `TypeChecker`. High-confidence type and call resolution. Outputs `graph.json` that the C# CLI consumes directly.
+
+**Python (standalone, zero dependencies):** Uses Python's built-in `ast` module. Extracts classes, functions, methods, fields, inheritance, imports, type annotations. Best-effort resolution without type inference.
 
 **Any language via JSON:** Write a parser in your language. Output JSON conforming to `schemas/graph.schema.json`. See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the contract, quality levels, and the 13-item adapter checklist.
 
@@ -166,7 +168,7 @@ Two adapters ship today. Community adapters can be built via the JSON protocol (
 
 ## Status
 
-Dogfood-verified. 109 tests. CI green (3 jobs: build, TypeScript adapter, dogfood).
+Dogfood-verified. 117 tests. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood).
 
 | Component | State |
 |-----------|-------|
@@ -180,6 +182,7 @@ Dogfood-verified. 109 tests. CI green (3 jobs: build, TypeScript adapter, dogfoo
 | Lifeblood.Server.Mcp | Implemented. MCP server with 6 tools over stdio. |
 | Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
 | adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
+| adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
 | Lifeblood.Tests | 109 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline. |
 
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
@@ -190,10 +193,9 @@ Dogfood-verified. 109 tests. CI green (3 jobs: build, TypeScript adapter, dogfoo
 
 These items are not yet implemented. They represent the direction, not the current state.
 
-- **Cross-module Roslyn resolution** — currently best-effort (per-module compilation). Full cross-project type resolution requires a unified Roslyn workspace.
-- **Community adapters** — contribution guides exist for [Go](adapters/go/), [Python](adapters/python/), and [Rust](adapters/rust/), but no implementation code yet.
-- **NuGet / dotnet tool packaging** — install Lifeblood as a global tool instead of cloning the repo.
+- **Community adapters** — contribution guides exist for [Go](adapters/go/) and [Rust](adapters/rust/), but no implementation code yet.
 - **REST / LSP bridge** — expose the graph to IDE extensions and web services.
+- **NuGet publishing** — packages are built in CI, but not yet published to nuget.org.
 
 ---
 
