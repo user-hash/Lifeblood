@@ -130,10 +130,10 @@ We test Lifeblood on itself. The MCP server loads its own source code, executes 
 
 ```
 $ lifeblood analyze --project . --rules lifeblood
-Symbols: 1057
-Edges:   2594
+Symbols: 1148
+Edges:   3196
 Modules: 11
-Types:   145
+Types:   150
 ```
 
 Zero violations. Zero dangling edges. Zero duplicates.
@@ -177,21 +177,6 @@ adapters/python/                Python adapter (standalone, zero dependencies).
 
 ## Status
 
-| Component | State |
-|-----------|-------|
-| Lifeblood.Domain | Implemented. Immutable graph model, GraphBuilder, GraphValidator, Evidence, ConfidenceLevel. |
-| Lifeblood.Application | Implemented. 14 port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase. |
-| Lifeblood.Adapters.CSharp | Implemented. Roslyn workspace analyzer with streaming compilation + downgrading. Bidirectional compiler-as-a-service (execute, diagnose, compile-check, find references/definition/implementations, symbol-at-position, documentation, rename, format). |
-| Lifeblood.Adapters.JsonGraph | Implemented. Import and export with full metadata round-trip. |
-| Lifeblood.Connectors.ContextPack | Implemented. Context pack with GraphSummary, instruction file, reading order. |
-| Lifeblood.Connectors.Mcp | Implemented. Graph provider with blast radius delegation. |
-| Lifeblood.Analysis | Implemented. Coupling, blast radius, cycles, tiers, rule validation. |
-| Lifeblood.Server.Mcp | Implemented. MCP server with 17 tools over stdio. Bidirectional Roslyn. |
-| Lifeblood.CLI | Implemented. analyze, context, export with centralized validation. |
-| adapters/typescript | Implemented. Standalone TS compiler API adapter. Self-analyzing. |
-| adapters/python | Implemented. Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Lifeblood.Tests | 241 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration. |
-
 **Rule packs:** [hexagonal](packs/hexagonal/rules.json), [clean-architecture](packs/clean-architecture/rules.json), [lifeblood](packs/lifeblood/rules.json) (self-validating)
 
 ---
@@ -208,20 +193,55 @@ Claude Code ──→ Unity MCP (action/control plane)
                     ├── built-in tools (scenes, GameObjects, scripts...)
                     │
                     └── [McpForUnityTool] custom tools ──→ Lifeblood MCP (child process)
-                        └── 16 semantic tools (analyze, references, blast radius...)
+                        └── 17 semantic tools (analyze, references, blast radius, file impact...)
 ```
 
 Lifeblood does NOT run inside Unity. It spawns as a separate .NET process with its own Roslyn workspace — no assembly conflicts, no domain reload interference, no memory pressure on the Editor.
 
 ### Setup
 
-The bridge package lives in `Assets/Editor/LifebloodBridge/` (3 files: asmdef, client, tools). It auto-discovers via `[McpForUnityTool]`. Requirements:
+The bridge source lives in `unity/Editor/LifebloodBridge/` (3 files: asmdef, client, tools). Unity projects create a **directory junction** to this path so Unity sees the files as local.
+
+**1. Build Lifeblood:**
+```bash
+cd /path/to/Lifeblood
+dotnet build
+```
+
+**2. Create a directory junction in your Unity project:**
+
+Windows:
+```cmd
+mklink /J "D:\YourUnityProject\Assets\Editor\LifebloodBridge" "D:\Lifeblood\unity\Editor\LifebloodBridge"
+```
+
+macOS/Linux:
+```bash
+ln -s /path/to/Lifeblood/unity/Editor/LifebloodBridge /path/to/YourUnityProject/Assets/Editor/LifebloodBridge
+```
+
+**3. Add to `.gitignore`** (the junction is a local dev concern, not tracked):
+```
+Assets/Editor/LifebloodBridge/
+Assets/Editor/LifebloodBridge.meta
+```
+
+The bridge auto-discovers via `[McpForUnityTool]` and finds the server DLL via sibling directory convention (`../Lifeblood/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`).
 
 Override the server path if needed:
 
 - **EditorPrefs:** Set `Lifeblood_ServerPath` to the full path of `Lifeblood.Server.Mcp.dll`
 
 - **Environment:** Set `LIFEBLOOD_SERVER_DLL`
+
+### Incremental Re-Analyze
+
+After the first `lifeblood_analyze_project`, pass `incremental=true` for fast updates. Only modules with changed files are recompiled:
+
+```
+lifeblood_analyze_project  → full analysis (~60s on large projects)
+lifeblood_analyze_project incremental=true  → seconds (only changed modules)
+```
 
 ### Usage from CLI (no Unity needed)
 
@@ -256,7 +276,7 @@ Streaming compilation with downgrading keeps memory bounded:
 
 | Project size | Peak memory | Graph |
 |---|---|---|
-| ~10 modules (Lifeblood itself) | ~200 MB | 1,057 symbols, 2,594 edges |
+| ~10 modules (Lifeblood itself) | ~200 MB | 1,148 symbols, 3,196 edges |
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 
@@ -264,11 +284,11 @@ Each module is compiled, extracted, then downgraded to a lightweight PE metadata
 
 ## Roadmap
 
+- **NuGet publishing**: CI workflow ready (`publish.yml`). Tag a `v*` release to push `Lifeblood` and `Lifeblood.Server.Mcp` tools to nuget.org.
+
 - **Community adapters**: contribution guides exist for [Go](adapters/go/) and [Rust](adapters/rust/) — contract + checklist only, no implementation code yet.
 
 - **REST / LSP bridge**: expose the graph to IDE extensions and web services.
-
-- **NuGet publishing**: packages are built in CI, but not yet published to nuget.org.
 
 ---
 
