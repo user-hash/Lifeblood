@@ -102,12 +102,15 @@ internal static class ScriptSecurityScanner
         "GetFields" => true,
         "GetProperty" => true,
         // GetProperties intentionally allowed — commonly used for read-only inspection
+        "GetConstructor" => true,  // Type.GetConstructor — can bypass new() blocklist
+        "GetConstructors" => true,
         "InvokeMember" => true,
-        "Invoke" => true, // MethodInfo.Invoke
+        "Invoke" => true, // MethodInfo.Invoke / ConstructorInfo.Invoke
         "SetValue" => true, // FieldInfo/PropertyInfo.SetValue
         "CreateDelegate" => true,
         "DynamicInvoke" => true,
         "CreateInstance" => true, // Activator.CreateInstance via reflection
+        "Compile" => true, // Expression<T>.Compile() — produces unblockable delegates
         _ => false,
     };
 
