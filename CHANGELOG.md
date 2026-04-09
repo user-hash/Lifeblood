@@ -7,6 +7,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-09
+
+### Fixed
+
+- **CS0518 "System.Object is not defined" on multi-module workspaces** (#1): `lifeblood_execute` failed on any code against workspaces with many modules (e.g., Unity/DAWG with 75 modules). Three-layer root cause:
+  1. `ScriptOptions.Default` contains 25 "Unresolved" named references — placeholders that never resolve to actual DLLs in a published app.
+  2. Adding `compilation.References` (target project's transitive deps) injected Unity's netstandard BCL stubs, conflicting with the host .NET 8 runtime.
+  3. Two competing `System.Object` definitions from different BCL flavors caused the script compiler to fail.
+  
+  Fix: Explicitly load the host .NET runtime's BCL assemblies from the runtime directory (17 core assemblies). Use `WithReferences` (replace) instead of `AddReferences` to drop the useless "Unresolved" defaults. Only add `CompilationReference` per project module — no transitive deps.
+
+### Added
+
+- 5 regression tests for the CS0518 bug class (downgraded multi-module topology).
+- `LoadHostBclReferences()` — resolves host BCL once per process via `Lazy<T>`.
+
+### Changed
+
+- **MCP server deployment**: `.mcp.json` now points to `dist/` (published output) instead of `dotnet run --project`. Decouples running server from build locks.
+- Tests: 288 → 293.
+
 ## [0.5.0] - 2026-04-09
 
 Cross-assembly semantic analysis. The gap that required grep fallback for cross-module consumer counting is gone.
@@ -177,7 +198,9 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/user-hash/Lifeblood/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/user-hash/Lifeblood/compare/v0.3.0...v0.5.0
 [0.3.0]: https://github.com/user-hash/Lifeblood/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/user-hash/Lifeblood/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/user-hash/Lifeblood/compare/v0.2.0...v0.2.1

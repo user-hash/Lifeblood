@@ -170,6 +170,33 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 - SymbolId parsing: 7 tests
 - Architecture invariant (Analysis deps): 1 test
 
+## Bugs Found and Fixed (Session 4 — 2026-04-09)
+
+### B11: CS0518 "System.Object is not defined" on DAWG workspace (#1)
+
+**Severity:** Critical — ALL `lifeblood_execute` calls fail on multi-module workspaces
+
+**Reproduction:** Load DAWG (75 modules), then `lifeblood_execute` with `return 42;` → CS0518.
+
+**Root cause (3 layers):**
+
+1. `ScriptOptions.Default` has 25 references, all "Unresolved: System.Runtime" etc. They're named placeholders — no actual DLLs.
+2. Previous code added `compilation.References` (target project's transitive deps), injecting Unity's netstandard BCL stubs.
+3. Two competing `System.Object` definitions (host .NET 8 + Unity's netstandard) → CS0518.
+
+**Fix:** Load host BCL explicitly from the running .NET runtime directory (`typeof(object).Assembly.Location` → runtime dir → 17 core DLLs). Use `WithReferences` to replace useless defaults. Only add CompilationReferences for project types — no transitive deps.
+
+**Verification:** DAWG 75-module workspace: `return 42`, `Console.Write`, LINQ `Enumerable.Range(1,10).Sum()`, `typeof(object)`, string concat, generic collections — all pass.
+
+**Tests:** 5 regression tests added:
+- `CodeExecutor_WithDowngradedRefs_ResolvesSystemObject`
+- `CodeExecutor_WithDowngradedRefs_CompilesCrossModuleCode`
+- `CodeExecutor_WithDowngradedRefs_ConsoleOutputWorks`
+- `CodeExecutor_WithDowngradedRefs_LinqWorks`
+- `CodeExecutor_DowngradedRefs_HaveInMemoryDisplay`
+
+**Bug class:** Any code path that adds target-project BCL references to CSharpScript options risks conflicting with the host runtime's BCL. Invariant: script execution must use ONLY the host runtime's BCL, never the target project's.
+
 ## Remaining Known Limitations
 
 1. **Diagnose count (1143):** NuGet resolution from `project.assets.json` resolves direct packages but not all transitive dependencies. Modules that depend on many NuGet packages (Server.Mcp, Tests) still have unresolved types. This is a best-effort approach — full MSBuild resolution would require hosting MSBuild, which is intentionally avoided.
