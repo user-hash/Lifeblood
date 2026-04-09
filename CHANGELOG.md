@@ -7,6 +7,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-09
+
+### Fixed
+
+- **CS0518 "System.Object is not defined" on multi-module workspaces**
+
+  Fix: Explicitly load the host .NET runtime's BCL assemblies from the runtime directory (17 core assemblies). Use `WithReferences` (replace) instead of `AddReferences` to drop the useless "Unresolved" defaults. Only add `CompilationReference` per project module — no transitive deps.
+
+### Added
+
+- 5 regression tests for the CS0518 bug class (downgraded multi-module topology).
+- `LoadHostBclReferences()` — resolves host BCL once per process via `Lazy<T>`.
+
+### Changed
+
+- **MCP server deployment**: `.mcp.json` now points to `dist/` (published output) instead of `dotnet run --project`. Decouples running server from build locks.
+- Tests: 288 → 293.
+
 ## [0.5.0] - 2026-04-09
 
 Cross-assembly semantic analysis. The gap that required grep fallback for cross-module consumer counting is gone.
@@ -239,7 +257,9 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/user-hash/Lifeblood/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/user-hash/Lifeblood/compare/v0.3.0...v0.5.0
 [0.3.0]: https://github.com/user-hash/Lifeblood/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/user-hash/Lifeblood/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/user-hash/Lifeblood/compare/v0.2.0...v0.2.1
