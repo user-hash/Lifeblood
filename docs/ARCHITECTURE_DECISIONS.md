@@ -42,7 +42,7 @@ Frozen choices for framework v1. These do not change without a major version bum
 
 **Decision:** Adapter capabilities must reflect actual extraction, not aspirational claims.
 **Reason:** Framework consumers rely on capability declarations to decide what analysis is trustworthy.
-**Example:** Roslyn adapter lowered `OverrideResolution` to `None` and `CrossModuleReferences` to `BestEffort` during hardening because those extractions are not yet implemented.
+**Example:** Roslyn adapter lowered `OverrideResolution` to `None` during hardening because override extraction was not yet implemented. Both have since been promoted to `Proven` after implementation: overrides via `IMethodSymbol.OverriddenMethod`, cross-module via `KnownModuleAssemblies`.
 
 ## ADR-008: CLI is the composition root
 

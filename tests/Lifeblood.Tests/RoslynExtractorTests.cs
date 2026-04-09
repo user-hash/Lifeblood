@@ -548,25 +548,185 @@ public class Resource
         Assert.NotNull(dtor);
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // Cross-assembly edge extraction
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_CrossAssembly_TypeReference()
+    {
+        // Module A: defines IPort interface
+        var moduleASource = @"
+namespace ModuleA;
+public interface IPort { void Execute(); }";
+
+        // Module B: references IPort from Module A (via metadata)
+        var moduleBSource = @"
+using ModuleA;
+namespace ModuleB;
+public class Adapter : IPort { public void Execute() { } }";
+
+        var (modelB, rootB) = CompileCrossAssembly("ModuleA", moduleASource, "ModuleB", moduleBSource);
+
+        var extractor = new RoslynEdgeExtractor
+        {
+            KnownModuleAssemblies = new HashSet<string>(StringComparer.Ordinal) { "ModuleA", "ModuleB" }
+        };
+        var edges = extractor.Extract(modelB, rootB);
+
+        // Adapter should have an Implements edge pointing to ModuleA's IPort
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId.Contains("Adapter")
+            && e.TargetId.Contains("IPort"));
+    }
+
+    [Fact]
+    public void ExtractEdges_CrossAssembly_MethodCall()
+    {
+        var moduleASource = @"
+namespace ModuleA;
+public class Logger { public void Log(string msg) { } }";
+
+        var moduleBSource = @"
+using ModuleA;
+namespace ModuleB;
+public class Service
+{
+    private Logger _log = new Logger();
+    public void Run() { _log.Log(""hello""); }
+}";
+
+        var (modelB, rootB) = CompileCrossAssembly("ModuleA", moduleASource, "ModuleB", moduleBSource);
+
+        var extractor = new RoslynEdgeExtractor
+        {
+            KnownModuleAssemblies = new HashSet<string>(StringComparer.Ordinal) { "ModuleA", "ModuleB" }
+        };
+        var edges = extractor.Extract(modelB, rootB);
+
+        // Cross-module method call: Service.Run → Logger.Log
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Run")
+            && e.TargetId.Contains("Log"));
+    }
+
+    [Fact]
+    public void ExtractEdges_CrossAssembly_WithoutKnownModules_NoEdges()
+    {
+        // Without KnownModuleAssemblies set, cross-module edges should NOT be created
+        var moduleASource = @"
+namespace ModuleA;
+public interface IPort { }";
+
+        var moduleBSource = @"
+using ModuleA;
+namespace ModuleB;
+public class Adapter : IPort { }";
+
+        var (modelB, rootB) = CompileCrossAssembly("ModuleA", moduleASource, "ModuleB", moduleBSource);
+
+        var extractor = new RoslynEdgeExtractor(); // No KnownModuleAssemblies
+        var edges = extractor.Extract(modelB, rootB);
+
+        // Should NOT have cross-module Implements edge (old behavior preserved)
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Implements
+            && e.TargetId.Contains("IPort"));
+    }
+
+    [Fact]
+    public void ExtractEdges_CrossAssembly_BclTypesStillFiltered()
+    {
+        // Even with KnownModuleAssemblies, System.* types should be filtered
+        var moduleBSource = @"
+namespace ModuleB;
+public class Service
+{
+    private System.Collections.Generic.List<string> _items = new();
+}";
+
+        var tree = CSharpSyntaxTree.ParseText(moduleBSource);
+        var refList = BclRefs();
+        var compilation = CSharpCompilation.Create("ModuleB",
+            new[] { tree }, refList,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var model = compilation.GetSemanticModel(tree);
+
+        var extractor = new RoslynEdgeExtractor
+        {
+            KnownModuleAssemblies = new HashSet<string>(StringComparer.Ordinal) { "ModuleB" }
+        };
+        var edges = extractor.Extract(model, tree.GetRoot());
+
+        // No edges to System types
+        Assert.DoesNotContain(edges, e => e.TargetId.Contains("System."));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────────────────────────
+
     private static (SemanticModel model, SyntaxNode root) Compile(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source);
-        var refs = new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) };
+        var compilation = CSharpCompilation.Create("TestAssembly",
+            new[] { tree }, BclRefs(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        // Also add System.Runtime for netcore
+        var model = compilation.GetSemanticModel(tree);
+        return (model, tree.GetRoot());
+    }
+
+    /// <summary>
+    /// Compile two modules where Module B references Module A via PE metadata.
+    /// Returns the semantic model for Module B — the consumer side where cross-module
+    /// edges need to be extracted.
+    /// </summary>
+    private static (SemanticModel model, SyntaxNode root) CompileCrossAssembly(
+        string moduleAName, string moduleASource,
+        string moduleBName, string moduleBSource)
+    {
+        var bclRefs = BclRefs();
+
+        // Compile Module A
+        var treeA = CSharpSyntaxTree.ParseText(moduleASource);
+        var compilationA = CSharpCompilation.Create(moduleAName,
+            new[] { treeA }, bclRefs,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        // Downgrade Module A to PE reference (same as ModuleCompilationBuilder does)
+        MetadataReference moduleARef;
+        using (var ms = new MemoryStream())
+        {
+            var emitResult = compilationA.Emit(ms);
+            Assert.True(emitResult.Success,
+                $"Module A compilation failed: {string.Join(", ", emitResult.Diagnostics)}");
+            moduleARef = MetadataReference.CreateFromImage(ms.ToArray());
+        }
+
+        // Compile Module B with Module A as metadata reference
+        var treeB = CSharpSyntaxTree.ParseText(moduleBSource);
+        var refsB = new List<MetadataReference>(bclRefs) { moduleARef };
+        var compilationB = CSharpCompilation.Create(moduleBName,
+            new[] { treeB }, refsB,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var modelB = compilationB.GetSemanticModel(treeB);
+        return (modelB, treeB.GetRoot());
+    }
+
+    private static List<MetadataReference> BclRefs()
+    {
+        var refList = new List<MetadataReference>
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location)
+        };
         var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
-        var refList = new List<MetadataReference>(refs);
         if (runtimeDir != null)
         {
             var sr = Path.Combine(runtimeDir, "System.Runtime.dll");
             if (File.Exists(sr)) refList.Add(MetadataReference.CreateFromFile(sr));
         }
-
-        var compilation = CSharpCompilation.Create("TestAssembly",
-            new[] { tree }, refList,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-        var model = compilation.GetSemanticModel(tree);
-        return (model, tree.GetRoot());
+        return refList;
     }
 }

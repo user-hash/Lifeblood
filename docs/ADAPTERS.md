@@ -108,7 +108,7 @@ Before shipping an adapter, verify:
 - [ ] No duplicate edges (unique source+target+kind)
 - [ ] Symbols with `parentId` reference existing symbols
 - [ ] Output is deterministic (same input produces same JSON)
-- [ ] `IsFromSource` filtering applied (no edges to external/stdlib types)
+- [ ] External type filtering applied (no edges to BCL/stdlib types — only edges to source-defined or workspace-tracked symbols)
 - [ ] Self-analysis works (adapter can analyze its own source code)
 - [ ] Output passes through `dotnet run --project src/Lifeblood.CLI -- analyze --graph your-output.json`
 

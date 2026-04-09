@@ -131,6 +131,19 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            // External DLL references via HintPath.
+            // These are non-module, non-NuGet assemblies (e.g., Unity engine DLLs)
+            // that Roslyn needs as metadata references for accurate compilation.
+            var externalDlls = doc.Descendants()
+                .Where(el => el.Name.LocalName == "Reference")
+                .Select(el => el.Elements()
+                    .FirstOrDefault(c => c.Name.LocalName == "HintPath")?.Value)
+                .Where(v => v != null)
+                .Select(v => Path.GetFullPath(Path.Combine(projectDir, v!)))
+                .Where(_fs.FileExists)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
             // Pure detection: no PackageReference or assembly Reference
             bool isPure = !doc.Descendants().Any(el =>
                 el.Name.LocalName == "PackageReference"
@@ -142,6 +155,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 FilePaths = sourceFiles,
                 Dependencies = deps,
                 IsPure = isPure,
+                ExternalDllPaths = externalDlls,
                 Properties = new Dictionary<string, string>
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),

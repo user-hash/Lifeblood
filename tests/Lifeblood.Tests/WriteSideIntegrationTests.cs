@@ -107,18 +107,45 @@ public class WriteSideIntegrationTests
         Assert.Contains("this[", indexers[0].Id);
     }
 
+    // ── Cross-assembly graph edges ──
+
+    [Fact]
+    public void AnalyzeWriteSideApp_CrossAssemblyEdges_ServiceReferencesCore()
+    {
+        if (!TryAnalyze(out var graph, out _)) return;
+
+        // GreetingService (in WriteSideApp.Service) references IGreeter (in WriteSideApp.Core).
+        // This is a cross-assembly edge — only works with KnownModuleAssemblies.
+        Assert.Contains(graph.Edges, e =>
+            e.Kind == EdgeKind.References
+            && e.SourceId.Contains("GreetingService")
+            && e.TargetId.Contains("IGreeter"));
+    }
+
+    [Fact]
+    public void AnalyzeWriteSideApp_CrossAssemblyEdges_FormalGreeterInheritsGreeter()
+    {
+        if (!TryAnalyze(out var graph, out _)) return;
+
+        // FormalGreeter (in WriteSideApp.Service) inherits Greeter (in WriteSideApp.Core).
+        Assert.Contains(graph.Edges, e =>
+            e.Kind == EdgeKind.Inherits
+            && e.SourceId.Contains("FormalGreeter")
+            && e.TargetId.Contains("Greeter")
+            && !e.TargetId.Contains("FormalGreeter"));
+    }
+
     // ── Write-side: FindReferences ──
 
     [Fact]
     public void FindReferences_IGreeter_ReturnsRealLocations()
     {
         if (!TryAnalyze(out _, out var adapter)) return;
-        var host = new RoslynCompilationHost(adapter.Compilations!);
+        var host = new RoslynCompilationHost(adapter.Compilations!, adapter.ModuleDependencies);
 
         var refs = host.FindReferences("type:WriteSideApp.Core.IGreeter");
 
         // IGreeter is referenced by: Greeter (implements), GreetingService (field type + constructor param)
-        // AdhocWorkspace-based FindReferences may return subset, but should find at least some
         Assert.NotNull(refs);
         // Verify at least one real file path is returned
         if (refs.Length > 0)
@@ -131,13 +158,33 @@ public class WriteSideIntegrationTests
         }
     }
 
+    [Fact]
+    public void FindReferences_IGreeter_CrossAssembly_FindsServiceUsage()
+    {
+        if (!TryAnalyze(out _, out var adapter)) return;
+        var host = new RoslynCompilationHost(adapter.Compilations!, adapter.ModuleDependencies);
+
+        var refs = host.FindReferences("type:WriteSideApp.Core.IGreeter");
+
+        // With ProjectReference links, FindReferences should find IGreeter usage
+        // in BOTH Core (declaration, Greeter implements) AND Service (GreetingService field/ctor).
+        // Check that at least one reference is from a Service file.
+        Assert.True(refs.Length > 0, "FindReferences should return results for IGreeter");
+        var hasServiceRef = refs.Any(r =>
+            r.FilePath.Contains("Service", StringComparison.OrdinalIgnoreCase)
+            || r.FilePath.Contains("GreetingService", StringComparison.OrdinalIgnoreCase));
+        Assert.True(hasServiceRef,
+            $"FindReferences should find IGreeter in GreetingService (cross-assembly). " +
+            $"Got {refs.Length} refs: {string.Join(", ", refs.Select(r => r.FilePath))}");
+    }
+
     // ── Write-side: Rename ──
 
     [Fact]
     public void Rename_GreeterType_ReturnsRealEdits()
     {
         if (!TryAnalyze(out _, out var adapter)) return;
-        using var refactoring = new RoslynWorkspaceRefactoring(adapter.Compilations!);
+        using var refactoring = new RoslynWorkspaceRefactoring(adapter.Compilations!, adapter.ModuleDependencies);
 
         var edits = refactoring.Rename("type:WriteSideApp.Core.Greeter", "SimpleGreeter");
 

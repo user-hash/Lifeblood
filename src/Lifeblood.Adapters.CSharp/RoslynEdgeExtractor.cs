@@ -22,6 +22,14 @@ public sealed class RoslynEdgeExtractor
         Confidence = ConfidenceLevel.Proven,
     };
 
+    /// <summary>
+    /// Assembly names of all modules in the workspace. When set, cross-module edges
+    /// are extracted: metadata symbols whose ContainingAssembly matches a known module
+    /// are treated as tracked (not filtered out like BCL/framework types).
+    /// Set by RoslynWorkspaceAnalyzer before processing begins.
+    /// </summary>
+    public HashSet<string>? KnownModuleAssemblies { get; set; }
+
     public List<Edge> Extract(SemanticModel model, SyntaxNode root)
     {
         var edges = new List<Edge>();
@@ -82,7 +90,7 @@ public sealed class RoslynEdgeExtractor
             && typeSymbol.BaseType.SpecialType != SpecialType.System_Object
             && typeSymbol.BaseType.SpecialType != SpecialType.System_ValueType
             && typeSymbol.BaseType.SpecialType != SpecialType.System_Enum
-            && IsFromSource(typeSymbol.BaseType))
+            && IsTracked(typeSymbol.BaseType))
         {
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(typeSymbol.BaseType));
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Inherits);
@@ -91,7 +99,7 @@ public sealed class RoslynEdgeExtractor
         // Interfaces → Implements (only source-defined interfaces)
         foreach (var iface in typeSymbol.Interfaces)
         {
-            if (!IsFromSource(iface)) continue;
+            if (!IsTracked(iface)) continue;
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(iface));
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Implements);
         }
@@ -104,7 +112,7 @@ public sealed class RoslynEdgeExtractor
             switch (member)
             {
                 case IMethodSymbol method when method.OverriddenMethod != null
-                    && IsFromSource(method.OverriddenMethod):
+                    && IsTracked(method.OverriddenMethod):
                 {
                     AddEdge(edges, seen,
                         GetMethodId(method), GetMethodId(method.OverriddenMethod),
@@ -112,7 +120,7 @@ public sealed class RoslynEdgeExtractor
                     break;
                 }
                 case IPropertySymbol prop when prop.OverriddenProperty != null
-                    && IsFromSource(prop.OverriddenProperty):
+                    && IsTracked(prop.OverriddenProperty):
                 {
                     var typeFqn = RoslynSymbolExtractor.GetFullName(prop.ContainingType);
                     var baseFqn = RoslynSymbolExtractor.GetFullName(prop.OverriddenProperty.ContainingType);
@@ -128,7 +136,7 @@ public sealed class RoslynEdgeExtractor
                     break;
                 }
                 case IEventSymbol evt when evt.OverriddenEvent != null
-                    && IsFromSource(evt.OverriddenEvent):
+                    && IsTracked(evt.OverriddenEvent):
                 {
                     var typeFqn = RoslynSymbolExtractor.GetFullName(evt.ContainingType);
                     var baseFqn = RoslynSymbolExtractor.GetFullName(evt.OverriddenEvent.ContainingType);
@@ -149,7 +157,7 @@ public sealed class RoslynEdgeExtractor
         var symbolInfo = model.GetSymbolInfo(invocation);
         var target = symbolInfo.Symbol as IMethodSymbol;
         if (target?.ContainingType == null) return;
-        if (!IsFromSource(target)) return;
+        if (!IsTracked(target)) return;
 
         var caller = FindContainingMethodOrLocal(model, invocation);
         if (caller == null) return;
@@ -175,7 +183,7 @@ public sealed class RoslynEdgeExtractor
         var symbolInfo = model.GetSymbolInfo(creation);
         var target = symbolInfo.Symbol as IMethodSymbol;
         if (target?.ContainingType == null) return;
-        if (!IsFromSource(target.ContainingType)) return;
+        if (!IsTracked(target.ContainingType)) return;
 
         var caller = FindContainingMethodOrLocal(model, creation);
         if (caller == null) return;
@@ -200,7 +208,7 @@ public sealed class RoslynEdgeExtractor
 
         // Only track references to source-defined types
         if (referencedSymbol is not INamedTypeSymbol referencedType) return;
-        if (!IsFromSource(referencedType)) return;
+        if (!IsTracked(referencedType)) return;
 
         var containingType = FindContainingType(model, identifier);
         if (containingType == null) return;
@@ -219,7 +227,7 @@ public sealed class RoslynEdgeExtractor
         var symbolInfo = model.GetSymbolInfo(memberAccess);
         var target = symbolInfo.Symbol;
         if (target?.ContainingType == null) return;
-        if (!IsFromSource(target.ContainingType)) return;
+        if (!IsTracked(target.ContainingType)) return;
 
         var containingType = FindContainingType(model, memberAccess);
         if (containingType == null) return;
@@ -251,7 +259,7 @@ public sealed class RoslynEdgeExtractor
             var typeInfo = model.GetTypeInfo(typeArg);
             var argType = typeInfo.Type as INamedTypeSymbol;
             if (argType == null) continue;
-            if (!IsFromSource(argType)) continue;
+            if (!IsTracked(argType)) continue;
 
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(argType));
             if (sourceId != targetId)
@@ -271,7 +279,7 @@ public sealed class RoslynEdgeExtractor
         var typeInfo = model.GetTypeInfo(typeofExpr.Type);
         var referencedType = typeInfo.Type as INamedTypeSymbol;
         if (referencedType == null) return;
-        if (!IsFromSource(referencedType)) return;
+        if (!IsTracked(referencedType)) return;
 
         var containingType = FindContainingType(model, typeofExpr);
         if (containingType == null) return;
@@ -285,7 +293,7 @@ public sealed class RoslynEdgeExtractor
 
     /// <summary>
     /// Extract References edges for attribute types.
-    /// [Obsolete] references System.ObsoleteAttribute (filtered by IsFromSource).
+    /// [Obsolete] references System.ObsoleteAttribute (filtered by IsTracked).
     /// [MyCustomAttribute] references the source-defined attribute class.
     /// </summary>
     private void ExtractAttributeEdge(
@@ -295,7 +303,7 @@ public sealed class RoslynEdgeExtractor
         var attrInfo = model.GetSymbolInfo(attribute);
         var attrCtor = attrInfo.Symbol as IMethodSymbol;
         if (attrCtor?.ContainingType == null) return;
-        if (!IsFromSource(attrCtor.ContainingType)) return;
+        if (!IsTracked(attrCtor.ContainingType)) return;
 
         var containingType = FindContainingType(model, attribute);
         if (containingType == null) return;
@@ -359,21 +367,34 @@ public sealed class RoslynEdgeExtractor
     }
 
     /// <summary>
-    /// Returns true if the symbol is defined in source (not from a metadata/BCL reference).
-    /// Only creates edges to source-defined symbols to avoid dangling targets.
-    /// Filters out System.* types that appear source-like due to compiler-generated code.
+    /// Returns true if the symbol is tracked in the workspace graph.
+    /// A symbol is tracked if it's defined in source (same module) OR if it's a metadata
+    /// symbol from another analyzed module (cross-assembly reference).
+    /// Filters out BCL/framework types (System.*, Microsoft.*) regardless of origin.
     /// </summary>
-    private static bool IsFromSource(ISymbol? symbol)
+    private bool IsTracked(ISymbol? symbol)
     {
         if (symbol == null) return false;
-        if (symbol.DeclaringSyntaxReferences.Length == 0) return false;
-        // Filter BCL types — check for "System" as a complete namespace segment.
+
+        // Filter BCL/framework types — check for "System" as a complete namespace segment.
         // Must not filter user namespaces like "SystemManager" or "SystemConfig".
         var ns = symbol.ContainingNamespace?.ToDisplayString() ?? "";
         if (ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal)) return false;
-        // Microsoft.* is also BCL/framework
         if (ns.StartsWith("Microsoft.", StringComparison.Ordinal)) return false;
-        return true;
+
+        // Source symbol in the current compilation — always tracked
+        if (symbol.DeclaringSyntaxReferences.Length > 0) return true;
+
+        // Cross-module: metadata symbol from another analyzed module.
+        // When Module A is compiled first and downgraded to a PE reference,
+        // symbols from A appear as metadata symbols in Module B's compilation.
+        // We track these if the containing assembly is a known workspace module.
+        if (KnownModuleAssemblies != null
+            && symbol.ContainingAssembly != null
+            && KnownModuleAssemblies.Contains(symbol.ContainingAssembly.Name))
+            return true;
+
+        return false;
     }
 
     private static void AddEdge(

@@ -3,7 +3,6 @@ using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.FindSymbols;
 using DomainDiagnosticSeverity = Lifeblood.Domain.Results.DiagnosticSeverity;
 using DomainReferenceLocation = Lifeblood.Domain.Results.ReferenceLocation;
 
@@ -18,10 +17,13 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
     private readonly Lazy<RoslynWorkspaceManager> _manager;
 
-    public RoslynCompilationHost(IReadOnlyDictionary<string, CSharpCompilation> compilations)
+    public RoslynCompilationHost(
+        IReadOnlyDictionary<string, CSharpCompilation> compilations,
+        IReadOnlyDictionary<string, string[]>? moduleDependencies = null)
     {
         _compilations = compilations;
-        _manager = new Lazy<RoslynWorkspaceManager>(() => new RoslynWorkspaceManager(compilations));
+        _manager = new Lazy<RoslynWorkspaceManager>(
+            () => new RoslynWorkspaceManager(compilations, moduleDependencies));
     }
 
     public bool IsAvailable => _compilations.Count > 0;
@@ -126,42 +128,103 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
 
     public DomainReferenceLocation[] FindReferences(string symbolId)
     {
-        var mgr = _manager.Value;
-        if (mgr.Solution == null) return Array.Empty<DomainReferenceLocation>();
+        // Direct compilation scan — reliable across cross-project boundaries
+        // where AdhocWorkspace's SymbolFinder.FindReferencesAsync may miss results.
+        // Same approach as FindImplementations: scan each retained compilation independently.
+        var targetDisplayString = ResolveDisplayString(symbolId);
+        if (targetDisplayString == null) return Array.Empty<DomainReferenceLocation>();
 
-        var roslynSymbol = mgr.ResolveSymbol(symbolId, fallbackToStandalone: true);
-        if (roslynSymbol == null) return Array.Empty<DomainReferenceLocation>();
-
-        var references = SymbolFinder.FindReferencesAsync(roslynSymbol, mgr.Solution).GetAwaiter().GetResult();
         var results = new List<DomainReferenceLocation>();
+        var seen = new HashSet<(string, int, int)>(); // (filePath, line, column) dedup
 
-        foreach (var refSymbol in references)
+        foreach (var compilation in _compilations.Values)
         {
-            foreach (var location in refSymbol.Locations)
+            foreach (var tree in compilation.SyntaxTrees)
             {
-                var lineSpan = location.Location.GetMappedLineSpan();
-                var sourceText = location.Location.SourceTree?.GetText();
-                var spanText = sourceText != null
-                    ? sourceText.GetSubText(location.Location.SourceSpan).ToString()
-                    : "";
+                var model = compilation.GetSemanticModel(tree);
+                var root = tree.GetRoot();
+                var sourceText = tree.GetText();
 
-                results.Add(new DomainReferenceLocation
+                foreach (var node in root.DescendantNodes())
                 {
-                    FilePath = lineSpan.Path ?? "",
-                    Line = lineSpan.StartLinePosition.Line + 1,
-                    Column = lineSpan.StartLinePosition.Character + 1,
-                    SpanText = spanText,
-                });
+                    // Check both symbol resolution paths: GetSymbolInfo for references,
+                    // GetDeclaredSymbol for declarations
+                    var symbolInfo = model.GetSymbolInfo(node);
+                    var resolved = symbolInfo.Symbol;
+                    if (resolved == null) continue;
+
+                    // Match by display string (fully qualified name) — handles cross-assembly
+                    // symbols where SymbolEqualityComparer fails across compilations.
+                    if (resolved.ToDisplayString() != targetDisplayString
+                        && resolved.OriginalDefinition.ToDisplayString() != targetDisplayString)
+                        continue;
+
+                    var span = node.GetLocation().GetMappedLineSpan();
+                    var line = span.StartLinePosition.Line + 1;
+                    var column = span.StartLinePosition.Character + 1;
+                    var filePath = span.Path ?? "";
+
+                    if (!seen.Add((filePath, line, column))) continue;
+
+                    var spanText = sourceText.GetSubText(node.Span).ToString();
+                    results.Add(new DomainReferenceLocation
+                    {
+                        FilePath = filePath,
+                        Line = line,
+                        Column = column,
+                        SpanText = spanText,
+                    });
+                }
             }
         }
 
         return results.ToArray();
     }
 
-    public DefinitionLocation? FindDefinition(string symbolId)
+    /// <summary>
+    /// Resolve a symbol ID to its Roslyn display string for cross-compilation matching.
+    /// Uses ResolveFromSource to prefer the source-defined symbol, whose display string
+    /// is canonical (correct nullability, no assembly qualification).
+    /// </summary>
+    private string? ResolveDisplayString(string symbolId)
+        => ResolveFromSource(symbolId)?.ToDisplayString();
+
+    /// <summary>
+    /// Resolve a symbol ID, preferring the source-defined copy over metadata copies.
+    /// In a multi-assembly workspace, the same symbol exists as source in its home module
+    /// and as metadata in every consumer. The source copy has the canonical display string,
+    /// source locations, and XML documentation — metadata copies have none of these.
+    /// </summary>
+    private ISymbol? ResolveFromSource(string symbolId)
     {
         var mgr = _manager.Value;
         var roslynSymbol = mgr.ResolveSymbol(symbolId, fallbackToStandalone: true);
+        if (roslynSymbol != null && IsFromSource(roslynSymbol)) return roslynSymbol;
+
+        // Workspace returned metadata copy — search standalone compilations for source
+        var parsed = RoslynWorkspaceManager.ParseSymbolId(symbolId);
+        if (parsed.Kind == null || parsed.Parts == null) return roslynSymbol;
+
+        foreach (var compilation in _compilations.Values)
+        {
+            var found = RoslynWorkspaceManager.FindInCompilation(compilation, parsed);
+            if (found != null && IsFromSource(found)) return found;
+        }
+        return roslynSymbol; // metadata fallback — better than null
+    }
+
+    /// <summary>
+    /// Returns true if the symbol has at least one source location (not metadata-only).
+    /// </summary>
+    private static bool IsFromSource(ISymbol symbol)
+        => symbol.Locations.Any(l => l.IsInSource);
+
+    public DefinitionLocation? FindDefinition(string symbolId)
+    {
+        // Resolve with source preference — a cross-assembly symbol may resolve to its
+        // metadata copy first (no source location, no XML docs). The source-defined copy
+        // in the home compilation has the actual file/line/documentation.
+        var roslynSymbol = ResolveFromSource(symbolId);
         if (roslynSymbol == null) return null;
 
         var location = roslynSymbol.Locations.FirstOrDefault(l => l.IsInSource);
@@ -183,8 +246,8 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
 
     public string[] FindImplementations(string symbolId)
     {
-        var mgr = _manager.Value;
-        var roslynSymbol = mgr.ResolveSymbol(symbolId, fallbackToStandalone: true);
+        // Prefer source-defined symbol for accurate type kind and display string comparison.
+        var roslynSymbol = ResolveFromSource(symbolId);
         if (roslynSymbol == null) return Array.Empty<string>();
 
         var results = new List<string>();
@@ -324,8 +387,8 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
 
     public string GetDocumentation(string symbolId)
     {
-        var mgr = _manager.Value;
-        var roslynSymbol = mgr.ResolveSymbol(symbolId, fallbackToStandalone: true);
+        // Prefer source-defined symbol — metadata copies don't carry XML documentation.
+        var roslynSymbol = ResolveFromSource(symbolId);
         if (roslynSymbol == null) return "";
         return GetXmlDocumentation(roslynSymbol);
     }
@@ -365,12 +428,6 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
             INamespaceSymbol ns => Internal.SymbolIds.Namespace(ns.ToDisplayString()),
             _ => $"unknown:{symbol.ToDisplayString()}",
         };
-    }
-
-    private static bool IsFromSource(ISymbol? symbol)
-    {
-        if (symbol == null) return false;
-        return symbol.Locations.Any(l => l.IsInSource);
     }
 
     private CSharpCompilation? ResolveCompilation(string? moduleName)
