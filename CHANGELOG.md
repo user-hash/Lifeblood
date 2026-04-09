@@ -7,19 +7,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-09
+
+Cross-assembly semantic analysis. The gap that required grep fallback for cross-module consumer counting is gone.
+
 ### Fixed
 
-- **Module discovery merge**: filesystem scan now merges with csproj `<Compile Include>` items instead of choosing one path.
 - **Cross-assembly edges were silently dropped**: `IsFromSource` rejected metadata symbols from other analyzed modules. Renamed to `IsTracked` — now accepts symbols whose `ContainingAssembly.Name` matches a known workspace module. Resolves F3 (empty cross-module dependency matrix).
 - **FindReferences returned empty for cross-assembly symbols**: `SymbolFinder.FindReferencesAsync` doesn't work across AdhocWorkspace project boundaries. Rewritten to direct compilation scan (same proven pattern as `FindImplementations`).
 - **FindDefinition/GetDocumentation returned empty for cross-assembly symbols**: `ResolveSymbol` could return a metadata copy (no source location, no XML docs). New `ResolveFromSource` prefers source-defined symbols across all compilations.
 - **Dead `IsFromSource` in RoslynCompilationHost**: removed and replaced with wired `IsFromSource` used by `ResolveFromSource` for source preference.
+- **Module discovery merge**: filesystem scan now merges with csproj `<Compile Include>` items instead of choosing one path.
 
 ### Changed
 
+- **CrossModuleReferences capability**: upgraded from `BestEffort` to `Proven`.
 - **MinVer auto-versioning**: version derived from git tags via MinVer. No manual bumping — just tag and push.
 - **MCP server version**: `initialize` response now reports actual assembly version instead of hardcoded `"1.0.0"`.
-- **CrossModuleReferences capability**: upgraded from `BestEffort` to `Proven`.
 - Tests: 281 → 288.
 
 ### Added
