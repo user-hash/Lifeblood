@@ -1,6 +1,6 @@
 # Status
 
-Dogfood-verified. 281 tests. 17 MCP tools (7 read + 10 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+Dogfood-verified. 288 tests. 17 MCP tools (7 read + 10 write). CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
 
 ## Components
 
@@ -8,7 +8,7 @@ Dogfood-verified. 281 tests. 17 MCP tools (7 read + 10 write). CI green (4 jobs:
 |-----------|-------|
 | Lifeblood.Domain | Immutable graph model, GraphBuilder (with file-level edge derivation), GraphValidator, Evidence, ConfidenceLevel. |
 | Lifeblood.Application | 14 port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase. |
-| Lifeblood.Adapters.CSharp | Roslyn workspace analyzer with streaming compilation + downgrading. Incremental re-analyze (timestamp-based, per-module). Bidirectional compiler-as-a-service. |
+| Lifeblood.Adapters.CSharp | Roslyn workspace analyzer with streaming compilation + downgrading. Incremental re-analyze (timestamp-based, per-module). Cross-assembly edge extraction, HintPath DLL loading. Bidirectional compiler-as-a-service. |
 | Lifeblood.Adapters.JsonGraph | Import and export with full metadata round-trip. |
 | Lifeblood.Connectors.ContextPack | Context pack with GraphSummary, instruction file, reading order. |
 | Lifeblood.Connectors.Mcp | Graph provider with blast radius delegation and file-level impact. |
@@ -18,7 +18,7 @@ Dogfood-verified. 281 tests. 17 MCP tools (7 read + 10 write). CI green (4 jobs:
 | adapters/typescript | Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
 | Unity bridge | 17 tools via [McpForUnityTool]. Sidecar process. |
-| Lifeblood.Tests | 281 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze, file-level edges. |
+| Lifeblood.Tests | 288 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze, file-level edges, cross-assembly edges. |
 
 ## Rule Packs
 

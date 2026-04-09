@@ -11,11 +11,15 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 internal sealed class RoslynWorkspaceManager : IDisposable
 {
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
+    private readonly IReadOnlyDictionary<string, string[]>? _moduleDependencies;
     private AdhocWorkspace? _workspace;
 
-    public RoslynWorkspaceManager(IReadOnlyDictionary<string, CSharpCompilation> compilations)
+    public RoslynWorkspaceManager(
+        IReadOnlyDictionary<string, CSharpCompilation> compilations,
+        IReadOnlyDictionary<string, string[]>? moduleDependencies = null)
     {
         _compilations = compilations;
+        _moduleDependencies = moduleDependencies;
     }
 
     public AdhocWorkspace GetWorkspace()
@@ -164,12 +168,33 @@ internal sealed class RoslynWorkspaceManager : IDisposable
         var solutionInfo = SolutionInfo.Create(SolutionId.CreateNewId(), VersionStamp.Default);
         _workspace.AddSolution(solutionInfo);
 
+        // Track project IDs by module name for ProjectReference linking.
+        var projectIds = new Dictionary<string, ProjectId>(StringComparer.Ordinal);
+
+        // Phase 1: Create all projects with metadata references.
         foreach (var (name, compilation) in _compilations)
         {
             var projectId = ProjectId.CreateNewId(name);
+            projectIds[name] = projectId;
+
+            // When module dependencies are known, exclude metadata references that correspond
+            // to other workspace modules — they'll be replaced with ProjectReference links.
+            // This ensures Roslyn treats cross-module symbols as the SAME symbol (not metadata
+            // vs source copies), enabling FindReferences/Rename to work across assemblies.
+            var metadataRefs = compilation.References;
+            if (_moduleDependencies != null)
+            {
+                var depModuleNames = new HashSet<string>(
+                    _moduleDependencies.TryGetValue(name, out var deps) ? deps : Array.Empty<string>(),
+                    StringComparer.Ordinal);
+                metadataRefs = metadataRefs
+                    .Where(r => !IsModuleReference(r, depModuleNames))
+                    .ToArray();
+            }
+
             var projectInfo = ProjectInfo.Create(
                 projectId, VersionStamp.Default, name, name, LanguageNames.CSharp,
-                metadataReferences: compilation.References);
+                metadataReferences: metadataRefs);
             _workspace.AddProject(projectInfo);
 
             foreach (var tree in compilation.SyntaxTrees)
@@ -184,7 +209,52 @@ internal sealed class RoslynWorkspaceManager : IDisposable
             }
         }
 
+        // Phase 2: Add ProjectReference links between modules.
+        // This replaces the downgraded PE metadata references with proper project links,
+        // so Roslyn's SymbolFinder can follow cross-assembly references.
+        if (_moduleDependencies != null)
+        {
+            var solution = _workspace.CurrentSolution;
+            foreach (var (name, deps) in _moduleDependencies)
+            {
+                if (!projectIds.TryGetValue(name, out var projectId)) continue;
+                foreach (var dep in deps)
+                {
+                    if (projectIds.TryGetValue(dep, out var depProjectId))
+                        solution = solution.AddProjectReference(projectId, new ProjectReference(depProjectId));
+                }
+            }
+            _workspace.TryApplyChanges(solution);
+        }
+
         Solution = _workspace.CurrentSolution;
+    }
+
+    /// <summary>
+    /// Returns true if a metadata reference corresponds to a known workspace module.
+    /// These are replaced by ProjectReference links for cross-assembly symbol resolution.
+    /// Checks the PE assembly identity name (e.g., "WriteSideApp.Core"), not the file path,
+    /// because downgraded in-memory PE references have no file path.
+    /// </summary>
+    private static bool IsModuleReference(MetadataReference reference, HashSet<string> moduleNames)
+    {
+        if (reference is not PortableExecutableReference peRef) return false;
+
+        // For PE references, the Display property is the assembly name for in-memory images
+        // or the file path for file-based references. Check both patterns.
+        var display = peRef.Display ?? "";
+
+        // File-based reference: "C:\path\to\WriteSideApp.Core.dll"
+        if (display.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            || display.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            var fileName = Path.GetFileNameWithoutExtension(display);
+            return moduleNames.Contains(fileName);
+        }
+
+        // In-memory reference: Display is the assembly name (e.g., "WriteSideApp.Core").
+        // Don't use Path.GetFileNameWithoutExtension — it treats dots as file extensions.
+        return moduleNames.Contains(display);
     }
 
     public void Dispose()

@@ -136,13 +136,15 @@ Both shipped rule packs (`packs/hexagonal/rules.json`, `packs/clean-architecture
 
 **Root cause:** The rules schema (`rules.schema.json`) specifies camelCase. The rule pack files were written in snake_case. No validation step catches the mismatch. No test exercises rule loading from actual pack files.
 
-## F3: Cross-Module Dependency Matrix Is Empty
+## F3: Cross-Module Dependency Matrix Is Empty — RESOLVED
 
-**Severity:** Moderate — feature gap
+**Severity:** Moderate — feature gap → **Fixed (2026-04-09)**
 
-The context pack's `dependencyMatrix` (which should show how many type-level edges cross module boundaries) returned 0 entries. Module-level `DependsOn` edges exist (from `.csproj` parsing), but no type-level cross-module edges survive.
+The context pack's `dependencyMatrix` (which should show how many type-level edges cross module boundaries) returned 0 entries. Module-level `DependsOn` edges exist (from `.csproj` parsing), but no type-level cross-module edges survived.
 
-**Root cause:** Each module gets its own `CSharpCompilation` without cross-project metadata references. The `IsFromSource` filter correctly rejects edges to types not in the current compilation — but types from other modules aren't in the current compilation. This is a fundamental limitation of the per-module compilation approach, not a bug. The capability descriptor correctly claims `CrossModuleReferences = BestEffort`.
+**Root cause:** The `IsFromSource` filter (now `IsTracked`) rejected metadata symbols from other analyzed modules because `DeclaringSyntaxReferences.Length == 0` for PE-downgraded references. Types from other modules appeared as metadata, not source, so all cross-module edges were dropped.
+
+**Fix:** `RoslynEdgeExtractor.IsTracked` now accepts metadata symbols whose `ContainingAssembly.Name` matches a known workspace module (via `KnownModuleAssemblies`). The analyzer sets this before compilation starts. Cross-module edges are now extracted at Proven confidence. Capability upgraded from `BestEffort` to `Proven`. Additionally: `FindReferences` rewritten to direct compilation scan (cross-assembly), `FindDefinition`/`GetDocumentation` prefer source-defined symbols via `ResolveFromSource`, and `ModuleInfo.ExternalDllPaths` loads HintPath DLLs (Unity engine assemblies) to resolve compilation diagnostics.
 
 ## F4: 57 "Invariants" — Noise, Not Signal
 

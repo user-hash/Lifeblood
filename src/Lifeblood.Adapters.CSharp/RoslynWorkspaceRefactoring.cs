@@ -17,9 +17,12 @@ public sealed class RoslynWorkspaceRefactoring : IWorkspaceRefactoring, IDisposa
 {
     private readonly Lazy<RoslynWorkspaceManager> _manager;
 
-    public RoslynWorkspaceRefactoring(IReadOnlyDictionary<string, CSharpCompilation> compilations)
+    public RoslynWorkspaceRefactoring(
+        IReadOnlyDictionary<string, CSharpCompilation> compilations,
+        IReadOnlyDictionary<string, string[]>? moduleDependencies = null)
     {
-        _manager = new Lazy<RoslynWorkspaceManager>(() => new RoslynWorkspaceManager(compilations));
+        _manager = new Lazy<RoslynWorkspaceManager>(
+            () => new RoslynWorkspaceManager(compilations, moduleDependencies));
     }
 
     public TextEdit[] Rename(string symbolId, string newName)

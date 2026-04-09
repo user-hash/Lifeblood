@@ -152,6 +152,19 @@ internal sealed class ModuleCompilationBuilder
         references.AddRange(_nuget.Resolve(module, projectRoot, _refCache));
         references.AddRange(dependencyRefs);
 
+        // Load external DLLs referenced via HintPath (e.g., Unity engine assemblies).
+        // Uses the shared cache to deduplicate — 100 modules sharing UnityEngine.CoreModule.dll
+        // produce a single MetadataReference, not 100 independent copies.
+        foreach (var dllPath in module.ExternalDllPaths)
+        {
+            try
+            {
+                if (!BclReferenceLoader.IsNativeDll(dllPath))
+                    references.Add(_refCache.GetOrCreate(dllPath));
+            }
+            catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { }
+        }
+
         return CSharpCompilation.Create(
             module.Name,
             trees!,

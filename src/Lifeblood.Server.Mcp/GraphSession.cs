@@ -94,9 +94,9 @@ public sealed class GraphSession : IDisposable
             // For process-isolated execution, swap to ProcessIsolatedCodeExecutor.
             if (adapter.Compilations is { Count: > 0 })
             {
-                newCompilationHost = new RoslynCompilationHost(adapter.Compilations);
+                newCompilationHost = new RoslynCompilationHost(adapter.Compilations, adapter.ModuleDependencies);
                 newCodeExecutor = new RoslynCodeExecutor(adapter.Compilations);
-                newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations);
+                newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations, adapter.ModuleDependencies);
             }
 
             // Retain adapter for incremental re-analyze
@@ -144,9 +144,9 @@ public sealed class GraphSession : IDisposable
 
         if (_roslynAdapter.Compilations is { Count: > 0 })
         {
-            newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations);
+            newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
             newCodeExecutor = new RoslynCodeExecutor(_roslynAdapter.Compilations);
-            newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations);
+            newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
         }
 
         ArchitectureRule[]? rules = ResolveRules(rulesPath ?? _lastRulesPath);

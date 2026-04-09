@@ -43,6 +43,14 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     /// </summary>
     public IReadOnlyDictionary<string, CSharpCompilation>? Compilations => _compilations;
 
+    /// <summary>
+    /// Module dependency map: module name → array of dependency module names.
+    /// Available after analysis. Used by write-side tools to build AdhocWorkspace
+    /// with proper ProjectReference links for cross-assembly FindReferences/Rename.
+    /// </summary>
+    public IReadOnlyDictionary<string, string[]>? ModuleDependencies => _moduleDependencies;
+    private Dictionary<string, string[]>? _moduleDependencies;
+
     /// <summary>True if a previous analysis produced a snapshot that can be incrementally updated.</summary>
     public bool HasSnapshot => _snapshot != null;
 
@@ -83,6 +91,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // Phase 2+3: Streaming compilation + extraction.
         // Each module is compiled, extracted, then downgraded (unless RetainCompilations=true).
         // Memory: O(1 compilation) instead of O(N compilations).
+        // Set known module assemblies so the edge extractor creates cross-module edges
+        // (metadata symbols from other analyzed modules are tracked, not filtered).
+        _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
+            modules.Select(m => m.Name), StringComparer.Ordinal);
+
         var refCache = new SharedMetadataReferenceCache();
         var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
 
@@ -143,6 +156,9 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 });
             }
         }
+
+        // Capture module dependency map for write-side workspace construction
+        _moduleDependencies = BuildModuleDependencyMap(modules);
 
         _snapshot = snapshot;
         return snapshot.RebuildGraph();
@@ -224,6 +240,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         var modulesToRecompile = currentModules
             .Where(m => changedModules.Contains(m.Name))
             .ToArray();
+
+        // Ensure cross-module edge extraction uses the full module set
+        _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
+            currentModules.Select(m => m.Name), StringComparer.Ordinal);
 
         var refCache = new SharedMetadataReferenceCache();
         var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
@@ -314,7 +334,17 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             }
         }
 
+        _moduleDependencies = BuildModuleDependencyMap(currentModules);
+
         return (_snapshot.RebuildGraph(), changedFiles.Count);
+    }
+
+    private static Dictionary<string, string[]> BuildModuleDependencyMap(ModuleInfo[] modules)
+    {
+        var map = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        foreach (var module in modules)
+            map[module.Name] = module.Dependencies;
+        return map;
     }
 
     private static Dictionary<string, string> BuildModuleFileIndex(ModuleInfo[] modules)

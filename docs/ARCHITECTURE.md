@@ -88,7 +88,7 @@ Current Roslyn adapter capabilities:
 - TypeResolution: Proven
 - CallResolution: Proven
 - ImplementationResolution: Proven
-- CrossModuleReferences: BestEffort (compilations built in dependency order, but cycles are broken by skipping — degraded in cyclic graphs)
+- CrossModuleReferences: Proven (edge extractor tracks metadata symbols from known workspace modules via KnownModuleAssemblies — cycles still broken by skipping)
 - OverrideResolution: Proven (virtual dispatch chain via IMethodSymbol.OverriddenMethod)
 
 ## File-Level Edge Derivation
