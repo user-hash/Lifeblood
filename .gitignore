@@ -10,6 +10,9 @@ TestResults/
 *.nupkg
 artifacts/
 
+# Published MCP server (local development — decouples build from running instance)
+dist/
+
 # IDE
 .idea/
 
