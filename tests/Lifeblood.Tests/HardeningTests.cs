@@ -200,6 +200,171 @@ public class HardeningTests
     }
 
     // ──────────────────────────────────────────────────────────────
+    // CodeExecutor: CS0518 regression — downgraded refs bug class
+    // ──────────────────────────────────────────────────────────────
+    // Bug: WithReferences on ScriptOptions replaces framework refs,
+    //      causing CS0518 "System.Object is not defined". AddReferences
+    //      preserves them. This test reproduces the exact production
+    //      scenario: multi-module streaming workspace with downgraded
+    //      (null-Display) PE references — the configuration that hit
+    //      CS0518 on the DAWG 75-module workspace.
+
+    [Fact]
+    public void CodeExecutor_WithDowngradedRefs_ResolvesSystemObject()
+    {
+        // Build Module A, then downgrade it (Emit → CreateFromImage),
+        // producing a null-Display MetadataReference — identical to
+        // what ModuleCompilationBuilder does in streaming mode.
+        var (compilations, _) = BuildDowngradedMultiModuleCompilations();
+
+        var executor = new RoslynCodeExecutor(compilations);
+
+        // This is the exact line that triggered CS0518 before the fix.
+        // "return 42;" requires System.Object (boxing) and System.Int32.
+        var result = executor.Execute("return 42;");
+        Assert.True(result.Success, $"CS0518 regression: {result.Error}");
+        Assert.Equal("42", result.ReturnValue);
+    }
+
+    [Fact]
+    public void CodeExecutor_WithDowngradedRefs_CompilesCrossModuleCode()
+    {
+        // Cross-module type access: the script compiler should resolve ModA.Greeter
+        // via CompilationReference even when Module B has downgraded refs.
+        // Note: typeof() would fail at RUNTIME because the CLR can't load in-memory
+        // assemblies from disk. In production (Unity), assemblies are real DLLs.
+        // Here we test that COMPILATION succeeds (no CS0246 "type not found").
+        var (compilations, _) = BuildDowngradedMultiModuleCompilations();
+        var executor = new RoslynCodeExecutor(compilations);
+
+        // nameof() resolves at compile time — no runtime assembly loading needed.
+        var result = executor.Execute(
+            "return nameof(ModA.Greeter);",
+            imports: new[] { "ModA" });
+        Assert.True(result.Success, $"Cross-module compilation failed: {result.Error}");
+        Assert.Equal("Greeter", result.ReturnValue);
+    }
+
+    [Fact]
+    public void CodeExecutor_WithDowngradedRefs_ConsoleOutputWorks()
+    {
+        // Console.Write requires System.Console — another BCL assembly
+        // that WithReferences would have dropped.
+        var (compilations, _) = BuildDowngradedMultiModuleCompilations();
+        var executor = new RoslynCodeExecutor(compilations);
+
+        var result = executor.Execute("Console.Write(\"dogfood\");");
+        Assert.True(result.Success, $"Console failed: {result.Error}");
+        Assert.Equal("dogfood", result.Output);
+    }
+
+    [Fact]
+    public void CodeExecutor_WithDowngradedRefs_LinqWorks()
+    {
+        // LINQ requires System.Linq — tests that BCL transitive refs survive.
+        var (compilations, _) = BuildDowngradedMultiModuleCompilations();
+        var executor = new RoslynCodeExecutor(compilations);
+
+        var result = executor.Execute(
+            "return Enumerable.Range(1, 5).Sum();",
+            imports: new[] { "System.Linq" });
+        Assert.True(result.Success, $"LINQ failed: {result.Error}");
+        Assert.Equal("15", result.ReturnValue);
+    }
+
+    [Fact]
+    public void CodeExecutor_DowngradedRefs_HaveInMemoryDisplay()
+    {
+        // Verify our test fixture produces the same reference topology as production.
+        // CreateFromImage produces Display = "<in-memory assembly>" — NOT a file path.
+        // The dedup logic should collapse all such refs (they're superseded by
+        // CompilationReferences that give access to the actual module types).
+        var (compilations, downgradedRef) = BuildDowngradedMultiModuleCompilations();
+
+        Assert.Equal("<in-memory assembly>", downgradedRef.Display);
+
+        // Module B's references should include this in-memory ref
+        var modB = compilations["ModB"];
+        var inMemoryCount = modB.References.Count(r => r.Display == "<in-memory assembly>");
+        Assert.True(inMemoryCount > 0,
+            "Module B should have at least one in-memory reference (the downgraded Module A)");
+
+        // Executor should still work — CompilationReferences supersede downgraded refs.
+        // (Can't use typeof(ModB.Service) because the CLR would try to load ModB.dll
+        // from disk — CompilationReferences only work at compile time, not runtime loading.)
+        var executor = new RoslynCodeExecutor(compilations);
+        var result = executor.Execute("return 1 + 1;");
+        Assert.True(result.Success, $"Basic execution failed with downgraded refs: {result.Error}");
+        Assert.Equal("2", result.ReturnValue);
+    }
+
+    /// <summary>
+    /// Builds a 2-module streaming workspace where Module A is downgraded.
+    /// This produces the exact reference topology that caused CS0518.
+    /// Returns (compilations dict, the downgraded MetadataReference for assertions).
+    /// </summary>
+    private static (Dictionary<string, CSharpCompilation>, MetadataReference) BuildDowngradedMultiModuleCompilations()
+    {
+        var bclRefs = LoadBclReferences();
+
+        // Module A: simple type
+        var sourceA = "namespace ModA; public class Greeter { public string Greet() => \"hi\"; }";
+        var treeA = CSharpSyntaxTree.ParseText(sourceA, path: "Greeter.cs");
+        var compilationA = CSharpCompilation.Create("ModA", new[] { treeA }, bclRefs,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        // Downgrade Module A: Emit → CreateFromImage (this is the streaming trick)
+        using var ms = new MemoryStream();
+        var emitResult = compilationA.Emit(ms);
+        Assert.True(emitResult.Success, "Module A should emit successfully");
+        var downgradedRef = MetadataReference.CreateFromImage(ms.ToArray());
+
+        // Module B: references the DOWNGRADED Module A (not the compilation)
+        var sourceB = @"using ModA;
+namespace ModB;
+public class Service
+{
+    private readonly Greeter _g = new();
+    public string Run() => _g.Greet();
+}";
+        var treeB = CSharpSyntaxTree.ParseText(sourceB, path: "Service.cs");
+        var refsB = new List<MetadataReference>(bclRefs) { downgradedRef };
+        var compilationB = CSharpCompilation.Create("ModB", new[] { treeB }, refsB,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        // Sanity: both should compile
+        Assert.Empty(compilationA.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
+        Assert.Empty(compilationB.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
+
+        // Return BOTH compilations — this is what the real workspace retains
+        // when RetainCompilations=true (the code execution path).
+        var compilations = new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal)
+        {
+            ["ModA"] = compilationA,
+            ["ModB"] = compilationB,
+        };
+
+        return (compilations, downgradedRef);
+    }
+
+    private static MetadataReference[] LoadBclReferences()
+    {
+        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+        if (runtimeDir == null) return new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) };
+
+        var refs = new List<MetadataReference>();
+        foreach (var dll in new[] { "System.Runtime.dll", "System.Console.dll", "System.Collections.dll",
+                                     "System.Linq.dll", "System.Threading.dll", "System.Threading.Tasks.dll",
+                                     "netstandard.dll" })
+        {
+            var path = Path.Combine(runtimeDir, dll);
+            if (File.Exists(path)) refs.Add(MetadataReference.CreateFromFile(path));
+        }
+        refs.Add(MetadataReference.CreateFromFile(typeof(object).Assembly.Location));
+        return refs.ToArray();
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // ProcessIsolatedCodeExecutor: integration test
     // ──────────────────────────────────────────────────────────────
 

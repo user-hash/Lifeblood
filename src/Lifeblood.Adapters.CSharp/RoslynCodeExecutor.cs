@@ -80,6 +80,13 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
         "System.IO",
     };
 
+    /// <summary>
+    /// Host BCL assemblies, resolved once from the running .NET runtime directory.
+    /// ScriptOptions.Default only has "Unresolved" assembly names — these are the
+    /// real, file-backed references the script compiler actually needs.
+    /// </summary>
+    private static readonly Lazy<MetadataReference[]> HostBclReferences = new(LoadHostBclReferences);
+
     public RoslynCodeExecutor(IReadOnlyDictionary<string, CSharpCompilation> compilations)
     {
         _compilations = compilations;
@@ -116,19 +123,21 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
 
         try
         {
-            // Build script options with all project references + BCL
-            var allReferences = new List<MetadataReference>();
+            // Build references from two sources:
+            //  1. Host BCL — the running .NET runtime's actual assemblies (System.Runtime,
+            //     System.Linq, etc.). NOT the target project's BCL, which may be a different
+            //     runtime (e.g., Unity's netstandard stubs) and causes CS0518 conflicts.
+            //  2. CompilationReferences — give the script access to project types.
+            //     NOT compilation.References (transitive deps), which would inject the
+            //     target project's BCL assemblies and conflict with the host BCL.
+            //
+            // We use WithReferences (replace) instead of AddReferences (append) because
+            // ScriptOptions.Default contains 25 "Unresolved" named references that can't
+            // be resolved without TRUSTED_PLATFORM_ASSEMBLIES — they just add noise.
+            var allReferences = new List<MetadataReference>(HostBclReferences.Value.Length + _compilations.Count);
+            allReferences.AddRange(HostBclReferences.Value);
             foreach (var compilation in _compilations.Values)
-            {
                 allReferences.Add(compilation.ToMetadataReference());
-                allReferences.AddRange(compilation.References);
-            }
-
-            // Deduplicate by display name
-            var uniqueRefs = allReferences
-                .GroupBy(r => r.Display ?? "")
-                .Select(g => g.First())
-                .ToArray();
 
             var allImports = DefaultImports
                 .Concat(imports ?? Array.Empty<string>())
@@ -136,7 +145,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 .ToArray();
 
             var options = ScriptOptions.Default
-                .WithReferences(uniqueRefs)
+                .WithReferences(allReferences)
                 .WithImports(allImports);
 
             // Redirect Console output.
@@ -220,6 +229,56 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 ElapsedMs = Math.Round(elapsed, 1),
             };
         }
+    }
+
+    /// <summary>
+    /// Load the host .NET runtime's BCL assemblies from the runtime directory.
+    /// This gives script code access to System.Object, System.Linq, System.Console, etc.
+    /// without depending on ScriptOptions.Default's "Unresolved" named references.
+    /// </summary>
+    private static MetadataReference[] LoadHostBclReferences()
+    {
+        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+        if (runtimeDir == null)
+            return new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) };
+
+        var refs = new List<MetadataReference>();
+        // Core BCL assemblies needed for script execution.
+        // Intentionally explicit rather than globbing *.dll — avoids pulling in
+        // ASP.NET, WPF, etc. assemblies that slow compilation and enlarge the type space.
+        var coreAssemblies = new[]
+        {
+            "System.Runtime.dll",
+            "System.Console.dll",
+            "System.Collections.dll",
+            "System.Collections.Concurrent.dll",
+            "System.Linq.dll",
+            "System.Linq.Expressions.dll",
+            "System.Threading.dll",
+            "System.Threading.Tasks.dll",
+            "System.Text.RegularExpressions.dll",
+            "System.Memory.dll",
+            "System.IO.dll",
+            "System.IO.FileSystem.dll",
+            "System.Diagnostics.Debug.dll",
+            "System.Runtime.Extensions.dll",
+            "System.Runtime.InteropServices.dll",
+            "System.ComponentModel.dll",
+            "System.ObjectModel.dll",
+            "netstandard.dll",
+        };
+
+        foreach (var dll in coreAssemblies)
+        {
+            var path = Path.Combine(runtimeDir, dll);
+            if (File.Exists(path))
+                refs.Add(MetadataReference.CreateFromFile(path));
+        }
+
+        // Always include the core lib (contains System.Object, System.Int32, etc.)
+        refs.Add(MetadataReference.CreateFromFile(typeof(object).Assembly.Location));
+
+        return refs.ToArray();
     }
 
     /// <summary>
