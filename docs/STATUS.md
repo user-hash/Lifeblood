@@ -18,7 +18,7 @@ Dogfood-verified. 344 tests. 18 MCP tools (8 read + 10 write). 15 port interface
 | adapters/typescript | Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
 | Unity bridge | 18 tools via [McpForUnityTool]. Sidecar process. |
-| Lifeblood.Tests | 329 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent), RoslynSemanticView script globals. |
+| Lifeblood.Tests | 344 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent), RoslynSemanticView script globals, ProcessUsageProbe (12 probe tests + 3 use-case integration tests for the native usage reporting). |
 
 ## Rule Packs
 
@@ -54,9 +54,13 @@ Types:   174
 
 ## Production Verification
 
-Tested on a real 75-module Unity workspace (400k+ LOC):
+Tested on a real 75-module Unity workspace (400k+ LOC). Same workspace, two different call sites, two different memory profiles. Both are correct. Both are by design. Know which one applies to your use case.
+
+### CLI path (streaming, compilations released)
 
 ```
+$ lifeblood analyze --project D:/path/to/UnityProject
+
 Symbols: 44569
 Edges:   87238
 Modules: 75
@@ -79,9 +83,48 @@ Cycles: 91
 ──────────────────────────────────────────────────────────
 ```
 
-Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). All numbers come from the native `usage` block emitted by `lifeblood analyze` itself, not from an external measurement wrapper.
+### MCP path (compilations retained for write-side tools)
 
-The wall time and peak memory are an order of magnitude better than the figures older docs quoted (which were around 90 s and 4 GB). The `usage` block is now how the project tracks these numbers against the codebase, so they stay honest without per-release measurement chores.
+```
+> lifeblood_analyze projectPath="D:/path/to/UnityProject"
+  (returns JSON with summary + usage)
+
+mode             : full
+summary.symbols  : 44,607
+summary.edges    : 87,306
+summary.modules  : 75
+summary.types    : 2,443
+wallTimeMs       : 34,305
+cpuTimeTotalMs   : 59,203
+  user           : 53,250
+  kernel         :  5,953
+cpuUtilization%  : 172.6
+peakWsMb         :  2,512
+peakPrivateMb    :  2,576
+hostCores        : 32
+gc gen0/1/2      : 2 / 1 / 1
+phases:
+  analyze            : 34,200 ms
+  validate           :    104 ms
+```
+
+### Why the memory profiles differ by ~4x
+
+The CLI takes one shot at the workspace, extracts the graph, and streams each compilation out via `Emit` to a lightweight PE metadata reference. Compilations are released after extraction. Peak working set stays under 600 MB because only one full Roslyn `Compilation` is held at a time, and the downgraded references are ~10–100 KB each.
+
+The MCP server retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, `lifeblood_diagnose`, `lifeblood_compile_check`, etc.) need to query the loaded workspace interactively. No retention, no follow-up queries. Peak working set lands around 2.5 GB on a 75-module workspace because every compilation stays referenced for the life of the session.
+
+The GC counts confirm this architectural difference. The CLI churns (`gen0=197, gen1=108, gen2=34`) because objects are constantly allocated and released across the streaming pipeline. The MCP server barely collects (`gen0=2, gen1=1, gen2=1`) because its object graph is stable once the workspace is loaded.
+
+**Decision guide for downstream users:**
+
+- Need one-shot analysis, a rules check, or a graph export? Use the CLI path. Sub-1 GB memory budget is enough.
+- Need interactive MCP queries (`execute`, `find_references`, etc.) after the analyze? Use the MCP server. Budget for 3 GB on a 75-module workspace, 4 GB on larger.
+- Memory-constrained MCP session? Pass `readOnly: true` to `lifeblood_analyze` and the server falls back to the CLI streaming profile. Write-side tools are unavailable under `readOnly` — you get graph-only queries in exchange for the memory savings.
+
+Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Both blocks come from the native `usage` field on every `lifeblood_analyze` response, the CLI block to stderr and the MCP block inside the `tools/call` result JSON. No external measurement wrapper.
+
+The wall time is an order of magnitude better than the figures older docs quoted (around 90 s). The CLI peak memory is an order of magnitude better than the older 4 GB figure. The MCP retained peak is close to the older 4 GB figure, which is consistent: the old measurement was almost certainly taken against the MCP server, not the CLI, and was recorded without distinguishing the two paths. The `usage` block is now how the project tracks these numbers against the codebase, so they stay honest without per-release measurement chores.
 
 Edge count grew by more than 9,000 after the v0.6.0 BCL ownership and multi-parent GraphBuilder fixes. Call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL (Unity, .NET Framework, Mono), and partial types now produce one Contains edge per declaration file.
 

@@ -89,10 +89,14 @@ Streaming compilation with downgrading keeps memory bounded:
 
 | Project size | Peak memory | Graph |
 |---|---|---|
-| ~10 modules (Lifeblood itself) | 212 MB peak | 1,376 symbols, 3,822 edges (5.1 s wall) |
-| ~75 modules (400k LOC Unity project) | 571 MB peak | 44,569 symbols, 87,238 edges (32.6 s wall) |
+| Project size | Peak memory (CLI streaming) | Peak memory (MCP retained) | Graph |
+|---|---|---|---|
+| ~10 modules (Lifeblood itself) | 212 MB | ~240 MB | 1,376 symbols, 3,822 edges (5.1 s wall) |
+| ~75 modules (400k LOC Unity project) | 571 MB | 2,512 MB | 44,569 symbols, 87,238 edges (32.6 s CLI / 34.3 s MCP wall) |
 
-Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Peak working set and wall time come from the native `usage` block on every `lifeblood_analyze` response. Older docs cited ~4 GB peak because early streaming measurements predated the `RetainCompilations=false` CLI path doing its job. The CLI analyze path now sits comfortably under 1 GB even on 75-module workspaces.
+Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction (peak stays under 600 MB on a 75-module Unity workspace). The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively, which pushes peak to ~2.5 GB on the same workspace. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools.
+
+Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Older docs cited ~4 GB peak — that figure was almost certainly measured against the MCP retained path without noting the distinction, and is closer to the 2.5 GB MCP peak than to the CLI 571 MB peak.
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 

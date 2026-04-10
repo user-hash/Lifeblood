@@ -193,8 +193,8 @@
       </p>
       <div class="pills">
         <div class="pill">11 assemblies + 2 standalone adapters</div>
-        <div class="pill">1291 symbols, 3620 edges</div>
-        <div class="pill">329 tests / CI green</div>
+        <div class="pill">1376 symbols, 3822 edges</div>
+        <div class="pill">344 tests / CI green</div>
         <div class="pill">C# + TypeScript + Python</div>
         <div class="pill">Cross-module: Proven</div>
         <div class="pill">15/15 ports wired</div>
@@ -205,6 +205,7 @@
         <div class="pill">ISymbolResolver port</div>
         <div class="pill">RoslynSemanticView</div>
         <div class="pill">BCL ownership</div>
+        <div class="pill">Native usage + timing</div>
         <div class="pill">dotnet tool</div>
       </div>
     </div>
@@ -291,7 +292,7 @@
 
         <div class="signal-card">
           <strong>Enforced invariants (tested)</strong>
-          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 329 tests. 18 MCP tools. 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj). File-level edges. BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler (INV-RESOLVER-001..004). RoslynSemanticView shared by reference (INV-VIEW-001..003).</span>
+          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 344 tests. 18 MCP tools. 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj). File-level edges. BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler (INV-RESOLVER-001..004). RoslynSemanticView shared by reference (INV-VIEW-001..003). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002).</span>
         </div>
       </div>
 
@@ -341,7 +342,7 @@
     <div class="footer">
       Solid = implemented and dogfood-verified. Dashed/faded = planned.
       Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-      → 1291 symbols, 3620 edges, 11 modules, 165 types, 0 violations. 15 ports, 18 MCP tools. Incremental re-analyze (file + csproj). File-level edges.
+      → 1376 symbols, 3822 edges, 11 modules, 174 types, 0 violations. 15 ports, 18 MCP tools. Incremental re-analyze (file + csproj). File-level edges. Native usage reporting on every analyze response (5.1 s wall, 212 MB peak on self; 32.6 s wall, 571 MB CLI peak or 2.5 GB MCP retained peak on a 75-module Unity workspace).
     </div>
   </div>
 </body>

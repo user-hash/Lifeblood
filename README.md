@@ -136,9 +136,16 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis: 1,376 symbols, 3,822 edges, 11 modules, 174 types, 0 violations. **5.1 s wall, 212 MB peak working set**, 144% of one core (single-threaded compile with some parallelism on extraction).
+Self-analysis (CLI): 1,376 symbols, 3,822 edges, 11 modules, 174 types, 0 violations. **5.1 s wall, 212 MB peak**, 144% of one core.
 
-Production-verified on a 75-module 400k LOC Unity project: 44,569 symbols, 87,238 edges, 2,439 types. **32.6 s wall, 571 MB peak working set**, 164% of one core (165% = 1.65 cores average), 53.7 s total CPU time (user 47.1 s, kernel 6.6 s). GC pressure is light: gen0=197, gen1=108, gen2=34 across the whole run. Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). These numbers come from the native `usage` block on every `lifeblood_analyze` response, not from an external wrapper.
+Production-verified on a 75-module 400k LOC Unity workspace. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
+
+| Path | Wall | CPU total | CPU % (1 core) | Peak working set | GC gen0/1/2 | Use when |
+|---|---|---|---|---|---|---|
+| **CLI** (streaming, compilations released) | 32.6 s | 53.7 s | 164.5% | **571 MB** | 197 / 108 / 34 | One-shot analyze, rules check, graph export |
+| **MCP** (compilations retained) | 34.3 s | 59.2 s | 172.6% | **2,512 MB** | 2 / 1 / 1 | Interactive session with write-side tools (`execute`, `find_references`, `rename`, etc.) |
+
+The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads).
 
 The +9,000-plus edges over the previous baseline come from the v0.6.0 BCL ownership fix (call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL) and the multi-parent GraphBuilder fix (partial types now produce one Contains edge per declaration file).
 
