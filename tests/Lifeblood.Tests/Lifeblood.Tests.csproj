@@ -10,6 +10,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
+    <!-- INV-TEST-001: tests never silently early-return on precondition failure.
+         SkippableFact gives real skip semantics on xunit 2.x so missing preconditions
+         turn into explicit Skip states with a reason, not silent passes. -->
+    <PackageReference Include="Xunit.SkippableFact" Version="1.*" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Lifeblood.Domain\Lifeblood.Domain.csproj" />

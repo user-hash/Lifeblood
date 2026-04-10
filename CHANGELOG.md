@@ -5,11 +5,87 @@ All notable changes to Lifeblood are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-04-10
+
+Credibility pass after the v0.6.0 release. Closes an MCP-spec interoperability gap, extracts the MCP dispatcher into its own testable class, closes a latent display-string-for-matching bug class in `FindImplementations`, converts silent test skips to explicit `Skip.IfNot` calls that can no longer hide real failures, tightens the architecture ratchet, and syncs the doc numbers that drifted during v0.6.0 preparation. 344 → 362 tests. No behavior change in analyze or any read-side tool.
+
+### Fixed
+
+- **`FindImplementations` used `ToDisplayString()` for cross-assembly type equality** (latent bug class caught during the v0.6.1 deep-audit pass). The same bug class that v0.6.0 Layer 2 of the BCL fix closed in `FindReferences` was still present in `FindImplementations` because the v0.6.0 fix did not sweep every display-string comparison. Display strings can diverge subtly at the source/metadata boundary (nullability, reduced names, attribute round-trips), and using them for *matching*. As opposed to *display*. Is fragile. The deep-audit sweep exposed the bug: after converting silent test skips to explicit `Skip.IfNot` (see below), `FindImplementations_IGreeter_FindsGreeterAndFormalGreeter` ran against the real golden repo for the first time in a while and failed loudly. Fix: compare via canonical Lifeblood symbol IDs (`BuildSymbolId(roslynSymbol) == BuildSymbolId(candidate)`), the same strategy v0.6.0 Layer 3 adopted in `FindReferences`. `CanonicalSymbolFormat` produces identical ID strings for source and metadata copies by design, so cross-assembly matching is correct-by-construction. All other `ToDisplayString()` call sites in the C# adapter were audited and classified. The remaining ones are all stable human-display or namespace-filter uses, not matching comparisons. Also removed the orphaned `ResolveDisplayString` helper that the v0.6.0 `FindReferences` rewrite had left dead.
+
+- **17 silent test early-returns in `WriteSideIntegrationTests`**: every test in the file began with `if (!TryAnalyze(out var graph, out _)) return;`. The `TryAnalyze` helper silently returned `false` on both a legitimate skip condition (golden repo missing) AND a real failure (golden repo present but analysis returned zero symbols). Silent early-return makes both look like passing tests. This directly hid the `FindImplementations` bug above for multiple commits. Fix: replaced `TryAnalyze(out)` with `EnsureAnalyzed()` that uses `Skip.IfNot(precondition, reason)` for missing preconditions (explicit skip via `Xunit.SkippableFact`) and `Assert.True` for real failures (loud fail). All 17 tests converted to `[SkippableFact]`, the silent-return guards removed, and the entire file now either runs for real or skips with a documented reason. Registers `INV-TEST-001`.
+
+- **`notifications/initialized` was rejected by the dispatcher**: the `Program.Dispatch` switch only matched the bare `initialized` method name. Spec-compliant MCP clients sending the canonical `notifications/initialized` form fell through to the `default:` branch and received a `-32601 Method not found` error. Compounding the first violation: that response was a body for a notification. JSON-RPC 2.0 forbids responding to notifications at all. Strict clients saw both violations at once. Tolerant clients (the current Claude Code CLI) silently ignored the errors and the bug went unnoticed.
+
+- **`ToolRegistry.GetTools` used a string-prefix dispatcher** with 8 hard-coded `StartsWith` checks to decide which tools were write-side. `lifeblood_resolve_short_name` was added in v0.6.0 under the write-side comment divider but matched none of the 8 prefixes, so it was never decorated as unavailable even when classified as write-side by its physical position. Root-cause fixed by replacing the string dispatch with a typed `ToolAvailability` enum on `McpToolInfo` (see below). `lifeblood_resolve_short_name` is now classified `ReadSide`. It consults the graph's short-name index, not the Roslyn compilation host.
+
+- **CHANGELOG link-references were stale**: the `[0.6.0]` heading at the top had no matching `[0.6.0]: .../compare/v0.5.1...v0.6.0` reference at the bottom, so the compare link did not render. `[Unreleased]` still pointed at `v0.5.1...HEAD`. Fixed and pinned by a new ratchet test.
+
+- **CHANGELOG was missing `[0.4.0]` and `[0.4.1]` entries entirely**: the file jumped from `[0.5.0]` straight to `[0.3.0]` even though both tags were published. Reconstructed both entries from git log.
+
+### Added. MCP-spec compliance hardening
+
+- **New class `McpDispatcher`** (`src/Lifeblood.Server.Mcp/McpDispatcher.cs`). First-class JSON-RPC / MCP method dispatcher. `Program.cs` used to contain a private `static Dispatch` method on the program entry class; it has been extracted into its own public sealed class so the dispatch logic is testable via the normal public API (no `InternalsVisibleTo`, no reflection, no visibility tricks). `Program.Main` is now a thin stdio I/O loop that constructs the dispatcher and delegates every request to it.
+
+- **`McpDispatcher.SupportedProtocolVersion`** const. The MCP protocol version string (`"2024-11-05"`) is owned by the dispatcher class, single source of truth for the `initialize` response and any future version-gated capability negotiation.
+
+- **`KnownNotifications` set**. `notifications/initialized` (canonical, MCP spec), `initialized` (legacy alias during the deprecation window), `notifications/cancelled`, and `$/cancelRequest` are all recognized. Any entry in the set short-circuits `Dispatch` to return `null` before response construction, guaranteeing JSON-RPC 2.0 compliance. Unknown notifications (any method with `request.Id == null` that is not in the set) also return `null` and log to stderr for operator visibility.
+
+- **`initialize` response explicitly populates `ProtocolVersion` and `Capabilities`** at the construction site in addition to the class-level defaults on `McpInitializeResult`. Belt-and-braces pin so a future edit that strips the defaults does not silently break the wire shape.
+
+- **`serverInfo.version` now reads `AssemblyInformationalVersionAttribute`** (MinVer's canonical output carrying the full semver + provenance form like `0.6.1+abc123`), falling back to the three-part `AssemblyName.Version` form. Previously the dispatcher used the three-part form unconditionally, losing the provenance suffix on non-tagged commits.
+
+- **New `McpProtocolTests.cs`** (10 tests) pinning the dispatcher contract end-to-end: `Initialize_ReturnsSpecCompliantResult`, `Initialize_SerializedJson_HasProtocolVersionAndCapabilities`, `NotificationsInitialized_SpecCompliantForm_ProducesNoResponse`, `NotificationsInitialized_LegacyAlias_ProducesNoResponse`, `UnknownNotification_ProducesNoResponse`, `UnknownRequest_ReturnsMethodNotFound`, `ToolRegistry_EveryToolHasExplicitAvailability`, `ToolRegistry_WriteSideTools_MarkedUnavailable_WhenNoCompilationState`, `ToolRegistry_ReadSideTools_NeverMarkedUnavailable`, `ToolRegistry_ResolveShortName_IsClassifiedReadSide`.
+
+### Added. Typed tool availability dispatch
+
+- **`ToolAvailability` enum** (`ReadSide | WriteSide`) and **`required McpToolInfo.Availability` property**. The `required` modifier (C# 11) makes it a compile error to declare a new tool without setting `Availability`. The invariant is enforced at the language level, not by convention. `ToolRegistry.GetTools(hasCompilationState)` now filters on the typed enum and no longer touches tool name strings.
+- Registers `INV-TOOLREG-001`: dispatch is by the typed property, never by name prefix.
+
+### Added. Architecture ratchet for composition roots and ScriptHost
+
+- **`ScriptHost_HasZeroProjectReferences`**. Enforces `INV-SCRIPTHOST-001`. `Lifeblood.ScriptHost` is an isolated child process; it may reference NuGet packages (Microsoft.CodeAnalysis.CSharp.Scripting is load-bearing) but must not reference any Lifeblood project. Without this test the isolation guarantee was documented but not enforced.
+
+- **`CompositionRoot_CLI_UsesOnlyAllowedModules`** and **`CompositionRoot_ServerMcp_UsesOnlyAllowedModules`**. Enforce `INV-COMPROOT-001`. The allowed module set `{Domain, Application, Analysis, Adapters.CSharp, Adapters.JsonGraph, Connectors.ContextPack, Connectors.Mcp}` is declared once as a `HashSet<string>` on `ArchitectureInvariantTests`. Single source of truth. Adding a new module to either composition root requires editing the allowlist, making the scope expansion a conscious architectural decision.
+
+### Added. Documentation ratchet
+
+- **New `DocsTests.cs`** with three ratchet tests pinning `INV-DOCS-001` and `INV-CHANGELOG-001`:
+  - `StatusDoc_PortCount_MatchesApplicationPortsDeclarations`. Parses the `<!-- portCount: N -->` HTML comment in `docs/STATUS.md`, counts `public interface I*` declarations under `src/Lifeblood.Application/Ports`, asserts the two match. Single source of truth is the HTML comment.
+  - `StatusDoc_ToolCount_MatchesToolRegistryLiterals`. Parses `<!-- toolCount: N -->`, counts `Name = "lifeblood_*"` literals in `ToolRegistry.cs`, asserts the two match.
+  - `Changelog_EveryHeadingHasLinkReference`. Parses every `## [X.Y.Z]` heading and every `[X.Y.Z]: ...` link reference, asserts bijection. Pins the bug class where v0.6.0 shipped with stale link refs.
+
+### Changed
+
+- **Port count corrected: 14 → 17** (not `14 → 15` as the v0.6.0 entry claimed). The v0.6.0 release added three port interfaces (`IUsageProbe`, `IUsageCapture`, `ISymbolResolver`) on top of the 14 that existed at v0.5.1. The previous "15" count was counting the usage probe pair as one port unit; the `StatusDoc_PortCount` ratchet counts declared interfaces, which is the accurate semantic. Docs across `README.md`, `docs/STATUS.md`, `docs/ARCHITECTURE.md`, `docs/architecture.html`, and this CHANGELOG have been synced.
+
+- **`docs/architecture.html` stats pill updated**: `1376 symbols, 3822 edges` → `1379 symbols, 3830 edges` (live counts after the v0.6.0 additions). Test count pill updated to `362 tests`.
+
+- **Program.cs** is now a ~70-line composition root. Reduced by ~100 LOC after the `McpDispatcher` extraction.
+
+- **Tests: 344 → 362** (+18 across architecture ratchet, docs ratchet, and MCP protocol tests).
+
+### Dependencies
+
+- **`Xunit.SkippableFact` 1.*** added to `Lifeblood.Tests.csproj`. Enables real skip semantics on xunit 2.x (`Skip.IfNot(condition, reason)`) so missing preconditions turn into explicit Skip states with a reason instead of silent passes. Needed for `INV-TEST-001`.
+
+### Invariants registered in CLAUDE.md
+
+- `INV-MCP-001`. MCP `initialize` response always carries `protocolVersion` and `capabilities`. `protocolVersion` is owned by `McpDispatcher.SupportedProtocolVersion`, never inlined.
+- `INV-MCP-002`. Notifications (messages with no `id`) never receive a response body. The `KnownNotifications` set in `McpDispatcher` is the single source of truth for which method names are notifications. Both `notifications/initialized` and the legacy `initialized` alias are accepted.
+- `INV-TOOLREG-001`. Every `McpToolInfo` declares its `Availability` explicitly via the required init-only property. The `GetTools(hasCompilationState)` guard filters on `Availability`, never on tool name prefixes. Adding a new tool without setting `Availability` is a compile error.
+- `INV-SCRIPTHOST-001`. `Lifeblood.ScriptHost` has zero `ProjectReference`. Ratchet-tested.
+- `INV-COMPROOT-001`. Composition roots (`Lifeblood.CLI`, `Lifeblood.Server.Mcp`) reference only the allowlist `{Domain, Application, Analysis, Adapters.CSharp, Adapters.JsonGraph, Connectors.ContextPack, Connectors.Mcp}`. Ratchet-tested via `ArchitectureInvariantTests.CompositionRootAllowedModules`.
+- `INV-DOCS-001`. `docs/STATUS.md` port and tool counts match the repository. Pinned via HTML comments as single source of truth and `DocsTests` as ratchet.
+- `INV-CHANGELOG-001`. Every `## [X.Y.Z]` heading in `CHANGELOG.md` has a corresponding link reference. Ratchet-tested.
+- `INV-TEST-001`. Tests never silently early-return on precondition failure. Missing preconditions turn into explicit `Skip.IfNot(condition, reason)` calls via `Xunit.SkippableFact`. Real failures (presence-but-broken) turn into loud `Assert.True` / `Assert.Fail`. The `TryAnalyze(out) ⇒ bool` silent-return pattern is forbidden.
+- `INV-FINDIMPL-001`. `FindImplementations` compares candidates via canonical Lifeblood symbol IDs (`BuildSymbolId`), never via `ToDisplayString()` or `SymbolEqualityComparer.Default`. The canonical-ID comparison is the same strategy `FindReferences` uses, closing the display-string-for-matching bug class across the whole write-side read surface.
+
 ## [0.6.0] - 2026-04-10
 
-Three-seam framing after the BCL ownership fix, native usage reporting on every analyze run, and the v0.6.0 doc pack refresh. 329 → 344 tests. 17 → 18 MCP tools. 14 → 15 port interfaces. `lifeblood_analyze` responses now carry a structured `usage` block with wall time, CPU time, peak memory, GC pressure, and per-phase timings.
+Three-seam framing after the BCL ownership fix, native usage reporting on every analyze run, and the v0.6.0 doc pack refresh. 329 → 344 tests. 17 → 18 MCP tools. 14 → 17 port interfaces (+`IUsageProbe`, +`IUsageCapture`, +`ISymbolResolver`). `lifeblood_analyze` responses now carry a structured `usage` block with wall time, CPU time, peak memory, GC pressure, and per-phase timings.
 
-### Added — Native usage reporting on every analyze run (LB-INBOX-005)
+### Added. Native usage reporting on every analyze run (LB-INBOX-005)
 
 - **`Lifeblood.Domain.Results.AnalysisUsage`** POCO with `WallTimeMs`,
   `CpuTimeTotalMs`, `CpuTimeUserMs`, `CpuTimeKernelMs`,
@@ -70,49 +146,49 @@ Three-seam framing after the BCL ownership fix, native usage reporting on every 
 
 #### Why this shipped instead of living in the improvement inbox
 
-### Added — Plan v4 (three-seam framing for the post-BCL findings)
+### Added. Plan v4 (three-seam framing for the post-BCL findings)
 
 After v2's BCL fix, two reviewer reports surfaced five remaining findings.
 v4 closes them via three architectural seams (one resolver port, one
 csproj-driven compilation-fact convention, one adapter semantic view) instead
 of five piecemeal patches.
 
-#### Seam #1 — `ISymbolResolver` (closes LB-BUG-002, LB-BUG-004, LB-FR-002, LB-FR-003)
+#### Seam #1. `ISymbolResolver` (closes LB-BUG-002, LB-BUG-004, LB-FR-002, LB-FR-003)
 
 - **`Lifeblood.Application.Ports.Right.ISymbolResolver`** + single `SymbolResolutionResult` DTO. Every read-side MCP tool that takes a `symbolId` (lookup, dependants, dependencies, blast_radius, file_impact, find_references, find_definition, find_implementations, documentation, rename) routes through the resolver before doing graph or workspace lookups.
 
-- **`Lifeblood.Connectors.Mcp.LifebloodSymbolResolver`** — reference implementation. Resolution order: exact canonical match → truncated method form (lenient single-overload) → bare short name. Returns `Outcome` + `Candidates` + `Diagnostic` for ambiguous and not-found cases.
+- **`Lifeblood.Connectors.Mcp.LifebloodSymbolResolver`**. Reference implementation. Resolution order: exact canonical match → truncated method form (lenient single-overload) → bare short name. Returns `Outcome` + `Candidates` + `Diagnostic` for ambiguous and not-found cases.
 
 - **Partial-type unification as a read model.** The graph stores raw symbols (one record per partial declaration; last-write-wins remains the storage policy). The resolver computes a deterministic primary file path + the full `DeclarationFilePaths` array by walking the existing `file:X Contains type:Y` edges. **Zero schema change to `Lifeblood.Domain.Graph.Symbol`.** Primary picker rule: filename matches type name → filename starts with `"<TypeName>."` (shortest first) → lexicographic first.
 
 - **Short-name index** added to `SemanticGraph.GraphIndexes` (case-insensitive bucket) + public `FindByShortName(name)` accessor. Built lazily alongside existing indexes.
 
-- **New MCP tool `lifeblood_resolve_short_name`** — discover canonical IDs from a bare short name when you don't know the namespace.
+- **New MCP tool `lifeblood_resolve_short_name`**. Discover canonical IDs from a bare short name when you don't know the namespace.
 
-- **`FindReferencesOptions.IncludeDeclarations`** — explicit operation policy on `ICompilationHost.FindReferences`. When true, the result includes one synthetic `(declaration)` entry per source declaration site (one per partial for partial types). Two-overload signature preserves backward compat.
+- **`FindReferencesOptions.IncludeDeclarations`**. Explicit operation policy on `ICompilationHost.FindReferences`. When true, the result includes one synthetic `(declaration)` entry per source declaration site (one per partial for partial types). Two-overload signature preserves backward compat.
 
 - **9 regression tests in `SymbolResolverTests.cs`** including the LB-BUG-002 truncated-id misdiagnosis pin-down (`method:Voice.ApplySettings` → resolver canonicalizes → caller graph lookup succeeds).
 
-- **`lifeblood_lookup` response now includes `filePaths[]`** — the full sorted list of partial declaration files. The single `filePath` field is now the deterministic primary, no longer a non-deterministic last-write-wins pick.
+- **`lifeblood_lookup` response now includes `filePaths[]`**. The full sorted list of partial declaration files. The single `filePath` field is now the deterministic primary, no longer a non-deterministic last-write-wins pick.
 
-#### Seam #2 — Csproj-driven compilation facts as a documented convention (closes LB-BUG-005)
+#### Seam #2. Csproj-driven compilation facts as a documented convention (closes LB-BUG-005)
 
-- **`ModuleInfo.AllowUnsafeCode`** — new typed bool field, default false, set during `RoslynModuleDiscovery.ParseProject` from `<AllowUnsafeBlocks>` element (case-insensitive on the value to handle Unity's `True` casing). Consumed by `ModuleCompilationBuilder.CreateCompilation` via `WithAllowUnsafe(...)`.
+- **`ModuleInfo.AllowUnsafeCode`**. New typed bool field, default false, set during `RoslynModuleDiscovery.ParseProject` from `<AllowUnsafeBlocks>` element (case-insensitive on the value to handle Unity's `True` casing). Consumed by `ModuleCompilationBuilder.CreateCompilation` via `WithAllowUnsafe(...)`.
 
-- **`INV-COMPFACT-001..003` documented in CLAUDE.md** — csproj is the source of truth for module-level compilation options; each fact lives as a typed `ModuleInfo` field set at discovery and consumed at compilation; csproj-edit invalidation flows for free through the existing v2 `AnalysisSnapshot.CsprojTimestamps` infrastructure (re-discovery rebuilds the entire `ModuleInfo`, not just one field).
+- **`INV-COMPFACT-001..003` documented in CLAUDE.md**. Csproj is the source of truth for module-level compilation options; each fact lives as a typed `ModuleInfo` field set at discovery and consumed at compilation; csproj-edit invalidation flows for free through the existing v2 `AnalysisSnapshot.CsprojTimestamps` infrastructure (re-discovery rebuilds the entire `ModuleInfo`, not just one field).
 - Closes the **CS0227 false positive class on Unity packages with `<AllowUnsafeBlocks>`**: any csproj that uses unsafe blocks no longer poisons its semantic model with CS0227, restoring `find_references` / dependants / call-graph extraction for symbols inside `unsafe { ... }` regions.
 
 - **5 regression tests** (3 discovery casing + 2 compilation contract).
 
-#### Seam #3 — `RoslynSemanticView` (closes LB-BUG-003)
+#### Seam #3. `RoslynSemanticView` (closes LB-BUG-003)
 
-- **`Lifeblood.Adapters.CSharp.RoslynSemanticView`** — read-only typed accessor for the C# adapter's loaded semantic state (`Compilations`, `Graph`, `ModuleDependencies`). Constructed once per `GraphSession.Load` and shared by reference across consumers.
+- **`Lifeblood.Adapters.CSharp.RoslynSemanticView`**. Read-only typed accessor for the C# adapter's loaded semantic state (`Compilations`, `Graph`, `ModuleDependencies`). Constructed once per `GraphSession.Load` and shared by reference across consumers.
 
-- **`RoslynCodeExecutor` refactor** — primary constructor takes a `RoslynSemanticView`. The view IS the script-host globals object: passed to `CSharpScript.RunAsync<RoslynSemanticView>(code, options, view, ...)` so `lifeblood_execute` scripts can read `Graph`, `Compilations`, `ModuleDependencies` as bare top-level identifiers. Backward-compatible secondary constructor takes only `compilations` for tests and standalone callers.
+- **`RoslynCodeExecutor` refactor**. Primary constructor takes a `RoslynSemanticView`. The view IS the script-host globals object: passed to `CSharpScript.RunAsync<RoslynSemanticView>(code, options, view, ...)` so `lifeblood_execute` scripts can read `Graph`, `Compilations`, `ModuleDependencies` as bare top-level identifiers. Backward-compatible secondary constructor takes only `compilations` for tests and standalone callers.
 
 - **Default script imports extended** with `Lifeblood.Adapters.CSharp`, `Lifeblood.Domain.Graph`, `Microsoft.CodeAnalysis`, `Microsoft.CodeAnalysis.CSharp`. **Default script references extended** to include the assemblies that define the script-globals types so `Graph` / `Compilations` resolve at compile time.
 
-- **`INV-VIEW-001..003` documented in CLAUDE.md** — each language adapter publishes a typed read-only view of its loaded state; tools that need read access consume the view (not raw fields); the view is shared by reference across consumers.
+- **`INV-VIEW-001..003` documented in CLAUDE.md**. Each language adapter publishes a typed read-only view of its loaded state; tools that need read access consume the view (not raw fields); the view is shared by reference across consumers.
 
 - **4 regression tests** (1 view-shape sanity + 3 script-globals end-to-end including backward compat for pure-C# scripts).
 
@@ -133,16 +209,16 @@ of five piecemeal patches.
 - **`find_references` / call-graph extraction silently returned 0 results for every method in any Unity / .NET Framework / Mono workspace.**
 
   Fix:
-  - **Layer 1 (resolver)**: kind-filtered, name-filtered, signature-strict member lookup with documented contract — never silently substitute an unrelated member. Lenient escape valves (single overload, no signature given) are explicit.
+  - **Layer 1 (resolver)**: kind-filtered, name-filtered, signature-strict member lookup with documented contract. Never silently substitute an unrelated member. Lenient escape valves (single overload, no signature given) are explicit.
   - **Layer 2 (matcher)**: replace display-string comparison with canonical Lifeblood symbol-ID comparison via `BuildSymbolId(resolved) == targetCanonicalId`. The graph and the walker now share one builder.
   - **Layer 3 (canonical format)**: `Internal.CanonicalSymbolFormat.ParamType` is the single pinned `SymbolDisplayFormat` for parameter type display strings. Every method-ID builder in the adapter (`RoslynSymbolExtractor`, `RoslynEdgeExtractor`, `RoslynCompilationHost.BuildSymbolId`, `RoslynWorkspaceManager.FindInCompilation`) routes through it. Lifeblood's symbol ID grammar is now owned by Lifeblood, not implicitly inherited from Roslyn's default.
-  - **Layer 4 (BCL ownership, INV-BCL-001..005)**: new `BclOwnershipMode` enum on `ModuleInfo`. `RoslynModuleDiscovery` decides ownership ONCE during csproj parsing by inspecting `<Reference Include>` (parsed as assembly identity, handles both bare names and strong-name shapes) and `<HintPath>` basename. `ModuleCompilationBuilder` reads the field and gates host BCL injection — no detection logic at the compilation layer. Decision is single-source-of-truth.
-  - **Layer 5 (incremental csproj invalidation, INV-BCL-005)**: `AnalysisSnapshot.CsprojTimestamps` tracks csproj timestamps. `IncrementalAnalyze` checks csproj timestamps before the .cs file loop and forces re-discovery + recompile when a csproj edits — closes the silent-stale-BclOwnership hole that would otherwise re-introduce the bug under incremental mode.
+  - **Layer 4 (BCL ownership, INV-BCL-001..005)**: new `BclOwnershipMode` enum on `ModuleInfo`. `RoslynModuleDiscovery` decides ownership ONCE during csproj parsing by inspecting `<Reference Include>` (parsed as assembly identity, handles both bare names and strong-name shapes) and `<HintPath>` basename. `ModuleCompilationBuilder` reads the field and gates host BCL injection. No detection logic at the compilation layer. Decision is single-source-of-truth.
+  - **Layer 5 (incremental csproj invalidation, INV-BCL-005)**: `AnalysisSnapshot.CsprojTimestamps` tracks csproj timestamps. `IncrementalAnalyze` checks csproj timestamps before the .cs file loop and forces re-discovery + recompile when a csproj edits. Closes the silent-stale-BclOwnership hole that would otherwise re-introduce the bug under incremental mode.
 
 ### Added
 
 - `BclOwnershipMode` enum and `ModuleInfo.BclOwnership` field on `Lifeblood.Application.Ports.Left.IModuleDiscovery`.
-- `Internal.CanonicalSymbolFormat` — single source of truth for parameter type display strings in Lifeblood method symbol IDs.
+- `Internal.CanonicalSymbolFormat`. Single source of truth for parameter type display strings in Lifeblood method symbol IDs.
 - `AnalysisSnapshot.CsprojTimestamps` for incremental csproj-edit detection.
 - 9 regression tests in `FindReferencesCrossModuleTests.cs` (cross-module class methods, struct methods, partial structs, array-indexer receivers, library-defined parameter types, overload disambiguation, silent-fallback bug class).
 - 4 BCL ownership discovery tests in `HardeningTests.cs` (bare Include, strong-name Include, HintPath-only, plain SDK).
@@ -161,12 +237,12 @@ of five piecemeal patches.
 
 - **CS0518 "System.Object is not defined" on multi-module workspaces**
 
-  Fix: Explicitly load the host .NET runtime's BCL assemblies from the runtime directory (17 core assemblies). Use `WithReferences` (replace) instead of `AddReferences` to drop the useless "Unresolved" defaults. Only add `CompilationReference` per project module — no transitive deps.
+  Fix: Explicitly load the host .NET runtime's BCL assemblies from the runtime directory (17 core assemblies). Use `WithReferences` (replace) instead of `AddReferences` to drop the useless "Unresolved" defaults. Only add `CompilationReference` per project module. No transitive deps.
 
 ### Added
 
 - 5 regression tests for the CS0518 bug class (downgraded multi-module topology).
-- `LoadHostBclReferences()` — resolves host BCL once per process via `Lazy<T>`.
+- `LoadHostBclReferences()`. Resolves host BCL once per process via `Lazy<T>`.
 
 ### Changed
 
@@ -179,7 +255,7 @@ Cross-assembly semantic analysis. The gap that required grep fallback for cross-
 
 ### Fixed
 
-- **Cross-assembly edges were silently dropped**: `IsFromSource` rejected metadata symbols from other analyzed modules. Renamed to `IsTracked` — now accepts symbols whose `ContainingAssembly.Name` matches a known workspace module. Resolves F3 (empty cross-module dependency matrix).
+- **Cross-assembly edges were silently dropped**: `IsFromSource` rejected metadata symbols from other analyzed modules. Renamed to `IsTracked`. Now accepts symbols whose `ContainingAssembly.Name` matches a known workspace module. Resolves F3 (empty cross-module dependency matrix).
 
 - **FindReferences returned empty for cross-assembly symbols**: `SymbolFinder.FindReferencesAsync` doesn't work across AdhocWorkspace project boundaries. Rewritten to direct compilation scan (same proven pattern as `FindImplementations`).
 
@@ -193,7 +269,7 @@ Cross-assembly semantic analysis. The gap that required grep fallback for cross-
 
 - **CrossModuleReferences capability**: upgraded from `BestEffort` to `Proven`.
 
-- **MinVer auto-versioning**: version derived from git tags via MinVer. No manual bumping — just tag and push.
+- **MinVer auto-versioning**: version derived from git tags via MinVer. No manual bumping. Just tag and push.
 
 - **MCP server version**: `initialize` response now reports actual assembly version instead of hardcoded `"1.0.0"`.
 - Tests: 281 → 288.
@@ -211,6 +287,34 @@ Cross-assembly semantic analysis. The gap that required grep fallback for cross-
 - Silent test skips replaced with explicit `Skip` output.
 - Bare catches narrowed to typed exceptions in tests and Unity bridge.
 
+## [0.4.1] - 2026-04-08
+
+### Fixed
+
+- **Unity Editor bridge ReadLine hangs**: `LifebloodBridge` sidecar process could hang indefinitely on stalled ReadLine calls with no timeout or liveness check. Every `ReadLine` now has a bounded wait plus process-liveness monitoring, so a stuck child cannot silently freeze the bridge.
+
+## [0.4.0] - 2026-04-08
+
+Release hygiene pass + per-module progress + large-project modes.
+
+### Added
+
+- **Per-module progress reporting**: `lifeblood_analyze` emits progress marks per module via `IProgressSink`, so agents see which module is currently compiling during long analyses.
+
+- **Read-only streaming mode**: `lifeblood_analyze readOnly=true` uses streaming compilation (lower memory, ~4 GB vs ~7 GB on large projects). Write-side tools are unavailable in this mode; intended for large-project read-only analysis.
+
+- **Server GC tuning**: `<ServerGarbageCollection>true</ServerGarbageCollection>` in the build props for better steady-state behavior on long MCP sessions.
+
+- **MinVer auto-versioning**: version derived from git tags by MinVer at build time. No manual version bumping. Tag and push.
+
+### Fixed
+
+- **Unity csproj filesystem scan hang**
+
+- **Discovery merge**: filesystem scan now merges with csproj `<Compile Include>` items instead of choosing one or the other, so hybrid csproj layouts (some items declared, others implicit) produce the correct file set.
+
+- **Release hygiene**: bare `catch {}` narrowed to typed exceptions across test infrastructure and Unity bridge, silent test skips replaced with explicit `Skip` output.
+
 ## [0.3.0] - 2026-04-08
 
 Incremental re-analyze, file-level impact, Unity bridge, built-in rule packs.
@@ -221,11 +325,11 @@ Incremental re-analyze, file-level impact, Unity bridge, built-in rule packs.
 
 - **File-level edge derivation**: `GraphBuilder.Build()` derives `file:X → file:Y References` edges from symbol-level edges with `edgeCount` property. Evidence: Inferred.
 
-- **lifeblood_file_impact tool**: "If I change this file, what other files break?" — derived from file-level edges.
+- **lifeblood_file_impact tool**: "If I change this file, what other files break?". Derived from file-level edges.
 
-- **Unity Editor bridge**: `unity/Editor/LifebloodBridge/` — sidecar MCP server auto-discovered via `[McpForUnityTool]`. All 17 tools available in Unity Editor.
+- **Unity Editor bridge**: `unity/Editor/LifebloodBridge/`. Sidecar MCP server auto-discovered via `[McpForUnityTool]`. All 17 tools available in Unity Editor.
 
-- **Built-in rule packs**: `hexagonal`, `clean-architecture`, `lifeblood` — resolve by name (`--rules hexagonal`).
+- **Built-in rule packs**: `hexagonal`, `clean-architecture`, `lifeblood`. Resolve by name (`--rules hexagonal`).
 
 - **MCP setup docs**: copy-paste configs for Claude Code, Cursor, VS Code, Claude Desktop, Unity.
 
@@ -270,7 +374,7 @@ Bidirectional Roslyn, streaming compilation, 45-pass hardening, Python adapter.
 
 ### Added
 
-- **Bidirectional Roslyn**: 10 write-side MCP tools — execute, diagnose, compile-check, find references, find definition, find implementations, symbol at position, documentation, rename, format.
+- **Bidirectional Roslyn**: 10 write-side MCP tools. Execute, diagnose, compile-check, find references, find definition, find implementations, symbol at position, documentation, rename, format.
 
 - **Streaming compilation with downgrading**: compile one module at a time in topological order, then `Emit()` → `MetadataReference.CreateFromImage()`.
 
@@ -358,7 +462,7 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **WriteToolHandler**: extracted 6 write-side MCP handlers.
 
-- **AnalysisPipeline**: moved to Analysis assembly — single source of truth.
+- **AnalysisPipeline**: moved to Analysis assembly. Single source of truth.
 
 - **59 new tests**: write-side tools, AST security, symbol ID parsing, pipeline, architecture.
 
@@ -405,9 +509,13 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/user-hash/Lifeblood/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/user-hash/Lifeblood/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/user-hash/Lifeblood/compare/v0.3.0...v0.5.0
+[0.5.0]: https://github.com/user-hash/Lifeblood/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/user-hash/Lifeblood/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/user-hash/Lifeblood/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/user-hash/Lifeblood/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/user-hash/Lifeblood/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/user-hash/Lifeblood/compare/v0.2.0...v0.2.1

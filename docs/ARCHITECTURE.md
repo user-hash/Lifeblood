@@ -39,7 +39,7 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | Assembly | Role | Dependencies |
 |----------|------|-------------|
 | **Lifeblood.Domain** | Graph model, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, rules, results | None |
-| **Lifeblood.Application** | 15 port interfaces including ISymbolResolver. AnalyzeWorkspaceUseCase, GenerateContextUseCase | Domain |
+| **Lifeblood.Application** | 17 port interfaces including ISymbolResolver, IUsageProbe, IUsageCapture. AnalyzeWorkspaceUseCase, GenerateContextUseCase | Domain |
 | **Lifeblood.Adapters.CSharp** | Roslyn reference adapter. Workspace analyzer, module discovery, symbol/edge extraction, RoslynSemanticView (typed read-only adapter view), CanonicalSymbolFormat (single source of truth for parameter-type display) | Application, Roslyn |
 | **Lifeblood.Adapters.JsonGraph** | JSON import/export with round-trip fidelity | Application |
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator | Application |

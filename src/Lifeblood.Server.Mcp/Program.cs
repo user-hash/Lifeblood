@@ -8,8 +8,10 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
-/// MCP server entry point. Reads JSON-RPC from stdin, writes to stdout.
-/// Diagnostics go to stderr (never pollute the protocol stream).
+/// MCP server composition root. Owns the stdio I/O loop and dependency
+/// wiring. All protocol routing lives in <see cref="McpDispatcher"/> so this
+/// class stays a thin, non-branching host. Anything with logic more involved
+/// than "read line, dispatch, write response" belongs in a dedicated class.
 /// </summary>
 class Program
 {
@@ -24,7 +26,8 @@ class Program
         IFileSystem fs = new PhysicalFileSystem();
         var session = new GraphSession(fs);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
-        var handler = new ToolHandler(session, blastRadius);
+        var toolHandler = new ToolHandler(session, blastRadius);
+        var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)
         using var cts = new CancellationTokenSource();
@@ -46,7 +49,7 @@ class Program
                 var request = JsonSerializer.Deserialize<JsonRpcRequest>(line, JsonOpts);
                 if (request == null) continue;
 
-                var response = Dispatch(request, handler, session);
+                var response = dispatcher.Dispatch(request);
                 if (response == null) continue; // Notifications get no response
                 var json = JsonSerializer.Serialize(response, JsonOpts);
                 Console.WriteLine(json);
@@ -79,71 +82,6 @@ class Program
         // Clean up write-side resources (AdhocWorkspace, compilations)
         session.Dispose();
         Console.Error.WriteLine("Lifeblood MCP server stopped.");
-    }
-
-    static JsonRpcResponse? Dispatch(JsonRpcRequest request, ToolHandler handler, GraphSession session)
-    {
-        var response = new JsonRpcResponse { Id = request.Id };
-
-        switch (request.Method)
-        {
-            case "initialize":
-                response.Result = new McpInitializeResult
-                {
-                    ServerInfo = new McpServerInfo
-                    {
-                        Name = "lifeblood",
-                        Version = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
-                    },
-                };
-                break;
-
-            case "initialized":
-                // Notification (no ID) gets no response per JSON-RPC 2.0
-                if (request.Id == null) return null;
-                response.Result = new { };
-                break;
-
-            case "tools/list":
-                response.Result = new { tools = ToolRegistry.GetTools(session.HasCompilationState) };
-                break;
-
-            case "tools/call":
-                if (!request.Params.HasValue)
-                {
-                    response.Error = new JsonRpcError { Code = -32602, Message = "params is required for tools/call" };
-                    break;
-                }
-                var callParams = request.Params.Value;
-
-                if (!callParams.TryGetProperty("name", out var nameEl) || nameEl.ValueKind != JsonValueKind.String)
-                {
-                    response.Error = new JsonRpcError { Code = -32602, Message = "name (string) is required in tools/call params" };
-                    break;
-                }
-
-                var toolName = nameEl.GetString() ?? "";
-                JsonElement? arguments = null;
-                if (callParams.TryGetProperty("arguments", out var argsEl))
-                    arguments = argsEl;
-
-                response.Result = handler.Handle(toolName, arguments);
-                break;
-
-            case "ping":
-                response.Result = new { };
-                break;
-
-            default:
-                response.Error = new JsonRpcError
-                {
-                    Code = -32601,
-                    Message = $"Method not found: {request.Method}",
-                };
-                break;
-        }
-
-        return response;
     }
 
     /// <summary>
