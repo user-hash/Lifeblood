@@ -13,6 +13,9 @@ artifacts/
 # Published MCP server (local development — decouples build from running instance)
 dist/
 
+# Published CLI output from measure-analyze.ps1
+cli-dist/
+
 # IDE
 .idea/
 
