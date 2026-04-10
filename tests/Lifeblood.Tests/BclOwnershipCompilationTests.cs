@@ -22,10 +22,7 @@ namespace Lifeblood.Tests;
 /// System.Private.CoreLib, not a self-contained BCL. We can't easily fabricate
 /// a self-contained BCL fixture in a unit test without bundling NuGet
 /// reference packs. Instead we test the OBSERVABLE BEHAVIOR at the compilation
-/// builder layer: did we add the host BCL bundle or didn't we? The end-to-end
-/// CS0433/CS0518-free behavior is verified against ExampleApp in rollout step 13.
-///
-/// See .claude/plans/bcl-ownership-fix.md §9.2.
+/// builder layer: did we add the host BCL bundle or didn't we? Full target-build validation belongs to the target compiler and runner.
 /// </summary>
 public class BclOwnershipCompilationTests
 {
@@ -118,8 +115,7 @@ public class BclOwnershipCompilationTests
         //
         // The shape: two BCL-owning modules. Module A defines a partial struct
         // with a method. Module B references Module A and calls the struct method
-        // via array indexer. This is the exact failure shape from the user's
-        // original ExampleApp report (Voice.ApplySettings called from SettingsPublisher).
+        // via an array indexer, whose receiver must preserve the resolved target.
         //
         // What this test pins down beyond the per-layer contracts:
         //   - Discovery sets BclOwnership on BOTH modules (not just one)

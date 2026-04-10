@@ -36,7 +36,8 @@ of five piecemeal patches.
 
 - **`ModuleInfo.AllowUnsafeCode`** — new typed bool field, default false, set during `RoslynModuleDiscovery.ParseProject` from `<AllowUnsafeBlocks>` element (case-insensitive on the value to handle Unity's `True` casing). Consumed by `ModuleCompilationBuilder.CreateCompilation` via `WithAllowUnsafe(...)`.
 
-- **`INV-COMPFACT-001..003` documented in CLAUDE.md**
+- **`INV-COMPFACT-001..003` documented in CLAUDE.md** — csproj is the source of truth for module-level compilation options; each fact lives as a typed `ModuleInfo` field set at discovery and consumed at compilation; csproj-edit invalidation flows for free through the existing v2 `AnalysisSnapshot.CsprojTimestamps` infrastructure (re-discovery rebuilds the entire `ModuleInfo`, not just one field).
+- Closes the **CS0227 false positive class on Unity packages with `<AllowUnsafeBlocks>`**: any csproj that uses unsafe blocks no longer poisons its semantic model with CS0227, restoring `find_references` / dependants / call-graph extraction for symbols inside `unsafe { ... }` regions.
 
 - **5 regression tests** (3 discovery casing + 2 compilation contract).
 
@@ -190,7 +191,7 @@ Incremental re-analyze, file-level impact, Unity bridge, built-in rule packs.
 
 ### Added
 
-- **ExampleApp production verification**
+- Expanded Unity project validation.
 
 ## [0.2.1] - 2026-04-08
 

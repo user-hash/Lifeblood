@@ -33,8 +33,9 @@ namespace Lifeblood.UnityBridge
         private readonly object _lock = new();
 
         /// <summary>
-        /// Timeout for individual tool calls. ExampleApp analysis takes ~90s,
-        /// so 5 minutes covers large projects with margin.
+        /// Timeout for individual tool calls. Cold analysis on a multi-module Unity
+        /// workspace runs around 90 seconds, so 5 minutes covers large projects
+        /// with margin.
         /// </summary>
         private const int ToolCallTimeoutMs = 300_000;
 

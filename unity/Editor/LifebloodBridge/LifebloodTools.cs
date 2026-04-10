@@ -4,10 +4,10 @@ using MCPForUnity.Editor.Tools;
 namespace Lifeblood.UnityBridge
 {
     /// <summary>
-    /// All 17 Lifeblood semantic tools exposed as Unity MCP custom tools.
+    /// All 18 Lifeblood semantic tools exposed as Unity MCP custom tools.
     /// Each class is auto-discovered by Unity MCP via [McpForUnityTool].
-    /// Architecture: pure outer adapters — JObject in, JObject out,
-    /// all semantic work delegated to the Lifeblood sidecar process.
+    /// Architecture: pure outer adapters. JObject in, JObject out, with all
+    /// semantic work delegated to the Lifeblood sidecar process.
     /// </summary>
 
     // ═══════════════════════════════════════════════════════════════
@@ -49,7 +49,7 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence")]
     public static class LifebloodLookup
     {
-        [ToolParameter("Symbol ID (e.g. type:ExampleApp.SampleController.CompositeController)")]
+        [ToolParameter("Symbol ID (e.g. type:MyApp.AuthService or method:MyApp.AuthService.Login(string))")]
         public static string symbolId;
 
         public static object HandleCommand(JObject @params)
