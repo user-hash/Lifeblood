@@ -78,14 +78,16 @@ dotnet test
 
 ---
 
-## 17 Tools
+## 18 Tools
 
-Connect an MCP client. Load a project. The AI agent gets **17 tools**: 7 read, 10 write.
+Connect an MCP client. Load a project. The AI agent gets **18 tools**: 8 read, 10 write.
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact |
+| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
+
+Every read-side tool that takes a `symbolId` routes through one resolver — exact canonical id, truncated method form, and bare short name all resolve to the same answer.
 
 [Full tool reference](docs/TOOLS.md)
 
@@ -99,13 +101,13 @@ Hexagonal. Pure domain core with zero dependencies. Language adapters on the lef
 LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
-Roslyn (C#)       ──┐                            ┌──  MCP Server (17 tools)
+Roslyn (C#)       ──┐                            ┌──  MCP Server (18 tools)
 TypeScript        ──┼→  Domain  →  Application  →┤──  Context Pack Generator
 JSON graph        ──┘       ↑                     ├──  Instruction File Generator
                       Analysis (optional)         └──  CLI / CI
 ```
 
-14 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+15 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -126,7 +128,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 ## Unity Integration
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 17 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 18 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -134,11 +136,9 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis: 1,148 symbols, 3,196 edges, 11 modules, 150 types, 0 violations.
+Self-analysis: 1,291 symbols, 3,620 edges, 11 modules, 165 types, 0 violations.
 
-Production-verified on a 75-module Unity project: 43,800 symbols, 70,600+ edges, 2,404 types.
-
-Six sessions found [45 real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
+Seven sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
 
 ---
 
