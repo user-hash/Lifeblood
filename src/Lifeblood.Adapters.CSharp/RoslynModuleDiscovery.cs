@@ -47,11 +47,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             // directory separator before combining, otherwise Path.Combine on
             // Linux/macOS treats "Lib\Lib.csproj" as a single filename containing
             // a literal backslash and FileExists always returns false.
-            var normalizedRelativePath = relativePath
-                .Replace('\\', Path.DirectorySeparatorChar)
-                .Replace('/', Path.DirectorySeparatorChar);
-
-            var fullPath = Path.GetFullPath(Path.Combine(slnDir, normalizedRelativePath));
+            var fullPath = Path.GetFullPath(Path.Combine(slnDir, NormalizePathSeparators(relativePath)));
             if (!_fs.FileExists(fullPath)) continue;
 
             var module = ParseProject(fullPath, projectRoot);
@@ -85,7 +81,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Where(el => el.Name.LocalName == "Compile")
                 .Select(el => el.Attribute("Include")?.Value)
                 .Where(v => v != null && v.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-                .Select(v => Path.GetFullPath(Path.Combine(projectDir, v!)))
+                .Select(v => Path.GetFullPath(Path.Combine(projectDir, NormalizePathSeparators(v!))))
                 .Where(_fs.FileExists)
                 .ToArray();
 
@@ -143,12 +139,14 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             // External DLL references via HintPath.
             // These are non-module, non-NuGet assemblies (e.g., Unity engine DLLs)
             // that Roslyn needs as metadata references for accurate compilation.
+            // HintPath values often contain Windows backslashes even in csprojs
+            // generated on non-Windows tooling — normalize before combining.
             var externalDlls = doc.Descendants()
                 .Where(el => el.Name.LocalName == "Reference")
                 .Select(el => el.Elements()
                     .FirstOrDefault(c => c.Name.LocalName == "HintPath")?.Value)
                 .Where(v => v != null)
-                .Select(v => Path.GetFullPath(Path.Combine(projectDir, v!)))
+                .Select(v => Path.GetFullPath(Path.Combine(projectDir, NormalizePathSeparators(v!))))
                 .Where(_fs.FileExists)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -270,22 +268,45 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     /// </summary>
     private string ResolveReferencedAssemblyName(string referencePath, string projectDir)
     {
+        // ProjectReference Include values come straight out of the csproj XML
+        // and conventionally use Windows backslashes ("..\Other\Other.csproj").
+        // On Linux and macOS Path.Combine does not split on backslashes, so the
+        // result is a single filename containing a literal backslash and
+        // FileExists always returns false. Normalize before combining. Without
+        // this fix, every cross-module ProjectReference on non-Windows hosts
+        // silently resolves to the fallback filename-only assembly name, which
+        // breaks cross-assembly edge extraction and every downstream
+        // find_references / dependants query that relies on it.
+        var normalized = NormalizePathSeparators(referencePath);
         try
         {
-            var fullPath = Path.GetFullPath(Path.Combine(projectDir, referencePath));
+            var fullPath = Path.GetFullPath(Path.Combine(projectDir, normalized));
             if (!_fs.FileExists(fullPath))
-                return Path.GetFileNameWithoutExtension(referencePath);
+                return Path.GetFileNameWithoutExtension(normalized);
 
             var xml = _fs.ReadAllText(fullPath);
             var refDoc = XDocument.Parse(xml);
             var asmName = refDoc.Descendants()
                 .FirstOrDefault(el => el.Name.LocalName == "AssemblyName")?.Value;
 
-            return asmName ?? Path.GetFileNameWithoutExtension(referencePath);
+            return asmName ?? Path.GetFileNameWithoutExtension(normalized);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
         {
-            return Path.GetFileNameWithoutExtension(referencePath);
+            return Path.GetFileNameWithoutExtension(normalized);
         }
     }
+
+    /// <summary>
+    /// Normalize both Windows (<c>\</c>) and posix (<c>/</c>) path separators
+    /// to the host's native <see cref="Path.DirectorySeparatorChar"/>. Csproj
+    /// and .sln files conventionally use backslashes regardless of the
+    /// platform that generated them, which breaks <see cref="Path.Combine"/>
+    /// on Linux and macOS because the backslash is a legal filename
+    /// character there. One helper, used at every site that takes a raw path
+    /// out of csproj/sln XML and combines it with a directory.
+    /// </summary>
+    private static string NormalizePathSeparators(string path) =>
+        path.Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
 }
