@@ -23,9 +23,8 @@ namespace Lifeblood.Tests;
 /// a self-contained BCL fixture in a unit test without bundling NuGet
 /// reference packs. Instead we test the OBSERVABLE BEHAVIOR at the compilation
 /// builder layer: did we add the host BCL bundle or didn't we? The end-to-end
-/// CS0433/CS0518-free behavior is verified against DAWG in rollout step 13.
-///
-/// See .claude/plans/bcl-ownership-fix.md §9.2.
+/// CS0433/CS0518-free behavior is verified against a real 75-module Unity
+/// workspace in the rollout checklist.
 /// </summary>
 public class BclOwnershipCompilationTests
 {
@@ -118,8 +117,9 @@ public class BclOwnershipCompilationTests
         //
         // The shape: two BCL-owning modules. Module A defines a partial struct
         // with a method. Module B references Module A and calls the struct method
-        // via array indexer. This is the exact failure shape from the user's
-        // original DAWG report (Voice.SetPatch called from PatchPublisher).
+        // via array indexer. This is the exact failure shape from a real 75-module
+        // Unity workspace where a struct method called through an array indexer
+        // returned zero call sites.
         //
         // What this test pins down beyond the per-layer contracts:
         //   - Discovery sets BclOwnership on BOTH modules (not just one)

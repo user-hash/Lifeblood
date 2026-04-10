@@ -44,7 +44,7 @@ Tools that take a `symbolId` use this format:
 - `mod:AssemblyName`
 - `file:relative/path/to/File.cs`
 
-Lifeblood owns the parameter-type display format for method IDs via `Internal.CanonicalSymbolFormat`. Every method-ID builder in the C# adapter routes through it — the symbol ID grammar does not silently drift with Roslyn version changes.
+Lifeblood owns the parameter-type display format for method IDs via `Internal.CanonicalSymbolFormat`. Every method-ID builder in the C# adapter routes through it, so the symbol ID grammar does not silently drift with Roslyn version changes.
 
 If you don't know the canonical id, ask `lifeblood_resolve_short_name MyType` and use the returned `symbolId`. The resolver also accepts truncated method ids like `method:Namespace.TypeName.MethodName` when there is exactly one matching overload.
 

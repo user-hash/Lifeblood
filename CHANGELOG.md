@@ -29,7 +29,7 @@ of five piecemeal patches.
 
 - **`ModuleInfo.AllowUnsafeCode`** — new typed bool field, default false, set during `RoslynModuleDiscovery.ParseProject` from `<AllowUnsafeBlocks>` element (case-insensitive on the value to handle Unity's `True` casing). Consumed by `ModuleCompilationBuilder.CreateCompilation` via `WithAllowUnsafe(...)`.
 - **`INV-COMPFACT-001..003` documented in CLAUDE.md** — csproj is the source of truth for module-level compilation options; each fact lives as a typed `ModuleInfo` field set at discovery and consumed at compilation; csproj-edit invalidation flows for free through the existing v2 `AnalysisSnapshot.CsprojTimestamps` infrastructure (re-discovery rebuilds the entire `ModuleInfo`, not just one field).
-- Closes the **Minis CS0227 false positives** in DAWG and the broader bug class: any csproj that uses unsafe blocks no longer poisons its semantic model with CS0227, restoring `find_references` / dependants / call-graph extraction for symbols inside `unsafe { ... }` regions.
+- Closes the **CS0227 false positive class on Unity packages with `<AllowUnsafeBlocks>`**: any csproj that uses unsafe blocks no longer poisons its semantic model with CS0227, restoring `find_references` / dependants / call-graph extraction for symbols inside `unsafe { ... }` regions.
 - **5 regression tests** (3 discovery casing + 2 compilation contract).
 
 #### Seam #3 — `RoslynSemanticView` (closes LB-BUG-003)
@@ -55,7 +55,7 @@ of five piecemeal patches.
   2. **Display-string match across the source/metadata boundary**: `RoslynCompilationHost.FindReferences` compared `ISymbol.ToDisplayString()` against the resolved target. Different parameter formatters across source and metadata symbols (driven by Roslyn's default `CSharpErrorMessageFormat` and version drift) silently dropped legitimate call sites.
   3. **BCL double-load** (the dominant cause): `ModuleCompilationBuilder.CreateCompilation` always prepended the host .NET 8 BCL bundle, even for modules that already shipped their own BCL via csproj `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Result: every System type existed in two assemblies. Roslyn emitted CS0433 (ambiguous type) and CS0518 (predefined type missing) on every System usage, the semantic model became unusable, `GetSymbolInfo` returned null at every call site, and every walker tool silently produced empty results.
 
-  Empirical impact on a real Unity workspace (DAWG, 75 modules): `Nebulae.BeatGrid.Audio` module → 29,523 errors before, 3 unused-field warnings after. `find_references` for `method:Voice.SetPatch(VoicePatch)` → 0 → 18 references including the previously-invisible `voices[i].SetPatch(patch)` array-indexer call sites. Total graph edges: 78,126 → 86,334 (+8,208 edges that the broken compilation was silently dropping).
+  Empirical impact on a real 75-module Unity workspace: a single audio-DSP module went from 29,523 errors before to 3 unused-field warnings after. `find_references` for the canonical regression target `method:Voice.SetPatch(VoicePatch)` went from 0 to 18 references, including the previously-invisible `voices[i].SetPatch(patch)` array-indexer call sites. Total graph edges across the workspace: 78,126 to 86,334, restoring +8,208 edges that the broken compilation was silently dropping.
 
   Fix:
   - **Layer 1 (resolver)**: kind-filtered, name-filtered, signature-strict member lookup with documented contract — never silently substitute an unrelated member. Lenient escape valves (single overload, no signature given) are explicit.
@@ -84,7 +84,7 @@ of five piecemeal patches.
 
 ### Fixed
 
-- **CS0518 "System.Object is not defined" on multi-module workspaces** (#1): `lifeblood_execute` failed on any code against workspaces with many modules (e.g., Unity/DAWG with 75 modules). Three-layer root cause:
+- **CS0518 "System.Object is not defined" on multi-module workspaces** (#1): `lifeblood_execute` failed on any code against workspaces with many modules (for example, a 75-module Unity workspace). Three-layer root cause:
   1. `ScriptOptions.Default` contains 25 "Unresolved" named references — placeholders that never resolve to actual DLLs in a published app.
   2. Adding `compilation.References` (target project's transitive deps) injected Unity's netstandard BCL stubs, conflicting with the host .NET 8 runtime.
   3. Two competing `System.Object` definitions from different BCL flavors caused the script compiler to fail.
@@ -164,7 +164,7 @@ Incremental re-analyze, file-level impact, Unity bridge, built-in rule packs.
 
 ### Added
 
-- **DAWG production verification**: 43,800 symbols, 70,600 edges, 75 modules, 2,404 types, 34 cycles, ~4GB peak.
+- **75-module Unity workspace production verification**: 43,800 symbols, 70,600 edges, 75 modules, 2,404 types, 34 cycles, around 4 GB peak.
 
 ## [0.2.1] - 2026-04-08
 

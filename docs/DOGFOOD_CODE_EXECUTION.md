@@ -172,11 +172,11 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 
 ## Bugs Found and Fixed (Session 4 — 2026-04-09)
 
-### B11: CS0518 "System.Object is not defined" on DAWG workspace (#1)
+### B11: CS0518 "System.Object is not defined" on a multi-module Unity workspace (#1)
 
 **Severity:** Critical — ALL `lifeblood_execute` calls fail on multi-module workspaces
 
-**Reproduction:** Load DAWG (75 modules), then `lifeblood_execute` with `return 42;` → CS0518.
+**Reproduction:** Load a 75-module Unity workspace, then `lifeblood_execute` with `return 42;` → CS0518.
 
 **Root cause (3 layers):**
 
@@ -186,7 +186,7 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 
 **Fix:** Load host BCL explicitly from the running .NET runtime directory (`typeof(object).Assembly.Location` → runtime dir → 17 core DLLs). Use `WithReferences` to replace useless defaults. Only add CompilationReferences for project types — no transitive deps.
 
-**Verification:** DAWG 75-module workspace: `return 42`, `Console.Write`, LINQ `Enumerable.Range(1,10).Sum()`, `typeof(object)`, string concat, generic collections — all pass.
+**Verification:** 75-module Unity workspace: `return 42`, `Console.Write`, LINQ `Enumerable.Range(1,10).Sum()`, `typeof(object)`, string concat, generic collections — all pass.
 
 **Tests:** 5 regression tests added:
 - `CodeExecutor_WithDowngradedRefs_ResolvesSystemObject`

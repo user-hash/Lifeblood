@@ -113,7 +113,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Where(v => v != null)
                 .Select(v => ResolveReferencedAssemblyName(v!, projectDir));
 
-            // For Unity projects: <Reference Include="Nebulae.BeatGrid.Domain">
+            // For Unity projects: <Reference Include="Some.AssemblyName">
             // These are assembly references to other project assemblies in the same solution.
             var assemblyRefs = doc.Descendants()
                 .Where(el => el.Name.LocalName == "Reference")

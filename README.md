@@ -87,7 +87,7 @@ Connect an MCP client. Load a project. The AI agent gets **18 tools**: 8 read, 1
 | **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
-Every read-side tool that takes a `symbolId` routes through one resolver — exact canonical id, truncated method form, and bare short name all resolve to the same answer.
+Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, and bare short name all resolve to the same answer.
 
 [Full tool reference](docs/TOOLS.md)
 
@@ -170,7 +170,7 @@ Seven sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit
 
 - [LivingDocFramework](https://github.com/user-hash/LivingDocFramework): The methodology that shaped the architecture
 - [Roslyn](https://github.com/dotnet/roslyn): The C# compiler platform
-- [DAWG](https://dawgtools.org) | [itch.io](https://dawg-tools.itch.io/): The 400k LOC project where we proved these ideas
+- [Case study](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md): The 400k LOC Unity project where we proved these ideas
 
 ## License
 

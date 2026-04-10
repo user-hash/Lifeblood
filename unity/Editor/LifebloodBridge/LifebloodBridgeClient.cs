@@ -8,7 +8,7 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
-namespace Nebulae.LifebloodBridge
+namespace Lifeblood.UnityBridge
 {
     /// <summary>
     /// Manages a Lifeblood MCP server as a child process.
@@ -33,8 +33,9 @@ namespace Nebulae.LifebloodBridge
         private readonly object _lock = new();
 
         /// <summary>
-        /// Timeout for individual tool calls. DAWG analysis takes ~90s,
-        /// so 5 minutes covers large projects with margin.
+        /// Timeout for individual tool calls. Cold analysis on a 75-module Unity
+        /// workspace runs around 90 seconds, so 5 minutes covers large projects
+        /// with margin.
         /// </summary>
         private const int ToolCallTimeoutMs = 300_000;
 

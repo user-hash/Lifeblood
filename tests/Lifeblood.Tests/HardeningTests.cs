@@ -447,7 +447,7 @@ public class HardeningTests
     //      preserves them. This test reproduces the exact production
     //      scenario: multi-module streaming workspace with downgraded
     //      (null-Display) PE references — the configuration that hit
-    //      CS0518 on the DAWG 75-module workspace.
+    //      CS0518 on a real 75-module Unity workspace.
 
     [Fact]
     public void CodeExecutor_WithDowngradedRefs_ResolvesSystemObject()
