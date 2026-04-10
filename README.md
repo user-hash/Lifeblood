@@ -136,8 +136,6 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis: 1,291 symbols, 3,620 edges, 11 modules, 165 types, 0 violations.
-
 Seven sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
 
 ---

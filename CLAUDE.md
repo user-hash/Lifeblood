@@ -247,6 +247,39 @@ threading raw fields through individual constructors.
   handle. Sharing avoids accidental divergence between consumers' views of
   the same workspace.
 
+## Usage Reporting (Analyze Pipeline)
+
+- **INV-USAGE-001 — Usage is inert data.** `AnalysisUsage` and
+  `PhaseTiming` hold only primitive fields and arrays of primitive fields.
+  No `System.Diagnostics` types leak onto the records. Any consumer reads
+  the snapshot freely on any thread.
+
+- **INV-USAGE-002 — Units are documented on every field.** Bytes for
+  memory, milliseconds for time. No implicit conversions. The only derived
+  property is `CpuUtilizationPercent`, which is `CpuTimeTotalMs / WallTimeMs * 100`.
+
+- **INV-USAGE-PORT-001 — The probe port returns a fresh capture on every
+  `Start`.** Two captures started back-to-back do not share peak samples,
+  CPU deltas, phase lists, or GC counters. A capture's lifetime is scoped
+  to the single analyze run that created it.
+
+- **INV-USAGE-PORT-002 — `IUsageCapture.Stop` is idempotent.** A second
+  call returns the same `AnalysisUsage` instance. `IDisposable.Dispose`
+  on an already-stopped capture is a no-op. The error path in
+  `AnalyzeWorkspaceUseCase` disposes the capture when validation throws
+  so the sampling timer does not outlive the failed run.
+
+- **INV-USAGE-PROBE-002 — The sampling timer is disposed at `Stop` or
+  `Dispose`.** Leaked timers would keep the probe alive past the run and
+  corrupt the next capture's peak samples. Test
+  `ProcessUsageProbeTests.Probe_TwoCaptures_AreIndependent` pins this.
+
+The probe lives in `Lifeblood.Adapters.CSharp` alongside
+`PhysicalFileSystem` because it touches `System.Diagnostics.Process`. The
+port lives in Application alongside `IFileSystem`. Composition roots
+(`Lifeblood.CLI.Program` and `Lifeblood.Server.Mcp.GraphSession`) are the
+only sites that construct the concrete probe.
+
 ## BCL Ownership (C# Adapter)
 
 Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't — they rely on the host runtime BCL.
