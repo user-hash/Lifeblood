@@ -127,10 +127,10 @@ public sealed class RoslynEdgeExtractor
                     // Indexers use "this[paramSig]" in their symbol ID (matching ExtractIndexer),
                     // while regular properties use just the name.
                     var propSourceId = prop.IsIndexer
-                        ? SymbolIds.Property(typeFqn, $"this[{string.Join(",", prop.Parameters.Select(p => p.Type.ToDisplayString()))}]")
+                        ? SymbolIds.Property(typeFqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(prop)}]")
                         : SymbolIds.Property(typeFqn, prop.Name);
                     var propTargetId = prop.OverriddenProperty.IsIndexer
-                        ? SymbolIds.Property(baseFqn, $"this[{string.Join(",", prop.OverriddenProperty.Parameters.Select(p => p.Type.ToDisplayString()))}]")
+                        ? SymbolIds.Property(baseFqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(prop.OverriddenProperty)}]")
                         : SymbolIds.Property(baseFqn, prop.OverriddenProperty.Name);
                     AddEdge(edges, seen, propSourceId, propTargetId, EdgeKind.Overrides);
                     break;
@@ -163,7 +163,7 @@ public sealed class RoslynEdgeExtractor
         if (caller == null) return;
 
         var sourceId = GetMethodId(caller);
-        var paramSig = string.Join(",", target.Parameters.Select(p => p.Type.ToDisplayString()));
+        var paramSig = CanonicalSymbolFormat.BuildParamSignature(target);
         var targetId = SymbolIds.Method(
             RoslynSymbolExtractor.GetFullName(target.ContainingType),
             target.Name, paramSig);
@@ -360,7 +360,7 @@ public sealed class RoslynEdgeExtractor
 
     private static string GetMethodId(IMethodSymbol method)
     {
-        var paramSig = string.Join(",", method.Parameters.Select(p => p.Type.ToDisplayString()));
+        var paramSig = CanonicalSymbolFormat.BuildParamSignature(method);
         return SymbolIds.Method(
             RoslynSymbolExtractor.GetFullName(method.ContainingType),
             method.Name, paramSig);

@@ -7,6 +7,90 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Plan v4 (three-seam framing for the post-BCL findings)
+
+After v2's BCL fix, two reviewer reports surfaced five remaining findings.
+v4 closes them via three architectural seams (one resolver port, one
+csproj-driven compilation-fact convention, one adapter semantic view) instead
+of five piecemeal patches.
+
+#### Seam #1 — `ISymbolResolver` (closes LB-BUG-002, LB-BUG-004, LB-FR-002, LB-FR-003)
+
+- **`Lifeblood.Application.Ports.Right.ISymbolResolver`** + single `SymbolResolutionResult` DTO. Every read-side MCP tool that takes a `symbolId` (lookup, dependants, dependencies, blast_radius, file_impact, find_references, find_definition, find_implementations, documentation, rename) routes through the resolver before doing graph or workspace lookups.
+
+- **`Lifeblood.Connectors.Mcp.LifebloodSymbolResolver`** — reference implementation. Resolution order: exact canonical match → truncated method form (lenient single-overload) → bare short name. Returns `Outcome` + `Candidates` + `Diagnostic` for ambiguous and not-found cases.
+
+- **Partial-type unification as a read model.** The graph stores raw symbols (one record per partial declaration; last-write-wins remains the storage policy). The resolver computes a deterministic primary file path + the full `DeclarationFilePaths` array by walking the existing `file:X Contains type:Y` edges. **Zero schema change to `Lifeblood.Domain.Graph.Symbol`.** Primary picker rule: filename matches type name → filename starts with `"<TypeName>."` (shortest first) → lexicographic first.
+
+- **Short-name index** added to `SemanticGraph.GraphIndexes` (case-insensitive bucket) + public `FindByShortName(name)` accessor. Built lazily alongside existing indexes.
+
+- **New MCP tool `lifeblood_resolve_short_name`** — discover canonical IDs from a bare short name when you don't know the namespace.
+
+- **`FindReferencesOptions.IncludeDeclarations`** — explicit operation policy on `ICompilationHost.FindReferences`. When true, the result includes one synthetic `(declaration)` entry per source declaration site (one per partial for partial types). Two-overload signature preserves backward compat.
+
+- **9 regression tests in `SymbolResolverTests.cs`** including the LB-BUG-002 truncated-id misdiagnosis pin-down (`method:Voice.ApplySettings` → resolver canonicalizes → caller graph lookup succeeds).
+
+- **`lifeblood_lookup` response now includes `filePaths[]`** — the full sorted list of partial declaration files. The single `filePath` field is now the deterministic primary, no longer a non-deterministic last-write-wins pick.
+
+#### Seam #2 — Csproj-driven compilation facts as a documented convention (closes LB-BUG-005)
+
+- **`ModuleInfo.AllowUnsafeCode`** — new typed bool field, default false, set during `RoslynModuleDiscovery.ParseProject` from `<AllowUnsafeBlocks>` element (case-insensitive on the value to handle Unity's `True` casing). Consumed by `ModuleCompilationBuilder.CreateCompilation` via `WithAllowUnsafe(...)`.
+
+- **`INV-COMPFACT-001..003` documented in CLAUDE.md**
+
+- **5 regression tests** (3 discovery casing + 2 compilation contract).
+
+#### Seam #3 — `RoslynSemanticView` (closes LB-BUG-003)
+
+- **`Lifeblood.Adapters.CSharp.RoslynSemanticView`** — read-only typed accessor for the C# adapter's loaded semantic state (`Compilations`, `Graph`, `ModuleDependencies`). Constructed once per `GraphSession.Load` and shared by reference across consumers.
+
+- **`RoslynCodeExecutor` refactor** — primary constructor takes a `RoslynSemanticView`. The view IS the script-host globals object: passed to `CSharpScript.RunAsync<RoslynSemanticView>(code, options, view, ...)` so `lifeblood_execute` scripts can read `Graph`, `Compilations`, `ModuleDependencies` as bare top-level identifiers. Backward-compatible secondary constructor takes only `compilations` for tests and standalone callers.
+
+- **Default script imports extended** with `Lifeblood.Adapters.CSharp`, `Lifeblood.Domain.Graph`, `Microsoft.CodeAnalysis`, `Microsoft.CodeAnalysis.CSharp`. **Default script references extended** to include the assemblies that define the script-globals types so `Graph` / `Compilations` resolve at compile time.
+
+- **`INV-VIEW-001..003` documented in CLAUDE.md** — each language adapter publishes a typed read-only view of its loaded state; tools that need read access consume the view (not raw fields); the view is shared by reference across consumers.
+
+- **4 regression tests** (1 view-shape sanity + 3 script-globals end-to-end including backward compat for pure-C# scripts).
+
+### Changed
+
+- **All read-side MCP handlers route through `ISymbolResolver`.** Truncated method ids and bare short names now resolve correctly across `lookup`, `dependants`, `dependencies`, `blast_radius`, `find_references`, `find_definition`, `find_implementations`, `documentation`, `rename`. The reviewer's LB-BUG-002 (`method:Voice.ApplySettings` returning `[]`) is closed.
+
+- **`find_references` adds optional `includeDeclarations` parameter.** Default false preserves prior behavior.
+
+- **`lifeblood_lookup` response includes `filePaths[]`** alongside the existing single `filePath` (now deterministic for partial types).
+
+- **MCP tool count: 17 → 18** (added `lifeblood_resolve_short_name`).
+
+- **Tests: 310 → 328** (+18 across the three seams).
+
+### Fixed
+
+- **`find_references` / call-graph extraction silently returned 0 results for every method in any Unity / .NET Framework / Mono workspace.**
+
+  Fix:
+  - **Layer 1 (resolver)**: kind-filtered, name-filtered, signature-strict member lookup with documented contract — never silently substitute an unrelated member. Lenient escape valves (single overload, no signature given) are explicit.
+  - **Layer 2 (matcher)**: replace display-string comparison with canonical Lifeblood symbol-ID comparison via `BuildSymbolId(resolved) == targetCanonicalId`. The graph and the walker now share one builder.
+  - **Layer 3 (canonical format)**: `Internal.CanonicalSymbolFormat.ParamType` is the single pinned `SymbolDisplayFormat` for parameter type display strings. Every method-ID builder in the adapter (`RoslynSymbolExtractor`, `RoslynEdgeExtractor`, `RoslynCompilationHost.BuildSymbolId`, `RoslynWorkspaceManager.FindInCompilation`) routes through it. Lifeblood's symbol ID grammar is now owned by Lifeblood, not implicitly inherited from Roslyn's default.
+  - **Layer 4 (BCL ownership, INV-BCL-001..005)**: new `BclOwnershipMode` enum on `ModuleInfo`. `RoslynModuleDiscovery` decides ownership ONCE during csproj parsing by inspecting `<Reference Include>` (parsed as assembly identity, handles both bare names and strong-name shapes) and `<HintPath>` basename. `ModuleCompilationBuilder` reads the field and gates host BCL injection — no detection logic at the compilation layer. Decision is single-source-of-truth.
+  - **Layer 5 (incremental csproj invalidation, INV-BCL-005)**: `AnalysisSnapshot.CsprojTimestamps` tracks csproj timestamps. `IncrementalAnalyze` checks csproj timestamps before the .cs file loop and forces re-discovery + recompile when a csproj edits — closes the silent-stale-BclOwnership hole that would otherwise re-introduce the bug under incremental mode.
+
+### Added
+
+- `BclOwnershipMode` enum and `ModuleInfo.BclOwnership` field on `Lifeblood.Application.Ports.Left.IModuleDiscovery`.
+- `Internal.CanonicalSymbolFormat` — single source of truth for parameter type display strings in Lifeblood method symbol IDs.
+- `AnalysisSnapshot.CsprojTimestamps` for incremental csproj-edit detection.
+- 9 regression tests in `FindReferencesCrossModuleTests.cs` (cross-module class methods, struct methods, partial structs, array-indexer receivers, library-defined parameter types, overload disambiguation, silent-fallback bug class).
+- 4 BCL ownership discovery tests in `HardeningTests.cs` (bare Include, strong-name Include, HintPath-only, plain SDK).
+- 3 BCL ownership compilation/integration tests in new `BclOwnershipCompilationTests.cs` (ModuleProvided contract, HostProvided contract, end-to-end two-module find_references).
+- 2 incremental csproj-invalidation tests in `IncrementalAnalyzeTests.cs`.
+- New invariants documented in `CLAUDE.md`: INV-BCL-001 through INV-BCL-005, plus the canonical symbol ID grammar.
+- Architectural plan at `.claude/plans/bcl-ownership-fix.md` (v2 with reviewer corrections folded in).
+
+### Changed
+
+- Tests: 293 → 310 (+17 regression tests across discovery, compilation, incremental, and integration layers).
+
 ## [0.5.1] - 2026-04-09
 
 ### Fixed

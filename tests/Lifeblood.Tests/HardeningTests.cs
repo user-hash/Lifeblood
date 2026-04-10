@@ -14,7 +14,12 @@ namespace Lifeblood.Tests;
 /// <summary>
 /// Hardening tests for gaps identified in the session 6 audit.
 /// Each test exists to prevent regression on a specific known-weak area.
+///
+/// In the ScriptExecutorSerial collection because some tests here call
+/// <c>RoslynCodeExecutor.Execute</c>, which redirects <c>Console.Out</c>
+/// globally and is not safe to run concurrently with other Execute callers.
 /// </summary>
+[Collection("ScriptExecutorSerial")]
 public class HardeningTests
 {
     // ──────────────────────────────────────────────────────────────
@@ -142,6 +147,241 @@ public class HardeningTests
             // Should pick up OtherAssembly but NOT System.Core
             Assert.Contains("OtherAssembly", mod.Dependencies);
             Assert.DoesNotContain("System.Core", mod.Dependencies);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // BCL ownership detection (INV-BCL-002 / INV-BCL-004)
+    // See .claude/plans/bcl-ownership-fix.md §9.1
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RoslynModuleDiscovery_DetectsBclOwnership_FromBareReferenceInclude()
+    {
+        // <Reference Include="netstandard"> with no HintPath. The Include
+        // attribute alone is authoritative — this is the modern Unity shape.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-bcl-bare-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "MyClass.cs"),
+                "namespace Test; public class MyClass { }");
+
+            File.WriteAllText(Path.Combine(tempDir, "TestProject.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project ToolsVersion=""4.0"" DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">
+  <PropertyGroup>
+    <AssemblyName>TestProject</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""MyClass.cs"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include=""netstandard"" />
+  </ItemGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+            Assert.Single(modules);
+            Assert.Equal(BclOwnershipMode.ModuleProvided, modules[0].BclOwnership);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void RoslynModuleDiscovery_DetectsBclOwnership_FromStrongNameReferenceInclude()
+    {
+        // Legacy .NET Framework / NuGet-converted csprojs encode the assembly
+        // identity in the Include attribute. The matcher must split on comma
+        // and compare the first token, not do a naive StartsWith.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-bcl-strong-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "MyClass.cs"),
+                "namespace Test; public class MyClass { }");
+
+            File.WriteAllText(Path.Combine(tempDir, "TestProject.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project ToolsVersion=""4.0"" DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">
+  <PropertyGroup>
+    <AssemblyName>TestProject</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""MyClass.cs"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include=""netstandard, Version=2.1.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51"" />
+  </ItemGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+            Assert.Single(modules);
+            Assert.Equal(BclOwnershipMode.ModuleProvided, modules[0].BclOwnership);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void RoslynModuleDiscovery_DetectsBclOwnership_FromHintPathFilenameOnly()
+    {
+        // Csproj uses a non-canonical Include name but points HintPath at a BCL
+        // DLL. The HintPath basename is the secondary signal — it must catch
+        // this case even though the Include attribute is not "netstandard".
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-bcl-hint-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "MyClass.cs"),
+                "namespace Test; public class MyClass { }");
+
+            // Create a real DLL on disk so the HintPath resolves; the test only
+            // cares that the basename detection fires, not that the DLL is real.
+            var stubDllPath = Path.Combine(tempDir, "netstandard.dll");
+            File.WriteAllBytes(stubDllPath, new byte[] { 0x4D, 0x5A }); // MZ header stub
+
+            File.WriteAllText(Path.Combine(tempDir, "TestProject.csproj"), $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project ToolsVersion=""4.0"" DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">
+  <PropertyGroup>
+    <AssemblyName>TestProject</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""MyClass.cs"" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include=""SomeOddName"">
+      <HintPath>netstandard.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+            Assert.Single(modules);
+            Assert.Equal(BclOwnershipMode.ModuleProvided, modules[0].BclOwnership);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void RoslynModuleDiscovery_DetectsAllowUnsafeBlocks_LowerCaseTrue()
+    {
+        // Csproj declares <AllowUnsafeBlocks>true</AllowUnsafeBlocks> (lowercase).
+        // ModuleInfo.AllowUnsafeCode must be true so the compilation builder sets
+        // CSharpCompilationOptions.AllowUnsafe = true. INV-COMPFACT-001..003.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-unsafe-lower-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "MyClass.cs"),
+                "namespace Test; public class MyClass { }");
+            File.WriteAllText(Path.Combine(tempDir, "TestProject.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+            Assert.Single(modules);
+            Assert.True(modules[0].AllowUnsafeCode);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void RoslynModuleDiscovery_DetectsAllowUnsafeBlocks_UnityCasingTrue()
+    {
+        // Unity emits <AllowUnsafeBlocks>True</AllowUnsafeBlocks> (capitalized).
+        // The matcher must be case-insensitive on the value.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-unsafe-unity-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "MyClass.cs"),
+                "namespace Test; public class MyClass { }");
+            File.WriteAllText(Path.Combine(tempDir, "TestProject.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project ToolsVersion=""4.0"" DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">
+  <PropertyGroup>
+    <AssemblyName>TestProject</AssemblyName>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include=""MyClass.cs"" />
+  </ItemGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+            Assert.Single(modules);
+            Assert.True(modules[0].AllowUnsafeCode);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void RoslynModuleDiscovery_NoAllowUnsafeBlocks_DefaultsFalse()
+    {
+        // Plain SDK csproj with no AllowUnsafeBlocks element. Default false.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-unsafe-absent-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "MyClass.cs"),
+                "namespace Test; public class MyClass { }");
+            File.WriteAllText(Path.Combine(tempDir, "TestProject.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+            Assert.Single(modules);
+            Assert.False(modules[0].AllowUnsafeCode);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void RoslynModuleDiscovery_PlainSdkProject_ReportsHostProvided()
+    {
+        // Plain net8.0 SDK-style csproj with no HintPath references — the
+        // golden WriteSideApp shape. Default BclOwnership = HostProvided so
+        // the host BCL is injected during compilation.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-bcl-sdk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "MyClass.cs"),
+                "namespace Test; public class MyClass { }");
+
+            File.WriteAllText(Path.Combine(tempDir, "TestProject.csproj"), @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+            Assert.Single(modules);
+            Assert.Equal(BclOwnershipMode.HostProvided, modules[0].BclOwnership);
         }
         finally
         {

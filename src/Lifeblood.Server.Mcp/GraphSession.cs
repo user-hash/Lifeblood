@@ -94,8 +94,18 @@ public sealed class GraphSession : IDisposable
             // For process-isolated execution, swap to ProcessIsolatedCodeExecutor.
             if (adapter.Compilations is { Count: > 0 })
             {
+                // Plan v4 Seam #3 / INV-VIEW-002: build the typed read-only view
+                // ONCE and share it by reference across consumers. Today the only
+                // consumer is the script host (RoslynCodeExecutor); future
+                // consumers (debuggers, visualizers, custom linters) reuse the
+                // same view via dependency injection from this construction site.
+                var view = new RoslynSemanticView(
+                    adapter.Compilations,
+                    graph,
+                    adapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
+
                 newCompilationHost = new RoslynCompilationHost(adapter.Compilations, adapter.ModuleDependencies);
-                newCodeExecutor = new RoslynCodeExecutor(adapter.Compilations);
+                newCodeExecutor = new RoslynCodeExecutor(view);
                 newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations, adapter.ModuleDependencies);
             }
 
@@ -144,8 +154,14 @@ public sealed class GraphSession : IDisposable
 
         if (_roslynAdapter.Compilations is { Count: > 0 })
         {
+            // Plan v4 Seam #3 — same view construction as the full-load path.
+            var view = new RoslynSemanticView(
+                _roslynAdapter.Compilations,
+                graph,
+                _roslynAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
+
             newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
-            newCodeExecutor = new RoslynCodeExecutor(_roslynAdapter.Compilations);
+            newCodeExecutor = new RoslynCodeExecutor(view);
             newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
         }
 

@@ -144,6 +144,30 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            // BCL ownership detection (INV-BCL-002 / INV-BCL-004).
+            // Walk every <Reference> element and ask whether it declares a base
+            // class library. If ANY reference does, this module ships its own BCL
+            // and the compilation builder must not inject the host BCL bundle.
+            // See .claude/plans/bcl-ownership-fix.md §3 for the signal hierarchy
+            // and §4 for why this lives in discovery (single source of truth).
+            bool ownsBcl = doc.Descendants()
+                .Where(el => el.Name.LocalName == "Reference")
+                .Any(ReferenceDeclaresBcl);
+
+            // Compilation fact: <AllowUnsafeBlocks> (INV-COMPFACT-001..003).
+            // Csproj-driven compilation options follow the same discover→store→
+            // consume pattern as BCL ownership: parse here once, store on
+            // ModuleInfo, consume in ModuleCompilationBuilder. NEVER re-derive
+            // at the compilation layer.
+            //
+            // The MSBuild property name is "AllowUnsafeBlocks". Csproj allows
+            // either case ("true" / "True"); Unity emits "True". The match is
+            // case-insensitive on the value.
+            bool allowUnsafeCode = doc.Descendants()
+                .Where(el => el.Name.LocalName == "AllowUnsafeBlocks")
+                .Select(el => el.Value)
+                .Any(v => string.Equals(v?.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+
             // Pure detection: no PackageReference or assembly Reference
             bool isPure = !doc.Descendants().Any(el =>
                 el.Name.LocalName == "PackageReference"
@@ -156,6 +180,10 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 Dependencies = deps,
                 IsPure = isPure,
                 ExternalDllPaths = externalDlls,
+                BclOwnership = ownsBcl
+                    ? BclOwnershipMode.ModuleProvided
+                    : BclOwnershipMode.HostProvided,
+                AllowUnsafeCode = allowUnsafeCode,
                 Properties = new Dictionary<string, string>
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),
@@ -167,6 +195,65 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             return null;
         }
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // BCL ownership detection helpers (INV-BCL-002 / INV-BCL-004)
+    //
+    // A module is "BCL-owning" iff its csproj declares a base class library
+    // via either:
+    //   (1) a <Reference Include="netstandard|mscorlib|System.Runtime"> element,
+    //       parsed as an assembly identity (handles both the bare form used by
+    //       modern Unity csprojs and the strong-name form used by legacy
+    //       .NET Framework / NuGet-converted csprojs), OR
+    //   (2) a <Reference> with a <HintPath> child whose file basename
+    //       (sans .dll extension, case-insensitive) is one of those names.
+    //
+    // The Include-attribute signal is primary because it's the most-authoritative
+    // declaration the csproj makes. The HintPath signal is the backstop for
+    // csprojs that omit Include or use a non-canonical Include name.
+    //
+    // Detection logic lives ONLY here. ModuleCompilationBuilder consumes the
+    // resulting BclOwnership field and never re-derives it from filenames.
+    // ────────────────────────────────────────────────────────────────────────
+
+    private static bool ReferenceDeclaresBcl(XElement referenceElement)
+    {
+        var include = referenceElement.Attribute("Include")?.Value ?? "";
+        var simpleName = ParseAssemblyIdentitySimpleName(include);
+        if (IsBclSimpleName(simpleName)) return true;
+
+        var hintPath = referenceElement.Elements()
+            .FirstOrDefault(c => c.Name.LocalName == "HintPath")?.Value;
+        if (string.IsNullOrEmpty(hintPath)) return false;
+
+        var hintBasename = Path.GetFileNameWithoutExtension(hintPath);
+        return IsBclSimpleName(hintBasename);
+    }
+
+    /// <summary>
+    /// Extract the simple assembly name from an Include attribute value.
+    /// Handles both the bare form (<c>"netstandard"</c>) and the strong-name
+    /// form (<c>"netstandard, Version=2.1.0.0, Culture=neutral, PublicKeyToken=..."</c>).
+    /// </summary>
+    internal static string ParseAssemblyIdentitySimpleName(string includeValue)
+    {
+        if (string.IsNullOrWhiteSpace(includeValue)) return "";
+        var commaIdx = includeValue.IndexOf(',');
+        var firstToken = commaIdx < 0 ? includeValue : includeValue.Substring(0, commaIdx);
+        return firstToken.Trim();
+    }
+
+    /// <summary>
+    /// Returns true iff the assembly's simple name is one of the three base
+    /// class libraries Lifeblood recognizes for ownership detection.
+    /// <c>System.Private.CoreLib</c> is intentionally excluded — it's the
+    /// .NET 8 implementation assembly, not a reference assembly that any
+    /// csproj declares.
+    /// </summary>
+    internal static bool IsBclSimpleName(string name) =>
+        name.Equals("netstandard",    StringComparison.OrdinalIgnoreCase)
+     || name.Equals("mscorlib",       StringComparison.OrdinalIgnoreCase)
+     || name.Equals("System.Runtime", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Resolves a ProjectReference path to the referenced project's AssemblyName.

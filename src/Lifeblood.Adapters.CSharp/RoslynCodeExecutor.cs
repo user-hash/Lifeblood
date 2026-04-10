@@ -15,6 +15,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 public sealed class RoslynCodeExecutor : ICodeExecutor
 {
+    private readonly RoslynSemanticView _view;
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
 
     private static readonly HashSet<string> BlockedPatterns = new(StringComparer.OrdinalIgnoreCase)
@@ -87,9 +88,34 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     /// </summary>
     private static readonly Lazy<MetadataReference[]> HostBclReferences = new(LoadHostBclReferences);
 
-    public RoslynCodeExecutor(IReadOnlyDictionary<string, CSharpCompilation> compilations)
+    /// <summary>
+    /// Construct an executor over a typed read-only view of the loaded
+    /// semantic state. Plan v4 Seam #3 — the script-host globals object IS
+    /// the same <see cref="RoslynSemanticView"/> instance, passed via
+    /// <c>CSharpScript.RunAsync&lt;RoslynSemanticView&gt;</c>. Scripts reach
+    /// the loaded state via top-level identifiers <c>Graph</c>,
+    /// <c>Compilations</c>, <c>ModuleDependencies</c>. See INV-VIEW-001..003.
+    /// </summary>
+    public RoslynCodeExecutor(RoslynSemanticView view)
     {
-        _compilations = compilations;
+        _view = view;
+        _compilations = view.Compilations;
+    }
+
+    /// <summary>
+    /// Backward-compatible constructor for tests and standalone callers that
+    /// only have a compilations dictionary. Wraps the dictionary in a minimal
+    /// <see cref="RoslynSemanticView"/> with an empty graph and empty
+    /// dependency map. Scripts run via this overload won't be able to query
+    /// the graph or module dependencies — they should use the view-aware
+    /// constructor for full functionality.
+    /// </summary>
+    public RoslynCodeExecutor(IReadOnlyDictionary<string, CSharpCompilation> compilations)
+        : this(new RoslynSemanticView(
+            compilations,
+            new Lifeblood.Domain.Graph.SemanticGraph(),
+            new Dictionary<string, string[]>(StringComparer.Ordinal)))
+    {
     }
 
     public CodeExecutionResult Execute(string code, string[]? imports = null, int timeoutMs = 5000)
@@ -139,7 +165,25 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
             foreach (var compilation in _compilations.Values)
                 allReferences.Add(compilation.ToMetadataReference());
 
+            // Plan v4 Seam #3: include the assemblies that define the script-
+            // globals types (RoslynSemanticView and its property types) so the
+            // script compiler can resolve `Graph`, `Compilations`, and
+            // `ModuleDependencies` at top level. Without these, scripts that
+            // reference globals get CS0246 even though the globals object is
+            // actually present at runtime.
+            allReferences.Add(MetadataReference.CreateFromFile(typeof(RoslynSemanticView).Assembly.Location));
+            allReferences.Add(MetadataReference.CreateFromFile(typeof(Lifeblood.Domain.Graph.SemanticGraph).Assembly.Location));
+            allReferences.Add(MetadataReference.CreateFromFile(typeof(CSharpCompilation).Assembly.Location));
+            allReferences.Add(MetadataReference.CreateFromFile(typeof(Microsoft.CodeAnalysis.Compilation).Assembly.Location));
+
             var allImports = DefaultImports
+                .Concat(new[]
+                {
+                    "Lifeblood.Adapters.CSharp",
+                    "Lifeblood.Domain.Graph",
+                    "Microsoft.CodeAnalysis",
+                    "Microsoft.CodeAnalysis.CSharp",
+                })
                 .Concat(imports ?? Array.Empty<string>())
                 .Distinct()
                 .ToArray();
@@ -165,8 +209,14 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 // CancellationToken alone can't interrupt synchronous blocking
                 // (Thread.Sleep, while(true){}, etc.) inside the script.
                 using var cts = new CancellationTokenSource(timeoutMs);
+                // Plan v4 Seam #3: pass the RoslynSemanticView as script globals.
+                // CSharpScript.RunAsync<TGlobals> exposes globals' instance members
+                // at script top-level scope, so the script reads `Graph`,
+                // `Compilations`, `ModuleDependencies` as bare identifiers.
                 var scriptTask = Task.Run(() =>
-                    CSharpScript.RunAsync(code, options, cancellationToken: cts.Token)
+                    CSharpScript.RunAsync(code, options, globals: _view,
+                            globalsType: typeof(RoslynSemanticView),
+                            cancellationToken: cts.Token)
                         .GetAwaiter().GetResult(),
                     cts.Token);
 
