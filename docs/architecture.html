@@ -189,19 +189,22 @@
       <p>
         Architecture diagram matching the actual codebase. Solid items are implemented and dogfood-verified.
         <span style="opacity:0.5">Faded dashed items</span> are planned but not yet built.
-        All 14 port interfaces have concrete implementations. All hexagonal boundaries enforced by tests.
+        All 15 port interfaces have concrete implementations. All hexagonal boundaries enforced by tests.
       </p>
       <div class="pills">
         <div class="pill">11 assemblies + 2 standalone adapters</div>
-        <div class="pill">1148 symbols, 3196 edges</div>
-        <div class="pill">281 tests / CI green</div>
+        <div class="pill">1291 symbols, 3620 edges</div>
+        <div class="pill">329 tests / CI green</div>
         <div class="pill">C# + TypeScript + Python</div>
-        <div class="pill">Cross-module: BestEffort</div>
-        <div class="pill">14/14 ports wired</div>
+        <div class="pill">Cross-module: Proven</div>
+        <div class="pill">15/15 ports wired</div>
         <div class="pill">Incremental re-analyze</div>
         <div class="pill">File-level edges</div>
-        <div class="pill">17 MCP tools (7R + 10W)</div>
+        <div class="pill">18 MCP tools (8R + 10W)</div>
         <div class="pill">Roslyn bidirectional</div>
+        <div class="pill">ISymbolResolver port</div>
+        <div class="pill">RoslynSemanticView</div>
+        <div class="pill">BCL ownership</div>
         <div class="pill">dotnet tool</div>
       </div>
     </div>
@@ -230,7 +233,7 @@
         <div class="card">
           <h3>Composition Roots</h3>
           <div class="item"><strong>Lifeblood.CLI</strong><small>dotnet tool: <code>lifeblood</code>. analyze, context, export. CI exit codes.</small></div>
-          <div class="item"><strong>Lifeblood.Server.Mcp</strong><small>dotnet tool: <code>lifeblood-mcp</code>. Stdio JSON-RPC. 17 tools (7R + 10W). Bidirectional Roslyn.</small></div>
+          <div class="item"><strong>Lifeblood.Server.Mcp</strong><small>dotnet tool: <code>lifeblood-mcp</code>. Stdio JSON-RPC. 18 tools (8R + 10W). Bidirectional Roslyn. RoslynSemanticView shared by reference across consumers.</small></div>
         </div>
       </div>
 
@@ -256,7 +259,7 @@
             <div class="hex-boundary">
               <div class="app-ring">
                 <h4>Application Layer</h4>
-                <p>AnalyzeWorkspaceUseCase<br/>GenerateContextUseCase<br/><span style="font-size:9px">14 port interfaces — all wired</span></p>
+                <p>AnalyzeWorkspaceUseCase<br/>GenerateContextUseCase<br/><span style="font-size:9px">15 port interfaces — all wired</span></p>
               </div>
               <div class="domain-core">
                 <h4>Domain</h4>
@@ -277,6 +280,7 @@
             <div class="port right"><strong>IAgentContextGenerator</strong><span>graph → AgentContextPack</span></div>
             <div class="port right"><strong>IMcpGraphProvider</strong><span>Lookup, Deps, BlastRadius, FileImpact</span></div>
             <div class="port right"><strong>IInstructionFileGenerator</strong><span>graph → markdown</span></div>
+            <div class="port right"><strong>ISymbolResolver</strong><span>name / id → SymbolResolutionResult</span></div>
           </div>
         </div>
 
@@ -287,7 +291,7 @@
 
         <div class="signal-card">
           <strong>Enforced invariants (tested)</strong>
-          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 281 tests. 17 MCP tools. 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze. File-level edges.</span>
+          <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. Graph immutable. Output deterministic. 11 frozen ADRs. 329 tests. 18 MCP tools. 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj). File-level edges. BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler (INV-RESOLVER-001..004). RoslynSemanticView shared by reference (INV-VIEW-001..003).</span>
         </div>
       </div>
 
@@ -300,8 +304,9 @@
           <p>Right-side connectors expose semantic truth to AI agents and tools.</p>
           <div class="item"><strong>AgentContextGenerator</strong><small>High-value files, boundaries, reading order, hotspots, dependency matrix, violations.</small></div>
           <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries and architecture rules.</small></div>
-          <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius, file impact.</small></div>
-          <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 17 tools (7 read + 10 write). Bidirectional Roslyn. Connect from Claude Code or any MCP client.</small></div>
+          <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius, file impact, short-name resolution.</small></div>
+          <div class="item"><strong>LifebloodSymbolResolver</strong><small>Reference ISymbolResolver implementation. Routes every read-side handler through canonical → truncated method → bare short name resolution. Deterministic primary file path picker for partial types.</small></div>
+          <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 18 tools (8 read + 10 write). Bidirectional Roslyn. Connect from Claude Code or any MCP client.</small></div>
           <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services. Not yet started.</small></div>
         </div>
 
@@ -310,7 +315,7 @@
           <p>Verified, capability-aware context for AI systems.</p>
           <div class="item"><strong>Context pack JSON</strong><span>structured AI-consumable output</span></div>
           <div class="item"><strong>Instruction file markdown</strong><span>CLAUDE.md architecture sections</span></div>
-          <div class="item"><strong>MCP interactive queries</strong><span>17 tools over stdio (7R + 10W)</span></div>
+          <div class="item"><strong>MCP interactive queries</strong><span>18 tools over stdio (8R + 10W)</span></div>
           <div class="item"><strong>Exported graph.json</strong><span>portable semantic graph + metadata</span></div>
           <div class="item"><strong>CLI analysis report</strong><span>symbols, edges, violations, cycles</span></div>
           <div class="item"><strong>Code execution</strong><span>CSharpScript.RunAsync via MCP</span></div>
@@ -329,14 +334,14 @@
 
     <div class="legend">
       <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference with cross-module resolution. TypeScript and Python are standalone adapters. JSON graph is the universal bridge. Community adapters (Go, Rust) have contribution guides.</div>
-      <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. 14 port interfaces — all sealed with concrete implementations. GraphDocument carries version, language, and adapter capabilities. All invariants enforced by tests.</div>
-      <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 17 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters. Packaged as dotnet tools.</div>
+      <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. 15 port interfaces — all sealed with concrete implementations. GraphDocument carries version, language, and adapter capabilities. All invariants enforced by tests.</div>
+      <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 18 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters. Packaged as dotnet tools.</div>
     </div>
 
     <div class="footer">
       Solid = implemented and dogfood-verified. Dashed/faded = planned.
       Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-      → 1148 symbols, 3196 edges, 11 modules, 150 types, 0 violations. 14 ports, 17 MCP tools. Incremental re-analyze. File-level edges.
+      → 1291 symbols, 3620 edges, 11 modules, 165 types, 0 violations. 15 ports, 18 MCP tools. Incremental re-analyze (file + csproj). File-level edges.
     </div>
   </div>
 </body>

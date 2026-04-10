@@ -117,6 +117,20 @@ namespace Nebulae.LifebloodBridge
         }
     }
 
+    [McpForUnityTool("lifeblood_resolve_short_name",
+        Description = "Resolve a bare short name (e.g. 'AdaptiveBeatGrid') to its canonical symbol ID(s). Returns every matching symbol with its canonical id, file path, and kind. Use this to discover the canonical id of a type when you only know its short name and not its namespace.",
+        Group = "code-intelligence")]
+    public static class LifebloodResolveShortName
+    {
+        [ToolParameter("Short symbol name (no namespace, e.g. 'MidiLearnManager')")]
+        public static string name;
+
+        public static object HandleCommand(JObject @params)
+        {
+            return LifebloodBridgeClient.Instance.CallTool("lifeblood_resolve_short_name", @params);
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // Write-side: Compilation & diagnostics (4 tools)
     // ═══════════════════════════════════════════════════════════════

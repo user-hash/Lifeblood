@@ -39,13 +39,13 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | Assembly | Role | Dependencies |
 |----------|------|-------------|
 | **Lifeblood.Domain** | Graph model, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, rules, results | None |
-| **Lifeblood.Application** | Port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase | Domain |
-| **Lifeblood.Adapters.CSharp** | Roslyn reference adapter: workspace analyzer, module discovery, symbol/edge extraction | Application, Roslyn |
+| **Lifeblood.Application** | 15 port interfaces (incl. ISymbolResolver), AnalyzeWorkspaceUseCase, GenerateContextUseCase | Domain |
+| **Lifeblood.Adapters.CSharp** | Roslyn reference adapter: workspace analyzer, module discovery, symbol/edge extraction, RoslynSemanticView (typed read-only adapter view), CanonicalSymbolFormat (single source of truth for parameter-type display) | Application, Roslyn |
 | **Lifeblood.Adapters.JsonGraph** | JSON import/export with round-trip fidelity | Application |
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator | Application |
 | **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius, file impact) | Application |
 | **Lifeblood.Analysis** | CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator | Domain |
-| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. 17 tools (7 read + 10 write). Bidirectional Roslyn. | Application, Adapters.CSharp, Connectors |
+| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. 18 tools (8 read + 10 write). Bidirectional Roslyn. | Application, Adapters.CSharp, Connectors |
 | **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. | Roslyn Scripting only |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch | Everything |
 
@@ -67,8 +67,8 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 
 ### Left Side (Language Adapters)
 - `IWorkspaceAnalyzer` — primary: projectRoot + config → SemanticGraph
-- `IModuleDiscovery` — module/project discovery → ModuleInfo[]
-- `ICompilationHost` — diagnostics, compile-checking, reference finding (Roslyn-backed)
+- `IModuleDiscovery` — module/project discovery → ModuleInfo[] (carries `BclOwnership` and `AllowUnsafeCode` parsed from csproj)
+- `ICompilationHost` — diagnostics, compile-checking, reference finding (Roslyn-backed). `FindReferences` has an explicit `IncludeDeclarations` option for partial-type declaration sites.
 - `ICodeExecutor` — execute code snippets against loaded workspace
 - `IWorkspaceRefactoring` — rename (returns edits, does NOT apply), format
 - `IGraphImporter` — stream → SemanticGraph (JSON protocol)
@@ -78,6 +78,7 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 - `IAgentContextGenerator` — graph + analysis → AgentContextPack
 - `IInstructionFileGenerator` — graph + analysis → markdown string
 - `IMcpGraphProvider` — LookupSymbol, GetDependencies, GetDependants, GetBlastRadius, GetFileImpact
+- `ISymbolResolver` — bare short name / truncated method id / canonical id → `SymbolResolutionResult` (Outcome + Candidates + Diagnostic + DeclarationFilePaths). Every read-side MCP handler routes through this resolver before any graph or workspace lookup. Partial-type unification is computed as a read model on the resolution result, not a graph schema change.
 
 ## Capability-Aware
 
@@ -103,18 +104,30 @@ v1 limitation: does not cascade to dependent modules when an API surface changes
 
 ## Unity Bridge
 
-The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes all 17 tools to Unity MCP.
+The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes all 18 tools to Unity MCP.
 
 ```
 Unity Editor ──→ Unity MCP (scenes, GameObjects, assets)
                      │
                      └── [McpForUnityTool] ──→ Lifeblood MCP (child process)
-                         └── 17 semantic tools over JSON-RPC
+                         └── 18 semantic tools over JSON-RPC
 ```
 
 ## Deterministic Output
 
 GraphBuilder sorts symbols by ID and edges by source+target+kind before producing the graph. File discovery is sorted. Same input always produces the same output (INV-PIPE-001).
+
+## Three Architectural Seams (post-BCL framing)
+
+After the BCL ownership fix (v2) closed the silent zero-result class on Unity / .NET Framework / Mono workspaces, five remaining reviewer findings were collapsed into three architectural seams instead of five piecemeal patches. Each seam is a contract, not a hot-fix.
+
+**Seam #1 — `ISymbolResolver` (Application port).** Identifier resolution is a port. Every read-side handler routes through one resolver before any graph or workspace lookup. Resolution order is strict: exact canonical match → truncated method form (single-overload lenient) → bare short name. Partial-type unification is a read model computed on the resolution result by walking existing `file:X Contains type:Y` edges — the graph stays raw, and `Lifeblood.Domain.Graph.Symbol` is unchanged. The deterministic primary file path picker (filename match → prefix match → lexicographic) lives in `LifebloodSymbolResolver.ChoosePrimaryFilePath`. Invariants: `INV-RESOLVER-001..004` in `CLAUDE.md`.
+
+**Seam #2 — Csproj-driven compilation facts as a documented convention.** Each module-level compilation option that the host needs to honor lives as a typed field on `ModuleInfo`, parsed once during `RoslynModuleDiscovery.ParseProject`, consumed in `ModuleCompilationBuilder.CreateCompilation`. Today: `BclOwnership` (HostProvided | ModuleProvided) and `AllowUnsafeCode`. Csproj-edit invalidation flows for free through `AnalysisSnapshot.CsprojTimestamps` — re-discovery rebuilds the entire `ModuleInfo`, not just one field. Invariants: `INV-COMPFACT-001..003`.
+
+**Seam #3 — `RoslynSemanticView` (typed adapter view).** Each language adapter publishes a typed read-only view of its loaded semantic state. The C# adapter's `RoslynSemanticView` exposes `Compilations`, `Graph`, and `ModuleDependencies`, is constructed once per `GraphSession.Load`, and is shared by reference across consumers. `RoslynCodeExecutor` consumes the view as the script-host globals object — `lifeblood_execute` scripts can read `Graph` / `Compilations` / `ModuleDependencies` as bare top-level identifiers. Invariants: `INV-VIEW-001..003`.
+
+The seam framing is the durable architectural contract. Future bug reports that look like "different surfaces broken in the same way" should first check whether one of these seams is the right place to fix it, before adding a per-surface patch.
 
 ## Invariant Enforcement
 
@@ -123,3 +136,5 @@ Architecture rules are not just documented. They are tested:
 - 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
+- 9 invariants for the three seams (`INV-RESOLVER-001..004`, `INV-COMPFACT-001..003`, `INV-VIEW-001..003`) — see `CLAUDE.md`
+- 5 invariants for BCL ownership (`INV-BCL-001..005`) — `BclOwnership` decided ONCE during csproj parsing, never re-detected at compilation time

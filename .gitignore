@@ -29,3 +29,9 @@ docs/MASTERPLAN.md
 docs/MASTERPLAN_CHAT_ADDITIONS.md
 docs/AUDIT_HOLES.md
 .planning/
+
+# Local MCP config (machine-specific paths). Use .mcp.json.example as the template.
+.mcp.json
+
+# Working notes / session plans (kept on disk, not published)
+.claude/

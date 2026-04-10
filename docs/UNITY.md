@@ -10,7 +10,7 @@ Claude Code ──→ Unity MCP (action/control plane)
                     ├── built-in tools (scenes, GameObjects, scripts...)
                     │
                     └── [McpForUnityTool] custom tools ──→ Lifeblood MCP (child process)
-                        └── 17 semantic tools (analyze, references, blast radius, file impact...)
+                        └── 18 semantic tools (analyze, references, blast radius, file impact, resolve short name...)
 ```
 
 Lifeblood does NOT run inside Unity. It spawns as a separate .NET process with its own Roslyn workspace. No assembly conflicts, no domain reload interference, no memory pressure on the Editor.
@@ -58,7 +58,7 @@ Assets/Editor/LifebloodBridge.meta
 
 ### Step 4: Verify
 
-Open Unity. The bridge auto-discovers via `[McpForUnityTool]` attributes. All 17 Lifeblood tools should appear alongside Unity MCP's built-in tools.
+Open Unity. The bridge auto-discovers via `[McpForUnityTool]` attributes. All 18 Lifeblood tools should appear alongside Unity MCP's built-in tools.
 
 ## Server Discovery
 
@@ -89,8 +89,8 @@ Streaming compilation with downgrading keeps memory bounded:
 
 | Project size | Peak memory | Graph |
 |---|---|---|
-| ~10 modules (Lifeblood itself) | ~200 MB | 1,148 symbols, 3,196 edges |
-| ~75 modules (400k LOC Unity project) | ~4 GB | 43,800 symbols, 70,600+ edges |
+| ~10 modules (Lifeblood itself) | ~200 MB | 1,291 symbols, 3,620 edges |
+| ~75 modules (400k LOC Unity project) | ~4 GB | 44,566 symbols, 87,233 edges |
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 
