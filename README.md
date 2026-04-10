@@ -138,7 +138,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 Self-analysis: 1,291 symbols, 3,620 edges, 11 modules, 165 types, 0 violations.
 
-Production-verified on a 75-module Unity project: 44,566 symbols, 87,233 edges, 2,411 types. The +9,107 edges over the previous baseline come from the v0.6.0 BCL ownership fix (call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL) and the multi-parent GraphBuilder fix (partial types now produce one Contains edge per declaration file).
+Production-verified on a 75-module Unity project: 44,569 symbols, 87,238 edges, 2,439 types. The +9,000-plus edges over the previous baseline come from the v0.6.0 BCL ownership fix (call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL) and the multi-parent GraphBuilder fix (partial types now produce one Contains edge per declaration file).
 
 Seven sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
 

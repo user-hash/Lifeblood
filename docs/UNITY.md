@@ -90,7 +90,7 @@ Streaming compilation with downgrading keeps memory bounded:
 | Project size | Peak memory | Graph |
 |---|---|---|
 | ~10 modules (Lifeblood itself) | ~200 MB | 1,291 symbols, 3,620 edges |
-| ~75 modules (400k LOC Unity project) | ~4 GB | 44,566 symbols, 87,233 edges |
+| ~75 modules (400k LOC Unity project) | ~4 GB | 44,569 symbols, 87,238 edges |
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 

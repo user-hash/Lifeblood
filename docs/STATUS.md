@@ -43,13 +43,13 @@ Violations: 0
 Tested on a real 75-module Unity project (400k+ LOC, 2,404 types):
 
 ```
-Symbols: 44,566
-Edges:   87,233
+Symbols: 44,569
+Edges:   87,238
 Modules: 75
-Types:   2,411
-Cycles:  90
+Types:   2,439
+Cycles:  91
 ```
 
-Edge count grew by 9,107 after the v0.6.0 BCL ownership and multi-parent GraphBuilder fixes. Call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL (Unity, .NET Framework, Mono), and partial types now produce one Contains edge per declaration file.
+Edge count grew by more than 9,000 after the v0.6.0 BCL ownership and multi-parent GraphBuilder fixes. Call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL (Unity, .NET Framework, Mono), and partial types now produce one Contains edge per declaration file.
 
 Seven dogfood sessions found [50+ real bugs](DOGFOOD_FINDINGS.md). Examples: security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types, memory architecture, BCL double-load, display-string match across the source/metadata boundary, and partial-type last-write-wins. All fixed in-session.
