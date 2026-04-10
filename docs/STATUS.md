@@ -1,13 +1,15 @@
 # Status
 
-Dogfood-verified. 344 tests. 18 MCP tools (8 read + 10 write). 15 port interfaces. Native usage and timing reporting on every `lifeblood_analyze` response. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+Dogfood-verified. 362 tests. 18 MCP tools (8 read + 10 write). 17 port interfaces. Native usage and timing reporting on every `lifeblood_analyze` response. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+
+<!-- portCount: 17 --><!-- testCount: 362 --><!-- toolCount: 18 -->
 
 ## Components
 
 | Component | State |
 |-----------|-------|
 | Lifeblood.Domain | Immutable graph model, GraphBuilder (with file-level edge derivation + multi-parent partial-type Contains synthesis), GraphValidator, Evidence, ConfidenceLevel, short-name index. |
-| Lifeblood.Application | 15 port interfaces, AnalyzeWorkspaceUseCase, GenerateContextUseCase. ISymbolResolver port routes every read-side handler through one resolver. Resolution order: canonical, then truncated method, then bare short name. |
+| Lifeblood.Application | 17 port interfaces (including `IUsageProbe` + `IUsageCapture` + `ISymbolResolver`), AnalyzeWorkspaceUseCase, GenerateContextUseCase. ISymbolResolver port routes every read-side handler through one resolver. Resolution order: canonical, then truncated method, then bare short name. |
 | Lifeblood.Adapters.CSharp | Roslyn workspace analyzer with streaming compilation and downgrading. Incremental re-analyze (timestamp-based, per-module, csproj-edit aware). Cross-assembly edge extraction, HintPath DLL loading. Per-module BCL ownership (HostProvided or ModuleProvided) decided at discovery. Fixes the silent zero-result class on Unity, .NET Framework, and Mono workspaces. CanonicalSymbolFormat owns the symbol ID grammar. Per-module AllowUnsafeCode parsed from csproj. RoslynSemanticView publishes typed read-only state for tools. Bidirectional compiler-as-a-service. |
 | Lifeblood.Adapters.JsonGraph | Import and export with full metadata round-trip. |
 | Lifeblood.Connectors.ContextPack | Context pack with GraphSummary, instruction file, reading order. |
@@ -32,23 +34,23 @@ Built-in architecture rule packs:
 ```
 $ lifeblood analyze --project .
 Symbols: 1376
-Edges:   3822
+Edges: 3822
 Modules: 11
-Types:   174
+Types: 174
 
 ── usage ─────────────────────────────────────────────────
-  Wall time          :      5,075 ms  (5.1 s)
-  CPU total          :      7,296 ms
-    user mode        :      6,406 ms
-    kernel mode      :        890 ms
-  CPU utilization    :     143.8% of one core
-  CPU avg per core   :       4.5% across 32 logical cores
-  Peak working set   :        212 MB
-  Peak private bytes :        148 MB
-  GC collections     : gen0=11  gen1=6  gen2=2
-  Phases             :
-    analyze            :      5,071 ms
-    validate           :          3 ms
+  Wall time : 5,075 ms (5.1 s)
+  CPU total : 7,296 ms
+  user mode : 6,406 ms
+  kernel mode : 890 ms
+  CPU utilization : 143.8% of one core
+  CPU avg per core : 4.5% across 32 logical cores
+  Peak working set : 212 MB
+  Peak private bytes : 148 MB
+  GC collections : gen0=11 gen1=6 gen2=2
+  Phases :
+  analyze : 5,071 ms
+  validate : 3 ms
 ──────────────────────────────────────────────────────────
 ```
 
@@ -62,24 +64,24 @@ Tested on a real 75-module Unity workspace (400k+ LOC). Same workspace, two diff
 $ lifeblood analyze --project D:/path/to/UnityProject
 
 Symbols: 44569
-Edges:   87238
+Edges: 87238
 Modules: 75
-Types:   2439
+Types: 2439
 Cycles: 91
 
 ── usage ─────────────────────────────────────────────────
-  Wall time          :     32,644 ms  (32.6 s)
-  CPU total          :     53,687 ms
-    user mode        :     47,109 ms
-    kernel mode      :      6,578 ms
-  CPU utilization    :     164.5% of one core
-  CPU avg per core   :       5.1% across 32 logical cores
-  Peak working set   :        571 MB
-  Peak private bytes :        484 MB
-  GC collections     : gen0=197  gen1=108  gen2=34
-  Phases             :
-    analyze            :     32,570 ms
-    validate           :         73 ms
+  Wall time : 32,644 ms (32.6 s)
+  CPU total : 53,687 ms
+  user mode : 47,109 ms
+  kernel mode : 6,578 ms
+  CPU utilization : 164.5% of one core
+  CPU avg per core : 5.1% across 32 logical cores
+  Peak working set : 571 MB
+  Peak private bytes : 484 MB
+  GC collections : gen0=197 gen1=108 gen2=34
+  Phases :
+  analyze : 32,570 ms
+  validate : 73 ms
 ──────────────────────────────────────────────────────────
 ```
 
@@ -89,23 +91,23 @@ Cycles: 91
 > lifeblood_analyze projectPath="D:/path/to/UnityProject"
   (returns JSON with summary + usage)
 
-mode             : full
-summary.symbols  : 44,607
-summary.edges    : 87,306
-summary.modules  : 75
-summary.types    : 2,443
-wallTimeMs       : 34,305
-cpuTimeTotalMs   : 59,203
-  user           : 53,250
-  kernel         :  5,953
-cpuUtilization%  : 172.6
-peakWsMb         :  2,512
-peakPrivateMb    :  2,576
-hostCores        : 32
-gc gen0/1/2      : 2 / 1 / 1
+mode : full
+summary.symbols : 44,607
+summary.edges : 87,306
+summary.modules : 75
+summary.types : 2,443
+wallTimeMs : 34,305
+cpuTimeTotalMs : 59,203
+  user : 53,250
+  kernel : 5,953
+cpuUtilization% : 172.6
+peakWsMb : 2,512
+peakPrivateMb : 2,576
+hostCores : 32
+gc gen0/1/2 : 2 / 1 / 1
 phases:
-  analyze            : 34,200 ms
-  validate           :    104 ms
+  analyze : 34,200 ms
+  validate : 104 ms
 ```
 
 ### Why the memory profiles differ by ~4x
@@ -120,7 +122,7 @@ The GC counts confirm this architectural difference. The CLI churns (`gen0=197, 
 
 - Need one-shot analysis, a rules check, or a graph export? Use the CLI path. Sub-1 GB memory budget is enough.
 - Need interactive MCP queries (`execute`, `find_references`, etc.) after the analyze? Use the MCP server. Budget for 3 GB on a 75-module workspace, 4 GB on larger.
-- Memory-constrained MCP session? Pass `readOnly: true` to `lifeblood_analyze` and the server falls back to the CLI streaming profile. Write-side tools are unavailable under `readOnly` — you get graph-only queries in exchange for the memory savings.
+- Memory-constrained MCP session? Pass `readOnly: true` to `lifeblood_analyze` and the server falls back to the CLI streaming profile. Write-side tools are unavailable under `readOnly`. You get graph-only queries in exchange for the memory savings.
 
 Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Both blocks come from the native `usage` field on every `lifeblood_analyze` response, the CLI block to stderr and the MCP block inside the `tools/call` result JSON. No external measurement wrapper.
 

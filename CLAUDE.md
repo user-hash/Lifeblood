@@ -1,4 +1,4 @@
-# Lifeblood — AI Instruction File
+# Lifeblood. AI Instruction File
 
 ## What This Project Is
 
@@ -9,23 +9,23 @@ We do not build Roslyn-grade adapters for every language. We build the framework
 ## Architecture
 
 ```
-Lifeblood.Domain                # Pure. ZERO deps. Graph model, rules, results, capabilities.
-Lifeblood.Application           # Ports + use cases. Depends only on Domain.
-  ├── Ports/Left/              # IWorkspaceAnalyzer, IModuleDiscovery
-  ├── Ports/Right/             # IAgentContextGenerator, IMcpGraphProvider, IInstructionFileGenerator
-  ├── Ports/GraphIO/           # IGraphImporter, IGraphExporter
-  ├── Ports/Analysis/          # IRuleProvider
-  ├── Ports/Output/            # IProgressSink
-  ├── Ports/Infrastructure/    # IFileSystem
-  └── UseCases/                # AnalyzeWorkspace, GenerateContext
+Lifeblood.Domain # Pure. ZERO deps. Graph model, rules, results, capabilities.
+Lifeblood.Application # Ports + use cases. Depends only on Domain.
+  ├── Ports/Left/ # IWorkspaceAnalyzer, IModuleDiscovery
+  ├── Ports/Right/ # IAgentContextGenerator, IMcpGraphProvider, IInstructionFileGenerator
+  ├── Ports/GraphIO/ # IGraphImporter, IGraphExporter
+  ├── Ports/Analysis/ # IRuleProvider
+  ├── Ports/Output/ # IProgressSink
+  ├── Ports/Infrastructure/ # IFileSystem
+  └── UseCases/ # AnalyzeWorkspace, GenerateContext
 
-Lifeblood.Adapters.CSharp      # LEFT SIDE. Roslyn. Reference implementation.
-Lifeblood.Adapters.JsonGraph    # LEFT SIDE. Universal JSON protocol.
+Lifeblood.Adapters.CSharp # LEFT SIDE. Roslyn. Reference implementation.
+Lifeblood.Adapters.JsonGraph # LEFT SIDE. Universal JSON protocol.
 Lifeblood.Connectors.ContextPack # RIGHT SIDE. Context pack + CLAUDE.md generator.
-Lifeblood.Connectors.Mcp       # RIGHT SIDE. MCP graph provider for AI agents.
-Lifeblood.Analysis              # Optional analyzers (coupling, blast radius, cycles, tiers).
-Lifeblood.Server.Mcp            # MCP server host. Stdio JSON-RPC. Interactive AI sessions.
-Lifeblood.CLI                   # Composition root. Wires adapters to connectors.
+Lifeblood.Connectors.Mcp # RIGHT SIDE. MCP graph provider for AI agents.
+Lifeblood.Analysis # Optional analyzers (coupling, blast radius, cycles, tiers).
+Lifeblood.Server.Mcp # MCP server host. Stdio JSON-RPC. Interactive AI sessions.
+Lifeblood.CLI # Composition root. Wires adapters to connectors.
 ```
 
 ## Invariants
@@ -112,7 +112,7 @@ Lifeblood.Domain
 ```csharp
 IWorkspaceAnalyzer.AnalyzeWorkspace(projectRoot, config) → SemanticGraph
 IModuleDiscovery.DiscoverModules(projectRoot) → ModuleInfo[]
-ICompilationHost.GetDiagnostics / CompileCheck / FindReferences  // Roslyn-backed
+ICompilationHost.GetDiagnostics / CompileCheck / FindReferences // Roslyn-backed
 ICodeExecutor.Execute(code, imports, timeoutMs) → CodeExecutionResult
 IWorkspaceRefactoring.Rename(symbolId, newName) → TextEdit[] / Format(code) → string
 ```
@@ -141,10 +141,10 @@ IBlastRadiusProvider.Analyze(graph, symbolId, maxDepth) → BlastRadiusResult
 Every read-side MCP tool that takes a `symbolId` parameter must route through
 `Lifeblood.Application.Ports.Right.ISymbolResolver` before doing graph or
 workspace lookups. The resolver is the single source of truth for "what does
-this user-supplied identifier mean" — it canonicalizes truncated method IDs,
+this user-supplied identifier mean". It canonicalizes truncated method IDs,
 resolves bare short names, and computes the merged read model for partial types.
 
-- **INV-RESOLVER-001 — Identifier resolution is a port.** Every read-side tool
+- **INV-RESOLVER-001. Identifier resolution is a port.** Every read-side tool
   that takes a `symbolId` parameter (`lifeblood_lookup`, `lifeblood_dependants`,
   `lifeblood_dependencies`, `lifeblood_blast_radius`, `lifeblood_file_impact`,
   `lifeblood_find_references`, `lifeblood_find_definition`,
@@ -153,23 +153,23 @@ resolves bare short names, and computes the merged read model for partial types.
   add a read-side tool that calls `graph.GetSymbol` or `graph.GetIncomingEdgeIndexes`
   directly with the user's raw input.
 
-- **INV-RESOLVER-002 — The resolver accepts every input format.** Resolution
+- **INV-RESOLVER-002. The resolver accepts every input format.** Resolution
   order: exact canonical match → truncated method form (`method:NS.Type.Name`
   with no parens, lenient single-overload match) → bare short name (no kind
   prefix and no namespace, looks up the short-name index). Returns
   `SymbolResolutionResult` with `Outcome`, `CanonicalId`, `Symbol`,
   `PrimaryFilePath`, `DeclarationFilePaths`, `Candidates`, and `Diagnostic`.
 
-- **INV-RESOLVER-003 — Partial-type unification is a read model.** The graph
+- **INV-RESOLVER-003. Partial-type unification is a read model.** The graph
   stores raw symbols (one per partial declaration; last-write-wins remains the
   storage policy in `GraphBuilder.AddSymbol`). The resolver walks the type's
   incoming `EdgeKind.Contains` edges from `SymbolKind.File` symbols to discover
-  every partial declaration file at read time. Schema unchanged —
+  every partial declaration file at read time. Schema unchanged 
   `Lifeblood.Domain.Graph.Symbol.FilePath` stays a single value. The merged
   view lives entirely on `SymbolResolutionResult.PrimaryFilePath` +
   `SymbolResolutionResult.DeclarationFilePaths`.
 
-- **INV-RESOLVER-004 — Primary file path for partial types is deterministic.**
+- **INV-RESOLVER-004. Primary file path for partial types is deterministic.**
   Picker rules in `LifebloodSymbolResolver.ChoosePrimaryFilePath`:
   (1) filename matches the type name exactly, (2) filename starts with
   `"<TypeName>."` (shortest match wins among prefix matches), (3) lexicographic
@@ -179,24 +179,24 @@ resolves bare short names, and computes the merged read model for partial types.
 
 Csproj is the source of truth for module-level compilation options. Each fact
 flows through one path: discover at parse time → store on `ModuleInfo` →
-consume at compilation time. The pattern is the contract — every future
+consume at compilation time. The pattern is the contract. Every future
 csproj-driven option follows the same shape.
 
-- **INV-COMPFACT-001 — Csproj is authoritative for module-level compilation
+- **INV-COMPFACT-001. Csproj is authoritative for module-level compilation
   options.** Examples already shipped: `BclOwnership` (v2), `AllowUnsafeCode`
   (v4). Future additions follow the same pattern: `LangVersion`, `Nullable`,
   `DefineConstants`, `Platform`, `WarningLevel`, etc.
 
-- **INV-COMPFACT-002 — Each compilation fact lives as a typed field on
+- **INV-COMPFACT-002. Each compilation fact lives as a typed field on
   `ModuleInfo`.** Default value preserves pre-fix behavior. Set during
   `RoslynModuleDiscovery.ParseProject`. Consumed exactly once during
   `Internal.ModuleCompilationBuilder.CreateCompilation`. NEVER re-derive from
   the csproj at the compilation layer; NEVER sniff filenames as a substitute
   for declared options.
 
-- **INV-COMPFACT-003 — Csproj edits invalidate cached module facts.** The
+- **INV-COMPFACT-003. Csproj edits invalidate cached module facts.** The
   `AnalysisSnapshot.CsprojTimestamps` tracking added in v2 (INV-BCL-005)
-  covers every compilation fact for free — `IncrementalAnalyze` rebuilds the
+  covers every compilation fact for free. `IncrementalAnalyze` rebuilds the
   entire `ModuleInfo` on csproj edit, not just one field. The next compilation
   fact added under this convention ships with zero new incremental work.
 
@@ -207,22 +207,22 @@ semantic state. Tools that need read access (script host today; debuggers,
 visualizers, custom linters tomorrow) consume the view by reference, never
 threading raw fields through individual constructors.
 
-- **INV-VIEW-001 — Each language adapter publishes a typed semantic view.**
+- **INV-VIEW-001. Each language adapter publishes a typed semantic view.**
   The C# adapter publishes `Lifeblood.Adapters.CSharp.RoslynSemanticView`
   (`Compilations`, `Graph`, `ModuleDependencies`). Future language adapters
   publish their own view type using their language's semantic model.
 
-- **INV-VIEW-002 — Tools consume the view, not raw fields.** The script host
+- **INV-VIEW-002. Tools consume the view, not raw fields.** The script host
   (`RoslynCodeExecutor`) takes a `RoslynSemanticView` in its constructor.
   Future consumers (debuggers, visualizers, linters, REPLs) take the same
   view. NEVER thread raw `Compilations` / `Graph` / `ModuleDependencies`
   through individual tool constructors.
 
-- **INV-VIEW-003 — The view is constructed once per workspace load and
+- **INV-VIEW-003. The view is constructed once per workspace load and
   shared by reference.** `GraphSession.Load` (full and incremental paths)
   builds the view once with three field assignments and passes it by
   reference to consumers. The view never holds locks, never caches anything
-  beyond its three references, never mutates state — it is purely a typed
+  beyond its three references, never mutates state. It is purely a typed
   handle. Sharing avoids accidental divergence between consumers' views of
   the same workspace.
 
@@ -236,27 +236,27 @@ per-phase durations. The snapshot is populated by an optional
 `AnalyzeWorkspaceUseCase`. Both the CLI and the MCP server ship the probe
 on by default; every `lifeblood_analyze` response carries the snapshot.
 
-- **INV-USAGE-001 — Usage is inert data.** `AnalysisUsage` and
+- **INV-USAGE-001. Usage is inert data.** `AnalysisUsage` and
   `PhaseTiming` hold only primitive fields and arrays of primitive fields.
   No `System.Diagnostics` types leak onto the records. Any consumer reads
   the snapshot freely on any thread.
-- **INV-USAGE-002 — Units are documented on every field.** Bytes for
+- **INV-USAGE-002. Units are documented on every field.** Bytes for
   memory, milliseconds for time. No implicit conversions. The only derived
   property is `CpuUtilizationPercent`, which is `CpuTimeTotalMs / WallTimeMs * 100`.
-- **INV-USAGE-PORT-001 — The probe port returns a fresh capture on every
+- **INV-USAGE-PORT-001. The probe port returns a fresh capture on every
   `Start`.** Two captures started back-to-back do not share peak samples,
   CPU deltas, phase lists, or GC counters. A capture's lifetime is scoped
   to the single analyze run that created it.
-- **INV-USAGE-PORT-002 — `IUsageCapture.Stop` is idempotent.** A second
+- **INV-USAGE-PORT-002. `IUsageCapture.Stop` is idempotent.** A second
   call returns the same `AnalysisUsage` instance. `IDisposable.Dispose`
   on an already-stopped capture is a no-op. The error path in
   `AnalyzeWorkspaceUseCase` disposes the capture when validation throws
   so the sampling timer does not outlive the failed run.
-- **INV-USAGE-PROBE-001 — The concrete `ProcessUsageProbe` takes an
+- **INV-USAGE-PROBE-001. The concrete `ProcessUsageProbe` takes an
   initial RSS sample in its constructor.** Sub-sample-interval runs still
   report a non-zero peak working set. This makes the feature honest on
   tiny analyze calls where the background timer never ticks.
-- **INV-USAGE-PROBE-002 — The sampling timer is disposed at `Stop` or
+- **INV-USAGE-PROBE-002. The sampling timer is disposed at `Stop` or
   `Dispose`.** Leaked timers would keep the probe alive past the run and
   corrupt the next capture's peak samples. Test
   `ProcessUsageProbeTests.Probe_TwoCaptures_AreIndependent` pins this.
@@ -269,17 +269,45 @@ only sites that construct the concrete probe.
 
 ## BCL Ownership (C# Adapter)
 
-Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't — they rely on the host runtime BCL.
+Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't. They rely on the host runtime BCL.
 
-Lifeblood treats this as a discovered module fact: `Lifeblood.Application.Ports.Left.ModuleInfo.BclOwnership` is `BclOwnershipMode.HostProvided` or `BclOwnershipMode.ModuleProvided`. The decision is computed ONCE during `RoslynModuleDiscovery.ParseProject` and consumed by `ModuleCompilationBuilder.CreateCompilation`. Detection logic lives in exactly one place — `RoslynModuleDiscovery.ReferenceDeclaresBcl` plus its `ParseAssemblyIdentitySimpleName` and `IsBclSimpleName` helpers. The compilation builder reads the field and never re-derives.
+Lifeblood treats this as a discovered module fact: `Lifeblood.Application.Ports.Left.ModuleInfo.BclOwnership` is `BclOwnershipMode.HostProvided` or `BclOwnershipMode.ModuleProvided`. The decision is computed ONCE during `RoslynModuleDiscovery.ParseProject` and consumed by `ModuleCompilationBuilder.CreateCompilation`. Detection logic lives in exactly one place. `RoslynModuleDiscovery.ReferenceDeclaresBcl` plus its `ParseAssemblyIdentitySimpleName` and `IsBclSimpleName` helpers. The compilation builder reads the field and never re-derives.
 
-- **INV-BCL-001 — Single BCL per compilation.** Two BCLs causes CS0433 (ambiguous type) and CS0518 (predefined type missing) on every System type. The semantic model becomes unusable: `GetSymbolInfo` returns null at every call site, so `find_references`, `dependants`, and call-graph extraction silently produce zero results. Type-only references survive because their resolution is partially syntactic — methods do not.
-- **INV-BCL-002 — Module owns its BCL when its csproj declares one.** A `<Reference>` element whose Include value (parsed as assembly identity, handles both `Include="netstandard"` and `Include="netstandard, Version=2.1.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51"`) or HintPath basename matches `netstandard`, `mscorlib`, or `System.Runtime` is the authoritative declaration. Such modules MUST NOT also receive the host BCL bundle.
-- **INV-BCL-003 — Host BCL is the fallback for plain SDK-style projects.** Modules with no BCL-naming `<Reference>` element receive `BclReferenceLoader.References.Value` so System types resolve.
-- **INV-BCL-004 — BCL ownership is decided at discovery time, single source of truth.** Detection logic lives in `RoslynModuleDiscovery`. `ModuleCompilationBuilder` reads the typed field — no filename sniffing, no re-derivation, no detection logic at the compilation layer.
-- **INV-BCL-005 — Incremental re-analyze respects csproj edits.** `AnalysisSnapshot.CsprojTimestamps` tracks csproj timestamps. When a csproj timestamp changes, the affected module is re-discovered and recompiled even if no .cs file changed. Without this, a csproj edit that adds or removes a BCL reference produces a stale `BclOwnership` value forever and the double-BCL bug returns under incremental mode.
+- **INV-BCL-001. Single BCL per compilation.** Two BCLs causes CS0433 (ambiguous type) and CS0518 (predefined type missing) on every System type. The semantic model becomes unusable: `GetSymbolInfo` returns null at every call site, so `find_references`, `dependants`, and call-graph extraction silently produce zero results. Type-only references survive because their resolution is partially syntactic. Methods do not.
+- **INV-BCL-002. Module owns its BCL when its csproj declares one.** A `<Reference>` element whose Include value (parsed as assembly identity, handles both `Include="netstandard"` and `Include="netstandard, Version=2.1.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51"`) or HintPath basename matches `netstandard`, `mscorlib`, or `System.Runtime` is the authoritative declaration. Such modules MUST NOT also receive the host BCL bundle.
+- **INV-BCL-003. Host BCL is the fallback for plain SDK-style projects.** Modules with no BCL-naming `<Reference>` element receive `BclReferenceLoader.References.Value` so System types resolve.
+- **INV-BCL-004. BCL ownership is decided at discovery time, single source of truth.** Detection logic lives in `RoslynModuleDiscovery`. `ModuleCompilationBuilder` reads the typed field. No filename sniffing, no re-derivation, no detection logic at the compilation layer.
+- **INV-BCL-005. Incremental re-analyze respects csproj edits.** `AnalysisSnapshot.CsprojTimestamps` tracks csproj timestamps. When a csproj timestamp changes, the affected module is re-discovered and recompiled even if no .cs file changed. Without this, a csproj edit that adds or removes a BCL reference produces a stale `BclOwnership` value forever and the double-BCL bug returns under incremental mode.
 
 The full plan with empirical evidence, rollout history, and the regression test matrix lives at `.claude/plans/bcl-ownership-fix.md`.
+
+### MCP Protocol Invariants (v0.6.1)
+
+The JSON-RPC 2.0 / MCP protocol contract is owned by `McpDispatcher` in `Lifeblood.Server.Mcp`. `Program.cs` is a thin stdio I/O loop that delegates every request to the dispatcher. It contains no routing logic, no method-string matching, no response construction. All of that lives in `McpDispatcher`, which is a public sealed class testable via its normal public API.
+
+- **INV-MCP-001. `initialize` response carries `protocolVersion` and `capabilities`.** Both are required by the MCP spec. `protocolVersion` is owned by the `McpDispatcher.SupportedProtocolVersion` constant (`"2024-11-05"`). Single source of truth, one edit to bump. `capabilities` is a typed `McpCapabilities` POCO, never an inline dictionary, so new MCP capability negotiations are structural additions. Class-level defaults on `McpInitializeResult` plus explicit construction-site assignment make this belt-and-braces. Pinned by `McpProtocolTests.Initialize_ReturnsSpecCompliantResult` and `Initialize_SerializedJson_HasProtocolVersionAndCapabilities`.
+
+- **INV-MCP-002. Notifications never receive a response body.** Messages with `request.Id == null` are notifications per JSON-RPC 2.0. The `KnownNotifications` set in `McpDispatcher` is the single source of truth for recognized notification method names: `notifications/initialized` (MCP spec canonical form), `initialized` (legacy alias during deprecation), `notifications/cancelled`, `$/cancelRequest`. Any entry in the set short-circuits `Dispatch` to return `null` before response construction. Unknown notifications also return `null` and log to stderr for operator visibility. Pinned by `McpProtocolTests.NotificationsInitialized_SpecCompliantForm_ProducesNoResponse`, `NotificationsInitialized_LegacyAlias_ProducesNoResponse`, and `UnknownNotification_ProducesNoResponse`.
+
+- **INV-TOOLREG-001. Tool availability dispatch is by typed enum, never by name prefix.** Every `McpToolInfo` declares `required ToolAvailability Availability { get; init; }`. Omitting it is a compile error (C# 11 `required`). `ToolRegistry.GetTools(hasCompilationState)` filters on the typed property to decide which tools receive the `[Unavailable...]` decoration. The previous implementation used 8 hard-coded `StartsWith` prefix checks and silently misclassified `lifeblood_resolve_short_name`. The bug class is gone because the language enforces the invariant. Pinned by `McpProtocolTests.ToolRegistry_EveryToolHasExplicitAvailability`, `WriteSideTools_MarkedUnavailable_WhenNoCompilationState`, `ReadSideTools_NeverMarkedUnavailable`, `ResolveShortName_IsClassifiedReadSide`.
+
+### Governance Invariants (v0.6.1)
+
+- **INV-SCRIPTHOST-001. `Lifeblood.ScriptHost` has zero `ProjectReference`.** The script host is a process-isolated child that runs untrusted code; its "no access to parent state" guarantee depends on not taking a ProjectReference to any Lifeblood module. NuGet PackageReferences are allowed (Microsoft.CodeAnalysis.CSharp.Scripting is load-bearing). Ratchet-tested by `ArchitectureInvariantTests.ScriptHost_HasZeroProjectReferences`.
+
+- **INV-COMPROOT-001. Composition roots use only the allowlist.** `Lifeblood.CLI` and `Lifeblood.Server.Mcp` reference only `{Domain, Application, Analysis, Adapters.CSharp, Adapters.JsonGraph, Connectors.ContextPack, Connectors.Mcp}`. The allowlist is declared once as `private static readonly HashSet<string> CompositionRootAllowedModules` on `ArchitectureInvariantTests`. Single source of truth. Expanding it is a conscious architectural decision requiring a commit that edits the test. Ratchet-tested by `CompositionRoot_CLI_UsesOnlyAllowedModules` and `CompositionRoot_ServerMcp_UsesOnlyAllowedModules`.
+
+- **INV-DOCS-001. Doc numbers match the repository.** `docs/STATUS.md` declares port and tool counts in HTML comments (`<!-- portCount: 17 -->`, `<!-- toolCount: 18 -->`). The single source of truth is the HTML comment; ratchet tests in `DocsTests` parse the comment and assert the number matches the live count of `public interface I*` declarations under `src/Lifeblood.Application/Ports` (for ports) and `Name = "lifeblood_*"` literals in `ToolRegistry.cs` (for tools). Editing the count in one place and not the other fails the ratchet.
+
+- **INV-CHANGELOG-001. Every version heading has a link reference.** `CHANGELOG.md` must contain a `[X.Y.Z]: https://github.com/.../compare/...` link reference for every `## [X.Y.Z]` heading. Ratchet-tested by `DocsTests.Changelog_EveryHeadingHasLinkReference`. Closes the drift class where v0.6.0 shipped with stale bottom-of-file link refs.
+
+### Test Discipline (v0.6.1)
+
+- **INV-TEST-001. Tests never silently early-return on precondition failure.** The `TryAnalyze(out ...) ⇒ bool` pattern with `if (!TryAnalyze(...)) return;` guards is forbidden. It hides both legitimate skips AND real failures as silent passes. Missing preconditions (golden repo not restored, etc.) turn into explicit `Skip.IfNot(condition, reason)` calls via `Xunit.SkippableFact`, surfaced in the test runner as Skip with a documented reason. Presence-but-broken conditions (golden repo present, analysis produced zero symbols) turn into loud `Assert.True` / `Assert.Fail`. No hiding. The shape for skippable integration tests is `[SkippableFact]` + a helper that calls `Skip.IfNot` for preconditions and throws on real failures. The deep-audit pass that shipped this invariant caught a latent `FindImplementations` bug that had been hiding behind silent returns for multiple commits, and the user flagged this as "the most load-bearing cleanup in P4" in the audit brief. Enforced by reading `WriteSideIntegrationTests.cs` as the canonical example. Grep for `if (!Try*` in `tests/**/*.cs` should return zero hits.
+
+### Write-Side Semantic Comparison (v0.6.1)
+
+- **INV-FINDIMPL-001. `FindImplementations` compares via canonical Lifeblood symbol IDs, never display strings or `SymbolEqualityComparer`.** The canonical symbol ID from `RoslynCompilationHost.BuildSymbolId` (which routes through `Internal.CanonicalSymbolFormat`) is the only cross-assembly-safe comparison for C# symbols in Lifeblood. `ToDisplayString()` happens to work for cross-assembly identity because display strings omit assembly qualification, but the drift class from v0.6.0 Layer 2 (nullability, reduced names, attribute round-trips) applies. `SymbolEqualityComparer.Default` is stricter than needed. It treats source and metadata PE-downgraded copies of the same type as non-equal because they live in different assemblies, which breaks the very cross-module matching `FindImplementations` needs. The canonical-ID approach is correct by construction: the ID is built from the symbol's namespace + name + container, not from identity. Pinned by `WriteSideIntegrationTests.FindImplementations_IGreeter_FindsGreeterAndFormalGreeter` which exercises the cross-module case against the golden repo. This invariant generalizes to ALL future write-side matching operations: when comparing symbols for semantic equality across the source/metadata boundary, always route through `BuildSymbolId`, never through display strings or `SymbolEqualityComparer`.
 
 ## Symbol ID Grammar (C# Adapter)
 
@@ -294,16 +322,16 @@ type:Fully.Qualified.TypeName
 method:Fully.Qualified.TypeName.MethodName(Param1Type,Param2Type)
 field:Fully.Qualified.TypeName.FieldName
 property:Fully.Qualified.TypeName.PropertyName
-property:Fully.Qualified.TypeName.this[Param1Type,Param2Type]   // indexer
+property:Fully.Qualified.TypeName.this[Param1Type,Param2Type] // indexer
 ```
 
 **Method parameter signature is FULLY-QUALIFIED.** A method that takes one `MyApp.Item` parameter
-appears as `method:MyApp.Service.Process(MyApp.Item)` — never `method:MyApp.Service.Process(Item)`.
+appears as `method:MyApp.Service.Process(MyApp.Item)`. Never `method:MyApp.Service.Process(Item)`.
 
 The exact format is pinned by `Internal.CanonicalSymbolFormat.ParamType`. Every method-ID builder
 in the adapter routes through `CanonicalSymbolFormat.BuildParamSignature` so source and metadata
 symbols ALWAYS produce the same ID. Do not call `ITypeSymbol.ToDisplayString()` from a method-ID
-builder — always use the canonical formatter.
+builder. Always use the canonical formatter.
 
 **Constructors:** name part is `.ctor`. Example: `method:MyApp.Service..ctor(string,int)`.
 
@@ -313,7 +341,7 @@ builder — always use the canonical formatter.
 **Special types:** C# aliases (`int`, `string`, `bool`, `void`, …) are used instead of their
 `System.*` qualified names. The canonical format has `UseSpecialTypes` enabled.
 
-**Nullability:** never reflected in IDs — `string?` and `string` share the same parameter signature
+**Nullability:** never reflected in IDs. `string?` and `string` share the same parameter signature
 because they refer to the same underlying method symbol.
 
 ## Serialization Naming
@@ -362,8 +390,8 @@ Rule: JSON serializers should use `System.Text.Json` with `JsonNamingPolicy.Came
 - **INV-STREAM-002**: `SharedMetadataReferenceCache` deduplicates NuGet MetadataReferences across modules. One instance per `AnalyzeWorkspace` call.
 - **INV-STREAM-003**: `AnalysisConfig.RetainCompilations` controls mode. `false` (default, CLI) = streaming/memory-safe. `true` (MCP server) = retained for write-side tools.
 - **INV-STREAM-004**: Unity csproj support: if `<Compile Include>` items exist (old-format), use them. If absent (SDK-style), scan filesystem.
-- **INV-STREAM-005**: `GraphBuilder.Build()` deduplicates ALL edges by `(sourceId, targetId, kind)`. Partial classes emit duplicate edges — the builder is the authoritative dedup boundary.
-- **INV-FILE-EDGE-001**: `GraphBuilder.Build()` derives file-level `References` edges from symbol-level edges. For each non-Contains edge between symbols in different files, a `file:X → file:Y References` edge is emitted with an `edgeCount` property. Evidence: `Inferred`, adapter: `GraphBuilder`. File edges are derived truth — not primary.
+- **INV-STREAM-005**: `GraphBuilder.Build()` deduplicates ALL edges by `(sourceId, targetId, kind)`. Partial classes emit duplicate edges. The builder is the authoritative dedup boundary.
+- **INV-FILE-EDGE-001**: `GraphBuilder.Build()` derives file-level `References` edges from symbol-level edges. For each non-Contains edge between symbols in different files, a `file:X → file:Y References` edge is emitted with an `edgeCount` property. Evidence: `Inferred`, adapter: `GraphBuilder`. File edges are derived truth. Not primary.
 - **INV-INCR-001**: Incremental re-analyze (`lifeblood_analyze` with `incremental: true`) only recompiles modules whose files changed since the last analysis. Per-file extraction results are cached in `AnalysisSnapshot`. Changed files are detected via filesystem timestamps. Module additions/removals fall back to full re-analyze. v1 limitation: does not cascade to dependent modules when API surface changes.
 
 ## 17 MCP Tools
