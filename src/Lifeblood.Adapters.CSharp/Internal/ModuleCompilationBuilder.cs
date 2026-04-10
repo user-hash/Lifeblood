@@ -148,7 +148,15 @@ internal sealed class ModuleCompilationBuilder
 
         if (trees.Length == 0) return null;
 
-        var references = new List<MetadataReference>(BclReferenceLoader.References.Value);
+        // BCL ownership is a discovered module fact. Read the field, act on it.
+        // Do not re-derive from ExternalDllPaths, do not sniff filenames here —
+        // detection lives in RoslynModuleDiscovery, single source of truth.
+        // See INV-BCL-001..INV-BCL-004 in .claude/plans/bcl-ownership-fix.md
+        // for the failure mode this prevents (CS0433/CS0518 → null GetSymbolInfo
+        // → silent zero results from find_references / dependants / call-graph).
+        var references = module.BclOwnership == BclOwnershipMode.ModuleProvided
+            ? new List<MetadataReference>()
+            : new List<MetadataReference>(BclReferenceLoader.References.Value);
         references.AddRange(_nuget.Resolve(module, projectRoot, _refCache));
         references.AddRange(dependencyRefs);
 
@@ -165,11 +173,18 @@ internal sealed class ModuleCompilationBuilder
             catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { }
         }
 
+        // Compilation options follow discovered module facts (INV-COMPFACT-001..003).
+        // Each csproj-driven option lives as a typed field on ModuleInfo, set
+        // once during discovery, consumed exactly once here. NEVER re-derive
+        // from the csproj at this layer; NEVER sniff filenames as a substitute.
+        var compilationOptions = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+            .WithAllowUnsafe(module.AllowUnsafeCode);
+
         return CSharpCompilation.Create(
             module.Name,
             trees!,
             references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            compilationOptions);
     }
 
     /// <summary>

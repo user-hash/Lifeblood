@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Application.Ports.Analysis;
+using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
 using Lifeblood.Connectors.Mcp;
@@ -8,11 +9,18 @@ namespace Lifeblood.Server.Mcp;
 
 /// <summary>
 /// Dispatches MCP tool calls. Read-side handled inline, write-side delegated to WriteToolHandler.
+///
+/// Read-side handlers that take a <c>symbolId</c> parameter route the input
+/// through <see cref="ISymbolResolver"/> first (Plan v4 Seam #1, INV-RESOLVER-001).
+/// The resolver canonicalizes truncated method ids, resolves bare short names,
+/// and returns the merged read model for partial types — once, in one place,
+/// for every read-side tool.
 /// </summary>
 public sealed class ToolHandler
 {
     private readonly GraphSession _session;
     private readonly LifebloodMcpProvider _provider;
+    private readonly ISymbolResolver _resolver;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -25,7 +33,8 @@ public sealed class ToolHandler
     {
         _session = session;
         _provider = new LifebloodMcpProvider(blastRadius);
-        _write = new WriteToolHandler(session, JsonOpts);
+        _resolver = new LifebloodSymbolResolver();
+        _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
     public McpToolResult Handle(string toolName, JsonElement? arguments)
@@ -42,6 +51,7 @@ public sealed class ToolHandler
                 "lifeblood_dependants" => HandleDependants(arguments),
                 "lifeblood_blast_radius" => HandleBlastRadius(arguments),
                 "lifeblood_file_impact" => HandleFileImpact(arguments),
+                "lifeblood_resolve_short_name" => HandleResolveShortName(arguments),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -92,27 +102,34 @@ public sealed class ToolHandler
         if (!_session.IsLoaded)
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
-        var symbolId = WriteToolHandler.GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = WriteToolHandler.GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
-        var symbol = _provider.LookupSymbol(_session.Graph!, symbolId);
-        if (symbol == null)
-            return ErrorResult($"Symbol not found: {symbolId}");
+        // Plan v4 Seam #1 (INV-RESOLVER-001): every read-side tool routes
+        // through the resolver. The resolver returns the canonical id PLUS
+        // the merged read model for partial types — both fields below
+        // (FilePath as deterministic primary, FilePaths as the full set)
+        // come from the resolution result, not from raw graph storage.
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
+        var sym = resolved.Symbol!;
         var result = new
         {
-            symbol.Id,
-            symbol.Name,
-            symbol.QualifiedName,
-            Kind = symbol.Kind.ToString(),
-            symbol.FilePath,
-            symbol.Line,
-            symbol.ParentId,
-            Visibility = symbol.Visibility.ToString(),
-            symbol.IsAbstract,
-            symbol.IsStatic,
-            symbol.Properties,
+            sym.Id,
+            sym.Name,
+            sym.QualifiedName,
+            Kind = sym.Kind.ToString(),
+            FilePath = resolved.PrimaryFilePath,           // deterministic primary
+            FilePaths = resolved.DeclarationFilePaths,     // all partials, sorted
+            sym.Line,
+            sym.ParentId,
+            Visibility = sym.Visibility.ToString(),
+            sym.IsAbstract,
+            sym.IsStatic,
+            sym.Properties,
         };
         return TextResult(JsonSerializer.Serialize(result, JsonOpts));
     }
@@ -122,11 +139,15 @@ public sealed class ToolHandler
         if (!_session.IsLoaded)
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
-        var symbolId = WriteToolHandler.GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = WriteToolHandler.GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
-        var deps = _provider.GetDependencies(_session.Graph!, symbolId);
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var deps = _provider.GetDependencies(_session.Graph!, resolved.CanonicalId);
         return TextResult(JsonSerializer.Serialize(deps, JsonOpts));
     }
 
@@ -135,11 +156,15 @@ public sealed class ToolHandler
         if (!_session.IsLoaded)
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
-        var symbolId = WriteToolHandler.GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = WriteToolHandler.GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
-        var deps = _provider.GetDependants(_session.Graph!, symbolId);
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var deps = _provider.GetDependants(_session.Graph!, resolved.CanonicalId);
         return TextResult(JsonSerializer.Serialize(deps, JsonOpts));
     }
 
@@ -148,13 +173,34 @@ public sealed class ToolHandler
         if (!_session.IsLoaded)
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
-        var symbolId = WriteToolHandler.GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = WriteToolHandler.GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
         var maxDepth = WriteToolHandler.GetInt(args, "maxDepth") ?? 10;
-        var affected = _provider.GetBlastRadius(_session.Graph!, symbolId, maxDepth);
-        return TextResult(JsonSerializer.Serialize(new { symbolId, maxDepth, affectedCount = affected.Length, affected }, JsonOpts));
+        var affected = _provider.GetBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth);
+        return TextResult(JsonSerializer.Serialize(
+            new { symbolId = resolved.CanonicalId, maxDepth, affectedCount = affected.Length, affected },
+            JsonOpts));
+    }
+
+    private McpToolResult HandleResolveShortName(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var name = WriteToolHandler.GetString(args, "name");
+        if (string.IsNullOrEmpty(name))
+            return ErrorResult("name is required");
+
+        var matches = _resolver.ResolveShortName(_session.Graph!, name);
+        return TextResult(JsonSerializer.Serialize(
+            new { name, count = matches.Length, matches },
+            JsonOpts));
     }
 
     private McpToolResult HandleFileImpact(JsonElement? args)

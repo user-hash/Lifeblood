@@ -178,8 +178,22 @@ public static class ToolRegistry
         },
         new()
         {
+            Name = "lifeblood_resolve_short_name",
+            Description = "Resolve a bare short name (e.g., 'MidiLearnManager') to its canonical symbol ID(s). Returns every matching symbol with its canonical id, file path, and kind. Use this to discover the canonical id of a type when you only know its short name and not its namespace.",
+            InputSchema = new
+            {
+                type = "object",
+                required = new[] { "name" },
+                properties = new
+                {
+                    name = new { type = "string", description = "Short symbol name (no namespace)" },
+                },
+            },
+        },
+        new()
+        {
             Name = "lifeblood_find_references",
-            Description = "Find all references to a symbol across the loaded workspace. Returns file paths, line numbers, and span text.",
+            Description = "Find all references to a symbol across the loaded workspace. Returns file paths, line numbers, and span text. Set includeDeclarations=true to also return the symbol's declaration sites (one entry per partial declaration for partial types).",
             InputSchema = new
             {
                 type = "object",
@@ -187,6 +201,7 @@ public static class ToolRegistry
                 properties = new
                 {
                     symbolId = new { type = "string", description = "Symbol ID (e.g., type:MyApp.AuthService)" },
+                    includeDeclarations = new { type = "boolean", description = "When true, include the symbol's declaration sites in the result. Default false." },
                 },
             },
         },

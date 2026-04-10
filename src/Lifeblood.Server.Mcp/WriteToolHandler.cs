@@ -1,20 +1,28 @@
 using System.Text.Json;
+using Lifeblood.Application.Ports.Right;
 
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
 /// Handles write-side MCP tool calls (require compilation state).
 /// Execute, Diagnose, CompileCheck, FindReferences, Rename, Format.
+///
+/// Symbol-id-bearing handlers (FindReferences, FindDefinition, FindImplementations,
+/// Documentation, Rename) route the user's input through <see cref="ISymbolResolver"/>
+/// before passing the canonical id to the live workspace tools. See
+/// INV-RESOLVER-001 in CLAUDE.md.
 /// </summary>
 internal sealed class WriteToolHandler
 {
     private readonly GraphSession _session;
     private readonly JsonSerializerOptions _jsonOpts;
+    private readonly ISymbolResolver _resolver;
 
-    public WriteToolHandler(GraphSession session, JsonSerializerOptions jsonOpts)
+    public WriteToolHandler(GraphSession session, JsonSerializerOptions jsonOpts, ISymbolResolver resolver)
     {
         _session = session;
         _jsonOpts = jsonOpts;
+        _resolver = resolver;
     }
 
     public McpToolResult HandleExecute(JsonElement? args)
@@ -60,25 +68,46 @@ internal sealed class WriteToolHandler
     {
         if (CompilationStateError() is { } error) return error;
 
-        var symbolId = GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
-        var locations = _session.CompilationHost!.FindReferences(symbolId);
-        return TextResult(JsonSerializer.Serialize(new { symbolId, count = locations.Length, locations }, _jsonOpts));
+        // Plan v4 Seam #1: resolver canonicalizes the input first.
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        // Plan v4 §2.6 / Correction 2: declaration inclusion is operation
+        // policy, modeled as an explicit FindReferencesOptions on the host.
+        var includeDecls = GetBool(args, "includeDeclarations") ?? false;
+        var options = new Lifeblood.Application.Ports.Left.FindReferencesOptions
+        {
+            IncludeDeclarations = includeDecls,
+        };
+
+        var locations = _session.CompilationHost!.FindReferences(resolved.CanonicalId, options);
+        return TextResult(JsonSerializer.Serialize(
+            new { symbolId = resolved.CanonicalId, count = locations.Length, locations },
+            _jsonOpts));
     }
 
     public McpToolResult HandleRename(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
 
-        var symbolId = GetString(args, "symbolId");
+        var raw = GetString(args, "symbolId");
         var newName = GetString(args, "newName");
-        if (string.IsNullOrEmpty(symbolId)) return ErrorResult("symbolId is required");
+        if (string.IsNullOrEmpty(raw)) return ErrorResult("symbolId is required");
         if (string.IsNullOrEmpty(newName)) return ErrorResult("newName is required");
 
-        var edits = _session.Refactoring!.Rename(symbolId, newName);
-        return TextResult(JsonSerializer.Serialize(new { symbolId, newName, editCount = edits.Length, edits }, _jsonOpts));
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var edits = _session.Refactoring!.Rename(resolved.CanonicalId, newName);
+        return TextResult(JsonSerializer.Serialize(
+            new { symbolId = resolved.CanonicalId, newName, editCount = edits.Length, edits },
+            _jsonOpts));
     }
 
     public McpToolResult HandleFormat(JsonElement? args)
@@ -97,13 +126,17 @@ internal sealed class WriteToolHandler
     {
         if (CompilationStateError() is { } error) return error;
 
-        var symbolId = GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
-        var def = _session.CompilationHost!.FindDefinition(symbolId);
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var def = _session.CompilationHost!.FindDefinition(resolved.CanonicalId);
         if (def == null)
-            return ErrorResult($"Definition not found: {symbolId}");
+            return ErrorResult($"Definition not found: {resolved.CanonicalId}");
 
         return TextResult(JsonSerializer.Serialize(def, _jsonOpts));
     }
@@ -112,12 +145,18 @@ internal sealed class WriteToolHandler
     {
         if (CompilationStateError() is { } error) return error;
 
-        var symbolId = GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
-        var impls = _session.CompilationHost!.FindImplementations(symbolId);
-        return TextResult(JsonSerializer.Serialize(new { symbolId, count = impls.Length, implementations = impls }, _jsonOpts));
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var impls = _session.CompilationHost!.FindImplementations(resolved.CanonicalId);
+        return TextResult(JsonSerializer.Serialize(
+            new { symbolId = resolved.CanonicalId, count = impls.Length, implementations = impls },
+            _jsonOpts));
     }
 
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
@@ -141,13 +180,17 @@ internal sealed class WriteToolHandler
     {
         if (CompilationStateError() is { } error) return error;
 
-        var symbolId = GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(symbolId))
+        var raw = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
 
-        var doc = _session.CompilationHost!.GetDocumentation(symbolId);
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var doc = _session.CompilationHost!.GetDocumentation(resolved.CanonicalId);
         return TextResult(string.IsNullOrEmpty(doc)
-            ? $"No documentation found for {symbolId}"
+            ? $"No documentation found for {resolved.CanonicalId}"
             : doc);
     }
 

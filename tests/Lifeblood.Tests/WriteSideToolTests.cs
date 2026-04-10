@@ -12,6 +12,7 @@ namespace Lifeblood.Tests;
 /// Tests for the write-side Roslyn tools: CompilationHost, CodeExecutor, WorkspaceRefactoring.
 /// Also covers SymbolId parsing and the shared RoslynWorkspaceManager.
 /// </summary>
+[Collection("ScriptExecutorSerial")]
 public class WriteSideToolTests
 {
     // ── Shared test compilation ──

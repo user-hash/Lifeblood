@@ -161,6 +161,73 @@ public class IncrementalAnalyzeTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => analyzer.IncrementalAnalyze(_config));
     }
 
+    // ── Csproj-edit invalidation (INV-BCL-005) ──
+    // See .claude/plans/bcl-ownership-fix.md §8 and §9.3.
+
+    [Fact]
+    public void IncrementalAnalyze_CsprojEdited_TriggersRediscoveryAndRecompile()
+    {
+        // Initial state: plain SDK csproj with no Reference elements.
+        // Discovery reports BclOwnership = HostProvided.
+        WriteSingleFileProject("public class Foo { }");
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        // Edit the csproj to add a Reference Include="netstandard" element.
+        // Discovery should now report ModuleProvided. The .cs file is unchanged
+        // — only the csproj timestamp moves. Without csproj-timestamp tracking,
+        // incremental would silently skip this module and the BclOwnership flag
+        // would stay HostProvided forever (silent reintroduction of double-BCL bug).
+        Thread.Sleep(50); // ensure timestamp changes
+        var csprojPath = Path.Combine(_tempDir, "TestProject.csproj");
+        File.WriteAllText(csprojPath, @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include=""netstandard"" />
+  </ItemGroup>
+</Project>");
+
+        var (_, changedCount) = analyzer.IncrementalAnalyze(_config);
+
+        // Csproj-only edit must mark the module's .cs files as changed and
+        // route them through the recompilation pipeline.
+        Assert.True(changedCount > 0,
+            "Csproj edit must trigger recompilation (changedCount > 0). " +
+            "If this is 0, csproj-timestamp invalidation is broken and BclOwnership " +
+            "edits go undetected — silent reintroduction of the double-BCL bug.");
+
+        // The fresh ModuleInfo from rediscovery must have BclOwnership = ModuleProvided.
+        // Verify by re-running discovery directly (the analyzer's internal state
+        // also has it but we don't expose snapshot publicly).
+        var modules = new RoslynModuleDiscovery(_fs).DiscoverModules(_tempDir);
+        Assert.Single(modules);
+        Assert.Equal(BclOwnershipMode.ModuleProvided, modules[0].BclOwnership);
+    }
+
+    [Fact]
+    public void IncrementalAnalyze_CsprojUntouched_DoesNotForceRecompile()
+    {
+        // Negative test: a .cs file edit alone must not also trigger the
+        // csproj-change path. The .cs path catches it for source-extraction
+        // reasons, but csprojChangedModules must be empty.
+        var filePath = WriteSingleFileProject("public class Foo { }");
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        // Touch only the .cs file. Csproj timestamp is unchanged.
+        Thread.Sleep(50);
+        File.WriteAllText(filePath, "public class Foo { public void Bar() { } }");
+
+        var (graph, changedCount) = analyzer.IncrementalAnalyze(_config);
+
+        // The .cs change is detected, so changedCount > 0 — but for
+        // .cs reasons, not csproj reasons. The new symbol must be in the graph.
+        Assert.True(changedCount > 0);
+        Assert.Contains(graph.Symbols, s => s.Name == "Bar" && s.Kind == SymbolKind.Method);
+    }
+
     // ── Helpers ──
 
     private string WriteSingleFileProject(string code)

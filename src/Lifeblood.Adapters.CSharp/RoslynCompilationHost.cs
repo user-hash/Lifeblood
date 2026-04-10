@@ -127,12 +127,26 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
     }
 
     public DomainReferenceLocation[] FindReferences(string symbolId)
+        => FindReferences(symbolId, FindReferencesOptions.Default);
+
+    public DomainReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options)
     {
         // Direct compilation scan — reliable across cross-project boundaries
         // where AdhocWorkspace's SymbolFinder.FindReferencesAsync may miss results.
-        // Same approach as FindImplementations: scan each retained compilation independently.
-        var targetDisplayString = ResolveDisplayString(symbolId);
-        if (targetDisplayString == null) return Array.Empty<DomainReferenceLocation>();
+        //
+        // Match by CANONICAL Lifeblood symbol ID (BuildSymbolId), NOT by Roslyn's
+        // ToDisplayString. The display string can diverge subtly across the source/metadata
+        // boundary (nullability, reduced names, attribute round-trips), causing legitimate
+        // call sites to be silently dropped. The canonical builder is namespace-walking +
+        // explicit param types — it produces the same string for source and metadata symbols
+        // because both feed through identical RoslynSymbolExtractor.GetFullName + ToDisplayString.
+        //
+        // First we resolve the requested symbol once to get its OWN canonical ID. Then for
+        // every visited node we compute the canonical ID and compare strings. This is the
+        // same builder the graph uses, so any ID format the graph emits is also matched here.
+        var resolvedTarget = ResolveFromSource(symbolId);
+        if (resolvedTarget == null) return Array.Empty<DomainReferenceLocation>();
+        var targetCanonicalId = BuildSymbolId(resolvedTarget);
 
         var results = new List<DomainReferenceLocation>();
         var seen = new HashSet<(string, int, int)>(); // (filePath, line, column) dedup
@@ -147,17 +161,18 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
 
                 foreach (var node in root.DescendantNodes())
                 {
-                    // Check both symbol resolution paths: GetSymbolInfo for references,
-                    // GetDeclaredSymbol for declarations
                     var symbolInfo = model.GetSymbolInfo(node);
                     var resolved = symbolInfo.Symbol;
                     if (resolved == null) continue;
 
-                    // Match by display string (fully qualified name) — handles cross-assembly
-                    // symbols where SymbolEqualityComparer fails across compilations.
-                    if (resolved.ToDisplayString() != targetDisplayString
-                        && resolved.OriginalDefinition.ToDisplayString() != targetDisplayString)
-                        continue;
+                    // Compare canonical IDs. Walk to OriginalDefinition for constructed
+                    // generics so List<int>.Add and List<string>.Add both match List<T>.Add.
+                    var resolvedId = BuildSymbolId(resolved);
+                    if (resolvedId != targetCanonicalId)
+                    {
+                        var originalId = BuildSymbolId(resolved.OriginalDefinition);
+                        if (originalId != targetCanonicalId) continue;
+                    }
 
                     var span = node.GetLocation().GetMappedLineSpan();
                     var line = span.StartLinePosition.Line + 1;
@@ -173,6 +188,35 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
                         Line = line,
                         Column = column,
                         SpanText = spanText,
+                    });
+                }
+            }
+        }
+
+        // LB-FR-003 / Plan v4 §2.6 / Correction 2: declaration locations are
+        // an opt-in operation policy on the host, NOT a side-effect of resolver
+        // merging. Roslyn's ISymbol.Locations returns one entry per partial
+        // declaration for partial types — exactly the data the user wants
+        // surfaced when querying "where is this type defined?"
+        if (options.IncludeDeclarations)
+        {
+            var declSeen = new HashSet<(string, int, int)>(seen);
+            if (resolvedTarget != null)
+            {
+                foreach (var location in resolvedTarget.Locations.Where(l => l.IsInSource))
+                {
+                    var span = location.GetMappedLineSpan();
+                    var line = span.StartLinePosition.Line + 1;
+                    var column = span.StartLinePosition.Character + 1;
+                    var filePath = span.Path ?? "";
+                    if (!declSeen.Add((filePath, line, column))) continue;
+
+                    results.Add(new DomainReferenceLocation
+                    {
+                        FilePath = filePath,
+                        Line = line,
+                        Column = column,
+                        SpanText = "(declaration)",
                     });
                 }
             }
@@ -410,6 +454,12 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
         return xml;
     }
 
+    /// <summary>
+    /// Build the canonical Lifeblood symbol ID for a Roslyn symbol.
+    /// Routes ALL parameter formatting through <see cref="Internal.CanonicalSymbolFormat"/>
+    /// so the same C# symbol produces the same ID regardless of source/metadata origin.
+    /// Indexers use the same <c>this[paramSig]</c> form as <see cref="RoslynSymbolExtractor"/>.
+    /// </summary>
     private static string BuildSymbolId(ISymbol symbol)
     {
         return symbol switch
@@ -418,9 +468,12 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
             IMethodSymbol method => Internal.SymbolIds.Method(
                 RoslynSymbolExtractor.GetFullName(method.ContainingType),
                 method.Name,
-                string.Join(",", method.Parameters.Select(p => p.Type.ToDisplayString()))),
+                Internal.CanonicalSymbolFormat.BuildParamSignature(method)),
             IFieldSymbol field => Internal.SymbolIds.Field(
                 RoslynSymbolExtractor.GetFullName(field.ContainingType), field.Name),
+            IPropertySymbol prop when prop.IsIndexer => Internal.SymbolIds.Property(
+                RoslynSymbolExtractor.GetFullName(prop.ContainingType),
+                $"this[{Internal.CanonicalSymbolFormat.BuildIndexerParamSignature(prop)}]"),
             IPropertySymbol prop => Internal.SymbolIds.Property(
                 RoslynSymbolExtractor.GetFullName(prop.ContainingType), prop.Name),
             IEventSymbol evt => Internal.SymbolIds.Property(

@@ -173,7 +173,7 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         symbols.Add(new Symbol
         {
             Id = SymbolIds.Method(typeName, sym.Name, paramSig),
@@ -202,7 +202,7 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         symbols.Add(new Symbol
         {
             Id = SymbolIds.Method(typeName, ".ctor", paramSig),
@@ -286,7 +286,7 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        var paramSig = CanonicalSymbolFormat.BuildIndexerParamSignature(sym);
         symbols.Add(new Symbol
         {
             Id = SymbolIds.Property(typeName, $"this[{paramSig}]"),
@@ -314,7 +314,7 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         symbols.Add(new Symbol
         {
             Id = SymbolIds.Method(typeName, sym.Name, paramSig),
@@ -342,7 +342,7 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = string.Join(",", sym.Parameters.Select(p => p.Type.ToDisplayString()));
+        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         symbols.Add(new Symbol
         {
             Id = SymbolIds.Method(typeName, sym.Name, paramSig),

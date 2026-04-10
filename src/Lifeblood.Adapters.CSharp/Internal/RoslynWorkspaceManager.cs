@@ -68,64 +68,95 @@ internal sealed class RoslynWorkspaceManager : IDisposable
         return null;
     }
 
+    /// <summary>
+    /// Resolve a parsed symbol ID against a compilation by walking namespaces, then types,
+    /// then matching the final member by kind (and signature for methods).
+    ///
+    /// CRITICAL — never silently fall back to an unrelated member. Earlier versions of this
+    /// resolver returned `methods[0]` when no overload matched the requested signature, which
+    /// caused FindReferences to report call sites of completely different methods. The current
+    /// rules:
+    ///   - If a path part isn't found as a namespace/type while walking, return null.
+    ///   - If the member name isn't found on the resolved container, return null.
+    ///   - If a method has multiple overloads and the requested signature matches none, return null.
+    ///   - If a method has a single overload, return it (lenient — sig may be approximate).
+    ///   - If no parameter signature was provided, return the first overload.
+    /// </summary>
     internal static ISymbol? FindInCompilation(Compilation compilation, ParsedSymbolId parsed)
     {
-        INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
+        if (parsed.Parts == null || parsed.Parts.Length == 0) return null;
 
-        foreach (var part in parsed.Parts!)
+        // Walk every part EXCEPT the last as namespaces or types.
+        // The last part is the member we're actually looking up — kind-filtered below.
+        INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
+        for (int i = 0; i < parsed.Parts.Length - 1; i++)
         {
-            var member = current.GetMembers(part).FirstOrDefault();
-            if (member is INamespaceOrTypeSymbol ns)
-                current = ns;
-            else if (member != null)
-            {
-                // For methods, disambiguate overloads by parameter signature before returning.
-                // Without this, FirstOrDefault() always returns the first overload,
-                // making FindReferences/Rename operate on the wrong method.
-                if (parsed.Kind == "method" && member is IMethodSymbol && parsed.ParamSignature != null)
-                {
-                    var overloads = current.GetMembers(part).OfType<IMethodSymbol>().ToArray();
-                    if (overloads.Length > 1)
-                    {
-                        foreach (var m in overloads)
-                        {
-                            var sig = string.Join(",", m.Parameters.Select(p => p.Type.ToDisplayString()));
-                            if (sig == parsed.ParamSignature) return m;
-                        }
-                    }
-                }
-                return member;
-            }
-            else
-                break;
+            var part = parsed.Parts[i];
+            // Prefer namespaces, then types — both can be parents of further members.
+            // Filter explicitly so a stray non-namespace member with a colliding name
+            // (very rare in practice) cannot derail the walk.
+            var next = current.GetMembers(part).OfType<INamespaceOrTypeSymbol>().FirstOrDefault();
+            if (next == null) return null;
+            current = next;
         }
 
-        if (!SymbolEqualityComparer.Default.Equals(current, compilation.GlobalNamespace))
-        {
-            if (parsed.Kind == "type" && current is INamedTypeSymbol) return current;
-            if (parsed.Kind == "method")
-            {
-                var methods = current.GetMembers().OfType<IMethodSymbol>().ToArray();
-                if (methods.Length == 0) return null;
-                if (methods.Length == 1) return methods[0];
+        var lastName = parsed.Parts[^1];
 
-                // Overload disambiguation: match parameter signature if provided.
-                // Must use same format as SymbolExtractor/EdgeExtractor: default ToDisplayString + comma separator (no space).
-                if (parsed.ParamSignature != null)
+        // Kind-filtered member lookup. The lookup is by EXACT name only — no broad
+        // enumeration of all members on `current`. If the name doesn't exist as the
+        // requested kind, the answer is "not found", not "pick something arbitrary".
+        switch (parsed.Kind)
+        {
+            case "type":
                 {
+                    var type = current.GetMembers(lastName).OfType<INamedTypeSymbol>().FirstOrDefault();
+                    if (type != null) return type;
+                    // Top-level type whose name was the only part — current is still global ns.
+                    return null;
+                }
+
+            case "method":
+                {
+                    var methods = current.GetMembers(lastName).OfType<IMethodSymbol>().ToArray();
+                    if (methods.Length == 0) return null;
+
+                    // No signature requested → return first overload (caller is intentionally fuzzy).
+                    if (parsed.ParamSignature == null)
+                        return methods[0];
+
+                    // Signature requested → must match exactly. Never silently return a wrong overload.
+                    // Use CanonicalSymbolFormat so we compare against the SAME format the graph uses
+                    // — the input symbolId came from a graph builder, so this is the only correct way
+                    // to compare signatures across the source/metadata boundary.
                     foreach (var m in methods)
                     {
-                        var sig = string.Join(",", m.Parameters.Select(p => p.Type.ToDisplayString()));
+                        var sig = CanonicalSymbolFormat.BuildParamSignature(m);
                         if (sig == parsed.ParamSignature) return m;
                     }
-                }
-                return methods[0]; // fallback to first if no match
-            }
-            if (parsed.Kind == "field") return current.GetMembers().OfType<IFieldSymbol>().FirstOrDefault();
-            if (parsed.Kind == "property") return current.GetMembers().OfType<IPropertySymbol>().FirstOrDefault();
-        }
 
-        return null;
+                    // Single overload + signature requested but mismatched: lenient pass-through.
+                    // The user named the method correctly; their signature might just be in a
+                    // slightly-different display format than Roslyn's default. Returning the
+                    // method is safe because there's no other "Add" they could have meant.
+                    if (methods.Length == 1) return methods[0];
+
+                    return null;
+                }
+
+            case "field":
+                return current.GetMembers(lastName).OfType<IFieldSymbol>().FirstOrDefault();
+
+            case "property":
+                {
+                    var prop = current.GetMembers(lastName).OfType<IPropertySymbol>().FirstOrDefault();
+                    if (prop != null) return prop;
+                    // Events share the property: prefix in Lifeblood's symbol ID grammar.
+                    return current.GetMembers(lastName).OfType<IEventSymbol>().FirstOrDefault();
+                }
+
+            default:
+                return null;
+        }
     }
 
     /// <summary>

@@ -21,6 +21,23 @@ internal sealed class AnalysisSnapshot
     /// <summary>Absolute file path → last-write-time-UTC at analysis time.</summary>
     public Dictionary<string, DateTime> FileTimestamps { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Absolute csproj file path → last-write-time-UTC at analysis time.
+    /// Tracked separately from <see cref="FileTimestamps"/> (which only stores
+    /// .cs files) because csproj edits change discovered MODULE FACTS
+    /// (BclOwnership, ExternalDllPaths, Dependencies) and require full
+    /// re-discovery + recompile of the affected module — not just per-file
+    /// extraction replacement.
+    ///
+    /// See INV-BCL-005 in <c>.claude/plans/bcl-ownership-fix.md</c>: without
+    /// csproj-timestamp invalidation, a user who edits a csproj to add or
+    /// remove a BCL reference and then runs incremental re-analyze gets a
+    /// stale BclOwnership value forever — silent re-introduction of the
+    /// double-BCL bug.
+    /// </summary>
+    public Dictionary<string, DateTime> CsprojTimestamps { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>File ID (file:relPath) → symbols extracted from that file.</summary>
     public Dictionary<string, List<Symbol>> SymbolsByFile { get; } = new(StringComparer.Ordinal);
 

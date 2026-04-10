@@ -75,6 +75,18 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             Modules = modules,
         };
 
+        // Record csproj file timestamps so incremental re-analyze can detect
+        // csproj edits (which change discovered facts like BclOwnership) and
+        // force module re-discovery + recompile. See INV-BCL-005 in
+        // .claude/plans/bcl-ownership-fix.md.
+        foreach (var module in modules)
+        {
+            if (!module.Properties.TryGetValue("projectFile", out var relCsproj)) continue;
+            var csprojAbs = Path.GetFullPath(Path.Combine(projectRoot, relCsproj));
+            if (_fs.FileExists(csprojAbs))
+                snapshot.CsprojTimestamps[csprojAbs] = _fs.GetLastWriteTimeUtc(csprojAbs);
+        }
+
         // Phase 1: Create module symbols (lightweight — just names and metadata)
         foreach (var module in modules)
         {
@@ -202,12 +214,48 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         var changedModules = new HashSet<string>(StringComparer.Ordinal); // module names
         var moduleByFile = BuildModuleFileIndex(currentModules);
 
+        // INV-BCL-005: csproj edits change discovered module facts (BclOwnership,
+        // ExternalDllPaths, Dependencies) and require re-discovery + recompile —
+        // not just per-file extraction replacement. Detect csproj-only edits FIRST,
+        // mark every .cs file in those modules as changed, and let the existing
+        // .cs-file loop add any source-only changes on top.
+        // See .claude/plans/bcl-ownership-fix.md §8 for the failure mode this prevents.
+        var csprojChangedModules = new HashSet<string>(StringComparer.Ordinal);
         foreach (var module in currentModules)
         {
+            if (!module.Properties.TryGetValue("projectFile", out var relCsproj)) continue;
+            var csprojAbs = Path.GetFullPath(Path.Combine(projectRoot, relCsproj));
+            if (!_fs.FileExists(csprojAbs)) continue;
+
+            var currentCsprojTs = _fs.GetLastWriteTimeUtc(csprojAbs);
+            if (_snapshot.CsprojTimestamps.TryGetValue(csprojAbs, out var prevCsprojTs)
+                && currentCsprojTs == prevCsprojTs)
+                continue;
+
+            csprojChangedModules.Add(module.Name);
+            _snapshot.CsprojTimestamps[csprojAbs] = currentCsprojTs;
+        }
+
+        foreach (var module in currentModules)
+        {
+            // If this module's csproj changed, force every .cs file in it to be
+            // recompiled even if no source-file timestamp changed. The new
+            // ModuleInfo from rediscovery already has the fresh BclOwnership;
+            // marking the files as changed routes them through the existing
+            // recompilation pipeline below.
+            bool csprojForcedRecompile = csprojChangedModules.Contains(module.Name);
+
             foreach (var filePath in module.FilePaths)
             {
                 if (!filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!_fs.FileExists(filePath)) continue;
+
+                if (csprojForcedRecompile)
+                {
+                    changedFiles.Add(filePath);
+                    changedModules.Add(module.Name);
+                    continue;
+                }
 
                 var currentTimestamp = _fs.GetLastWriteTimeUtc(filePath);
                 if (_snapshot.FileTimestamps.TryGetValue(filePath, out var prevTimestamp)

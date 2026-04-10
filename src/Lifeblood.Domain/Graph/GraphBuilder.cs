@@ -13,23 +13,50 @@ public sealed class GraphBuilder
     private readonly Dictionary<string, Symbol> _symbols = new(StringComparer.Ordinal);
     private readonly List<Edge> _edges = new();
 
+    // Tracks every distinct ParentId observed for a given symbol id across
+    // multiple AddSymbol calls. Required for partial-type unification:
+    // partial classes/structs/interfaces produce one Symbol record per
+    // declaration site, all with the same Id but DIFFERENT ParentId values
+    // (one per containing file). Last-write-wins on _symbols loses every
+    // ParentId except the most recent — but the resolver needs ALL of them
+    // to enumerate every partial declaration file. We accumulate the
+    // (id → set-of-parent-ids) mapping here and synthesize one Contains
+    // edge per unique parent in Build(). See INV-RESOLVER-003 in CLAUDE.md.
+    private readonly Dictionary<string, HashSet<string>> _allParentIds = new(StringComparer.Ordinal);
+
     /// <summary>
-    /// Adds a symbol. If a symbol with the same ID already exists, it is replaced
-    /// (last-write-wins). This handles partial types: multiple declarations of the
-    /// same type produce the same ID, and the last one seen wins. Adapters are
-    /// responsible for merging partial declarations before calling AddSymbol if
-    /// they need richer merge semantics.
+    /// Adds a symbol. If a symbol with the same ID already exists, the
+    /// SYMBOL RECORD is replaced (last-write-wins) but the symbol's
+    /// <see cref="Symbol.ParentId"/> is also recorded into a per-id parent
+    /// set so partial-type declarations can be reconstructed in <see cref="Build"/>.
     /// </summary>
     public GraphBuilder AddSymbol(Symbol symbol)
     {
         _symbols[symbol.Id] = symbol;
+        TrackParent(symbol);
         return this;
     }
 
     public GraphBuilder AddSymbols(IEnumerable<Symbol> symbols)
     {
-        foreach (var s in symbols) _symbols[s.Id] = s;
+        foreach (var s in symbols)
+        {
+            _symbols[s.Id] = s;
+            TrackParent(s);
+        }
         return this;
+    }
+
+    private void TrackParent(Symbol symbol)
+    {
+        if (string.IsNullOrEmpty(symbol.ParentId)) return;
+        if (symbol.ParentId == symbol.Id) return;
+        if (!_allParentIds.TryGetValue(symbol.Id, out var set))
+        {
+            set = new HashSet<string>(StringComparer.Ordinal);
+            _allParentIds[symbol.Id] = set;
+        }
+        set.Add(symbol.ParentId);
     }
 
     public GraphBuilder AddEdge(Edge edge)
@@ -67,27 +94,36 @@ public sealed class GraphBuilder
                 containsPairs.Add((edge.SourceId, edge.TargetId));
         }
 
-        // Synthesize Contains edges from ParentId
-        foreach (var symbol in _symbols.Values)
+        // Synthesize Contains edges from EVERY observed ParentId, not just the
+        // last-write-wins value on the surviving Symbol record. For partial
+        // types this produces one (file → type) Contains edge per partial
+        // declaration file — the resolver walks these incoming edges to
+        // reconstruct the full DeclarationFilePaths read model in
+        // SymbolResolutionResult. See INV-RESOLVER-003 in CLAUDE.md.
+        foreach (var (childId, parentIds) in _allParentIds)
         {
-            if (string.IsNullOrEmpty(symbol.ParentId)) continue;
-            if (symbol.ParentId == symbol.Id) continue; // self-reference guard
-            if (!_symbols.ContainsKey(symbol.ParentId)) continue;
-            if (containsPairs.Contains((symbol.ParentId, symbol.Id))) continue;
+            if (!_symbols.ContainsKey(childId)) continue;
 
-            allEdges.Add(new Edge
+            foreach (var parentId in parentIds)
             {
-                SourceId = symbol.ParentId,
-                TargetId = symbol.Id,
-                Kind = EdgeKind.Contains,
-                Evidence = new Evidence
+                if (parentId == childId) continue; // self-reference guard
+                if (!_symbols.ContainsKey(parentId)) continue;
+                if (containsPairs.Contains((parentId, childId))) continue;
+
+                allEdges.Add(new Edge
                 {
-                    Kind = EvidenceKind.Inferred,
-                    AdapterName = "GraphBuilder",
-                    Confidence = ConfidenceLevel.Proven,
-                },
-            });
-            containsPairs.Add((symbol.ParentId, symbol.Id));
+                    SourceId = parentId,
+                    TargetId = childId,
+                    Kind = EdgeKind.Contains,
+                    Evidence = new Evidence
+                    {
+                        Kind = EvidenceKind.Inferred,
+                        AdapterName = "GraphBuilder",
+                        Confidence = ConfidenceLevel.Proven,
+                    },
+                });
+                containsPairs.Add((parentId, childId));
+            }
         }
 
         // INV-PIPE-001: Deterministic output. Sort canonically by ID/source+target

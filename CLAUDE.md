@@ -136,6 +136,145 @@ IRuleProvider.LoadRules(path) → ArchitectureRule[]
 IBlastRadiusProvider.Analyze(graph, symbolId, maxDepth) → BlastRadiusResult
 ```
 
+## Identifier Resolution (`ISymbolResolver`)
+
+Every read-side MCP tool that takes a `symbolId` parameter must route through
+`Lifeblood.Application.Ports.Right.ISymbolResolver` before doing graph or
+workspace lookups. The resolver is the single source of truth for "what does
+this user-supplied identifier mean" — it canonicalizes truncated method IDs,
+resolves bare short names, and computes the merged read model for partial types.
+
+- **INV-RESOLVER-001 — Identifier resolution is a port.** Every read-side tool
+  that takes a `symbolId` parameter (`lifeblood_lookup`, `lifeblood_dependants`,
+  `lifeblood_dependencies`, `lifeblood_blast_radius`, `lifeblood_file_impact`,
+  `lifeblood_find_references`, `lifeblood_find_definition`,
+  `lifeblood_find_implementations`, `lifeblood_documentation`, `lifeblood_rename`)
+  routes through `ISymbolResolver` before any graph or workspace lookup. NEVER
+  add a read-side tool that calls `graph.GetSymbol` or `graph.GetIncomingEdgeIndexes`
+  directly with the user's raw input.
+
+- **INV-RESOLVER-002 — The resolver accepts every input format.** Resolution
+  order: exact canonical match → truncated method form (`method:NS.Type.Name`
+  with no parens, lenient single-overload match) → bare short name (no kind
+  prefix and no namespace, looks up the short-name index). Returns
+  `SymbolResolutionResult` with `Outcome`, `CanonicalId`, `Symbol`,
+  `PrimaryFilePath`, `DeclarationFilePaths`, `Candidates`, and `Diagnostic`.
+
+- **INV-RESOLVER-003 — Partial-type unification is a read model.** The graph
+  stores raw symbols (one per partial declaration; last-write-wins remains the
+  storage policy in `GraphBuilder.AddSymbol`). The resolver walks the type's
+  incoming `EdgeKind.Contains` edges from `SymbolKind.File` symbols to discover
+  every partial declaration file at read time. Schema unchanged —
+  `Lifeblood.Domain.Graph.Symbol.FilePath` stays a single value. The merged
+  view lives entirely on `SymbolResolutionResult.PrimaryFilePath` +
+  `SymbolResolutionResult.DeclarationFilePaths`.
+
+- **INV-RESOLVER-004 — Primary file path for partial types is deterministic.**
+  Picker rules in `LifebloodSymbolResolver.ChoosePrimaryFilePath`:
+  (1) filename matches the type name exactly, (2) filename starts with
+  `"<TypeName>."` (shortest match wins among prefix matches), (3) lexicographic
+  first as final fallback. Same input + same graph → same primary, always.
+
+## Csproj-Driven Compilation Facts
+
+Csproj is the source of truth for module-level compilation options. Each fact
+flows through one path: discover at parse time → store on `ModuleInfo` →
+consume at compilation time. The pattern is the contract — every future
+csproj-driven option follows the same shape.
+
+- **INV-COMPFACT-001 — Csproj is authoritative for module-level compilation
+  options.** Examples already shipped: `BclOwnership` (v2), `AllowUnsafeCode`
+  (v4). Future additions follow the same pattern: `LangVersion`, `Nullable`,
+  `DefineConstants`, `Platform`, `WarningLevel`, etc.
+
+- **INV-COMPFACT-002 — Each compilation fact lives as a typed field on
+  `ModuleInfo`.** Default value preserves pre-fix behavior. Set during
+  `RoslynModuleDiscovery.ParseProject`. Consumed exactly once during
+  `Internal.ModuleCompilationBuilder.CreateCompilation`. NEVER re-derive from
+  the csproj at the compilation layer; NEVER sniff filenames as a substitute
+  for declared options.
+
+- **INV-COMPFACT-003 — Csproj edits invalidate cached module facts.** The
+  `AnalysisSnapshot.CsprojTimestamps` tracking added in v2 (INV-BCL-005)
+  covers every compilation fact for free — `IncrementalAnalyze` rebuilds the
+  entire `ModuleInfo` on csproj edit, not just one field. The next compilation
+  fact added under this convention ships with zero new incremental work.
+
+## Adapter Semantic View
+
+Each language adapter publishes a typed read-only accessor for its loaded
+semantic state. Tools that need read access (script host today; debuggers,
+visualizers, custom linters tomorrow) consume the view by reference, never
+threading raw fields through individual constructors.
+
+- **INV-VIEW-001 — Each language adapter publishes a typed semantic view.**
+  The C# adapter publishes `Lifeblood.Adapters.CSharp.RoslynSemanticView`
+  (`Compilations`, `Graph`, `ModuleDependencies`). Future language adapters
+  publish their own view type using their language's semantic model.
+
+- **INV-VIEW-002 — Tools consume the view, not raw fields.** The script host
+  (`RoslynCodeExecutor`) takes a `RoslynSemanticView` in its constructor.
+  Future consumers (debuggers, visualizers, linters, REPLs) take the same
+  view. NEVER thread raw `Compilations` / `Graph` / `ModuleDependencies`
+  through individual tool constructors.
+
+- **INV-VIEW-003 — The view is constructed once per workspace load and
+  shared by reference.** `GraphSession.Load` (full and incremental paths)
+  builds the view once with three field assignments and passes it by
+  reference to consumers. The view never holds locks, never caches anything
+  beyond its three references, never mutates state — it is purely a typed
+  handle. Sharing avoids accidental divergence between consumers' views of
+  the same workspace.
+
+## BCL Ownership (C# Adapter)
+
+Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't — they rely on the host runtime BCL.
+
+Lifeblood treats this as a discovered module fact: `Lifeblood.Application.Ports.Left.ModuleInfo.BclOwnership` is `BclOwnershipMode.HostProvided` or `BclOwnershipMode.ModuleProvided`. The decision is computed ONCE during `RoslynModuleDiscovery.ParseProject` and consumed by `ModuleCompilationBuilder.CreateCompilation`. Detection logic lives in exactly one place — `RoslynModuleDiscovery.ReferenceDeclaresBcl` plus its `ParseAssemblyIdentitySimpleName` and `IsBclSimpleName` helpers. The compilation builder reads the field and never re-derives.
+
+- **INV-BCL-001 — Single BCL per compilation.** Two BCLs causes CS0433 (ambiguous type) and CS0518 (predefined type missing) on every System type. The semantic model becomes unusable: `GetSymbolInfo` returns null at every call site, so `find_references`, `dependants`, and call-graph extraction silently produce zero results. Type-only references survive because their resolution is partially syntactic — methods do not.
+- **INV-BCL-002 — Module owns its BCL when its csproj declares one.** A `<Reference>` element whose Include value (parsed as assembly identity, handles both `Include="netstandard"` and `Include="netstandard, Version=2.1.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51"`) or HintPath basename matches `netstandard`, `mscorlib`, or `System.Runtime` is the authoritative declaration. Such modules MUST NOT also receive the host BCL bundle.
+- **INV-BCL-003 — Host BCL is the fallback for plain SDK-style projects.** Modules with no BCL-naming `<Reference>` element receive `BclReferenceLoader.References.Value` so System types resolve.
+- **INV-BCL-004 — BCL ownership is decided at discovery time, single source of truth.** Detection logic lives in `RoslynModuleDiscovery`. `ModuleCompilationBuilder` reads the typed field — no filename sniffing, no re-derivation, no detection logic at the compilation layer.
+- **INV-BCL-005 — Incremental re-analyze respects csproj edits.** `AnalysisSnapshot.CsprojTimestamps` tracks csproj timestamps. When a csproj timestamp changes, the affected module is re-discovered and recompiled even if no .cs file changed. Without this, a csproj edit that adds or removes a BCL reference produces a stale `BclOwnership` value forever and the double-BCL bug returns under incremental mode.
+
+The full plan with empirical evidence, rollout history, and the regression test matrix lives at `.claude/plans/bcl-ownership-fix.md`.
+
+## Symbol ID Grammar (C# Adapter)
+
+Lifeblood symbol IDs are stable identifiers produced by `Lifeblood.Adapters.CSharp.Internal.SymbolIds`
+and consumed by every read/write tool. The C# adapter format:
+
+```
+mod:AssemblyName
+file:Relative/Forward/Slashed/Path.cs
+ns:Fully.Qualified.Namespace
+type:Fully.Qualified.TypeName
+method:Fully.Qualified.TypeName.MethodName(Param1Type,Param2Type)
+field:Fully.Qualified.TypeName.FieldName
+property:Fully.Qualified.TypeName.PropertyName
+property:Fully.Qualified.TypeName.this[Param1Type,Param2Type]   // indexer
+```
+
+**Method parameter signature is FULLY-QUALIFIED.** A method that takes one `MyApp.Item` parameter
+appears as `method:MyApp.Service.Process(MyApp.Item)` — never `method:MyApp.Service.Process(Item)`.
+
+The exact format is pinned by `Internal.CanonicalSymbolFormat.ParamType`. Every method-ID builder
+in the adapter routes through `CanonicalSymbolFormat.BuildParamSignature` so source and metadata
+symbols ALWAYS produce the same ID. Do not call `ITypeSymbol.ToDisplayString()` from a method-ID
+builder — always use the canonical formatter.
+
+**Constructors:** name part is `.ctor`. Example: `method:MyApp.Service..ctor(string,int)`.
+
+**Operators / conversion operators:** name part is the Roslyn operator name (e.g. `op_Addition`,
+`op_Implicit`).
+
+**Special types:** C# aliases (`int`, `string`, `bool`, `void`, …) are used instead of their
+`System.*` qualified names. The canonical format has `UseSpecialTypes` enabled.
+
+**Nullability:** never reflected in IDs — `string?` and `string` share the same parameter signature
+because they refer to the same underlying method symbol.
+
 ## Serialization Naming
 
 JSON schemas use **camelCase**. C# models use **PascalCase**. The mapping is mechanical:
