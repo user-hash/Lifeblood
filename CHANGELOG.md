@@ -5,7 +5,9 @@ All notable changes to Lifeblood are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-04-10
+
+Three-seam framing after the BCL ownership fix, native usage reporting on every analyze run, and the v0.6.0 doc pack refresh. 329 → 344 tests. 17 → 18 MCP tools. 14 → 15 port interfaces. `lifeblood_analyze` responses now carry a structured `usage` block with wall time, CPU time, peak memory, GC pressure, and per-phase timings.
 
 ### Added — Native usage reporting on every analyze run (LB-INBOX-005)
 
