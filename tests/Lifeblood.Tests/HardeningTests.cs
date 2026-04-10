@@ -155,6 +155,96 @@ public class HardeningTests
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Cross-platform .sln parsing
+    // ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Regression test pinning the cross-platform .sln parser fix. A .sln
+    /// generated on Windows embeds project paths with backslashes
+    /// ("Lib\Lib.csproj"). On Linux and macOS <see cref="Path.Combine"/>
+    /// treats that whole thing as a single filename containing a literal
+    /// backslash, so <see cref="IFileSystem.FileExists"/> returns false and
+    /// <c>DiscoverFromSolution</c> skips every project. The fix normalizes
+    /// both <c>\</c> and <c>/</c> to <see cref="Path.DirectorySeparatorChar"/>
+    /// before combining. This test writes a synthetic solution with the
+    /// Windows-style path on disk and verifies discovery finds the project
+    /// on whichever platform the test runs.
+    /// </summary>
+    [Fact]
+    public void RoslynModuleDiscovery_SolutionWithBackslashPaths_ResolvesOnAllPlatforms()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-sln-sep-{Guid.NewGuid():N}");
+        var libDir = Path.Combine(tempDir, "Lib");
+        Directory.CreateDirectory(libDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(libDir, "Item.cs"), "namespace Lib { public class Item {} }");
+            File.WriteAllText(Path.Combine(libDir, "Lib.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Lib</AssemblyName>
+  </PropertyGroup>
+</Project>");
+
+            // Windows-style .sln path with backslash separator. Must resolve
+            // on every host OS, not just Windows.
+            File.WriteAllText(Path.Combine(tempDir, "TestSolution.sln"), @"
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project(""{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"") = ""Lib"", ""Lib\Lib.csproj"", ""{11111111-1111-1111-1111-111111111111}""
+EndProject
+");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+
+            Assert.Single(modules);
+            Assert.Equal("Lib", modules[0].Name);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    /// <summary>
+    /// Companion test pinning the forward-slash case. Some generators emit
+    /// posix-style paths even in .sln files. The normalizer must handle both.
+    /// </summary>
+    [Fact]
+    public void RoslynModuleDiscovery_SolutionWithForwardSlashPaths_ResolvesOnAllPlatforms()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-sln-fwd-{Guid.NewGuid():N}");
+        var libDir = Path.Combine(tempDir, "Lib");
+        Directory.CreateDirectory(libDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(libDir, "Item.cs"), "namespace Lib { public class Item {} }");
+            File.WriteAllText(Path.Combine(libDir, "Lib.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Lib</AssemblyName>
+  </PropertyGroup>
+</Project>");
+
+            File.WriteAllText(Path.Combine(tempDir, "TestSolution.sln"), @"
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project(""{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"") = ""Lib"", ""Lib/Lib.csproj"", ""{11111111-1111-1111-1111-111111111111}""
+EndProject
+");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+
+            Assert.Single(modules);
+            Assert.Equal("Lib", modules[0].Name);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // BCL ownership detection (INV-BCL-002 / INV-BCL-004)
     // See .claude/plans/bcl-ownership-fix.md §9.1
     // ──────────────────────────────────────────────────────────────

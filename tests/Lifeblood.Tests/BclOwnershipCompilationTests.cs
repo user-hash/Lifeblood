@@ -145,6 +145,11 @@ public class BclOwnershipCompilationTests
 
             // Solution file ties the two modules together so RoslynModuleDiscovery
             // discovers them via solution-walking and topologically sorts them.
+            // We use backslashes in the project paths here on purpose: that is
+            // the conventional .sln format and it is also the exact shape any
+            // Windows-generated .sln would have. Lifeblood's solution parser
+            // normalizes these to the host's native directory separator before
+            // resolving, so this test runs correctly on Linux and macOS CI.
             File.WriteAllText(Path.Combine(tempDir, "TestSolution.sln"), @"
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project(""{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"") = ""Lib"", ""Lib\Lib.csproj"", ""{11111111-1111-1111-1111-111111111111}""

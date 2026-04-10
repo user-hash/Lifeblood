@@ -42,7 +42,16 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             var relativePath = parts[5];
             if (!relativePath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)) continue;
 
-            var fullPath = Path.GetFullPath(Path.Combine(slnDir, relativePath));
+            // .sln files conventionally use Windows backslashes in project paths,
+            // but this code runs cross-platform. Normalize to the host's native
+            // directory separator before combining, otherwise Path.Combine on
+            // Linux/macOS treats "Lib\Lib.csproj" as a single filename containing
+            // a literal backslash and FileExists always returns false.
+            var normalizedRelativePath = relativePath
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
+
+            var fullPath = Path.GetFullPath(Path.Combine(slnDir, normalizedRelativePath));
             if (!_fs.FileExists(fullPath)) continue;
 
             var module = ParseProject(fullPath, projectRoot);
