@@ -226,6 +226,47 @@ threading raw fields through individual constructors.
   handle. Sharing avoids accidental divergence between consumers' views of
   the same workspace.
 
+## Usage Reporting (Analyze Pipeline)
+
+Every analyze run can emit a structured `AnalysisUsage` snapshot containing
+wall time, CPU time (total, user, kernel), peak working set, peak private
+bytes, GC collection counts per generation, host logical core count, and
+per-phase durations. The snapshot is populated by an optional
+`Lifeblood.Application.Ports.Infrastructure.IUsageProbe` passed to
+`AnalyzeWorkspaceUseCase`. Both the CLI and the MCP server ship the probe
+on by default; every `lifeblood_analyze` response carries the snapshot.
+
+- **INV-USAGE-001 — Usage is inert data.** `AnalysisUsage` and
+  `PhaseTiming` hold only primitive fields and arrays of primitive fields.
+  No `System.Diagnostics` types leak onto the records. Any consumer reads
+  the snapshot freely on any thread.
+- **INV-USAGE-002 — Units are documented on every field.** Bytes for
+  memory, milliseconds for time. No implicit conversions. The only derived
+  property is `CpuUtilizationPercent`, which is `CpuTimeTotalMs / WallTimeMs * 100`.
+- **INV-USAGE-PORT-001 — The probe port returns a fresh capture on every
+  `Start`.** Two captures started back-to-back do not share peak samples,
+  CPU deltas, phase lists, or GC counters. A capture's lifetime is scoped
+  to the single analyze run that created it.
+- **INV-USAGE-PORT-002 — `IUsageCapture.Stop` is idempotent.** A second
+  call returns the same `AnalysisUsage` instance. `IDisposable.Dispose`
+  on an already-stopped capture is a no-op. The error path in
+  `AnalyzeWorkspaceUseCase` disposes the capture when validation throws
+  so the sampling timer does not outlive the failed run.
+- **INV-USAGE-PROBE-001 — The concrete `ProcessUsageProbe` takes an
+  initial RSS sample in its constructor.** Sub-sample-interval runs still
+  report a non-zero peak working set. This makes the feature honest on
+  tiny analyze calls where the background timer never ticks.
+- **INV-USAGE-PROBE-002 — The sampling timer is disposed at `Stop` or
+  `Dispose`.** Leaked timers would keep the probe alive past the run and
+  corrupt the next capture's peak samples. Test
+  `ProcessUsageProbeTests.Probe_TwoCaptures_AreIndependent` pins this.
+
+The probe lives in `Lifeblood.Adapters.CSharp` alongside
+`PhysicalFileSystem` because it touches `System.Diagnostics.Process`. The
+port lives in Application alongside `IFileSystem`. Composition roots
+(`Lifeblood.CLI.Program` and `Lifeblood.Server.Mcp.GraphSession`) are the
+only sites that construct the concrete probe.
+
 ## BCL Ownership (C# Adapter)
 
 Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't — they rely on the host runtime BCL.

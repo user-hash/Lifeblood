@@ -89,8 +89,10 @@ Streaming compilation with downgrading keeps memory bounded:
 
 | Project size | Peak memory | Graph |
 |---|---|---|
-| ~10 modules (Lifeblood itself) | ~200 MB | 1,291 symbols, 3,620 edges |
-| ~75 modules (400k LOC Unity project) | ~4 GB | 44,569 symbols, 87,238 edges |
+| ~10 modules (Lifeblood itself) | 212 MB peak | 1,376 symbols, 3,822 edges (5.1 s wall) |
+| ~75 modules (400k LOC Unity project) | 571 MB peak | 44,569 symbols, 87,238 edges (32.6 s wall) |
+
+Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Peak working set and wall time come from the native `usage` block on every `lifeblood_analyze` response. Older docs cited ~4 GB peak because early streaming measurements predated the `RetainCompilations=false` CLI path doing its job. The CLI analyze path now sits comfortably under 1 GB even on 75-module workspaces.
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 

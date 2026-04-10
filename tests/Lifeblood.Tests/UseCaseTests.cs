@@ -1,3 +1,4 @@
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.Ports.Output;
 using Lifeblood.Application.Ports.Right;
@@ -87,6 +88,53 @@ public class UseCaseTests
         var result = useCase.Execute("/fake", new AnalysisConfig());
 
         Assert.NotNull(result.Graph);
+    }
+
+    [Fact]
+    public void AnalyzeWorkspace_ReturnsNullUsage_WhenNoProbeProvided()
+    {
+        var adapter = new StubAnalyzer(BuildTestGraph());
+        var useCase = new AnalyzeWorkspaceUseCase(adapter);
+
+        var result = useCase.Execute("/fake", new AnalysisConfig());
+
+        Assert.Null(result.Usage);
+    }
+
+    [Fact]
+    public void AnalyzeWorkspace_PopulatesUsage_WhenProbeProvided()
+    {
+        var adapter = new StubAnalyzer(BuildTestGraph());
+        var probe = new StubUsageProbe();
+        var useCase = new AnalyzeWorkspaceUseCase(adapter, progress: null, usageProbe: probe);
+
+        var result = useCase.Execute("/fake", new AnalysisConfig());
+
+        Assert.NotNull(result.Usage);
+        // Phase names from the use case: "analyze" then "validate"
+        var phaseNames = probe.LastCapture!.PhaseMarks;
+        Assert.Equal(new[] { "analyze", "validate" }, phaseNames);
+        Assert.True(probe.LastCapture.Stopped, "Capture should be stopped on the happy path");
+    }
+
+    [Fact]
+    public void AnalyzeWorkspace_DisposesCapture_OnValidationFailure()
+    {
+        // Empty-name symbol trips GraphValidator
+        var badGraph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:A", Name = "", Kind = SymbolKind.Type })
+            .Build();
+        var adapter = new StubAnalyzer(badGraph);
+        var probe = new StubUsageProbe();
+        var useCase = new AnalyzeWorkspaceUseCase(adapter, progress: null, usageProbe: probe);
+
+        Assert.Throws<InvalidOperationException>(
+            () => useCase.Execute("/fake", new AnalysisConfig()));
+
+        Assert.NotNull(probe.LastCapture);
+        Assert.True(
+            probe.LastCapture!.Disposed,
+            "Capture should be disposed on the error path so the probe timer does not leak");
     }
 
     [Fact]
@@ -181,6 +229,47 @@ public class UseCaseTests
 
         public void Report(string phase, int current, int total) =>
             Reports.Add((phase, current, total));
+    }
+
+    /// <summary>
+    /// Hand-rolled <see cref="IUsageProbe"/> stub. Records every phase mark
+    /// and whether the capture was stopped or disposed, so tests can assert
+    /// both the happy path (stopped after the work) and the error path
+    /// (disposed when validation throws).
+    /// </summary>
+    private sealed class StubUsageProbe : IUsageProbe
+    {
+        public StubUsageCapture? LastCapture { get; private set; }
+
+        public IUsageCapture Start()
+        {
+            LastCapture = new StubUsageCapture();
+            return LastCapture;
+        }
+    }
+
+    private sealed class StubUsageCapture : IUsageCapture
+    {
+        public List<string> PhaseMarks { get; } = new();
+        public bool Stopped { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public void MarkPhase(string name) => PhaseMarks.Add(name);
+
+        public AnalysisUsage Stop()
+        {
+            Stopped = true;
+            return new AnalysisUsage
+            {
+                WallTimeMs = 1,
+                HostLogicalCores = Environment.ProcessorCount,
+                Phases = PhaseMarks
+                    .Select(p => new PhaseTiming { Name = p, DurationMs = 1 })
+                    .ToArray(),
+            };
+        }
+
+        public void Dispose() => Disposed = true;
     }
 
     private sealed class StubContextGenerator : IAgentContextGenerator

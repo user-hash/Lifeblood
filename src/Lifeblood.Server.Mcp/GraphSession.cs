@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
 using Lifeblood.Application.Ports.Infrastructure;
@@ -15,6 +16,14 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public sealed class GraphSession : IDisposable
 {
+    private static readonly IUsageProbe UsageProbe = new ProcessUsageProbe();
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+    };
+
     private readonly IFileSystem _fs;
     private readonly WorkspaceSession _session = new();
     private RoslynWorkspaceAnalyzer? _roslynAdapter;
@@ -48,6 +57,7 @@ public sealed class GraphSession : IDisposable
         SemanticGraph graph;
         Domain.Capabilities.AdapterCapability? capability = null;
         string language = "unknown";
+        AnalysisUsage? usage = null;
         ICompilationHost? newCompilationHost = null;
         ICodeExecutor? newCodeExecutor = null;
         IWorkspaceRefactoring? newRefactoring = null;
@@ -83,11 +93,12 @@ public sealed class GraphSession : IDisposable
             var progress = new StderrProgressSink();
             adapter.OnModuleProgress = (name, i, total) =>
                 Console.Error.WriteLine($"[{i}/{total}] Compiling {name}");
-            var result = new AnalyzeWorkspaceUseCase(adapter, progress)
+            var result = new AnalyzeWorkspaceUseCase(adapter, progress, UsageProbe)
                 .Execute(projectPath, new AnalysisConfig { RetainCompilations = retainCompilations });
             graph = result.Graph;
             capability = adapter.Capability;
             language = "csharp";
+            usage = result.Usage;
 
             // Wire write-side Roslyn capabilities from retained compilations.
             // Uses in-process RoslynCodeExecutor (trusted-local sandbox).
@@ -130,22 +141,42 @@ public sealed class GraphSession : IDisposable
         if (newCompilationHost != null)
             _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
 
-        return $"Loaded: {graph.Symbols.Count} symbols, {graph.Edges.Count} edges, " +
-               $"{analysis.Metrics.TotalModules} modules, {analysis.Violations.Length} violations";
+        return BuildLoadResult(
+            mode: "full",
+            graph: graph,
+            analysis: analysis,
+            usage: usage,
+            changedFileCount: null);
     }
 
     private string LoadIncremental(string projectPath, string? rulesPath)
     {
+        var capture = UsageProbe.Start();
+        AnalysisUsage? usage = null;
+        try
+        {
         var config = new AnalysisConfig { RetainCompilations = true };
         var (graph, changedFileCount) = _roslynAdapter!.IncrementalAnalyze(config);
+        capture.MarkPhase("incremental");
 
         if (changedFileCount == 0)
-            return $"Incremental: 0 files changed. Graph unchanged ({graph.Symbols.Count} symbols, {graph.Edges.Count} edges)";
+        {
+            usage = capture.Stop();
+            return BuildLoadResult(
+                mode: "incremental-noop",
+                graph: graph,
+                analysis: null,
+                usage: usage,
+                changedFileCount: 0);
+        }
 
         // Validate the rebuilt graph
         var errors = GraphValidator.Validate(graph);
         if (errors.Length > 0)
+        {
+            capture.Dispose();
             return $"Incremental graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
+        }
 
         // Rebuild write-side services from updated compilations
         ICompilationHost? newCompilationHost = null;
@@ -167,14 +198,79 @@ public sealed class GraphSession : IDisposable
 
         ArchitectureRule[]? rules = ResolveRules(rulesPath ?? _lastRulesPath);
         var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
+        capture.MarkPhase("validate-analyze");
 
         _session.Clear();
         _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
         if (newCompilationHost != null)
             _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
 
-        return $"Incremental: {changedFileCount} files changed. Loaded: {graph.Symbols.Count} symbols, {graph.Edges.Count} edges, " +
-               $"{analysis.Metrics.TotalModules} modules, {analysis.Violations.Length} violations";
+        usage = capture.Stop();
+        return BuildLoadResult(
+            mode: "incremental",
+            graph: graph,
+            analysis: analysis,
+            usage: usage,
+            changedFileCount: changedFileCount);
+        }
+        catch
+        {
+            capture.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Builds the structured JSON response the MCP client receives from
+    /// <c>lifeblood_analyze</c>. Always includes the graph summary. Also
+    /// includes a <c>usage</c> block when the run was measured (both full
+    /// and incremental paths). Agents consume the result as JSON, so the
+    /// shape is stable and machine-readable. Humans see the pretty-printed
+    /// form through the MCP client's text wrapping.
+    /// </summary>
+    private static string BuildLoadResult(
+        string mode,
+        SemanticGraph graph,
+        Lifeblood.Domain.Results.AnalysisResult? analysis,
+        AnalysisUsage? usage,
+        int? changedFileCount)
+    {
+        var response = new
+        {
+            mode,
+            summary = new
+            {
+                symbols = graph.Symbols.Count,
+                edges = graph.Edges.Count,
+                modules = analysis?.Metrics.TotalModules ?? 0,
+                types = analysis?.Metrics.TotalTypes ?? 0,
+                files = analysis?.Metrics.TotalFiles ?? 0,
+                violations = analysis?.Violations.Length ?? 0,
+                cycles = analysis?.Cycles.Length ?? 0,
+            },
+            changedFileCount,
+            usage = usage == null ? null : new
+            {
+                wallTimeMs = usage.WallTimeMs,
+                cpuTimeTotalMs = usage.CpuTimeTotalMs,
+                cpuTimeUserMs = usage.CpuTimeUserMs,
+                cpuTimeKernelMs = usage.CpuTimeKernelMs,
+                cpuUtilizationPercent = Math.Round(usage.CpuUtilizationPercent, 1),
+                cpuAvgPerCorePercent = usage.HostLogicalCores > 0
+                    ? Math.Round(usage.CpuUtilizationPercent / usage.HostLogicalCores, 2)
+                    : 0.0,
+                peakWorkingSetBytes = usage.PeakWorkingSetBytes,
+                peakWorkingSetMb = Math.Round(usage.PeakWorkingSetBytes / 1024.0 / 1024.0, 0),
+                peakPrivateBytesBytes = usage.PeakPrivateBytesBytes,
+                peakPrivateBytesMb = Math.Round(usage.PeakPrivateBytesBytes / 1024.0 / 1024.0, 0),
+                hostLogicalCores = usage.HostLogicalCores,
+                gcGen0Collections = usage.GcGen0Collections,
+                gcGen1Collections = usage.GcGen1Collections,
+                gcGen2Collections = usage.GcGen2Collections,
+                phases = usage.Phases.Select(p => new { name = p.Name, durationMs = p.DurationMs }).ToArray(),
+            },
+        };
+        return JsonSerializer.Serialize(response, JsonOpts);
     }
 
     private ArchitectureRule[]? ResolveRules(string? rulesPath)

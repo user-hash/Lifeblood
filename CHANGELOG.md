@@ -7,6 +7,80 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Native usage reporting on every analyze run (LB-INBOX-005)
+
+Every `lifeblood_analyze` response now carries a structured `usage` block
+with wall time, CPU time (total, user, kernel), peak working set, peak
+private bytes, GC collection counts per generation, host logical core
+count, and per-phase timings. No external measurement wrapper required.
+The feature is on by default in both CLI and MCP shapes; constructing
+`AnalyzeWorkspaceUseCase` without a probe still works and returns a null
+`Usage` field with zero overhead.
+
+- **`Lifeblood.Domain.Results.AnalysisUsage`** POCO with `WallTimeMs`,
+  `CpuTimeTotalMs`, `CpuTimeUserMs`, `CpuTimeKernelMs`,
+  `PeakWorkingSetBytes`, `PeakPrivateBytesBytes`, `HostLogicalCores`,
+  `GcGen0Collections`, `GcGen1Collections`, `GcGen2Collections`,
+  `Phases[]`, and a derived `CpuUtilizationPercent`. All fields are inert
+  data; no `System.Diagnostics` types leak onto the record.
+- **`Lifeblood.Application.Ports.Infrastructure.IUsageProbe`** +
+  **`IUsageCapture`** port pair, sitting alongside `IFileSystem` in the
+  Application layer so the use case stays free of host diagnostics types.
+  `IUsageCapture.Stop` is idempotent (INV-USAGE-PORT-002), and the use
+  case disposes the capture on the validation-error path so the sampling
+  timer does not outlive a failed run.
+- **`Lifeblood.Adapters.CSharp.ProcessUsageProbe`** concrete. Uses
+  `Process.GetCurrentProcess()` + `Stopwatch` + a background `Timer`
+  polling peak RSS at a configurable interval (default 250 ms). Takes an
+  initial RSS sample in the constructor so sub-sample-interval runs still
+  report a non-zero peak (INV-USAGE-PROBE-001). Captures CPU time as a
+  delta of `UserProcessorTime` / `PrivilegedProcessorTime` across the
+  run, so the reported numbers are specific to this analyze call and not
+  contaminated by earlier work inside the same process.
+- **`AnalyzeWorkspaceUseCase`** gains an optional third constructor
+  parameter `IUsageProbe? usageProbe`. When non-null, the use case wraps
+  its work in a capture, marks `"analyze"` and `"validate"` phase
+  boundaries, and returns the snapshot on
+  `AnalyzeWorkspaceResult.Usage`. When null, behavior is identical to
+  before and `Usage` is null.
+- **CLI** prints a `── usage ──` block to stderr after the graph summary
+  with a fixed-column layout and InvariantCulture formatting, so the
+  output reads the same on every locale. Phase breakdown is shown with
+  one line per phase.
+- **MCP** `GraphSession.Load` returns a structured JSON response with
+  `summary`, `changedFileCount`, and a `usage` object carrying the full
+  snapshot. Agents consuming `lifeblood_analyze` now read
+  `usage.wallTimeMs`, `usage.peakWorkingSetMb`, `usage.phases[]`, etc.
+  without parsing free text. The prior plain-text `"Loaded: ..."`
+  response is replaced by the structured form.
+- **15 new unit tests** across `UseCaseTests` (3 tests: null usage when
+  no probe, populated usage with phase marks, capture disposed on
+  validation error) and `ProcessUsageProbeTests` (12 tests: non-zero
+  wall time on sleep, CPU time delta on busy work, utilization
+  consistency with wall and CPU, peak WS non-zero guarantee, host core
+  count match, phase mark order, idempotent `Stop`, `Dispose` after
+  `Stop` no-op, `Dispose` without `Stop` no throw, independent captures,
+  short-run non-zero peak, GC collection counts non-negative). Tests:
+  329 → 344.
+- **Invariants documented** in `CLAUDE.md` under the new
+  "Usage Reporting (Analyze Pipeline)" section:
+  `INV-USAGE-001`, `INV-USAGE-002`, `INV-USAGE-PORT-001`,
+  `INV-USAGE-PORT-002`, `INV-USAGE-PROBE-001`, `INV-USAGE-PROBE-002`.
+
+#### Why this shipped instead of living in the improvement inbox
+
+The v0.6.0 doc pack was corrected twice during preparation because the
+published memory and timing figures had drifted out of date. The old docs
+quoted roughly 90 s wall and 4 GB peak for a 75-module Unity workspace.
+The real measured numbers on a 16-core, 32-thread host are 32.6 s wall
+and 571 MB peak working set. That drift is inevitable as long as
+published benchmarks come from one-off measurement sessions. Putting the
+`usage` block on every analyze response makes the docs self-verifying:
+any consumer can cite the live output, and the project stays 1:1 honest
+without per-release measurement chores. The CLAUDE.md invariants make
+this a durable rule — any future use case that adds measurable work
+should reach for the same `IUsageProbe` port, not a bespoke wrapper.
+
 ### Added — Plan v4 (three-seam framing for the post-BCL findings)
 
 After v2's BCL fix, two reviewer reports surfaced five remaining findings.

@@ -6,6 +6,7 @@ using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.CLI;
 
@@ -17,6 +18,8 @@ class Program
     private static readonly IFileSystem Fs = new PhysicalFileSystem();
     private static readonly RulesLoader Rules = new(Fs);
     private static readonly ConsoleProgressSink Progress = new();
+    private static readonly IUsageProbe UsageProbe = new ProcessUsageProbe();
+    private static AnalysisUsage? LastUsage;
 
     static int Main(string[] args)
     {
@@ -74,7 +77,49 @@ class Program
         if (analysis.Cycles.Length > 0)
             Console.WriteLine($"Cycles: {analysis.Cycles.Length}");
 
+        if (LastUsage != null)
+            PrintUsageBlock(LastUsage);
+
         return analysis.Violations.Length > 0 ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Renders the runtime usage snapshot in a single fixed-column block so
+    /// it is trivially scannable by humans and parseable by agents. The block
+    /// is emitted to stderr so it does not pollute stdout consumers that may
+    /// be piping graph output downstream. All numbers are formatted with
+    /// <see cref="System.Globalization.CultureInfo.InvariantCulture"/> so the
+    /// output reads the same regardless of the host's regional settings.
+    /// </summary>
+    static void PrintUsageBlock(AnalysisUsage u)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var avgPerCore = u.HostLogicalCores > 0
+            ? u.CpuUtilizationPercent / u.HostLogicalCores
+            : 0.0;
+        var peakWsMb = u.PeakWorkingSetBytes / 1024.0 / 1024.0;
+        var peakPrivateMb = u.PeakPrivateBytesBytes / 1024.0 / 1024.0;
+        var wallSec = u.WallTimeMs / 1000.0;
+
+        var err = Console.Error;
+        err.WriteLine();
+        err.WriteLine("── usage ─────────────────────────────────────────────────");
+        err.WriteLine(string.Format(inv, "  Wall time          : {0,10:N0} ms  ({1:N1} s)", u.WallTimeMs, wallSec));
+        err.WriteLine(string.Format(inv, "  CPU total          : {0,10:N0} ms", u.CpuTimeTotalMs));
+        err.WriteLine(string.Format(inv, "    user mode        : {0,10:N0} ms", u.CpuTimeUserMs));
+        err.WriteLine(string.Format(inv, "    kernel mode      : {0,10:N0} ms", u.CpuTimeKernelMs));
+        err.WriteLine(string.Format(inv, "  CPU utilization    : {0,9:N1}% of one core", u.CpuUtilizationPercent));
+        err.WriteLine(string.Format(inv, "  CPU avg per core   : {0,9:N1}% across {1} logical cores", avgPerCore, u.HostLogicalCores));
+        err.WriteLine(string.Format(inv, "  Peak working set   : {0,10:N0} MB", peakWsMb));
+        err.WriteLine(string.Format(inv, "  Peak private bytes : {0,10:N0} MB", peakPrivateMb));
+        err.WriteLine(string.Format(inv, "  GC collections     : gen0={0}  gen1={1}  gen2={2}", u.GcGen0Collections, u.GcGen1Collections, u.GcGen2Collections));
+        if (u.Phases.Length > 0)
+        {
+            err.WriteLine("  Phases             :");
+            foreach (var p in u.Phases)
+                err.WriteLine(string.Format(inv, "    {0,-18} : {1,10:N0} ms", p.Name, p.DurationMs));
+        }
+        err.WriteLine("──────────────────────────────────────────────────────────");
     }
 
     static int RunContext(string[] args)
@@ -144,8 +189,9 @@ class Program
         if (projectRoot != null)
         {
             var adapter = new RoslynWorkspaceAnalyzer(Fs);
-            var result = new AnalyzeWorkspaceUseCase(adapter, Progress)
+            var result = new AnalyzeWorkspaceUseCase(adapter, Progress, UsageProbe)
                 .Execute(projectRoot, new AnalysisConfig());
+            LastUsage = result.Usage;
             return new GraphSource
             {
                 Graph = result.Graph,

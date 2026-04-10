@@ -75,7 +75,19 @@ This is a read-side enrichment of the existing `SymbolResolutionResult` DTO. No 
 
 ---
 
-## LB-INBOX-005. `lifeblood_analyze` should report clear usage and timings natively
+## LB-INBOX-005. `lifeblood_analyze` should report clear usage and timings natively — SHIPPED
+
+**Status: shipped in v0.6.0 work.** Every `lifeblood_analyze` response now carries a native `usage` block on both CLI (printed to stderr) and MCP (structured JSON field in the tool result). No external measurement wrapper required. See [STATUS.md](STATUS.md) for a worked example against both self-analysis and a real 75-module Unity workspace.
+
+Shipped surface:
+
+- `Lifeblood.Domain.Results.AnalysisUsage` POCO carrying wall time, CPU time (total, user, kernel), peak working set, peak private bytes, GC collection counts per generation, host logical core count, and per-phase timings.
+- `Lifeblood.Application.Ports.Infrastructure.IUsageProbe` + `IUsageCapture` port pair, optional third constructor arg on `AnalyzeWorkspaceUseCase`. When a probe is supplied, the use case returns a populated `Usage` field on its result. When no probe is supplied, the use case runs with zero overhead and `Usage` is null.
+- `Lifeblood.Adapters.CSharp.ProcessUsageProbe` concrete, `Process.GetCurrentProcess()` + `Stopwatch` + background `Timer` sampling peak RSS at a configurable interval (default 250 ms). 12 unit tests covering idempotent `Stop`, independent captures, phase order preservation, GC delta accounting, short-run non-zero peak guarantee, and CpuUtilizationPercent internal consistency.
+- CLI `PrintUsageBlock` helper renders the block in a fixed-column layout to stderr with `InvariantCulture` formatting so the output reads the same on every locale. Phase breakdown is shown with one line per phase.
+- MCP `GraphSession.Load` returns a structured JSON result with `summary`, `changedFileCount`, and a `usage` object. Agents consuming the tool read `usage.wallTimeMs`, `usage.peakWorkingSetMb`, `usage.phases[]`, etc. without parsing free text.
+
+Kept here as a closed entry because the reasoning (why-it-matters list) documents a durable rule for the project: **every measurement the tool can take of itself, it should report in its structured response.** Future use cases that want similar instrumentation should reach for the same `IUsageProbe` port, not a bespoke wrapper. The invariant is recorded in `CLAUDE.md` as INV-USAGE-001 through INV-USAGE-PROBE-002.
 
 **Observed.** Running `lifeblood analyze` against a real 75-module Unity workspace prints progress (`[1/3] Analyzing workspace`, etc.), final counts (symbols, edges, modules, types, cycles), and nothing else. There is no wall time, no peak memory, no CPU time, no per-phase breakdown. To get those numbers today you have to wrap the process with an external measurement harness (PowerShell `Start-Process` + poll, `/usr/bin/time -v`, or similar). Agents investigating performance therefore cannot self-serve and have to ask the operator for numbers that the process itself already has at its fingertips.
 
