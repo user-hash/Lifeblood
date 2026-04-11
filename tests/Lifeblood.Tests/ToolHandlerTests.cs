@@ -244,6 +244,102 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains("\"maxDepth\": 1", result.Content[0].Text);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Search dispatch (lifeblood_search). Exercises the ToolHandler plumbing
+    // for the search tool — args parsing, kinds filter coercion, limit
+    // coercion, empty-query error, not-loaded error. SemanticSearchTests
+    // pins the scoring; these tests pin that the dispatch layer routes
+    // JsonElement args through to the provider correctly so a future
+    // refactor of SearchQuery field names can't silently break the wire
+    // surface without a test failure.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Handle_Search_WithoutLoad_ReturnsError()
+    {
+        var handler = CreateHandler();
+        var result = handler.Handle("lifeblood_search", MakeArgs(new { query = "Foo" }));
+
+        Assert.True(result.IsError);
+        Assert.Contains("No graph loaded", result.Content[0].Text);
+    }
+
+    [Fact]
+    public void Handle_Search_MissingQuery_ReturnsError()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_search", MakeArgs(new { limit = 5 }));
+
+        Assert.True(result.IsError);
+        Assert.Contains("query is required", result.Content[0].Text);
+    }
+
+    [Fact]
+    public void Handle_Search_AfterLoad_ReturnsHits()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_search", MakeArgs(new { query = "Foo" }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"query\": \"Foo\"", text);
+        Assert.Contains("type:Core.Foo", text);
+    }
+
+    [Fact]
+    public void Handle_Search_MultiTokenQuery_RoutesToProvider()
+    {
+        // Proves the ToolHandler layer passes the raw query string through
+        // to the provider unmolested. If a future edit started pre-trimming,
+        // uppercasing, or re-tokenizing the query at the handler layer, it
+        // would desync from what SemanticSearchTests pins at the provider
+        // layer — this test would catch that.
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_search", MakeArgs(new { query = "Foo Bar" }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        // Both Foo and Bar types exist in the fixture graph; the multi-token
+        // ranked-OR query must surface both.
+        Assert.Contains("type:Core.Foo", text);
+        Assert.Contains("type:Core.Bar", text);
+    }
+
+    [Fact]
+    public void Handle_Search_KindsFilter_Applied()
+    {
+        // Kinds filter is a JSON string array on the wire. Pins that the
+        // ParseKindsArray coercion at the handler layer converts the wire
+        // format into SymbolKind[] and the provider honours it. The fixture
+        // method is named "Do" (no QualifiedName set on any fixture symbol),
+        // so the query "Do" exercises the literal-fallback tokenization
+        // path: the 2-char token is below the min-length floor, so the
+        // tokenizer falls back to treating the whole trimmed query as one
+        // literal — which then hits the method's bare Name. With
+        // kinds=["Method"] the Type symbols (Foo, Bar) are excluded by the
+        // kind filter, leaving only the method.
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var unfiltered = handler.Handle("lifeblood_search", MakeArgs(new { query = "Do" }));
+        Assert.Null(unfiltered.IsError);
+        Assert.Contains("method:Core.Foo.Do", unfiltered.Content[0].Text);
+
+        var filtered = handler.Handle("lifeblood_search",
+            MakeArgs(new { query = "Do", kinds = new[] { "Method" } }));
+
+        Assert.Null(filtered.IsError);
+        var text = filtered.Content[0].Text;
+        Assert.Contains("method:Core.Foo.Do", text);
+        Assert.DoesNotContain("\"canonicalId\": \"type:", text);
+    }
+
     [Fact]
     public void ToolRegistry_Returns21Tools()
     {
