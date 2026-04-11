@@ -88,8 +88,12 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
   .Select(d => $"{d.Id}:{d.Location.GetMappedLineSpan().Path}:{d.Location.GetMappedLineSpan().StartLinePosition.Line}"));
 
-  var tree = CSharpSyntaxTree.ParseText(code);
-  var testCompilation = targetCompilation.AddSyntaxTrees(tree);
+  // Snippet preparation (auto-wrap statements as a method body so library
+  // modules accept them — see Internal.SnippetWrapper for the contract).
+  // The wrapper preserves diagnostic line numbers via MapLineToUser so the
+  // user sees errors at the line they typed, not at the synthetic wrapper.
+  var prepared = Internal.SnippetWrapper.Prepare(code);
+  var testCompilation = targetCompilation.AddSyntaxTrees(prepared.Tree);
 
   using var ms = new MemoryStream();
   var emitResult = testCompilation.Emit(ms);
@@ -105,13 +109,14 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   .Select(d =>
   {
   var lineSpan = d.Location.GetMappedLineSpan();
+  var rawLine = lineSpan.StartLinePosition.Line + 1;
   return new DiagnosticInfo
   {
   Id = d.Id,
   Message = d.GetMessage(),
   Severity = MapSeverity(d.Severity),
   FilePath = lineSpan.Path ?? "",
-  Line = lineSpan.StartLinePosition.Line + 1,
+  Line = Internal.SnippetWrapper.MapLineToUser(in prepared, rawLine),
   Column = lineSpan.StartLinePosition.Character + 1,
   };
   })

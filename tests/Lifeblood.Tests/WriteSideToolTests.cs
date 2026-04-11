@@ -152,6 +152,79 @@ namespace TestApp
         Assert.Contains(result.Diagnostics, d => d.Message.Contains("No compilations available"));
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Snippet ergonomics: bare statements / expressions / using-prefixed
+    // statements must compile inside library modules. Pre-fix, all of
+    // these emitted CS8805 ("top-level statements must be executable")
+    // because the snippet was treated as a complete CompilationUnit and
+    // pasted at the top level of a Library output. The new SnippetWrapper
+    // contract auto-wraps statements as a method body so library modules
+    // accept the snippet, while passing complete units through unchanged.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void CompilationHost_CompileCheck_BareStatement_LibraryModule_Compiles()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        // Plain statement, no class wrapper. The original failing case
+        // from the dogfood sweep against DAWG.
+        var result = host.CompileCheck("var x = 1 + 1;", "TestApp");
+        Assert.True(result.Success,
+            $"compile_check should accept bare statements in a library module. Diagnostics: " +
+            string.Join(", ", result.Diagnostics.Select(d => $"{d.Id}: {d.Message}")));
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_StatementsWithUsings_LibraryModule_Compiles()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck(
+            "using System.Collections.Generic;\nvar list = new List<int>();\nlist.Add(42);",
+            "TestApp");
+        Assert.True(result.Success,
+            $"compile_check should accept statements that depend on using directives. Diagnostics: " +
+            string.Join(", ", result.Diagnostics.Select(d => $"{d.Id}: {d.Message}")));
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_BareStatement_NoLongerEmitsCS8805()
+    {
+        // Specific regression: CS8805 must NOT appear because the wrapper
+        // makes the snippet a method body rather than a top-level program.
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck("var x = 1 + 1;", "TestApp");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS8805");
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_BareStatementError_DiagnosticLineRemapsToUserLine()
+    {
+        // The user types a single line with an undefined identifier. The
+        // diagnostic must report Line=1 (user's coordinates) regardless
+        // of where the wrapper put the body inside the wrapped tree.
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck("var x = nonexistentSymbol;", "TestApp");
+        Assert.False(result.Success);
+        var diag = result.Diagnostics.FirstOrDefault(d => d.Id == "CS0103");
+        Assert.NotNull(diag);
+        Assert.Equal(1, diag!.Line);
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_FullClass_PassesThrough_Unchanged()
+    {
+        // Class-shaped input must continue to round-trip through the old
+        // pass-through path so existing call sites don't pay a wrapping
+        // cost (and so the class compiles at the top level where the user
+        // intended it).
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck(
+            "namespace Probe { public class Inserted { public int X { get; set; } } }",
+            "TestApp");
+        Assert.True(result.Success,
+            $"Diagnostics: " + string.Join(", ", result.Diagnostics.Select(d => d.Message)));
+    }
+
     [Fact]
     public void CompilationHost_FindReferences_InvalidSymbolId_ReturnsEmpty()
     {
