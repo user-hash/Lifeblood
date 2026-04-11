@@ -60,7 +60,28 @@ internal sealed class WriteToolHandler
             return ErrorResult("code is required");
 
         var moduleName = GetString(args, "moduleName");
+
+        // Phase 7 / C5 (2026-04-11): auto-refresh the workspace if source
+        // has been edited since the last analyze. Prevents the failure mode
+        // where a user edits a file, runs compile_check, and gets stale
+        // errors against the old source. Opt-out via `staleRefresh:false`
+        // for callers that explicitly want to check against the pinned
+        // workspace.
+        var staleRefresh = GetBool(args, "staleRefresh") ?? true;
+        var refreshed = staleRefresh ? _session.MaybeRefreshIfStale() : null;
+
         var result = _session.CompilationHost!.CompileCheck(code, moduleName);
+
+        if (refreshed is int changedFileCount)
+        {
+            return TextResult(JsonSerializer.Serialize(new
+            {
+                result.Success,
+                result.Diagnostics,
+                autoRefreshed = true,
+                changedFileCount,
+            }, _jsonOpts));
+        }
         return TextResult(JsonSerializer.Serialize(result, _jsonOpts));
     }
 

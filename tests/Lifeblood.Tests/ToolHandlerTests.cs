@@ -74,7 +74,9 @@ public class ToolHandlerTests : IDisposable
         IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
         ISymbolResolver resolver = new LifebloodSymbolResolver();
         ISemanticSearchProvider search = new LifebloodSemanticSearchProvider();
-        return new ToolHandler(new GraphSession(Fs), provider, resolver, search);
+        IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
+        IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(Fs);
+        return new ToolHandler(new GraphSession(Fs), provider, resolver, search, deadCode, partialView);
     }
 
     private static JsonElement? MakeArgs(object obj)
@@ -243,11 +245,11 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns19Tools()
+    public void ToolRegistry_Returns21Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(19, tools.Length);
+        Assert.Equal(21, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_analyze");
         Assert.Contains(tools, t => t.Name == "lifeblood_context");
         Assert.Contains(tools, t => t.Name == "lifeblood_lookup");

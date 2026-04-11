@@ -20,6 +20,8 @@ public sealed class ToolHandler
     private readonly IMcpGraphProvider _provider;
     private readonly ISymbolResolver _resolver;
     private readonly ISemanticSearchProvider _search;
+    private readonly IDeadCodeAnalyzer _deadCode;
+    private readonly IPartialViewBuilder _partialView;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -32,12 +34,16 @@ public sealed class ToolHandler
         GraphSession session,
         IMcpGraphProvider provider,
         ISymbolResolver resolver,
-        ISemanticSearchProvider search)
+        ISemanticSearchProvider search,
+        IDeadCodeAnalyzer deadCode,
+        IPartialViewBuilder partialView)
     {
         _session = session;
         _provider = provider;
         _resolver = resolver;
         _search = search;
+        _deadCode = deadCode;
+        _partialView = partialView;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -57,6 +63,8 @@ public sealed class ToolHandler
                 "lifeblood_file_impact" => HandleFileImpact(arguments),
                 "lifeblood_resolve_short_name" => HandleResolveShortName(arguments),
                 "lifeblood_search" => HandleSearch(arguments),
+                "lifeblood_dead_code" => HandleDeadCode(arguments),
+                "lifeblood_partial_view" => HandlePartialView(arguments),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -244,6 +252,42 @@ public sealed class ToolHandler
             JsonOpts));
     }
 
+    private McpToolResult HandleDeadCode(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var includeKinds = ParseKindsArray(args, "includeKinds");
+        var excludePublic = WriteToolHandler.GetBool(args, "excludePublic") ?? true;
+        var excludeTests = WriteToolHandler.GetBool(args, "excludeTests") ?? true;
+
+        var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests);
+        var findings = _deadCode.FindDeadCode(_session.Graph!, options);
+        return TextResult(JsonSerializer.Serialize(
+            new { count = findings.Length, findings },
+            JsonOpts));
+    }
+
+    private McpToolResult HandlePartialView(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var raw = WriteToolHandler.GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("symbolId is required");
+
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        // Partial view takes projectRoot as a method parameter so the
+        // port stays free of session-specific state. The session owns
+        // the root value and feeds it in here.
+        var view = _partialView.Build(_session.Graph!, resolved.CanonicalId, _session.ProjectRoot);
+        return TextResult(JsonSerializer.Serialize(view, JsonOpts));
+    }
+
     /// <summary>
     /// Parse the optional <c>kinds</c> array from the search tool's
     /// arguments into a typed <see cref="Lifeblood.Domain.Graph.SymbolKind"/>
@@ -252,9 +296,18 @@ public sealed class ToolHandler
     /// degrades to "no filter" on bad input.
     /// </summary>
     private static Lifeblood.Domain.Graph.SymbolKind[]? ParseKindsFilter(JsonElement? args)
+        => ParseKindsArray(args, "kinds");
+
+    /// <summary>
+    /// Generic kinds-array parser used by <c>lifeblood_search</c>
+    /// (<c>kinds</c> property) and <c>lifeblood_dead_code</c>
+    /// (<c>includeKinds</c> property). Different property names, same
+    /// shape.
+    /// </summary>
+    private static Lifeblood.Domain.Graph.SymbolKind[]? ParseKindsArray(JsonElement? args, string propertyName)
     {
         if (args is not JsonElement obj || obj.ValueKind != JsonValueKind.Object) return null;
-        if (!obj.TryGetProperty("kinds", out var kindsElement) || kindsElement.ValueKind != JsonValueKind.Array) return null;
+        if (!obj.TryGetProperty(propertyName, out var kindsElement) || kindsElement.ValueKind != JsonValueKind.Array) return null;
         var list = new List<Lifeblood.Domain.Graph.SymbolKind>(kindsElement.GetArrayLength());
         foreach (var item in kindsElement.EnumerateArray())
         {
