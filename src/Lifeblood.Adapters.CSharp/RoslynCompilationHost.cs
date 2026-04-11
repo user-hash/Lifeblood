@@ -199,7 +199,18 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   // call-graph UIs. O(depth) per reference — cheap.
   var containingSymbolId = ComputeContainingSymbolId(model, node);
 
-  if (!seen.Add((filePath, line, containingSymbolId, targetCanonicalId))) continue;
+  // Dedup key. When containingSymbolId is non-empty, it distinguishes
+  // references by their enclosing member — two unrelated calls on the
+  // same line in different methods stay separate. When containingSymbolId
+  // IS empty (top-level statements, file-scope lambdas, or any node
+  // whose ancestor walk hit no member declaration), fall back to the
+  // node's own start column so distinct call-sites on the same line
+  // still dedup correctly. Without this fallback, `_a.Foo(); _b.Foo();`
+  // at file scope would collapse to one entry.
+  var dedupSlot = string.IsNullOrEmpty(containingSymbolId)
+      ? $":col{column}"
+      : containingSymbolId;
+  if (!seen.Add((filePath, line, dedupSlot, targetCanonicalId))) continue;
 
   var spanText = sourceText.GetSubText(node.Span).ToString();
   results.Add(new DomainReferenceLocation

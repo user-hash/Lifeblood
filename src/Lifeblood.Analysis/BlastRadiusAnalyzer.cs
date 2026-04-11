@@ -29,8 +29,14 @@ public static class BlastRadiusAnalyzer
         // would duplicate AffectedSymbolIds without adding useful
         // information that a consumer couldn't compute themselves by
         // walking the graph.
-        var breaks = new List<BreakInfo>();
-        var directBreaks = new HashSet<string>(StringComparer.Ordinal);
+        //
+        // When a dependant has MULTIPLE incoming edges to the target (e.g.
+        // a class both Calls and Implements a type), we pick the MOST
+        // IMPACTFUL edge kind. Precedence: SignatureChange > BindingRemoval
+        // > Behavioral > Unknown. This avoids silently collapsing a
+        // signature-change into a binding-removal just because the Calls
+        // edge happened to be iterated first.
+        var directEdgeKinds = new Dictionary<string, List<EdgeKind>>(StringComparer.Ordinal);
 
         while (queue.Count > 0)
         {
@@ -45,19 +51,36 @@ public static class BlastRadiusAnalyzer
                 if (affected.Add(edge.SourceId))
                     queue.Enqueue((edge.SourceId, depth + 1));
 
-                // Record classification ONCE per direct-adjacent dependant.
-                // We want the first (shallowest) edge kind we see.
-                if (current == targetSymbolId && directBreaks.Add(edge.SourceId))
+                // Record every edge kind per direct-adjacent dependant.
+                if (current == targetSymbolId)
                 {
-                    breaks.Add(new BreakInfo
+                    if (!directEdgeKinds.TryGetValue(edge.SourceId, out var list))
                     {
-                        SymbolId = edge.SourceId,
-                        Kind = ClassifyBreak(edge.Kind),
-                        Reason = $"edge {edge.Kind} → {targetSymbolId}",
-                    });
+                        list = new List<EdgeKind>(2);
+                        directEdgeKinds[edge.SourceId] = list;
+                    }
+                    if (!list.Contains(edge.Kind))
+                        list.Add(edge.Kind);
                 }
             }
         }
+
+        var breaks = directEdgeKinds
+            .Select(kvp =>
+            {
+                var dominantKind = kvp.Value
+                    .Select(ClassifyBreak)
+                    .OrderByDescending(BreakSeverityRank)
+                    .First();
+                return new BreakInfo
+                {
+                    SymbolId = kvp.Key,
+                    Kind = dominantKind,
+                    Reason = $"edges [{string.Join(", ", kvp.Value)}] → {targetSymbolId}",
+                };
+            })
+            .OrderBy(b => b.SymbolId, StringComparer.Ordinal)
+            .ToArray();
 
         affected.Remove(targetSymbolId);
         return new BlastRadiusResult
@@ -65,9 +88,27 @@ public static class BlastRadiusAnalyzer
             TargetSymbolId = targetSymbolId,
             AffectedSymbolIds = affected.ToArray(),
             AffectedCount = affected.Count,
-            Breaks = breaks.ToArray(),
+            Breaks = breaks,
         };
     }
+
+    /// <summary>
+    /// Severity ranking used by <see cref="Analyze"/> to collapse
+    /// multiple-edge-kind dependants to a single worst-case break kind.
+    /// Higher = worse. The ranking is intentionally simple and coarse:
+    /// signature changes are worse than binding removals (because they
+    /// propagate to every subclass), binding removals are worse than
+    /// behavioral changes (because they fail at compile time, not
+    /// runtime), and Unknown is the floor.
+    /// </summary>
+    private static int BreakSeverityRank(BreakKind kind) => kind switch
+    {
+        BreakKind.SignatureChange => 4,
+        BreakKind.TypeRename => 3,
+        BreakKind.BindingRemoval => 2,
+        BreakKind.Behavioral => 1,
+        _ => 0,
+    };
 
     /// <summary>
     /// Map an edge kind to the coarse break category a developer cares
