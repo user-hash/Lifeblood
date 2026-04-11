@@ -1,8 +1,8 @@
 # Status
 
-Dogfood-verified. 422 tests. 21 MCP tools (11 read + 10 write). 21 port interfaces. Native usage and timing reporting on every `lifeblood_analyze` response. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+Dogfood-verified. 510+ tests. 22 MCP tools (12 read + 10 write). 22 port interfaces. Native usage and timing reporting on every `lifeblood_analyze` response. Architectural-invariant introspection via `lifeblood_invariant_check`. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
 
-<!-- portCount: 21 --><!-- testCount: 422 --><!-- toolCount: 21 -->
+<!-- portCount: 22 --><!-- testCount: 510 --><!-- toolCount: 22 -->
 
 ## Components
 

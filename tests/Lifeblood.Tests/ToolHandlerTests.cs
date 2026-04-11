@@ -76,7 +76,9 @@ public class ToolHandlerTests : IDisposable
         ISemanticSearchProvider search = new LifebloodSemanticSearchProvider();
         IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(Fs);
-        return new ToolHandler(new GraphSession(Fs), provider, resolver, search, deadCode, partialView);
+        Lifeblood.Application.Ports.Right.Invariants.IInvariantProvider invariants
+            = new LifebloodInvariantProvider(Fs);
+        return new ToolHandler(new GraphSession(Fs), provider, resolver, search, deadCode, partialView, invariants);
     }
 
     private static JsonElement? MakeArgs(object obj)
@@ -341,11 +343,11 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns21Tools()
+    public void ToolRegistry_Returns22Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(21, tools.Length);
+        Assert.Equal(22, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_analyze");
         Assert.Contains(tools, t => t.Name == "lifeblood_context");
         Assert.Contains(tools, t => t.Name == "lifeblood_lookup");
@@ -354,6 +356,7 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains(tools, t => t.Name == "lifeblood_blast_radius");
         Assert.Contains(tools, t => t.Name == "lifeblood_file_impact");
         Assert.Contains(tools, t => t.Name == "lifeblood_resolve_short_name");
+        Assert.Contains(tools, t => t.Name == "lifeblood_invariant_check");
         Assert.Contains(tools, t => t.Name == "lifeblood_execute");
         Assert.Contains(tools, t => t.Name == "lifeblood_diagnose");
         Assert.Contains(tools, t => t.Name == "lifeblood_compile_check");

@@ -3,6 +3,7 @@ using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
+using Lifeblood.Application.Ports.Right.Invariants;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
@@ -51,8 +52,13 @@ class Program
         // so it's session-state-free.
         IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(fs);
+        // Phase 8: invariant provider parses CLAUDE.md at the loaded
+        // project root. No graph dependency; pure text-in, data-out.
+        // The provider is session-scoped so its per-project-root cache
+        // persists across tool calls.
+        IInvariantProvider invariants = new LifebloodInvariantProvider(fs);
         var toolHandler = new ToolHandler(
-            session, graphProvider, resolver, searchProvider, deadCode, partialView);
+            session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants);
         var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)

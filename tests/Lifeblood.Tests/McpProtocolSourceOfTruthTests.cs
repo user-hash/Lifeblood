@@ -255,7 +255,9 @@ public class McpProtocolSourceOfTruthTests
         ISemanticSearchProvider search = new LifebloodSemanticSearchProvider();
         IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(Fs);
-        var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView);
+        Lifeblood.Application.Ports.Right.Invariants.IInvariantProvider invariants
+            = new LifebloodInvariantProvider(Fs);
+        var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView, invariants);
         return new McpDispatcher(session, handler);
     }
 

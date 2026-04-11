@@ -276,6 +276,21 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_invariant_check",
+  Availability = ToolAvailability.ReadSide,
+  Description = "Query the architectural invariants declared in the loaded project's CLAUDE.md. Three modes: (1) pass 'id' to fetch one invariant's full body, title, category, and source line; (2) pass mode='audit' (default) for a summary — total count, per-category breakdown, duplicate-id collisions, and parse warnings; (3) pass mode='list' for an id/title index across every declared invariant. The tool parses CLAUDE.md at the loaded project root, so lifeblood_analyze must have been called first to establish that root. Phase 8.",
+  InputSchema = new
+  {
+  type = "object",
+  properties = new
+  {
+  id = new { type = "string", description = "Exact invariant id (e.g. 'INV-CANONICAL-001'). Mutually exclusive with 'mode'." },
+  mode = new { type = "string", description = "'audit' (default) or 'list'. Mutually exclusive with 'id'." },
+  },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_search",
   Availability = ToolAvailability.ReadSide,
   Description = "Ranked keyword search across symbol names, qualified names, and persisted xml-documentation summaries. Use when you need to find a symbol by WHAT IT DOES, not by what it's NAMED — e.g., search 'canonicalize' and get back every symbol whose xmldoc mentions canonicalization even when none of them are literally called 'Canonicalize'. Returns ranked matches with canonical ids, file paths, lines, scores, and short context snippets. Distinct from lifeblood_resolve_short_name (which only searches the short-name index): this tool also mines the xmldoc corpus.",
