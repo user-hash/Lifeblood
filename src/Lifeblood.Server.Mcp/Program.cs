@@ -40,7 +40,11 @@ class Program
         // based on loaded adapters.
         IUserInputCanonicalizer canonicalizer = new CSharpUserInputCanonicalizer();
         ISymbolResolver resolver = new LifebloodSymbolResolver(canonicalizer);
-        var toolHandler = new ToolHandler(session, graphProvider, resolver);
+        // Phase 5: lifeblood_search is backed by a separate port so it can
+        // plug in future scorers (BM25, vector embeddings) without touching
+        // the existing IMcpGraphProvider surface.
+        ISemanticSearchProvider searchProvider = new LifebloodSemanticSearchProvider();
+        var toolHandler = new ToolHandler(session, graphProvider, resolver, searchProvider);
         var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)

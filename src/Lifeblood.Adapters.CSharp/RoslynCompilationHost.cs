@@ -537,21 +537,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }
 
   private static string GetXmlDocumentation(ISymbol symbol)
-  {
-  var xml = symbol.GetDocumentationCommentXml();
-  if (string.IsNullOrWhiteSpace(xml)) return "";
-  // Extract the <summary> content for a clean presentation
-  var start = xml.IndexOf("<summary>", StringComparison.Ordinal);
-  var end = xml.IndexOf("</summary>", StringComparison.Ordinal);
-  if (start >= 0 && end > start)
-  {
-  var inner = xml.Substring(start + 9, end - start - 9).Trim();
-  // Strip XML whitespace/newlines
-  return string.Join(" ", inner.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-  .Select(l => l.Trim()));
-  }
-  return xml;
-  }
+      => Internal.XmlDocExtractor.ExtractSummary(symbol);
 
   /// <summary>
   /// Build the canonical Lifeblood symbol ID for a Roslyn symbol.

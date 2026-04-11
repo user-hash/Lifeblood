@@ -19,6 +19,7 @@ public sealed class ToolHandler
     private readonly GraphSession _session;
     private readonly IMcpGraphProvider _provider;
     private readonly ISymbolResolver _resolver;
+    private readonly ISemanticSearchProvider _search;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -27,11 +28,16 @@ public sealed class ToolHandler
         WriteIndented = true,
     };
 
-    public ToolHandler(GraphSession session, IMcpGraphProvider provider, ISymbolResolver resolver)
+    public ToolHandler(
+        GraphSession session,
+        IMcpGraphProvider provider,
+        ISymbolResolver resolver,
+        ISemanticSearchProvider search)
     {
         _session = session;
         _provider = provider;
         _resolver = resolver;
+        _search = search;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -50,6 +56,7 @@ public sealed class ToolHandler
                 "lifeblood_blast_radius" => HandleBlastRadius(arguments),
                 "lifeblood_file_impact" => HandleFileImpact(arguments),
                 "lifeblood_resolve_short_name" => HandleResolveShortName(arguments),
+                "lifeblood_search" => HandleSearch(arguments),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -218,6 +225,45 @@ public sealed class ToolHandler
             "fuzzy" => ResolutionMode.Fuzzy,
             _ => ResolutionMode.Exact,
         };
+
+    private McpToolResult HandleSearch(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var query = WriteToolHandler.GetString(args, "query");
+        if (string.IsNullOrEmpty(query))
+            return ErrorResult("query is required");
+
+        var limit = WriteToolHandler.GetInt(args, "limit") ?? 20;
+        var kinds = ParseKindsFilter(args);
+
+        var results = _search.Search(_session.Graph!, new SearchQuery(query, kinds, limit));
+        return TextResult(JsonSerializer.Serialize(
+            new { query, count = results.Length, results },
+            JsonOpts));
+    }
+
+    /// <summary>
+    /// Parse the optional <c>kinds</c> array from the search tool's
+    /// arguments into a typed <see cref="Lifeblood.Domain.Graph.SymbolKind"/>
+    /// array. Entries that don't parse (typo, unknown kind) are silently
+    /// dropped rather than erroring, so the filter is best-effort and
+    /// degrades to "no filter" on bad input.
+    /// </summary>
+    private static Lifeblood.Domain.Graph.SymbolKind[]? ParseKindsFilter(JsonElement? args)
+    {
+        if (args is not JsonElement obj || obj.ValueKind != JsonValueKind.Object) return null;
+        if (!obj.TryGetProperty("kinds", out var kindsElement) || kindsElement.ValueKind != JsonValueKind.Array) return null;
+        var list = new List<Lifeblood.Domain.Graph.SymbolKind>(kindsElement.GetArrayLength());
+        foreach (var item in kindsElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String) continue;
+            if (System.Enum.TryParse<Lifeblood.Domain.Graph.SymbolKind>(item.GetString(), ignoreCase: true, out var parsed))
+                list.Add(parsed);
+        }
+        return list.Count > 0 ? list.ToArray() : null;
+    }
 
     private McpToolResult HandleFileImpact(JsonElement? args)
     {
