@@ -199,9 +199,15 @@ public class ArchitectureInvariantTests
   Assert.True(File.Exists(csprojPath), $"{rootName} csproj not found: {csprojPath}");
 
   var doc = XDocument.Load(csprojPath);
+  // Route through Internal.CsprojPaths so this ratchet test and the
+  // production discovery code in RoslynModuleDiscovery share one
+  // implementation of "what does a ProjectReference Include attribute
+  // mean". Without the shared helper, every Linux CI run failed
+  // because Path.GetFileNameWithoutExtension treats backslash as a
+  // literal character. Single source of truth = drift impossible.
   var referencedModules = doc.Descendants("ProjectReference")
   .Select(el => el.Attribute("Include")?.Value ?? "")
-  .Select(path => Path.GetFileNameWithoutExtension(path))
+  .Select(Lifeblood.Adapters.CSharp.Internal.CsprojPaths.GetReferencedModuleName)
   .ToArray();
 
   foreach (var module in referencedModules)
