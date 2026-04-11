@@ -2,6 +2,8 @@ using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
+using Lifeblood.Application.Ports.Right;
+using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
@@ -67,8 +69,12 @@ public class ToolHandlerTests : IDisposable
             => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
     }
 
-    private static ToolHandler CreateHandler() =>
-        new(new GraphSession(Fs), new TestBlastRadiusProvider());
+    private static ToolHandler CreateHandler()
+    {
+        IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
+        ISymbolResolver resolver = new LifebloodSymbolResolver();
+        return new ToolHandler(new GraphSession(Fs), provider, resolver);
+    }
 
     private static JsonElement? MakeArgs(object obj)
     {

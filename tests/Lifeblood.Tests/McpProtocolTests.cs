@@ -3,6 +3,8 @@ using System.Text.Json.Serialization;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
+using Lifeblood.Application.Ports.Right;
+using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Lifeblood.Server.Mcp;
@@ -40,7 +42,9 @@ public class McpProtocolTests
   private static McpDispatcher CreateDispatcher()
   {
   var session = new GraphSession(Fs);
-  var handler = new ToolHandler(session, new TestBlastRadiusProvider());
+  IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
+  ISymbolResolver resolver = new LifebloodSymbolResolver();
+  var handler = new ToolHandler(session, provider, resolver);
   return new McpDispatcher(session, handler);
   }
 

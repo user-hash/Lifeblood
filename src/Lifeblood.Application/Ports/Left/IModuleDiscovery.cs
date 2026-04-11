@@ -46,7 +46,25 @@ public sealed class ModuleInfo
 {
     public string Name { get; init; } = "";
     public string[] FilePaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Names of the modules this one DIRECTLY depends on (populated from the
+    /// csproj's own <c>&lt;ProjectReference&gt;</c> elements only). These are
+    /// NOT the Roslyn compilation references — Roslyn compilations need the
+    /// full TRANSITIVE closure, because unlike MSBuild, Roslyn does not walk
+    /// indirect references automatically. Consumers that build compilation
+    /// reference lists MUST route this field through
+    /// <c>ModuleCompilationBuilder.ComputeTransitiveDependencies</c>.
+    ///
+    /// Rationale and regression history: see INV-CANONICAL-001 in CLAUDE.md
+    /// and <c>tests/Lifeblood.Tests/CanonicalSymbolFormatTests.cs</c>. The
+    /// name of this field is kept as <c>Dependencies</c> rather than
+    /// <c>DirectDependencies</c> because it also feeds module→module graph
+    /// edges and the topological sort, both of which are correct with the
+    /// direct-only semantics.
+    /// </summary>
     public string[] Dependencies { get; init; } = Array.Empty<string>();
+
     public bool IsPure { get; init; }
     public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
 

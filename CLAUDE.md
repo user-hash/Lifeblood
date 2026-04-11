@@ -221,6 +221,51 @@ csproj-driven option follows the same shape.
   entire `ModuleInfo` on csproj edit, not just one field. The next compilation
   fact added under this convention ships with zero new incremental work.
 
+## Canonical Symbol ID Determinism (C# Adapter)
+
+Lifeblood symbol IDs must be byte-identical for the same underlying method
+regardless of which compilation extracts it. Drift between two instances of
+the same method — one source, one metadata; or one declared in module A,
+one implementing the same interface in module B — silently corrupts every
+downstream feature: `find_references`, `dependants`, blast radius, the
+fuzzy short-name resolver, and every cross-module tool that relies on
+string equality of canonical IDs.
+
+- **INV-CANONICAL-001. Roslyn compilations receive the full transitive
+  dependency closure, not just direct `ModuleInfo.Dependencies`.** Unlike
+  MSBuild's ProjectReference flow, Roslyn's `CSharpCompilation.Create`
+  does NOT walk references transitively. If module C directly references
+  module B, and B references module A, then compiling C must pass BOTH B
+  and A as explicit `MetadataReference`s. If A is missing, every type from
+  A that appears through B's public surface becomes a Roslyn error type
+  symbol whose `ContainingNamespace` is empty. `CanonicalSymbolFormat.BuildParamSignature`
+  then emits the short type name with no namespace qualifier, producing
+  non-canonical IDs like `method:C.Impl.M(BarType)` instead of the
+  correct `method:C.Impl.M(A.BarType)`. The drift is silent: the
+  compilation still succeeds, extraction still runs, diagnostics still
+  pass, the graph is populated. Only cross-module lookups, which rely on
+  canonical-ID string equality, fail in ways that look like missing
+  references.
+
+  The single enforcement site is `Internal.ModuleCompilationBuilder.ProcessInOrder`,
+  which routes each module's direct dependencies through
+  `Internal.ModuleCompilationBuilder.ComputeTransitiveDependencies` before
+  collecting PE references. `ModuleInfo.Dependencies` retains its
+  direct-only semantics — it also feeds the module→module graph edges and
+  the topological sort, both of which are correct on direct deps only —
+  but EVERY compilation-reference consumer MUST use the closure helper.
+  Adding a new consumer that iterates `module.Dependencies` directly when
+  building compilation refs re-introduces the bug class.
+
+  Pinned by `tests/Lifeblood.Tests/CanonicalSymbolFormatTests.cs`:
+  `ComputeTransitiveDependencies_FlatChain_ReturnsFullClosure`,
+  `ComputeTransitiveDependencies_Diamond_ReturnsDeduplicatedClosure`,
+  `ComputeTransitiveDependencies_Cycle_DoesNotInfinitelyRecurse`, and the
+  end-to-end `AnalyzeWorkspace_ThreeModuleTransitiveChain_ProducesCanonicalMethodIds`
+  which builds a real three-module workspace on disk where the Outer
+  module references Middle only and asserts that a parameter type
+  defined in Core still produces the fully-qualified canonical ID.
+
 ## Adapter Semantic View
 
 Each language adapter publishes a typed read-only accessor for its loaded
