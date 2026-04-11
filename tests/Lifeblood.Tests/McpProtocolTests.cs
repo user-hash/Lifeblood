@@ -44,7 +44,8 @@ public class McpProtocolTests
   var session = new GraphSession(Fs);
   IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
   ISymbolResolver resolver = new LifebloodSymbolResolver();
-  var handler = new ToolHandler(session, provider, resolver);
+  ISemanticSearchProvider search = new LifebloodSemanticSearchProvider();
+  var handler = new ToolHandler(session, provider, resolver, search);
   return new McpDispatcher(session, handler);
   }
 

@@ -214,6 +214,28 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_search",
+  Availability = ToolAvailability.ReadSide,
+  Description = "Ranked keyword search across symbol names, qualified names, and persisted xml-documentation summaries. Use when you need to find a symbol by WHAT IT DOES, not by what it's NAMED — e.g., search 'canonicalize' and get back every symbol whose xmldoc mentions canonicalization even when none of them are literally called 'Canonicalize'. Returns ranked matches with canonical ids, file paths, lines, scores, and short context snippets. Distinct from lifeblood_resolve_short_name (which only searches the short-name index): this tool also mines the xmldoc corpus.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "query" },
+  properties = new
+  {
+  query = new { type = "string", description = "Query text. Matched against symbol names, qualified names, and xmldoc summaries." },
+  kinds = new
+  {
+  type = "array",
+  items = new { type = "string" },
+  description = "Optional symbol-kind filter (e.g. ['Method','Type']). Case-insensitive. Unknown kinds are silently ignored.",
+  },
+  limit = new { type = "integer", description = "Maximum number of results (default 20)." },
+  },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_find_references",
   Availability = ToolAvailability.WriteSide,
   Description = "Find all references to a symbol across the loaded workspace. Returns file paths, line numbers, and span text. Set includeDeclarations=true to also return the symbol's declaration sites (one entry per partial declaration for partial types).",

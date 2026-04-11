@@ -49,6 +49,11 @@ public sealed class RoslynSymbolExtractor
             ? SymbolIds.Type(GetFullName(typeSymbol.ContainingType))
             : parentId;
 
+        var typeProps = new Dictionary<string, string>
+        {
+            ["typeKind"] = typeSymbol.TypeKind.ToString().ToLowerInvariant(),
+        };
+        AttachXmlDocSummary(typeProps, typeSymbol);
         symbols.Add(new Symbol
         {
             Id = typeId,
@@ -61,10 +66,7 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(typeSymbol.DeclaredAccessibility),
             IsAbstract = typeSymbol.IsAbstract,
             IsStatic = typeSymbol.IsStatic,
-            Properties = new Dictionary<string, string>
-            {
-                ["typeKind"] = typeSymbol.TypeKind.ToString().ToLowerInvariant(),
-            },
+            Properties = typeProps,
         });
 
         // Extract members from TypeDeclarationSyntax (has .Members)
@@ -174,6 +176,12 @@ public sealed class RoslynSymbolExtractor
 
         var typeName = ExtractTypeFromId(containingTypeId);
         var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
+        var methodProps = new Dictionary<string, string>
+        {
+            ["returnType"] = sym.ReturnType.ToDisplayString(),
+            ["paramCount"] = sym.Parameters.Length.ToString(),
+        };
+        AttachXmlDocSummary(methodProps, sym);
         symbols.Add(new Symbol
         {
             Id = SymbolIds.Method(typeName, sym.Name, paramSig),
@@ -186,11 +194,7 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsAbstract = sym.IsAbstract,
             IsStatic = sym.IsStatic,
-            Properties = new Dictionary<string, string>
-            {
-                ["returnType"] = sym.ReturnType.ToDisplayString(),
-                ["paramCount"] = sym.Parameters.Length.ToString(),
-            },
+            Properties = methodProps,
         });
     }
 
@@ -231,6 +235,11 @@ public sealed class RoslynSymbolExtractor
             if (sym == null) continue;
 
             var typeName = ExtractTypeFromId(containingTypeId);
+            var fieldProps = new Dictionary<string, string>
+            {
+                ["fieldType"] = sym.Type.ToDisplayString(),
+            };
+            AttachXmlDocSummary(fieldProps, sym);
             symbols.Add(new Symbol
             {
                 Id = SymbolIds.Field(typeName, sym.Name),
@@ -242,10 +251,7 @@ public sealed class RoslynSymbolExtractor
                 ParentId = containingTypeId,
                 Visibility = MapVisibility(sym.DeclaredAccessibility),
                 IsStatic = sym.IsStatic,
-                Properties = new Dictionary<string, string>
-                {
-                    ["fieldType"] = sym.Type.ToDisplayString(),
-                },
+                Properties = fieldProps,
             });
         }
     }
@@ -258,6 +264,12 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
+        var propProps = new Dictionary<string, string>
+        {
+            ["propertyType"] = sym.Type.ToDisplayString(),
+            ["isProperty"] = "true",
+        };
+        AttachXmlDocSummary(propProps, sym);
         symbols.Add(new Symbol
         {
             Id = SymbolIds.Property(typeName, sym.Name),
@@ -270,11 +282,7 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsAbstract = sym.IsAbstract,
             IsStatic = sym.IsStatic,
-            Properties = new Dictionary<string, string>
-            {
-                ["propertyType"] = sym.Type.ToDisplayString(),
-                ["isProperty"] = "true",
-            },
+            Properties = propProps,
         });
     }
 
@@ -440,6 +448,24 @@ public sealed class RoslynSymbolExtractor
                 ["isEvent"] = "true",
             },
         });
+    }
+
+    /// <summary>
+    /// Attach the symbol's <c>&lt;summary&gt;</c> XML documentation to the
+    /// <see cref="Symbol.Properties"/> dictionary under the
+    /// <c>xmlDocSummary</c> key. Called during full and incremental
+    /// extraction so the <c>lifeblood_search</c> tool can search by
+    /// docstring text without needing a live Roslyn compilation.
+    ///
+    /// Only persists when the documentation is non-empty — an empty value
+    /// would bloat the serialized graph for every undocumented symbol.
+    /// Phase 5 (2026-04-11).
+    /// </summary>
+    private static void AttachXmlDocSummary(IDictionary<string, string> props, ISymbol sym)
+    {
+        var summary = Internal.XmlDocExtractor.ExtractSummary(sym);
+        if (!string.IsNullOrEmpty(summary))
+            props["xmlDocSummary"] = summary;
     }
 
     internal static string GetFullName(ISymbol symbol)
