@@ -1,8 +1,8 @@
 # Status
 
-Dogfood-verified. 404 tests. 21 MCP tools (11 read + 10 write). 21 port interfaces. Native usage and timing reporting on every `lifeblood_analyze` response. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+Dogfood-verified. 405 tests. 21 MCP tools (11 read + 10 write). 21 port interfaces. Native usage and timing reporting on every `lifeblood_analyze` response. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
 
-<!-- portCount: 21 --><!-- testCount: 404 --><!-- toolCount: 21 -->
+<!-- portCount: 21 --><!-- testCount: 405 --><!-- toolCount: 21 -->
 
 ## Components
 
@@ -15,11 +15,11 @@ Dogfood-verified. 404 tests. 21 MCP tools (11 read + 10 write). 21 port interfac
 | Lifeblood.Connectors.ContextPack | Context pack with GraphSummary, instruction file, reading order. |
 | Lifeblood.Connectors.Mcp | Graph provider with blast radius delegation and file-level impact. `LifebloodSymbolResolver` is the reference `ISymbolResolver` implementation, with a deterministic primary file path picker for partial types. |
 | Lifeblood.Analysis | Coupling, blast radius, cycles, tiers, rule validation. |
-| Lifeblood.Server.Mcp | MCP server with 18 tools over stdio. Bidirectional Roslyn. RoslynSemanticView constructed once per GraphSession.Load and shared by reference across consumers. |
+| Lifeblood.Server.Mcp | MCP server with 21 tools over stdio (9 read-side + 10 write-side + lifeblood_search + lifeblood_dead_code + lifeblood_partial_view). Bidirectional Roslyn. RoslynSemanticView constructed once per GraphSession.Load and shared by reference across consumers. |
 | Lifeblood.CLI | analyze, context, export with centralized validation. |
 | adapters/typescript | Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Unity bridge | 18 tools via [McpForUnityTool]. Sidecar process. |
+| Unity bridge | 21 tools via [McpForUnityTool]. Sidecar process. |
 | Lifeblood.Tests | 344 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent), RoslynSemanticView script globals, ProcessUsageProbe (12 probe tests + 3 use-case integration tests for the native usage reporting). |
 
 ## Rule Packs
