@@ -1,5 +1,6 @@
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -53,9 +54,11 @@ internal sealed class ModuleCompilationBuilder
         string projectRoot,
         AnalysisConfig config,
         CompilationProcessor processor,
-        Action<string, int, int>? onModuleProgress = null)
+        Action<string, int, int>? onModuleProgress = null,
+        List<SkippedFile>? skippedCollector = null)
     {
         var sorted = TopologicalSort(modules);
+        var moduleLookup = modules.ToDictionary(m => m.Name, StringComparer.Ordinal);
 
         // Downgraded references: lightweight PE images for completed modules.
         // Downstream modules reference these instead of full compilations.
@@ -71,13 +74,26 @@ internal sealed class ModuleCompilationBuilder
             var module = sorted[i];
             onModuleProgress?.Invoke(module.Name, i + 1, sorted.Length);
 
-            // Collect dependencies: use downgraded refs (lightweight) for completed modules.
-            var depRefs = module.Dependencies
+            // Collect dependencies transitively. Roslyn compilation references
+            // are NOT transitive the way MSBuild project references are: if
+            // module A references B, and B references C, compiling A needs BOTH
+            // B and C as explicit references or Roslyn cannot bind any type
+            // from C used through B's public surface — the type becomes an
+            // error symbol with an empty ContainingNamespace, and every method
+            // symbol ID built from it loses its namespace qualifier, silently
+            // producing non-canonical IDs like `method:...Foo.Resolve(SemanticGraph,string)`
+            // instead of the fully-qualified `(Lifeblood.Domain.Graph.SemanticGraph,string)`.
+            // The topological sort above guarantees that every transitive
+            // dependency of `module` has already been compiled and downgraded,
+            // so the closure we compute here is always fully satisfiable.
+            // Root cause and dogfood evidence in
+            // .claude/plans/improvement-master-2026-04-11.md Part 1 NEW-01.
+            var depRefs = ComputeTransitiveDependencies(module, moduleLookup)
                 .Where(downgraded.ContainsKey)
                 .Select(d => downgraded[d])
                 .ToArray();
 
-            var compilation = CreateCompilation(module, projectRoot, config, depRefs);
+            var compilation = CreateCompilation(module, projectRoot, config, depRefs, skippedCollector);
             if (compilation == null) continue;
 
             // Invoke the processor (symbol/edge extraction happens here).
@@ -122,11 +138,43 @@ internal sealed class ModuleCompilationBuilder
 
     private CSharpCompilation? CreateCompilation(
         ModuleInfo module, string projectRoot, AnalysisConfig config,
-        MetadataReference[] dependencyRefs)
+        MetadataReference[] dependencyRefs,
+        List<SkippedFile>? skippedCollector)
     {
+        // Surface every file the adapter declines to process so consumers
+        // can show users exactly what was dropped and why. Phase 4 / C4.
+        // Order matters: extension filter runs first, then file-existence,
+        // so a missing non-.cs file is reported as UnsupportedExtension
+        // (the dominant reason) rather than FileNotFound.
         var sourceFiles = module.FilePaths
-            .Where(f => f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            .Where(_fs.FileExists);
+            .Where(f =>
+            {
+                if (!f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    skippedCollector?.Add(new SkippedFile
+                    {
+                        FilePath = f,
+                        Reason = SkipReason.UnsupportedExtension,
+                        ModuleName = module.Name,
+                    });
+                    return false;
+                }
+                return true;
+            })
+            .Where(f =>
+            {
+                if (!_fs.FileExists(f))
+                {
+                    skippedCollector?.Add(new SkippedFile
+                    {
+                        FilePath = f,
+                        Reason = SkipReason.FileNotFound,
+                        ModuleName = module.Name,
+                    });
+                    return false;
+                }
+                return true;
+            });
 
         if (config.ExcludePatterns.Length > 0)
         {
@@ -185,6 +233,41 @@ internal sealed class ModuleCompilationBuilder
             trees!,
             references,
             compilationOptions);
+    }
+
+    /// <summary>
+    /// Compute the transitive closure of module dependencies. Given module A
+    /// with direct Dependencies [B], and B with direct Dependencies [C],
+    /// returns {B, C}. Direct-only dependency lists are NOT sufficient for
+    /// Roslyn compilation references: Roslyn needs every assembly whose types
+    /// appear in the module's source, including assemblies reached transitively
+    /// through another reference's public surface. Missing transitive refs
+    /// silently produce error type symbols with empty namespaces, which in
+    /// turn produce non-canonical symbol IDs during extraction.
+    ///
+    /// Cycles are handled gracefully — every visited module is added once and
+    /// not revisited. Modules missing from the lookup (malformed dependency
+    /// names) are silently skipped. The order of the returned set is not
+    /// significant; the caller filters it against the `downgraded` map.
+    /// </summary>
+    internal static HashSet<string> ComputeTransitiveDependencies(
+        ModuleInfo module,
+        Dictionary<string, ModuleInfo> lookup)
+    {
+        var closure = new HashSet<string>(StringComparer.Ordinal);
+        var stack = new Stack<string>(module.Dependencies);
+        while (stack.Count > 0)
+        {
+            var name = stack.Pop();
+            if (!closure.Add(name)) continue;
+            if (!lookup.TryGetValue(name, out var dep)) continue;
+            foreach (var transitive in dep.Dependencies)
+            {
+                if (!closure.Contains(transitive))
+                    stack.Push(transitive);
+            }
+        }
+        return closure;
     }
 
     /// <summary>

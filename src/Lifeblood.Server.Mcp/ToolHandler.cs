@@ -1,9 +1,7 @@
 using System.Text.Json;
-using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
-using Lifeblood.Connectors.Mcp;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -19,7 +17,7 @@ namespace Lifeblood.Server.Mcp;
 public sealed class ToolHandler
 {
     private readonly GraphSession _session;
-    private readonly LifebloodMcpProvider _provider;
+    private readonly IMcpGraphProvider _provider;
     private readonly ISymbolResolver _resolver;
     private readonly WriteToolHandler _write;
 
@@ -29,11 +27,11 @@ public sealed class ToolHandler
         WriteIndented = true,
     };
 
-    public ToolHandler(GraphSession session, IBlastRadiusProvider blastRadius)
+    public ToolHandler(GraphSession session, IMcpGraphProvider provider, ISymbolResolver resolver)
     {
         _session = session;
-        _provider = new LifebloodMcpProvider(blastRadius);
-        _resolver = new LifebloodSymbolResolver();
+        _provider = provider;
+        _resolver = resolver;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -197,11 +195,29 @@ public sealed class ToolHandler
         if (string.IsNullOrEmpty(name))
             return ErrorResult("name is required");
 
-        var matches = _resolver.ResolveShortName(_session.Graph!, name);
+        var modeString = WriteToolHandler.GetString(args, "mode");
+        var mode = ParseResolutionMode(modeString);
+
+        var matches = _resolver.ResolveShortName(_session.Graph!, name, mode);
         return TextResult(JsonSerializer.Serialize(
-            new { name, count = matches.Length, matches },
+            new { name, mode = mode.ToString().ToLowerInvariant(), count = matches.Length, matches },
             JsonOpts));
     }
+
+    /// <summary>
+    /// Parse the user-facing mode string into the typed enum. Unknown values
+    /// and empty/null fall through to <see cref="ResolutionMode.Exact"/>,
+    /// matching the default documented in the tool schema. Unknown values
+    /// are accepted silently rather than erroring because the enum is open
+    /// to future extension and the default is always safe.
+    /// </summary>
+    private static ResolutionMode ParseResolutionMode(string? mode) =>
+        (mode ?? "").ToLowerInvariant() switch
+        {
+            "contains" => ResolutionMode.Contains,
+            "fuzzy" => ResolutionMode.Fuzzy,
+            _ => ResolutionMode.Exact,
+        };
 
     private McpToolResult HandleFileImpact(JsonElement? args)
     {

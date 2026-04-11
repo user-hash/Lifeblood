@@ -195,7 +195,7 @@ public static class ToolRegistry
   // tool sat under the write-side comment divider but none of the
   // prefix guards matched its name.
   Availability = ToolAvailability.ReadSide,
-  Description = "Resolve a bare short name (e.g., 'MidiLearnManager') to its canonical symbol ID(s). Returns every matching symbol with its canonical id, file path, and kind. Use this to discover the canonical id of a type when you only know its short name and not its namespace.",
+  Description = "Resolve a bare short name (e.g., 'MidiLearnManager') to its canonical symbol ID(s). Returns every matching symbol with its canonical id, file path, and kind. Use `mode` to control matching: 'exact' (default) is literal, 'contains' is substring, 'fuzzy' is a ranked near-match score. Zero-result responses automatically include ranked suggestions so you never hit a dead end.",
   InputSchema = new
   {
   type = "object",
@@ -203,6 +203,12 @@ public static class ToolRegistry
   properties = new
   {
   name = new { type = "string", description = "Short symbol name (no namespace)" },
+  mode = new
+  {
+  type = "string",
+  description = "Matching mode: 'exact' (default, literal), 'contains' (substring), or 'fuzzy' (ranked near-match).",
+  @enum = new[] { "exact", "contains", "fuzzy" },
+  },
   },
   },
   },

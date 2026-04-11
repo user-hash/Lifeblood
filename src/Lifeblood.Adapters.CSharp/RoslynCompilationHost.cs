@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using DomainDiagnosticSeverity = Lifeblood.Domain.Results.DiagnosticSeverity;
 using DomainReferenceLocation = Lifeblood.Domain.Results.ReferenceLocation;
+using DomainReferenceKind = Lifeblood.Domain.Results.ReferenceKind;
 
 namespace Lifeblood.Adapters.CSharp;
 
@@ -149,7 +150,17 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   var targetCanonicalId = BuildSymbolId(resolvedTarget);
 
   var results = new List<DomainReferenceLocation>();
-  var seen = new HashSet<(string, int, int)>(); // (filePath, line, column) dedup
+
+  // Logical-reference dedup (Phase 4 / A3, 2026-04-11): an invocation
+  // expression `x.Foo(args)` and its identifier token `Foo` are two
+  // distinct syntax nodes but ONE logical reference. The old dedup key
+  // was (filePath, line, column) which preserved both because their
+  // columns differ. The new key is (filePath, line, containingSymbolId,
+  // referencedSymbolId). Since referencedSymbolId is fixed at
+  // `targetCanonicalId` for every hit in this method, the effective key
+  // reduces to (filePath, line, containingSymbolId) and one entry per
+  // logical call-site is emitted instead of two. Closes NEW-02.
+  var seen = new HashSet<(string filePath, int line, string containingSymbolId, string referencedSymbolId)>();
 
   foreach (var compilation in _compilations.Values)
   {
@@ -179,7 +190,16 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   var column = span.StartLinePosition.Character + 1;
   var filePath = span.Path ?? "";
 
-  if (!seen.Add((filePath, line, column))) continue;
+  // Phase 4 / C2 (2026-04-11): populate containingSymbolId. Walk
+  // the node's ancestors to the first enclosing member declaration
+  // (method, property, indexer, field, ctor) or type declaration
+  // as the coarser fallback. The canonical ID of that member is
+  // what the find_references consumer uses to group usages by
+  // caller, drive containingTypeFilter (DAWG R5), and render
+  // call-graph UIs. O(depth) per reference — cheap.
+  var containingSymbolId = ComputeContainingSymbolId(model, node);
+
+  if (!seen.Add((filePath, line, containingSymbolId, targetCanonicalId))) continue;
 
   var spanText = sourceText.GetSubText(node.Span).ToString();
   results.Add(new DomainReferenceLocation
@@ -188,6 +208,8 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   Line = line,
   Column = column,
   SpanText = spanText,
+  ContainingSymbolId = containingSymbolId,
+  Kind = DomainReferenceKind.Usage,
   });
   }
   }
@@ -200,7 +222,8 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   // surfaced when querying "where is this type defined?"
   if (options.IncludeDeclarations)
   {
-  var declSeen = new HashSet<(string, int, int)>(seen);
+  var declContainingId = targetCanonicalId; // declaration's own symbol
+  var declSeen = new HashSet<(string, int, string, string)>(seen);
   if (resolvedTarget != null)
   {
   foreach (var location in resolvedTarget.Locations.Where(l => l.IsInSource))
@@ -209,7 +232,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   var line = span.StartLinePosition.Line + 1;
   var column = span.StartLinePosition.Character + 1;
   var filePath = span.Path ?? "";
-  if (!declSeen.Add((filePath, line, column))) continue;
+  if (!declSeen.Add((filePath, line, declContainingId, targetCanonicalId))) continue;
 
   results.Add(new DomainReferenceLocation
   {
@@ -217,12 +240,81 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   Line = line,
   Column = column,
   SpanText = "(declaration)",
+  ContainingSymbolId = declContainingId,
+  Kind = DomainReferenceKind.Declaration,
   });
   }
   }
   }
 
   return results.ToArray();
+  }
+
+  /// <summary>
+  /// Walk a reference's syntax ancestors to find the first enclosing
+  /// member declaration (method, constructor, property, indexer, field,
+  /// event) or, as a fallback, its enclosing type declaration. Returns
+  /// the canonical Lifeblood symbol ID of that enclosing symbol via
+  /// <see cref="BuildSymbolId"/> so the result compares equal to the
+  /// same symbol's entry in the graph. Returns an empty string when no
+  /// sensible containing symbol can be found (e.g., a top-level
+  /// statement with no enclosing member).
+  /// </summary>
+  private string ComputeContainingSymbolId(SemanticModel model, SyntaxNode node)
+  {
+  for (var current = node.Parent; current != null; current = current.Parent)
+  {
+  switch (current)
+  {
+  case Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax m:
+  var ms = model.GetDeclaredSymbol(m);
+  if (ms != null) return BuildSymbolId(ms);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.ConstructorDeclarationSyntax c:
+  var cs = model.GetDeclaredSymbol(c);
+  if (cs != null) return BuildSymbolId(cs);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.DestructorDeclarationSyntax d:
+  var ds = model.GetDeclaredSymbol(d);
+  if (ds != null) return BuildSymbolId(ds);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.OperatorDeclarationSyntax op:
+  var ops = model.GetDeclaredSymbol(op);
+  if (ops != null) return BuildSymbolId(ops);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.ConversionOperatorDeclarationSyntax co:
+  var cos = model.GetDeclaredSymbol(co);
+  if (cos != null) return BuildSymbolId(cos);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.PropertyDeclarationSyntax p:
+  var ps = model.GetDeclaredSymbol(p);
+  if (ps != null) return BuildSymbolId(ps);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.IndexerDeclarationSyntax idx:
+  var idxs = model.GetDeclaredSymbol(idx);
+  if (idxs != null) return BuildSymbolId(idxs);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.EventDeclarationSyntax evd:
+  var evds = model.GetDeclaredSymbol(evd);
+  if (evds != null) return BuildSymbolId(evds);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.VariableDeclaratorSyntax vd
+      when vd.Parent?.Parent is Microsoft.CodeAnalysis.CSharp.Syntax.FieldDeclarationSyntax:
+  var fs = model.GetDeclaredSymbol(vd);
+  if (fs != null) return BuildSymbolId(fs);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.VariableDeclaratorSyntax evfv
+      when evfv.Parent?.Parent is Microsoft.CodeAnalysis.CSharp.Syntax.EventFieldDeclarationSyntax:
+  var efs = model.GetDeclaredSymbol(evfv);
+  if (efs != null) return BuildSymbolId(efs);
+  break;
+  case Microsoft.CodeAnalysis.CSharp.Syntax.TypeDeclarationSyntax t:
+  var ts = model.GetDeclaredSymbol(t);
+  if (ts != null) return BuildSymbolId(ts);
+  break;
+  }
+  }
+  return "";
   }
 
   /// <summary>

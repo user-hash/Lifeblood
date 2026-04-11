@@ -54,6 +54,17 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     /// <summary>True if a previous analysis produced a snapshot that can be incrementally updated.</summary>
     public bool HasSnapshot => _snapshot != null;
 
+    /// <summary>
+    /// Files the analyzer declined to process during the most recent
+    /// AnalyzeWorkspace / IncrementalAnalyze call. Empty when everything
+    /// listed in the module csprojs parsed cleanly. Consumers surface this
+    /// in the analyze response so users can see WHICH files were silently
+    /// dropped and WHY. Added 2026-04-11 for DAWG B4 / Phase 4 C4.
+    /// </summary>
+    public IReadOnlyList<Lifeblood.Domain.Results.SkippedFile> SkippedFiles =>
+        _snapshot?.SkippedFiles as IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>
+        ?? System.Array.Empty<Lifeblood.Domain.Results.SkippedFile>();
+
     public RoslynWorkspaceAnalyzer(IFileSystem fs)
     {
         _fs = fs;
@@ -111,9 +122,19 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         var refCache = new SharedMetadataReferenceCache();
         var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
 
+        // Full analyze: reset the snapshot's skipped-file list before the
+        // pipeline runs so we don't accumulate stale entries from prior
+        // incremental updates. Incremental analyze intentionally appends
+        // rather than replaces — see the IncrementalAnalyze path.
+        snapshot.SkippedFiles.Clear();
+        // Merge discovery-level skips (csproj lists a .cs file that doesn't
+        // exist on disk) into the snapshot so users see them in the
+        // analyze response alongside compilation-level skips.
+        snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped);
         _compilations = compilationBuilder.ProcessInOrder(
             modules, projectRoot, config,
             onModuleProgress: OnModuleProgress,
+            skippedCollector: snapshot.SkippedFiles,
             processor: (module, compilation) =>
             {
                 var moduleId = SymbolIds.Module(module.Name);
@@ -296,9 +317,18 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         var refCache = new SharedMetadataReferenceCache();
         var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
 
+        // Incremental: remove any previously-tracked skipped-file entries
+        // for the modules we're about to recompile so the rerun produces a
+        // fresh view of them. Skipped files for UNTOUCHED modules are
+        // preserved because incremental never revisits those modules and
+        // the user's existing list is still accurate.
+        _snapshot.SkippedFiles.RemoveAll(sf =>
+            changedModules.Contains(sf.ModuleName));
+
         // For incremental, we always retain compilations (MCP server mode)
         var newCompilations = compilationBuilder.ProcessInOrder(
             modulesToRecompile, projectRoot, config,
+            skippedCollector: _snapshot.SkippedFiles,
             processor: (module, compilation) =>
             {
                 var moduleId = SymbolIds.Module(module.Name);

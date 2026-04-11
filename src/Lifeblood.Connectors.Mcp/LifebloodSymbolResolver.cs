@@ -10,6 +10,19 @@ namespace Lifeblood.Connectors.Mcp;
 ///
 /// Resolution order inside <see cref="Resolve"/>:
 /// <list type="number">
+///   <item><b>Step 0 — input canonicalization.</b> The user-supplied
+///     identifier is rewritten via the injected
+///     <see cref="IUserInputCanonicalizer"/> BEFORE any lookup runs. For
+///     the C# adapter this rewrites <c>System.String</c> → <c>string</c>,
+///     strips <c>global::</c> prefixes, etc. Step 0 is unconditional and
+///     runs exactly once per Resolve call. From here on, every diagnostic,
+///     every <c>Candidates[]</c> entry, and every log line references the
+///     CANONICAL form, not the user's raw input. This is the rule that
+///     replaces the earlier "alias retry as final fallback" pattern —
+///     canonicalization is NOT a retry, it's the first step of the
+///     pipeline, and the grammar mismatch is fixed at the boundary
+///     instead of at the lookup layer. See Ground Rule 1 of the plan in
+///     <c>.claude/plans/improvement-master-2026-04-11.md</c>.</item>
 ///   <item>Exact canonical match (fast path; <see cref="ResolveOutcome.ExactMatch"/>).</item>
 ///   <item>Truncated method form <c>method:NS.Type.Name</c> with no parens —
 ///     lenient single-overload match
@@ -28,6 +41,27 @@ namespace Lifeblood.Connectors.Mcp;
 /// </summary>
 public sealed class LifebloodSymbolResolver : ISymbolResolver
 {
+    private readonly IUserInputCanonicalizer _canonicalizer;
+
+    /// <summary>
+    /// Constructor with an explicit canonicalizer. Composition roots pass
+    /// <see cref="Lifeblood.Adapters.CSharp.CSharpUserInputCanonicalizer"/>
+    /// for C# workspaces. Tests and language-agnostic scenarios pass
+    /// <see cref="IdentityUserInputCanonicalizer.Instance"/>.
+    /// </summary>
+    public LifebloodSymbolResolver(IUserInputCanonicalizer canonicalizer)
+    {
+        _canonicalizer = canonicalizer ?? throw new System.ArgumentNullException(nameof(canonicalizer));
+    }
+
+    /// <summary>
+    /// Parameterless default for backward-compatible call sites. Uses the
+    /// identity canonicalizer, which means primitive-alias rewriting is OFF.
+    /// Prefer the explicit constructor so the composition root's adapter
+    /// choice flows through.
+    /// </summary>
+    public LifebloodSymbolResolver() : this(IdentityUserInputCanonicalizer.Instance) { }
+
     public SymbolResolutionResult Resolve(SemanticGraph graph, string userInput)
     {
         if (string.IsNullOrWhiteSpace(userInput))
@@ -39,28 +73,34 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
             };
         }
 
+        // Step 0: canonicalize the user-supplied identifier. Every subsequent
+        // step operates on the canonical form, and every diagnostic quotes
+        // the canonical form. See the XML doc above and Ground Rule 1.
+        var canonical = _canonicalizer.Canonicalize(userInput);
+
         // Rule 1: exact canonical match. Fast path for callers that already
         // have a fully-qualified ID (e.g., copied from a previous tool result).
-        var exact = graph.GetSymbol(userInput);
+        var exact = graph.GetSymbol(canonical);
         if (exact != null)
-            return BuildResolved(graph, userInput, exact, ResolveOutcome.ExactMatch);
+            return AttachOverloads(graph, BuildResolved(graph, canonical, exact, ResolveOutcome.ExactMatch));
 
         // Rule 2: truncated method form. Pattern: "method:NS.Type.Name" with
         // no parameter parens. We try to find every method on NS.Type whose
         // simple name matches and either return the unique overload or
         // surface ambiguity.
-        if (TryParseMethodWithoutParens(userInput, out var typeId, out var methodName))
+        if (TryParseMethodWithoutParens(canonical, out var typeId, out var methodName))
         {
             var overloads = FindOverloadsOnType(graph, typeId, methodName);
             if (overloads.Length == 1)
-                return BuildResolved(graph, overloads[0].Id, overloads[0],
-                    ResolveOutcome.LenientMethodOverload);
+                return AttachOverloads(graph, BuildResolved(graph, overloads[0].Id, overloads[0],
+                    ResolveOutcome.LenientMethodOverload));
             if (overloads.Length > 1)
             {
                 return new SymbolResolutionResult
                 {
                     Outcome = ResolveOutcome.AmbiguousMethodOverload,
                     Candidates = overloads.Select(o => o.Id).ToArray(),
+                    Overloads = overloads.Select(o => BuildOverloadInfo(o)).ToArray(),
                     Diagnostic = $"Method '{methodName}' on '{typeId}' has " +
                                  $"{overloads.Length} overloads. Pick one from Candidates.",
                 };
@@ -70,47 +110,255 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
 
         // Rule 3: bare short name. No kind prefix and no namespace dots —
         // user is shorthand-querying, e.g. "MidiLearnManager".
-        if (LooksLikeBareShortName(userInput))
+        if (LooksLikeBareShortName(canonical))
         {
-            var matches = graph.FindByShortName(userInput);
+            var matches = graph.FindByShortName(canonical);
             if (matches.Count == 1)
-                return BuildResolved(graph, matches[0].Id, matches[0],
-                    ResolveOutcome.ShortNameUnique);
+                return AttachOverloads(graph, BuildResolved(graph, matches[0].Id, matches[0],
+                    ResolveOutcome.ShortNameUnique));
             if (matches.Count > 1)
             {
                 return new SymbolResolutionResult
                 {
                     Outcome = ResolveOutcome.AmbiguousShortName,
                     Candidates = matches.Select(s => s.Id).ToArray(),
-                    Diagnostic = $"Short name '{userInput}' matches {matches.Count} " +
+                    Diagnostic = $"Short name '{canonical}' matches {matches.Count} " +
                                  "symbols across different namespaces. Pick one from Candidates " +
                                  "or query lifeblood_resolve_short_name for details.",
                 };
             }
         }
 
+        // Not-found diagnostic surfaces ranked near-matches so every dead-end
+        // response carries next-steps. The scorer is the same one used by
+        // ResolutionMode.Fuzzy and by SuggestNearMatches, so the order is
+        // deterministic and consistent with the explicit fuzzy tool path.
+        var suggestions = SuggestNearMatchesInternal(graph, canonical, limit: 5);
+        var suggestionText = suggestions.Length == 0
+            ? ""
+            : " Did you mean: " + string.Join(", ", suggestions.Take(3).Select(s => s.CanonicalId)) + "?";
+
         return new SymbolResolutionResult
         {
             Outcome = ResolveOutcome.NotFound,
-            Diagnostic = $"Symbol not found: {userInput}. " +
-                         "Tried exact canonical match, lenient method overload, and short-name lookup. " +
-                         "Use lifeblood_resolve_short_name to discover candidate IDs.",
+            Candidates = suggestions.Select(s => s.CanonicalId).ToArray(),
+            Diagnostic = $"Symbol not found: {canonical}. " +
+                         "Tried exact canonical match, lenient method overload, and short-name lookup." +
+                         suggestionText,
         };
     }
 
-    public ShortNameMatch[] ResolveShortName(SemanticGraph graph, string shortName)
+    public ShortNameMatch[] ResolveShortName(SemanticGraph graph, string shortName, ResolutionMode mode = ResolutionMode.Exact)
     {
         if (string.IsNullOrWhiteSpace(shortName))
             return System.Array.Empty<ShortNameMatch>();
 
-        return graph.FindByShortName(shortName)
-            .Select(s => new ShortNameMatch
-            {
-                CanonicalId = s.Id,
-                FilePath = s.FilePath,
-                Kind = s.Kind.ToString(),
-            })
+        // Short names have no BCL aliases to rewrite, but we still run
+        // canonicalization for consistency so a caller who passes
+        // `System.String` is silently redirected to `string`.
+        var canonical = _canonicalizer.Canonicalize(shortName);
+
+        ShortNameMatch[] matches = mode switch
+        {
+            ResolutionMode.Exact => graph.FindByShortName(canonical)
+                .Select(s => ToShortNameMatch(s))
+                .ToArray(),
+            ResolutionMode.Contains => graph.Symbols
+                .Where(s => !string.IsNullOrEmpty(s.Name) &&
+                            s.Name.Contains(canonical, StringComparison.OrdinalIgnoreCase))
+                .Select(s => ToShortNameMatch(s))
+                .ToArray(),
+            ResolutionMode.Fuzzy => SuggestNearMatchesInternal(graph, canonical, limit: 20),
+            _ => System.Array.Empty<ShortNameMatch>(),
+        };
+
+        // Zero-result post-hook: every mode surfaces ranked suggestions when
+        // its own search yields nothing. That's what makes empty responses
+        // useful instead of dead ends. The suggestions share scoring with
+        // Fuzzy so the ordering is stable.
+        if (matches.Length == 0)
+            return SuggestNearMatchesInternal(graph, canonical, limit: 5);
+
+        return matches;
+    }
+
+    public ShortNameMatch[] SuggestNearMatches(SemanticGraph graph, string shortName, int limit = 5)
+    {
+        if (string.IsNullOrWhiteSpace(shortName))
+            return System.Array.Empty<ShortNameMatch>();
+        var canonical = _canonicalizer.Canonicalize(shortName);
+        return SuggestNearMatchesInternal(graph, canonical, limit);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Fuzzy scoring
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Rank every named symbol in the graph against the query and return
+    /// the top <paramref name="limit"/>. Deterministic for a given input.
+    /// Scoring:
+    /// <list type="bullet">
+    ///   <item>+10 if the query is a case-insensitive substring of the candidate's simple name.</item>
+    ///   <item>+5 if the query is a case-insensitive prefix of any CamelCase-split token of the candidate.</item>
+    ///   <item>+3 × max(0, candidateLength − levenshteinDistance).</item>
+    /// </list>
+    /// Ties are broken lexicographically on the canonical ID for stable
+    /// ordering.
+    /// </summary>
+    internal static ShortNameMatch[] SuggestNearMatchesInternal(SemanticGraph graph, string query, int limit)
+    {
+        if (string.IsNullOrWhiteSpace(query) || limit <= 0) return System.Array.Empty<ShortNameMatch>();
+
+        var scored = new List<(int score, Symbol sym)>(capacity: 64);
+        foreach (var sym in graph.Symbols)
+        {
+            if (string.IsNullOrEmpty(sym.Name)) continue;
+            var score = ScoreCandidate(query, sym.Name);
+            if (score <= 0) continue;
+            scored.Add((score, sym));
+        }
+
+        return scored
+            .OrderByDescending(t => t.score)
+            .ThenBy(t => t.sym.Id, StringComparer.Ordinal)
+            .Take(limit)
+            .Select(t => ToShortNameMatch(t.sym))
             .ToArray();
+    }
+
+    /// <summary>
+    /// Score one candidate against the query. Zero means "drop this
+    /// candidate from the ranking entirely" (the scoring is additive and
+    /// every non-zero contribution means the candidate is at least weakly
+    /// related to the query).
+    /// </summary>
+    internal static int ScoreCandidate(string query, string candidateName)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(candidateName)) return 0;
+        int score = 0;
+        if (candidateName.Contains(query, StringComparison.OrdinalIgnoreCase)) score += 10;
+        foreach (var token in SplitCamelCase(candidateName))
+        {
+            if (token.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            {
+                score += 5;
+                break;
+            }
+        }
+        var distance = LevenshteinDistance(
+            query.ToLowerInvariant(), candidateName.ToLowerInvariant());
+        var closeness = candidateName.Length - distance;
+        if (closeness > 0) score += 3 * closeness;
+        return score;
+    }
+
+    private static IEnumerable<string> SplitCamelCase(string name)
+    {
+        if (string.IsNullOrEmpty(name)) yield break;
+        int start = 0;
+        for (int i = 1; i < name.Length; i++)
+        {
+            if (char.IsUpper(name[i]) && !char.IsUpper(name[i - 1]))
+            {
+                yield return name.Substring(start, i - start);
+                start = i;
+            }
+        }
+        yield return name.Substring(start);
+    }
+
+    private static int LevenshteinDistance(string a, string b)
+    {
+        if (a.Length == 0) return b.Length;
+        if (b.Length == 0) return a.Length;
+        var prev = new int[b.Length + 1];
+        var curr = new int[b.Length + 1];
+        for (int j = 0; j <= b.Length; j++) prev[j] = j;
+        for (int i = 1; i <= a.Length; i++)
+        {
+            curr[0] = i;
+            for (int j = 1; j <= b.Length; j++)
+            {
+                var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                curr[j] = System.Math.Min(
+                    System.Math.Min(curr[j - 1] + 1, prev[j] + 1),
+                    prev[j - 1] + cost);
+            }
+            (prev, curr) = (curr, prev);
+        }
+        return prev[b.Length];
+    }
+
+    private static ShortNameMatch ToShortNameMatch(Symbol sym) => new()
+    {
+        CanonicalId = sym.Id,
+        FilePath = sym.FilePath,
+        Kind = sym.Kind.ToString(),
+    };
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Overload surfacing (LB-INBOX-004)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When a resolution landed on a method symbol, populate the result's
+    /// <see cref="SymbolResolutionResult.Overloads"/> with every sibling
+    /// overload on the same containing type. For non-method resolutions,
+    /// returns the result unchanged.
+    ///
+    /// The modeling rationale (Phase 3 step 4 of the plan): LB-INBOX-004
+    /// asks for per-overload canonical IDs whenever resolution lands on a
+    /// method, so callers who copy-paste a method name get back a full
+    /// picker of overloads instead of just the one the resolver happened
+    /// to match. This shape lives on <c>Resolve()</c>, not on
+    /// <c>ResolveShortName()</c>, because <c>ResolveShortName</c> already
+    /// returns a flat list of matches (one entry per canonical ID; method
+    /// overloads already appear as separate entries). Attaching overloads
+    /// twice would double-count.
+    /// </summary>
+    private static SymbolResolutionResult AttachOverloads(SemanticGraph graph, SymbolResolutionResult result)
+    {
+        if (result.Symbol == null) return result;
+        if (result.Symbol.Kind != SymbolKind.Method) return result;
+        if (string.IsNullOrEmpty(result.Symbol.ParentId)) return result;
+
+        var siblings = FindOverloadsOnType(graph, result.Symbol.ParentId, result.Symbol.Name);
+        if (siblings.Length <= 1)
+            return result; // only one overload — nothing to surface.
+
+        return new SymbolResolutionResult
+        {
+            CanonicalId = result.CanonicalId,
+            Outcome = result.Outcome,
+            Symbol = result.Symbol,
+            PrimaryFilePath = result.PrimaryFilePath,
+            DeclarationFilePaths = result.DeclarationFilePaths,
+            Candidates = result.Candidates,
+            Diagnostic = result.Diagnostic,
+            Overloads = siblings.Select(s => BuildOverloadInfo(s)).ToArray(),
+        };
+    }
+
+    private static OverloadInfo BuildOverloadInfo(Symbol sym) => new()
+    {
+        CanonicalId = sym.Id,
+        ParamDisplay = ExtractParamDisplay(sym.Id),
+        FilePath = sym.FilePath,
+        Line = sym.Line,
+    };
+
+    /// <summary>
+    /// Extract the parameter display string from a canonical method ID.
+    /// <c>method:NS.Type.Name(param1,param2)</c> → <c>param1,param2</c>.
+    /// Returns empty for malformed or non-method IDs.
+    /// </summary>
+    private static string ExtractParamDisplay(string canonicalMethodId)
+    {
+        var openParen = canonicalMethodId.IndexOf('(');
+        var closeParen = canonicalMethodId.LastIndexOf(')');
+        if (openParen < 0 || closeParen < 0 || closeParen <= openParen) return "";
+        return canonicalMethodId.Substring(openParen + 1, closeParen - openParen - 1);
     }
 
     // ────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Adapters.CSharp;
 
@@ -11,11 +12,23 @@ namespace Lifeblood.Adapters.CSharp;
 public sealed class RoslynModuleDiscovery : IModuleDiscovery
 {
     private readonly IFileSystem _fs;
+    private readonly List<SkippedFile> _lastSkipped = new();
 
     public RoslynModuleDiscovery(IFileSystem fs) => _fs = fs;
 
+    /// <summary>
+    /// Files the most recent <see cref="DiscoverModules"/> call dropped,
+    /// with the reason code. Populated for .cs files listed in a csproj
+    /// via explicit <c>&lt;Compile&gt;</c> items whose target path does
+    /// not exist on disk. Reset at the start of every discovery run so
+    /// callers always see a fresh picture. Added 2026-04-11 (Phase 4 C4).
+    /// </summary>
+    public IReadOnlyList<SkippedFile> LastDiscoverySkipped => _lastSkipped;
+
     public ModuleInfo[] DiscoverModules(string projectRoot)
     {
+        _lastSkipped.Clear();
+
         // Try .sln first
         var slnFiles = _fs.FindFiles(projectRoot, "*.sln", recursive: false);
         if (slnFiles.Length > 0)
@@ -77,21 +90,46 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             //   Old-format projects (Unity-generated): explicit <Compile Include="..."/> items.
             // Unity csproj files list every .cs file explicitly. Scanning the filesystem
             // would be catastrophically slow (75 projects × full recursive scan of project root).
-            var compileItems = doc.Descendants()
+            var compileItemCandidates = doc.Descendants()
                 .Where(el => el.Name.LocalName == "Compile")
                 .Select(el => el.Attribute("Include")?.Value)
                 .Where(v => v != null && v.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                 .Select(v => Path.GetFullPath(Path.Combine(projectDir, NormalizePathSeparators(v!))))
-                .Where(_fs.FileExists)
                 .ToArray();
 
+            // Phase 4 / C4 (2026-04-11): surface files that the csproj lists
+            // but the filesystem does not contain. Before this change the
+            // analyzer silently filtered them out and users had no way to
+            // discover "why isn't my file in the graph?".
+            var compileItems = new List<string>(compileItemCandidates.Length);
+            foreach (var path in compileItemCandidates)
+            {
+                if (_fs.FileExists(path))
+                {
+                    compileItems.Add(path);
+                }
+                else
+                {
+                    _lastSkipped.Add(new SkippedFile
+                    {
+                        FilePath = path,
+                        Reason = SkipReason.FileNotFound,
+                        ModuleName = assemblyName,
+                    });
+                }
+            }
+
             string[] sourceFiles;
-            if (compileItems.Length > 0)
+            if (compileItems.Count > 0 || compileItemCandidates.Length > 0)
             {
                 // Old-format project with explicit Compile items (Unity, legacy .NET Framework).
                 // Trust the csproj — do NOT scan the filesystem. Unity regenerates csprojs
                 // frequently, and scanning 75 projects rooted under the same Assets/ tree
                 // causes 75 recursive scans of the entire project (~minutes of hang).
+                // NOTE: we check `compileItemCandidates.Length > 0` so that a csproj
+                // which only lists MISSING files still takes the explicit-list branch
+                // (rather than falling through to filesystem scan and ghost-including
+                // files that weren't actually supposed to be compiled).
                 sourceFiles = compileItems
                     .OrderBy(f => f, StringComparer.Ordinal)
                     .ToArray();

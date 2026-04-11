@@ -49,8 +49,48 @@ public interface ISymbolResolver
     /// Resolve a short name (no namespace prefix) to all matching canonical IDs.
     /// Used by the standalone <c>lifeblood_resolve_short_name</c> MCP tool and
     /// as a fallback inside <see cref="Resolve"/>.
+    ///
+    /// The <paramref name="mode"/> controls how the short name is compared
+    /// against the graph's short-name index:
+    /// <list type="bullet">
+    ///   <item><see cref="ResolutionMode.Exact"/> (default) — literal case-insensitive match.</item>
+    ///   <item><see cref="ResolutionMode.Contains"/> — substring match against the candidate's simple name.</item>
+    ///   <item><see cref="ResolutionMode.Fuzzy"/> — ranked fuzzy search (token prefixes, CamelCase split, Levenshtein distance).</item>
+    /// </list>
+    /// When the literal/substring search yields no results, the implementation
+    /// MUST also surface ranked suggestions by calling
+    /// <see cref="SuggestNearMatches"/>. That guarantee is what makes a
+    /// zero-result response useful instead of a dead end.
     /// </summary>
-    ShortNameMatch[] ResolveShortName(SemanticGraph graph, string shortName);
+    ShortNameMatch[] ResolveShortName(SemanticGraph graph, string shortName, ResolutionMode mode = ResolutionMode.Exact);
+
+    /// <summary>
+    /// Return the top-N ranked near-matches for a short name query. Used as
+    /// a zero-result fallback from <see cref="ResolveShortName"/> in every
+    /// mode so no dead-end response leaves the caller without next-steps,
+    /// and as the backing implementation of <see cref="ResolutionMode.Fuzzy"/>.
+    /// Ranking is deterministic for a given input; see the resolver
+    /// implementation for scoring weights.
+    /// </summary>
+    ShortNameMatch[] SuggestNearMatches(SemanticGraph graph, string shortName, int limit = 5);
+}
+
+/// <summary>
+/// How <see cref="ISymbolResolver.ResolveShortName"/> compares the query
+/// against the graph's short-name index. Added 2026-04-11 as part of
+/// Phase 3 of the improvement-master plan (LB-INBOX-002). Every resolver
+/// implementation MUST handle every enum value; adding a new value is a
+/// breaking change to every resolver adapter, which is the intended
+/// contract (the enum deliberately has no <c>Unknown = 0</c> fallback).
+/// </summary>
+public enum ResolutionMode
+{
+    /// <summary>Case-insensitive literal match against the candidate's simple name. Default.</summary>
+    Exact,
+    /// <summary>Case-insensitive substring match against the candidate's simple name.</summary>
+    Contains,
+    /// <summary>Ranked fuzzy search backed by the same scorer as <see cref="ISymbolResolver.SuggestNearMatches"/>.</summary>
+    Fuzzy,
 }
 
 /// <summary>
@@ -128,6 +168,31 @@ public sealed class SymbolResolutionResult
     /// from the original Lifeblood backlog.
     /// </summary>
     public string? Diagnostic { get; init; }
+
+    /// <summary>
+    /// Sibling overloads of the resolved symbol when it is a method.
+    /// Populated by <see cref="ISymbolResolver.Resolve"/> when the input
+    /// resolved to a method that has more than one overload on the
+    /// containing type. Each entry is one overload of the same simple name
+    /// on the same containing type, including the one this result resolved
+    /// to. Empty for non-method symbols, empty when the method has no
+    /// other overloads, empty on miss. Closes LB-INBOX-004.
+    /// </summary>
+    public OverloadInfo[] Overloads { get; init; } = System.Array.Empty<OverloadInfo>();
+}
+
+/// <summary>
+/// One overload of a method, surfaced on <see cref="SymbolResolutionResult.Overloads"/>.
+/// Carries the canonical id so a caller can feed it back into any read-side
+/// tool, the param display string for human-readable disambiguation, and
+/// the declaration location. Added 2026-04-11 for LB-INBOX-004.
+/// </summary>
+public sealed class OverloadInfo
+{
+    public required string CanonicalId { get; init; }
+    public string ParamDisplay { get; init; } = "";
+    public string FilePath { get; init; } = "";
+    public int Line { get; init; }
 }
 
 /// <summary>

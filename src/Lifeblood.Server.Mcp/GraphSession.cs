@@ -146,7 +146,8 @@ public sealed class GraphSession : IDisposable
             graph: graph,
             analysis: analysis,
             usage: usage,
-            changedFileCount: null);
+            changedFileCount: null,
+            skipped: _roslynAdapter?.SkippedFiles);
     }
 
     private string LoadIncremental(string projectPath, string? rulesPath)
@@ -167,7 +168,8 @@ public sealed class GraphSession : IDisposable
                 graph: graph,
                 analysis: null,
                 usage: usage,
-                changedFileCount: 0);
+                changedFileCount: 0,
+                skipped: _roslynAdapter?.SkippedFiles);
         }
 
         // Validate the rebuilt graph
@@ -211,7 +213,8 @@ public sealed class GraphSession : IDisposable
             graph: graph,
             analysis: analysis,
             usage: usage,
-            changedFileCount: changedFileCount);
+            changedFileCount: changedFileCount,
+            skipped: _roslynAdapter?.SkippedFiles);
         }
         catch
         {
@@ -233,8 +236,28 @@ public sealed class GraphSession : IDisposable
         SemanticGraph graph,
         Lifeblood.Domain.Results.AnalysisResult? analysis,
         AnalysisUsage? usage,
-        int? changedFileCount)
+        int? changedFileCount,
+        IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null)
     {
+        // Phase 4 / C4: skipped files surface in the analyze response so
+        // users can see exactly which files the adapter dropped and why.
+        // Emitted as `skipped` when non-empty, omitted entirely otherwise
+        // to keep the common-case response shape lean.
+        object? skippedField = null;
+        if (skipped != null && skipped.Count > 0)
+        {
+            skippedField = new
+            {
+                count = skipped.Count,
+                files = skipped.Select(s => new
+                {
+                    path = s.FilePath,
+                    reason = s.Reason,
+                    module = s.ModuleName,
+                }).ToArray(),
+            };
+        }
+
         var response = new
         {
             mode,
@@ -249,6 +272,7 @@ public sealed class GraphSession : IDisposable
                 cycles = analysis?.Cycles.Length ?? 0,
             },
             changedFileCount,
+            skipped = skippedField,
             usage = usage == null ? null : new
             {
                 wallTimeMs = usage.WallTimeMs,

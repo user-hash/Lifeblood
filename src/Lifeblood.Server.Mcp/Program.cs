@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
-using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Analysis;
+using Lifeblood.Application.Ports.Infrastructure;
+using Lifeblood.Application.Ports.Right;
+using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 
@@ -26,7 +28,19 @@ class Program
         IFileSystem fs = new PhysicalFileSystem();
         var session = new GraphSession(fs);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
-        var toolHandler = new ToolHandler(session, blastRadius);
+        // Composition root: concrete adapter/connector types are constructed here
+        // and injected into ToolHandler as ports. Per hexagonal invariants, no
+        // non-root class may hold a direct reference to LifebloodMcpProvider or
+        // LifebloodSymbolResolver. Phase 0 cleanup, 2026-04-11.
+        IMcpGraphProvider graphProvider = new LifebloodMcpProvider(blastRadius);
+        // Phase 3: the resolver routes every user-supplied identifier through
+        // a language-adapter canonicalizer at step 0. For the MCP server the
+        // C# adapter is the only language in play, so wire its canonicalizer
+        // directly. Future multi-language hosts will pick the canonicalizer
+        // based on loaded adapters.
+        IUserInputCanonicalizer canonicalizer = new CSharpUserInputCanonicalizer();
+        ISymbolResolver resolver = new LifebloodSymbolResolver(canonicalizer);
+        var toolHandler = new ToolHandler(session, graphProvider, resolver);
         var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)

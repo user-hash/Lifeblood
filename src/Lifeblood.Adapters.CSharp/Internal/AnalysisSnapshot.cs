@@ -1,5 +1,6 @@
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Adapters.CSharp.Internal;
 
@@ -47,6 +48,22 @@ internal sealed class AnalysisSnapshot
     /// <summary>Module-level symbols (mod:Name) and edges (mod→mod DependsOn).</summary>
     public List<Symbol> ModuleSymbols { get; } = new();
     public List<Edge> ModuleEdges { get; } = new();
+
+    /// <summary>
+    /// Files the analyzer declined to process during the last run of either
+    /// <c>RoslynWorkspaceAnalyzer.AnalyzeWorkspace</c> or
+    /// <c>RoslynWorkspaceAnalyzer.IncrementalAnalyze</c>. Each entry carries
+    /// the absolute path, a machine-readable reason code
+    /// (<see cref="Lifeblood.Domain.Results.SkipReason"/>), and the owning
+    /// module name when known. Replaced in place on every full analyze;
+    /// appended to (not replaced) on incremental analyze because incremental
+    /// does not re-walk modules that had no changed files.
+    ///
+    /// Closes DAWG B4 (Phase 4 / C4, 2026-04-11): previously the analyzer
+    /// silently dropped non-.cs files and missing files, and users had no
+    /// way to discover that their change wasn't included in the graph.
+    /// </summary>
+    public List<SkippedFile> SkippedFiles { get; } = new();
 
     /// <summary>
     /// Rebuild the full graph from cached per-file data + module data.
