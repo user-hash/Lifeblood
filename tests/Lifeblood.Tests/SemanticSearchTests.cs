@@ -130,6 +130,172 @@ public class SemanticSearchTests
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Multi-token query tests. Pin the architectural fix for the dogfood
+    // bug where single-token queries returned hits but adding a second
+    // word collapsed the result set to zero because the provider was
+    // doing .Contains(query, ...) with the whole untokenized string.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Search_MultiTokenQuery_NameTokenPlusXmlDocToken_Hits()
+    {
+        // Query: "interpolate values". Neither token alone would fail
+        // under the old code, but the combined literal "interpolate values"
+        // wasn't a substring anywhere and returned zero. With tokenized
+        // OR, each token is an independent scoring signal and the symbol
+        // that hits either (here, the name) still surfaces.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.AutomationEvaluator.Interpolate",
+                Name = "Interpolate",
+                QualifiedName = "N.AutomationEvaluator.Interpolate",
+                Kind = SymbolKind.Method,
+                FilePath = "AE.cs",
+                Properties = new Dictionary<string, string>
+                {
+                    ["xmlDocSummary"] = "Interpolate between two automation points.",
+                },
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Unrelated.Thing",
+                Name = "Thing",
+                Kind = SymbolKind.Method,
+                FilePath = "U.cs",
+            })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("interpolate values"));
+
+        Assert.NotEmpty(results);
+        Assert.Equal("method:N.AutomationEvaluator.Interpolate", results[0].CanonicalId);
+    }
+
+    [Fact]
+    public void Search_MultiTokenQuery_OneTokenInName_OneOnlyInXmlDoc_Hits()
+    {
+        // Query: "quantize grid". The name "Quantize" matches the first
+        // token; the xmldoc "...to the nearest grid position" matches the
+        // second. Neither standalone literal "quantize grid" appears
+        // anywhere. This case is the canonical dogfood failure.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.TickUtil.Quantize",
+                Name = "Quantize",
+                QualifiedName = "N.TickUtil.Quantize",
+                Kind = SymbolKind.Method,
+                FilePath = "TU.cs",
+                Properties = new Dictionary<string, string>
+                {
+                    ["xmlDocSummary"] = "Quantize a tick value to the nearest grid position.",
+                },
+            })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("quantize grid"));
+
+        Assert.Single(results);
+        Assert.Equal("method:N.TickUtil.Quantize", results[0].CanonicalId);
+        // Both fields contributed snippets: name hit AND xmldoc hit.
+        var hit = results[0];
+        Assert.Contains(hit.MatchSnippets, s => s.StartsWith("name:", StringComparison.Ordinal));
+        Assert.Contains(hit.MatchSnippets, s => s.StartsWith("xmlDoc:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Search_MultiTokenQuery_MoreSpecificQueryRanksHigher()
+    {
+        // Query "user repo" should rank UserRepository above Unrelated.
+        // Query "user" alone would tie-break them lexicographically —
+        // "user repo" breaks the tie by scoring repo as a separate signal.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.UserRepository",
+                Name = "UserRepository",
+                QualifiedName = "N.UserRepository",
+                Kind = SymbolKind.Type,
+                FilePath = "UR.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.UserMisc",
+                Name = "UserMisc",
+                QualifiedName = "N.UserMisc",
+                Kind = SymbolKind.Type,
+                FilePath = "UM.cs",
+            })
+            .Build();
+
+        var multiToken = Provider.Search(graph, new SearchQuery("user repo"));
+        Assert.NotEmpty(multiToken);
+        Assert.Equal("type:N.UserRepository", multiToken[0].CanonicalId);
+        // And it must score STRICTLY higher than UserMisc because the
+        // second token contributed extra signal.
+        var misc = multiToken.First(r => r.CanonicalId == "type:N.UserMisc");
+        Assert.True(multiToken[0].Score > misc.Score);
+    }
+
+    [Fact]
+    public void Search_DuplicatedTokens_NotDoubleCounted()
+    {
+        // Query "user user user" must score the same as "user" — tokens
+        // are deduped case-insensitively before scoring so a pathological
+        // repeated query can't inflate rankings.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.User", Name = "User", Kind = SymbolKind.Type, FilePath = "U.cs" })
+            .Build();
+
+        var once = Provider.Search(graph, new SearchQuery("user"));
+        var thrice = Provider.Search(graph, new SearchQuery("user user USER"));
+
+        Assert.Single(once);
+        Assert.Single(thrice);
+        Assert.Equal(once[0].Score, thrice[0].Score);
+    }
+
+    [Fact]
+    public void Search_AllTokensSubThreshold_FallsBackToSingleLiteral()
+    {
+        // Query "id" is below the min-token-length floor. The tokenizer
+        // falls back to treating the whole trimmed query as one literal
+        // so terse short queries still work exactly as they did before
+        // tokenization.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.UserId", Name = "UserId", Kind = SymbolKind.Type, FilePath = "UI.cs" })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("id"));
+
+        Assert.NotEmpty(results);
+        Assert.Equal("type:N.UserId", results[0].CanonicalId);
+    }
+
+    [Fact]
+    public void Search_SubThresholdTokensMixedWithValidTokens_OnlyValidCount()
+    {
+        // Query "to quantize" — "to" is dropped (too short), "quantize"
+        // scores. If the dropped token wasn't ignored we'd fall back to
+        // the whole literal "to quantize" which doesn't match anywhere.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.TickUtil.Quantize",
+                Name = "Quantize",
+                Kind = SymbolKind.Method,
+                FilePath = "TU.cs",
+            })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("to quantize"));
+
+        Assert.Single(results);
+        Assert.Equal("method:N.TickUtil.Quantize", results[0].CanonicalId);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // End-to-end: xmldoc summaries persisted during real extraction
     // ─────────────────────────────────────────────────────────────────────
 
