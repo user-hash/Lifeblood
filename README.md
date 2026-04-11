@@ -53,6 +53,9 @@ lifeblood_analyze projectPath="/path/to/your/project"   → load semantic graph
 lifeblood_blast_radius symbolId="type:MyApp.AuthService" → what breaks if I change this?
 lifeblood_file_impact filePath="src/AuthService.cs"      → what files are affected?
 lifeblood_find_references symbolId="type:MyApp.IRepo"    → every caller, every consumer
+lifeblood_search query="quantize timing to grid"         → ranked keyword + xmldoc search
+lifeblood_invariant_check id="INV-CANONICAL-001"         → query architectural invariants from CLAUDE.md
+lifeblood_compile_check code="var x = 1 + 1;"            → snippet compiles, auto-wraps for library modules
 lifeblood_execute code="typeof(MyApp.Foo).GetMethods()"  → run C# against your types
 ```
 
@@ -78,16 +81,22 @@ dotnet test
 
 ---
 
-## 18 Tools
+## 22 Tools
 
-Connect an MCP client. Load a project. The AI agent gets **18 tools**: 8 read, 10 write.
+Connect an MCP client. Load a project. The AI agent gets **22 tools**: 12 read, 10 write.
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name |
+| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code¹, Partial View, Invariant Check |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
-Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, and bare short name all resolve to the same answer.
+Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, bare short name, and **wrong-namespace-correct-short-name** (v0.6.3, `INV-RESOLVER-005`) all resolve to the same answer.
+
+**New in v0.6.3:**
+- `lifeblood_invariant_check`: query `CLAUDE.md`'s architectural invariants as structured data. Lookup by id, list all, audit for duplicates. Works on any project with `INV-*` markers.
+- `lifeblood_compile_check` now auto-wraps bare statement snippets (`var x = 1 + 1;`) so they compile inside library modules without manual class wrapping.
+- `lifeblood_search` tokenizes multi-word queries for ranked OR scoring (previously any query longer than one word collapsed to zero results).
+- Resolver falls back to extracted-short-name lookup when a kind-prefixed input's namespace is wrong but the short name is unique.
 
 [Full tool reference](docs/TOOLS.md)
 
@@ -101,13 +110,13 @@ Hexagonal. Pure domain core with zero dependencies. Language adapters on the lef
 LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
-Roslyn (C#)       ──┐                            ┌──  MCP Server (18 tools)
+Roslyn (C#)       ──┐                            ┌──  MCP Server (22 tools)
 TypeScript        ──┼→  Domain  →  Application  →┤──  Context Pack Generator
 JSON graph        ──┘       ↑                     ├──  Instruction File Generator
                       Analysis (optional)         └──  CLI / CI
 ```
 
-17 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+22 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution + `IInvariantProvider` for CLAUDE.md invariant introspection). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 60+ typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -128,7 +137,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 ## Unity Integration
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 18 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 22 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -136,13 +145,11 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (CLI): 1,376 symbols, 3,822 edges, 11 modules, 174 types, 0 violations. **5.1 s wall, 212 MB peak**, 144% of one core.
+Self-analysis (MCP, v0.6.3): 1,834 symbols, 5,708 edges, 11 modules, 235 types, 0 violations. Lifeblood now audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md). 57 invariants across 25 categories, zero duplicate ids, zero parse warnings.
 
 Production-verified on a 75-module 400k LOC Unity workspace. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
 
-The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads).
-
-Seven sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
+The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Exact numbers are surfaced live on every `lifeblood_analyze` response via the `usage` field so they can be cited deterministically.
 
 ---
 
