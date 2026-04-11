@@ -10,19 +10,30 @@ namespace Lifeblood.Connectors.Mcp;
 /// matches. Purely in-memory: no Roslyn, no file I/O, no edges walked.
 /// Deterministic for a given graph + query pair.
 ///
-/// Scoring weights (relative, not absolute):
-///   name       substring match   : +10 per occurrence (capped at 1)
-///   name       token-prefix      : +5 when the query is a CamelCase token prefix of the name
-///   qualifiedName substring      : +3 per occurrence (so fully-qualified hits score, but below bare names)
-///   xmlDocSummary substring      : +5 per occurrence (capped at 3) — docstring matches are the
-///                                   whole point of this tool vs. the short-name resolver
-///   kind filter bonus            : +2 if the caller supplied a Kinds filter and the symbol matches
+/// Query model: the query is tokenized on whitespace, deduplicated
+/// case-insensitively, and short tokens (&lt; 3 chars) are dropped. Each
+/// surviving token is an independent scoring signal — scores accumulate
+/// across tokens (ranked OR), never AND-gate. If every token is
+/// sub-threshold, the whole trimmed query is treated as one literal so
+/// terse queries like "id" still work.
+///
+/// Per-token scoring weights (relative, not absolute):
+///   name       substring match   : +10 when the token appears in the bare name
+///   name       token-prefix      : +5 when any CamelCase-split token of the name starts with the query token
+///   qualifiedName substring      : +3 when the token appears in the FQN but not the bare name (so FQ hits score, but below bare names)
+///   xmlDocSummary substring      : +5 when the token appears in the persisted xmldoc summary —
+///                                   docstring matches are the whole point of this tool vs. the short-name resolver
+///   kind filter bonus            : +2 once per symbol if the caller supplied a Kinds filter and the symbol matches
 ///
 /// Ties are broken lexicographically on the canonical ID for stable
-/// ordering across test runs. Added 2026-04-11 (Phase 5).
+/// ordering across test runs. Added 2026-04-11 (Phase 5); tokenized
+/// 2026-04-11 after dogfood found multi-word queries collapsed to zero.
 /// </summary>
 public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
 {
+    private const int MinTokenLength = 3;
+    private static readonly char[] QueryTokenSeparators = new[] { ' ', '\t', '\r', '\n' };
+
     public SearchResult[] Search(SemanticGraph graph, SearchQuery query)
     {
         if (string.IsNullOrWhiteSpace(query.Query)) return System.Array.Empty<SearchResult>();
@@ -32,6 +43,9 @@ public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
             ? new HashSet<SymbolKind>(query.Kinds)
             : null;
 
+        var tokens = TokenizeQuery(query.Query);
+        if (tokens.Length == 0) return System.Array.Empty<SearchResult>();
+
         var scored = new List<(double score, Symbol sym, List<string> snippets)>(capacity: 64);
 
         foreach (var sym in graph.Symbols)
@@ -39,49 +53,64 @@ public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
             if (kindFilter != null && !kindFilter.Contains(sym.Kind)) continue;
             if (string.IsNullOrEmpty(sym.Name)) continue;
 
+            sym.Properties.TryGetValue("xmlDocSummary", out var docSummary);
+            var hasDoc = !string.IsNullOrEmpty(docSummary);
+            var camelTokens = SplitCamelCase(sym.Name);
+
             double score = 0;
-            var snippets = new List<string>(3);
+            string? firstNameHitToken = null;
+            string? firstQNameHitToken = null;
+            string? firstXmlDocHitToken = null;
 
-            // Name match (short bare name — the strongest signal).
-            if (sym.Name.Contains(query.Query, StringComparison.OrdinalIgnoreCase))
+            foreach (var token in tokens)
             {
-                score += 10;
-                snippets.Add($"name: {sym.Name}");
-            }
+                var nameHit = sym.Name.Contains(token, StringComparison.OrdinalIgnoreCase);
+                if (nameHit)
+                {
+                    score += 10;
+                    firstNameHitToken ??= token;
+                }
 
-            // Token-prefix bonus.
-            foreach (var token in SplitCamelCase(sym.Name))
-            {
-                if (token.StartsWith(query.Query, StringComparison.OrdinalIgnoreCase))
+                foreach (var camel in camelTokens)
+                {
+                    if (camel.StartsWith(token, StringComparison.OrdinalIgnoreCase))
+                    {
+                        score += 5;
+                        break;
+                    }
+                }
+
+                if (!nameHit
+                    && !string.IsNullOrEmpty(sym.QualifiedName)
+                    && sym.QualifiedName!.Contains(token, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 3;
+                    firstQNameHitToken ??= token;
+                }
+
+                if (hasDoc && docSummary!.Contains(token, StringComparison.OrdinalIgnoreCase))
                 {
                     score += 5;
-                    break;
+                    firstXmlDocHitToken ??= token;
                 }
             }
 
-            // Qualified name match (FQ hits).
-            if (!string.IsNullOrEmpty(sym.QualifiedName)
-                && sym.QualifiedName.Contains(query.Query, StringComparison.OrdinalIgnoreCase)
-                && !sym.Name.Contains(query.Query, StringComparison.OrdinalIgnoreCase))
+            if (score <= 0) continue;
+            if (kindFilter != null) score += 2;
+
+            var snippets = new List<string>(3);
+            if (firstNameHitToken != null)
             {
-                score += 3;
+                snippets.Add($"name: {sym.Name}");
+            }
+            if (firstQNameHitToken != null)
+            {
                 snippets.Add($"qualifiedName: {sym.QualifiedName}");
             }
-
-            // XML documentation summary search. This is the feature that makes
-            // lifeblood_search qualitatively different from resolve_short_name —
-            // the user can ask "what searches the graph for a symbol by XMLdoc?"
-            // and hit THIS symbol even though its name doesn't contain "search".
-            if (sym.Properties.TryGetValue("xmlDocSummary", out var docSummary)
-                && !string.IsNullOrEmpty(docSummary)
-                && docSummary.Contains(query.Query, StringComparison.OrdinalIgnoreCase))
+            if (firstXmlDocHitToken != null && hasDoc)
             {
-                score += 5;
-                snippets.Add($"xmlDoc: {TruncateSnippet(docSummary, query.Query)}");
+                snippets.Add($"xmlDoc: {TruncateSnippet(docSummary!, firstXmlDocHitToken)}");
             }
-
-            if (kindFilter != null && score > 0) score += 2;
-            if (score <= 0) continue;
 
             scored.Add((score, sym, snippets));
         }
@@ -102,34 +131,61 @@ public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
     }
 
     /// <summary>
-    /// Return a short snippet of the doc text centered on the first
-    /// case-insensitive occurrence of the query. Cap ~80 characters so
-    /// the MCP response stays lean.
+    /// Split the raw query into distinct case-insensitive tokens and drop
+    /// anything below <see cref="MinTokenLength"/> to keep noise from
+    /// saturating scores. If the filter kills every token, fall back to
+    /// the whole trimmed query as a single literal so terse queries like
+    /// "id" or "db" still work exactly as they did pre-tokenization.
     /// </summary>
-    private static string TruncateSnippet(string text, string query)
+    private static string[] TokenizeQuery(string rawQuery)
+    {
+        var split = rawQuery.Split(QueryTokenSeparators, StringSplitOptions.RemoveEmptyEntries);
+        var filtered = new List<string>(split.Length);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var piece in split)
+        {
+            if (piece.Length < MinTokenLength) continue;
+            if (!seen.Add(piece)) continue;
+            filtered.Add(piece);
+        }
+
+        if (filtered.Count > 0) return filtered.ToArray();
+
+        var trimmed = rawQuery.Trim();
+        return trimmed.Length == 0 ? System.Array.Empty<string>() : new[] { trimmed };
+    }
+
+    /// <summary>
+    /// Return a short snippet of the doc text centered on the first
+    /// case-insensitive occurrence of the anchor token. Cap ~80
+    /// characters so the MCP response stays lean.
+    /// </summary>
+    private static string TruncateSnippet(string text, string anchor)
     {
         const int windowRadius = 40;
-        var idx = text.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+        var idx = text.IndexOf(anchor, StringComparison.OrdinalIgnoreCase);
         if (idx < 0) return text.Length <= 80 ? text : text.Substring(0, 80) + "…";
         var start = System.Math.Max(0, idx - windowRadius);
-        var end = System.Math.Min(text.Length, idx + query.Length + windowRadius);
+        var end = System.Math.Min(text.Length, idx + anchor.Length + windowRadius);
         var prefix = start > 0 ? "…" : "";
         var suffix = end < text.Length ? "…" : "";
         return prefix + text.Substring(start, end - start) + suffix;
     }
 
-    private static IEnumerable<string> SplitCamelCase(string name)
+    private static List<string> SplitCamelCase(string name)
     {
-        if (string.IsNullOrEmpty(name)) yield break;
+        var result = new List<string>(4);
+        if (string.IsNullOrEmpty(name)) return result;
         int start = 0;
         for (int i = 1; i < name.Length; i++)
         {
             if (char.IsUpper(name[i]) && !char.IsUpper(name[i - 1]))
             {
-                yield return name.Substring(start, i - start);
+                result.Add(name.Substring(start, i - start));
                 start = i;
             }
         }
-        yield return name.Substring(start);
+        result.Add(name.Substring(start));
+        return result;
     }
 }
