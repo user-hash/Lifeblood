@@ -65,7 +65,26 @@ public enum ToolAvailability
 }
 
 /// <summary>
-/// MCP-specific response shapes for tools/list and tools/call.
+/// Wire-format DTO for the MCP <c>tools/list</c> response. Pure JSON
+/// serialization shape — name, description, input schema. No internal
+/// concerns. See <see cref="ToolDefinition"/> for the internal registry
+/// record that carries compile-time availability metadata.
+///
+/// <para>
+/// INV-TOOLREG-001 rationale for the split: the original design used a
+/// single <c>McpToolInfo</c> type for BOTH the internal registry record
+/// (where <c>required ToolAvailability</c> gives compile-time enforcement)
+/// AND the wire payload for <c>tools/list</c> (where System.Text.Json
+/// serialization happens). System.Text.Json in .NET 8 has a latent bug
+/// where <c>[JsonIgnore]</c> on a <c>required init</c> property is NOT
+/// honoured during serialization metadata construction, so <c>tools/list</c>
+/// threw <c>JsonException</c> "property is marked required but does not
+/// specify a setter" at runtime. Claude Code interpreted the error as
+/// a broken server and aborted connection. The fix — and the reason the
+/// types are split — is that wire DTOs and internal records are
+/// different concerns, and conflating them caused the serialization bug
+/// plus the Claude Code connection failure.
+/// </para>
 /// </summary>
 public sealed class McpToolInfo
 {
@@ -77,14 +96,28 @@ public sealed class McpToolInfo
 
   [JsonPropertyName("inputSchema")]
   public object InputSchema { get; set; } = new { type = "object" };
+}
 
-  /// <summary>
-  /// Read-side or write-side classification. Controls whether the tool is
-  /// decorated as "[Unavailable. Load a project with lifeblood_analyze first]"
-  /// when <c>ToolRegistry.GetTools</c> is called with <c>hasCompilationState = false</c>.
-  /// <c>required</c> so omitting it at registration is a compile error.
-  /// </summary>
-  [JsonIgnore]
+/// <summary>
+/// Internal registry record for a Lifeblood MCP tool. Pairs the wire
+/// shape (name, description, input schema) with compile-time classification
+/// metadata (<see cref="Availability"/>). Lives only inside the server;
+/// projected to <see cref="McpToolInfo"/> at <c>tools/list</c> time.
+///
+/// <para>
+/// <b>INV-TOOLREG-001:</b> every <c>ToolDefinition</c> sets
+/// <see cref="Availability"/> explicitly at registration. The property is
+/// <c>required</c>, so omitting it is a compile error — not a runtime
+/// default-0 bug. <c>ToolRegistry.GetTools(bool)</c> filters on this
+/// field to decide which tools receive the "[Unavailable. Load a project
+/// with lifeblood_analyze first]" decoration in their wire descriptions.
+/// </para>
+/// </summary>
+public sealed class ToolDefinition
+{
+  public required string Name { get; init; }
+  public required string Description { get; init; }
+  public required object InputSchema { get; init; }
   public required ToolAvailability Availability { get; init; }
 }
 

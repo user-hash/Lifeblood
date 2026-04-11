@@ -185,27 +185,36 @@ public class McpProtocolTests
   [Fact]
   public void ToolRegistry_EveryToolHasExplicitAvailability()
   {
-  // C#'s required modifier on Availability makes this impossible to omit
-  // at declaration. Verifying here belt-and-braces that every tool
-  // comes back with a definite enum value. Neither default (0) by
-  // accident nor an undocumented extra.
-  var tools = ToolRegistry.GetTools(hasCompilationState: true);
-  Assert.NotEmpty(tools);
-  foreach (var tool in tools)
+  // C#'s required modifier on ToolDefinition.Availability makes this
+  // impossible to omit at declaration. Verifying here belt-and-braces
+  // that every registered tool comes back with a definite enum value.
+  // Neither default (0) by accident nor an undocumented extra. Availability
+  // lives on ToolDefinition (internal) — GetDefinitions is the seam.
+  var definitions = ToolRegistry.GetDefinitions();
+  Assert.NotEmpty(definitions);
+  foreach (var def in definitions)
   {
   Assert.True(
-  tool.Availability == ToolAvailability.ReadSide || tool.Availability == ToolAvailability.WriteSide,
-  $"Tool {tool.Name} has unexpected Availability: {tool.Availability}");
+  def.Availability == ToolAvailability.ReadSide || def.Availability == ToolAvailability.WriteSide,
+  $"Tool {def.Name} has unexpected Availability: {def.Availability}");
   }
   }
 
   [Fact]
   public void ToolRegistry_WriteSideTools_MarkedUnavailable_WhenNoCompilationState()
   {
-  var tools = ToolRegistry.GetTools(hasCompilationState: false);
-  var writeSide = tools.Where(t => t.Availability == ToolAvailability.WriteSide).ToArray();
-  Assert.NotEmpty(writeSide);
-  Assert.All(writeSide, tool =>
+  // Correlate by name: availability lives on the definitions, the
+  // decorated description lives on the wire payload.
+  var definitions = ToolRegistry.GetDefinitions();
+  var writeSideNames = definitions
+  .Where(d => d.Availability == ToolAvailability.WriteSide)
+  .Select(d => d.Name)
+  .ToHashSet();
+
+  var wire = ToolRegistry.GetTools(hasCompilationState: false);
+  var writeSideWire = wire.Where(t => writeSideNames.Contains(t.Name)).ToArray();
+  Assert.NotEmpty(writeSideWire);
+  Assert.All(writeSideWire, tool =>
   Assert.StartsWith("[Unavailable", tool.Description));
   }
 
@@ -215,10 +224,16 @@ public class McpProtocolTests
   // Read-side tools (including lifeblood_resolve_short_name) work off
   // the in-memory graph alone and do not need Roslyn compilation state.
   // They must never carry the unavailable decoration.
-  var tools = ToolRegistry.GetTools(hasCompilationState: false);
-  var readSide = tools.Where(t => t.Availability == ToolAvailability.ReadSide).ToArray();
-  Assert.NotEmpty(readSide);
-  Assert.All(readSide, tool =>
+  var definitions = ToolRegistry.GetDefinitions();
+  var readSideNames = definitions
+  .Where(d => d.Availability == ToolAvailability.ReadSide)
+  .Select(d => d.Name)
+  .ToHashSet();
+
+  var wire = ToolRegistry.GetTools(hasCompilationState: false);
+  var readSideWire = wire.Where(t => readSideNames.Contains(t.Name)).ToArray();
+  Assert.NotEmpty(readSideWire);
+  Assert.All(readSideWire, tool =>
   Assert.False(tool.Description.StartsWith("[Unavailable"),
   $"Read-side tool {tool.Name} was incorrectly marked unavailable."));
   }
@@ -229,9 +244,29 @@ public class McpProtocolTests
   // Pin the classification decision from FINDING-005. The previous
   // prefix-based guard silently misclassified this tool because its
   // name did not match any of the 8 hard-coded prefixes. The typed
-  // Availability field makes the decision explicit and test-enforced.
-  var tools = ToolRegistry.GetTools(hasCompilationState: true);
-  var resolver = tools.Single(t => t.Name == "lifeblood_resolve_short_name");
+  // ToolDefinition.Availability field makes the decision explicit and
+  // test-enforced.
+  var definitions = ToolRegistry.GetDefinitions();
+  var resolver = definitions.Single(d => d.Name == "lifeblood_resolve_short_name");
   Assert.Equal(ToolAvailability.ReadSide, resolver.Availability);
+  }
+
+  [Fact]
+  public void ToolRegistry_ToolsList_SerializesWithoutError()
+  {
+  // Direct regression test for the drift that broke Claude Code
+  // reconnection in v0.6.2: the old McpToolInfo carried a
+  // [JsonIgnore] required init property, which System.Text.Json .NET 8
+  // refused to process during serialization metadata construction. The
+  // response went out as a JSON-RPC -32603 error, Claude Code read
+  // it as a dead server, connection aborted. Splitting wire DTO
+  // (McpToolInfo) from internal record (ToolDefinition) eliminates the
+  // drift class. This test walks the tools/list response through the
+  // same JsonSerializerOptions the dispatcher uses and asserts no
+  // exception escapes.
+  var wire = ToolRegistry.GetTools(hasCompilationState: true);
+  var json = JsonSerializer.Serialize(new { tools = wire }, JsonOpts);
+  Assert.Contains("\"name\":\"lifeblood_analyze\"", json);
+  Assert.DoesNotContain("\"availability\"", json);
   }
 }

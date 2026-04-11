@@ -94,9 +94,9 @@ namespace Lifeblood.UnityBridge
                     var id = _nextId++;
                     var request = new JObject
                     {
-                        ["jsonrpc"] = "2.0",
+                        ["jsonrpc"] = McpProtocolConstants.JsonRpcVersion,
                         ["id"] = id,
-                        ["method"] = "tools/call",
+                        ["method"] = McpProtocolConstants.MethodToolsCall,
                         ["params"] = new JObject
                         {
                             ["name"] = toolName,
@@ -197,13 +197,25 @@ namespace Lifeblood.UnityBridge
             };
             _process.BeginErrorReadLine();
 
-            // MCP handshake: initialize
+            // MCP handshake: initialize. Params carry protocolVersion,
+            // capabilities, and clientInfo per MCP spec 2024-11-05.
+            // INV-MCP-003: every wire constant comes from McpProtocolConstants,
+            // mirrored from Lifeblood.Connectors.Mcp.McpProtocolSpec.
             var initRequest = new JObject
             {
-                ["jsonrpc"] = "2.0",
+                ["jsonrpc"] = McpProtocolConstants.JsonRpcVersion,
                 ["id"] = _nextId++,
-                ["method"] = "initialize",
-                ["params"] = new JObject()
+                ["method"] = McpProtocolConstants.MethodInitialize,
+                ["params"] = new JObject
+                {
+                    ["protocolVersion"] = McpProtocolConstants.SupportedVersion,
+                    ["capabilities"] = new JObject(),
+                    ["clientInfo"] = new JObject
+                    {
+                        ["name"] = McpProtocolConstants.ClientInfoName,
+                        ["version"] = McpProtocolConstants.ClientInfoVersion,
+                    },
+                },
             };
 
             _stdin.WriteLine(initRequest.ToString(Formatting.None));
@@ -213,11 +225,17 @@ namespace Lifeblood.UnityBridge
             if (initResponse == null)
                 throw new InvalidOperationException("Lifeblood server failed to respond to initialize (timed out after 15s)");
 
-            // Send initialized notification (no id = notification)
+            // Send canonical initialized notification (no id = notification).
+            // The notification method name is sourced from
+            // McpProtocolConstants.NotificationInitialized (mirrored from
+            // Lifeblood.Connectors.Mcp.McpProtocolSpec.Notifications.Initialized).
+            // The legacy bare-initialized alias is deprecated and must not
+            // be sent by first-party clients — the source-of-truth ratchet
+            // test enforces this on CI.
             _stdin.WriteLine(new JObject
             {
-                ["jsonrpc"] = "2.0",
-                ["method"] = "initialized"
+                ["jsonrpc"] = McpProtocolConstants.JsonRpcVersion,
+                ["method"] = McpProtocolConstants.NotificationInitialized,
             }.ToString(Formatting.None));
             _stdin.Flush();
 

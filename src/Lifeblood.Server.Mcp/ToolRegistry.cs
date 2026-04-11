@@ -7,30 +7,55 @@ namespace Lifeblood.Server.Mcp;
 public static class ToolRegistry
 {
   /// <summary>
-  /// Returns all tools. When hasCompilationState is false, write-side tools are
-  /// annotated as unavailable so agents know not to call them before loading a project.
+  /// Returns the wire-format tool list for the MCP <c>tools/list</c>
+  /// response. When <paramref name="hasCompilationState"/> is false,
+  /// write-side tool descriptions are prefixed with
+  /// "[Unavailable. Load a project with lifeblood_analyze first]" so
+  /// agents know not to call them before loading a project. The returned
+  /// array is a pure <see cref="McpToolInfo"/> wire DTO — no availability
+  /// metadata leaks onto the wire, and System.Text.Json serializes it
+  /// with no required/init interaction quirks.
   ///
-  /// INV-TOOLREG-001: dispatch is by the typed <see cref="McpToolInfo.Availability"/>
-  /// property, never by tool name prefix. Adding a new tool without setting
-  /// Availability is a compile error because the property is <c>required</c>.
+  /// <para>
+  /// INV-TOOLREG-001: classification is by the typed
+  /// <see cref="ToolDefinition.Availability"/> property on the internal
+  /// registry record, never by tool name prefix. Adding a new tool
+  /// without setting Availability is a compile error because the
+  /// property is <c>required</c>.
+  /// </para>
   /// </summary>
   public static McpToolInfo[] GetTools(bool hasCompilationState = true)
   {
-  var tools = GetAllTools();
-  if (!hasCompilationState)
+  var definitions = GetDefinitions();
+  var wire = new McpToolInfo[definitions.Length];
+  for (var i = 0; i < definitions.Length; i++)
   {
-  foreach (var tool in tools)
+  var def = definitions[i];
+  var description = def.Description;
+  if (!hasCompilationState && def.Availability == ToolAvailability.WriteSide)
   {
-  if (tool.Availability == ToolAvailability.WriteSide)
+  description = "[Unavailable. Load a project with lifeblood_analyze first] " + description;
+  }
+  wire[i] = new McpToolInfo
   {
-  tool.Description = "[Unavailable. Load a project with lifeblood_analyze first] " + tool.Description;
+  Name = def.Name,
+  Description = description,
+  InputSchema = def.InputSchema,
+  };
   }
-  }
-  }
-  return tools;
+  return wire;
   }
 
-  private static McpToolInfo[] GetAllTools() => new McpToolInfo[]
+  /// <summary>
+  /// Returns the internal tool definitions with their full classification
+  /// metadata. This is the test seam for INV-TOOLREG-001 availability
+  /// checks — tests that want to inspect <see cref="ToolDefinition.Availability"/>
+  /// must consume this method, never <see cref="GetTools"/>, because
+  /// availability is deliberately stripped at the wire boundary.
+  /// </summary>
+  public static ToolDefinition[] GetDefinitions() => GetAllTools();
+
+  private static ToolDefinition[] GetAllTools() => new ToolDefinition[]
   {
   new()
   {
