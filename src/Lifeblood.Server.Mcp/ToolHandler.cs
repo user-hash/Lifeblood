@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Application.Ports.Right;
+using Lifeblood.Application.Ports.Right.Invariants;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
 
@@ -22,6 +23,7 @@ public sealed class ToolHandler
     private readonly ISemanticSearchProvider _search;
     private readonly IDeadCodeAnalyzer _deadCode;
     private readonly IPartialViewBuilder _partialView;
+    private readonly IInvariantProvider _invariants;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -36,7 +38,8 @@ public sealed class ToolHandler
         ISymbolResolver resolver,
         ISemanticSearchProvider search,
         IDeadCodeAnalyzer deadCode,
-        IPartialViewBuilder partialView)
+        IPartialViewBuilder partialView,
+        IInvariantProvider invariants)
     {
         _session = session;
         _provider = provider;
@@ -44,6 +47,7 @@ public sealed class ToolHandler
         _search = search;
         _deadCode = deadCode;
         _partialView = partialView;
+        _invariants = invariants;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -65,6 +69,7 @@ public sealed class ToolHandler
                 "lifeblood_search" => HandleSearch(arguments),
                 "lifeblood_dead_code" => HandleDeadCode(arguments),
                 "lifeblood_partial_view" => HandlePartialView(arguments),
+                "lifeblood_invariant_check" => HandleInvariantCheck(arguments),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -286,6 +291,105 @@ public sealed class ToolHandler
         // the root value and feeds it in here.
         var view = _partialView.Build(_session.Graph!, resolved.CanonicalId, _session.ProjectRoot);
         return TextResult(JsonSerializer.Serialize(view, JsonOpts));
+    }
+
+    /// <summary>
+    /// Handle <c>lifeblood_invariant_check</c>. Three modes selected by
+    /// parameter shape, exactly one of which must be present:
+    ///
+    /// <list type="bullet">
+    ///   <item><c>id</c>: return the single invariant with the matching
+    ///     id, or an error if it doesn't exist.</item>
+    ///   <item><c>mode: "audit"</c>: return the summary (total count,
+    ///     category breakdown, duplicates, parse warnings).</item>
+    ///   <item><c>mode: "list"</c>: return every invariant (id + title +
+    ///     category + source line, body omitted to keep the response
+    ///     lean — callers who need the body should query by id).</item>
+    /// </list>
+    ///
+    /// No graph required. The provider parses <c>CLAUDE.md</c> at the
+    /// loaded project root; callers who haven't run lifeblood_analyze
+    /// yet get a clear error rather than an empty response.
+    /// </summary>
+    private McpToolResult HandleInvariantCheck(JsonElement? args)
+    {
+        if (!_session.IsLoaded || string.IsNullOrEmpty(_session.ProjectRoot))
+        {
+            return ErrorResult(
+                "No workspace loaded. Call lifeblood_analyze with a projectPath first so " +
+                "the invariant provider can locate CLAUDE.md.");
+        }
+
+        var projectRoot = _session.ProjectRoot;
+        var id = WriteToolHandler.GetString(args, "id");
+        var mode = WriteToolHandler.GetString(args, "mode");
+
+        // Exactly one of {id, mode} must be populated. Both → error,
+        // neither → default to audit.
+        if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(mode))
+        {
+            return ErrorResult("Specify exactly one of 'id' or 'mode', not both.");
+        }
+
+        if (!string.IsNullOrEmpty(id))
+        {
+            var inv = _invariants.GetById(projectRoot, id);
+            if (inv == null)
+            {
+                var audit = _invariants.Audit(projectRoot);
+                return ErrorResult(
+                    $"Invariant '{id}' not found in {audit.SourcePath}. " +
+                    $"{audit.TotalCount} invariants are declared. " +
+                    "Use mode='list' to see every declared id.");
+            }
+            return TextResult(JsonSerializer.Serialize(new
+            {
+                inv.Id,
+                inv.Title,
+                inv.Category,
+                inv.SourceLine,
+                inv.Body,
+            }, JsonOpts));
+        }
+
+        if (string.IsNullOrEmpty(mode) || string.Equals(mode, "audit", System.StringComparison.OrdinalIgnoreCase))
+        {
+            var audit = _invariants.Audit(projectRoot);
+            return TextResult(JsonSerializer.Serialize(new
+            {
+                mode = "audit",
+                audit.SourcePath,
+                audit.TotalCount,
+                audit.CategoryCounts,
+                audit.Duplicates,
+                audit.ParseWarnings,
+            }, JsonOpts));
+        }
+
+        if (string.Equals(mode, "list", System.StringComparison.OrdinalIgnoreCase))
+        {
+            var all = _invariants.GetAll(projectRoot);
+            // Body is omitted in list mode — callers who need it query
+            // by id, keeping list responses compact even for projects
+            // with dozens of invariants.
+            var summaries = all.Select(inv => new
+            {
+                inv.Id,
+                inv.Title,
+                inv.Category,
+                inv.SourceLine,
+            }).ToArray();
+            return TextResult(JsonSerializer.Serialize(new
+            {
+                mode = "list",
+                count = summaries.Length,
+                invariants = summaries,
+            }, JsonOpts));
+        }
+
+        return ErrorResult(
+            $"Unknown mode '{mode}'. Valid modes: 'audit' (default), 'list'. " +
+            "Or omit mode and pass 'id' to fetch a single invariant.");
     }
 
     /// <summary>
