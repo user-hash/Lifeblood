@@ -193,7 +193,7 @@
   </p>
   <div class="pills">
   <div class="pill">11 assemblies + 2 standalone adapters</div>
-  <div class="pill">1834 symbols, 5708 edges</div>
+  <div class="pill">1863 symbols, 5777 edges</div>
   <div class="pill">539 tests / CI green</div>
   <div class="pill">C# + TypeScript + Python</div>
   <div class="pill">Cross-module: Proven</div>
@@ -206,7 +206,7 @@
   <div class="pill">RoslynSemanticView</div>
   <div class="pill">BCL ownership</div>
   <div class="pill">Native usage + timing</div>
-  <div class="pill">57+ queryable invariants</div>
+  <div class="pill">58 queryable invariants</div>
   <div class="pill">dotnet tool</div>
   </div>
   </div>
@@ -297,7 +297,7 @@
 
   <div class="signal-card">
   <strong>Enforced invariants (tested AND queryable via lifeblood_invariant_check)</strong>
-  <span>Domain: zero deps. Application: Domain only. No adapter↔adapter refs. No connector→adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. 530+ tests. 22 MCP tools. 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj). File-level edges. BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler (INV-RESOLVER-001..005, wrong-namespace fallback new in v0.6.3). RoslynSemanticView shared by reference (INV-VIEW-001..003). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). CLAUDE.md is single source of truth for 57+ typed architectural invariants (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes (INV-DEADCODE-001).</span>
+  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. 539 tests. 22 MCP tools. 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj). File-level edges. BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler (INV-RESOLVER-001..005, wrong-namespace fallback new in v0.6.3). RoslynSemanticView shared by reference (INV-VIEW-001..003). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). CLAUDE.md is single source of truth for 58 typed architectural invariants (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes (INV-DEADCODE-001).</span>
   </div>
   </div>
 
@@ -313,7 +313,7 @@
   <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius, file impact, short-name resolution.</small></div>
   <div class="item"><strong>LifebloodSymbolResolver</strong><small>Reference ISymbolResolver implementation. Routes every read-side handler through canonical → truncated method → bare short name → extracted short name from qualified input (wrong-namespace fallback, v0.6.3). Deterministic primary file path picker for partial types.</small></div>
   <div class="item"><strong>LifebloodSemanticSearchProvider</strong><small>Ranked search over symbol names, qualified names, and xmldoc summaries. Tokenized ranked-OR (v0.6.3).</small></div>
-  <div class="item"><strong>LifebloodInvariantProvider</strong><small>CLAUDE.md runtime parser + timestamp cache. Exposes 57+ architectural invariants as queryable structured data via lifeblood_invariant_check (INV-INVARIANT-001).</small></div>
+  <div class="item"><strong>LifebloodInvariantProvider</strong><small>CLAUDE.md runtime parser + timestamp cache. Exposes 58 architectural invariants as queryable structured data via lifeblood_invariant_check (INV-INVARIANT-001).</small></div>
   <div class="item"><strong>LifebloodPartialViewBuilder</strong><small>Combined source view across every partial declaration of a type.</small></div>
   <div class="item"><strong>LifebloodDeadCodeAnalyzer</strong><small>Experimental / advisory. Three documented false-positive classes (INV-DEADCODE-001). Root cause investigation scheduled for v0.6.4.</small></div>
   <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. 22 tools (12 read + 10 write). Bidirectional Roslyn. Connect from Claude Code or any MCP client.</small></div>
@@ -351,7 +351,7 @@
   <div class="footer">
   Solid = implemented and dogfood-verified. Dashed/faded = planned.
   Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-  → 1834 symbols, 5708 edges, 11 modules, 235 types, 0 violations. 22 ports, 22 MCP tools, 57+ queryable invariants. Incremental re-analyze (file + csproj). File-level edges. Native usage reporting on every analyze response (self: ~5 s wall CLI / ~14 s MCP; production 75-module Unity workspace: ~14 s wall / ~570 MB peak CLI, ~32 s wall / ~2.8 GB MCP retained peak).
+  → 1863 symbols, 5777 edges, 11 modules, 235 types, 0 violations. 22 ports, 22 MCP tools, 58 queryable invariants. Incremental re-analyze (file + csproj). File-level edges. Native usage reporting on every analyze response (self: ~5 s wall CLI / ~14 s MCP; production 75-module Unity workspace: ~14 s wall / ~570 MB peak CLI, ~32 s wall / ~2.8 GB MCP retained peak).
   </div>
   </div>
 </body>

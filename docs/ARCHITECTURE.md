@@ -158,6 +158,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
-- **58+ typed invariants in CLAUDE.md**, queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id
+- **58 typed invariants in CLAUDE.md**, queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id
 - DocsTests ratchets: `portCount`, `toolCount`, `testCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)

@@ -147,7 +147,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (MCP, v0.6.3): 1,834 symbols, 5,708 edges, 11 modules, 235 types, 0 violations. Lifeblood now audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md). 57 invariants across 25 categories, zero duplicate ids, zero parse warnings.
+Self-analysis (MCP, v0.6.3): 1,863 symbols, 5,777 edges, 11 modules, 235 types, 0 violations. Lifeblood now audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md): 58 invariants across 25 categories, zero duplicate ids, zero parse warnings.
 
 Production-verified on a 75-module 400k LOC Unity workspace. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
 
@@ -178,7 +178,7 @@ Seven+ dogfood sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisibl
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup guide, incremental, memory |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 22 port interfaces, invariants |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants](CLAUDE.md) | 57+ typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Invariants](CLAUDE.md) | 58 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Phase 8 Spike](docs/plans/invariant-check-spike.md) | Design record for `lifeblood_invariant_check`, rollout phases 8A-8E |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
