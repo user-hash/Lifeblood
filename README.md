@@ -145,7 +145,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (MCP, v0.6.3): 1,834 symbols, 5,708 edges, 11 modules, 235 types, 0 violations. Lifeblood now audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md). 57 invariants across 25 categories, zero duplicate ids, zero parse warnings.
+Self-analysis (MCP, v0.6.3): 1,863 symbols, 5,777 edges, 11 modules, 235 types, 0 violations. Lifeblood now audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md): 58 invariants across 25 categories, zero duplicate ids, zero parse warnings.
 
 Production-verified on a 75-module 400k LOC Unity workspace. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
 
