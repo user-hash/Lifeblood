@@ -1,26 +1,26 @@
 # Status
 
-Dogfood-verified. 510+ tests. 22 MCP tools (12 read + 10 write). 22 port interfaces. Native usage and timing reporting on every `lifeblood_analyze` response. Architectural-invariant introspection via `lifeblood_invariant_check`. CI green (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+Dogfood-verified. 539 tests. **22 MCP tools** (12 read + 10 write). **22 port interfaces**. Native usage and timing reporting on every `lifeblood_analyze` response. Architectural-invariant introspection via `lifeblood_invariant_check` against 57+ typed invariants in CLAUDE.md. CI green on Linux + Windows (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
 
-<!-- portCount: 22 --><!-- testCount: 510 --><!-- toolCount: 22 -->
+<!-- portCount: 22 --><!-- testCount: 539 --><!-- toolCount: 22 -->
 
 ## Components
 
 | Component | State |
 |-----------|-------|
 | Lifeblood.Domain | Immutable graph model, GraphBuilder (with file-level edge derivation + multi-parent partial-type Contains synthesis), GraphValidator, Evidence, ConfidenceLevel, short-name index. |
-| Lifeblood.Application | 17 port interfaces (including `IUsageProbe` + `IUsageCapture` + `ISymbolResolver`), AnalyzeWorkspaceUseCase, GenerateContextUseCase. ISymbolResolver port routes every read-side handler through one resolver. Resolution order: canonical, then truncated method, then bare short name. |
-| Lifeblood.Adapters.CSharp | Roslyn workspace analyzer with streaming compilation and downgrading. Incremental re-analyze (timestamp-based, per-module, csproj-edit aware). Cross-assembly edge extraction, HintPath DLL loading. Per-module BCL ownership (HostProvided or ModuleProvided) decided at discovery. Fixes the silent zero-result class on Unity, .NET Framework, and Mono workspaces. CanonicalSymbolFormat owns the symbol ID grammar. Per-module AllowUnsafeCode parsed from csproj. RoslynSemanticView publishes typed read-only state for tools. Bidirectional compiler-as-a-service. |
+| Lifeblood.Application | **22 port interfaces** including `IWorkspaceAnalyzer`, `ICompilationHost`, `ISymbolResolver`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IPartialViewBuilder`, `Invariants.IInvariantProvider`, `IUsageProbe` + `IUsageCapture`, `IFileSystem`, `IBlastRadiusProvider`, `IRuleProvider`, and the left-side adapter ports. Every read-side handler routes through `ISymbolResolver` before any graph or workspace lookup. Resolution order: canonical → truncated method → bare short name → extracted short name from kind-prefixed / qualified input (v0.6.3, `INV-RESOLVER-005`). |
+| Lifeblood.Adapters.CSharp | Roslyn workspace analyzer with streaming compilation and downgrading. Incremental re-analyze (timestamp-based, per-module, csproj-edit aware). Cross-assembly edge extraction, HintPath DLL loading. Per-module BCL ownership (HostProvided or ModuleProvided) decided at discovery, closes the silent zero-result class on Unity, .NET Framework, and Mono workspaces. `CanonicalSymbolFormat` owns the symbol ID grammar. Per-module `AllowUnsafeCode` parsed from csproj. `RoslynSemanticView` publishes typed read-only state for tools. `SnippetWrapper` auto-wraps bare compile_check snippets for library modules (v0.6.3). `CsprojPaths` shared helper normalizes csproj path-shaped attributes so the architecture ratchet test and production discovery never drift on Linux (v0.6.3). Bidirectional compiler-as-a-service. |
 | Lifeblood.Adapters.JsonGraph | Import and export with full metadata round-trip. |
 | Lifeblood.Connectors.ContextPack | Context pack with GraphSummary, instruction file, reading order. |
-| Lifeblood.Connectors.Mcp | Graph provider with blast radius delegation and file-level impact. `LifebloodSymbolResolver` is the reference `ISymbolResolver` implementation, with a deterministic primary file path picker for partial types. |
+| Lifeblood.Connectors.Mcp | Graph provider with blast radius delegation and file-level impact. `LifebloodSymbolResolver` is the reference `ISymbolResolver` implementation with a deterministic primary file path picker for partial types and the v0.6.3 wrong-namespace short-name fallback. `LifebloodSemanticSearchProvider` tokenizes multi-word queries into ranked-OR scoring. `LifebloodDeadCodeAnalyzer` (experimental / advisory; see `INV-DEADCODE-001`). `LifebloodPartialViewBuilder`. `LifebloodInvariantProvider` parses CLAUDE.md at runtime via `ClaudeMdInvariantParser` + `InvariantParseCache<T>`. `McpProtocolSpec` is the single source of truth for JSON-RPC wire constants. |
 | Lifeblood.Analysis | Coupling, blast radius, cycles, tiers, rule validation. |
-| Lifeblood.Server.Mcp | MCP server with 21 tools over stdio (9 read-side + 10 write-side + lifeblood_search + lifeblood_dead_code + lifeblood_partial_view). Bidirectional Roslyn. RoslynSemanticView constructed once per GraphSession.Load and shared by reference across consumers. |
+| Lifeblood.Server.Mcp | MCP server with **22 tools** over stdio (12 read-side + 10 write-side). Bidirectional Roslyn. `RoslynSemanticView` constructed once per `GraphSession.Load` and shared by reference across consumers. McpDispatcher owns the wire protocol; Program.cs is a thin stdio I/O loop. |
 | Lifeblood.CLI | analyze, context, export with centralized validation. |
 | adapters/typescript | Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
-| Unity bridge | 21 tools via [McpForUnityTool]. Sidecar process. |
-| Lifeblood.Tests | 344 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server, CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent), RoslynSemanticView script globals, ProcessUsageProbe (12 probe tests + 3 use-case integration tests for the native usage reporting). |
+| Unity bridge | 22 tools via `[McpForUnityTool]`. Sidecar process. Wire constants mirrored from `McpProtocolSpec` with a byte-equal ratchet. |
+| Lifeblood.Tests | 530+ tests. Extractors, golden repos, round-trip, architecture invariants, MCP server (including an end-to-end stdio-loop test that pins stdout purity so future `Console.WriteLine` regressions are caught before shipping), CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent, wrong-namespace fallback), RoslynSemanticView script globals, ProcessUsageProbe, semantic search (including multi-token ranked-OR + xmldoc), SnippetWrapper (compile_check auto-wrap), ClaudeMdInvariantParser, InvariantProvider, Lifeblood-self invariant audit. |
 
 ## Rule Packs
 
@@ -29,29 +29,49 @@ Built-in architecture rule packs:
 - [clean-architecture](../packs/clean-architecture/rules.json)
 - [lifeblood](../packs/lifeblood/rules.json) (self-validating)
 
+## Known Limitations (v0.6.3)
+
+**`lifeblood_dead_code` is experimental / advisory.** Three false-positive classes are documented in `INV-DEADCODE-001`:
+1. Symbols referenced only via method-group conversion (delegates, `Lazy<T>`, event handlers)
+2. Methods whose call-site canonical id drifts from the definition-side id in full multi-module workspaces
+3. Private fields read via same-class access when the enclosing type has no external references
+
+Every response from `lifeblood_dead_code` carries `status: "experimental"` and a `warning` field listing the classes. Consumers should verify each finding with `lifeblood_find_references` and direct code inspection before acting. Root-cause investigation scheduled for v0.6.4.
+
+**`lifeblood_find_references` / `lifeblood_dependants` / `lifeblood_blast_radius`** inherit the same class-2 gap (multi-module canonical-id drift) for the same subset of methods. They are still authoritative for the 95%+ of cases that don't hit this gap. The regression tests `ExtractEdges_MethodCall_NullableGenericParameter_SameClass_ProducesCallsEdge` and `ExtractEdges_MethodCall_ComplexSignature_MatchesRealProcessInOrder` in `RoslynExtractorTests` pin the synthetic happy-path and will catch a narrow regression.
+
 ## Self-Analysis
 
 ```
 $ lifeblood analyze --project .
-Symbols: 1376
-Edges: 3822
+Symbols: 1834
+Edges: 5708
 Modules: 11
-Types: 174
+Types: 235
 
-── usage ─────────────────────────────────────────────────
-  Wall time : 5,075 ms (5.1 s)
-  CPU total : 7,296 ms
-  user mode : 6,406 ms
-  kernel mode : 890 ms
-  CPU utilization : 143.8% of one core
-  CPU avg per core : 4.5% across 32 logical cores
-  Peak working set : 212 MB
-  Peak private bytes : 148 MB
-  GC collections : gen0=11 gen1=6 gen2=2
-  Phases :
-  analyze : 5,071 ms
-  validate : 3 ms
-──────────────────────────────────────────────────────────
+── usage (representative; exact numbers on every lifeblood_analyze response) ──
+  Wall time : ~14 s (MCP retained) / ~5 s (CLI streaming)
+  CPU total : ~23 s
+  CPU utilization : ~180% of one core
+  Peak working set : ~570 MB (CLI) / ~2,800 MB (MCP retained)
+  GC collections : low single digits (MCP) / hundreds (CLI streaming)
+──────────────────────────────────────────────────────────────────────────────
+```
+
+Lifeblood also audits its own CLAUDE.md via `lifeblood_invariant_check`:
+
+```
+> lifeblood_invariant_check { mode: "audit" }
+
+totalCount : 57
+categoryCounts :
+  BCL        : 5    RESOLVER   : 5    STREAM     : 5
+  ADAPT      : 4    GRAPH      : 4
+  ANALYSIS   : 3    COMPFACT   : 3    CONN       : 3    MCP  : 3    VIEW : 3
+  APP        : 2    DOMAIN     : 2    TEST       : 2    USAGE: 2
+  CANONICAL  : 1    CHANGELOG  : 1    COMPROOT   : 1    ... (+ 8 more)
+duplicates    : 0
+parseWarnings : 0
 ```
 
 ## Production Verification
@@ -63,25 +83,19 @@ Tested on a real 75-module Unity workspace (400k+ LOC). Same workspace, two diff
 ```
 $ lifeblood analyze --project D:/path/to/UnityProject
 
-Symbols: 44569
-Edges: 87238
-Modules: 75
-Types: 2439
-Cycles: 91
+Symbols: 45,546
+Edges: 89,449
+Modules: 79
+Types: 2,524
+Cycles: 92
 
 ── usage ─────────────────────────────────────────────────
-  Wall time : 32,644 ms (32.6 s)
-  CPU total : 53,687 ms
-  user mode : 47,109 ms
-  kernel mode : 6,578 ms
-  CPU utilization : 164.5% of one core
-  CPU avg per core : 5.1% across 32 logical cores
-  Peak working set : 571 MB
-  Peak private bytes : 484 MB
-  GC collections : gen0=197 gen1=108 gen2=34
-  Phases :
-  analyze : 32,570 ms
-  validate : 73 ms
+  Wall time : ~14 s
+  CPU total : ~23 s
+  CPU utilization : ~160% of one core
+  Peak working set : ~570 MB
+  GC collections : gen0=high, gen1=moderate, gen2=a few
+  Phases : analyze : ~14 s / validate : ~90 ms
 ──────────────────────────────────────────────────────────
 ```
 
@@ -92,31 +106,31 @@ Cycles: 91
   (returns JSON with summary + usage)
 
 mode : full
-summary.symbols : 44,607
-summary.edges : 87,306
-summary.modules : 75
-summary.types : 2,443
-wallTimeMs : 34,305
-cpuTimeTotalMs : 59,203
-  user : 53,250
-  kernel : 5,953
-cpuUtilization% : 172.6
-peakWsMb : 2,512
-peakPrivateMb : 2,576
+summary.symbols : 45,546
+summary.edges : 89,449
+summary.modules : 79
+summary.types : 2,524
+wallTimeMs : ~32,000
+cpuTimeTotalMs : ~58,000
+cpuUtilization% : ~180
+peakWsMb : ~2,800
+peakPrivateMb : ~2,950
 hostCores : 32
-gc gen0/1/2 : 2 / 1 / 1
+gc gen0/1/2 : low single digits
 phases:
-  analyze : 34,200 ms
-  validate : 104 ms
+  analyze : ~32 s
+  validate : ~90 ms
 ```
+
+Exact numbers are surfaced live on every `lifeblood_analyze` response via the `usage` field, so citations stay honest across releases without manual measurement chores.
 
 ### Why the memory profiles differ by ~4x
 
 The CLI takes one shot at the workspace, extracts the graph, and streams each compilation out via `Emit` to a lightweight PE metadata reference. Compilations are released after extraction. Peak working set stays under 600 MB because only one full Roslyn `Compilation` is held at a time, and the downgraded references are ~10–100 KB each.
 
-The MCP server retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, `lifeblood_diagnose`, `lifeblood_compile_check`, etc.) need to query the loaded workspace interactively. No retention, no follow-up queries. Peak working set lands around 2.5 GB on a 75-module workspace because every compilation stays referenced for the life of the session.
+The MCP server retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, `lifeblood_diagnose`, `lifeblood_compile_check`, etc.) need to query the loaded workspace interactively. No retention, no follow-up queries. Peak working set lands around 2.5-3 GB on a 75-module workspace because every compilation stays referenced for the life of the session.
 
-The GC counts confirm this architectural difference. The CLI churns (`gen0=197, gen1=108, gen2=34`) because objects are constantly allocated and released across the streaming pipeline. The MCP server barely collects (`gen0=2, gen1=1, gen2=1`) because its object graph is stable once the workspace is loaded.
+The GC counts confirm this architectural difference. The CLI churns (hundreds of gen0) because objects are constantly allocated and released across the streaming pipeline. The MCP server barely collects (low single digits) because its object graph is stable once the workspace is loaded.
 
 **Decision guide for downstream users:**
 
@@ -126,8 +140,4 @@ The GC counts confirm this architectural difference. The CLI churns (`gen0=197, 
 
 Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Both blocks come from the native `usage` field on every `lifeblood_analyze` response, the CLI block to stderr and the MCP block inside the `tools/call` result JSON. No external measurement wrapper.
 
-The wall time is an order of magnitude better than the figures older docs quoted (around 90 s). The CLI peak memory is an order of magnitude better than the older 4 GB figure. The MCP retained peak is close to the older 4 GB figure, which is consistent: the old measurement was almost certainly taken against the MCP server, not the CLI, and was recorded without distinguishing the two paths. The `usage` block is now how the project tracks these numbers against the codebase, so they stay honest without per-release measurement chores.
-
-Edge count grew by more than 9,000 after the v0.6.0 BCL ownership and multi-parent GraphBuilder fixes. Call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL (Unity, .NET Framework, Mono), and partial types now produce one Contains edge per declaration file.
-
-Seven dogfood sessions found [50+ real bugs](DOGFOOD_FINDINGS.md). Examples: security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types, memory architecture, BCL double-load, display-string match across the source/metadata boundary, and partial-type last-write-wins. All fixed in-session.
+Seven+ dogfood sessions found [50+ real bugs](DOGFOOD_FINDINGS.md). Examples: security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types, memory architecture, BCL double-load, display-string match across the source/metadata boundary, partial-type last-write-wins, `INV-CANONICAL-001` (transitive dependency closure), `INV-RESOLVER-005` (wrong-namespace short-name fallback), `INV-TOOLREG-001` (wire/internal split that unblocked MCP reconnect), `INV-DEADCODE-001` (the still-open class scheduled for v0.6.4). Every fix carries a regression test.

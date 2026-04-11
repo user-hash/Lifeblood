@@ -678,6 +678,170 @@ public class Service
     }
 
     /// <summary>
+    /// Compile with nullable reference types ENABLED at the compilation
+    /// level (the same mode Lifeblood's own csproj uses via
+    /// <c>&lt;Nullable&gt;enable&lt;/Nullable&gt;</c>). This is the only
+    /// way to reproduce canonical-ID drift caused by nullability flowing
+    /// through type display strings.
+    /// </summary>
+    private static (SemanticModel model, SyntaxNode root) CompileWithNullableEnabled(string source)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var compilation = CSharpCompilation.Create("TestAssembly",
+            new[] { tree }, BclRefs(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+                .WithNullableContextOptions(NullableContextOptions.Enable));
+
+        var model = compilation.GetSemanticModel(tree);
+        return (model, tree.GetRoot());
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Canonical-ID stability across the symbol / edge extractor boundary
+    // when nullable reference types are enabled. Regression test for the
+    // dead-code / find-references false-zero that showed up during the
+    // v0.6.3 release checkup: a private method with a `List<T>?`
+    // parameter called from a sibling method on the same class produced
+    // zero incoming Calls edges because the symbol extractor and the
+    // edge extractor rendered the parameter type differently.
+    // ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_MethodCall_NullableGenericParameter_SameClass_ProducesCallsEdge()
+    {
+        var (model, root) = CompileWithNullableEnabled(@"
+#nullable enable
+using System.Collections.Generic;
+namespace App;
+public class Builder
+{
+    public void ProcessInOrder(List<int>? skipped)
+    {
+        CreateCompilation(skipped);
+    }
+
+    private int CreateCompilation(List<int>? skippedCollector) => 0;
+}");
+
+        var symbolExtractor = new RoslynSymbolExtractor();
+        var symbols = symbolExtractor.Extract(model, root, "Builder.cs", "file:Builder.cs");
+
+        var edgeExtractor = new RoslynEdgeExtractor();
+        var edges = edgeExtractor.Extract(model, root);
+
+        // Definition-side canonical id built by the symbol extractor.
+        var defMethod = symbols.FirstOrDefault(s =>
+            s.Kind == DomainSymbolKind.Method && s.Name == "CreateCompilation");
+        Assert.NotNull(defMethod);
+        var defId = defMethod!.Id;
+
+        // Call-side canonical id built by the edge extractor. The Calls
+        // edge's TargetId MUST equal the definition's canonical id, or
+        // every downstream graph walk (dead_code, find_references,
+        // dependants, blast_radius, file_impact) silently produces wrong
+        // results for methods that have nullable reference parameters.
+        var callsEdge = edges.FirstOrDefault(e =>
+            e.Kind == EdgeKind.Calls &&
+            e.SourceId.Contains("ProcessInOrder", System.StringComparison.Ordinal));
+
+        Assert.True(callsEdge != null,
+            $"No Calls edge from ProcessInOrder found at all. Definition id was: {defId}");
+        Assert.True(callsEdge!.TargetId == defId,
+            $"Calls edge target id drifted from the definition id.\n" +
+            $"  defId    = {defId}\n" +
+            $"  targetId = {callsEdge.TargetId}");
+    }
+
+    [Fact]
+    public void ExtractEdges_MethodCall_ComplexSignature_MatchesRealProcessInOrder()
+    {
+        // Reproduces the v0.6.3 release-checkup dogfood bug as faithfully
+        // as possible: ProcessInOrder has FIVE parameters including an
+        // array, a source type from another namespace, a nested delegate
+        // type, an Action<T,T,T>?, and a List<T>?; CreateCompilation has
+        // MetadataReference[] and List<T>?. Against the real Lifeblood
+        // workspace, the Calls edge from ProcessInOrder to CreateCompilation
+        // was missing from the graph, which cascaded into find_references
+        // / dependants / dead_code all returning wrong results for both
+        // methods.
+        var (model, root) = CompileWithNullableEnabled(@"
+#nullable enable
+using System;
+using System.Collections.Generic;
+
+namespace Lifeblood.Application.Ports.Left;
+public sealed class ModuleInfo { public string Name = """"; }
+public sealed class AnalysisConfig { public bool RetainCompilations; }
+
+namespace Lifeblood.Domain.Results;
+public sealed class SkippedFile { public string FilePath = """"; }
+
+namespace Microsoft.CodeAnalysis;
+public class MetadataReference { }
+
+namespace Lifeblood.Adapters.CSharp.Internal;
+using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Results;
+using Microsoft.CodeAnalysis;
+using SysList = System.Collections.Generic.List<Lifeblood.Domain.Results.SkippedFile>;
+
+public sealed class ModuleCompilationBuilder
+{
+    internal delegate void CompilationProcessor(ModuleInfo module, MetadataReference compilation);
+
+    public Dictionary<string, MetadataReference>? ProcessInOrder(
+        ModuleInfo[] modules,
+        string projectRoot,
+        AnalysisConfig config,
+        CompilationProcessor processor,
+        Action<string, int, int>? onModuleProgress = null,
+        List<SkippedFile>? skippedCollector = null)
+    {
+        var m = modules[0];
+        var depRefs = new MetadataReference[0];
+        var compilation = CreateCompilation(m, projectRoot, config, depRefs, skippedCollector);
+        return null;
+    }
+
+    private MetadataReference? CreateCompilation(
+        ModuleInfo module, string projectRoot, AnalysisConfig config,
+        MetadataReference[] dependencyRefs,
+        List<SkippedFile>? skippedCollector) => null;
+}");
+
+        var symbolExtractor = new RoslynSymbolExtractor();
+        var symbols = symbolExtractor.Extract(model, root, "Builder.cs", "file:Builder.cs");
+
+        var edgeExtractor = new RoslynEdgeExtractor();
+        var edges = edgeExtractor.Extract(model, root);
+
+        var defMethod = symbols.FirstOrDefault(s =>
+            s.Kind == DomainSymbolKind.Method && s.Name == "CreateCompilation");
+        Assert.True(defMethod != null,
+            "CreateCompilation symbol was not extracted at all. Symbols: " +
+            string.Join(", ", symbols.Where(s => s.Kind == DomainSymbolKind.Method).Select(s => s.Id)));
+        var defId = defMethod!.Id;
+
+        var callsEdge = edges.FirstOrDefault(e =>
+            e.Kind == EdgeKind.Calls &&
+            e.SourceId.Contains("ProcessInOrder", System.StringComparison.Ordinal) &&
+            e.TargetId.Contains("CreateCompilation", System.StringComparison.Ordinal));
+
+        Assert.True(callsEdge != null,
+            "No Calls edge from ProcessInOrder to CreateCompilation was emitted.\n" +
+            "Definition id was: " + defId + "\n" +
+            "All Calls edges out of ProcessInOrder:\n  " +
+            string.Join("\n  ", edges
+                .Where(e => e.Kind == EdgeKind.Calls && e.SourceId.Contains("ProcessInOrder", System.StringComparison.Ordinal))
+                .Select(e => e.TargetId)));
+
+        Assert.True(callsEdge!.TargetId == defId,
+            "Calls edge target id drifted from the definition id.\n" +
+            "  defId    = " + defId + "\n" +
+            "  targetId = " + callsEdge.TargetId);
+    }
+
+    /// <summary>
     /// Compile two modules where Module B references Module A via PE metadata.
     /// Returns the semantic model for Module B — the consumer side where cross-module
     /// edges need to be extracted.

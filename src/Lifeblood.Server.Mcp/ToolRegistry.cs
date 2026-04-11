@@ -242,7 +242,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_dead_code",
   Availability = ToolAvailability.ReadSide,
-  Description = "Scan the loaded graph for symbols with no incoming semantic references — dead code candidates. Defaults: excludes public-visibility symbols (assumed reachable from outside) and test files. Returns canonical ids, kinds, file:line locations, and a short reason per hit. Use `includeKinds` to narrow (e.g. ['Method']). Phase 6 / DAWG R1.",
+  Description = "[EXPERIMENTAL — ADVISORY ONLY] Scan the loaded graph for symbols with no incoming semantic references — dead code CANDIDATES. Defaults: excludes public-visibility symbols (assumed reachable from outside) and test files. Returns canonical ids, kinds, file:line locations, and a short reason per hit. Use `includeKinds` to narrow (e.g. ['Method']). **Known false-positive classes (INV-DEADCODE-001):** (1) symbols referenced only via method-group conversion — methods passed as delegates to `Lazy<T>`, event handlers, LINQ chains; (2) methods whose call-site canonical id diverges from the definition-side id in full multi-module workspaces (pre-existing extraction gap under investigation for v0.6.4); (3) fields read via same-class instance access when the enclosing type has no external references. Treat every finding as a candidate to verify with `lifeblood_find_references` before acting, and remember that `find_references` has the same known gap class. Phase 6 / DAWG R1.",
   InputSchema = new
   {
   type = "object",

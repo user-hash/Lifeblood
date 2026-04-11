@@ -313,6 +313,30 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains("type:Core.Bar", text);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Dead code dispatch. Pins the INV-DEADCODE-001 contract: every
+    // response from the dead_code tool MUST carry the experimental
+    // status marker and the warning text listing known false-positive
+    // classes. Removing either field is how this invariant regresses;
+    // this test catches that before it ships.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Handle_DeadCode_Response_IncludesExperimentalWarning()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_dead_code", null);
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"status\": \"experimental\"", text);
+        Assert.Contains("method-group conversion", text);
+        Assert.Contains("canonical-id drift", text);
+        Assert.Contains("lifeblood_find_references", text);
+    }
+
     [Fact]
     public void Handle_Search_KindsFilter_Applied()
     {

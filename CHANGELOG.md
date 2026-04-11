@@ -5,6 +5,140 @@ All notable changes to Lifeblood are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.6.3] - 2026-04-11
+
+One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds four new MCP tools (semantic search, dead code, partial view, invariant check), five new port interfaces, the wrong-namespace resolver fallback, `compile_check` auto-wrap for library modules, the MCP wire/internal DTO split that unblocks Claude Code reconnect, tokenized ranked-OR search, a Linux CI fix, and a release-wide documentation sweep. Ships `lifeblood_dead_code` as experimental / advisory with three documented false-positive classes. **Tools: 18 to 22 (+4). Ports: 17 to 22 (+5). Tests: 362 to 539.**
+
+### Commits included since v0.6.1
+
+- `898b125` feat(resolver, extraction): improvement-master plan phases 0-4
+- `e42f51b` feat(search): `lifeblood_search` tool + xmldoc persistence (phase 5)
+- `db09dfe` feat(analysis, compile-check): phases 6+7 dead_code, partial_view, break_kind, auto-refresh
+- `96abd06` fix(review): self-review pass with live-drift ratchet + dedup / classification edge cases
+- `334b47d` fix(mcp): wire / internal split + single source of truth; unblocks Claude Code reconnect
+- `9cc9e50` fix(search): tokenized ranked OR so multi-word queries stop collapsing to zero
+- `ea08264` test(mcp): close stdio-loop and search dispatch coverage gaps
+- `a077e35` fix(ci): extract `CsprojPaths` shared helper; unblocks Linux build
+- `24f607e` fix(write): `compile_check` auto-wraps statement snippets for library modules
+- `afbc358` fix(resolver): wrong-namespace inputs resolve via trailing short-name segment (`INV-RESOLVER-005`)
+- `26bb8bf` feat(invariants): `lifeblood_invariant_check` (Phase 8)
+- `c31b44a` docs(plans): publish Phase 8 design spike under `docs/plans/`
+
+### Added. Resolver, extraction, and view hardening (phases 0-4)
+
+- **`ISymbolResolver` port in Application**, with `LifebloodSymbolResolver` as the reference implementation in `Connectors.Mcp`. Every read-side MCP tool that takes a `symbolId` routes through one resolver before any graph or workspace lookup. Resolution order: exact canonical match, then truncated method form (single-overload lenient), then bare short name. Partial-type unification is computed as a read model on the resolution result, not a graph schema change. See `INV-RESOLVER-001..004`.
+- **`IUserInputCanonicalizer` port**, with `CSharpUserInputCanonicalizer` handling primitive-alias rewriting (`System.String` to `string`, `global::` stripping) at step 0 of the pipeline so every diagnostic, `Candidates[]` entry, and log line quotes the canonical form rather than the user's raw input.
+- **`RoslynSemanticView`**: typed adapter-side read-only view exposing `Compilations`, `Graph`, and `ModuleDependencies` as a single shared reference. Constructed once per `GraphSession.Load`. `RoslynCodeExecutor` consumes it as the script-host globals object. See `INV-VIEW-001..003`.
+
+### Added. `lifeblood_search` (phase 5)
+
+- **New tool** backed by the new `ISemanticSearchProvider` port and `LifebloodSemanticSearchProvider` reference implementation. Ranks symbols by name match, qualified-name match, and persisted xmldoc summary match.
+- **XML doc persistence**: during symbol extraction the C# adapter now attaches `<summary>` text to `Symbol.Properties["xmlDocSummary"]` so the search provider can rank on what a symbol does, not just what it is named.
+
+### Added. Dead code, partial view, and compile-check auto-refresh (phases 6-7)
+
+- **New tool `lifeblood_dead_code`** (ships experimental / advisory in v0.6.3; see "Known limitation" below), backed by `IDeadCodeAnalyzer` and `LifebloodDeadCodeAnalyzer`. Scans the graph for symbols with no incoming semantic references.
+- **New tool `lifeblood_partial_view`**, backed by `IPartialViewBuilder` and `LifebloodPartialViewBuilder`. Returns the combined source of every partial declaration of a type with file headers between segments.
+- **`lifeblood_compile_check` auto-refresh**: if any tracked file on disk has changed since the last analyze, the handler incrementally re-analyzes before compiling the snippet. Opt out with `staleRefresh: false`. The response carries `autoRefreshed: true` plus `changedFileCount: N` when a refresh actually ran.
+
+### Fixed. MCP wire / internal DTO split (`334b47d`)
+
+- **The bug.** `McpToolInfo` was a conflated wire + internal type with `[JsonIgnore] required init ToolAvailability Availability`. .NET 8 `System.Text.Json` has a latent bug where `[JsonIgnore]` is not honoured on `required init` properties during serialization metadata construction: the runtime threw `JsonException` on every `tools/list` response, which Claude Code interpreted as a dead server and refused to reconnect.
+- **The fix.** Split `ToolDefinition` (internal registry record, carries `Availability`) from `McpToolInfo` (pure wire DTO, no `Availability` field at all). `ToolRegistry.GetDefinitions()` returns definitions for test seams; `ToolRegistry.GetTools()` projects to wire DTOs, applying `[Unavailable...]` description decoration based on the session's compilation state. The wire DTO has no `required` / `init` interaction quirks, so `System.Text.Json` serializes it cleanly.
+- **Typed availability dispatch.** Removed the previous 8-prefix string match that silently misclassified `lifeblood_resolve_short_name`. Classification is now via the typed `ToolAvailability` enum on `ToolDefinition`; omitting `Availability` is a compile error. See `INV-TOOLREG-001`.
+- **Single source of truth for MCP protocol constants.** Protocol version, JSON-RPC method names, and notification method names live exclusively in `Lifeblood.Connectors.Mcp.McpProtocolSpec`. The Unity bridge ships a standalone mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` pinned byte-equal to `McpProtocolSpec` by a ratchet test. Fixes two latent Unity bridge bugs: empty `initialize.params` and legacy `initialized` notification alias usage. See `INV-MCP-003`.
+
+### Fixed. Resolver wrong-namespace short-name fallback (`afbc358`, `INV-RESOLVER-005`)
+
+- **Two dogfood reports landed the same failure class.** User typed `type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter` when the real symbol lives in `Audio.Tuning`. User typed `type:Nebulae.BeatGrid.Audio.Tuning.DspPolicy` when the real symbol lives in `Infrastructure.Audio.Synthesis.Recipes`. Both cases returned three unrelated long-named `MixerScreenAdapter` properties as "Did you mean" suggestions.
+- **Two compounding bugs.** Rules 1-3 in `LifebloodSymbolResolver.Resolve` all failed because the input had a kind prefix and namespace dots, but rule 3's bare short-name lookup only fires when the input has neither prefix nor dots. And the fallback ranker scored the full canonical-shaped input string against every bare symbol name; Levenshtein closeness is `candidateLength - distance`, which biases toward long candidate names regardless of semantic similarity.
+- **Architectural fix** in `LifebloodSymbolResolver`: one helper, one new rule, one ranker correction.
+  - `ExtractLikelyShortName(string)`: pure function. Strips kind prefix, strips method parameter list, returns the final dot-separated segment. Single source of truth used by both Rule 4 and the suggestion ranker.
+  - **Rule 4** (`ResolveOutcome.ShortNameFromQualifiedInput` and `AmbiguousShortNameFromQualifiedInput`). After rules 1-3 fail and the extracted short name is non-empty, look it up via `SemanticGraph.FindByShortName`. Single hit resolves with a diagnostic explaining the namespace correction. Multiple hits surface all candidates. Zero hits fall through to `NotFound` with an honest diagnostic.
+  - `SuggestNearMatchesInternal` passes the query through `ExtractLikelyShortName` before scoring. Literal short-name index hits land at `ShortNameHitScore = 1000`, deliberately above any reachable `ScoreCandidate` value, so real short-name matches always sort above fuzzy-ranking accidents.
+- Every one of the 10 read-side and write-side tools that route through `ISymbolResolver` inherits the fix automatically (`INV-RESOLVER-001`).
+- Pinned by `ResolverShortNameFallbackTests` (24 tests including both exact dogfood cases reproduced in synthetic graphs with bias-inducing noise symbols).
+
+### Fixed. `lifeblood_compile_check` auto-wraps bare statement snippets (`24f607e`)
+
+- **The bug.** The tool was documented as "compile a snippet in the project context" but fed raw text to `CSharpSyntaxTree.ParseText` and pasted the result at the top level of the target module. Library modules (the overwhelming majority of csprojs) refused bare statement snippets like `var x = 1 + 1;` with CS8805 "Program using top-level statements must be an executable". Users had to manually wrap snippets in `class _Probe { void M() { ... } }` to test anything that was not already a complete compilation unit.
+- **The fix.** New `Internal.SnippetWrapper` helper. If the parsed `CompilationUnitSyntax` contains any type, namespace, or delegate declaration at the top level, pass through unchanged. Otherwise wrap the statements in a synthetic `class _LifebloodCompileProbe { void _LifebloodCompileBody() { ... } }` on a single inserted line above the user's body. Using directives are preserved at the top level. `MapLineToUser` remaps diagnostic line numbers back to the user's original coordinates.
+- `RoslynCompilationHost.CompileCheck` routes through `SnippetWrapper.Prepare` and applies `MapLineToUser` when projecting diagnostics.
+- Pinned by `SnippetWrapperTests` (21 tests) plus 5 end-to-end `CompileCheck` integration tests in `WriteSideToolTests`.
+
+### Fixed. `lifeblood_search` tokenized ranked-OR scoring (`9cc9e50`)
+
+- **The bug.** The provider scored against `sym.Name.Contains(query, ...)` with the whole untokenized query string. Dogfood against DAWG: `"interpolate"` returned 5 hits, `"interpolate values"` returned 0. `"quantize"` returned 5 hits, `"quantize timing to grid"` returned 0. A tool billed as ranked keyword search that zeros out the moment you add specificity.
+- **The fix.** The query is now an ordered list of tokens, not an opaque string. Split on whitespace, dedup case-insensitively, drop tokens below 3 chars to keep noise from saturating scores, fall back to the whole trimmed query as a single literal when every token is sub-threshold so "id" or "db" still work. Each surviving token is an independent scoring signal; scores OR-accumulate across fields and tokens. Per-field weights and the FQ vs. bare-name dedup semantics are preserved.
+- Pinned by 6 new regression tests in `SemanticSearchTests`.
+
+### Fixed. Linux CI path normalization drift (`a077e35`)
+
+- **CI was red on every commit since `96abd06`.** `ArchitectureInvariantTests.CompositionRoot_CLI_UsesOnlyAllowedModules` and the `ServerMcp` variant failed on Linux because `Path.GetFileNameWithoutExtension` treats backslash as a literal filename character on non-Windows hosts. Csproj `ProjectReference Include` attributes are authored in MSBuild convention (`..\Lifeblood.Domain\Lifeblood.Domain.csproj`), so the test received an unsplittable string and the allowlist check failed against `..\Lifeblood.Domain\Lifeblood.Domain` instead of `Lifeblood.Domain`.
+- **The fix.** Same class as commits `c9606b9` and `562dc6a` ("normalize path separators at every csproj / sln raw-path site") but for the ratchet test that was missed. Extracted `Internal.CsprojPaths` with `NormalizeSeparators` and `GetReferencedModuleName`, and routed every caller through it. `RoslynModuleDiscovery`'s four call sites and the architecture ratchet test now share one implementation, so future csproj-path bugs cannot affect one without affecting the other.
+
+### Added. `lifeblood_invariant_check` (Phase 8, `26bb8bf`, `INV-INVARIANT-001`)
+
+- **New MCP tool** that turns `CLAUDE.md`'s 58+ architectural invariants into queryable structured data. Three modes selected by parameter shape:
+  - `id`: return one invariant's full body, title, category, and source line.
+  - `mode: "audit"` (default): summary with total count, per-category breakdown, duplicate-id collisions, and parse warnings.
+  - `mode: "list"`: every id plus title plus category plus source line, bodies omitted for compact responses.
+- **Hexagonal stack**, five new classes across Application and `Connectors.Mcp`:
+  - `Invariant`, `InvariantAudit`, `CategoryCount`, `DuplicateInvariantId` value types in `Lifeblood.Application.Ports.Right.Invariants/`.
+  - `IInvariantProvider` port.
+  - `Internal.ClaudeMdInvariantParser`: pure text to records. Handles shape A (`- **INV-X-N**: body`) and shape B (`- **INV-X-N. Title.** body`). Multi-line titles, multi-paragraph bodies, duplicate detection, category inference from id prefix including multi-segment prefixes (`INV-USAGE-PROBE-002` to `USAGE-PROBE`), backtick-code-span-safe first-sentence extraction.
+  - `Internal.InvariantParseCache<T>`: generic timestamp-invalidated cache, reusable for any future invariant source.
+  - `LifebloodInvariantProvider`: thin orchestrator. Reads `CLAUDE.md` at the loaded project root via `IFileSystem`, delegates parsing to the parser, caches per-root.
+- **Source of truth.** `CLAUDE.md` is parsed at runtime; no companion metadata file. Deliberate simplification of the original Phase 8 spike's Option C, eliminating drift between a prose source and a structured mirror. Phase 8C can still add a metadata companion later without breaking the contract.
+- **Works on any project.** Lifeblood itself declares 58 invariants. DAWG (production Unity workspace) declares 61. Projects without `CLAUDE.md` get a graceful empty audit.
+- **Regression pins**: 43 tests across four files.
+  - `ClaudeMdInvariantParserTests`: 17 tests covering both bullet shapes, block termination, duplicate detection, category inference, backtick-code-span-safe title extraction.
+  - `InvariantProviderAndHandlerTests`: 14 tests including provider direct tests, handler dispatch, and one end-to-end test via real `lifeblood_analyze` against a minimal Roslyn workspace.
+  - `LifebloodClaudeMdSelfTests`: 5 tests that parse Lifeblood's own `CLAUDE.md` and audit the invariant inventory (>= 50 invariants floor, every core category present, known stable ids resolve, no duplicates, no parse warnings).
+  - `InvariantParseCacheTests`: 7 tests pinning the generic cache against a fake `IFileSystem`: empty path, missing file, cache hit on unchanged timestamp, invalidation on timestamp change, parser-throws retry, concurrent reads.
+- Phase 8 spike published at `docs/plans/invariant-check-spike.md`.
+
+### Added. MCP stdio-loop and ToolHandler search dispatch coverage (`ea08264`)
+
+- **`McpStdioLoopTests`** (3 tests). Every previous MCP test exercised `McpDispatcher` in-process; none spawned the real compiled dll. Closes that gap with tests that boot `Lifeblood.Server.Mcp.dll` via `dotnet <dll>`, speak real JSON-RPC 2.0 over real stdin / stdout, and pin:
+  1. `initialize` handshake round-trips through the real reader / writer / dispatcher chain.
+  2. `tools/list` returns `result.tools[]`, never `error`. Pins the serialization regression class that `334b47d` fixed.
+  3. **Stdout purity.** Every line read from stdout must parse as valid JSON-RPC. Any future `Console.WriteLine` that lands on stdout instead of `Console.Error.WriteLine` (banner, log, stray print) corrupts MCP framing and breaks every client. No in-process dispatcher test can catch this.
+- **`Handle_Search_*` tests in `ToolHandlerTests`** (5 new tests). `lifeblood_search` had zero ToolHandler-layer coverage; the dispatch path (args parsing, kinds-array coercion, query string coercion, error envelopes) was untested.
+
+### Known limitation. `lifeblood_dead_code` is experimental / advisory (`INV-DEADCODE-001`)
+
+- **Dogfood against DAWG** surfaced three false-positive classes.
+  1. **Method-group references.** A private method passed as a delegate (`new Lazy<T>(Load)`, event handler registration, LINQ `Where(predicate)`) never produces an `InvocationExpressionSyntax` at the call site, so no `Calls` edge is emitted into the referenced method. Example: `BclReferenceLoader.Load` is flagged as dead because its only caller is `new Lazy<>(Load)` in the same type's static field initializer.
+  2. **Multi-module canonical-id drift.** Direct invocations of some methods with complex signatures (nullable generics, cross-module source-type parameters) fail to produce `Calls` edges in the full multi-module workspace even though isolated synthetic reproductions work. Example: `ModuleCompilationBuilder.CreateCompilation` is called directly on line 96 of the same file but has zero incoming edges in the graph. Root cause still under investigation; scheduled for v0.6.4.
+  3. **Same-class private field reads.** Private fields read from sibling methods on the same type are flagged because the extractor does not emit read-edges at method-to-field granularity.
+- **Ship decision.** The tool is marked `[EXPERIMENTAL. ADVISORY ONLY]` in its description. Every response carries `status: "experimental"` plus a `warning` field listing the classes so agents cannot consume findings without seeing the caveat. `Handle_DeadCode_Response_IncludesExperimentalWarning` pins the caveat against future regression.
+- **v0.6.4 scope.** Root-cause investigation of class 2 is scheduled for the next release. Classes 1 and 3 likely fix together with method-group-conversion edge extraction.
+- **Impact on other tools.** `lifeblood_find_references`, `lifeblood_dependants`, `lifeblood_blast_radius`, and `lifeblood_file_impact` inherit the same class-2 gap for the same subset of methods. They are still authoritative for the 95%+ of symbols outside the gap class. Regression tests `ExtractEdges_MethodCall_NullableGenericParameter_SameClass_ProducesCallsEdge` and `ExtractEdges_MethodCall_ComplexSignature_MatchesRealProcessInOrder` in `RoslynExtractorTests` pin the synthetic happy-path.
+
+### Changed
+
+- **Tool count**: 18 to **22** (added `lifeblood_search`, `lifeblood_dead_code`, `lifeblood_partial_view`, `lifeblood_invariant_check`).
+- **Port interfaces**: 17 to **22** (added `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IPartialViewBuilder`, `IUserInputCanonicalizer`, `IInvariantProvider`).
+- **Tests**: 362 to **539**.
+- **Duplicate invariant id resolved.** `CLAUDE.md` had two invariants sharing the id `INV-TEST-001` (one under "Testing", one under "Test Discipline"). The drift was caught by `lifeblood_invariant_check` itself, which is why the tool exists. The Test Discipline instance is now `INV-TESTDISC-001`.
+- **`Lifeblood.Connectors.Mcp.csproj`** gains `InternalsVisibleTo Lifeblood.Tests`, matching the convention `Lifeblood.Adapters.CSharp.csproj` already uses.
+- **docs/STATUS.md ratchets updated**: `portCount: 17 to 22`, `toolCount: 18 to 22`, `testCount: 362 to 539`.
+- **Release-wide documentation sweep.** `README.md`, `docs/TOOLS.md`, `docs/ARCHITECTURE.md`, `docs/STATUS.md`, `docs/architecture.html`, and this `CHANGELOG.md` are rewritten to reflect 22 tools, 22 ports, the new invariant-check tool, the compile_check auto-wrap, the resolver wrong-namespace fallback, the search tokenization, and the dead_code experimental caveat.
+
+### Invariants registered in CLAUDE.md
+
+- `INV-RESOLVER-001..004`. Identifier resolution as an Application port. Every read-side tool routes through one resolver. Partial-type unification is a read model.
+- `INV-RESOLVER-005`. Wrong-namespace inputs resolve via the trailing short-name segment.
+- `INV-VIEW-001..003`. Each language adapter publishes a typed semantic view; consumers take it by reference.
+- `INV-TOOLREG-001`. Tool availability dispatch is by typed enum, never by name prefix. Internal registry records and wire-format DTOs are separate types.
+- `INV-MCP-003`. Every MCP wire-format constant has exactly one canonical source per side.
+- `INV-INVARIANT-001`. `CLAUDE.md` is the single source of truth for architectural invariants; the tool parses it at runtime.
+- `INV-DEADCODE-001`. `lifeblood_dead_code` is advisory and ships with three documented false-positive classes. Every response carries the experimental marker and warning.
+- `INV-TESTDISC-001`. Tests never silently early-return on precondition failure.
+
 ## [0.6.1] - 2026-04-10
 
 Credibility pass after the v0.6.0 release. Closes an MCP-spec interoperability gap, extracts the MCP dispatcher into its own testable class, closes a latent display-string-for-matching bug class in `FindImplementations`, converts silent test skips to explicit `Skip.IfNot` calls that can no longer hide real failures, tightens the architecture ratchet, and syncs the doc numbers that drifted during v0.6.0 preparation. 344 → 362 tests. No behavior change in analyze or any read-side tool.
@@ -432,7 +566,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
 [0.6.1]: https://github.com/user-hash/Lifeblood/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/user-hash/Lifeblood/compare/v0.5.0...v0.5.1

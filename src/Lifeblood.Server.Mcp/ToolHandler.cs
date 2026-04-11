@@ -269,7 +269,23 @@ public sealed class ToolHandler
         var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests);
         var findings = _deadCode.FindDeadCode(_session.Graph!, options);
         return TextResult(JsonSerializer.Serialize(
-            new { count = findings.Length, findings },
+            new
+            {
+                // Surfaced in every response so agents cannot use the tool
+                // without seeing the caveat. INV-DEADCODE-001.
+                status = "experimental",
+                warning = "Findings are ADVISORY. Known false-positive classes: " +
+                          "(1) methods referenced via method-group conversion " +
+                          "(Lazy<T>, event handlers, delegate arguments); " +
+                          "(2) methods with call-site canonical-id drift in multi-module " +
+                          "workspaces (pre-existing extraction gap under investigation); " +
+                          "(3) private fields read via same-class access when the enclosing " +
+                          "type has no external references. Verify each finding with " +
+                          "lifeblood_find_references (which has the same gap class) and " +
+                          "direct code inspection before acting.",
+                count = findings.Length,
+                findings,
+            },
             JsonOpts));
     }
 

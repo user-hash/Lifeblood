@@ -53,6 +53,9 @@ lifeblood_analyze projectPath="/path/to/your/project"   → load semantic graph
 lifeblood_blast_radius symbolId="type:MyApp.AuthService" → what breaks if I change this?
 lifeblood_file_impact filePath="src/AuthService.cs"      → what files are affected?
 lifeblood_find_references symbolId="type:MyApp.IRepo"    → every caller, every consumer
+lifeblood_search query="quantize timing to grid"         → ranked keyword + xmldoc search
+lifeblood_invariant_check id="INV-CANONICAL-001"         → query architectural invariants from CLAUDE.md
+lifeblood_compile_check code="var x = 1 + 1;"            → snippet compiles, auto-wraps for library modules
 lifeblood_execute code="typeof(MyApp.Foo).GetMethods()"  → run C# against your types
 ```
 
@@ -78,16 +81,24 @@ dotnet test
 
 ---
 
-## 18 Tools
+## 22 Tools
 
-Connect an MCP client. Load a project. The AI agent gets **18 tools**: 8 read, 10 write.
+Connect an MCP client. Load a project. The AI agent gets **22 tools**: 12 read, 10 write.
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name |
+| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code¹, Partial View, Invariant Check |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
-Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, and bare short name all resolve to the same answer.
+¹ `lifeblood_dead_code` ships as **experimental / advisory** in v0.6.3. Known false-positive classes: (1) symbols referenced only via method-group conversion (delegates, `Lazy<T>`, events), (2) methods with canonical-id drift in multi-module workspaces, (3) private fields read via same-class access. Every response carries a `status: "experimental"` marker and a warning describing the limitations. See `INV-DEADCODE-001` in [CLAUDE.md](CLAUDE.md) for the full architectural note. Root-cause investigation scheduled for v0.6.4.
+
+Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, bare short name, and **wrong-namespace-correct-short-name** (v0.6.3, `INV-RESOLVER-005`) all resolve to the same answer.
+
+**New in v0.6.3:**
+- `lifeblood_invariant_check`: query `CLAUDE.md`'s architectural invariants as structured data. Lookup by id, list all, audit for duplicates. Works on any project with `INV-*` markers.
+- `lifeblood_compile_check` now auto-wraps bare statement snippets (`var x = 1 + 1;`) so they compile inside library modules without manual class wrapping.
+- `lifeblood_search` tokenizes multi-word queries for ranked OR scoring (previously any query longer than one word collapsed to zero results).
+- Resolver falls back to extracted-short-name lookup when a kind-prefixed input's namespace is wrong but the short name is unique.
 
 [Full tool reference](docs/TOOLS.md)
 
@@ -101,13 +112,13 @@ Hexagonal. Pure domain core with zero dependencies. Language adapters on the lef
 LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
-Roslyn (C#)       ──┐                            ┌──  MCP Server (18 tools)
+Roslyn (C#)       ──┐                            ┌──  MCP Server (22 tools)
 TypeScript        ──┼→  Domain  →  Application  →┤──  Context Pack Generator
 JSON graph        ──┘       ↑                     ├──  Instruction File Generator
                       Analysis (optional)         └──  CLI / CI
 ```
 
-17 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs) and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+22 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution + `IInvariantProvider` for CLAUDE.md invariant introspection). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 60+ typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -128,7 +139,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 ## Unity Integration
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 18 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 22 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -136,20 +147,18 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (CLI): 1,376 symbols, 3,822 edges, 11 modules, 174 types, 0 violations. **5.1 s wall, 212 MB peak**, 144% of one core.
+Self-analysis (MCP, v0.6.3): 1,834 symbols, 5,708 edges, 11 modules, 235 types, 0 violations. Lifeblood now audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md). 57 invariants across 25 categories, zero duplicate ids, zero parse warnings.
 
 Production-verified on a 75-module 400k LOC Unity workspace. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
 
-| Path | Wall | CPU total | CPU % (1 core) | Peak working set | GC gen0/1/2 | Use when |
-|---|---|---|---|---|---|---|
-| **CLI** (streaming, compilations released) | 32.6 s | 53.7 s | 164.5% | **571 MB** | 197 / 108 / 34 | One-shot analyze, rules check, graph export |
-| **MCP** (compilations retained) | 34.3 s | 59.2 s | 172.6% | **2,512 MB** | 2 / 1 / 1 | Interactive session with write-side tools (`execute`, `find_references`, `rename`, etc.) |
+| Path | Wall | CPU total | CPU % (1 core) | Peak working set | Use when |
+|---|---|---|---|---|---|
+| **CLI** (streaming, compilations released) | ~14 s | ~23 s | ~150% | ~570 MB | One-shot analyze, rules check, graph export |
+| **MCP** (compilations retained) | ~32 s | ~58 s | ~180% | ~2,800 MB | Interactive session with write-side tools (`execute`, `find_references`, `rename`, etc.) |
 
-The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads).
+The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Exact numbers are surfaced live on every `lifeblood_analyze` response via the `usage` field so they can be cited deterministically.
 
-The +9,000-plus edges over the previous baseline come from the v0.6.0 BCL ownership fix (call-graph extraction stops returning null at every System usage in workspaces that ship their own BCL) and the multi-parent GraphBuilder fix (partial types now produce one Contains edge per declaration file).
-
-Seven sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests.
+Seven+ dogfood sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests, including the v0.6.3 resolver wrong-namespace fallback (`INV-RESOLVER-005`), the compile_check library-module auto-wrap, and the `lifeblood_dead_code` false-positive classes tracked under `INV-DEADCODE-001`.
 
 ---
 
@@ -164,14 +173,17 @@ Seven sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit
 
 | Page | Description |
 |------|-------------|
-| [Tools](docs/TOOLS.md) | All 18 tools with descriptions, symbol ID format, incremental usage |
+| [Tools](docs/TOOLS.md) | All 22 tools with descriptions, symbol ID format, incremental usage, dead_code caveats |
 | [MCP Setup](docs/MCP_SETUP.md) | Copy-paste configs for Claude Code, Cursor, VS Code, Claude Desktop, Unity |
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup guide, incremental, memory |
-| [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, port interfaces, invariants |
+| [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 22 port interfaces, invariants |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
+| [Invariants](CLAUDE.md) | 57+ typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Phase 8 Spike](docs/plans/invariant-check-spike.md) | Design record for `lifeblood_invariant_check`, rollout phases 8A-8E |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 50+ bugs found by self-analysis and reviewer dogfood sessions |
+| [CHANGELOG](CHANGELOG.md) | Every release: additions, fixes, known limitations |
 
 ---
 
