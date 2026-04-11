@@ -156,8 +156,9 @@ resolves bare short names, and computes the merged read model for partial types.
 - **INV-RESOLVER-002. The resolver accepts every input format.** Resolution
   order: exact canonical match → truncated method form (`method:NS.Type.Name`
   with no parens, lenient single-overload match) → bare short name (no kind
-  prefix and no namespace, looks up the short-name index). Returns
-  `SymbolResolutionResult` with `Outcome`, `CanonicalId`, `Symbol`,
+  prefix and no namespace, looks up the short-name index) → **extracted
+  short name from a kind-prefixed or namespaced input** (see INV-RESOLVER-005).
+  Returns `SymbolResolutionResult` with `Outcome`, `CanonicalId`, `Symbol`,
   `PrimaryFilePath`, `DeclarationFilePaths`, `Candidates`, and `Diagnostic`.
 
 - **INV-RESOLVER-003. Partial-type unification is a read model.** The graph
@@ -174,6 +175,60 @@ resolves bare short names, and computes the merged read model for partial types.
   (1) filename matches the type name exactly, (2) filename starts with
   `"<TypeName>."` (shortest match wins among prefix matches), (3) lexicographic
   first as final fallback. Same input + same graph → same primary, always.
+
+- **INV-RESOLVER-005. Wrong-namespace inputs resolve via the trailing
+  short-name segment.** Two dogfood reports landed the same failure: the user
+  typed a kind-prefixed, namespaced symbol id with a wrong or stale namespace
+  (`type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter` when the real symbol
+  lives in `Audio.Tuning`), and the resolver returned three completely
+  unrelated `MixerScreenAdapter` properties as suggestions. Two compounding
+  bugs:
+
+  1. Rules 1-3 in `LifebloodSymbolResolver.Resolve` all had to fail because
+     the input had a kind prefix and namespace dots — but rule 3's bare
+     short-name lookup only fires when the input has NEITHER prefix NOR
+     dots, so the short-name index was never consulted even though the
+     trailing segment uniquely identified the real symbol.
+  2. The fallback ranker `SuggestNearMatchesInternal` scored the FULL
+     canonical-shaped input (`type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter`)
+     against every symbol's bare `Name`. Levenshtein closeness in that
+     ranker is `closeness = candidateLength - distance`, which biases
+     toward extremely long candidate names regardless of semantic
+     similarity. The dogfood case ranked
+     `MixerScreenAdapter.…IMixerDisplayDataSource.ActivePresetName` first
+     because it was *long*, not because it was *related*.
+
+  The architectural fix lives in `LifebloodSymbolResolver` and consists
+  of one extracted helper plus one new rule plus one ranker correction:
+
+  - `LifebloodSymbolResolver.ExtractLikelyShortName(string)` is a pure
+    function that strips the kind prefix, strips any method parameter
+    list, and returns the final dot-separated segment. It's the single
+    interpretation of "what short name did the user mean" used by both
+    Rule 4 and the suggestion ranker so the two can never diverge.
+  - **Rule 4** (extracted short-name fallback). After rules 1-3 fail and
+    `ExtractLikelyShortName(input)` produces a non-empty segment that
+    differs from the input, the resolver looks the segment up via
+    `SemanticGraph.FindByShortName`. Single hit →
+    `ResolveOutcome.ShortNameFromQualifiedInput` (a successful resolution
+    populating `CanonicalId` + `Symbol` + a Diagnostic that explains the
+    namespace correction). Multiple hits →
+    `ResolveOutcome.AmbiguousShortNameFromQualifiedInput` with every
+    candidate surfaced; the resolver refuses to silently pick one.
+  - The suggestion ranker `SuggestNearMatchesInternal` now passes the
+    raw query through `ExtractLikelyShortName` BEFORE scoring. Literal
+    short-name-index hits land at score `ShortNameHitScore = 1000`,
+    deliberately above any reachable `ScoreCandidate` value, so a real
+    short-name match always sorts above any fuzzy ranking accident.
+
+  All ten read-side and write-side tools that route through the resolver
+  inherit the fix automatically — no per-tool change needed (this is the
+  whole point of INV-RESOLVER-001's "every read-side tool routes through
+  the resolver"). Pinned by `ResolverShortNameFallbackTests` (24 tests
+  including the two exact dogfood cases reproduced in synthetic graphs
+  with bias-inducing noise symbols, the ambiguous case, the not-found
+  fallthrough with extraction-aware diagnostic text, and the legacy
+  rules 1-3 still firing on bare and exact inputs).
 
 ## Csproj-Driven Compilation Facts
 

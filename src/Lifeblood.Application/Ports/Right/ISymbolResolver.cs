@@ -232,6 +232,27 @@ public enum ResolveOutcome
     /// lists the canonical ids of every overload.
     /// </summary>
     AmbiguousMethodOverload,
+
+    /// <summary>
+    /// The input carried a kind prefix and/or namespace, none of the canonical
+    /// / truncated-method / bare-short-name rules matched, but extracting the
+    /// trailing short name and running it through the short-name index
+    /// produced exactly one hit. The user's input was a wrong-namespace or
+    /// stale-namespace typo that the short-name fallback could still resolve
+    /// unambiguously. <see cref="SymbolResolutionResult.CanonicalId"/> holds
+    /// the resolved canonical id of the real symbol. The
+    /// <see cref="SymbolResolutionResult.Diagnostic"/> still describes what
+    /// happened so callers can surface "we interpreted X as Y" to the user.
+    /// </summary>
+    ShortNameFromQualifiedInput,
+
+    /// <summary>
+    /// Same family as <see cref="ShortNameFromQualifiedInput"/>, but the
+    /// extracted short name hit multiple symbols across namespaces. The
+    /// resolver refuses to guess which one the user meant and surfaces every
+    /// candidate in <see cref="SymbolResolutionResult.Candidates"/>.
+    /// </summary>
+    AmbiguousShortNameFromQualifiedInput,
 }
 
 /// <summary>

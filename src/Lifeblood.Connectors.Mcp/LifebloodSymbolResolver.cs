@@ -129,22 +129,90 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
             }
         }
 
+        // Rule 4: extracted-short-name fallback for prefixed / qualified inputs
+        // whose namespace is wrong or stale. The user typed something like
+        //   type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter
+        // when the real symbol lives in
+        //   type:Nebulae.BeatGrid.Audio.Tuning.VoicePatchAdapter
+        // Rules 1-3 all passed because of the kind prefix / namespace dots,
+        // so the bare short-name path never fired. Extract the trailing
+        // short-name segment here and look it up in the same short-name
+        // index rule 3 would have used. If it hits exactly one symbol we
+        // silently resolve to that symbol (ResolveOutcome.ShortNameFromQualifiedInput);
+        // if multiple we surface every candidate (AmbiguousShortNameFromQualifiedInput);
+        // if zero we fall through to the not-found diagnostic.
+        //
+        // This is the fix for the dogfood report where "Did you mean" suggestions
+        // were three unrelated MixerScreenAdapter properties despite the user's
+        // short name being uniquely resolvable via graph.FindByShortName — the
+        // old suggestion ranker was scoring the full canonical-shaped input
+        // string against bare symbol names, which Levenshtein'd toward length
+        // coincidence rather than semantic match. See INV-RESOLVER-005.
+        var extractedShortName = ExtractLikelyShortName(canonical);
+        bool triedExtractedShortName = false;
+        if (!string.IsNullOrEmpty(extractedShortName)
+            && !string.Equals(extractedShortName, canonical, System.StringComparison.Ordinal))
+        {
+            triedExtractedShortName = true;
+            var extractedMatches = graph.FindByShortName(extractedShortName);
+            if (extractedMatches.Count == 1)
+            {
+                var result = AttachOverloads(graph, BuildResolved(
+                    graph, extractedMatches[0].Id, extractedMatches[0],
+                    ResolveOutcome.ShortNameFromQualifiedInput));
+                // Preserve the explanatory diagnostic so tools can surface
+                // "we interpreted X as Y" instead of silently re-pointing.
+                return new SymbolResolutionResult
+                {
+                    CanonicalId = result.CanonicalId,
+                    Outcome = result.Outcome,
+                    Symbol = result.Symbol,
+                    PrimaryFilePath = result.PrimaryFilePath,
+                    DeclarationFilePaths = result.DeclarationFilePaths,
+                    Candidates = result.Candidates,
+                    Overloads = result.Overloads,
+                    Diagnostic = $"Resolved '{canonical}' via short-name fallback: " +
+                                 $"the namespace did not match any symbol, but the trailing " +
+                                 $"segment '{extractedShortName}' uniquely identifies " +
+                                 $"{extractedMatches[0].Id}.",
+                };
+            }
+            if (extractedMatches.Count > 1)
+            {
+                return new SymbolResolutionResult
+                {
+                    Outcome = ResolveOutcome.AmbiguousShortNameFromQualifiedInput,
+                    Candidates = extractedMatches.Select(s => s.Id).ToArray(),
+                    Diagnostic = $"Symbol not found: {canonical}. " +
+                                 $"The trailing short name '{extractedShortName}' matches " +
+                                 $"{extractedMatches.Count} symbols across different namespaces. " +
+                                 "Pick one from Candidates.",
+                };
+            }
+        }
+
         // Not-found diagnostic surfaces ranked near-matches so every dead-end
         // response carries next-steps. The scorer is the same one used by
         // ResolutionMode.Fuzzy and by SuggestNearMatches, so the order is
         // deterministic and consistent with the explicit fuzzy tool path.
+        // The ranker itself now routes through ExtractLikelyShortName so
+        // suggestions for prefixed inputs rank against the trailing segment
+        // instead of the entire canonical-shaped string.
         var suggestions = SuggestNearMatchesInternal(graph, canonical, limit: 5);
         var suggestionText = suggestions.Length == 0
             ? ""
             : " Did you mean: " + string.Join(", ", suggestions.Take(3).Select(s => s.CanonicalId)) + "?";
 
+        var triedDescription = triedExtractedShortName
+            ? "Tried exact canonical match, lenient method overload, bare short-name lookup, " +
+              $"and extracted short-name fallback ('{extractedShortName}')."
+            : "Tried exact canonical match, lenient method overload, and short-name lookup.";
+
         return new SymbolResolutionResult
         {
             Outcome = ResolveOutcome.NotFound,
             Candidates = suggestions.Select(s => s.CanonicalId).ToArray(),
-            Diagnostic = $"Symbol not found: {canonical}. " +
-                         "Tried exact canonical match, lenient method overload, and short-name lookup." +
-                         suggestionText,
+            Diagnostic = $"Symbol not found: {canonical}. " + triedDescription + suggestionText,
         };
     }
 
@@ -195,36 +263,131 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     // ────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Rank every named symbol in the graph against the query and return
-    /// the top <paramref name="limit"/>. Deterministic for a given input.
-    /// Scoring:
-    /// <list type="bullet">
-    ///   <item>+10 if the query is a case-insensitive substring of the candidate's simple name.</item>
-    ///   <item>+5 if the query is a case-insensitive prefix of any CamelCase-split token of the candidate.</item>
-    ///   <item>+3 × max(0, candidateLength − levenshteinDistance).</item>
+    /// Rank symbols against the query and return the top
+    /// <paramref name="limit"/>. Deterministic for a given input.
+    ///
+    /// Two-stage ranking:
+    /// <list type="number">
+    ///   <item><b>Short-name index hits (primary).</b> The query is passed
+    ///     through <see cref="ExtractLikelyShortName"/> first. If the
+    ///     extracted segment produces any exact hits via
+    ///     <see cref="SemanticGraph.FindByShortName"/>, those land at
+    ///     score <see cref="ShortNameHitScore"/> — far above any fuzzy
+    ///     score so they always sort to the top.</item>
+    ///   <item><b>Fuzzy ranker (secondary).</b> Every named symbol is
+    ///     scored via <see cref="ScoreCandidate"/> against the extracted
+    ///     short name (or the raw query if extraction was a no-op). Scoring:
+    ///     <list type="bullet">
+    ///       <item>+10 if the query is a case-insensitive substring of the candidate's simple name.</item>
+    ///       <item>+5 if the query is a case-insensitive prefix of any CamelCase-split token of the candidate.</item>
+    ///       <item>+3 × max(0, candidateLength − levenshteinDistance).</item>
+    ///     </list>
+    ///   </item>
     /// </list>
     /// Ties are broken lexicographically on the canonical ID for stable
     /// ordering.
+    ///
+    /// The ExtractLikelyShortName step is load-bearing. Before it, callers
+    /// that passed a full canonical-shaped input (e.g.
+    /// <c>type:Foo.Bar.VoicePatchAdapter</c>) got ranked by Levenshtein
+    /// distance over the ENTIRE string, which biased the ranking toward
+    /// accidentally-long candidate names because
+    /// <c>closeness = candidateLength - distance</c> grows with candidate
+    /// length. Two independent dogfood reports landed on three unrelated
+    /// <c>MixerScreenAdapter.…ActivePresetName</c> suggestions as the
+    /// "best" matches. See INV-RESOLVER-005.
     /// </summary>
     internal static ShortNameMatch[] SuggestNearMatchesInternal(SemanticGraph graph, string query, int limit)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0) return System.Array.Empty<ShortNameMatch>();
 
-        var scored = new List<(int score, Symbol sym)>(capacity: 64);
+        // Extract the trailing short-name segment. Prefixed/qualified
+        // inputs rank against the segment; bare short names rank against
+        // themselves (extraction is a no-op).
+        var extracted = ExtractLikelyShortName(query);
+        var fuzzyQuery = string.IsNullOrEmpty(extracted) ? query : extracted;
+
+        // Merge both ranking sources in one dictionary keyed by canonical
+        // id. Short-name index hits get ShortNameHitScore; fuzzy hits get
+        // the ScoreCandidate result. If a symbol lands in both, the higher
+        // score wins — short-name hits always dominate because
+        // ShortNameHitScore is deliberately above the max reachable
+        // ScoreCandidate value for any realistic candidate.
+        var scored = new Dictionary<string, (int score, Symbol sym)>(StringComparer.Ordinal);
+
+        if (!string.IsNullOrEmpty(extracted) && !string.Equals(extracted, query, System.StringComparison.Ordinal))
+        {
+            foreach (var sym in graph.FindByShortName(extracted))
+            {
+                scored[sym.Id] = (ShortNameHitScore, sym);
+            }
+        }
+
         foreach (var sym in graph.Symbols)
         {
             if (string.IsNullOrEmpty(sym.Name)) continue;
-            var score = ScoreCandidate(query, sym.Name);
+            var score = ScoreCandidate(fuzzyQuery, sym.Name);
             if (score <= 0) continue;
-            scored.Add((score, sym));
+            if (scored.TryGetValue(sym.Id, out var existing))
+            {
+                if (score > existing.score) scored[sym.Id] = (score, sym);
+            }
+            else
+            {
+                scored[sym.Id] = (score, sym);
+            }
         }
 
-        return scored
+        return scored.Values
             .OrderByDescending(t => t.score)
             .ThenBy(t => t.sym.Id, StringComparer.Ordinal)
             .Take(limit)
             .Select(t => ToShortNameMatch(t.sym))
             .ToArray();
+    }
+
+    /// <summary>
+    /// Score awarded to a literal short-name-index hit. Deliberately far
+    /// above the maximum reachable <see cref="ScoreCandidate"/> value so
+    /// short-name hits always rank above fuzzy matches. Pinned by
+    /// <c>ResolverSuggestionRankingTests</c>.
+    /// </summary>
+    internal const int ShortNameHitScore = 1000;
+
+    /// <summary>
+    /// Strip the kind prefix (everything up to and including the first
+    /// <c>:</c>), strip any method parameter list <c>(...)</c>, and return
+    /// the final dot-separated segment. Returns the empty string for
+    /// null/whitespace input.
+    ///
+    /// Examples:
+    /// <list type="bullet">
+    ///   <item><c>type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter</c> → <c>VoicePatchAdapter</c></item>
+    ///   <item><c>method:App.Svc.Do(int)</c> → <c>Do</c></item>
+    ///   <item><c>App.Svc.Do</c> → <c>Do</c></item>
+    ///   <item><c>MidiLearnManager</c> → <c>MidiLearnManager</c> (no-op)</item>
+    ///   <item><c>type:Foo</c> → <c>Foo</c></item>
+    /// </list>
+    /// Pure function. No graph access, no side effects. Pinned by unit tests.
+    /// </summary>
+    internal static string ExtractLikelyShortName(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+
+        // Strip kind prefix (first colon and everything before it).
+        var colonIdx = input.IndexOf(':');
+        var working = colonIdx >= 0 ? input.Substring(colonIdx + 1) : input;
+
+        // Strip method parameter list if present.
+        var parenIdx = working.IndexOf('(');
+        if (parenIdx >= 0) working = working.Substring(0, parenIdx);
+
+        // Take the last dot-separated segment.
+        var lastDot = working.LastIndexOf('.');
+        if (lastDot >= 0 && lastDot < working.Length - 1)
+            working = working.Substring(lastDot + 1);
+
+        return working.Trim();
     }
 
     /// <summary>
