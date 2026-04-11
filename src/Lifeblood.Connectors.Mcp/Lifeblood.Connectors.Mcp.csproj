@@ -7,6 +7,9 @@
     <!-- RIGHT SIDE. MCP server for AI agents. -->
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Lifeblood.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
   </ItemGroup>
 </Project>

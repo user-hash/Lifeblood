@@ -177,8 +177,9 @@ resolves bare short names, and computes the merged read model for partial types.
 - **INV-RESOLVER-002. The resolver accepts every input format.** Resolution
   order: exact canonical match → truncated method form (`method:NS.Type.Name`
   with no parens, lenient single-overload match) → bare short name (no kind
-  prefix and no namespace, looks up the short-name index). Returns
-  `SymbolResolutionResult` with `Outcome`, `CanonicalId`, `Symbol`,
+  prefix and no namespace, looks up the short-name index) → **extracted
+  short name from a kind-prefixed or namespaced input** (see INV-RESOLVER-005).
+  Returns `SymbolResolutionResult` with `Outcome`, `CanonicalId`, `Symbol`,
   `PrimaryFilePath`, `DeclarationFilePaths`, `Candidates`, and `Diagnostic`.
 
 - **INV-RESOLVER-003. Partial-type unification is a read model.** The graph
@@ -195,6 +196,29 @@ resolves bare short names, and computes the merged read model for partial types.
   (1) filename matches the type name exactly, (2) filename starts with
   `"<TypeName>."` (shortest match wins among prefix matches), (3) lexicographic
   first as final fallback. Same input + same graph → same primary, always.
+
+  The architectural fix lives in `LifebloodSymbolResolver` and consists
+  of one extracted helper plus one new rule plus one ranker correction:
+
+  - `LifebloodSymbolResolver.ExtractLikelyShortName(string)` is a pure
+    function that strips the kind prefix, strips any method parameter
+    list, and returns the final dot-separated segment. It's the single
+    interpretation of "what short name did the user mean" used by both
+    Rule 4 and the suggestion ranker so the two can never diverge.
+  - **Rule 4** (extracted short-name fallback). After rules 1-3 fail and
+    `ExtractLikelyShortName(input)` produces a non-empty segment that
+    differs from the input, the resolver looks the segment up via
+    `SemanticGraph.FindByShortName`. Single hit →
+    `ResolveOutcome.ShortNameFromQualifiedInput` (a successful resolution
+    populating `CanonicalId` + `Symbol` + a Diagnostic that explains the
+    namespace correction). Multiple hits →
+    `ResolveOutcome.AmbiguousShortNameFromQualifiedInput` with every
+    candidate surfaced; the resolver refuses to silently pick one.
+  - The suggestion ranker `SuggestNearMatchesInternal` now passes the
+    raw query through `ExtractLikelyShortName` BEFORE scoring. Literal
+    short-name-index hits land at score `ShortNameHitScore = 1000`,
+    deliberately above any reachable `ScoreCandidate` value, so a real
+    short-name match always sorts above any fuzzy ranking accident.
 
 ## Csproj-Driven Compilation Facts
 
