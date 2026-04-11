@@ -1,119 +1,183 @@
 # Improvement Inbox
 
-Open improvement candidates surfaced during real-world dogfood sessions. Nothing here blocks work. These are friction points where the tools could give better answers, fewer round-trips, or better defaults. Each entry should land in [DOGFOOD_FINDINGS.md](DOGFOOD_FINDINGS.md) once shipped.
+State of Lifeblood going forward. Not a graveyard of shipped items and not a blog. Three things only:
 
-Format for each entry: short title, then what was observed, then the suggested fix shape, then why it matters.
+1. A current-state verdict compiled from the external reviews we run against the repo.
+2. A pointer to shipped work (tracked via git tags and `CHANGELOG.md`, not duplicated here).
+3. A small number of active forward-looking entries, each in a consistent format: title, observation, suggested fix shape, why it matters.
 
----
-
-## LB-INBOX-001. `lifeblood_resolve_short_name` has no fuzzy fallback
-
-**Observed.** Several queries for plausible-sounding short names against a real workspace returned zero results, even though near-matches existed in the loaded graph (different prefix, different trailing word, different namespace stem). The user then had to fall back to grep or `lifeblood_execute` scripts to find the right name.
-
-**Suggested fix.** On a zero-result resolution, return a `Suggestions[]` field with the top N near-matches scored by:
-
-- Exact substring containment of the query inside the candidate's short name (highest weight)
-- Levenshtein distance against the candidate short name
-- Token-prefix match (e.g. query `FooBar` matches `FooBarBaz`, `BarFoo`, `FoobarHelper`)
-- Tie-break by `Kind` filter if one was supplied
-
-The short-name index already exists on `SemanticGraph.GraphIndexes`. This is a read-side scoring pass over the same bucket. No schema change.
-
-**Why it matters.** Short-name resolution is the first tool an agent reaches for when it knows roughly what it's looking for. Zero-result without suggestions forces the agent to leave Lifeblood entirely (grep, IDE, manual recall), which is exactly the failure mode Lifeblood exists to prevent.
+Anything that has shipped is deleted from this file. Anything speculative that nobody is about to work on is also deleted. What remains is direction.
 
 ---
 
-## LB-INBOX-002. `lifeblood_resolve_short_name` is exact-only with no documented mode
+## Current state (as of v0.6.3, 2026-04-11)
 
-**Observed.** A query for a short name like `FooPool` returned a property whose final identifier was exactly `FooPool` (e.g. `OuterType.FooPool`), but did NOT return a sibling type whose full name *contained* the substring "FooPool" (e.g. `WidgetFooPool`). The exact-vs-contains semantics are not visible from the tool description, and the lookup felt arbitrary depending on whether the user was searching for a substring or an identifier.
+Consolidated from three independent external reviews on the day of the v0.6.3 release. The reviewers ran the audit against the live commit-pinned repo state, verified the architecture against the actual project-reference graph and ratchet tests, and in one case performed a real MCP round-trip against the built server to confirm end-to-end operability.
 
-**Suggested fix.** Add an explicit `mode` parameter to the tool input schema:
+### Combined ratings
 
-- `mode: "exact"` is the default. Last-identifier exact match, case-insensitive. Current behavior.
-- `mode: "contains"` does substring match against the candidate's last identifier.
-- `mode: "fuzzy"` uses LB-INBOX-001 scoring and returns ranked candidates.
+| Dimension                         | Average | Range       |
+|-----------------------------------|---------|-------------|
+| Idea / thesis                     | **9.2** | 9.0 to 9.5  |
+| Architecture                      | **9.0** | 9.0 to 9.0  |
+| Execution                         | **8.3** | 8.1 to 8.5  |
+| Practical usefulness              | **8.7** | 8.5 to 8.8  |
+| Connectability / operability      | **8.7** | 8.5 to 8.7  |
+| Trustworthiness / credibility     | **8.3** | 8.3 to 8.5  |
+| External proof / market proof     | **5.0** | 5.0 only    |
+| **Overall release quality**       | **8.6** | 8.5 to 8.7  |
 
-Document the semantics on each mode in the tool description so agents can reason about when to widen the net.
+### Green flags the reviewers all independently landed on
 
-**Why it matters.** Agents currently can't tell whether a zero-result is "this name does not exist" or "this name exists but I asked for it the wrong way." An explicit mode field removes the ambiguity in one round-trip.
+- The dependency shape is real, not marketing prose. `Lifeblood.Domain` is a genuine zero-dependency leaf. Application only references Domain. Adapters only reference Application. Connectors only reference Application. Composition roots are constrained by an allowlist test.
+- Architecture is ratcheted, not described. `ArchitectureInvariantTests` enforces dependency direction on every build. `DocsTests` enforces the port and tool counts in `docs/STATUS.md`. Architecture invariants in `CLAUDE.md` are runtime-queryable via `lifeblood_invariant_check`, which is itself self-auditing.
+- Single-source-of-truth discipline is the dominant engineering instinct at every drift-prone site: `CanonicalSymbolFormat`, `CsprojPaths`, `McpProtocolSpec`, and `CLAUDE.md` via the invariant-check tool.
+- New features arrive through ports, not random direct wiring. `ISymbolResolver`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IPartialViewBuilder`, and `IInvariantProvider` were all added in v0.6.3 as proper port interfaces in Application with connector-side implementations.
+- The project is comfortable surfacing limitations honestly. `lifeblood_dead_code` is marked experimental in every surface (tool description prefix, response envelope with `status: "experimental"` and `warning` field, CLAUDE.md invariant `INV-DEADCODE-001`, README, CHANGELOG, TOOLS.md, STATUS.md, architecture.html) rather than oversold.
+- End-to-end operability verified: a reviewer launched the built `Lifeblood.Server.Mcp.dll`, completed the MCP `initialize` handshake, called `lifeblood_analyze` on the repo itself, and got a valid response with 1863 symbols, 5777 edges, 11 modules, 0 violations, and a structured `usage` block.
 
----
+### Yellow flags worth tracking
 
-## LB-INBOX-003. No semantic keyword search across symbols + XML-doc summaries
+- External adoption proof is still early. Internal coherence is strong; the outside-world verdict is ahead of the repo, not behind it. Phase 5 of the roadmap below exists to address this.
+- Platform surface is growing quickly: 22 tools, 22 ports, multiple adapters, invariant introspection, Unity sidecar. Informal consistency will stop being enough well before v0.7. Phase 3 addresses this.
+- Maturity split across adapters is real and honest. C# / Roslyn is Proven; TypeScript is High; Python is Structural. Practical value is concentrated in the C# wedge today. Phase 4 doubles down on that wedge rather than trying to level the other adapters prematurely.
+- Documentation volume is high enough that drift risk is real even with ratchets. Two of the three reviewers called out "self-conscious repo" stylistic tells (heavy invariant naming, dense explanatory prose, polished narrative around every seam). Not disqualifying, but a warning that the discipline now needs to keep the same quality bar as the code.
+- Workspace noise: `bin/` and `obj/` artifacts appear in the visible repo tree at review time. These are gitignored but the local state is visible to tool-assisted reviewers. Not a repo-truth problem; a cosmetic UX problem during review.
+- One reviewer noted full-test verification could not be independently re-run during their review pass because the Release test suite is heavy and the session was interrupted. Internal verification is green (539/539 passing, confirmed by the CI workflow runs on `1017a3b` and `2511321` plus the publish workflow on `v0.6.3`).
 
-**Observed.** When investigating "anything related to <concept X>" in a real workspace, there is no tool that returns a *cluster* of relevant symbols across multiple namespaces. The agent has to know specific names up front, or fall back to grep over source files. The analyzer already has every symbol's short name, and (for documented members) their XML-doc `<summary>` text. This is a missed leverage point.
+### Red flags
 
-**Suggested fix.** New read-side tool `lifeblood_search(query, kinds?, limit?)`:
-
-- Tokenizes `query` into keywords (single or multi-word).
-- Scores every symbol against the keyword set using:
-  - Match in the short identifier name (highest weight)
-  - Match in the XML-doc `<summary>` text
-  - Match in the parent type or namespace name (lower weight)
-- Optional `kinds` filter (`["type", "method"]`).
-- Returns the top N symbols with their canonical id, kind, file, line, and the snippet that matched (for explainability).
-
-The XML-doc text is already extracted by `lifeblood_documentation`, so the data is in hand. This is a query layer over existing graph state. No new extraction required.
-
-**Why it matters.** This single tool would replace a large fraction of the grep-then-guess loops that drive agents out of Lifeblood and into the file system. It is the natural next read-side tool after `resolve_short_name` and `lookup`. Same scoring infrastructure, broader query surface.
-
----
-
-## LB-INBOX-004. `resolve_short_name` does not return canonical IDs per overload
-
-**Observed.** When the user resolved a short name belonging to an overloaded method, the tool returned the type, kind, and file/line, but NOT the full canonical symbol IDs of every overload. The user then had to inspect `dependants` output of an unrelated query to reverse-engineer the parameter signature before they could form a usable canonical id like `method:Foo.Bar.Baz(bool)`. The symbol-ID grammar is the contract Lifeblood owns. Agents should not have to guess it.
-
-**Suggested fix.** When a resolution result targets a method (or any kind that supports overloads), include a `Canonical[]` array in the response with one entry per overload, each containing:
-
-- The full canonical symbol id (built via `Internal.CanonicalSymbolFormat`)
-- The parameter list as a display string (using the same `CanonicalSymbolFormat.ParamType` so agents can copy-paste)
-- The file and line of that specific overload's declaration
-
-This is a read-side enrichment of the existing `SymbolResolutionResult` DTO. No Domain layer change. The resolver already walks all matching members. It just needs to surface every match instead of collapsing to one.
-
-**Why it matters.** Symbol IDs are the lingua franca of every Lifeblood read-side tool. The grammar is documented (INV-RESOLVER-001..004 plus the canonical format pin in `CLAUDE.md`), but the tool that exists to *discover* canonical IDs from short names hides the most crucial piece, the parameter signature, exactly when overloads make it most important. Closing this loop means every short-name lookup gives the agent a directly-callable id for every overload, no guessing.
+None. No reviewer flagged anything that suggested the repo is fundamentally incoherent, hallucinated, or misrepresenting its architecture.
 
 ---
 
-## LB-INBOX-005. `lifeblood_analyze` should report clear usage and timings natively — SHIPPED
+## Shipped since v0.6.0
 
-**Status: shipped in v0.6.0 work.** Every `lifeblood_analyze` response now carries a native `usage` block on both CLI (printed to stderr) and MCP (structured JSON field in the tool result). No external measurement wrapper required. See [STATUS.md](STATUS.md) for a worked example against both self-analysis and a real 75-module Unity workspace.
+Every LB-INBOX entry that was open before v0.6.3 has shipped. The work is traceable via `CHANGELOG.md` and the git history, not duplicated here.
 
-Shipped surface:
+- **LB-INBOX-001..004**: shipped in v0.6.1 through v0.6.3. Fuzzy short-name fallback (now a full resolution mode), explicit `resolve_short_name` modes, semantic keyword search via `lifeblood_search` with xmldoc ranking, canonical ids per method overload via `SymbolResolutionResult.Overloads`.
+- **LB-INBOX-005**: shipped in v0.6.0. Native `usage` block on every `lifeblood_analyze` response covering wall time, CPU time, peak memory, GC pressure, and per-phase timings. See `INV-USAGE-001..INV-USAGE-PROBE-002` in `CLAUDE.md`.
+- **Phase 8 (`lifeblood_invariant_check`)**: shipped in v0.6.3 commit `26bb8bf`. The design record is at `docs/plans/invariant-check-spike.md` with a header that now reflects what shipped versus the original spike.
 
-- `Lifeblood.Domain.Results.AnalysisUsage` POCO carrying wall time, CPU time (total, user, kernel), peak working set, peak private bytes, GC collection counts per generation, host logical core count, and per-phase timings.
-- `Lifeblood.Application.Ports.Infrastructure.IUsageProbe` + `IUsageCapture` port pair, optional third constructor arg on `AnalyzeWorkspaceUseCase`. When a probe is supplied, the use case returns a populated `Usage` field on its result. When no probe is supplied, the use case runs with zero overhead and `Usage` is null.
-- `Lifeblood.Adapters.CSharp.ProcessUsageProbe` concrete, `Process.GetCurrentProcess()` + `Stopwatch` + background `Timer` sampling peak RSS at a configurable interval (default 250 ms). 12 unit tests covering idempotent `Stop`, independent captures, phase order preservation, GC delta accounting, short-run non-zero peak guarantee, and CpuUtilizationPercent internal consistency.
-- CLI `PrintUsageBlock` helper renders the block in a fixed-column layout to stderr with `InvariantCulture` formatting so the output reads the same on every locale. Phase breakdown is shown with one line per phase.
-- MCP `GraphSession.Load` returns a structured JSON result with `summary`, `changedFileCount`, and a `usage` object. Agents consuming the tool read `usage.wallTimeMs`, `usage.peakWorkingSetMb`, `usage.phases[]`, etc. without parsing free text.
+No action required on any of the above. They are here as a pointer only.
 
-Kept here as a closed entry because the reasoning (why-it-matters list) documents a durable rule for the project: **every measurement the tool can take of itself, it should report in its structured response.** Future use cases that want similar instrumentation should reach for the same `IUsageProbe` port, not a bespoke wrapper. The invariant is recorded in `CLAUDE.md` as INV-USAGE-001 through INV-USAGE-PROBE-002.
+---
 
-**Observed.** Running `lifeblood analyze` against a real 75-module Unity workspace prints progress (`[1/3] Analyzing workspace`, etc.), final counts (symbols, edges, modules, types, cycles), and nothing else. There is no wall time, no peak memory, no CPU time, no per-phase breakdown. To get those numbers today you have to wrap the process with an external measurement harness (PowerShell `Start-Process` + poll, `/usr/bin/time -v`, or similar). Agents investigating performance therefore cannot self-serve and have to ask the operator for numbers that the process itself already has at its fingertips.
+## Post-v0.6.3 roadmap: five-phase tightening plan
 
-The same gap applies to `lifeblood_analyze` via MCP. The tool result carries graph counts but not the run's wall time, peak RSS, or phase breakdown.
+The strategic question for v0.6.4 and beyond is not "what is broken" but "what do we tighten next". The reviewers converged on a specific answer: amplify the existing strengths rather than broaden the thesis.
 
-**Suggested fix.** Add a `usage` block to every `lifeblood_analyze` response (both CLI and MCP tool), populated by the run itself from sources it already has or can cheaply add:
+The strict ordering is:
 
-- `wallTimeMs` (Stopwatch around the top-level analyze call)
-- `phases[]` (`discover`, `parse`, `compile`, `extract`, `build`, `validate`, each with `durationMs` and optionally `cpuMs`)
-- `peakWorkingSetBytes` (poll `Process.GetCurrentProcess().WorkingSet64` from a background timer during the run, or sample at phase boundaries)
-- `peakPrivateBytesBytes`
-- `cpuTimeTotalMs` (`Process.GetCurrentProcess().TotalProcessorTime` delta)
-- `cpuTimeUserMs` / `cpuTimeKernelMs`
-- `gcCollectionCounts[gen0|gen1|gen2]`
-- `hostCores` (from `Environment.ProcessorCount`)
-- `derived.cpuUtilizationPercent` (convenience: `cpuTimeTotalMs / wallTimeMs * 100`)
+**truth envelope → derived correctness → contract freeze → dominant wedge → public proof**
 
-For the CLI, print a one-screen usage block after the existing graph counts. For the MCP tool, include it in the structured result under a `usage` key so agents can read it without parsing text.
+Doing these out of order creates waste. Phase 3 (contract freeze) before Phase 1 (truth envelope) would freeze an incomplete response shape. Phase 5 (public proof) before Phase 2 (derived correctness) would lock external expectations to work that still has a known-false-positive tail. Phase 4 (dominant wedge) before Phase 3 (contract freeze) would create churn for early integrators.
 
-No external dependencies. `System.Diagnostics.Process` and `System.Diagnostics.Stopwatch` are enough. Polling peak working set from a `Timer` callback every 250 ms inside the analyze call is cheap and gives accurate peak figures. Phase-level Stopwatch timing is effectively free.
+None of this is release-blocking. v0.6.3 is live on NuGet and GitHub Releases. This is the direction for v0.6.4 through v0.7.
 
-**Why it matters.** Three things:
+The five phases are tracked below as `LB-INBOX-001` through `LB-INBOX-005` (renumbered on the clean inbox, same semantic order as the plan). A small execution caveat from review 3 is tracked as `LB-INBOX-006`.
 
-1. **Self-serve performance investigations.** Agents today cannot answer "is this slow because of compile time, extraction time, or validation time?" without touching external tooling. The phase breakdown turns that into a one-shot query.
-2. **Regression detection.** Every time the analyze pipeline changes, the wall-time and peak-RSS numbers should shift predictably. A usage block in the response makes it trivial to write ratchet tests that fail if, say, peak RSS on a canonical fixture grows by more than 10% between commits.
-3. **Honesty in the docs.** The published memory figures in `docs/STATUS.md`, `docs/UNITY.md`, and `README.md` come from manual measurement sessions that drift out of date quickly. If every analyze response carries fresh usage numbers, the docs can cite the output directly, and "1:1 honesty" stays 1:1 without per-release measurement chores. A real measurement taken during v0.6.0 preparation on a 16-core, 32-thread host showed 36.2 s wall, 56.2 s total CPU (155% of one core, around 5% across all 32 threads), and a 556 MB peak working set on a 75-module 400k LOC Unity workspace. Those numbers contradict the "~90 s, ~4 GB" figures that older docs quote. A native usage block would have caught the drift immediately.
+---
+
+## LB-INBOX-001. Phase 1. Uniform truth envelope across every read-side tool
+
+**Observed.** `lifeblood_dead_code` ships with a `status: "experimental"` marker and a `warning` field that describes its known false-positive classes in-band. Every other tool returns results without a comparable metadata shape. A caller receiving a `find_references` hit has no way to tell from the payload alone whether that hit is compiler-resolved, parser-structural, or graph-derived. The existing separation of syntax / semantic / derived truth in `docs/ARCHITECTURE.md` is not projected to the wire.
+
+**Suggested fix shape.** Define one typed response-metadata contract shared across MCP tools:
+
+- `truthTier`: one of `syntax` / `semantic` / `derived`
+- `confidence`: `proven` / `high` / `structural` / `advisory`
+- `evidenceSource`: where the result came from (`Roslyn`, `GraphBuilder`, `InferredByGraphWalk`, etc.)
+- `staleness`: optional timestamp or commit indicator when the result depends on a cached graph
+- `limitations`: optional free-form caveat when the tool knows it is operating outside its confident zone
+
+Every read-side tool declares its default tier. Advisory tools (today only `lifeblood_dead_code`, tomorrow possibly others) emit limitations in-band, not only in docs. Add response-shape golden tests across all 22 tools so no new tool can ship without the envelope.
+
+**Why it matters.** It amplifies the repo's strongest architectural idea (the syntax / semantic / derived distinction) without changing any engine underneath. Shortest path from "internally disciplined" to "externally trustworthy". Work compounds with Phase 3: once every response carries the envelope, versioning the envelope once covers every tool.
+
+---
+
+## LB-INBOX-002. Phase 2. Close out `INV-DEADCODE-001` and the shared extraction gap
+
+**Observed.** `INV-DEADCODE-001` in `CLAUDE.md` documents three false-positive classes in `lifeblood_dead_code`:
+
+1. Method-group references (delegate args, `Lazy<T>`, event handlers) never emit a `Calls` edge at the call site.
+2. Direct invocations of some methods with complex signatures fail to produce `Calls` edges in full multi-module workspaces even though synthetic reproductions work. Tracked as canonical-id drift between call-site and definition-side.
+3. Same-class private field reads are flagged because the extractor does not emit read-edges at method-to-field granularity.
+
+Classes 1 and 3 affect only `dead_code` today, but class 2 silently degrades `lifeblood_find_references`, `lifeblood_dependants`, `lifeblood_blast_radius`, and `lifeblood_file_impact` for the same subset of methods. The regression tests `ExtractEdges_MethodCall_NullableGenericParameter_SameClass_ProducesCallsEdge` and `ExtractEdges_MethodCall_ComplexSignature_MatchesRealProcessInOrder` in `RoslynExtractorTests` pin the synthetic happy-path but do not yet reproduce the multi-module failure mode.
+
+**Suggested fix shape.**
+
+1. Add a handler in `RoslynEdgeExtractor` for method-group conversion sites (identifier used as argument to a delegate-typed parameter) that emits a `Calls` edge into the referenced method. Covers class 1.
+2. Diagnose the class-2 multi-module drift by adding opt-in diagnostic logging to the extractor that dumps the canonical id Roslyn's `GetSymbolInfo` produces at the call site versus what `CanonicalSymbolFormat.BuildParamSignature` produces at the definition site, for every `Calls` edge on a real workspace load. Compare against DAWG and Lifeblood-self to find where the strings diverge.
+3. Emit read-edges at method-to-field granularity behind an opt-in flag. Covers class 3. Profile first; field-read edges can multiply graph size.
+4. Build a regression corpus from DAWG and Lifeblood edge cases rather than only synthetic single-file fixtures. The synthetic tests already pass; the gap lives in the full-workspace compilation pipeline.
+5. Once classes 1-3 are closed, graduate `dead_code` from `[EXPERIMENTAL, ADVISORY ONLY]` to a higher confidence tier via the Phase 1 truth envelope.
+
+Add "explain why" traces to derived findings so users can inspect the causal chain. `dead_code` should be able to answer "why do you think this is dead" with the specific `GetIncomingEdgeIndexes` walk it performed.
+
+**Why it matters.** Converts the repo's biggest honesty caveat into a strength. Raises the practical usefulness of five tools in one pass. Closes the open v0.6.4 scope from the v0.6.3 release notes.
+
+---
+
+## LB-INBOX-003. Phase 3. Contract freeze before the platform surface grows further
+
+**Observed.** Lifeblood's wire surface now includes 22 MCP tools, 22 ports, the semantic graph JSON schema, and a growing set of architectural invariants. Several single-source-of-truth sites already exist: `CanonicalSymbolFormat`, `CsprojPaths`, `McpProtocolSpec`, `CLAUDE.md`. But there is no formal versioning story for the tool schemas or the graph schema. A v0.6.4 that accidentally renames a response field would break every external integrator silently.
+
+**Suggested fix shape.**
+
+1. Publish versioned tool input and output schemas under `schemas/tools/<version>/*.json`. Start with a v1 snapshot of the current 22 tool shapes.
+2. Add compatibility tests that replay a recorded v1 client session against a new server build and assert no field is missing, renamed, or changed in type.
+3. Version the graph JSON schema more aggressively. Today `schemas/graph.schema.json` is unversioned. Switch to `schemas/graph/v1.schema.json` and add evolution rules: what may be appended, what may not be renamed, what constitutes a major-version break.
+4. Introduce a deprecation policy for tools, fields, and invariants. Tools that are retired enter a deprecation window with a `deprecated: true` and `replacedBy: "..."` marker in `tools/list` for at least one minor-version release before removal.
+5. Extend `lifeblood_invariant_check` with compatibility assertions: "these invariants were added in v0.6.3 and are load-bearing for v0.6.4 clients".
+
+**Why it matters.** External integrators cannot build confidently on a surface that rewires without warning. The repo has enough surface now that informal consistency is no longer enough. Freezing contracts before v0.7 will be much cheaper than doing it after more adapters and clients appear. Sequencing: Phase 1 lands first so the truth envelope is part of the v1 schema, not an add-on.
+
+---
+
+## LB-INBOX-004. Phase 4. Double down on the C# / Roslyn / Unity wedge
+
+**Observed.** The `README.md` maturity table is refreshingly honest: C# / Roslyn is "Proven", TypeScript is "High", Python is "Structural", generic JSON import varies. The strongest use case today is serious C# / Unity codebases with large module counts where AI needs compiler-grounded answers, and the repo has production verification on a 75-module, 400k+ LOC Unity workspace. But the external value story is not yet legible to someone who has not read `docs/STATUS.md` end to end.
+
+**Suggested fix shape.**
+
+1. Write a "large C# workspace playbook" in `docs/PLAYBOOK_CSHARP.md` with concrete workflows: triage a breakage, audit module boundaries, safe rename, inspect blast radius, validate a snippet, recover from a merge conflict, find a dead method. Every workflow names the specific tools and the exact argument shapes.
+2. Publish benchmarked demos on real-sized repos (anonymized) with before/after value for an AI agent. Show the wall clock, the round-trip count, and the specific wrong answer a naive agent would have given without Lifeblood.
+3. Harden incremental analyze, stale refresh, and workspace lifecycle ergonomics. Make the "edit a file, then run compile_check" loop sub-second on warm state for the common cases.
+4. Treat Unity / C# dogfood as the premium path. Everything else is secondary until it catches up. Strategic posture, not deprecation of other adapters.
+
+**Why it matters.** "Universal connector" is a good long-term architecture. "Best tool for compiler-grounded C# AI workflows" is the much stronger near-term product position. Phase 4 makes Lifeblood undeniable in the lane where it is already proven. Sequencing: depends on Phase 1 (so the playbook can cite `truthTier` / `confidence` values) and Phase 2 (so the benchmarked demos do not stumble into `INV-DEADCODE-001` false positives mid-demo).
+
+---
+
+## LB-INBOX-005. Phase 5. Turn internal credibility into public credibility
+
+**Observed.** Internally, Lifeblood is disciplined: architecture ratchets, runtime-queryable invariants, a real changelog, a status page that matches the code, CI spanning build / TS adapter / Python adapter / dogfood, and a published NuGet release with a real GitHub Release page. Externally, the repo is still early. A stranger landing on the GitHub page cannot immediately answer "what is this for", "why should I trust it", or "where should I not trust it yet".
+
+**Suggested fix shape.**
+
+1. Publish 3 to 5 deep case studies with exact user tasks and exact Lifeblood wins. Target formats: a short README per case study in `docs/case-studies/` with the anonymized task, the tool calls, the responses, and the outcome.
+2. Add comparison demos against generic MCP / code tools on the same repo tasks. Same task, three tools, three outputs.
+3. Open a small public issue backlog and resolve it transparently. External proof is currently the weakest dimension in the consolidated review ratings (5.0 / 10).
+4. Add a "trust dashboard" in docs: supported maturity by adapter (citing the README maturity table), known limitations (citing `INV-DEADCODE-001` and similar), benchmark results (citing Phase 4 demos), and compatibility guarantees (citing Phase 3 contract freeze).
+
+**Why it matters.** Internal discipline is solved. The missing piece is portable proof. Phase 5 stops Lifeblood looking like a clever internal framework and makes it look like a credible external product. Sequencing: depends on everything else landing first. Do not publish a trust dashboard citing benchmark results that do not yet exist, or a compatibility guarantee for a contract that has not been frozen, or a case study that runs into known-advisory tool output.
+
+---
+
+## LB-INBOX-006. `smoke-mcp-analyze.ps1` default `ServerDll` path is brittle on Windows
+
+**Observed.** Review 3 launched the v0.6.3 smoke script on Windows and the default `ServerDll` path construction failed at first run. The actual server worked correctly once the script was pointed at the right DLL location explicitly. Not a code defect in the MCP server; a path-construction bug in the smoke wrapper script. The script exists to make it trivial for an external reviewer to verify a live MCP round-trip against a freshly cloned repo, so a broken default path hits exactly the audience it was written for.
+
+**Suggested fix shape.**
+
+1. Change the default `ServerDll` parameter to auto-discover via `Join-Path $PSScriptRoot '..' 'src' 'Lifeblood.Server.Mcp' 'bin' 'Debug' 'net8.0' 'Lifeblood.Server.Mcp.dll'` or the Release equivalent, and fall through to Release if Debug is missing.
+2. On startup, assert the file exists. If it does not, print a one-line diagnostic that names the exact path it tried and suggests either passing `-ServerDll <path>` or running `dotnet build -c Debug` first.
+3. Add a short README note in the smoke folder explaining the default resolution order so reviewers do not have to read the script to understand what went wrong.
+
+**Why it matters.** This is the exact script an external auditor uses to convince themselves Lifeblood actually works end-to-end. A path-construction fail on first run is cosmetically small but materially damaging for trust: it is the moment where a reviewer decides whether the repo is operational or theoretical. Fixing this is small work with outsized credibility impact.
 
 ---
 
@@ -125,4 +189,4 @@ If you find a friction point during a real session:
 2. Write the entry as: title, observation, suggested fix, why it matters.
 3. Anonymize all consumer-specific names. The Lifeblood repo carries no leakage from downstream workspaces. Describe shapes (`FooType`, `BarMethod`, `OuterType.PropertyName`) instead of real identifiers.
 4. Keep entries narrow. One observation, one fix shape per entry. Cross-reference with `LB-INBOX-NNN` ids when entries are related.
-5. When the fix ships, move the entry into [DOGFOOD_FINDINGS.md](DOGFOOD_FINDINGS.md) under the next session header.
+5. When the fix ships, **delete the entry from this file**. The record of what shipped lives in `CHANGELOG.md` and the git history, not here. This file is an active roadmap, not a historical log.
