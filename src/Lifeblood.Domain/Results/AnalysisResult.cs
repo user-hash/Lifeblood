@@ -42,6 +42,52 @@ public sealed class BlastRadiusResult
     public string TargetSymbolId { get; init; } = "";
     public string[] AffectedSymbolIds { get; init; } = Array.Empty<string>();
     public int AffectedCount { get; init; }
+
+    /// <summary>
+    /// Per-dependant break-kind classification. Each entry names one
+    /// affected symbol and the kind of break it would experience if the
+    /// target symbol were changed. Derived from the edge kind that
+    /// connects the dependant to the target: e.g. a <c>Calls</c> edge
+    /// into a removed method is <see cref="BreakKind.BindingRemoval"/>,
+    /// an <c>Implements</c> edge into a type whose contract changes is
+    /// <see cref="BreakKind.SignatureChange"/>, and so on. Empty when
+    /// the caller did not request classification. Added 2026-04-11
+    /// (Phase 6 / B7) to close DAWG R4.
+    /// </summary>
+    public BreakInfo[] Breaks { get; init; } = Array.Empty<BreakInfo>();
+}
+
+/// <summary>
+/// One classified break in a <see cref="BlastRadiusResult"/>. See the
+/// parent result doc for why this shape exists.
+/// </summary>
+public sealed class BreakInfo
+{
+    public required string SymbolId { get; init; }
+    public required BreakKind Kind { get; init; }
+    public string Reason { get; init; } = "";
+}
+
+/// <summary>
+/// Canonical categories of how a blast-radius dependant can break if
+/// the target symbol changes. Derived from the edge kind that connects
+/// them in the semantic graph. The categories are deliberately coarse:
+/// a caller asking "what happens if I delete this" does not need
+/// per-compiler-error precision, just a rough bucket so they can
+/// triage triage scope and risk.
+/// </summary>
+public enum BreakKind
+{
+    /// <summary>Binding breaks: the target was deleted or the dependant's reference no longer resolves.</summary>
+    BindingRemoval,
+    /// <summary>Signature breaks: the target's shape changed and the dependant won't compile against the new shape.</summary>
+    SignatureChange,
+    /// <summary>Type rename: the target was renamed; the dependant's name reference is stale.</summary>
+    TypeRename,
+    /// <summary>Behavioral breaks: the target compiles fine but does something different at runtime.</summary>
+    Behavioral,
+    /// <summary>Fallback for edges whose kind doesn't map cleanly to any of the above.</summary>
+    Unknown,
 }
 
 public sealed class GraphMetrics

@@ -32,6 +32,18 @@ public sealed class GraphSession : IDisposable
 
     public GraphSession(IFileSystem fs) => _fs = fs;
 
+    /// <summary>
+    /// Project root of the most recent Roslyn <c>lifeblood_analyze</c>
+    /// call. Empty when the session was loaded from a JSON graph or no
+    /// project was loaded at all. Exposed so the MCP tool layer can
+    /// resolve relative file paths for features like
+    /// <c>lifeblood_partial_view</c>, which reads source off disk.
+    /// </summary>
+    public string ProjectRoot => _lastProjectPath ?? "";
+
+    /// <summary>Exposed file-system port for tool handlers that need disk access (partial view, compile_check auto-refresh).</summary>
+    public IFileSystem FileSystem => _fs;
+
     // Delegate all state queries to the unified session
     public SemanticGraph? Graph => _session.Graph;
     public AnalysisResult? Analysis => _session.Analysis;
@@ -43,6 +55,60 @@ public sealed class GraphSession : IDisposable
 
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
     public bool CanIncremental => _roslynAdapter?.HasSnapshot == true;
+
+    /// <summary>
+    /// Refresh the session if any tracked file has changed on disk since
+    /// the last analyze. Idempotent: returns <c>null</c> when nothing
+    /// changed, otherwise the number of files that were re-analyzed.
+    /// Fails silently on non-Roslyn sessions (JSON graph imports) since
+    /// those have no source on disk to diff against. Used by Phase 7 /
+    /// DAWG B2 to keep <c>lifeblood_compile_check</c> from running
+    /// against a stale workspace after the user edits source between
+    /// the initial <c>lifeblood_analyze</c> and the next compile_check.
+    /// </summary>
+    public int? MaybeRefreshIfStale()
+    {
+        if (_roslynAdapter == null || !CanIncremental || string.IsNullOrEmpty(_lastProjectPath))
+            return null;
+        try
+        {
+            var config = new AnalysisConfig { RetainCompilations = true };
+            var (graph, changedFileCount) = _roslynAdapter.IncrementalAnalyze(config);
+            if (changedFileCount == 0) return null;
+
+            // Source changed — rebuild the session view. This mirrors the
+            // LoadIncremental happy path but skips the response-building.
+            var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, null);
+
+            ICompilationHost? newCompilationHost = null;
+            ICodeExecutor? newCodeExecutor = null;
+            IWorkspaceRefactoring? newRefactoring = null;
+            if (_roslynAdapter.Compilations is { Count: > 0 })
+            {
+                var view = new RoslynSemanticView(
+                    _roslynAdapter.Compilations,
+                    graph,
+                    _roslynAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
+                newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
+                newCodeExecutor = new RoslynCodeExecutor(view);
+                newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
+            }
+
+            _session.Clear();
+            _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
+            if (newCompilationHost != null)
+                _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+
+            return changedFileCount;
+        }
+        catch
+        {
+            // Auto-refresh is best-effort. A failure here should not break
+            // the tool call the user actually asked for — return null and
+            // let compile_check run against whatever state we have.
+            return null;
+        }
+    }
 
     public string Load(string? projectPath, string? graphPath, string? rulesPath, bool incremental = false, bool readOnly = false)
     {

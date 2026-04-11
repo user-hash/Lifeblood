@@ -44,7 +44,15 @@ class Program
         // plug in future scorers (BM25, vector embeddings) without touching
         // the existing IMcpGraphProvider surface.
         ISemanticSearchProvider searchProvider = new LifebloodSemanticSearchProvider();
-        var toolHandler = new ToolHandler(session, graphProvider, resolver, searchProvider);
+        // Phase 6: dead-code analyzer and partial-view builder. Both live
+        // in Connectors.Mcp (not Lifeblood.Analysis, which is Domain-only
+        // and cannot reference Application ports). The partial-view
+        // builder takes projectRoot as a method parameter at each call,
+        // so it's session-state-free.
+        IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
+        IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(fs);
+        var toolHandler = new ToolHandler(
+            session, graphProvider, resolver, searchProvider, deadCode, partialView);
         var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)

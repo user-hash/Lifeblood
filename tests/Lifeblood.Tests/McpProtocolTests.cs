@@ -45,7 +45,9 @@ public class McpProtocolTests
   IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
   ISymbolResolver resolver = new LifebloodSymbolResolver();
   ISemanticSearchProvider search = new LifebloodSemanticSearchProvider();
-  var handler = new ToolHandler(session, provider, resolver, search);
+  IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
+  IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(Fs);
+  var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView);
   return new McpDispatcher(session, handler);
   }
 

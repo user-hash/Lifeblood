@@ -174,7 +174,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_compile_check",
   Availability = ToolAvailability.WriteSide,
-  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code.",
+  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`).",
   InputSchema = new
   {
   type = "object",
@@ -183,6 +183,7 @@ public static class ToolRegistry
   {
   code = new { type = "string", description = "C# code to compile-check" },
   moduleName = new { type = "string", description = "Module context for type resolution" },
+  staleRefresh = new { type = "boolean", description = "If true (default), incrementally re-analyze the workspace before compile_check when any tracked file has changed on disk since the last analyze. Set false to check against the pinned workspace state." },
   },
   },
   },
@@ -209,6 +210,42 @@ public static class ToolRegistry
   description = "Matching mode: 'exact' (default, literal), 'contains' (substring), or 'fuzzy' (ranked near-match).",
   @enum = new[] { "exact", "contains", "fuzzy" },
   },
+  },
+  },
+  },
+  new()
+  {
+  Name = "lifeblood_dead_code",
+  Availability = ToolAvailability.ReadSide,
+  Description = "Scan the loaded graph for symbols with no incoming semantic references — dead code candidates. Defaults: excludes public-visibility symbols (assumed reachable from outside) and test files. Returns canonical ids, kinds, file:line locations, and a short reason per hit. Use `includeKinds` to narrow (e.g. ['Method']). Phase 6 / DAWG R1.",
+  InputSchema = new
+  {
+  type = "object",
+  properties = new
+  {
+  includeKinds = new
+  {
+  type = "array",
+  items = new { type = "string" },
+  description = "Optional symbol-kind filter (e.g. ['Method','Type']). Case-insensitive. Unknown kinds are silently ignored. Default: Method, Type, Property, Field.",
+  },
+  excludePublic = new { type = "boolean", description = "Skip public symbols (default true)." },
+  excludeTests = new { type = "boolean", description = "Skip files matching test conventions — any 'tests/' path segment or *Tests.cs / *Test.cs filename (default true)." },
+  },
+  },
+  },
+  new()
+  {
+  Name = "lifeblood_partial_view",
+  Availability = ToolAvailability.ReadSide,
+  Description = "Return the combined source of every partial declaration of a type. Takes a type symbol id, walks the incoming Contains edges from File symbols to discover every partial file, reads each file via IFileSystem, and emits both per-segment source and a concatenated combined view with file headers. Phase 6 / DAWG R2.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "symbolId" },
+  properties = new
+  {
+  symbolId = new { type = "string", description = "Canonical symbol id of the type (e.g. 'type:MyApp.MyClass')." },
   },
   },
   },
