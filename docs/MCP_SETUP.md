@@ -55,10 +55,9 @@ For development, or if you want to point at an unreleased build:
 git clone https://github.com/user-hash/Lifeblood.git
 cd Lifeblood
 dotnet build
-dotnet publish src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj -c Release -o dist
 ```
 
-The published DLL lives at `dist/Lifeblood.Server.Mcp.dll`. Run via `dotnet dist/Lifeblood.Server.Mcp.dll` instead of the published tool. The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form so you can copy it to `.mcp.json` locally and edit the path if you want a dist override. `.mcp.json` itself is gitignored, so machine-specific dist paths do not leak across contributors.
+The build output lives at `src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`. Point `.mcp.json` at that path directly (see the dev example below). Every subsequent `dotnet build` or `dotnet test` refreshes it automatically — no publish step, no stale-binary drift class. The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form so you can copy it to `.mcp.json` locally and edit the path if you want a dev-build override. `.mcp.json` itself is gitignored, so machine-specific paths do not leak across contributors.
 
 ### Verify the install
 
@@ -86,14 +85,14 @@ Add to `.mcp.json` in your project root (or `~/.claude/.mcp.json` for global). T
 }
 ```
 
-Or from source (development), pointing at a locally-published dist:
+Or from source (development), pointing at the local build output. Any `dotnet build` or `dotnet test` refreshes it, so you always run against HEAD with no publish step:
 
 ```json
 {
   "mcpServers": {
     "lifeblood": {
       "command": "dotnet",
-      "args": ["/path/to/Lifeblood/dist/Lifeblood.Server.Mcp.dll"]
+      "args": ["/path/to/Lifeblood/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll"]
     }
   }
 }
@@ -264,10 +263,9 @@ You need: Unity 2021.3+ or Unity 6, [Coplay MCP for Unity](https://github.com/Co
 git clone https://github.com/user-hash/Lifeblood.git
 cd Lifeblood
 dotnet build
-dotnet publish src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj -c Release -o dist
 ```
 
-The bridge needs the published DLL at `dist/Lifeblood.Server.Mcp.dll`. The bridge auto-resolves the DLL if Lifeblood is a sibling directory of the Unity project. Otherwise see the override below.
+The bridge needs the build output DLL at `src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`. The bridge auto-resolves the DLL if Lifeblood is a sibling directory of the Unity project. Otherwise see the override below.
 
 **Step 2. Create a directory junction from your Unity project to the bridge.** This is what makes Unity treat the bridge files as if they live in the project, while keeping the source of truth in the Lifeblood repo:
 
@@ -309,9 +307,8 @@ The bridge spawns the child process, performs the MCP `initialize` handshake (15
 `LifebloodBridgeClient` resolves the DLL path in this order:
 
 1. `EditorPrefs` key `Lifeblood_ServerPath` (Unity-side, persisted per machine).
-2. Environment variable `LIFEBLOOD_SERVER_DLL` (process-wide).
-3. Sibling `dist/` directory next to the Unity project (`<project>/../Lifeblood/dist/Lifeblood.Server.Mcp.dll`).
-4. Sibling `dist/` next to the bridge symlink target.
+2. Sibling Lifeblood repo's Debug build output next to the Unity project (`<project>/../Lifeblood/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`).
+3. Environment variable `LIFEBLOOD_SERVER_DLL` (process-wide).
 
 If none resolve, the bridge logs an error to the Unity console and tool calls return an error object. Set the EditorPref or env var explicitly if your layout is non-standard.
 

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using Lifeblood.Connectors.Mcp;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -22,30 +23,30 @@ namespace Lifeblood.Server.Mcp;
 /// never receive a response body. Both the spec-compliant
 /// <c>notifications/initialized</c> form and the legacy <c>initialized</c>
 /// alias are accepted.</item>
+/// <item><c>INV-MCP-003</c>: every MCP wire constant (protocol version,
+/// method name, notification name) is sourced from
+/// <see cref="McpProtocolSpec"/> — the single source of truth shared
+/// with every first-party client. No hardcoded protocol strings live
+/// in this file.</item>
 /// </list>
 /// </summary>
 public sealed class McpDispatcher
 {
   /// <summary>
-  /// Canonical MCP protocol version this server speaks.
-  /// Single source of truth for the <c>initialize</c> response and any
-  /// future version-gated capability negotiation.
+  /// Canonical MCP protocol version this server speaks. Sourced from
+  /// <see cref="McpProtocolSpec.SupportedVersion"/> so the server and
+  /// every first-party client agree on a single literal.
   /// </summary>
-  public const string SupportedProtocolVersion = "2024-11-05";
+  public const string SupportedProtocolVersion = McpProtocolSpec.SupportedVersion;
 
   /// <summary>
-  /// JSON-RPC 2.0 / MCP notification method names. Entries in this set
-  /// short-circuit <see cref="Dispatch"/> to return <c>null</c> before
-  /// response construction. Adding a new notification method is a single
-  /// line edit here. No dispatcher branch changes required.
+  /// JSON-RPC 2.0 / MCP notification method names the dispatcher
+  /// short-circuits to return <c>null</c> before response construction.
+  /// Derived directly from <see cref="McpProtocolSpec.AllKnownNotifications"/>
+  /// so adding a notification is a single edit in the protocol spec.
   /// </summary>
-  private static readonly HashSet<string> KnownNotifications = new(StringComparer.Ordinal)
-  {
-  "notifications/initialized",
-  "initialized", // legacy alias during the deprecation window
-  "notifications/cancelled",
-  "$/cancelRequest",
-  };
+  private static readonly HashSet<string> KnownNotifications =
+    new(McpProtocolSpec.AllKnownNotifications, StringComparer.Ordinal);
 
   private readonly GraphSession _session;
   private readonly ToolHandler _toolHandler;
@@ -86,9 +87,9 @@ public sealed class McpDispatcher
 
   return request.Method switch
   {
-  "initialize" => HandleInitialize(request),
-  "tools/list" => HandleToolsList(request),
-  "tools/call" => HandleToolsCall(request),
+  McpProtocolSpec.Methods.Initialize => HandleInitialize(request),
+  McpProtocolSpec.Methods.ToolsList => HandleToolsList(request),
+  McpProtocolSpec.Methods.ToolsCall => HandleToolsCall(request),
   "ping" => new JsonRpcResponse { Id = request.Id, Result = new { } },
   _ => new JsonRpcResponse
   {

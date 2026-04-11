@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)][string]$Project,
-    [string]$ServerDll = "D:/Projekti/Lifeblood/dist/Lifeblood.Server.Mcp.dll"
+    [string]$ServerDll = "$PSScriptRoot/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll"
 )
 
 $ErrorActionPreference = 'Stop'
