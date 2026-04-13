@@ -67,6 +67,14 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             if (edge.Kind == EdgeKind.Contains) continue;
             return true;
         }
+        // A method/property implementing an interface member is reachable by definition:
+        // callers invoke through the interface, which carries the Calls edges.
+        // The implementing symbol has an OUTGOING Implements edge to the interface member.
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(symbolId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind == EdgeKind.Implements) return true;
+        }
         return false;
     }
 

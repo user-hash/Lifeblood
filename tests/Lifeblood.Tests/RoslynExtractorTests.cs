@@ -663,6 +663,305 @@ public class Service
     }
 
     // ──────────────────────────────────────────────────────────────
+    // BUG-004: Method-level Implements edges
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_InterfaceMethodImpl_EmitsMethodLevelImplementsEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IRepo { void Save(); }
+public class SqlRepo : IRepo { public void Save() { } }");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Type-level Implements edge (existing behavior)
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId == "type:App.SqlRepo" && e.TargetId == "type:App.IRepo");
+
+        // Method-level Implements edge (new — BUG-004 fix)
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId == "method:App.SqlRepo.Save()" && e.TargetId == "method:App.IRepo.Save()");
+    }
+
+    [Fact]
+    public void ExtractEdges_InterfacePropertyImpl_EmitsPropertyLevelImplementsEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IReader { string Name { get; } }
+public class ConcreteReader : IReader { public string Name => ""x""; }");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId == "property:App.ConcreteReader.Name"
+            && e.TargetId == "property:App.IReader.Name");
+    }
+
+    [Fact]
+    public void ExtractEdges_ExplicitInterfaceImpl_EmitsImplementsEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IRepo { void Save(); }
+public class SqlRepo : IRepo { void IRepo.Save() { } }");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Explicit impls: Roslyn names them "App.IRepo.Save" in ContainingType=SqlRepo
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId.Contains("SqlRepo") && e.SourceId.Contains("Save")
+            && e.TargetId.Contains("IRepo") && e.TargetId.Contains("Save"));
+    }
+
+    [Fact]
+    public void ExtractEdges_InheritedImpl_OnlyEmitsForDeclaringType()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IRepo { void Save(); }
+public class Base : IRepo { public void Save() { } }
+public class Derived : Base { }");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Base.Save → IRepo.Save: yes
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId.Contains("Base.Save") && e.TargetId.Contains("IRepo.Save"));
+        // Derived.Save → IRepo.Save: no (inherited, not redeclared)
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId.Contains("Derived"));
+    }
+
+    [Fact]
+    public void ExtractEdges_TransitiveInterface_EmitsImplementsForAll()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IBase { void M(); }
+public interface IChild : IBase { void N(); }
+public class Impl : IChild { public void M() { } public void N() { } }");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Impl.M → IBase.M (transitive)
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId.Contains("Impl.M") && e.TargetId.Contains("IBase.M"));
+        // Impl.N → IChild.N (direct)
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId.Contains("Impl.N") && e.TargetId.Contains("IChild.N"));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // BUG-005: Symbol-level member access + field reads
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_PropertyAccess_EmitsSymbolLevelReferencesEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Config { public string Name { get; set; } }
+public class Service
+{
+    public void Run(Config c) { var x = c.Name; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "method:App.Service.Run(App.Config)"
+            && e.TargetId == "property:App.Config.Name");
+    }
+
+    [Fact]
+    public void ExtractEdges_FieldAccess_ViaMemberAccess_EmitsSymbolLevelEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Data { public int Count; }
+public class Reader
+{
+    public int Get(Data d) { return d.Count; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Reader.Get")
+            && e.TargetId == "field:App.Data.Count");
+    }
+
+    [Fact]
+    public void ExtractEdges_BareFieldIdentifier_EmitsReferencesEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Service
+{
+    private int _count;
+    public int Get() { return _count; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service.Get")
+            && e.TargetId == "field:App.Service._count");
+    }
+
+    [Fact]
+    public void ExtractEdges_PropertyAccess_StillEmitsTypeLevelEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Config { public string Name { get; set; } }
+public class Service
+{
+    public void Run(Config c) { var x = c.Name; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Type-level edge still present (regression guard)
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "type:App.Service"
+            && e.TargetId == "type:App.Config");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // BUG-006: Null-conditional property access
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_NullConditionalPropertyAccess_EmitsSymbolLevelEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Logger { public string Level { get; set; } }
+public class Service
+{
+    private Logger? _log;
+    public string? GetLevel() { return _log?.Level; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Service.GetLevel")
+            && e.TargetId == "property:App.Logger.Level");
+    }
+
+    [Fact]
+    public void ExtractEdges_NullConditionalPropertyAccess_EmitsTypeLevelEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Logger { public string Level { get; set; } }
+public class Service
+{
+    private Logger? _log;
+    public string? GetLevel() { return _log?.Level; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "type:App.Service"
+            && e.TargetId == "type:App.Logger");
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Phase 4: Method-group references
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_MethodGroupInLazy_EmitsCallsEdge()
+    {
+        // Method-group reference inside a method body (not a static field initializer,
+        // because field initializers have no containing method for the edge source).
+        var (model, root) = Compile(@"
+namespace App;
+public class Loader
+{
+    private string Load() { return ""x""; }
+    public System.Lazy<string> GetLazy() { return new System.Lazy<string>(Load); }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Loader.GetLazy")
+            && e.TargetId.Contains("Loader.Load"));
+    }
+
+    [Fact]
+    public void ExtractEdges_MethodGroupInTimerCallback_EmitsCallsEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Monitor
+{
+    private System.Threading.Timer _timer;
+    public Monitor() { _timer = new System.Threading.Timer(Tick); }
+    private void Tick(object? state) { }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Monitor.Tick"));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Lambda context attribution
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_CallInsideLambda_AttributedToEnclosingMethod()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Analyzer
+{
+    public void Run()
+    {
+        System.Func<int, int> fn = x => Transform(x);
+    }
+    private static int Transform(int x) { return x * 2; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Analyzer.Run")
+            && e.TargetId.Contains("Analyzer.Transform"));
+    }
+
+    [Fact]
+    public void ExtractEdges_MethodGroupAsDelegate_AttributedToEnclosingMethod()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Processor
+{
+    public void Run()
+    {
+        System.Func<string, string> fn = Format;
+    }
+    private static string Format(string s) { return s; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Processor.Run")
+            && e.TargetId.Contains("Processor.Format"));
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────
 

@@ -59,6 +59,10 @@ public sealed class RoslynEdgeExtractor
                     ExtractMemberAccessEdge(model, memberAccess, edges, seen);
                     break;
 
+                case MemberBindingExpressionSyntax memberBinding:
+                    ExtractMemberBindingEdge(model, memberBinding, edges, seen);
+                    break;
+
                 case GenericNameSyntax genericName:
                     ExtractGenericTypeArgEdges(model, genericName, edges, seen);
                     break;
@@ -148,6 +152,55 @@ public sealed class RoslynEdgeExtractor
                 }
             }
         }
+
+        // Interface member implementations → method-level Implements
+        // The type-level Implements edge above captures type:Concrete → type:IFoo.
+        // This loop captures method:Concrete.M() → method:IFoo.M() so the dead-code
+        // analyzer sees concrete implementations as reachable through the interface.
+        foreach (var iface in typeSymbol.AllInterfaces)
+        {
+            if (!IsTracked(iface)) continue;
+            foreach (var ifaceMember in iface.GetMembers())
+            {
+                var impl = typeSymbol.FindImplementationForInterfaceMember(ifaceMember);
+                if (impl == null || !SymbolEqualityComparer.Default.Equals(impl.ContainingType, typeSymbol))
+                    continue; // skip inherited implementations
+
+                switch (ifaceMember)
+                {
+                    case IMethodSymbol ifaceMethod when impl is IMethodSymbol implMethod:
+                    {
+                        AddEdge(edges, seen,
+                            GetMethodId(implMethod), GetMethodId(ifaceMethod),
+                            EdgeKind.Implements);
+                        break;
+                    }
+                    case IPropertySymbol ifaceProp when impl is IPropertySymbol implProp:
+                    {
+                        var implFqn = RoslynSymbolExtractor.GetFullName(implProp.ContainingType);
+                        var ifaceFqn = RoslynSymbolExtractor.GetFullName(ifaceProp.ContainingType);
+                        var implPropId = implProp.IsIndexer
+                            ? SymbolIds.Property(implFqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(implProp)}]")
+                            : SymbolIds.Property(implFqn, implProp.Name);
+                        var ifacePropId = ifaceProp.IsIndexer
+                            ? SymbolIds.Property(ifaceFqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(ifaceProp)}]")
+                            : SymbolIds.Property(ifaceFqn, ifaceProp.Name);
+                        AddEdge(edges, seen, implPropId, ifacePropId, EdgeKind.Implements);
+                        break;
+                    }
+                    case IEventSymbol ifaceEvt when impl is IEventSymbol implEvt:
+                    {
+                        var implFqn = RoslynSymbolExtractor.GetFullName(implEvt.ContainingType);
+                        var ifaceFqn = RoslynSymbolExtractor.GetFullName(ifaceEvt.ContainingType);
+                        AddEdge(edges, seen,
+                            SymbolIds.Property(implFqn, implEvt.Name),
+                            SymbolIds.Property(ifaceFqn, ifaceEvt.Name),
+                            EdgeKind.Implements);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     private void ExtractCallEdge(
@@ -206,18 +259,42 @@ public sealed class RoslynEdgeExtractor
         var referencedSymbol = symbolInfo.Symbol;
         if (referencedSymbol == null) return;
 
-        // Only track references to source-defined types
-        if (referencedSymbol is not INamedTypeSymbol referencedType) return;
-        if (!IsTracked(referencedType)) return;
+        // Type references (existing behavior)
+        if (referencedSymbol is INamedTypeSymbol referencedType)
+        {
+            if (!IsTracked(referencedType)) return;
+            var containingType = FindContainingType(model, identifier);
+            if (containingType == null) return;
+            var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
+            var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(referencedType));
+            if (sourceId != targetId)
+                AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+            return;
+        }
 
-        var containingType = FindContainingType(model, identifier);
-        if (containingType == null) return;
+        // Field references via bare identifier (e.g., _fs in _fs.ReadAllText())
+        if (referencedSymbol is IFieldSymbol fieldSymbol
+            && fieldSymbol.ContainingType != null
+            && IsTracked(fieldSymbol.ContainingType))
+        {
+            var caller = FindContainingMethodOrLocal(model, identifier);
+            if (caller == null) return;
+            var callerMethodId = GetMethodId(caller);
+            var fqn = RoslynSymbolExtractor.GetFullName(fieldSymbol.ContainingType);
+            AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, fieldSymbol.Name), EdgeKind.References);
+            return;
+        }
 
-        var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
-        var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(referencedType));
-
-        if (sourceId != targetId)
-            AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+        // Method-group references (new Lazy<T>(Load), event += Handler, Where(predicate))
+        if (referencedSymbol is IMethodSymbol methodSymbol
+            && methodSymbol.MethodKind != MethodKind.Constructor
+            && methodSymbol.ContainingType != null
+            && IsTracked(methodSymbol))
+        {
+            var caller = FindContainingMethodOrLocal(model, identifier);
+            if (caller == null) return;
+            AddEdge(edges, seen, GetMethodId(caller), GetMethodId(methodSymbol), EdgeKind.Calls);
+        }
     }
 
     private void ExtractMemberAccessEdge(
@@ -232,11 +309,82 @@ public sealed class RoslynEdgeExtractor
         var containingType = FindContainingType(model, memberAccess);
         if (containingType == null) return;
 
+        // Type-level References edge (existing behavior — valuable for module coupling)
         var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
         var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(target.ContainingType));
 
         if (sourceId != targetId)
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+
+        // Symbol-level References edge so properties/fields show incoming references
+        EmitSymbolLevelEdge(model, memberAccess, target, edges, seen);
+    }
+
+    /// <summary>
+    /// Handles null-conditional member access: obj?.Property produces MemberBindingExpressionSyntax
+    /// (not MemberAccessExpressionSyntax). Method calls via ?. are already captured by the
+    /// InvocationExpressionSyntax case; this handles property, field, and event access.
+    /// </summary>
+    private void ExtractMemberBindingEdge(
+        SemanticModel model, MemberBindingExpressionSyntax memberBinding,
+        List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
+    {
+        var symbolInfo = model.GetSymbolInfo(memberBinding);
+        var target = symbolInfo.Symbol;
+        if (target?.ContainingType == null) return;
+        if (!IsTracked(target.ContainingType)) return;
+
+        // Type-level References edge
+        var containingType = FindContainingType(model, memberBinding);
+        if (containingType == null) return;
+
+        var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
+        var targetTypeId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(target.ContainingType));
+
+        if (sourceId != targetTypeId)
+            AddEdge(edges, seen, sourceId, targetTypeId, EdgeKind.References);
+
+        // Symbol-level edge (shared helper)
+        EmitSymbolLevelEdge(model, memberBinding, target, edges, seen);
+    }
+
+    /// <summary>
+    /// Shared helper: emit a symbol-level References edge from the containing method
+    /// to a specific property, field, or event. Used by both MemberAccessExpressionSyntax
+    /// and MemberBindingExpressionSyntax (null-conditional) handlers.
+    /// </summary>
+    private void EmitSymbolLevelEdge(
+        SemanticModel model, SyntaxNode node, ISymbol target,
+        List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
+    {
+        var caller = FindContainingMethodOrLocal(model, node);
+        if (caller == null) return;
+
+        var callerMethodId = GetMethodId(caller);
+        switch (target)
+        {
+            case IPropertySymbol prop:
+            {
+                var fqn = RoslynSymbolExtractor.GetFullName(prop.ContainingType);
+                var propId = prop.IsIndexer
+                    ? SymbolIds.Property(fqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(prop)}]")
+                    : SymbolIds.Property(fqn, prop.Name);
+                AddEdge(edges, seen, callerMethodId, propId, EdgeKind.References);
+                break;
+            }
+            case IFieldSymbol field:
+            {
+                var fqn = RoslynSymbolExtractor.GetFullName(field.ContainingType);
+                AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, field.Name), EdgeKind.References);
+                break;
+            }
+            case IEventSymbol evt:
+            {
+                var fqn = RoslynSymbolExtractor.GetFullName(evt.ContainingType);
+                AddEdge(edges, seen, callerMethodId, SymbolIds.Property(fqn, evt.Name), EdgeKind.References);
+                break;
+            }
+        }
     }
 
     /// <summary>
@@ -330,6 +478,13 @@ public sealed class RoslynEdgeExtractor
                 case LocalFunctionStatementSyntax:
                     // Local functions aren't extracted as graph symbols — attributing edges
                     // to them creates dangling sources. Skip to the enclosing method.
+                    continue;
+                case ParenthesizedLambdaExpressionSyntax:
+                case SimpleLambdaExpressionSyntax:
+                case AnonymousMethodExpressionSyntax:
+                    // Lambdas and delegates aren't graph symbols. Calls inside
+                    // .Select(x => Foo(x)) or .Select(Foo) are attributed to the
+                    // enclosing named method, same as local functions.
                     continue;
                 case MethodDeclarationSyntax method:
                     return model.GetDeclaredSymbol(method);

@@ -133,6 +133,57 @@ public class AnalysisToolsPhase6Tests
         Assert.All(findings, f => Assert.Equal(SymbolKind.Method, f.Kind));
     }
 
+    [Fact]
+    public void DeadCode_InterfaceImplementingMethod_NotFlagged()
+    {
+        // A method with an outgoing Implements edge is reachable through the interface.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IFoo", Name = "IFoo", Kind = SymbolKind.Type, FilePath = "IFoo.cs", Visibility = Visibility.Public })
+            .AddSymbol(new Symbol { Id = "method:N.IFoo.Do()", Name = "Do", Kind = SymbolKind.Method, FilePath = "IFoo.cs", ParentId = "type:N.IFoo", Visibility = Visibility.Public })
+            .AddSymbol(new Symbol { Id = "type:N.Impl", Name = "Impl", Kind = SymbolKind.Type, FilePath = "Impl.cs", Visibility = Visibility.Internal })
+            .AddSymbol(new Symbol { Id = "method:N.Impl.Do()", Name = "Do", Kind = SymbolKind.Method, FilePath = "Impl.cs", ParentId = "type:N.Impl", Visibility = Visibility.Internal })
+            .AddEdge(new Edge { SourceId = "type:N.Impl", TargetId = "type:N.IFoo", Kind = EdgeKind.Implements, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Impl.Do()", TargetId = "method:N.IFoo.Do()", Kind = EdgeKind.Implements, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.Impl", TargetId = "method:N.Impl.Do()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph, new DeadCodeOptions());
+
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "method:N.Impl.Do()");
+    }
+
+    [Fact]
+    public void DeadCode_PropertyWithIncomingRef_NotFlagged()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Cfg", Name = "Cfg", Kind = SymbolKind.Type, FilePath = "Cfg.cs" })
+            .AddSymbol(new Symbol { Id = "property:N.Cfg.Name", Name = "Name", Kind = SymbolKind.Property, FilePath = "Cfg.cs", ParentId = "type:N.Cfg", Visibility = Visibility.Internal })
+            .AddSymbol(new Symbol { Id = "method:N.Svc.Run()", Name = "Run", Kind = SymbolKind.Method, FilePath = "Svc.cs", Visibility = Visibility.Public })
+            .AddEdge(new Edge { SourceId = "type:N.Cfg", TargetId = "property:N.Cfg.Name", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Svc.Run()", TargetId = "property:N.Cfg.Name", Kind = EdgeKind.References, Evidence = Evidence })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph, new DeadCodeOptions());
+
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "property:N.Cfg.Name");
+    }
+
+    [Fact]
+    public void DeadCode_FieldWithIncomingRef_NotFlagged()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Svc", Name = "Svc", Kind = SymbolKind.Type, FilePath = "Svc.cs" })
+            .AddSymbol(new Symbol { Id = "field:N.Svc._fs", Name = "_fs", Kind = SymbolKind.Field, FilePath = "Svc.cs", ParentId = "type:N.Svc", Visibility = Visibility.Private })
+            .AddSymbol(new Symbol { Id = "method:N.Svc.Run()", Name = "Run", Kind = SymbolKind.Method, FilePath = "Svc.cs", ParentId = "type:N.Svc", Visibility = Visibility.Public })
+            .AddEdge(new Edge { SourceId = "type:N.Svc", TargetId = "field:N.Svc._fs", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Svc.Run()", TargetId = "field:N.Svc._fs", Kind = EdgeKind.References, Evidence = Evidence })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph, new DeadCodeOptions());
+
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "field:N.Svc._fs");
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Partial view builder
     // ─────────────────────────────────────────────────────────────────────
