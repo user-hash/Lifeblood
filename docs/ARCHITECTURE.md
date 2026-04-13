@@ -94,7 +94,7 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 - `IMcpGraphProvider`. Exposes `LookupSymbol`, `GetDependencies`, `GetDependants`, `GetBlastRadius`, `GetFileImpact`.
 - `ISymbolResolver`. Resolves a bare short name, a truncated method id, a canonical id, or a **kind-prefixed id with wrong namespace** (v0.6.3, `INV-RESOLVER-005`) into a `SymbolResolutionResult` carrying `Outcome`, `Candidates`, `Diagnostic`, `DeclarationFilePaths`, and `Overloads`. Every read-side MCP handler routes through this resolver before any graph or workspace lookup (`INV-RESOLVER-001`). Partial-type unification is computed as a read model on the resolution result, not a graph schema change (`INV-RESOLVER-003..004`).
 - `ISemanticSearchProvider`. Ranked search over symbol names, qualified names, and persisted xmldoc summaries. Tokenizes on whitespace with ranked-OR scoring (v0.6.3).
-- `IDeadCodeAnalyzer`. Finds symbols with no incoming semantic references. **Experimental / advisory in v0.6.3**; see `INV-DEADCODE-001`.
+- `IDeadCodeAnalyzer`. Finds symbols with no incoming semantic references. v0.6.4 closed five false-positive classes (150 to 10 self-analysis, 96% true-positive rate on real workspace). See `INV-DEADCODE-001`.
 - `IPartialViewBuilder`. Combines every partial declaration of a type into one view with file headers.
 - `Invariants.IInvariantProvider`. Parses `CLAUDE.md` at the loaded project root and exposes architectural invariants as structured data. Three methods: `GetAll`, `GetById`, `Audit` (`INV-INVARIANT-001`).
 

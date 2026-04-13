@@ -31,7 +31,7 @@ Built-in architecture rule packs:
 
 ## Known Limitations (v0.6.3)
 
-**`lifeblood_dead_code` accuracy.** v0.6.4 closed five false-positive classes and the root-cause compilation gap (missing implicit global usings). Self-analysis: 150 to 10 findings (93% reduction). Verified on a real 75-module Unity workspace: 80% true-positive rate on spot-checked candidates. Remaining false positives are structural: Unity reflection-based dispatch (`[RuntimeInitializeOnLoadMethod]`, lifecycle callbacks), runtime entry points, static field initializer method-groups. See `INV-DEADCODE-001`.
+**`lifeblood_dead_code` accuracy.** v0.6.4 closed five false-positive classes and the root-cause compilation gap (missing implicit global usings). Self-analysis: 150 to 10 findings (93% reduction). Verified on a real 75-module Unity workspace: 96% true-positive rate (25/26 verified). Remaining false positives are structural: Unity reflection-based dispatch (`[RuntimeInitializeOnLoadMethod]`, lifecycle callbacks), runtime entry points, static field initializer method-groups. See `INV-DEADCODE-001`.
 
 **Call-graph completeness.** v0.6.4 raised edge count by 42% (self-analysis: 5,777 to 8,223). `find_references`, `dependants`, `blast_radius`, and `file_impact` all benefit from the same extraction and compilation fixes.
 
