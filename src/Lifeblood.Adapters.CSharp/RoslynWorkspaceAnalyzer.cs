@@ -142,6 +142,9 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 foreach (var tree in compilation.SyntaxTrees)
                 {
                     if (string.IsNullOrEmpty(tree.FilePath)) continue;
+                    // Skip synthetic trees (e.g., <ImplicitGlobalUsings>.cs injected
+                    // by ModuleCompilationBuilder for ImplicitUsings support).
+                    if (tree.FilePath.StartsWith("<")) continue;
 
                     var model = compilation.GetSemanticModel(tree);
                     var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
@@ -336,6 +339,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 foreach (var tree in compilation.SyntaxTrees)
                 {
                     if (string.IsNullOrEmpty(tree.FilePath)) continue;
+                    if (tree.FilePath.StartsWith("<")) continue;
 
                     // Only re-extract changed files
                     if (!changedFiles.Contains(tree.FilePath)) continue;

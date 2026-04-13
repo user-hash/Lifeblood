@@ -213,6 +213,15 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Select(el => el.Value)
                 .Any(v => string.Equals(v?.Trim(), "true", StringComparison.OrdinalIgnoreCase));
 
+            // Compilation fact: <ImplicitUsings> (INV-COMPFACT-001..003).
+            // When enabled, MSBuild generates global usings for System,
+            // System.Collections.Generic, System.IO, System.Linq, etc.
+            // Without these, Roslyn can't resolve List<>, Dictionary<>, etc.
+            bool implicitUsings = doc.Descendants()
+                .Where(el => el.Name.LocalName == "ImplicitUsings")
+                .Select(el => el.Value)
+                .Any(v => string.Equals(v?.Trim(), "enable", StringComparison.OrdinalIgnoreCase));
+
             // Pure detection: no PackageReference or assembly Reference
             bool isPure = !doc.Descendants().Any(el =>
                 el.Name.LocalName == "PackageReference"
@@ -229,6 +238,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                     ? BclOwnershipMode.ModuleProvided
                     : BclOwnershipMode.HostProvided,
                 AllowUnsafeCode = allowUnsafeCode,
+                ImplicitUsings = implicitUsings,
                 Properties = new Dictionary<string, string>
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),

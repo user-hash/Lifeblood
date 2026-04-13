@@ -100,4 +100,21 @@ public sealed class ModuleInfo
     /// Default false preserves pre-fix behavior. See INV-COMPFACT-001..003 in CLAUDE.md.
     /// </summary>
     public bool AllowUnsafeCode { get; init; }
+
+    /// <summary>
+    /// True iff the module's csproj declares
+    /// <c>&lt;ImplicitUsings&gt;enable&lt;/ImplicitUsings&gt;</c>. When true,
+    /// the compilation builder MUST inject the standard global usings
+    /// (<c>System</c>, <c>System.Collections.Generic</c>, <c>System.IO</c>,
+    /// <c>System.Linq</c>, <c>System.Threading</c>, <c>System.Threading.Tasks</c>,
+    /// <c>System.Net.Http</c>) as a synthetic syntax tree. Without these,
+    /// Roslyn's <c>GetSymbolInfo</c> returns null for every invocation using
+    /// types from the implicit namespaces — silently dropping 42% of call-graph
+    /// edges (LB-INBOX-007).
+    ///
+    /// Decided at discovery time by <see cref="RoslynModuleDiscovery"/>.
+    /// Consumed at compilation time by <c>ModuleCompilationBuilder.CreateCompilation</c>.
+    /// Default false preserves pre-fix behavior. See INV-COMPFACT-001..003 in CLAUDE.md.
+    /// </summary>
+    public bool ImplicitUsings { get; init; }
 }
