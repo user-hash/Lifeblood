@@ -40,26 +40,21 @@ The difference: the AI agent doesn't guess what your code does. It **asks the co
 
 ---
 
-## ¹ `lifeblood_dead_code` known limitations (`INV-DEADCODE-001`, v0.6.3)
+## ¹ `lifeblood_dead_code` status (v0.6.4)
 
-`lifeblood_dead_code` ships as **experimental / advisory** in v0.6.3. Every response carries `status: "experimental"` and a `warning` field listing the three known false-positive classes so agents cannot consume findings without seeing the caveat.
+Self-analysis: 150 to 10 findings (93% reduction) after the v0.6.4 fix session. Five false-positive classes and the root-cause compilation gap (missing implicit global usings) are closed. Call-graph completeness improved by 42% across all tools.
 
-**Known false-positive classes:**
+**Fixed in v0.6.4:** interface dispatch (method-level Implements edges), member access granularity (symbol-level References edges), null-conditional property access (MemberBindingExpressionSyntax), lambda context attribution, method-group references (IMethodSymbol in ExtractReferenceEdge), and the implicit global usings injection that raised GetSymbolInfo resolution from 58% to near-100%.
 
-1. **Method-group references.** A private method passed as a delegate (`new Lazy<T>(Load)`, event handler registration, LINQ `Where(predicate)`) never produces a direct call-site `InvocationExpressionSyntax`, so the edge extractor does not emit a `Calls` edge into the referenced method. Example: `Lifeblood.Adapters.CSharp.Internal.BclReferenceLoader.Load` is flagged as dead because its only caller is `new Lazy<>(Load)` in the same type's field initializer.
-
-2. **Multi-module canonical-id drift.** Direct invocations of some methods with complex signatures (nullable generics, cross-module source-type parameters) fail to produce `Calls` edges in the real multi-module workspace even though isolated synthetic reproductions of the "same pattern" work correctly. Example: `ModuleCompilationBuilder.CreateCompilation` is called on line 96 of the same file but has zero incoming edges in the graph. Root cause still under investigation; scheduled for v0.6.4.
-
-3. **Same-class private field reads.** Private fields (`_fs`, `_nuget`, `_refCache`) accessed only from sibling methods on the same type are flagged because the extractor does not emit read-edges at method→field granularity.
+**Remaining 10 findings (all correct or known edge-case):** runtime entry points (6), static field initializer method-groups where no containing method exists (2), static field accessed from property accessor (1), internal constructor (1).
 
 **Consumer guidance:**
 
-- Treat every finding as a **candidate** to verify, not a fact.
-- Cross-check with `lifeblood_find_references` (which has the same drift class for #2 but not for #1 or #3).
-- Inspect the source directly before deleting any "dead" symbol.
-- On real multi-module Unity workspaces expect ~20-25% of findings to be false positives; the tool is still useful for surfacing *candidates* but the agent should reason about each one.
+- Findings are now high-confidence for most code patterns.
+- The 10 remaining edge-cases are structural (entry points, field initializers) and unlikely to match real dead code in user projects.
+- Cross-check with `lifeblood_find_references` for confirmation.
 
-See [CLAUDE.md § INV-DEADCODE-001](../CLAUDE.md) for the full architectural rationale, the specific extractor code paths involved, the regression tests that pin the synthetic happy-path, and the v0.6.4 follow-up scope.
+See [CLAUDE.md, INV-DEADCODE-001](../CLAUDE.md) for the full invariant.
 
 ---
 

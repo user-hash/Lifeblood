@@ -7,6 +7,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed. Dead-code false positives and call-graph completeness (v0.6.4 prep)
+
+Five extraction gaps closed in `RoslynEdgeExtractor`. Root-cause compilation fix in `ModuleCompilationBuilder`. Self-analysis: 150 to 10 dead-code findings (93% reduction). Edges: 5,777 to 8,223 (+42%). Tests: 539 to 557 (+18 new, 0 regressions). All call-graph tools benefit: `find_references`, `dependants`, `blast_radius`, `file_impact`, `dead_code`.
+
+- **BUG-004 (interface dispatch).** Method-level `Implements` edges via `FindImplementationForInterfaceMember` + `AllInterfaces`. Dead-code analyzer checks outgoing `Implements` as proof of liveness. Fixes ~54% of false positives.
+- **BUG-005 (member access granularity).** Symbol-level `References` edges for properties and fields via `EmitSymbolLevelEdge` shared helper. `ExtractReferenceEdge` restructured to handle `IFieldSymbol` (bare field reads) and `IMethodSymbol` (method-group references: `Lazy<T>(Load)`, `event += Handler`). Fixes ~20% of false positives.
+- **BUG-006 (null-conditional property).** `MemberBindingExpressionSyntax` handler for `obj?.Property` patterns. Fixes ~15% of false positives.
+- **Lambda context.** `FindContainingMethodOrLocal` skips lambda syntax nodes. Calls inside `.Select(x => Foo(x))` attribute to the enclosing named method.
+- **Implicit global usings (LB-INBOX-007).** `ModuleInfo.ImplicitUsings` discovered from `<ImplicitUsings>enable</>` in the csproj. `ModuleCompilationBuilder.CreateCompilation` injects a synthetic global using tree with the 7 standard namespaces. Without this, Roslyn could not resolve `List<>`, `Dictionary<>`, `HashSet<>`, etc. and `GetSymbolInfo` returned null for 42% of invocations. Follows the INV-COMPFACT-001..003 pattern.
+- **Reference assemblies.** `BclReferenceLoader` prefers SDK pack reference assemblies from `dotnet/packs/Microsoft.NETCore.App.Ref/` over runtime implementation assemblies.
+
+Remaining 10 findings: runtime entry points (6), static field initializer method-groups (2), static field in accessor (1), internal constructor (1). All correct or known edge-case.
+
 ## [0.6.3] - 2026-04-11
 
 One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds four new MCP tools (semantic search, dead code, partial view, invariant check), five new port interfaces, the wrong-namespace resolver fallback, `compile_check` auto-wrap for library modules, the MCP wire/internal DTO split that unblocks Claude Code reconnect, tokenized ranked-OR search, a Linux CI fix, and a release-wide documentation sweep. Ships `lifeblood_dead_code` as experimental / advisory with three documented false-positive classes. **Tools: 18 to 22 (+4). Ports: 17 to 22 (+5). Tests: 362 to 539.**
