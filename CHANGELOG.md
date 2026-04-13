@@ -7,7 +7,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed. Dead-code false positives and call-graph completeness (v0.6.4 prep)
+## [0.6.4] - 2026-04-13
+
+### Fixed. Dead-code false positives and call-graph completeness
 
 Five extraction gaps closed in `RoslynEdgeExtractor`. Root-cause compilation fix in `ModuleCompilationBuilder`. Self-analysis: 150 to 10 dead-code findings (93% reduction). Edges: 5,777 to 8,223 (+42%). Tests: 539 to 557 (+18 new, 0 regressions). All call-graph tools benefit: `find_references`, `dependants`, `blast_radius`, `file_impact`, `dead_code`.
 
@@ -125,10 +127,10 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
 
 - **Dogfood against DAWG** surfaced three false-positive classes.
   1. **Method-group references.** A private method passed as a delegate (`new Lazy<T>(Load)`, event handler registration, LINQ `Where(predicate)`) never produces an `InvocationExpressionSyntax` at the call site, so no `Calls` edge is emitted into the referenced method. Example: `BclReferenceLoader.Load` is flagged as dead because its only caller is `new Lazy<>(Load)` in the same type's static field initializer.
-  2. **Multi-module canonical-id drift.** Direct invocations of some methods with complex signatures (nullable generics, cross-module source-type parameters) fail to produce `Calls` edges in the full multi-module workspace even though isolated synthetic reproductions work. Example: `ModuleCompilationBuilder.CreateCompilation` is called directly on line 96 of the same file but has zero incoming edges in the graph. Root cause still under investigation; scheduled for v0.6.4.
+  2. **Multi-module canonical-id drift.** Direct invocations of some methods with complex signatures (nullable generics, cross-module source-type parameters) fail to produce `Calls` edges in the full multi-module workspace even though isolated synthetic reproductions work. Example: `ModuleCompilationBuilder.CreateCompilation` is called directly on line 96 of the same file but has zero incoming edges in the graph. **Root cause found and fixed in v0.6.4:** missing implicit global usings in compilation, not canonical-id drift. See v0.6.4 changelog entry.
   3. **Same-class private field reads.** Private fields read from sibling methods on the same type are flagged because the extractor does not emit read-edges at method-to-field granularity.
 - **Ship decision.** The tool is marked `[EXPERIMENTAL. ADVISORY ONLY]` in its description. Every response carries `status: "experimental"` plus a `warning` field listing the classes so agents cannot consume findings without seeing the caveat. `Handle_DeadCode_Response_IncludesExperimentalWarning` pins the caveat against future regression.
-- **v0.6.4 scope.** Root-cause investigation of class 2 is scheduled for the next release. Classes 1 and 3 likely fix together with method-group-conversion edge extraction.
+- **v0.6.4 resolution.** All three classes fixed in v0.6.4. Root cause of class 2 was missing implicit global usings in compilation, not canonical-id drift.
 - **Impact on other tools.** `lifeblood_find_references`, `lifeblood_dependants`, `lifeblood_blast_radius`, and `lifeblood_file_impact` inherit the same class-2 gap for the same subset of methods. They are still authoritative for the 95%+ of symbols outside the gap class. Regression tests `ExtractEdges_MethodCall_NullableGenericParameter_SameClass_ProducesCallsEdge` and `ExtractEdges_MethodCall_ComplexSignature_MatchesRealProcessInOrder` in `RoslynExtractorTests` pin the synthetic happy-path.
 
 ### Changed
@@ -580,6 +582,11 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
 [Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
+[0.6.1]: https://github.com/user-hash/Lifeblood/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...v0.6.0
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
 [0.6.1]: https://github.com/user-hash/Lifeblood/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...v0.6.0

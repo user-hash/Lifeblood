@@ -1,10 +1,10 @@
 # MCP Server Setup
 
-Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 18 tools over stdio JSON-RPC. This page covers how it works, how to install it, and copy-paste configs for every major MCP client, including the Unity Editor via the Coplay MCP for Unity bridge.
+Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 22 tools over stdio JSON-RPC. This page covers how it works, how to install it, and copy-paste configs for every major MCP client, including the Unity Editor via the Coplay MCP for Unity bridge.
 
 ## How it works
 
-[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 8 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes 18 tools.
+[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 8 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes 22 tools.
 
 ```
 ┌─────────────────┐   spawn (stdin/stdout)   ┌──────────────────────────┐
@@ -29,7 +29,7 @@ Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 18 tools over stdio JSO
 
 **Memory.** Streaming compilation with downgrading keeps a 75-module Unity workspace under about 4 GB. Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (around 10 to 100 KB), so only one full Roslyn `Compilation` is held at once. Smaller projects (around 10 modules) sit at about 200 MB.
 
-**Read vs write side.** Eight tools are read-side: graph queries, namely `analyze`, `lookup`, `dependencies`, `dependants`, `blast_radius`, `file_impact`, `context`, and `resolve_short_name`. Ten tools are write-side: Roslyn-backed compiler operations, namely `execute`, `diagnose`, `compile_check`, `find_references`, `find_definition`, `find_implementations`, `symbol_at_position`, `documentation`, `rename`, and `format`. The split matters because write-side tools require a real Roslyn workspace and become unavailable in `readOnly` analysis mode.
+**Read vs write side.** Twelve tools are read-side: graph queries, namely `analyze`, `lookup`, `dependencies`, `dependants`, `blast_radius`, `file_impact`, `context`, `resolve_short_name`, `search`, `dead_code`, `partial_view`, and `invariant_check`. Ten tools are write-side: Roslyn-backed compiler operations, namely `execute`, `diagnose`, `compile_check`, `find_references`, `find_definition`, `find_implementations`, `symbol_at_position`, `documentation`, `rename`, and `format`. The split matters because write-side tools require a real Roslyn workspace and become unavailable in `readOnly` analysis mode.
 
 **Symbol resolution.** Every read-side tool that takes a `symbolId` routes through `ISymbolResolver` before hitting the graph or workspace. Resolution order is: exact canonical id, then truncated method form (single-overload lenient), then bare short name. So `method:Foo.Bar` resolves correctly even though the canonical form is `method:Foo.Bar(int)`, and `lifeblood_resolve_short_name name="Bar"` discovers the canonical id when you don't know the namespace.
 
@@ -236,7 +236,7 @@ Lifeblood integrates with the Unity Editor as a **sidecar process** under the [C
                                         │   (separate .NET 8 process) │
                                         │   - Roslyn workspace        │
                                         │   - Semantic graph          │
-                                        │   - 18 tools, all share     │
+                                        │   - 22 tools, all share     │
                                         │     one loaded state        │
                                         └─────────────────────────────┘
 ```
@@ -290,7 +290,7 @@ Assets/Editor/LifebloodBridge.meta
 
 The bridge files belong in the Lifeblood repo. They should not be committed to the consuming Unity project's git history.
 
-**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. All 18 Lifeblood tools appear in Coplay's tool list alongside the built-in Unity tools.
+**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. All 22 Lifeblood tools appear in Coplay's tool list alongside the built-in Unity tools.
 
 **Step 5. Connect any MCP client to Coplay MCP for Unity** following Coplay's own setup guide. From the client's perspective, Lifeblood tools (`lifeblood_analyze`, `lifeblood_lookup`, `lifeblood_blast_radius`, and so on) appear next to Coplay's tools (`unity_manage_scene`, `unity_find_gameobjects`, and so on) on a single MCP connection.
 
@@ -336,7 +336,7 @@ You can run both at the same time. Each is its own `lifeblood-mcp` process; noth
 5. For write-side Roslyn features, use `lifeblood_find_references` (pass `includeDeclarations=true` to also list every partial declaration site), `lifeblood_execute` (the script globals `Graph`, `Compilations`, and `ModuleDependencies` give you typed access to the loaded semantic state), and `lifeblood_compile_check`.
 6. After code changes, call `lifeblood_analyze` with `incremental: true` for fast re-analysis. Only changed modules recompile, and csproj edits trigger re-discovery.
 
-The graph stays in memory for the session. All 18 tools share the same loaded workspace.
+The graph stays in memory for the session. All 22 tools share the same loaded workspace.
 
 ## Notes for Unity, .NET Framework, and Mono workspaces
 

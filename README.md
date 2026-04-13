@@ -90,7 +90,7 @@ Connect an MCP client. Load a project. The AI agent gets **22 tools**: 12 read, 
 | **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code¹, Partial View, Invariant Check |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
-¹ `lifeblood_dead_code` ships as **experimental / advisory** in v0.6.3. Known false-positive classes: (1) symbols referenced only via method-group conversion (delegates, `Lazy<T>`, events), (2) methods with canonical-id drift in multi-module workspaces, (3) private fields read via same-class access. Every response carries a `status: "experimental"` marker and a warning describing the limitations. See `INV-DEADCODE-001` in [CLAUDE.md](CLAUDE.md) for the full architectural note. Root-cause investigation scheduled for v0.6.4.
+¹ `lifeblood_dead_code` shipped experimental in v0.6.3. v0.6.4 closed five false-positive classes and the root-cause compilation gap (missing implicit global usings), reducing self-analysis findings from 150 to 10 (93%). Verified at 80% true-positive rate on a real 75-module Unity workspace. Remaining false positives are structural: Unity reflection-based dispatch, runtime entry points, static field initializer method-groups. See `INV-DEADCODE-001` in [CLAUDE.md](CLAUDE.md).
 
 Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, bare short name, and **wrong-namespace-correct-short-name** (v0.6.3, `INV-RESOLVER-005`) all resolve to the same answer.
 

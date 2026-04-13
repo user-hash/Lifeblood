@@ -31,14 +31,9 @@ Built-in architecture rule packs:
 
 ## Known Limitations (v0.6.3)
 
-**`lifeblood_dead_code` is experimental / advisory.** Three false-positive classes are documented in `INV-DEADCODE-001`:
-1. Symbols referenced only via method-group conversion (delegates, `Lazy<T>`, event handlers)
-2. Methods whose call-site canonical id drifts from the definition-side id in full multi-module workspaces
-3. Private fields read via same-class access when the enclosing type has no external references
+**`lifeblood_dead_code` accuracy.** v0.6.4 closed five false-positive classes and the root-cause compilation gap (missing implicit global usings). Self-analysis: 150 to 10 findings (93% reduction). Verified on a real 75-module Unity workspace: 80% true-positive rate on spot-checked candidates. Remaining false positives are structural: Unity reflection-based dispatch (`[RuntimeInitializeOnLoadMethod]`, lifecycle callbacks), runtime entry points, static field initializer method-groups. See `INV-DEADCODE-001`.
 
-Every response from `lifeblood_dead_code` carries `status: "experimental"` and a `warning` field listing the classes. Consumers should verify each finding with `lifeblood_find_references` and direct code inspection before acting. Root-cause investigation scheduled for v0.6.4.
-
-**`lifeblood_find_references` / `lifeblood_dependants` / `lifeblood_blast_radius`** inherit the same class-2 gap (multi-module canonical-id drift) for the same subset of methods. They are still authoritative for the 95%+ of cases that don't hit this gap. The regression tests `ExtractEdges_MethodCall_NullableGenericParameter_SameClass_ProducesCallsEdge` and `ExtractEdges_MethodCall_ComplexSignature_MatchesRealProcessInOrder` in `RoslynExtractorTests` pin the synthetic happy-path and will catch a narrow regression.
+**Call-graph completeness.** v0.6.4 raised edge count by 42% (self-analysis: 5,777 to 8,223). `find_references`, `dependants`, `blast_radius`, and `file_impact` all benefit from the same extraction and compilation fixes.
 
 ## Self-Analysis
 
@@ -140,4 +135,4 @@ The GC counts confirm this architectural difference. The CLI churns (hundreds of
 
 Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Both blocks come from the native `usage` field on every `lifeblood_analyze` response, the CLI block to stderr and the MCP block inside the `tools/call` result JSON. No external measurement wrapper.
 
-Seven+ dogfood sessions found [50+ real bugs](DOGFOOD_FINDINGS.md). Examples: security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types, memory architecture, BCL double-load, display-string match across the source/metadata boundary, partial-type last-write-wins, `INV-CANONICAL-001` (transitive dependency closure), `INV-RESOLVER-005` (wrong-namespace short-name fallback), `INV-TOOLREG-001` (wire/internal split that unblocked MCP reconnect), `INV-DEADCODE-001` (the still-open class scheduled for v0.6.4). Every fix carries a regression test.
+Seven+ dogfood sessions found [50+ real bugs](DOGFOOD_FINDINGS.md). Examples: security bypasses, silent data loss, off-by-one boundaries, resource leaks, missing AST node types, memory architecture, BCL double-load, display-string match across the source/metadata boundary, partial-type last-write-wins, `INV-CANONICAL-001` (transitive dependency closure), `INV-RESOLVER-005` (wrong-namespace short-name fallback), `INV-TOOLREG-001` (wire/internal split that unblocked MCP reconnect), `INV-DEADCODE-001` (five false-positive classes fixed in v0.6.4, 150 to 10 findings). Every fix carries a regression test.

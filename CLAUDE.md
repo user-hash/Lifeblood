@@ -432,7 +432,13 @@ The JSON-RPC 2.0 / MCP protocol contract is owned by `McpDispatcher` in `Lifeblo
 
   5. **Implicit global usings (LB-INBOX-007, root cause of 42% GetSymbolInfo null).** `ModuleInfo.ImplicitUsings` discovered from csproj. `ModuleCompilationBuilder.CreateCompilation` injects synthetic global using tree when enabled. Follows INV-COMPFACT pattern. Without this, Roslyn can't resolve `List<>`, `Dictionary<>`, etc. — CS0246 errors on every module.
 
-  **Remaining 10 findings (all correct or known edge-case):** runtime entry points (6), static field initializer method-groups where no containing method exists (2), static field in accessor context (1), internal constructor (1). Pinned by `Handle_DeadCode_Response_IncludesExperimentalWarning` and 18 new extractor/analyzer tests added in the v0.6.4 fix session.
+  **Remaining known false-positive classes (structural, not fixable by static analysis):**
+
+  - **Runtime entry points.** `Program.Main` and `Program` types in composition roots. Never called from code. Self-analysis: 6 findings.
+  - **Static field initializer method-groups.** `new Lazy<T>(Load)` in a field initializer has no containing method for the edge source. Self-analysis: 2 findings.
+  - **Unity reflection-based dispatch.** Methods called by the Unity engine at runtime via attribute-driven reflection: `[RuntimeInitializeOnLoadMethod]` (domain reload callbacks), lifecycle methods (`OnAudioFilterRead`, `OnApplicationFocus`), and `SendMessage`-dispatched handlers. Roslyn cannot see these call sites. Verified on a real 75-module Unity workspace: ~8 lifecycle callbacks + ~16 event handlers + attribute-invoked methods. 80% true-positive rate on spot-checked dead-code candidates (4/5 true, 1/5 was `[RuntimeInitializeOnLoadMethod]`).
+
+  Pinned by `Handle_DeadCode_Response_IncludesExperimentalWarning` and 18 new extractor/analyzer tests added in the v0.6.4 fix session.
 
 ### Invariant Introspection (v0.6.3)
 

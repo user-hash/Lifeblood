@@ -105,7 +105,7 @@ Not all adapters are equal. Roslyn gives Proven type resolution. A tree-sitter a
 Current Roslyn adapter capabilities:
 - CanDiscoverSymbols: true
 - TypeResolution: Proven
-- CallResolution: Proven, with one known gap under investigation (see `INV-DEADCODE-001` section 2)
+- CallResolution: Proven. v0.6.4 fixed the implicit global usings gap that caused 42% of `GetSymbolInfo` calls to return null.
 - ImplementationResolution: Proven (cross-assembly via canonical Lifeblood ids, `INV-FINDIMPL-001`)
 - CrossModuleReferences: Proven. The edge extractor tracks metadata symbols from known workspace modules via `KnownModuleAssemblies`. Transitive dependency closure is walked at compilation time (`INV-CANONICAL-001`).
 - OverrideResolution: Proven (virtual dispatch chain via IMethodSymbol.OverriddenMethod)
