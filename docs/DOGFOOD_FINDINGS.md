@@ -2,7 +2,39 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-10, session 7, post-v0.6.0 with native usage reporting):** 1,376 symbols, 3,822 edges, 11 modules, 174 types, 0 violations (17 rules), 5.1 s wall, 212 MB peak working set. Verified on a real 400k+ LOC Unity workspace: 44,569 symbols, 87,238 edges, 75 modules, 2,439 types, 91 cycles, 32.6 s wall, 571 MB peak working set, 53.7 s total CPU (164.5% of one core), GC gen0=197 gen1=108 gen2=34. All runtime numbers come from the native `usage` block emitted on every `lifeblood_analyze` response (see LB-INBOX-005 resolution in the changelog). Three adapters (C#, TypeScript, Python) all self-analyzing and cross-language validated. **18 MCP tools (8 read + 10 write).** All Roslyn capabilities at Proven. Streaming compilation with downgrading. Unity csproj support (old-format and SDK-style). GraphBuilder deduplicates all edges and synthesizes one Contains edge per partial declaration file. Security scanner handles chained invocations. **329 tests.** **15 port interfaces** including the new `ISymbolResolver`. Three architectural seams: the ISymbolResolver port, csproj-driven compilation facts, and the RoslynSemanticView typed adapter view. BCL ownership (HostProvided or ModuleProvided) is decided once at csproj parsing. This closes the silent zero-result class on Unity, .NET Framework, and Mono workspaces.
+**Current state (2026-04-13, session 8, post-v0.6.4 dead-code accuracy pass):** 1,887 symbols, 8,223 edges, 11 modules, 238 types, 0 violations (17 rules). Verified on a real 400k+ LOC Unity workspace (see Session 8 below): 151,827 edges (was 90,486, +68%). **22 MCP tools (12 read + 10 write).** All Roslyn capabilities at Proven. **557 tests.** **22 port interfaces.** Implicit global usings injection closes the 42% `GetSymbolInfo` null-resolution class that silently degraded every call-graph tool since v0.3.0.
+
+### Session 8. Dead-code accuracy pass and call-graph completeness (2026-04-13)
+
+v0.6.4 shipped five extraction fixes and a root-cause compilation fix. Verified on both Lifeblood itself (self-analysis) and a real 75-module 400k+ LOC Unity workspace, anonymized as `WorkspaceX`.
+
+**Self-analysis impact:**
+- Dead code findings: 150 to 10 (93% reduction)
+- Edges: 5,777 to 8,223 (+42%)
+- Remaining 10 findings: runtime entry points (6), static field initializer method-groups (2), static field in accessor (1), internal constructor (1). All correct.
+
+**WorkspaceX verification (independent user-run, 2026-04-13):**
+
+Call-graph tools verified against known ground truth:
+
+| Tool | Test symbol | Result |
+|------|------------|--------|
+| `find_references` | `UtilityA.ComputeDelta` | 3 refs (was 4 before a recent code change that removed one caller - correct) |
+| `dependants` | `UtilityB.EnforceConstraint` | 11 dependants (was 7 - +4 from new callers added by user - correct) |
+| `blast_radius` | `UtilityA.ComputeDelta` | 7 affected (was 9 - correctly reflects narrower chain after refactor) |
+| `file_impact` | `Operations.cs` | 9 deps, 3 dependants - rich, accurate |
+
+Edge count: 90,486 to 151,827 (+68%). The +61K edges are real semantic relationships that were previously missed due to the implicit global usings gap.
+
+Dead-code accuracy on WorkspaceX:
+- 10/10 known-used methods verified as NOT flagged (zero false negatives on spot check)
+- 2 recently deleted methods correctly absent from findings
+- 867 total candidates, 461 in project code (non-lifecycle)
+- Known remaining false-positive classes (expected and documented):
+  - 8 Unity engine callbacks (`OnAudioFilterRead`, `OnApplicationFocus`, etc.) - called by the Unity runtime via `SendMessage`, invisible to static analysis
+  - 16 event handlers (`Raise*`, `Handle*`) - wired via delegates at sites the extractor does not yet trace
+
+The Unity callback and event handler classes are structural limitations of static analysis against a runtime that uses reflection-based dispatch. They are documented in `INV-DEADCODE-001` and surfaced in every response via the `warning` field.
 
 ### Session 7. Post-BCL three-seam framing (2026-04-10)
 
