@@ -22,6 +22,23 @@ internal sealed class ModuleCompilationBuilder
     private readonly NuGetReferenceResolver _nuget;
     private readonly SharedMetadataReferenceCache _refCache;
 
+    /// <summary>
+    /// Synthetic tree matching the global usings MSBuild generates when
+    /// <c>&lt;ImplicitUsings&gt;enable&lt;/ImplicitUsings&gt;</c> is set.
+    /// Parsed once, shared across all compilations that need it.
+    /// </summary>
+    private static readonly SyntaxTree ImplicitGlobalUsings = CSharpSyntaxTree.ParseText(
+        """
+        global using global::System;
+        global using global::System.Collections.Generic;
+        global using global::System.IO;
+        global using global::System.Linq;
+        global using global::System.Net.Http;
+        global using global::System.Threading;
+        global using global::System.Threading.Tasks;
+        """,
+        path: "<ImplicitGlobalUsings>.cs");
+
     public ModuleCompilationBuilder(IFileSystem fs, SharedMetadataReferenceCache? refCache = null)
     {
         _fs = fs;
@@ -228,9 +245,17 @@ internal sealed class ModuleCompilationBuilder
         var compilationOptions = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
             .WithAllowUnsafe(module.AllowUnsafeCode);
 
+        // Implicit global usings (INV-COMPFACT-001..003). When the csproj declares
+        // <ImplicitUsings>enable</ImplicitUsings>, MSBuild generates global usings
+        // for the standard namespaces. We inject the same set as a synthetic tree
+        // because we compile from source, not through MSBuild.
+        var allTrees = module.ImplicitUsings
+            ? trees!.Append(ImplicitGlobalUsings).ToArray()
+            : trees!;
+
         return CSharpCompilation.Create(
             module.Name,
-            trees!,
+            allTrees,
             references,
             compilationOptions);
     }
