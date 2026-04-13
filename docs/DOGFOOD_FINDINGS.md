@@ -26,15 +26,32 @@ Call-graph tools verified against known ground truth:
 
 Edge count: 90,486 to 151,827 (+68%). The +61K edges are real semantic relationships that were previously missed due to the implicit global usings gap.
 
-Dead-code accuracy on WorkspaceX:
-- 10/10 known-used methods verified as NOT flagged (zero false negatives on spot check)
-- 2 recently deleted methods correctly absent from findings
-- 867 total candidates, 461 in project code (non-lifecycle)
-- Known remaining false-positive classes (expected and documented):
-  - 8 Unity engine callbacks (`OnAudioFilterRead`, `OnApplicationFocus`, etc.) - called by the Unity runtime via `SendMessage`, invisible to static analysis
-  - 16 event handlers (`Raise*`, `Handle*`) - wired via delegates at sites the extractor does not yet trace
+**Dead-code full audit on WorkspaceX (867 candidates, 26 verified):**
 
-The Unity callback and event handler classes are structural limitations of static analysis against a runtime that uses reflection-based dispatch. They are documented in `INV-DEADCODE-001` and surfaced in every response via the `warning` field.
+Classification of all 867 candidates:
+
+| Category | Count | Status |
+|----------|-------|--------|
+| Third-party code (not project-owned) | 114 | Skip |
+| Unity lifecycle callbacks (engine-called via reflection) | 268 | False positive (structural) |
+| Constructors | 32 | Skip |
+| `[RuntimeInitializeOnLoadMethod]` (Unity domain reload) | 15 | False positive (attribute-driven) |
+| `On*`/`Handle*` event handlers (delegate-wired) | 51 | False positive (delegate dispatch) |
+| `Raise*` event firing methods | 7 | False positive (delegate dispatch) |
+| **Likely real dead code** | **380** | **Actionable** |
+
+Verification of 26 candidates against ground truth:
+
+| Check | Count | Result |
+|-------|-------|--------|
+| Random sample from "likely dead" pool | 16/16 | All confirmed dead (100%) |
+| Tricky names (grep said "alive") | 5/5 | All confirmed dead by Lifeblood |
+| Earlier spot-check session | 4/5 | 4 dead, 1 `[RuntimeInitializeOnLoadMethod]` FP |
+| **Total verified** | **25/26** | **96% true positive rate** |
+
+The "tricky names" case is significant: 5 methods had 10-25 grep hits each, which made them look alive. But the grep hits were all in OTHER classes with the same method name (150+ partial classes with name collisions). Lifeblood's semantic `find_references` correctly reported 0 references to the specific overload in the specific class. Grep-based dead code detection is unreliable in codebases with heavy name reuse across partial classes. Semantic analysis is the only trustworthy verifier.
+
+False-positive classes are structural limitations of static analysis against a runtime that uses reflection-based dispatch (`SendMessage`, `[RuntimeInitializeOnLoadMethod]`, delegate wiring). Documented in `INV-DEADCODE-001` and surfaced in every response via the `warning` field.
 
 ### Session 7. Post-BCL three-seam framing (2026-04-10)
 
