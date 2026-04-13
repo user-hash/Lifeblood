@@ -101,7 +101,7 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ### Shipped (commit `c950207`, 2026-04-13)
 
-Four false-positive classes closed. `lifeblood_dead_code` on Lifeblood itself: 150 → 42 findings (72% reduction). Edges: 5777 → 7415 (+28%). 557 tests, 0 regressions.
+Five false-positive classes + root-cause compilation fix closed. `lifeblood_dead_code` on Lifeblood itself: **150 → 10 findings (93% reduction)**. Edges: 5777 → 8223 (+42%). 557 tests, 0 regressions.
 
 1. **BUG-004 (interface dispatch, ~54% FPs):** Method-level `Implements` edges via `FindImplementationForInterfaceMember` + `AllInterfaces`. Dead-code analyzer checks outgoing `Implements` as proof of liveness.
 2. **BUG-005 (member access granularity, ~20% FPs):** Symbol-level `References` edges for properties/fields via `EmitSymbolLevelEdge` shared helper. `ExtractReferenceEdge` restructured to handle `IFieldSymbol` (bare field identifiers) and `IMethodSymbol` (method-group references).
@@ -115,22 +115,30 @@ Four false-positive classes closed. `lifeblood_dead_code` on Lifeblood itself: 1
 | Entry points (`Program.Main`, composition roots) | 9 | Correct. Never called from code. |
 | Static field initializer method-groups (`new Lazy<>(Load)`) | 2 | No containing method exists. Needs type-level fallback. |
 | Lambda/LINQ method-groups resolved by shipped fix | 6 | Closed in same commit. |
-| **Systematic `GetSymbolInfo` null resolution** | 24 | **Open. See LB-INBOX-007 below.** |
+| **Systematic `GetSymbolInfo` null resolution** | 24 | **Closed. See LB-INBOX-007 — implicit global usings.** |
 | Constructor (emits References to type, not Calls to .ctor) | 1 | By design. |
 
-### Still open
+5. **Implicit global usings (LB-INBOX-007, root cause):** `ModuleCompilationBuilder.CreateCompilation` now injects synthetic global usings tree when `ModuleInfo.ImplicitUsings` is true. Discovery in `RoslynModuleDiscovery.ParseProject`. Follows INV-COMPFACT pattern.
+6. **Reference assemblies:** `BclReferenceLoader` prefers SDK pack reference assemblies over runtime implementation assemblies.
 
-The "class 2" gap previously labeled "canonical-id drift" is misdiagnosed. Empirical investigation (2026-04-13) proved the root cause is compilation reference incompleteness, not ID format mismatch. See LB-INBOX-007 for the full write-up.
+### Remaining 10 findings (all correct or known edge-case)
 
-The dead-code tool cannot graduate from `[EXPERIMENTAL]` until LB-INBOX-007 is resolved. The same gap affects `find_references`, `dependants`, `blast_radius`, and `file_impact` for the same 42% of invocations.
+| Finding | Root cause | Status |
+|---------|-----------|--------|
+| `Program`/`Main` × 6 | Runtime entry points, never called from code | Correct |
+| `BclReferenceLoader.Load`, `LoadHostBclReferences` | Method-group in static field initializer (`new Lazy<>(Load)`) | Known gap — no containing method |
+| `RulePacks.Names` | Static field accessed from property getter (accessor context) | Known gap |
+| `SemanticGraph..ctor` | Constructor calls emit References to type, not Calls to .ctor | By design |
 
-**Why it matters.** Four of five false-positive classes are closed. The remaining class is not dead-code-specific — it's a graph-wide extraction completeness problem. Fixing it raises every read-side tool, not just `dead_code`.
+**Why it matters.** All five false-positive classes AND the root-cause compilation gap are closed. The dead-code tool can graduate from `[EXPERIMENTAL]` once the warning text is updated. Every call-graph tool (`find_references`, `dependants`, `blast_radius`, `file_impact`) gained ~42% more edges in one pass.
 
 ---
 
-## LB-INBOX-007. Systematic `GetSymbolInfo` null resolution in full workspace compilations
+## LB-INBOX-007. Systematic `GetSymbolInfo` null resolution in full workspace compilations — RESOLVED
 
-**Observed (2026-04-13).** Diagnostic instrumentation of `RoslynEdgeExtractor.ExtractCallEdge` during Lifeblood self-analysis revealed:
+**Shipped (commit `53d90a6`, 2026-04-13).** Root cause: missing implicit global usings, not reference assembly type. Fix: `ModuleInfo.ImplicitUsings` + synthetic `global using` tree in `ModuleCompilationBuilder`. Dead code: 42 → 10. Edges: 7415 → 8223. All call-graph tools benefit.
+
+**Original observation (2026-04-13).** Diagnostic instrumentation of `RoslynEdgeExtractor.ExtractCallEdge` during Lifeblood self-analysis revealed:
 
 | Metric | Count | % of invocations |
 |--------|-------|-----------------|
@@ -159,23 +167,18 @@ This is not selective. 42% of all method invocations fail semantic resolution. E
 
 3. The compilation HAS `System.Collections.dll` and `System.Private.CoreLib.dll` from `dotnet/shared/Microsoft.NETCore.App/8.0.25/` (180 implementation DLLs). CoreLib confirmed present in reference set.
 
-4. **But these are implementation assemblies** from `dotnet/shared/`, not reference assemblies from `dotnet/packs/`. Reference assemblies live at:
-   ```
-   dotnet/packs/Microsoft.NETCore.App.Ref/8.0.25/ref/net8.0/  (267 assemblies)
-   ```
-   MSBuild and the .NET SDK use reference assemblies for compilation. Roslyn's semantic model expects them. Implementation assemblies may not expose the same type-forwarding metadata that reference assemblies do.
+4. Reference assemblies from `dotnet/packs/` were investigated but switching to them alone did NOT fix the issue — same CS0246 errors persisted.
 
-**Fix shape.** Change `BclReferenceLoader.Load()` to discover and load reference assemblies from the `Microsoft.NETCore.App.Ref` pack instead of (or in addition to) runtime implementation assemblies. Discovery order:
+5. **Actual root cause: missing implicit global usings.** .NET SDK projects with `<ImplicitUsings>enable</ImplicitUsings>` get auto-generated `global using System; global using System.Collections.Generic;` etc. from MSBuild at build time. `ModuleCompilationBuilder.CreateCompilation` compiles from source, not through MSBuild, so these global usings were never present. The source files rely on them (no explicit `using System.Collections.Generic;`).
 
-1. Find the `dotnet/packs/Microsoft.NETCore.App.Ref/{version}/ref/net8.0/` directory matching the target framework
-2. Load all `.dll` files from that directory as `MetadataReference`s
-3. Fall back to the current runtime-directory approach if the pack is not installed (standalone runtime without SDK)
+**What shipped (commit `53d90a6`):**
 
-This is a single-site fix in `BclReferenceLoader.Load()`. All downstream consumers (`CreateCompilation`, every module's semantic model) benefit automatically. Expected impact: compilation errors drop to near-zero for SDK-style projects, `GetSymbolInfo` resolution rate jumps from 32% to near-100%, all read-side tools gain full call-graph completeness.
+1. `ModuleInfo.ImplicitUsings` — typed bool field, discovered at parse time from `<ImplicitUsings>enable</>` in the csproj. Follows INV-COMPFACT-001..003 pattern (same as `AllowUnsafeCode`, `BclOwnership`).
+2. `ModuleCompilationBuilder.CreateCompilation` — injects static `ImplicitGlobalUsings` syntax tree (7 standard namespaces) when flag is set.
+3. `RoslynWorkspaceAnalyzer` — skips synthetic trees (path starts with `<`) during extraction.
+4. `BclReferenceLoader` — also upgraded to prefer reference assemblies from SDK pack (correct but secondary fix).
 
-**Scope.** Affects `dead_code`, `find_references`, `dependants`, `blast_radius`, `file_impact` — every tool that walks Calls edges. Single highest-leverage improvement for Lifeblood's practical accuracy. Should precede Phase 1 truth envelope (LB-INBOX-001).
-
-**Why it matters.** The dead-code false-positive rate drops from 42 to ~11. Every tool that walks the call graph becomes ~3× more complete. This is the largest practical accuracy win available.
+**Impact:** Dead code 150 → 10 (93% reduction). Edges 5777 → 8223 (+42%). All call-graph tools (`find_references`, `dependants`, `blast_radius`, `file_impact`, `dead_code`) gain ~42% more edges. Compilation errors drop from hundreds per module to near-zero.
 
 ---
 
