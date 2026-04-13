@@ -211,7 +211,7 @@ Call a tool:
 
 ## Unity Editor (via Coplay MCP for Unity)
 
-Lifeblood integrates with the Unity Editor as a **sidecar process** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds its 18 semantic tools to the same connection without competing for assemblies, without triggering domain reloads, and without colliding with Unity's own tooling.
+Lifeblood integrates with the Unity Editor as a **sidecar process** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds its 22 semantic tools to the same connection without competing for assemblies, without triggering domain reloads, and without colliding with Unity's own tooling.
 
 ### How the bridge works
 

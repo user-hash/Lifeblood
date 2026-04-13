@@ -118,7 +118,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
                       Analysis (optional)         └──  CLI / CI
 ```
 
-22 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution + `IInvariantProvider` for CLAUDE.md invariant introspection). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 60+ typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+22 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution + `IInvariantProvider` for CLAUDE.md invariant introspection). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 58 typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
