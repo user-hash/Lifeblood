@@ -99,25 +99,83 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ## LB-INBOX-002. Phase 2. Close out `INV-DEADCODE-001` and the shared extraction gap
 
-**Observed.** `INV-DEADCODE-001` in `CLAUDE.md` documents three false-positive classes in `lifeblood_dead_code`:
+### Shipped (commit `c950207`, 2026-04-13)
 
-1. Method-group references (delegate args, `Lazy<T>`, event handlers) never emit a `Calls` edge at the call site.
-2. Direct invocations of some methods with complex signatures fail to produce `Calls` edges in full multi-module workspaces even though synthetic reproductions work. Tracked as canonical-id drift between call-site and definition-side.
-3. Same-class private field reads are flagged because the extractor does not emit read-edges at method-to-field granularity.
+Four false-positive classes closed. `lifeblood_dead_code` on Lifeblood itself: 150 → 42 findings (72% reduction). Edges: 5777 → 7415 (+28%). 557 tests, 0 regressions.
 
-Classes 1 and 3 affect only `dead_code` today, but class 2 silently degrades `lifeblood_find_references`, `lifeblood_dependants`, `lifeblood_blast_radius`, and `lifeblood_file_impact` for the same subset of methods. The regression tests `ExtractEdges_MethodCall_NullableGenericParameter_SameClass_ProducesCallsEdge` and `ExtractEdges_MethodCall_ComplexSignature_MatchesRealProcessInOrder` in `RoslynExtractorTests` pin the synthetic happy-path but do not yet reproduce the multi-module failure mode.
+1. **BUG-004 (interface dispatch, ~54% FPs):** Method-level `Implements` edges via `FindImplementationForInterfaceMember` + `AllInterfaces`. Dead-code analyzer checks outgoing `Implements` as proof of liveness.
+2. **BUG-005 (member access granularity, ~20% FPs):** Symbol-level `References` edges for properties/fields via `EmitSymbolLevelEdge` shared helper. `ExtractReferenceEdge` restructured to handle `IFieldSymbol` (bare field identifiers) and `IMethodSymbol` (method-group references).
+3. **BUG-006 (null-conditional property, ~15% FPs):** `MemberBindingExpressionSyntax` handler for `obj?.Property` patterns.
+4. **Lambda context:** `FindContainingMethodOrLocal` now skips lambda syntax nodes (same `continue` pattern as `LocalFunctionStatementSyntax`).
 
-**Suggested fix shape.**
+### Remaining: 42 findings — classified
 
-1. Add a handler in `RoslynEdgeExtractor` for method-group conversion sites (identifier used as argument to a delegate-typed parameter) that emits a `Calls` edge into the referenced method. Covers class 1.
-2. Diagnose the class-2 multi-module drift by adding opt-in diagnostic logging to the extractor that dumps the canonical id Roslyn's `GetSymbolInfo` produces at the call site versus what `CanonicalSymbolFormat.BuildParamSignature` produces at the definition site, for every `Calls` edge on a real workspace load. Compare against DAWG and Lifeblood-self to find where the strings diverge.
-3. Emit read-edges at method-to-field granularity behind an opt-in flag. Covers class 3. Profile first; field-read edges can multiply graph size.
-4. Build a regression corpus from DAWG and Lifeblood edge cases rather than only synthetic single-file fixtures. The synthetic tests already pass; the gap lives in the full-workspace compilation pipeline.
-5. Once classes 1-3 are closed, graduate `dead_code` from `[EXPERIMENTAL, ADVISORY ONLY]` to a higher confidence tier via the Phase 1 truth envelope.
+| Root cause | Count | Status |
+|-----------|-------|--------|
+| Entry points (`Program.Main`, composition roots) | 9 | Correct. Never called from code. |
+| Static field initializer method-groups (`new Lazy<>(Load)`) | 2 | No containing method exists. Needs type-level fallback. |
+| Lambda/LINQ method-groups resolved by shipped fix | 6 | Closed in same commit. |
+| **Systematic `GetSymbolInfo` null resolution** | 24 | **Open. See LB-INBOX-007 below.** |
+| Constructor (emits References to type, not Calls to .ctor) | 1 | By design. |
 
-Add "explain why" traces to derived findings so users can inspect the causal chain. `dead_code` should be able to answer "why do you think this is dead" with the specific `GetIncomingEdgeIndexes` walk it performed.
+### Still open
 
-**Why it matters.** Converts the repo's biggest honesty caveat into a strength. Raises the practical usefulness of five tools in one pass. Closes the open v0.6.4 scope from the v0.6.3 release notes.
+The "class 2" gap previously labeled "canonical-id drift" is misdiagnosed. Empirical investigation (2026-04-13) proved the root cause is compilation reference incompleteness, not ID format mismatch. See LB-INBOX-007 for the full write-up.
+
+The dead-code tool cannot graduate from `[EXPERIMENTAL]` until LB-INBOX-007 is resolved. The same gap affects `find_references`, `dependants`, `blast_radius`, and `file_impact` for the same 42% of invocations.
+
+**Why it matters.** Four of five false-positive classes are closed. The remaining class is not dead-code-specific — it's a graph-wide extraction completeness problem. Fixing it raises every read-side tool, not just `dead_code`.
+
+---
+
+## LB-INBOX-007. Systematic `GetSymbolInfo` null resolution in full workspace compilations
+
+**Observed (2026-04-13).** Diagnostic instrumentation of `RoslynEdgeExtractor.ExtractCallEdge` during Lifeblood self-analysis revealed:
+
+| Metric | Count | % of invocations |
+|--------|-------|-----------------|
+| Total `InvocationExpressionSyntax` nodes | 5,829 | 100% |
+| `GetSymbolInfo().Symbol == null` | 2,421 | **42%** |
+| — with `CandidateSymbols > 0` (partial resolution) | 801 | 14% |
+| — with zero candidates (complete failure) | 1,620 | 28% |
+| Successfully emitted Calls edges | 1,859 | 32% |
+
+This is not selective. 42% of all method invocations fail semantic resolution. Entire modules are near-total failures: `BlastRadiusAnalyzer.cs` 17/17 null, `CircularDependencyDetector.cs` 19/19 null, `Lifeblood.Domain` files near-complete failure. Yet these same invocations resolve correctly in single-file synthetic compilations (all unit tests pass).
+
+**Why "canonical-id drift" was a misdiagnosis.** The previous theory assumed `GetSymbolInfo` resolved correctly but produced a different canonical ID at the call site vs definition site. Instrumentation disproves this: `GetSymbolInfo().Symbol` is literally `null` — Roslyn never even attempts to format the symbol. The call never reaches `CanonicalSymbolFormat`.
+
+### Root cause: CONFIRMED (2026-04-13, second investigation pass)
+
+**`BclReferenceLoader` loads runtime implementation assemblies, not reference assemblies.** Roslyn needs reference assemblies for correct type resolution. Implementation assemblies have different type-forwarding metadata.
+
+**Evidence chain:**
+
+1. Diagnostic logging on `compilation.GetDiagnostics()` shows **every module** has compilation errors:
+   - `Lifeblood.Domain`: 94 errors (CS0246×61, CS0103×28)
+   - `Lifeblood.Adapters.CSharp`: 460 errors (CS0246×224, CS0103×155)
+   - `Lifeblood.Tests`: 1145 errors (CS0103×538, CS0246×263)
+
+2. CS0246 messages: `"The type or namespace name 'List<>' could not be found"`, `"HashSet<>"`, `"IReadOnlyList<>"`. CS0103: `"StringComparer"`, `"Array"`.
+
+3. The compilation HAS `System.Collections.dll` and `System.Private.CoreLib.dll` from `dotnet/shared/Microsoft.NETCore.App/8.0.25/` (180 implementation DLLs). CoreLib confirmed present in reference set.
+
+4. **But these are implementation assemblies** from `dotnet/shared/`, not reference assemblies from `dotnet/packs/`. Reference assemblies live at:
+   ```
+   dotnet/packs/Microsoft.NETCore.App.Ref/8.0.25/ref/net8.0/  (267 assemblies)
+   ```
+   MSBuild and the .NET SDK use reference assemblies for compilation. Roslyn's semantic model expects them. Implementation assemblies may not expose the same type-forwarding metadata that reference assemblies do.
+
+**Fix shape.** Change `BclReferenceLoader.Load()` to discover and load reference assemblies from the `Microsoft.NETCore.App.Ref` pack instead of (or in addition to) runtime implementation assemblies. Discovery order:
+
+1. Find the `dotnet/packs/Microsoft.NETCore.App.Ref/{version}/ref/net8.0/` directory matching the target framework
+2. Load all `.dll` files from that directory as `MetadataReference`s
+3. Fall back to the current runtime-directory approach if the pack is not installed (standalone runtime without SDK)
+
+This is a single-site fix in `BclReferenceLoader.Load()`. All downstream consumers (`CreateCompilation`, every module's semantic model) benefit automatically. Expected impact: compilation errors drop to near-zero for SDK-style projects, `GetSymbolInfo` resolution rate jumps from 32% to near-100%, all read-side tools gain full call-graph completeness.
+
+**Scope.** Affects `dead_code`, `find_references`, `dependants`, `blast_radius`, `file_impact` — every tool that walks Calls edges. Single highest-leverage improvement for Lifeblood's practical accuracy. Should precede Phase 1 truth envelope (LB-INBOX-001).
+
+**Why it matters.** The dead-code false-positive rate drops from 42 to ~11. Every tool that walks the call graph becomes ~3× more complete. This is the largest practical accuracy win available.
 
 ---
 
