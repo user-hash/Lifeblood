@@ -407,7 +407,9 @@ The JSON-RPC 2.0 / MCP protocol contract is owned by `McpDispatcher` in `Lifeblo
 
   5. **Implicit global usings (LB-INBOX-007, root cause of 42% GetSymbolInfo null).** `ModuleInfo.ImplicitUsings` discovered from csproj. `ModuleCompilationBuilder.CreateCompilation` injects synthetic global using tree when enabled. Follows INV-COMPFACT pattern. Without this, Roslyn can't resolve `List<>`, `Dictionary<>`, etc. — CS0246 errors on every module.
 
-  **Remaining 10 findings (all correct or known edge-case):** runtime entry points (6), static field initializer method-groups where no containing method exists (2), static field in accessor context (1), internal constructor (1). Pinned by `Handle_DeadCode_Response_IncludesExperimentalWarning` and 18 new extractor/analyzer tests added in the v0.6.4 fix session.
+  **Remaining known false-positive classes (structural, not fixable by static analysis):**
+
+  Pinned by `Handle_DeadCode_Response_IncludesExperimentalWarning` and 18 new extractor/analyzer tests added in the v0.6.4 fix session.
 
 ### Invariant Introspection (v0.6.3)
 
