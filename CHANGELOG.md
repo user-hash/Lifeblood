@@ -7,6 +7,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed. Three more Roslyn extractor gaps + ctor resolver bug
+
+Three extractor gaps originally marked "by design / known gap" under `INV-DEADCODE-001` are now closed; a ctor-id resolution bug in `LifebloodSymbolResolver` is also fixed so the new ctor edges are actually queryable via `find_references` / `dependants` / `blast_radius`.
+
+- **Constructor `Calls` edge.** `ExtractConstructorCallEdge` now emits BOTH a type-level `References` edge (prior behaviour — module coupling signal) AND a method-level `Calls` edge to the `.ctor`. `find_references` on any explicit constructor returns its construction sites.
+- **Field-initializer containing method.** `FindContainingMethodOrLocal` resolves references inside `static T _x = Bar()` / `T _x = Bar()` / `public int X { get; } = Compute()` to the type's synthesized `.cctor` (static) or first `.ctor` (instance) via `INamedTypeSymbol.StaticConstructors` / `InstanceConstructors`. Closes the `new Lazy<>(Load)` "no containing method" false-positive class.
+- **Property accessor context.** `FindContainingMethodOrLocal` returns the accessor `IMethodSymbol` for references inside bodied `get { ... }`, expression-bodied `=> _field`, and indexer expression bodies. `GetMethodId` routes `AssociatedSymbol` to the property/event id so the edge source matches the extracted graph node.
+- **Constructor resolver (regression fix).** `LifebloodSymbolResolver.TryParseMethodWithoutParens` recognizes the `..ctor` / `..cctor` suffixes explicitly — the leading dot is part of the canonical method name in Lifeblood's ID grammar, so a plain `LastIndexOf('.')` split produced an invalid type id (`type:NS.Foo.`). Without the fix, `find_references`, `blast_radius`, `dependants`, and every other read-side tool were unable to resolve `method:NS.Foo..ctor` (truncated) despite the symbol existing in the graph.
+
+### Changed. Publish workflow hardening
+
+- **Tag trigger restricted to pure semver.** Previously `tags: ['v*']` fired the NuGet publish on ANY `v`-prefixed tag, including helper / checkpoint tags. Combined with MinVer (tag → package version), a helper tag like `v0.6.4.1-post-extractor` would ship a real NuGet package with a prerelease-suffixed version. Trigger is now `v[0-9]+.[0-9]+.[0-9]+` (triple-dot semver only). Pre-release / hotfix publishes must go through `workflow_dispatch` with an explicit `confirm=publish` input.
+- **Post-pack artifact guard.** Even under the strict trigger, the workflow now fails loudly if any produced nupkg filename carries a prerelease suffix (`-alpha`, `-beta`, `-rc`, `-preview`, `-dev`, `-post`), preventing a garbage version from reaching nuget.org.
+- **MinVer fetch-depth.** `actions/checkout` now uses `fetch-depth: 0` so MinVer can walk the full tag history when deriving the version.
+
+### Documentation
+
+- **`CLAUDE.md` trim.** 556 → 402 lines (~20% smaller) without dropping any invariant rule. Stale `## 17 MCP Tools` heading removed (actual: 22, authoritative source `docs/STATUS.md` + `ToolRegistry.cs`). Port Interfaces section compressed to a directory-layout pointer. Verbose evidence narratives trimmed on `INV-RESOLVER-005`, `INV-CANONICAL-001`, `INV-MCP-003`, `INV-TOOLREG-001`, `INV-DEADCODE-001`, `INV-FINDIMPL-001`, `INV-USAGE-*`, `INV-BCL-001..005`, `INV-TESTDISC-001`, `INV-INVARIANT-001`. `INV-DEADCODE-001` updated to document the three new closed FP classes.
+- **`docs/IMPROVEMENT_INBOX.md` hygiene.** Deleted the "Shipped since v0.6.0" block and the `LB-INBOX-007` RESOLVED block per the file's own "when the fix ships, delete the entry" rule. Resolved the `LB-INBOX-001..005` id collision between shipped-history entries and phase entries. Rewrote `LB-INBOX-002` Phase 2 to reflect current state.
+- **Self-analysis sample refreshed.** `docs/STATUS.md` self-analysis block showed pre-v0.6.4 numbers (1834 symbols / 5708 edges / 235 types / 57 invariants); updated to post-v0.6.4 values (1887 / 8223 / 238 / 63).
+- **`docs/ARCHITECTURE.md` Seam 4 wording.** Removed pre-release framing that referred to `INV-DEADCODE-001` "for the v0.6.4 investigation" — the v0.6.4 gap classes are now closed.
+- **Count refresh.** Test count 557 → 569 across STATUS / README / ARCHITECTURE / DOGFOOD. Invariant count 58 → 63.
+
+### Internal
+
+- `CS8620` nullable warning in `ModuleCompilationBuilder` eliminated by projecting the filtered `Where(t => t != null)` through `Select(t => t!)` so downstream flow sees `SyntaxTree[]` instead of `SyntaxTree?[]`.
+
 ## [0.6.4] - 2026-04-13
 
 ### Fixed. Dead-code false positives and call-graph completeness

@@ -209,6 +209,7 @@ internal sealed class ModuleCompilationBuilder
                 catch (IOException) { return null; }
             })
             .Where(t => t != null)
+            .Select(t => t!)  // non-null proven by the Where above; strips the nullable flow annotation so downstream sees SyntaxTree[], not SyntaxTree?[]
             .ToArray();
 
         if (trees.Length == 0) return null;
@@ -250,8 +251,8 @@ internal sealed class ModuleCompilationBuilder
         // for the standard namespaces. We inject the same set as a synthetic tree
         // because we compile from source, not through MSBuild.
         var allTrees = module.ImplicitUsings
-            ? trees!.Append(ImplicitGlobalUsings).ToArray()
-            : trees!;
+            ? trees.Append(ImplicitGlobalUsings).ToArray()
+            : trees;
 
         return CSharpCompilation.Create(
             module.Name,

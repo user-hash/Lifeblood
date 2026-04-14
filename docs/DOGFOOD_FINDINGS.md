@@ -2,7 +2,7 @@
 
 First successful self-analysis: 2026-04-07. Lifeblood analyzed its own codebase (9 modules at the time, now 11). These are the real issues discovered by running our own tool on ourselves. All findings were fixed in the same session. The numbers below reflect the codebase state at the time of discovery.
 
-**Current state (2026-04-14, post-v0.6.4 extractor pass):** 1,887 symbols (count will increase after rescan — ctor `Calls` edges, field-initializer + accessor context now emit edges previously missed), 11 modules, 238 types, 0 violations (17 rules). Verified on a real 400k+ LOC Unity workspace. **22 MCP tools (12 read + 10 write).** All Roslyn capabilities at Proven. **565 tests.** **22 port interfaces.** Three more extractor gaps closed on top of v0.6.4: ctor `Calls` edge, synthesized `.cctor` / `.ctor` attribution for field/property initializers, property accessor body context via `AssociatedSymbol` routing. `find_references` on any constructor now returns its construction sites.
+**Current state (2026-04-14, post-v0.6.4 extractor pass):** 1,887 symbols (count will increase after rescan — ctor `Calls` edges, field-initializer + accessor context now emit edges previously missed), 11 modules, 238 types, 0 violations (17 rules). Verified on a real 400k+ LOC Unity workspace. **22 MCP tools (12 read + 10 write).** All Roslyn capabilities at Proven. **569 tests.** **22 port interfaces.** Three more extractor gaps closed on top of v0.6.4: ctor `Calls` edge, synthesized `.cctor` / `.ctor` attribution for field/property initializers, property accessor body context via `AssociatedSymbol` routing. `find_references` on any constructor now returns its construction sites.
 
 ### Session 8. Dead-code accuracy pass and call-graph completeness (2026-04-13)
 
