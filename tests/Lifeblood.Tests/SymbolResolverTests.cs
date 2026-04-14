@@ -447,4 +447,170 @@ public class SymbolResolverTests
 
         return builder.Build();
     }
+
+    // ──────────────────────────────────────────────────────────────
+    // Constructor resolution — the ctor id grammar is `method:NS.Type..ctor(...)`
+    // with a double-dot between the type name and the method name. A plain
+    // "split on last dot" in TryParseMethodWithoutParens split at the wrong
+    // dot and emitted an empty-type-with-trailing-dot ID, which then failed
+    // at every subsequent rule. These tests pin the special-case handling.
+    // Regression for rows 1/5 of the post-v0.6.4.1 verification matrix
+    // (find_references / blast_radius on explicit ctors returned empty).
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Resolve_TruncatedCtor_SingleOverload_Lenient()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Foo",
+                Name = "Foo",
+                QualifiedName = "N.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Foo..ctor(int)",
+                Name = ".ctor",
+                QualifiedName = "N.Foo..ctor",
+                Kind = SymbolKind.Method,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:N.Foo",
+                TargetId = "method:N.Foo..ctor(int)",
+                Kind = EdgeKind.Contains,
+                Evidence = Evidence,
+            })
+            .Build();
+
+        var result = Resolver.Resolve(graph, "method:N.Foo..ctor");
+
+        Assert.Equal(ResolveOutcome.LenientMethodOverload, result.Outcome);
+        Assert.Equal("method:N.Foo..ctor(int)", result.CanonicalId);
+        Assert.NotNull(result.Symbol);
+    }
+
+    [Fact]
+    public void Resolve_TruncatedCtor_MultipleOverloads_Ambiguous()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Foo",
+                Name = "Foo",
+                QualifiedName = "N.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Foo..ctor(int)",
+                Name = ".ctor",
+                QualifiedName = "N.Foo..ctor",
+                Kind = SymbolKind.Method,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Foo..ctor(string)",
+                Name = ".ctor",
+                QualifiedName = "N.Foo..ctor",
+                Kind = SymbolKind.Method,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:N.Foo",
+                TargetId = "method:N.Foo..ctor(int)",
+                Kind = EdgeKind.Contains,
+                Evidence = Evidence,
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:N.Foo",
+                TargetId = "method:N.Foo..ctor(string)",
+                Kind = EdgeKind.Contains,
+                Evidence = Evidence,
+            })
+            .Build();
+
+        var result = Resolver.Resolve(graph, "method:N.Foo..ctor");
+
+        Assert.Equal(ResolveOutcome.AmbiguousMethodOverload, result.Outcome);
+        Assert.Equal(2, result.Candidates.Length);
+        Assert.Contains("method:N.Foo..ctor(int)", result.Candidates);
+        Assert.Contains("method:N.Foo..ctor(string)", result.Candidates);
+    }
+
+    [Fact]
+    public void Resolve_ExactCanonicalCtor_FastPath()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Foo",
+                Name = "Foo",
+                QualifiedName = "N.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Foo..ctor(int)",
+                Name = ".ctor",
+                QualifiedName = "N.Foo..ctor",
+                Kind = SymbolKind.Method,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .Build();
+
+        var result = Resolver.Resolve(graph, "method:N.Foo..ctor(int)");
+
+        Assert.Equal(ResolveOutcome.ExactMatch, result.Outcome);
+        Assert.Equal("method:N.Foo..ctor(int)", result.CanonicalId);
+    }
+
+    [Fact]
+    public void Resolve_TruncatedStaticCtor_SingleOverload_Lenient()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Foo",
+                Name = "Foo",
+                QualifiedName = "N.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Foo..cctor()",
+                Name = ".cctor",
+                QualifiedName = "N.Foo..cctor",
+                Kind = SymbolKind.Method,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:N.Foo",
+                TargetId = "method:N.Foo..cctor()",
+                Kind = EdgeKind.Contains,
+                Evidence = Evidence,
+            })
+            .Build();
+
+        var result = Resolver.Resolve(graph, "method:N.Foo..cctor");
+
+        Assert.Equal(ResolveOutcome.LenientMethodOverload, result.Outcome);
+        Assert.Equal("method:N.Foo..cctor()", result.CanonicalId);
+    }
 }

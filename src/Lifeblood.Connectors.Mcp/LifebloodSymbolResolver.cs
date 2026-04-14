@@ -618,6 +618,10 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     /// parens. Returns the type id (<c>type:NS.Type</c>) and the method's
     /// simple name. Returns false for any other shape (canonical with parens,
     /// non-method kind, malformed).
+    /// Constructors use <c>..ctor</c> / <c>..cctor</c> (the leading dot is part
+    /// of the method name, per Lifeblood's ID grammar), so a naive
+    /// "split on last dot" splits the name at the wrong dot. The special
+    /// ctor suffixes are handled explicitly before the generic path.
     /// </summary>
     private static bool TryParseMethodWithoutParens(string input, out string typeId, out string methodName)
     {
@@ -628,6 +632,23 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         if (input.Contains('(')) return false; // already canonical, fast path handled it
 
         var qualified = input.Substring(prefix.Length);
+
+        // Constructor special case: method:NS.Type..ctor  → type=NS.Type,  name=.ctor
+        //                          method:NS.Type..cctor → type=NS.Type, name=.cctor
+        // The canonical ID keeps the leading dot on the name, so a plain
+        // LastIndexOf('.') would split as (NS.Type., ctor) and fail to match.
+        foreach (var ctorSuffix in CtorSuffixes)
+        {
+            if (qualified.EndsWith(ctorSuffix, StringComparison.Ordinal))
+            {
+                var ctorTypeName = qualified.Substring(0, qualified.Length - ctorSuffix.Length);
+                if (string.IsNullOrEmpty(ctorTypeName)) return false;
+                methodName = ctorSuffix.Substring(1); // ".ctor" / ".cctor"
+                typeId = "type:" + ctorTypeName;
+                return true;
+            }
+        }
+
         var lastDot = qualified.LastIndexOf('.');
         if (lastDot <= 0 || lastDot == qualified.Length - 1) return false;
 
@@ -636,6 +657,8 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         typeId = "type:" + typeName;
         return true;
     }
+
+    private static readonly string[] CtorSuffixes = { "..ctor", "..cctor" };
 
     /// <summary>
     /// Find every method symbol whose <see cref="Symbol.ParentId"/> equals
