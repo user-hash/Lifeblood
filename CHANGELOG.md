@@ -7,9 +7,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed. Three more Roslyn extractor gaps + ctor resolver bug
+## [0.6.5] - 2026-04-14
 
-Three extractor gaps originally marked "by design / known gap" under `INV-DEADCODE-001` are now closed; a ctor-id resolution bug in `LifebloodSymbolResolver` is also fixed so the new ctor edges are actually queryable via `find_references` / `dependants` / `blast_radius`.
+Closes the three Roslyn extractor gaps that v0.6.4 left explicitly marked "by design / known gap" under `INV-DEADCODE-001`, plus a regression in `LifebloodSymbolResolver` that made the new ctor edges unreachable via the read-side tools. Publish workflow hardened against the drift class that would ship helper tags as real NuGet packages. `CLAUDE.md` trimmed 20% without dropping a single invariant rule. 569 tests (was 557, +12 new: 8 extractor, 4 resolver). 0 regressions. 0 build warnings.
+
+### Fixed. Three more Roslyn extractor gaps + ctor resolver bug
 
 - **Constructor `Calls` edge.** `ExtractConstructorCallEdge` now emits BOTH a type-level `References` edge (prior behaviour — module coupling signal) AND a method-level `Calls` edge to the `.ctor`. `find_references` on any explicit constructor returns its construction sites.
 - **Field-initializer containing method.** `FindContainingMethodOrLocal` resolves references inside `static T _x = Bar()` / `T _x = Bar()` / `public int X { get; } = Compute()` to the type's synthesized `.cctor` (static) or first `.ctor` (instance) via `INamedTypeSymbol.StaticConstructors` / `InstanceConstructors`. Closes the `new Lazy<>(Load)` "no containing method" false-positive class.
@@ -608,11 +610,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...HEAD
-[0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
-[0.6.1]: https://github.com/user-hash/Lifeblood/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/user-hash/Lifeblood/compare/v0.5.1...v0.6.0
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...HEAD
+[0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
 [0.6.1]: https://github.com/user-hash/Lifeblood/compare/v0.6.0...v0.6.1
