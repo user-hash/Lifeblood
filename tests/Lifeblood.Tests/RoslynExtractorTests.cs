@@ -962,6 +962,180 @@ public class Processor
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Constructor Calls edges — find_references on .ctor works
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_NewExpression_EmitsCallsEdgeToCtor()
+    {
+        // `new Foo(...)` should emit both a type-level References edge (existing)
+        // AND a method-level Calls edge to the .ctor, so find_references on the
+        // ctor finds the construction site.
+        var (model, root) = Compile(@"
+namespace App;
+public class Foo { public Foo(int x) { } }
+public class Caller
+{
+    public void Build() { var f = new Foo(42); }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Caller.Build")
+            && e.TargetId == "type:App.Foo");
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.Build")
+            && e.TargetId.Contains("Foo..ctor"));
+    }
+
+    [Fact]
+    public void ExtractEdges_TargetTypedNew_EmitsCallsEdgeToCtor()
+    {
+        // C# 9 target-typed new() — ImplicitObjectCreationExpressionSyntax.
+        var (model, root) = Compile(@"
+namespace App;
+public class Foo { public Foo() { } }
+public class Caller
+{
+    public Foo MakeFoo() { Foo f = new(); return f; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.MakeFoo")
+            && e.TargetId.Contains("Foo..ctor"));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Field initializer context — `.cctor` / `.ctor` attribution
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_StaticFieldInitializerMethodGroup_AttributedToCctor()
+    {
+        // Closes the v0.6.4 "no containing method exists" gap:
+        // `static Lazy<T> _x = new(Load)` — `Load` must get an incoming edge so the
+        // dead-code analyzer does not flag it.
+        var (model, root) = Compile(@"
+namespace App;
+public class Loader
+{
+    private static readonly System.Lazy<string> _cache = new System.Lazy<string>(Load);
+    private static string Load() { return ""x""; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Loader.Load"));
+    }
+
+    [Fact]
+    public void ExtractEdges_InstanceFieldInitializerMethodGroup_AttributedToInstanceCtor()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Handler
+{
+    private readonly System.Action _run = Execute;
+    public Handler() { }
+    private static void Execute() { }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Handler.Execute"));
+    }
+
+    [Fact]
+    public void ExtractEdges_StaticFieldInitializerNewExpression_EmitsCtorCallFromCctor()
+    {
+        // `static Foo _x = new Foo();` — ctor call inside static field initializer.
+        // Caller = synthesized .cctor.
+        var (model, root) = Compile(@"
+namespace App;
+public class Foo { public Foo() { } }
+public class Host
+{
+    private static readonly Foo _instance = new Foo();
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Foo..ctor"));
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Accessor body context — references inside property getters
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_PropertyGetterBody_EmitsEdgeFromProperty()
+    {
+        // Closes the accessor-context gap: a field read inside `get { return _x; }` must
+        // produce an incoming edge on the field so dead-code analysis sees it as alive.
+        // The edge source is the property id (the accessor method is not a graph symbol).
+        var (model, root) = Compile(@"
+namespace App;
+public class Config
+{
+    private static readonly string[] _names = { ""a"" };
+    public static string[] Names { get { return _names; } }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "property:App.Config.Names"
+            && e.TargetId == "field:App.Config._names");
+    }
+
+    [Fact]
+    public void ExtractEdges_ExpressionBodiedProperty_EmitsEdgeFromProperty()
+    {
+        // Expression-bodied property has no AccessorDeclarationSyntax — it lands directly
+        // on PropertyDeclarationSyntax with ExpressionBody != null.
+        var (model, root) = Compile(@"
+namespace App;
+public class Config
+{
+    private static readonly string[] _names = { ""a"" };
+    public static string[] Names => _names;
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "property:App.Config.Names"
+            && e.TargetId == "field:App.Config._names");
+    }
+
+    [Fact]
+    public void ExtractEdges_PropertyGetterCallingMethod_EmitsCallsEdgeFromProperty()
+    {
+        // Method call inside a property getter body — edge source is the property id,
+        // edge target is the called method.
+        var (model, root) = Compile(@"
+namespace App;
+public class Service
+{
+    public int Count => Compute();
+    private int Compute() { return 7; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId == "property:App.Service.Count"
+            && e.TargetId.Contains("Service.Compute"));
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────
 

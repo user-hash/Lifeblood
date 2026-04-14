@@ -228,6 +228,10 @@ public sealed class RoslynEdgeExtractor
     /// Handles both explicit new (ObjectCreationExpressionSyntax) and
     /// target-typed new() (ImplicitObjectCreationExpressionSyntax, C# 9).
     /// Both share the base type BaseObjectCreationExpressionSyntax.
+    /// Emits two edges: a type-level References edge (module coupling signal) AND
+    /// a method-level Calls edge to the .ctor method so find_references on the
+    /// constructor finds its call sites and the dead-code analyzer sees invoked
+    /// constructors as reachable.
     /// </summary>
     private void ExtractConstructorCallEdge(
         SemanticModel model, BaseObjectCreationExpressionSyntax creation,
@@ -242,8 +246,20 @@ public sealed class RoslynEdgeExtractor
         if (caller == null) return;
 
         var sourceId = GetMethodId(caller);
-        var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(target.ContainingType));
-        AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+
+        // Type-level edge: caller → containing type (module-coupling signal).
+        var typeTargetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(target.ContainingType));
+        AddEdge(edges, seen, sourceId, typeTargetId, EdgeKind.References);
+
+        // Method-level edge: caller → .ctor. Only emit when the ctor itself is tracked
+        // (source-declared or cross-module-known). Implicit default ctors produce metadata
+        // symbols without DeclaringSyntaxReferences in the current compilation; IsTracked
+        // accepts them when ContainingAssembly is a known workspace module.
+        if (IsTracked(target))
+        {
+            var ctorTargetId = GetMethodId(target);
+            AddEdge(edges, seen, sourceId, ctorTargetId, EdgeKind.Calls);
+        }
     }
 
     private void ExtractReferenceEdge(
@@ -464,10 +480,15 @@ public sealed class RoslynEdgeExtractor
     }
 
     /// <summary>
-    /// Find the containing method or constructor for a syntax node.
-    /// Local functions and property accessors are skipped — they don't have matching
-    /// symbols in the graph, so edges from them would be dangling. We attribute
-    /// their calls to the enclosing method instead.
+    /// Find the containing method, constructor, accessor, or synthesized ctor for a
+    /// syntax node. Local functions, lambdas, and delegate expressions are skipped —
+    /// they are not graph symbols, so their calls are attributed to the enclosing named
+    /// scope instead. Returned IMethodSymbol may be a property/indexer/event accessor
+    /// (MethodKind.PropertyGet etc.); GetMethodId routes those through AssociatedSymbol
+    /// so the emitted edge source matches the extracted property/event graph node.
+    /// For field and property initializers (`static Foo _x = Bar()` or
+    /// `public int X { get; } = Compute()`), the containing "method" is the synthesized
+    /// static (`.cctor`) or instance (`.ctor`) constructor that runs the initializer.
     /// </summary>
     private static IMethodSymbol? FindContainingMethodOrLocal(SemanticModel model, SyntaxNode node)
     {
@@ -486,15 +507,62 @@ public sealed class RoslynEdgeExtractor
                     // .Select(x => Foo(x)) or .Select(Foo) are attributed to the
                     // enclosing named method, same as local functions.
                     continue;
+                case AccessorDeclarationSyntax accessor:
+                    // Property/indexer/event accessor body (get/set/add/remove). Return the
+                    // accessor IMethodSymbol; GetMethodId maps AssociatedSymbol → property or
+                    // event ID so the edge source points at the extracted graph node.
+                    return model.GetDeclaredSymbol(accessor) as IMethodSymbol;
                 case MethodDeclarationSyntax method:
                     return model.GetDeclaredSymbol(method);
                 case ConstructorDeclarationSyntax ctor:
                     return model.GetDeclaredSymbol(ctor);
-                case AccessorDeclarationSyntax:
-                    // Property accessors (get_X/set_X) are compiler-generated methods with no
-                    // matching symbol in the graph. Skip to the containing method/type instead
-                    // to avoid dangling edge sources.
-                    continue;
+                case VariableDeclaratorSyntax varDecl
+                    when varDecl.Parent is VariableDeclarationSyntax varList
+                      && varList.Parent is FieldDeclarationSyntax:
+                {
+                    // Field initializer expression: `static Lazy<T> _x = new(Load)` runs inside
+                    // the synthesized .cctor; an instance field initializer runs inside every
+                    // instance .ctor. Attribute the reference to the synthesized constructor
+                    // so the target (Load) gets an incoming edge and the dead-code analyzer
+                    // no longer flags it. For instance fields, the first InstanceConstructor
+                    // is sufficient: the target's incoming-edge count is what matters, not
+                    // per-ctor granularity.
+                    var fieldSym = model.GetDeclaredSymbol(varDecl) as IFieldSymbol;
+                    if (fieldSym?.ContainingType == null) return null;
+                    return fieldSym.IsStatic
+                        ? fieldSym.ContainingType.StaticConstructors.FirstOrDefault()
+                        : fieldSym.ContainingType.InstanceConstructors.FirstOrDefault();
+                }
+                case PropertyDeclarationSyntax propDeclAncestor:
+                {
+                    var propSym = model.GetDeclaredSymbol(propDeclAncestor) as IPropertySymbol;
+                    if (propSym?.ContainingType == null) return null;
+                    if (propDeclAncestor.ExpressionBody != null)
+                    {
+                        // Expression-bodied property: `public int X => Compute();`. No
+                        // AccessorDeclarationSyntax intermediate — parent chain lands directly
+                        // on PropertyDeclarationSyntax. Treat as getter body; route via
+                        // GetMethod so GetMethodId emits the property id.
+                        return propSym.GetMethod;
+                    }
+                    if (propDeclAncestor.Initializer != null)
+                    {
+                        // Auto-property with initializer: `public int X { get; } = Compute()`.
+                        // Attribute to the synthesized .cctor/.ctor (same as field init).
+                        return propSym.IsStatic
+                            ? propSym.ContainingType.StaticConstructors.FirstOrDefault()
+                            : propSym.ContainingType.InstanceConstructors.FirstOrDefault();
+                    }
+                    // Regular `{ get; set; }` property — any reference inside an accessor
+                    // body was already resolved by the AccessorDeclarationSyntax case above.
+                    return null;
+                }
+                case IndexerDeclarationSyntax idxDeclAncestor when idxDeclAncestor.ExpressionBody != null:
+                {
+                    // Expression-bodied indexer: `public T this[int i] => _arr[i];`.
+                    var idxSym = model.GetDeclaredSymbol(idxDeclAncestor) as IPropertySymbol;
+                    return idxSym?.GetMethod;
+                }
             }
         }
         return null;
@@ -515,6 +583,24 @@ public sealed class RoslynEdgeExtractor
 
     private static string GetMethodId(IMethodSymbol method)
     {
+        // Property/indexer accessors (MethodKind.PropertyGet/Set) and event accessors
+        // (MethodKind.EventAdd/Remove) are not extracted as independent graph symbols —
+        // only the associated property/event is. Route the id through AssociatedSymbol
+        // so edges sourced from or targeted at accessor bodies hit the property/event
+        // graph node instead of producing dangling sources.
+        if (method.AssociatedSymbol is IPropertySymbol prop)
+        {
+            var propFqn = RoslynSymbolExtractor.GetFullName(prop.ContainingType);
+            return prop.IsIndexer
+                ? SymbolIds.Property(propFqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(prop)}]")
+                : SymbolIds.Property(propFqn, prop.Name);
+        }
+        if (method.AssociatedSymbol is IEventSymbol evt)
+        {
+            var evtFqn = RoslynSymbolExtractor.GetFullName(evt.ContainingType);
+            return SymbolIds.Property(evtFqn, evt.Name);
+        }
+
         var paramSig = CanonicalSymbolFormat.BuildParamSignature(method);
         return SymbolIds.Method(
             RoslynSymbolExtractor.GetFullName(method.ContainingType),
