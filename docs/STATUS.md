@@ -1,8 +1,8 @@
 # Status
 
-Dogfood-verified. 557 tests. **22 MCP tools** (12 read + 10 write). **22 port interfaces**. Native usage and timing reporting on every `lifeblood_analyze` response. Architectural-invariant introspection via `lifeblood_invariant_check` against 58 typed invariants in CLAUDE.md. CI green on Linux + Windows (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+Dogfood-verified. 565 tests. **22 MCP tools** (12 read + 10 write). **22 port interfaces**. Native usage and timing reporting on every `lifeblood_analyze` response. Architectural-invariant introspection via `lifeblood_invariant_check` against 63 typed invariants in CLAUDE.md. CI green on Linux + Windows (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
 
-<!-- portCount: 22 --><!-- testCount: 557 --><!-- toolCount: 22 -->
+<!-- portCount: 22 --><!-- testCount: 565 --><!-- toolCount: 22 -->
 
 ## Components
 
@@ -20,7 +20,7 @@ Dogfood-verified. 557 tests. **22 MCP tools** (12 read + 10 write). **22 port in
 | adapters/typescript | Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
 | Unity bridge | 22 tools via `[McpForUnityTool]`. Sidecar process. Wire constants mirrored from `McpProtocolSpec` with a byte-equal ratchet. |
-| Lifeblood.Tests | 557 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server (including an end-to-end stdio-loop test that pins stdout purity so future `Console.WriteLine` regressions are caught before shipping), CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent, wrong-namespace fallback), RoslynSemanticView script globals, ProcessUsageProbe, semantic search (including multi-token ranked-OR + xmldoc), SnippetWrapper (compile_check auto-wrap), ClaudeMdInvariantParser, InvariantProvider, Lifeblood-self invariant audit. |
+| Lifeblood.Tests | 565 tests. Extractors, golden repos, round-trip, architecture invariants, MCP server (including an end-to-end stdio-loop test that pins stdout purity so future `Console.WriteLine` regressions are caught before shipping), CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent, wrong-namespace fallback), RoslynSemanticView script globals, ProcessUsageProbe, semantic search (including multi-token ranked-OR + xmldoc), SnippetWrapper (compile_check auto-wrap), ClaudeMdInvariantParser, InvariantProvider, Lifeblood-self invariant audit. |
 
 ## Rule Packs
 

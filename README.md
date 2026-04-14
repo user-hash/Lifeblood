@@ -118,7 +118,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
                       Analysis (optional)         └──  CLI / CI
 ```
 
-22 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution + `IInvariantProvider` for CLAUDE.md invariant introspection). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 58 typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+22 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution + `IInvariantProvider` for CLAUDE.md invariant introspection). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 63 typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -147,7 +147,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (MCP, v0.6.4): 1,887 symbols, 8,223 edges, 11 modules, 238 types, 0 violations. v0.6.4 fixed five dead-code false-positive classes and the implicit global usings compilation gap, raising call-graph completeness by 42%. `lifeblood_dead_code`: 150 to 10 findings (93% reduction). Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md): 58 invariants across 25 categories, zero duplicate ids, zero parse warnings.
+Self-analysis (MCP, post-v0.6.4): 1,887 symbols, 8,223 edges, 11 modules, 238 types, 0 violations. v0.6.4 fixed five dead-code false-positive classes + the implicit global usings compilation gap; a post-v0.6.4 extractor pass added ctor `Calls` edges, field/property-initializer synthesized-ctor attribution, and property-accessor context routing (three more FP classes closed). Call-graph completeness raised by 42% in v0.6.4 and again by the ctor-edge pass. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md): 63 invariants across 25 categories, zero duplicate ids, zero parse warnings.
 
 Production-verified on a 75-module 400k LOC Unity workspace. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
 
@@ -178,7 +178,7 @@ Seven+ dogfood sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisibl
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup guide, incremental, memory |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 22 port interfaces, invariants |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants](CLAUDE.md) | 58 typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Invariants](CLAUDE.md) | 63 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Phase 8 Spike](docs/plans/invariant-check-spike.md) | Design record for `lifeblood_invariant_check`, rollout phases 8A-8E |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |

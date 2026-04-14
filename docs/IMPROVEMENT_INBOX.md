@@ -51,18 +51,6 @@ None. No reviewer flagged anything that suggested the repo is fundamentally inco
 
 ---
 
-## Shipped since v0.6.0
-
-Every LB-INBOX entry that was open before v0.6.3 has shipped. The work is traceable via `CHANGELOG.md` and the git history, not duplicated here.
-
-- **LB-INBOX-001..004**: shipped in v0.6.1 through v0.6.3. Fuzzy short-name fallback (now a full resolution mode), explicit `resolve_short_name` modes, semantic keyword search via `lifeblood_search` with xmldoc ranking, canonical ids per method overload via `SymbolResolutionResult.Overloads`.
-- **LB-INBOX-005**: shipped in v0.6.0. Native `usage` block on every `lifeblood_analyze` response covering wall time, CPU time, peak memory, GC pressure, and per-phase timings. See `INV-USAGE-001..INV-USAGE-PROBE-002` in `CLAUDE.md`.
-- **Phase 8 (`lifeblood_invariant_check`)**: shipped in v0.6.3 commit `26bb8bf`. The design record is at `docs/plans/invariant-check-spike.md` with a header that now reflects what shipped versus the original spike.
-
-No action required on any of the above. They are here as a pointer only.
-
----
-
 ## Post-v0.6.3 roadmap: five-phase tightening plan
 
 The strategic question for v0.6.4 and beyond is not "what is broken" but "what do we tighten next". The reviewers converged on a specific answer: amplify the existing strengths rather than broaden the thesis.
@@ -75,7 +63,7 @@ Doing these out of order creates waste. Phase 3 (contract freeze) before Phase 1
 
 None of this is release-blocking. v0.6.3 is live on NuGet and GitHub Releases. This is the direction for v0.6.4 through v0.7.
 
-The five phases are tracked below as `LB-INBOX-001` through `LB-INBOX-005` (renumbered on the clean inbox, same semantic order as the plan). A small execution caveat from review 3 is tracked as `LB-INBOX-006`.
+The five phases are tracked below as `LB-INBOX-001` through `LB-INBOX-005`. A small execution caveat from review 3 is tracked as `LB-INBOX-006`.
 
 ---
 
@@ -99,86 +87,20 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ## LB-INBOX-002. Phase 2. Close out `INV-DEADCODE-001` and the shared extraction gap
 
-### Shipped (commit `c950207`, 2026-04-13)
+**Observed.** After the v0.6.4 extraction pass (interface dispatch, member-access granularity, null-conditional property, lambda context) and the implicit-global-usings compilation fix, the `lifeblood_dead_code` self-analysis tail stabilized at 10 findings. A follow-up pass closed three more structural gaps that the original "by design / known gap" framing had enshrined:
 
-Five false-positive classes + root-cause compilation fix closed. `lifeblood_dead_code` on Lifeblood itself: **150 → 10 findings (93% reduction)**. Edges: 5777 → 8223 (+42%). 557 tests, 0 regressions.
+1. **Ctor `Calls` edge.** `ObjectCreationExpressionSyntax` now emits both a type-level `References` edge AND a method-level `Calls` edge to the `.ctor`. `find_references` on a constructor returns its construction sites. The dead-code analyzer sees invoked ctors as reachable.
+2. **Field-initializer containing method.** `FindContainingMethodOrLocal` resolves a reference inside `static T _x = Bar()` or `T _x = Bar()` to the type's synthesized `.cctor` / first `.ctor`. Closes the `new Lazy<>(Load)` FP class.
+3. **Property accessor context.** `FindContainingMethodOrLocal` now returns the accessor `IMethodSymbol` instead of bailing out. `GetMethodId` routes accessors through `AssociatedSymbol` so the emitted edge source is the property id — the graph node the dead-code analyzer actually walks. Covers both bodied `get { return _field; }` and expression-bodied `=> _field` properties/indexers.
 
-1. **BUG-004 (interface dispatch, ~54% FPs):** Method-level `Implements` edges via `FindImplementationForInterfaceMember` + `AllInterfaces`. Dead-code analyzer checks outgoing `Implements` as proof of liveness.
-2. **BUG-005 (member access granularity, ~20% FPs):** Symbol-level `References` edges for properties/fields via `EmitSymbolLevelEdge` shared helper. `ExtractReferenceEdge` restructured to handle `IFieldSymbol` (bare field identifiers) and `IMethodSymbol` (method-group references).
-3. **BUG-006 (null-conditional property, ~15% FPs):** `MemberBindingExpressionSyntax` handler for `obj?.Property` patterns.
-4. **Lambda context:** `FindContainingMethodOrLocal` now skips lambda syntax nodes (same `continue` pattern as `LocalFunctionStatementSyntax`).
+**Remaining expected after re-scan.** Runtime entry points (`Program.Main` × 6) and any genuine unused surface. Everything else listed in prior inbox tables (ctor "by design", accessor "known gap", field-initializer "no containing method") is now closed.
 
-### Remaining: 42 findings — classified
+**Suggested follow-on.**
+- Rescan Lifeblood self-analysis + confirm dead-code tail shrinks from 10 toward the entry-point floor.
+- Update `INV-DEADCODE-001` wording in `CLAUDE.md` (remove obsolete "static field initializer method-groups" + "constructor by design" bullets from the remaining-known-FPs list).
+- Graduate `lifeblood_dead_code` out of experimental once the rescan is stable for at least one minor release AND the Phase-1 truth envelope is defined (so the graduated tool ships with the right `confidence` tier).
 
-| Root cause | Count | Status |
-|-----------|-------|--------|
-| Entry points (`Program.Main`, composition roots) | 9 | Correct. Never called from code. |
-| Static field initializer method-groups (`new Lazy<>(Load)`) | 2 | No containing method exists. Needs type-level fallback. |
-| Lambda/LINQ method-groups resolved by shipped fix | 6 | Closed in same commit. |
-| **Systematic `GetSymbolInfo` null resolution** | 24 | **Closed. See LB-INBOX-007 — implicit global usings.** |
-| Constructor (emits References to type, not Calls to .ctor) | 1 | By design. |
-
-5. **Implicit global usings (LB-INBOX-007, root cause):** `ModuleCompilationBuilder.CreateCompilation` now injects synthetic global usings tree when `ModuleInfo.ImplicitUsings` is true. Discovery in `RoslynModuleDiscovery.ParseProject`. Follows INV-COMPFACT pattern.
-6. **Reference assemblies:** `BclReferenceLoader` prefers SDK pack reference assemblies over runtime implementation assemblies.
-
-### Remaining 10 findings (all correct or known edge-case)
-
-| Finding | Root cause | Status |
-|---------|-----------|--------|
-| `Program`/`Main` × 6 | Runtime entry points, never called from code | Correct |
-| `BclReferenceLoader.Load`, `LoadHostBclReferences` | Method-group in static field initializer (`new Lazy<>(Load)`) | Known gap — no containing method |
-| `RulePacks.Names` | Static field accessed from property getter (accessor context) | Known gap |
-| `SemanticGraph..ctor` | Constructor calls emit References to type, not Calls to .ctor | By design |
-
-**Why it matters.** All five false-positive classes AND the root-cause compilation gap are closed. The dead-code tool can graduate from `[EXPERIMENTAL]` once the warning text is updated. Every call-graph tool (`find_references`, `dependants`, `blast_radius`, `file_impact`) gained ~42% more edges in one pass.
-
----
-
-## LB-INBOX-007. Systematic `GetSymbolInfo` null resolution in full workspace compilations — RESOLVED
-
-**Shipped (commit `53d90a6`, 2026-04-13).** Root cause: missing implicit global usings, not reference assembly type. Fix: `ModuleInfo.ImplicitUsings` + synthetic `global using` tree in `ModuleCompilationBuilder`. Dead code: 42 → 10. Edges: 7415 → 8223. All call-graph tools benefit.
-
-**Original observation (2026-04-13).** Diagnostic instrumentation of `RoslynEdgeExtractor.ExtractCallEdge` during Lifeblood self-analysis revealed:
-
-| Metric | Count | % of invocations |
-|--------|-------|-----------------|
-| Total `InvocationExpressionSyntax` nodes | 5,829 | 100% |
-| `GetSymbolInfo().Symbol == null` | 2,421 | **42%** |
-| — with `CandidateSymbols > 0` (partial resolution) | 801 | 14% |
-| — with zero candidates (complete failure) | 1,620 | 28% |
-| Successfully emitted Calls edges | 1,859 | 32% |
-
-This is not selective. 42% of all method invocations fail semantic resolution. Entire modules are near-total failures: `BlastRadiusAnalyzer.cs` 17/17 null, `CircularDependencyDetector.cs` 19/19 null, `Lifeblood.Domain` files near-complete failure. Yet these same invocations resolve correctly in single-file synthetic compilations (all unit tests pass).
-
-**Why "canonical-id drift" was a misdiagnosis.** The previous theory assumed `GetSymbolInfo` resolved correctly but produced a different canonical ID at the call site vs definition site. Instrumentation disproves this: `GetSymbolInfo().Symbol` is literally `null` — Roslyn never even attempts to format the symbol. The call never reaches `CanonicalSymbolFormat`.
-
-### Root cause: CONFIRMED (2026-04-13, second investigation pass)
-
-**`BclReferenceLoader` loads runtime implementation assemblies, not reference assemblies.** Roslyn needs reference assemblies for correct type resolution. Implementation assemblies have different type-forwarding metadata.
-
-**Evidence chain:**
-
-1. Diagnostic logging on `compilation.GetDiagnostics()` shows **every module** has compilation errors:
-   - `Lifeblood.Domain`: 94 errors (CS0246×61, CS0103×28)
-   - `Lifeblood.Adapters.CSharp`: 460 errors (CS0246×224, CS0103×155)
-   - `Lifeblood.Tests`: 1145 errors (CS0103×538, CS0246×263)
-
-2. CS0246 messages: `"The type or namespace name 'List<>' could not be found"`, `"HashSet<>"`, `"IReadOnlyList<>"`. CS0103: `"StringComparer"`, `"Array"`.
-
-3. The compilation HAS `System.Collections.dll` and `System.Private.CoreLib.dll` from `dotnet/shared/Microsoft.NETCore.App/8.0.25/` (180 implementation DLLs). CoreLib confirmed present in reference set.
-
-4. Reference assemblies from `dotnet/packs/` were investigated but switching to them alone did NOT fix the issue — same CS0246 errors persisted.
-
-5. **Actual root cause: missing implicit global usings.** .NET SDK projects with `<ImplicitUsings>enable</ImplicitUsings>` get auto-generated `global using System; global using System.Collections.Generic;` etc. from MSBuild at build time. `ModuleCompilationBuilder.CreateCompilation` compiles from source, not through MSBuild, so these global usings were never present. The source files rely on them (no explicit `using System.Collections.Generic;`).
-
-**What shipped (commit `53d90a6`):**
-
-1. `ModuleInfo.ImplicitUsings` — typed bool field, discovered at parse time from `<ImplicitUsings>enable</>` in the csproj. Follows INV-COMPFACT-001..003 pattern (same as `AllowUnsafeCode`, `BclOwnership`).
-2. `ModuleCompilationBuilder.CreateCompilation` — injects static `ImplicitGlobalUsings` syntax tree (7 standard namespaces) when flag is set.
-3. `RoslynWorkspaceAnalyzer` — skips synthetic trees (path starts with `<`) during extraction.
-4. `BclReferenceLoader` — also upgraded to prefer reference assemblies from SDK pack (correct but secondary fix).
-
-**Impact:** Dead code 150 → 10 (93% reduction). Edges 5777 → 8223 (+42%). All call-graph tools (`find_references`, `dependants`, `blast_radius`, `file_impact`, `dead_code`) gain ~42% more edges. Compilation errors drop from hundreds per module to near-zero.
+**Why it matters.** Every call-graph tool (`find_references`, `dependants`, `blast_radius`, `file_impact`, `dead_code`) inherits the new edges automatically. `find_references` on a ctor now works — previously silently returned zero. Property-held constants used from their own getter are no longer flagged. Method-group refs from static field initializers are attributed correctly.
 
 ---
 
