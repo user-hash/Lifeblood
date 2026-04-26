@@ -53,6 +53,7 @@ public sealed class RoslynSymbolExtractor
         {
             ["typeKind"] = typeSymbol.TypeKind.ToString().ToLowerInvariant(),
         };
+        AttachAttributeNames(typeProps, typeSymbol);
         AttachXmlDocSummary(typeProps, typeSymbol);
         symbols.Add(new Symbol
         {
@@ -181,6 +182,7 @@ public sealed class RoslynSymbolExtractor
             ["returnType"] = sym.ReturnType.ToDisplayString(),
             ["paramCount"] = sym.Parameters.Length.ToString(),
         };
+        AttachAttributeNames(methodProps, sym);
         AttachXmlDocSummary(methodProps, sym);
         symbols.Add(new Symbol
         {
@@ -466,6 +468,37 @@ public sealed class RoslynSymbolExtractor
         var summary = Internal.XmlDocExtractor.ExtractSummary(sym);
         if (!string.IsNullOrEmpty(summary))
             props["xmlDocSummary"] = summary;
+    }
+
+    /// <summary>
+    /// Record the simple attribute class names on the symbol (semicolon-
+    /// separated) so downstream analysis can detect framework dispatch
+    /// without re-running Roslyn — Unity reachability,
+    /// SerializedField inference, custom-editor classification, etc.
+    /// Stores only the simple name (e.g. "RuntimeInitializeOnLoadMethod"),
+    /// not the namespace, because attribute names are unique enough at
+    /// the class-name level for the dispatch-detection use case and the
+    /// payload stays compact for very-large workspaces. Phase P3
+    /// (2026-04-26).
+    /// </summary>
+    private static void AttachAttributeNames(IDictionary<string, string> props, ISymbol sym)
+    {
+        var attrs = sym.GetAttributes();
+        if (attrs.Length == 0) return;
+        var names = new List<string>(attrs.Length);
+        foreach (var a in attrs)
+        {
+            var n = a.AttributeClass?.Name;
+            if (string.IsNullOrEmpty(n)) continue;
+            // Roslyn returns "FooAttribute" for [Foo]; strip the suffix
+            // so consumers can match the user-facing form. "Attribute"
+            // alone (the bare class) keeps its name.
+            if (n.Length > 9 && n.EndsWith("Attribute", StringComparison.Ordinal))
+                n = n.Substring(0, n.Length - 9);
+            names.Add(n);
+        }
+        if (names.Count == 0) return;
+        props["attributes"] = string.Join(";", names);
     }
 
     internal static string GetFullName(ISymbol symbol)

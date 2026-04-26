@@ -51,7 +51,15 @@ class Program
         // and cannot reference Application ports). The partial-view
         // builder takes projectRoot as a method parameter at each call,
         // so it's session-state-free.
-        IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
+        // Phase P3 (v0.6.7): wire Unity-aware runtime reachability into
+        // the dead-code analyzer. The Unity adapter knows about Unity's
+        // framework-dispatch surface (entrypoint attributes,
+        // MonoBehaviour magic methods, lifecycle hooks). Non-Unity
+        // workspaces still get correct dead-code findings — the adapter
+        // just returns false for everything, so the analyzer behaves
+        // identically to v0.6.6. INV-UNITY-001.
+        IUnityReachabilityProvider unityReachability = new UnityReachabilityAdapter();
+        IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer(unityReachability);
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(fs);
         // Phase 8: invariant provider parses CLAUDE.md at the loaded
         // project root. No graph dependency; pure text-in, data-out.

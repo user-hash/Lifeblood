@@ -39,6 +39,20 @@ internal sealed class AnalysisSnapshot
     public Dictionary<string, DateTime> CsprojTimestamps { get; }
         = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Absolute *.asmdef file path → last-write-time-UTC at analysis time.
+    /// Unity asmdefs declare assembly-level options (references, allowed
+    /// platforms, defines) that the IDE-visible csproj is generated from.
+    /// When the user edits an asmdef without forcing Unity to regenerate
+    /// csprojs (a common workflow during refactors), the on-disk csproj
+    /// stays current to the previous-state asmdef and this analyzer
+    /// silently runs against a stale module model. Any asmdef-timestamp
+    /// drift triggers a full re-analyze on the next round, which catches
+    /// the change. Phase P3 (2026-04-26), promoted from LB-NICE-003.
+    /// </summary>
+    public Dictionary<string, DateTime> AsmdefTimestamps { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>File ID (file:relPath) → symbols extracted from that file.</summary>
     public Dictionary<string, List<Symbol>> SymbolsByFile { get; } = new(StringComparer.Ordinal);
 
