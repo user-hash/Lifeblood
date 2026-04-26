@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.6.6] - 2026-04-26
+## [0.6.7] - 2026-04-27
 
 DAWG-dogfood backlog plan, full sweep. Six phases (P1..P6) ship as one combined release on top of v0.6.5. **Tests: 569 to 632 (+63). Invariants: 63 to 70 (+7). Ports: 22 to 26 (+4). MCP tools: 22 to 25 (+3 read-side: authority_report, port_health, cycles).** Hexagonal as ever - no patches, no special cases, every fix lands as a port + adapter + handler trio with regression tests + end-to-end dogfood. Five repeatable smoke harnesses (`smoke-mcp-p1-dogfood.ps1` through `smoke-mcp-p5-dogfood.ps1`) drive the full wire surface against Lifeblood and a real 87-module Unity workspace (DAWG).
 
@@ -752,8 +752,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.6...HEAD
-[0.6.6]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.6
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...HEAD
+[0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.7
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
