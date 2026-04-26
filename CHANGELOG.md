@@ -7,6 +7,45 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. Execute robustness (P4 / LB-BUG-014, LB-BUG-007, LB-BUG-008, LB-FR-012, LB-FR-013)
+
+`lifeblood_execute` is now trustworthy on Unity workspaces and gives sandbox scripts the introspection they need.
+
+- **`IRuntimeAssemblyResolver`** (Application port) + **`UnityAssemblyResolver`** (C# adapter) probe `Library/ScriptAssemblies/`, `Library/Bee/artifacts/` (Unity 2022+), and `Library/PackageCache/`. The C# code executor injects discovered DLLs as additional script references so scripts can touch `UnityEngine` types. Empty `Library/` surfaces a friendly `runtimeAssemblyWarnings` entry ("run a Unity build first") instead of letting scripts fail with cryptic CS0246 errors. `GraphSession` auto-injects the Unity adapter when `Library/` exists at the project root; non-Unity workspaces see zero behavior change.
+
+- **`ICodeExecutor.Execute(CodeExecutionRequest)`** typed-options overload + new `CodeExecutionRequest.TargetProfile` field (`host` default / `net-standard-2.1` / `net-6.0`). When non-default, the executor swaps host BCL refs for the matching reference pack from `dotnet/packs/`. Missing packs fall back to host BCL with a `targetRuntimeWarnings` entry. Unknown profile values fall back with a clear diagnostic. Both warning channels propagate on every result path: success, blocked-pattern, compile error, timeout, exception.
+
+- **`RoslynSemanticView`** gains `Help` (sandbox cheat sheet — globals, EdgeKind names, SymbolKind names, common queries), `SymbolsOfKind(string)`, and `EdgesOfKind(string)`. Scripts can write `SymbolsOfKind("Method").Count()` without importing the SymbolKind enum.
+
+- **`CodeExecutionResult`** ships `RuntimeAssemblyWarnings` + `TargetRuntimeWarnings` alongside Output/Error/ReturnValue/ElapsedMs. `WriteToolHandler.HandleExecute` surfaces both verbatim. `lifeblood_execute` schema gains optional `targetProfile` enum.
+
+Documented as **`INV-EXECUTE-001`** in CLAUDE.md.
+
+### Added. Authority report + forwarder classifier + port health + cycles (P5 / LB-FR-018, LB-FR-014, LB-FR-020, LB-NICE-007)
+
+- **`IAuthorityReporter`** (Application port) + **`LifebloodAuthorityReporter`** (Connectors.Mcp adapter). Single graph walk produces `implementedInterfaceCount`, `ownedPublicSurface` (public method/property/field count, nested types excluded), per-implemented-interface usage (member count + distinct consumers via `Calls`/`References` edges), and `forwarderRatio` (in [0.0, 1.0] or sentinel `-1.0` when no method has classification). Tool: **`lifeblood_authority_report`**, envelope: Derived / Proven.
+
+- **Method body classification**
+
+- **`lifeblood_port_health`** — walks an interface or class's `Contains` members, classifies each as live (≥ 1 incoming non-Contains edge OR outgoing `Implements`) or dead. Returns `livenessPct` and a verdict: `healthy` (≥75%), `mixed` (≥25%), `vestigial` (<25%), or `empty`.
+
+- **`lifeblood_cycles`**
+
+Documented as **`INV-AUTHORITY-001`** + **`INV-FORWARDER-001`** in CLAUDE.md.
+
+### Added. Wire-shape clarifications (P6 / LB-OBSERVATION-001, LB-OBSERVATION-003)
+
+- **`changedSourceFiles`** + **`touchedGraphFiles`** added alongside the existing `changedFileCount` on `lifeblood_analyze` responses. Currently the same value; the surface is kept stable for future divergence (e.g. when graph-file churn is more than the .cs-file churn). Old `changedFileCount` field preserved for back-compat.
+
+- **`lifeblood_dependencies`**
+
+- **`lifeblood_analyze`** description includes a Unity note about new-`.cs`-without-`.meta` files (the incremental walker picks them up; a later full analyze will refresh symbol IDs if Unity assigns a different GUID).
+
+### Internal
+
+- `ICodeExecutor.Execute(CodeExecutionRequest)` interface overload added; existing `Execute(string,string[],int)` overload preserved and now delegates to the typed path. `ProcessIsolatedCodeExecutor` updated to satisfy the new interface member.
+- Test count drift: `ToolRegistry_Returns22Tools` ratchet renamed to `ToolRegistry_Returns25Tools` and asserts the three new read-side tools by name.
+
 ## [0.6.7] - 2026-04-26
 
 ### Added. Truth envelope on every read-side response (P2 / INV-ENVELOPE-001)

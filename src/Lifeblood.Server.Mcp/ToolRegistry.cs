@@ -109,7 +109,7 @@ public static class ToolRegistry
   Name = "lifeblood_analyze",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Analyze a C# project or JSON graph file. Returns symbol/edge/module counts and violations. Loads the graph into memory for subsequent query tools.",
+  Description = "Analyze a C# project or JSON graph file. Returns symbol/edge/module counts and violations. Loads the graph into memory for subsequent query tools. Incremental responses report both `changedSourceFiles` (number of .cs files that re-extracted this round) and `touchedGraphFiles` (how many graph entries were rebuilt) — currently the same value, surface kept stable for future divergence. Unity note: a `.cs` file added to disk but not yet seen by the Unity editor (no `.meta` sibling) WILL be picked up by Lifeblood's incremental walker on the next analyze; if Unity later assigns the file a different GUID, the next full analyze refreshes all symbol IDs.",
   InputSchema = new
   {
   type = "object",
@@ -152,7 +152,7 @@ public static class ToolRegistry
   Name = "lifeblood_dependencies",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Get all symbols that the given symbol depends on (outgoing non-Contains edges).",
+  Description = "Get all symbols that the given symbol depends on (outgoing non-Contains edges). Note: outgoing edges are recorded at the symbol level where the reference physically appears — `Calls` edges live on the calling method, `References` edges live on the referencing field/property/method body, etc. A query for type-level outbound edges (`type:My.Service`) typically returns 0 because the type itself does not author calls; query its members (or use `lifeblood_blast_radius` to walk the transitive incoming closure) to see real coupling. Closes LB-OBSERVATION-001.",
   InputSchema = new
   {
   type = "object",
