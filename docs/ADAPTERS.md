@@ -75,7 +75,7 @@ public class MyAdapter : IWorkspaceAnalyzer
     public SemanticGraph AnalyzeWorkspace(string projectRoot, AnalysisConfig config)
     {
         var builder = new GraphBuilder();
-        // Add symbols with ParentId — GraphBuilder synthesizes Contains edges
+        // Add symbols with ParentId - GraphBuilder synthesizes Contains edges
         return builder.Build();
     }
 }
@@ -108,7 +108,7 @@ Before shipping an adapter, verify:
 - [ ] No duplicate edges (unique source+target+kind)
 - [ ] Symbols with `parentId` reference existing symbols
 - [ ] Output is deterministic (same input produces same JSON)
-- [ ] External type filtering applied (no edges to BCL/stdlib types — only edges to source-defined or workspace-tracked symbols)
+- [ ] External type filtering applied (no edges to BCL/stdlib types - only edges to source-defined or workspace-tracked symbols)
 - [ ] Self-analysis works (adapter can analyze its own source code)
 - [ ] Output passes through `dotnet run --project src/Lifeblood.CLI -- analyze --graph your-output.json`
 
@@ -140,9 +140,9 @@ Every edge should carry evidence. The confidence level must be honest:
 
 The `tests/GoldenRepos/` directory contains fixture projects:
 
-- **HexagonalApp/** — 3-layer hexagonal architecture (Domain, Application, Infrastructure)
+- **HexagonalApp/** - 3-layer hexagonal architecture (Domain, Application, Infrastructure)
 
-- **CycleRepo/** — Two services with circular dependencies
+- **CycleRepo/** - Two services with circular dependencies
 
 Run your adapter against these and verify:
 - Expected types are discovered
