@@ -358,6 +358,46 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_authority_report",
+  Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = DerivedProven,
+  Description = "Quantify how much architectural authority a type holds. Returns implementedInterfaceCount, ownedPublicSurface (public method/property/field/event count, nested types excluded), per-implemented-interface breakdown (member count + distinct consumers reaching it via Calls/References edges), and a forwarderRatio (PureForwarder methods / total methods, in [0.0,1.0]; -1.0 sentinel when classification data is missing). Use this to triage host/owner types: many interfaces + low ownedPublicSurface + high forwarderRatio = candidate for splitting; concentrated public surface + low forwarderRatio = doing real work.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "symbolId" },
+  properties = new
+  {
+  symbolId = new { type = "string", description = "Canonical id of a type (e.g. 'type:My.Service')." },
+  },
+  },
+  },
+  new()
+  {
+  Name = "lifeblood_port_health",
+  Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = DerivedProven,
+  Description = "Score how 'alive' the members of an interface or class are. Walks the type's Contains edges, runs an incoming-edge check on every member, and reports memberCount, liveMembers (>=1 incoming non-Contains edge), deadMembers, livenessPct, plus a verdict — 'healthy' (>=75% live), 'mixed', or 'vestigial' (<25% live). Use to spot ports/types that are mostly dead surface.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "symbolId" },
+  properties = new
+  {
+  symbolId = new { type = "string", description = "Canonical id of an interface or class type." },
+  },
+  },
+  },
+  new()
+  {
+  Name = "lifeblood_cycles",
+  Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = DerivedProven,
+  Description = "List all dependency cycles in the loaded graph. Each entry is a strongly-connected component of size >= 2 — symbol IDs in cycle order. Computed from the same Tarjan SCC pass that already runs in AnalysisPipeline; this tool just exposes the result without re-running analysis.",
+  InputSchema = new { type = "object", properties = new { } },
+  },
+  new()
+  {
   Name = "lifeblood_search",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = HeuristicAdvisorySearch,
