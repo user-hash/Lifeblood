@@ -17,6 +17,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
 {
     private readonly RoslynSemanticView _view;
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
+    private readonly IRuntimeAssemblyResolver? _runtimeAssemblies;
 
     private static readonly HashSet<string> BlockedPatterns = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -103,6 +104,20 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     }
 
     /// <summary>
+    /// Construct an executor with an additional runtime-assembly resolver
+    /// (Unity build artifacts, ASP.NET runtime pack, etc.). The resolver's
+    /// probe paths are added to the script compiler's reference list so
+    /// scripts can touch types that live outside the analyzed source.
+    /// Phase P4 (2026-04-26).
+    /// </summary>
+    public RoslynCodeExecutor(RoslynSemanticView view, IRuntimeAssemblyResolver? runtimeAssemblies)
+    {
+        _view = view;
+        _compilations = view.Compilations;
+        _runtimeAssemblies = runtimeAssemblies;
+    }
+
+    /// <summary>
     /// Backward-compatible constructor for tests and standalone callers that
     /// only have a compilations dictionary. Wraps the dictionary in a minimal
     /// <see cref="RoslynSemanticView"/> with an empty graph and empty
@@ -119,8 +134,26 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     }
 
     public CodeExecutionResult Execute(string code, string[]? imports = null, int timeoutMs = 5000)
+        => Execute(new CodeExecutionRequest
+        {
+            Code = code,
+            Imports = imports,
+            TimeoutMs = timeoutMs,
+            TargetProfile = "host",
+        });
+
+    public CodeExecutionResult Execute(CodeExecutionRequest request)
     {
+        var code = request.Code;
+        var imports = request.Imports;
+        var timeoutMs = request.TimeoutMs;
         var startTime = DateTime.UtcNow;
+
+        // Resolver diagnostics computed up-front so they're surfaced on
+        // every result path (success, compilation error, blocked pattern,
+        // exception) — even when the script never actually runs. Phase P4.
+        var runtimeAssemblyDiagnostics = _runtimeAssemblies?.GetDiagnostics() ?? Array.Empty<string>();
+        var (bclRefs, targetWarnings) = ResolveTargetProfileBcl(request.TargetProfile);
 
         // Layer 1: String-based blocklist (fast, catches obvious patterns).
         // Normalize whitespace around dots to prevent bypass via "Process . Start".
@@ -134,6 +167,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                     Success = false,
                     Error = $"Blocked pattern detected: {pattern}",
                     ElapsedMs = 0,
+                    RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
+                    TargetRuntimeWarnings = targetWarnings,
                 };
         }
 
@@ -160,10 +195,36 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
             // We use WithReferences (replace) instead of AddReferences (append) because
             // ScriptOptions.Default contains 25 "Unresolved" named references that can't
             // be resolved without TRUSTED_PLATFORM_ASSEMBLIES — they just add noise.
-            var allReferences = new List<MetadataReference>(HostBclReferences.Value.Length + _compilations.Count);
-            allReferences.AddRange(HostBclReferences.Value);
+            var allReferences = new List<MetadataReference>(bclRefs.Length + _compilations.Count);
+            allReferences.AddRange(bclRefs);
             foreach (var compilation in _compilations.Values)
                 allReferences.Add(compilation.ToMetadataReference());
+
+            // Phase P4: runtime assemblies the analyzed source doesn't carry
+            // (UnityEngine.dll, UnityEditor.dll, ASP.NET runtime pack, etc.).
+            // The resolver returns absolute paths; we filter to existing files
+            // and skip duplicates by file name to avoid Roslyn's
+            // "duplicate assembly identity" warning when multiple build
+            // outputs ship the same UnityEngine.CoreModule.dll.
+            if (_runtimeAssemblies != null)
+            {
+                var seenAssemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in _runtimeAssemblies.GetAssemblyProbePaths())
+                {
+                    if (string.IsNullOrEmpty(p)) continue;
+                    if (!File.Exists(p)) continue;
+                    var key = Path.GetFileName(p);
+                    if (!seenAssemblyNames.Add(key)) continue;
+                    try
+                    {
+                        allReferences.Add(MetadataReference.CreateFromFile(p));
+                    }
+                    catch
+                    {
+                        // Bad image / locked file — skip silently.
+                    }
+                }
+            }
 
             // Plan v4 Seam #3: include the assemblies that define the script-
             // globals types (RoslynSemanticView and its property types) so the
@@ -242,6 +303,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                     Error = stderr.ToString(),
                     ReturnValue = returnValue?.ToString(),
                     ElapsedMs = Math.Round(elapsed, 1),
+                    RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
+                    TargetRuntimeWarnings = targetWarnings,
                 };
             }
             finally
@@ -258,6 +321,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Success = false,
                 Error = string.Join("\n", ex.Diagnostics.Select(d => d.ToString())),
                 ElapsedMs = Math.Round(elapsed, 1),
+                RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
+                TargetRuntimeWarnings = targetWarnings,
             };
         }
         catch (OperationCanceledException)
@@ -267,6 +332,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Success = false,
                 Error = $"Execution timed out after {timeoutMs}ms",
                 ElapsedMs = timeoutMs,
+                RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
+                TargetRuntimeWarnings = targetWarnings,
             };
         }
         catch (Exception ex)
@@ -277,8 +344,104 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Success = false,
                 Error = ex.InnerException?.Message ?? ex.Message,
                 ElapsedMs = Math.Round(elapsed, 1),
+                RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
+                TargetRuntimeWarnings = targetWarnings,
             };
         }
+    }
+
+    /// <summary>
+    /// Pick the BCL reference set for the requested target profile.
+    /// Returns the references plus any non-fatal diagnostics
+    /// (unknown profile, ref-pack not installed locally, etc.). Falls
+    /// back to the host BCL on any miss so the script still has SOME
+    /// reference set. Phase P4. Closes LB-FR-012 / LB-BUG-007.
+    /// </summary>
+    private static (MetadataReference[] refs, string[] warnings) ResolveTargetProfileBcl(string profile)
+    {
+        if (string.IsNullOrEmpty(profile) || string.Equals(profile, "host", StringComparison.OrdinalIgnoreCase))
+            return (HostBclReferences.Value, Array.Empty<string>());
+
+        var packPaths = TargetProfilePackCandidates(profile);
+        if (packPaths.Count == 0)
+        {
+            return (HostBclReferences.Value, new[]
+            {
+                $"Unknown targetProfile '{profile}'. Falling back to host runtime BCL. " +
+                "Supported values: 'host' (default), 'net-standard-2.1', 'net-6.0'.",
+            });
+        }
+
+        foreach (var dir in packPaths)
+        {
+            if (!Directory.Exists(dir)) continue;
+            var dlls = Directory.GetFiles(dir, "*.dll", SearchOption.TopDirectoryOnly);
+            if (dlls.Length == 0) continue;
+            var refs = new List<MetadataReference>(dlls.Length);
+            foreach (var d in dlls)
+            {
+                try { refs.Add(MetadataReference.CreateFromFile(d)); } catch { }
+            }
+            if (refs.Count > 0)
+            {
+                return (refs.ToArray(), new[] { $"Target profile '{profile}' resolved from {dir} ({refs.Count} assemblies)." });
+            }
+        }
+
+        // Pack directory candidates exist on this OS but none were found
+        // installed. Fall back to host BCL with a clear diagnostic.
+        return (HostBclReferences.Value, new[]
+        {
+            $"Target profile '{profile}' selected but no matching reference pack was found on this machine. " +
+            $"Searched: {string.Join(", ", packPaths)}. Falling back to host runtime BCL — " +
+            "scripts may compile against APIs that are not present at the requested target.",
+        });
+    }
+
+    /// <summary>
+    /// Candidate directories where the requested target profile's
+    /// reference pack might be installed. Order matters: the first
+    /// directory that actually exists and contains DLLs wins.
+    /// </summary>
+    private static List<string> TargetProfilePackCandidates(string profile)
+    {
+        var p = profile.ToLowerInvariant();
+        var pf = Environment.GetEnvironmentVariable("ProgramFiles") ?? @"C:\Program Files";
+        var home = Environment.GetEnvironmentVariable("USERPROFILE") ?? "";
+        var list = new List<string>();
+        switch (p)
+        {
+            case "net-standard-2.1":
+            case "netstandard2.1":
+                // SDK installs ship the netstandard ref-pack
+                foreach (var sdk in EnumerateSdkPacks(pf, home))
+                {
+                    list.Add(Path.Combine(sdk, "NETStandard.Library.Ref", "2.1.0", "ref", "netstandard2.1"));
+                }
+                break;
+            case "net-6.0":
+            case "net6.0":
+                foreach (var sdk in EnumerateSdkPacks(pf, home))
+                {
+                    var packBase = Path.Combine(sdk, "Microsoft.NETCore.App.Ref");
+                    if (Directory.Exists(packBase))
+                    {
+                        // Pick the highest installed 6.x patch.
+                        foreach (var v in Directory.GetDirectories(packBase, "6.*").OrderByDescending(d => d))
+                            list.Add(Path.Combine(v, "ref", "net6.0"));
+                    }
+                }
+                break;
+        }
+        return list;
+    }
+
+    private static IEnumerable<string> EnumerateSdkPacks(string programFiles, string userHome)
+    {
+        // Standard locations the dotnet SDK uses for shared / per-user packs.
+        yield return Path.Combine(programFiles, "dotnet", "packs");
+        if (!string.IsNullOrEmpty(userHome))
+            yield return Path.Combine(userHome, ".dotnet", "packs");
     }
 
     /// <summary>

@@ -171,6 +171,8 @@ resolves bare short names, and computes the merged read model for partial types.
   `"<TypeName>."` (shortest match wins among prefix matches), (3) lexicographic
   first as final fallback. Same input + same graph → same primary, always.
 
+- **INV-EXECUTE-001. `lifeblood_execute` references three reference sets, in this order, every call.**
+
 - **INV-UNITY-001. Runtime-dispatch reachability is a typed port. `IDeadCodeAnalyzer` consults `IUnityReachabilityProvider` (when injected) before flagging a symbol as dead.**
 
 - **INV-UNITY-002. Asmdef edits force a full incremental re-analyze.** `AnalysisSnapshot.AsmdefTimestamps` records `*.asmdef` mtime at full-analyze time. `RoslynWorkspaceAnalyzer.IncrementalAnalyze.HasAsmdefDrift` re-scans the project root on every incremental call; any added, edited, or removed `.asmdef` triggers a full re-analyze that round. Necessary because Unity csprojs are generated from asmdefs — editing an asmdef without forcing Unity to regenerate the csproj leaves the csproj-timestamp tracker (INV-BCL-005) blind to the change, which silently runs analysis against stale module facts. Pinned by `UnityReachabilityTests` end-to-end coverage; closes the silent-stale-module class promoted from LB-NICE-003.

@@ -224,7 +224,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_execute",
   Availability = ToolAvailability.WriteSide,
-  Description = "Execute C# code against the loaded workspace. Code runs in-process (trusted local sandbox. Blocklist + AST security checks, not process-isolated). Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath.",
+  Description = "Execute C# code against the loaded workspace. Code runs in-process (trusted local sandbox — blocklist + AST security checks, not process-isolated). Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath. The script's globals carry `Graph`, `Compilations`, `ModuleDependencies` plus the `Help` introspection string — see `RoslynSemanticView`. When the workspace is Unity-shaped (Library/ exists at the project root), Unity build artifacts under Library/ScriptAssemblies, Library/Bee/artifacts and Library/PackageCache are auto-injected as references so scripts can touch UnityEngine types; if no build artifacts are found a `runtimeAssemblyWarnings` entry tells the caller to run a Unity build first. Pass `targetProfile` to compile against a specific runtime ref-pack — `'host'` (default), `'net-standard-2.1'`, or `'net-6.0'`. Missing ref-packs surface a `targetRuntimeWarnings` entry instead of a hard failure.",
   InputSchema = new
   {
   type = "object",
@@ -234,6 +234,12 @@ public static class ToolRegistry
   code = new { type = "string", description = "C# code to compile and execute" },
   imports = new { type = "array", items = new { type = "string" }, description = "Additional using namespaces" },
   timeoutMs = new { type = "integer", description = "Execution timeout in milliseconds (default: 5000)" },
+  targetProfile = new
+  {
+  type = "string",
+  description = "Target runtime profile for the script's BCL references. 'host' (default) uses the running .NET runtime; 'net-standard-2.1' / 'net-6.0' swap in the matching reference pack when installed locally. Unknown values fall back to 'host' with a targetRuntimeWarnings entry.",
+  @enum = new[] { "host", "net-standard-2.1", "net-6.0" },
+  },
   },
   },
   },

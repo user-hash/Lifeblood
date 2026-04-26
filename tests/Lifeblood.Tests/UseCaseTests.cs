@@ -370,6 +370,8 @@ public class UseCaseTests
     {
         public CodeExecutionResult Execute(string code, string[]? imports = null, int timeoutMs = 5000)
             => new() { Success = true };
+        public CodeExecutionResult Execute(CodeExecutionRequest request)
+            => new() { Success = true };
     }
 
     private sealed class StubRefactoring : IWorkspaceRefactoring
