@@ -81,24 +81,27 @@ dotnet test
 
 ---
 
-## 22 Tools
+## 25 Tools
 
-Connect an MCP client. Load a project. The AI agent gets **22 tools**: 12 read, 10 write.
+Connect an MCP client. Load a project. The AI agent gets **25 tools**: 15 read, 10 write.
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code¹, Partial View, Invariant Check |
+| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code¹, Partial View, Invariant Check, Authority Report, Port Health, Cycles |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
-¹ `lifeblood_dead_code` shipped experimental in v0.6.3. v0.6.4 closed five false-positive classes and the root-cause compilation gap (missing implicit global usings), reducing self-analysis findings from 150 to 10 (93%). Verified at 96% true-positive rate on a real 75-module Unity workspace (25/26 verified). Remaining false positives are structural: Unity reflection-based dispatch, runtime entry points, static field initializer method-groups. See `INV-DEADCODE-001` in [CLAUDE.md](CLAUDE.md).
+¹ `lifeblood_dead_code` is experimental / advisory. The reachability port (`IUnityReachabilityProvider`, v0.6.7) cuts MonoBehaviour magic-method false positives by 97% on real Unity workspaces by walking the type's inheritance chain via `Properties["baseType"]` (set by the extractor) and matching against the Unity message-receiver bases. Dogfood vs DAWG (87 modules, 53,882 symbols): 1095 dead-code findings reduced to 729 (-33%), 378 magic-method FPs reduced to 13. Remaining false positives are structural (UI Toolkit `VisualElement` subclasses, audio callbacks on non-MonoBehaviour bases, reflection-based dispatch). See `INV-UNITY-001` and `INV-DEADCODE-001` in [CLAUDE.md](CLAUDE.md).
 
-Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, bare short name, and **wrong-namespace-correct-short-name** (v0.6.3, `INV-RESOLVER-005`) all resolve to the same answer.
+Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, bare short name, kind correction (`method:NS.Type.X` resolves to a property/field/event named `X` when no method exists; v0.6.6 / `INV-RESOLVER-006`), and wrong-namespace-correct-short-name (v0.6.3 / `INV-RESOLVER-005`) all resolve to the same answer.
 
-**New in v0.6.3:**
-- `lifeblood_invariant_check`: query `CLAUDE.md`'s architectural invariants as structured data. Lookup by id, list all, audit for duplicates. Works on any project with `INV-*` markers.
-- `lifeblood_compile_check` now auto-wraps bare statement snippets (`var x = 1 + 1;`) so they compile inside library modules without manual class wrapping.
-- `lifeblood_search` tokenizes multi-word queries for ranked OR scoring (previously any query longer than one word collapsed to zero results).
-- Resolver falls back to extracted-short-name lookup when a kind-prefixed input's namespace is wrong but the short name is unique.
+Every read-side response carries a typed truth envelope (v0.6.7 / `INV-ENVELOPE-001`): truth tier (Semantic / Derived / Heuristic / Inferred), confidence band (Proven / Advisory / Speculative), evidence-source string, wall-clock staleness in seconds, files-changed-since-analyze count, per-tool documented limitations.
+
+**New since v0.6.5 (P1..P6 of the DAWG-dogfood plan):**
+- **Truth envelope** on every read-side response (P2).
+- **Unity-aware reachability** + asmdef-edit incremental detection (P3).
+- **Execute robustness**: Unity DLL probe (`Library/ScriptAssemblies`, `Library/Bee/artifacts`, `Library/PackageCache`), `targetProfile` for runtime ref-pack selection (`host` / `net-standard-2.1` / `net-6.0`), sandbox introspection helpers `Help` / `SymbolsOfKind(string)` / `EdgesOfKind(string)` (P4).
+- **Authority + port health + cycles tools** plus a forwarder classifier on every method (`PureForwarder` / `ThinWrapper` / `RealLogic`) (P5).
+- **Resolver kind correction**, file-scoped diagnose, `compile_check` from disk, `blast_radius` summarize mode + direct-vs-transitive split (P1).
 
 [Full tool reference](docs/TOOLS.md)
 
@@ -112,13 +115,13 @@ Hexagonal. Pure domain core with zero dependencies. Language adapters on the lef
 LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
-Roslyn (C#)       ──┐                            ┌──  MCP Server (22 tools)
+Roslyn (C#)       ──┐                            ┌──  MCP Server (25 tools)
 TypeScript        ──┼→  Domain  →  Application  →┤──  Context Pack Generator
 JSON graph        ──┘       ↑                     ├──  Instruction File Generator
                       Analysis (optional)         └──  CLI / CI
 ```
 
-22 port interfaces, all wired (left side adapters + right side connectors + `ISymbolResolver` for identifier resolution + `IInvariantProvider` for CLAUDE.md invariant introspection). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 63 typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired (left-side adapters + right-side connectors + `ISymbolResolver` for identifier resolution + `IResponseDecorator` for truth envelope + `IInvariantProvider` for CLAUDE.md invariant introspection + `IUnityReachabilityProvider` for runtime-dispatch reachability + `IRuntimeAssemblyResolver` for execute-time DLL probing + `IAuthorityReporter` for type-level authority reports). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 70 typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -139,7 +142,9 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 ## Unity Integration
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 22 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 25 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
+
+`lifeblood_dead_code` recognizes Unity message-dispatch patterns automatically: `MonoBehaviour` magic methods (`Awake`, `Update`, `OnTriggerEnter`, full Unity catalog), entrypoint attributes (`RuntimeInitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `CustomEditor`, ...), transitive bases (`ScriptableObject`, `Editor`, `EditorWindow`, `StateMachineBehaviour`). `lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch `UnityEngine` types without Unity being open.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -147,18 +152,20 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (MCP, post-v0.6.4): 1,887 symbols, 8,223 edges, 11 modules, 238 types, 0 violations. v0.6.4 fixed five dead-code false-positive classes + the implicit global usings compilation gap; a post-v0.6.4 extractor pass added ctor `Calls` edges, field/property-initializer synthesized-ctor attribution, and property-accessor context routing (three more FP classes closed). Call-graph completeness raised by 42% in v0.6.4 and again by the ctor-edge pass. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md): 63 invariants across 25 categories, zero duplicate ids, zero parse warnings.
+Self-analysis (MCP, post P1..P6): 2,132 symbols, 9,908 edges, 11 modules, 262 types, 0 violations, 0 cycles. The DAWG-dogfood plan landed in six phases (P1..P6); each phase shipped with a repeatable end-to-end MCP smoke harness (`smoke-mcp-p1-dogfood.ps1` ... `smoke-mcp-p5-dogfood.ps1`). 632 tests across `Lifeblood.Tests`, zero regressions across the plan.
 
-Production-verified on a 75-module 400k LOC Unity workspace. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
+Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md): 70 typed invariants, zero duplicate ids, zero parse warnings.
+
+Production-verified on a 87-module 400k LOC Unity workspace (DAWG): 53,882 symbols, 180,814 edges. Authority report classifies 18,985 methods, identifies 3,367 `PureForwarder` candidates for ABG-extraction triage. Cycles tool surfaces 117 strongly-connected components in the existing dependency graph. Same workspace, two different paths, two different memory profiles. Both are correct, both are by design, both come from the native `usage` field on every `lifeblood_analyze` response.
 
 | Path | Wall | CPU total | CPU % (1 core) | Peak working set | Use when |
 |---|---|---|---|---|---|
-| **CLI** (streaming, compilations released) | ~14 s | ~23 s | ~150% | ~570 MB | One-shot analyze, rules check, graph export |
-| **MCP** (compilations retained) | ~32 s | ~58 s | ~180% | ~2,800 MB | Interactive session with write-side tools (`execute`, `find_references`, `rename`, etc.) |
+| **CLI** (streaming, compilations released) | ~14 s | ~23 s | ~150% | ~570 MB | One-shot analyze, rules check, graph export. |
+| **MCP** (compilations retained) | ~32 s | ~58 s | ~180% | ~2,800 MB | Interactive session with write-side tools (`execute`, `find_references`, `rename`, ...). |
 
 The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Exact numbers are surfaced live on every `lifeblood_analyze` response via the `usage` field so they can be cited deterministically.
 
-Seven+ dogfood sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests, including the v0.6.3 resolver wrong-namespace fallback (`INV-RESOLVER-005`), the compile_check library-module auto-wrap, and the `lifeblood_dead_code` false-positive classes tracked under `INV-DEADCODE-001`.
+Multiple dogfood sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisible to unit tests, including the v0.6.3 resolver wrong-namespace fallback (`INV-RESOLVER-005`), the v0.6.6 resolver kind-correction (`INV-RESOLVER-006`), the v0.6.7 truth envelope (`INV-ENVELOPE-001`), the v0.6.7 Unity reachability port (`INV-UNITY-001`, 97% MonoBehaviour-FP reduction on DAWG), the asmdef-edit incremental detection (`INV-UNITY-002`), the `compile_check` library-module auto-wrap, and the `lifeblood_dead_code` false-positive classes tracked under `INV-DEADCODE-001`.
 
 ---
 
@@ -173,14 +180,13 @@ Seven+ dogfood sessions found [50+ real bugs](docs/DOGFOOD_FINDINGS.md) invisibl
 
 | Page | Description |
 |------|-------------|
-| [Tools](docs/TOOLS.md) | All 22 tools with descriptions, symbol ID format, incremental usage, dead_code caveats |
+| [Tools](docs/TOOLS.md) | All 25 tools with descriptions, symbol ID format, incremental usage, dead_code caveats |
 | [MCP Setup](docs/MCP_SETUP.md) | Copy-paste configs for Claude Code, Cursor, VS Code, Claude Desktop, Unity |
-| [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup guide, incremental, memory |
-| [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 22 port interfaces, invariants |
+| [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup guide, incremental, memory, Unity reachability port |
+| [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 26 port interfaces, invariants |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants](CLAUDE.md) | 63 typed architectural invariants, queryable via `lifeblood_invariant_check` |
-| [Phase 8 Spike](docs/plans/invariant-check-spike.md) | Design record for `lifeblood_invariant_check`, rollout phases 8A-8E |
-| [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats |
+| [Invariants](CLAUDE.md) | 70 typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Status](docs/STATUS.md) | Component table, test counts (632), self-analysis, production stats |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 50+ bugs found by self-analysis and reviewer dogfood sessions |
 | [CHANGELOG](CHANGELOG.md) | Every release: additions, fixes, known limitations |

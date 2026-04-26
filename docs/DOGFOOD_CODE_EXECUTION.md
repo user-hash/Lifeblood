@@ -57,7 +57,7 @@ Third dogfood milestone. Lifeblood's write-side MCP tools (6 tools, shipped in v
 
 ### B1: Notification Null Leak (Program.cs)
 
-**Severity:** Protocol — corrupts stdio stream
+**Severity:** Protocol - corrupts stdio stream
 
 `Dispatch()` returns `null!` for `initialized` notification (no ID = no response). But `Program.cs` still serialized and wrote `null` to stdout. Any JSON-RPC client that parses strictly would choke.
 
@@ -65,7 +65,7 @@ Third dogfood milestone. Lifeblood's write-side MCP tools (6 tools, shipped in v
 
 ### B2: Native DLL Metadata Error (RoslynWorkspaceAnalyzer.cs)
 
-**Severity:** Critical — all write-side tools broken
+**Severity:** Critical - all write-side tools broken
 
 `LoadBclReferences()` loaded ALL `.dll` files from the .NET runtime directory, including native DLLs (`System.IO.Compression.Native.dll`, `Microsoft.DiaSymReader.Native.amd64.dll`). These aren't valid .NET metadata, causing CS0009 errors in every compilation.
 
@@ -73,7 +73,7 @@ Third dogfood milestone. Lifeblood's write-side MCP tools (6 tools, shipped in v
 
 ### B3: Session Corruption on Failed Analyze (GraphSession.cs)
 
-**Severity:** High — one bad call breaks the session
+**Severity:** High - one bad call breaks the session
 
 `Load()` cleared write-side state (`CompilationHost = null`, etc.) upfront, before validation. If the new load failed (e.g., bad path), the previous session was destroyed.
 
@@ -81,7 +81,7 @@ Third dogfood milestone. Lifeblood's write-side MCP tools (6 tools, shipped in v
 
 ### B4: Symbol Resolution from Wrong Compilation (RoslynCompilationHost.cs, RoslynWorkspaceRefactoring.cs)
 
-**Severity:** Critical — find_references returned 0, rename threw exception
+**Severity:** Critical - find_references returned 0, rename threw exception
 
 `ResolveSymbol()` resolved symbols from standalone `_compilations`, but `SymbolFinder.FindReferencesAsync()` and `Renamer.RenameSymbolAsync()` need symbols that belong to the AdhocWorkspace's Solution. Different Roslyn compilation instances produce different symbol identity.
 
@@ -89,7 +89,7 @@ Third dogfood milestone. Lifeblood's write-side MCP tools (6 tools, shipped in v
 
 ### B5: Missing NuGet Package Resolution (RoslynWorkspaceAnalyzer.cs)
 
-**Severity:** Moderate — 1569 diagnostics from unresolved types
+**Severity:** Moderate - 1569 diagnostics from unresolved types
 
 Compilations only had BCL references and cross-module CompilationReferences, but no NuGet package assemblies. Types from packages like `Microsoft.CodeAnalysis.CSharp` were unresolved.
 
@@ -97,7 +97,7 @@ Compilations only had BCL references and cross-module CompilationReferences, but
 
 ### B6: CompileCheck False Negatives (RoslynCompilationHost.cs)
 
-**Severity:** Moderate — valid code reported as failing
+**Severity:** Moderate - valid code reported as failing
 
 `CompileCheck` used `emitResult.Success` which includes pre-existing compilation errors from the target module. Valid user snippets were reported as failing because of unrelated CS0246 errors in the compilation.
 
@@ -105,13 +105,13 @@ Compilations only had BCL references and cross-module CompilationReferences, but
 
 ### B7: Timeout Bypass (RoslynCodeExecutor.cs)
 
-**Severity:** Security — synchronous blocking escapes timeout
+**Severity:** Security - synchronous blocking escapes timeout
 
 `CancellationToken` passed to `CSharpScript.RunAsync` is only checked at compilation/evaluation boundaries. `Thread.Sleep()`, `while(true){}`, or other synchronous blocking operations ran to completion regardless of timeout.
 
 **Fix:** Wrap script execution in `Task.Run()` + `Task.Wait(timeoutMs)` for hard thread-level timeout enforcement.
 
-### W1: RS1024 Warning — SymbolEqualityComparer
+### W1: RS1024 Warning - SymbolEqualityComparer
 
 **Severity:** Warning
 
@@ -125,7 +125,7 @@ Compilations only had BCL references and cross-module CompilationReferences, but
 
 ### B8: Property Symbol ID Collision (SymbolIds.cs)
 
-**Severity:** High — FindReferences and Rename silently failed for properties
+**Severity:** High - FindReferences and Rename silently failed for properties
 
 `SymbolIds.Property()` generated `field:` prefix, making property IDs indistinguishable from field IDs. `FindInCompilation` looked for `IFieldSymbol` when kind="field", missing `IPropertySymbol` entirely. Properties silently returned 0 references and 0 rename edits.
 
@@ -133,7 +133,7 @@ Compilations only had BCL references and cross-module CompilationReferences, but
 
 ### B9: GetDiagnostics Silent Fallback (RoslynCompilationHost.cs)
 
-**Severity:** Medium — misleading diagnostic results
+**Severity:** Medium - misleading diagnostic results
 
 When `GetDiagnostics("nonexistent_module")` was called with a module name that didn't exist, the ternary condition `moduleName != null && TryGetValue(...)` evaluated to `false`, falling through to scan ALL compilations. The caller got diagnostics from every module instead of empty.
 
@@ -141,7 +141,7 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 
 ### B10: File.Exists Bypassing IFileSystem Port (RoslynWorkspaceAnalyzer.cs)
 
-**Severity:** Medium — broke testability, violated hexagonal architecture
+**Severity:** Medium - broke testability, violated hexagonal architecture
 
 `ResolveNuGetReferences` used raw `File.Exists(dllPath)` instead of the injected `_fs.FileExists(dllPath)`. The `IFileSystem` port existed specifically to abstract filesystem access, but this call bypassed it.
 
@@ -149,17 +149,17 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 
 ### Preventive Fixes
 
-**P1: Blocked patterns expanded** (RoslynCodeExecutor.cs) — Added 13 patterns: `File.WriteAllText`, `File.WriteAllBytes`, `File.Move`, `File.Copy`, `Directory.CreateDirectory`, `Environment.SetEnvironmentVariable`, `Assembly.Load`, `Assembly.LoadFile`, `Assembly.LoadFrom`, `Assembly.UnsafeLoadFrom`, `Reflection.Emit`, `AssemblyBuilder`, `Thread.Abort`. Total: 5 → 18 patterns.
+**P1: Blocked patterns expanded** (RoslynCodeExecutor.cs) - Added 13 patterns: `File.WriteAllText`, `File.WriteAllBytes`, `File.Move`, `File.Copy`, `Directory.CreateDirectory`, `Environment.SetEnvironmentVariable`, `Assembly.Load`, `Assembly.LoadFile`, `Assembly.LoadFrom`, `Assembly.UnsafeLoadFrom`, `Reflection.Emit`, `AssemblyBuilder`, `Thread.Abort`. Total: 5 → 18 patterns.
 
-**P2: Property accessor dangling edges** (RoslynEdgeExtractor.cs) — `FindContainingMethodOrLocal` returned compiler-generated accessor methods (`get_X`/`set_X`) as edge sources, but the symbol extractor emits properties, not accessors. Changed to `continue` past `AccessorDeclarationSyntax` so edges source from the enclosing method instead.
+**P2: Property accessor dangling edges** (RoslynEdgeExtractor.cs) - `FindContainingMethodOrLocal` returned compiler-generated accessor methods (`get_X`/`set_X`) as edge sources, but the symbol extractor emits properties, not accessors. Changed to `continue` past `AccessorDeclarationSyntax` so edges source from the enclosing method instead.
 
-**P3: NuGet catch-all narrowed** (RoslynWorkspaceAnalyzer.cs) — Bare `catch {}` in `ResolveNuGetReferences` could mask JSON schema changes in `project.assets.json`. Narrowed to `catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)`.
+**P3: NuGet catch-all narrowed** (RoslynWorkspaceAnalyzer.cs) - Bare `catch {}` in `ResolveNuGetReferences` could mask JSON schema changes in `project.assets.json`. Narrowed to `catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)`.
 
-**P4: MCP parse error response** (Program.cs) — Malformed JSON-RPC input was logged to stderr but no response was sent. MCP client would hang. Added JSON-RPC 2.0 parse error response (code -32700). Also fixed `null!` return to proper nullable `JsonRpcResponse?`.
+**P4: MCP parse error response** (Program.cs) - Malformed JSON-RPC input was logged to stderr but no response was sent. MCP client would hang. Added JSON-RPC 2.0 parse error response (code -32700). Also fixed `null!` return to proper nullable `JsonRpcResponse?`.
 
 ### Refactoring
 
-**RoslynWorkspaceManager extracted** — `EnsureWorkspace()`, `ResolveSymbol()`, `FindInCompilation()`, and `ParseSymbolId()` were duplicated verbatim between `RoslynCompilationHost` and `RoslynWorkspaceRefactoring` (~80 LOC each). Extracted to shared `Internal/RoslynWorkspaceManager.cs`. Both consumers now use `Lazy<RoslynWorkspaceManager>`.
+**RoslynWorkspaceManager extracted** - `EnsureWorkspace()`, `ResolveSymbol()`, `FindInCompilation()`, and `ParseSymbolId()` were duplicated verbatim between `RoslynCompilationHost` and `RoslynWorkspaceRefactoring` (~80 LOC each). Extracted to shared `Internal/RoslynWorkspaceManager.cs`. Both consumers now use `Lazy<RoslynWorkspaceManager>`.
 
 ### Test Coverage
 
@@ -170,23 +170,23 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 - SymbolId parsing: 7 tests
 - Architecture invariant (Analysis deps): 1 test
 
-## Bugs Found and Fixed (Session 4 — 2026-04-09)
+## Bugs Found and Fixed (Session 4 - 2026-04-09)
 
 ### B11: CS0518 "System.Object is not defined" on a multi-module Unity workspace (#1)
 
-**Severity:** Critical — ALL `lifeblood_execute` calls fail on multi-module workspaces
+**Severity:** Critical - ALL `lifeblood_execute` calls fail on multi-module workspaces
 
 **Reproduction:** Load a 75-module Unity workspace, then `lifeblood_execute` with `return 42;` → CS0518.
 
 **Root cause (3 layers):**
 
-1. `ScriptOptions.Default` has 25 references, all "Unresolved: System.Runtime" etc. They're named placeholders — no actual DLLs.
+1. `ScriptOptions.Default` has 25 references, all "Unresolved: System.Runtime" etc. They're named placeholders - no actual DLLs.
 2. Previous code added `compilation.References` (target project's transitive deps), injecting Unity's netstandard BCL stubs.
 3. Two competing `System.Object` definitions (host .NET 8 + Unity's netstandard) → CS0518.
 
-**Fix:** Load host BCL explicitly from the running .NET runtime directory (`typeof(object).Assembly.Location` → runtime dir → 17 core DLLs). Use `WithReferences` to replace useless defaults. Only add CompilationReferences for project types — no transitive deps.
+**Fix:** Load host BCL explicitly from the running .NET runtime directory (`typeof(object).Assembly.Location` → runtime dir → 17 core DLLs). Use `WithReferences` to replace useless defaults. Only add CompilationReferences for project types - no transitive deps.
 
-**Verification:** 75-module Unity workspace: `return 42`, `Console.Write`, LINQ `Enumerable.Range(1,10).Sum()`, `typeof(object)`, string concat, generic collections — all pass.
+**Verification:** 75-module Unity workspace: `return 42`, `Console.Write`, LINQ `Enumerable.Range(1,10).Sum()`, `typeof(object)`, string concat, generic collections - all pass.
 
 **Tests:** 5 regression tests added:
 - `CodeExecutor_WithDowngradedRefs_ResolvesSystemObject`
@@ -199,7 +199,7 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 
 ## Remaining Known Limitations
 
-1. **Diagnose count (1143):** NuGet resolution from `project.assets.json` resolves direct packages but not all transitive dependencies. Modules that depend on many NuGet packages (Server.Mcp, Tests) still have unresolved types. This is a best-effort approach — full MSBuild resolution would require hosting MSBuild, which is intentionally avoided.
+1. **Diagnose count (1143):** NuGet resolution from `project.assets.json` resolves direct packages but not all transitive dependencies. Modules that depend on many NuGet packages (Server.Mcp, Tests) still have unresolved types. This is a best-effort approach - full MSBuild resolution would require hosting MSBuild, which is intentionally avoided.
 
 2. **Rename scope:** Rename edits are generated from the AdhocWorkspace, which only includes source files in the analyzed project. Renames don't propagate to external consumers.
 

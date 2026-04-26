@@ -28,11 +28,11 @@ This approach: structure first, taxonomy first, authority first, workflow first,
 
 ## Five Layers
 
-1. **Corpus** — Raw materials (PDFs, policies, SOPs, contracts, handbooks, regulations)
-2. **Taxonomy** — Classification (domain, subdomain, case type, risk level, jurisdiction)
-3. **Knowledge Map** — Structural graph (this procedure depends on this regulation, this policy supersedes that one)
-4. **Workflow** — Operating paths (when X happens: read these, ignore these, escalate here, use this template)
-5. **Governance** — Trust (source authority, version, effective date, jurisdiction, owner, audit trail, confidence)
+1. **Corpus** - Raw materials (PDFs, policies, SOPs, contracts, handbooks, regulations)
+2. **Taxonomy** - Classification (domain, subdomain, case type, risk level, jurisdiction)
+3. **Knowledge Map** - Structural graph (this procedure depends on this regulation, this policy supersedes that one)
+4. **Workflow** - Operating paths (when X happens: read these, ignore these, escalate here, use this template)
+5. **Governance** - Trust (source authority, version, effective date, jurisdiction, owner, audit trail, confidence)
 
 ## The Killer Feature
 
@@ -79,9 +79,9 @@ Citation, Invariant, RiskLevel
 ## The Three-Layer Stack
 
 ```
-Layer A — LDF:           Knowledge hardening, invariants, human/AI workflow
-Layer B — Lifeblood:     Graph extraction, rules, dependencies, evidence
-Layer C — Domain Packs:  Legal, corporate, medical, university, factory
+Layer A - LDF:           Knowledge hardening, invariants, human/AI workflow
+Layer B - Lifeblood:     Graph extraction, rules, dependencies, evidence
+Layer C - Domain Packs:  Legal, corporate, medical, university, factory
 ```
 
 ## Execution Path

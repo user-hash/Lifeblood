@@ -7,7 +7,110 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Phases P4 (execute robustness), P5 (authority + forwarder analysis), and P6 (resolver / observability mop-up) of the DAWG-dogfood plan ship as additions on top of v0.6.7. Tests: 608 → 632 (+24). Invariants: 67 → 70. Port count: 24 → 26. Tool count: 22 → 25 (+3 read-side: authority_report, port_health, cycles).
+## [0.6.6] - 2026-04-26
+
+DAWG-dogfood backlog plan, full sweep. Six phases (P1..P6) ship as one combined release on top of v0.6.5. **Tests: 569 to 632 (+63). Invariants: 63 to 70 (+7). Ports: 22 to 26 (+4). MCP tools: 22 to 25 (+3 read-side: authority_report, port_health, cycles).** Hexagonal as ever - no patches, no special cases, every fix lands as a port + adapter + handler trio with regression tests + end-to-end dogfood. Five repeatable smoke harnesses (`smoke-mcp-p1-dogfood.ps1` through `smoke-mcp-p5-dogfood.ps1`) drive the full wire surface against Lifeblood and a real 87-module Unity workspace (DAWG).
+
+### Fixed. Resolver kind-correction (P1 / LB-BUG-002)
+
+`method:NS.Type.X` now resolves to a property / field / event named `X` on `NS.Type` when no method by that name exists. New `ResolveOutcome.KindCorrectedOnContainingType` plus a diagnostic explaining the correction. Type-scoped kind correction takes precedence over the global short-name fallback because the user already committed to a namespace; the more specific resolution is the honest answer. Method-by-that-name still wins when both a method and a same-named property exist on the type. Documented as `INV-RESOLVER-006`.
+
+### Fixed. File-scoped diagnostics (P1 / LB-BUG-016)
+
+`lifeblood_diagnose` accepts a `filePath` parameter that restricts the response to one source file. New `DiagnosticsRequest` record on `ICompilationHost` (typed alongside `FindReferencesOptions`, not stringly-typed). The Roslyn adapter filters by syntax-tree path with case-insensitive forward-slash suffix matching so callers can pass either the relative or absolute form. Closes the silent-fallback-to-300k-line-dump failure mode that appeared in three DAWG sessions. The string-only `GetDiagnostics(moduleName)` overload is preserved for back-compat.
+
+### Fixed. compile_check accepts filePath (P1 / LB-BUG-015)
+
+`lifeblood_compile_check` accepts either inline `code` or a `filePath` (relative to the loaded project root, or absolute). The file is read via the existing `IFileSystem` port. Exactly one of the two is required; supplying both is rejected. Tool schema drops `required: ["code"]`. Response includes a `source: "code"|"filePath"` discriminator + the `filePath` echo.
+
+### Added. blast_radius summarize / direct dependants (P1 / LB-NICE-005, LB-FR-010)
+
+`lifeblood_blast_radius` always reports `directDependants` (one-hop incoming edges, distinct sources, non-Contains) alongside the existing transitive `affectedCount`. `summarize:true` returns a compact response with `preview[]` (size capped by `maxResults`) instead of the full `affected[]` array. `truncated:true/false` tells callers whether the array was clipped. Closes the failure mode where transitive blast on a popular type produced 84KB+ JSON payloads that overflowed downstream agent thread guards.
+
+### Closed by re-verification (P1)
+
+Three regression tests against v0.6.5 confirmed prior walker work already closed two open backlog items:
+
+- **LB-BUG-001** invocation through array indexer receiver (`voices[i].SetPatch(patch)` on partial struct). `RoslynEdgeExtractor.ExtractCallEdge` resolves the entire invocation semantically via `model.GetSymbolInfo(invocation)` - array-element + List indexer receivers both work.
+- **LB-BUG-010** implicit interface implementation in `find_references`. The v0.6.4 method-level `Implements` edge work links the concrete impl to the interface method; the dispatch-site call goes to the interface method via `model.GetSymbolInfo`.
+
+### Added. Truth envelope on every read-side response (P2 / LB-INBOX-001 + LB-OBS-004 / INV-ENVELOPE-001)
+
+Every read-side MCP tool response carries a top-level `envelope` field. The envelope tells callers HOW MUCH to trust a result and WHEN it was true: truth tier (Semantic / Derived / Heuristic / Inferred), confidence band (Proven / Advisory / Speculative), evidence-source string, wall-clock staleness in seconds, files-changed-since-analyze count, per-tool documented limitations.
+
+Pure-data record in Domain (`Lifeblood.Domain.Results.ResponseEnvelope` + `EnvelopeClassification`). Application port (`IResponseDecorator`) plus reference adapter (`LifebloodResponseDecorator`). Per-tool classification lives on `ToolDefinition.EnvelopeClassification` - registry IS the source. Composition root projects the registry into the decorator at startup; missing registrations fall through to the most-conservative envelope plus a `Limitations` entry naming the gap.
+
+Staleness math walks the loaded graph's `SymbolKind.File` symbols, mtime-stats each via `IFileSystem.GetLastWriteTimeUtc`, counts files newer than `GraphSession.AnalyzedAtUtc`. Per-call scan capped at 256 files (short-circuits as soon as drift is detected) so even 87-module workspaces stay cheap.
+
+Wire-format note: `lifeblood_dependencies` and `lifeblood_dependants` previously returned a bare JSON array. They now return `{ envelope, symbolId, count, dependencies/dependants }`. Callers must read the named field instead of the top-level array.
+
+### Added. Unity-aware runtime-dispatch reachability (P3 / INV-UNITY-001, INV-UNITY-002)
+
+`IUnityReachabilityProvider` port + `UnityReachabilityAdapter` reference implementation. The adapter recognizes:
+
+- **Unity entrypoint attributes**: `RuntimeInitializeOnLoadMethod`, `InitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `PostProcessBuild`, `PostProcessScene`, `CustomEditor`, `CustomPropertyDrawer`, `Test`, `UnityTest`, full Unity message catalog.
+- **MonoBehaviour magic methods**: `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnGUI`, `OnTriggerEnter` and variants, `OnCollisionEnter` and variants, `OnAudioFilterRead`, `OnRenderImage` and lifecycle - only when the containing type's transitive inheritance chain reaches `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, or `UnityEngine.StateMachineBehaviour`.
+
+The chain walk uses extractor-recorded `Symbol.Properties["baseType"]` (FQN string) so it works even when the chain ends in a type that lives in an external assembly not loaded into the graph (UnityEngine.dll). The graph drops dangling Inherits edges to external targets, so an edge-only walk would miss every direct `MonoBehaviour` subclass.
+
+`LifebloodDeadCodeAnalyzer` takes the provider via optional ctor; pre-P3 callers see identical behavior. Composition root wires the Unity adapter by default; non-Unity workspaces see zero degradation.
+
+Extractor adds three metadata properties on every relevant symbol:
+- `Properties["attributes"]` - semicolon-separated simple attribute class names (Attribute suffix stripped).
+- `Properties["baseType"]` - FQN of the direct base (Object / ValueType / Enum / Delegate skipped).
+- `Properties["classification"]` - method body shape (`PureForwarder` / `ThinWrapper` / `RealLogic`); see P5 below.
+
+Asmdef incremental (`INV-UNITY-002`, promoted from LB-NICE-003): `AnalysisSnapshot.AsmdefTimestamps` + `HasAsmdefDrift` force a full re-analyze on any added / removed / edited `*.asmdef`. Unity csprojs are generated from asmdefs - editing an asmdef without forcing Unity to regenerate the csproj would leave the csproj-timestamp tracker (`INV-BCL-005`) blind.
+
+Dogfooded on a real 87-module Unity workspace (DAWG, 53,882 symbols, 180,814 edges):
+- **Dead-code findings: 1095 to 729** (-33% / -366 false positives).
+- **MonoBehaviour-magic FPs: 378 to 13** (-97%).
+- **Unity-shaped magic-name FPs in Assets/Editor/Runtime paths: 226 to 10** (-95.5%).
+
+Remaining 13 are documented edge cases (UI Toolkit `VisualElement` subclasses, audio callbacks on non-MonoBehaviour bases). Closes LB-FP-001 (MonoBehaviour message dispatch), LB-FP-002 (UnityEvent / Button.onClick - partially; YAML scanner deferred), LB-BUG-009 (RuntimeInitializeOnLoadMethod entrypoints).
+
+### Added. Execute robustness (P4 / INV-EXECUTE-001 / LB-BUG-014, LB-BUG-007, LB-BUG-008, LB-FR-012, LB-FR-013)
+
+`lifeblood_execute` is now trustworthy on Unity workspaces and gives sandbox scripts the introspection they need.
+
+- **`IRuntimeAssemblyResolver`** (Application port) + **`UnityAssemblyResolver`** (C# adapter) probe `Library/ScriptAssemblies/`, `Library/Bee/artifacts/` (Unity 2022+), and `Library/PackageCache/`. The C# code executor injects discovered DLLs as additional script references so scripts can touch `UnityEngine` types. Empty `Library/` surfaces a friendly `runtimeAssemblyWarnings` entry ("run a Unity build first") instead of letting scripts fail with cryptic CS0246 errors. `GraphSession` auto-injects the Unity adapter when `Library/` exists at the project root; non-Unity workspaces see zero behavior change.
+- **`ICodeExecutor.Execute(CodeExecutionRequest)`** typed-options overload + new `CodeExecutionRequest.TargetProfile` field (`host` default / `net-standard-2.1` / `net-6.0`). When non-default, the executor swaps host BCL refs for the matching reference pack from `dotnet/packs/`. Missing packs fall back to host BCL with a `targetRuntimeWarnings` entry. Unknown profile values fall back with a clear diagnostic. Both warning channels propagate on every result path: success, blocked-pattern, compile error, timeout, exception.
+- **`RoslynSemanticView`** gains `Help` (sandbox cheat sheet - globals, EdgeKind names, SymbolKind names, common queries), `SymbolsOfKind(string)`, `EdgesOfKind(string)`. Scripts can write `SymbolsOfKind("Method").Count()` without importing the SymbolKind enum.
+- **`CodeExecutionResult`** ships `RuntimeAssemblyWarnings` + `TargetRuntimeWarnings` alongside Output/Error/ReturnValue/ElapsedMs. `WriteToolHandler.HandleExecute` surfaces both verbatim. `lifeblood_execute` schema gains optional `targetProfile` enum.
+
+Dogfood (smoke-mcp-p4-dogfood.ps1):
+- Lifeblood: SymbolsOfKind("Type") = 262, EdgesOfKind("Contains") = 2121, Help reachable, host-profile execute returns "42" on `21*2`.
+- DAWG: SymbolsOfKind("Type") = 3209, EdgesOfKind("Contains") = 54440. Unknown targetProfile fallback verified end-to-end.
+
+### Added. Authority report + forwarder classifier + port health + cycles (P5 / INV-AUTHORITY-001 + INV-FORWARDER-001 / LB-FR-018, LB-FR-014, LB-FR-020, LB-NICE-007)
+
+Three new read-side MCP tools plus a heuristic method-body classifier on the extractor. Together they automate the manual ABG-extraction triage that ate ~30 min per stage in DAWG sessions.
+
+- **`IAuthorityReporter`** (Application port) + **`LifebloodAuthorityReporter`** (Connectors.Mcp adapter). Single graph walk produces `implementedInterfaceCount`, `ownedPublicSurface` (public method/property/field count, nested types excluded), per-implemented-interface usage (member count + distinct consumers via `Calls` / `References` edges), and `forwarderRatio` (in [0.0, 1.0] or sentinel `-1.0` when no method has classification). Tool: **`lifeblood_authority_report`**, envelope tier: Derived / Proven.
+- **Method body classification** - `RoslynSymbolExtractor.AttachMethodClassification` records on every method's `Properties["classification"]`: `PureForwarder` (single-statement / expression-bodied invocation), `ThinWrapper` (<= 5 statements with exactly one invocation), `RealLogic` (everything else). Abstract / partial / extern methods get no entry. Dogfood: 1009 methods classified on Lifeblood (58 PureForwarders), **18,985 classified on DAWG with 3,367 PureForwarders identified**.
+- **`lifeblood_port_health`** - walks an interface or class's `Contains` members, classifies each as live (>= 1 incoming non-Contains edge OR outgoing `Implements`) or dead. Returns `livenessPct` and a verdict: `healthy` (>=75%), `mixed` (>=25%), `vestigial` (<25%), or `empty`.
+- **`lifeblood_cycles`** - exposes the existing `CircularDependencyDetector` SCC results as a callable tool. No new analysis. Lifeblood self-analysis: 0 cycles. DAWG: 117 SCCs.
+
+### Added. Wire-shape clarifications (P6 / LB-OBSERVATION-001, LB-OBSERVATION-003)
+
+- **`changedSourceFiles`** + **`touchedGraphFiles`** added alongside the existing `changedFileCount` on `lifeblood_analyze` responses. Currently the same value; surface kept stable for future divergence. Old `changedFileCount` field preserved for back-compat.
+- **`lifeblood_dependencies`** description spells out where outgoing edges actually live: `Calls` edges live on the calling METHOD, `References` edges live on the referencing field/property/method body. A type-level dependencies query typically returns 0 because the type itself doesn't author calls.
+- **`lifeblood_analyze`** description includes a Unity note about new-`.cs`-without-`.meta` files.
+
+### Documentation
+
+- **`CLAUDE.md`** adds `INV-RESOLVER-006`, `INV-ENVELOPE-001`, `INV-UNITY-001`, `INV-UNITY-002`, `INV-EXECUTE-001`, `INV-AUTHORITY-001`, `INV-FORWARDER-001`. 70 typed invariants total.
+- **`README.md`** + **`docs/STATUS.md`** + **`docs/ARCHITECTURE.md`** + **`docs/TOOLS.md`** + **`docs/UNITY.md`** + **`docs/MCP_SETUP.md`** + **`docs/DOGFOOD_FINDINGS.md`** updated to reflect 25 tools (15 read + 10 write), 26 ports, 70 invariants, 632 tests, 2,132 self-analysis symbols. All em-dashes replaced with prose hyphens.
+- **`docs/plans/dawg-dogfood-polish-2026-04-26.md`** committed as the source plan. Six phases (P1..P6); all shipped.
+- **`smoke-mcp-p1-dogfood.ps1`** through **`smoke-mcp-p5-dogfood.ps1`** committed as repeatable end-to-end MCP smoke harnesses.
+
+### Internal
+
+- `ToolHandler.JsonOpts` gains `JsonStringEnumConverter` so envelope and payload enums ship as readable strings (`"Semantic"`, `"Proven"`) instead of integer ordinals.
+- `GraphSession` records `AnalyzedAtUtc` on every successful Load (full + incremental + JSON-graph). Read by the response decorator via `EnvelopeContext`.
+- `ICompilationHost` gains `GetDiagnostics(DiagnosticsRequest)`; existing string-only overload preserved.
+- `ICodeExecutor.Execute(CodeExecutionRequest)` interface overload added; existing `Execute(string,string[],int)` overload preserved and now delegates to the typed path. `ProcessIsolatedCodeExecutor` updated to satisfy the new interface member.
+- Test count drift: `ToolRegistry_Returns22Tools` ratchet renamed to `ToolRegistry_Returns25Tools` and asserts the three new read-side tools by name.
 
 ### Added. Execute robustness (P4 / LB-BUG-014, LB-BUG-007, LB-BUG-008, LB-FR-012, LB-FR-013)
 
@@ -15,7 +118,7 @@ Phases P4 (execute robustness), P5 (authority + forwarder analysis), and P6 (res
 
 - **`IRuntimeAssemblyResolver`** (Application port) + **`UnityAssemblyResolver`** (C# adapter) probe `Library/ScriptAssemblies/`, `Library/Bee/artifacts/` (Unity 2022+), and `Library/PackageCache/`. The C# code executor injects discovered DLLs as additional script references so scripts can touch `UnityEngine` types. Empty `Library/` surfaces a friendly `runtimeAssemblyWarnings` entry ("run a Unity build first") instead of letting scripts fail with cryptic CS0246 errors. `GraphSession` auto-injects the Unity adapter when `Library/` exists at the project root; non-Unity workspaces see zero behavior change.
 - **`ICodeExecutor.Execute(CodeExecutionRequest)`** typed-options overload + new `CodeExecutionRequest.TargetProfile` field (`host` default / `net-standard-2.1` / `net-6.0`). When non-default, the executor swaps host BCL refs for the matching reference pack from `dotnet/packs/`. Missing packs fall back to host BCL with a `targetRuntimeWarnings` entry. Unknown profile values fall back with a clear diagnostic. Both warning channels propagate on every result path: success, blocked-pattern, compile error, timeout, exception.
-- **`RoslynSemanticView`** gains `Help` (sandbox cheat sheet — globals, EdgeKind names, SymbolKind names, common queries), `SymbolsOfKind(string)`, and `EdgesOfKind(string)`. Scripts can write `SymbolsOfKind("Method").Count()` without importing the SymbolKind enum.
+- **`RoslynSemanticView`** gains `Help` (sandbox cheat sheet - globals, EdgeKind names, SymbolKind names, common queries), `SymbolsOfKind(string)`, and `EdgesOfKind(string)`. Scripts can write `SymbolsOfKind("Method").Count()` without importing the SymbolKind enum.
 - **`CodeExecutionResult`** ships `RuntimeAssemblyWarnings` + `TargetRuntimeWarnings` alongside Output/Error/ReturnValue/ElapsedMs. `WriteToolHandler.HandleExecute` surfaces both verbatim. `lifeblood_execute` schema gains optional `targetProfile` enum.
 
 Documented as **`INV-EXECUTE-001`** in CLAUDE.md.
@@ -29,9 +132,9 @@ Dogfood (smoke-mcp-p4-dogfood.ps1):
 Three new read-side MCP tools plus a heuristic method-body classifier on the extractor. Together they automate the manual ABG-extraction triage that ate ~30 min per stage in DAWG sessions.
 
 - **`IAuthorityReporter`** (Application port) + **`LifebloodAuthorityReporter`** (Connectors.Mcp adapter). Single graph walk produces `implementedInterfaceCount`, `ownedPublicSurface` (public method/property/field count, nested types excluded), per-implemented-interface usage (member count + distinct consumers via `Calls`/`References` edges), and `forwarderRatio` (in [0.0, 1.0] or sentinel `-1.0` when no method has classification). Tool: **`lifeblood_authority_report`**, envelope: Derived / Proven.
-- **Method body classification** — `RoslynSymbolExtractor.AttachMethodClassification` records on every method's `Properties["classification"]`: `PureForwarder` (single-statement / expression-bodied invocation), `ThinWrapper` (≤ 5 statements with exactly one invocation), `RealLogic` (everything else). Abstract / partial / extern methods get no entry. Dogfood: 1009 methods classified on Lifeblood (58 PureForwarders), **18,985 classified on DAWG with 3,367 PureForwarders** identified.
-- **`lifeblood_port_health`** — walks an interface or class's `Contains` members, classifies each as live (≥ 1 incoming non-Contains edge OR outgoing `Implements`) or dead. Returns `livenessPct` and a verdict: `healthy` (≥75%), `mixed` (≥25%), `vestigial` (<25%), or `empty`.
-- **`lifeblood_cycles`** — exposes the existing `CircularDependencyDetector` SCC results as a callable tool. No new analysis. Lifeblood self-analysis: 0 cycles. DAWG: 117 SCCs.
+- **Method body classification** - `RoslynSymbolExtractor.AttachMethodClassification` records on every method's `Properties["classification"]`: `PureForwarder` (single-statement / expression-bodied invocation), `ThinWrapper` (≤ 5 statements with exactly one invocation), `RealLogic` (everything else). Abstract / partial / extern methods get no entry. Dogfood: 1009 methods classified on Lifeblood (58 PureForwarders), **18,985 classified on DAWG with 3,367 PureForwarders** identified.
+- **`lifeblood_port_health`** - walks an interface or class's `Contains` members, classifies each as live (≥ 1 incoming non-Contains edge OR outgoing `Implements`) or dead. Returns `livenessPct` and a verdict: `healthy` (≥75%), `mixed` (≥25%), `vestigial` (<25%), or `empty`.
+- **`lifeblood_cycles`** - exposes the existing `CircularDependencyDetector` SCC results as a callable tool. No new analysis. Lifeblood self-analysis: 0 cycles. DAWG: 117 SCCs.
 
 Documented as **`INV-AUTHORITY-001`** + **`INV-FORWARDER-001`** in CLAUDE.md.
 
@@ -46,106 +149,16 @@ Documented as **`INV-AUTHORITY-001`** + **`INV-FORWARDER-001`** in CLAUDE.md.
 - `ICodeExecutor.Execute(CodeExecutionRequest)` interface overload added; existing `Execute(string,string[],int)` overload preserved and now delegates to the typed path. `ProcessIsolatedCodeExecutor` updated to satisfy the new interface member.
 - Test count drift: `ToolRegistry_Returns22Tools` ratchet renamed to `ToolRegistry_Returns25Tools` and asserts the three new read-side tools by name.
 
-## [0.6.7] - 2026-04-26
-
-P2 + P3 of the DAWG-dogfood plan ship together. Truth envelope on every read-side response (LB-INBOX-001 + LB-OBS-004). Unity-aware runtime-dispatch reachability cuts dead-code false positives by 97% on real Unity workspaces. Asmdef-edit detection promoted from LB-NICE-003. **Tests: 582 → 608 (+26). Invariants: 65 → 67. Port count: 23 → 24.** Hexagonal as ever — no patches, no special cases, every fix is a port + adapter + handler trio with regression tests + end-to-end dogfood.
-
-### Added. Truth envelope on every read-side response (P2 / INV-ENVELOPE-001)
-
-Every read-side MCP tool response now carries a top-level `envelope` field. The envelope tells callers HOW MUCH to trust a result and WHEN it was true: truth tier (Semantic / Derived / Heuristic / Inferred), confidence band (Proven / Advisory / Speculative), evidence-source string, wall-clock staleness in seconds, files-changed-since-analyze count, per-tool documented limitations.
-
-Pure-data record in Domain (`Lifeblood.Domain.Results.ResponseEnvelope` + `EnvelopeClassification`). Application port (`IResponseDecorator`) plus reference adapter (`LifebloodResponseDecorator`). Per-tool classification lives on `ToolDefinition.EnvelopeClassification` — registry IS the source. Composition root projects the registry into the decorator at startup; missing registrations fall through to the most-conservative envelope plus a `Limitations` entry naming the gap, so a missed registration surfaces as obviously-degraded metadata rather than silent over-confidence.
-
-Staleness math walks the loaded graph's `SymbolKind.File` symbols, mtime-stats each via `IFileSystem.GetLastWriteTimeUtc`, counts files newer than `GraphSession.AnalyzedAtUtc`. Per-call scan capped at 256 files (short-circuits as soon as any drift is detected) so even 87-module Unity workspaces stay cheap.
-
-Wire-format note: `lifeblood_dependencies` and `lifeblood_dependants` previously returned a bare JSON array. They now return `{ envelope, symbolId, count, dependencies/dependants }`. Callers must read the named field instead of the top-level array.
-
-Closes LB-INBOX-001 (truth envelope) + LB-OBS-004 (staleness surface).
-
-### Added. Unity-aware runtime-dispatch reachability (P3 / INV-UNITY-001, INV-UNITY-002)
-
-`IUnityReachabilityProvider` port + `UnityReachabilityAdapter` reference implementation. The adapter recognizes:
-
-- **Unity entrypoint attributes** — `RuntimeInitializeOnLoadMethod`, `InitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `PostProcessBuild`, `PostProcessScene`, `CustomEditor`, `CustomPropertyDrawer`, `Test`, `UnityTest`, full Unity message catalog.
-- **MonoBehaviour magic methods** — `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnGUI`, `OnTriggerEnter` + variants, `OnCollisionEnter` + variants, `OnAudioFilterRead`, `OnRenderImage` + lifecycle, etc. — only when the containing type's transitive inheritance chain reaches `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, or `UnityEngine.StateMachineBehaviour`.
-
-Crucially, the chain walk uses the extractor-recorded `Symbol.Properties["baseType"]` (FQN string) — works even when the chain ends in a type that lives in an external assembly not loaded into the graph (UnityEngine.dll). The graph drops dangling Inherits edges to external targets, so an edge-only walk would miss every direct `MonoBehaviour` subclass. The property carries the FQN regardless.
-
-`LifebloodDeadCodeAnalyzer` takes the provider via optional ctor; pre-P3 callers without it see identical behavior. Composition root wires the Unity adapter by default — non-Unity workspaces see zero degradation because nothing matches.
-
-Extractor adds two metadata properties on every type and method:
-- `Properties["attributes"]` — semicolon-separated simple class names (Attribute suffix stripped)
-- `Properties["baseType"]` — FQN of the direct base (Object/ValueType/Enum/Delegate skipped)
-
-Asmdef incremental (INV-UNITY-002, promoted LB-NICE-003): `AnalysisSnapshot.AsmdefTimestamps` + `HasAsmdefDrift` force a full re-analyze on any added / removed / edited `*.asmdef`. Necessary because Unity csprojs are generated from asmdefs — editing an asmdef without forcing Unity to regenerate the csproj leaves the csproj-timestamp tracker (INV-BCL-005) blind.
-
-Dogfooded on a real 87-module Unity workspace (53,882 symbols, 180,814 edges):
-- **Dead-code findings: 1095 → 729** (-33% / -366 false positives)
-- **MonoBehaviour-magic FPs: 378 → 13** (-97%)
-- **Unity-shaped magic-name FPs in Assets/Editor/Runtime paths: 226 → 10** (-95.5%)
-
-Remaining 13 are documented edge cases (UI Toolkit `VisualElement` subclasses, audio callbacks on non-MonoBehaviour bases) — not regressions; future tightening targets.
-
-Closes LB-FP-001 (MonoBehaviour message dispatch), LB-FP-002 (UnityEvent/Button.onClick — partially; YAML scanner deferred), LB-BUG-009 (RuntimeInitializeOnLoadMethod entrypoints), LB-NICE-003 (asmdef incremental — promoted to BUG).
-
-### Documentation
-
-- **`CLAUDE.md`** adds `INV-ENVELOPE-001`, `INV-UNITY-001`, `INV-UNITY-002`. Trim of duplicate `INV-RESOLVER-006` framing.
-- **`docs/STATUS.md`** updated counts: 608 tests, 24 ports, 67 invariants.
-- **`smoke-mcp-p2-dogfood.ps1`** + **`smoke-mcp-p3-dogfood.ps1`** committed as repeatable end-to-end MCP smoke harnesses.
-
-### Internal
-
-- `ToolHandler.JsonOpts` gains `JsonStringEnumConverter` so envelope and payload enums ship as readable strings (`"Semantic"`, `"Proven"`) instead of integer ordinals.
-- `GraphSession` records `AnalyzedAtUtc` on every successful Load (full + incremental + JSON-graph). Read by the response decorator via `EnvelopeContext`.
-
-## [0.6.6] - 2026-04-26
-
-DAWG dogfood backlog triage. Six findings closed (3 already shipped silently in v0.6.4/v0.6.5; 3 net-new fixes). Hexagonal as ever — no patches, no handler-side string sniffing, every fix is a port + adapter + handler trio with regression tests. Tests: 569 to 582 (+13). Zero regressions.
-
-### Fixed. Resolver kind-correction (LB-BUG-002)
-
-`method:NS.Type.X` now resolves to a property / field / event named `X` on `NS.Type` when no method by that name exists. New `ResolveOutcome.KindCorrectedOnContainingType` plus a diagnostic explaining the correction. Type-scoped kind correction takes precedence over the global short-name fallback (Rule 4) because the user already committed to a namespace; the more specific resolution is the honest answer. Method-by-that-name still wins when both a method and a same-named property exist on the type — kind correction only fires when zero method overloads exist. Pinned by `SymbolResolverTests.Resolve_MethodPrefix_OnPropertyOnSameType_KindCorrected`, `Resolve_MethodPrefix_OnFieldOnSameType_KindCorrected`, `Resolve_MethodPrefix_PrefersMethodOverProperty_WhenBothPresent`. Documented as `INV-RESOLVER-006`.
-
-### Fixed. File-scoped diagnostics (LB-BUG-016)
-
-`lifeblood_diagnose` accepts a `filePath` parameter that restricts the response to one source file. New `DiagnosticsRequest` record on `ICompilationHost` (typed alongside `FindReferencesOptions` — not stringly-typed). The Roslyn adapter filters by syntax-tree path with case-insensitive forward-slash suffix matching so callers can pass either the relative or absolute form. Closes the silent-fallback-to-300k-line-dump failure mode that appeared in three DAWG sessions. The string-only `GetDiagnostics(moduleName)` overload is preserved for backwards-compat and now delegates to the new pipeline.
-
-### Fixed. compile_check accepts filePath (LB-BUG-015)
-
-`lifeblood_compile_check` accepts either inline `code` or a `filePath` (relative to the loaded project root, or absolute). The file is read via the existing `IFileSystem` port. Exactly one of the two is required; supplying both is rejected so the result never silently depends on which input wins. Tool schema drops `required: ["code"]` to allow either form. Response includes a `source: "code"|"filePath"` discriminator + the `filePath` echo so callers can distinguish inputs in transcripts.
-
-### Added. blast_radius summarize / direct dependants (LB-NICE-005, LB-FR-010)
-
-`lifeblood_blast_radius` now always reports `directDependants` (one-hop incoming edges, distinct sources, non-Contains) alongside the existing transitive `affectedCount`. The two are not interchangeable — a type with 5 direct callers and 200 transitive blast members should not be treated like one with 5 callers and 5 blast members. Adds `summarize:true` for compact responses that omit the full affected-id array (renamed `preview` and clipped). Closes the failure mode where transitive blast on a popular type produced 84KB+ JSON payloads that overflowed downstream agent thread guards. `maxResults` (default 500 normal mode, 25 summarize mode) caps the embedded array regardless of mode; `truncated:true/false` tells callers whether the array was clipped. `affectedCount` always reports the un-clipped figure.
-
-### Closed by re-verification. v0.6.4/v0.6.5 already shipped these silently
-
-Three regression tests against v0.6.5 confirmed the following are already closed by prior walker work; no functional change was needed for these, only a regression guard so a future rewrite cannot silently re-open them:
-
-- **LB-BUG-001** invocation through array indexer receiver (`voices[i].SetPatch(patch)` on partial struct). `RoslynEdgeExtractor.ExtractCallEdge` resolves the entire invocation semantically via `model.GetSymbolInfo(invocation)` — array-element + List indexer receivers both work. Pinned by `ExtractEdges_InvocationOnArrayElement_EmitsCallsEdge` and `ExtractEdges_InvocationOnListIndexer_EmitsCallsEdge`.
-- **LB-BUG-010** implicit interface implementation in `find_references`. The v0.6.4 method-level `Implements` edge work links the concrete impl to the interface method; the dispatch-site call goes to the interface method via `model.GetSymbolInfo`. Pinned by `ExtractEdges_ImplicitInterfaceImpl_LinksConcreteToInterfaceMethod`.
-
-### Documentation
-
-- **`CLAUDE.md`** adds `INV-RESOLVER-006` for the new kind-correction rule.
-- **`docs/plans/dawg-dogfood-polish-2026-04-26.md`** committed as the source plan for this release. Triages the full DAWG backlog into five phases (P1-P5 / v0.6.6-v0.7.0); P1 is what shipped here.
-
-### Internal
-
-- `ICompilationHost` gains `GetDiagnostics(DiagnosticsRequest)`; existing string-only overload preserved. `StubCompilationHost` in `UseCaseTests` extended.
-- `WriteToolHandler.ResolveWorkspacePath` helper added; absolute paths pass through, relative paths resolve against `GraphSession.ProjectRoot`.
-
 ## [0.6.5] - 2026-04-14
 
 Closes the three Roslyn extractor gaps that v0.6.4 left explicitly marked "by design / known gap" under `INV-DEADCODE-001`, plus a regression in `LifebloodSymbolResolver` that made the new ctor edges unreachable via the read-side tools. Publish workflow hardened against the drift class that would ship helper tags as real NuGet packages. `CLAUDE.md` trimmed 20% without dropping a single invariant rule. 569 tests (was 557, +12 new: 8 extractor, 4 resolver). 0 regressions. 0 build warnings.
 
 ### Fixed. Three more Roslyn extractor gaps + ctor resolver bug
 
-- **Constructor `Calls` edge.** `ExtractConstructorCallEdge` now emits BOTH a type-level `References` edge (prior behaviour — module coupling signal) AND a method-level `Calls` edge to the `.ctor`. `find_references` on any explicit constructor returns its construction sites.
+- **Constructor `Calls` edge.** `ExtractConstructorCallEdge` now emits BOTH a type-level `References` edge (prior behaviour - module coupling signal) AND a method-level `Calls` edge to the `.ctor`. `find_references` on any explicit constructor returns its construction sites.
 - **Field-initializer containing method.** `FindContainingMethodOrLocal` resolves references inside `static T _x = Bar()` / `T _x = Bar()` / `public int X { get; } = Compute()` to the type's synthesized `.cctor` (static) or first `.ctor` (instance) via `INamedTypeSymbol.StaticConstructors` / `InstanceConstructors`. Closes the `new Lazy<>(Load)` "no containing method" false-positive class.
 - **Property accessor context.** `FindContainingMethodOrLocal` returns the accessor `IMethodSymbol` for references inside bodied `get { ... }`, expression-bodied `=> _field`, and indexer expression bodies. `GetMethodId` routes `AssociatedSymbol` to the property/event id so the edge source matches the extracted graph node.
-- **Constructor resolver (regression fix).** `LifebloodSymbolResolver.TryParseMethodWithoutParens` recognizes the `..ctor` / `..cctor` suffixes explicitly — the leading dot is part of the canonical method name in Lifeblood's ID grammar, so a plain `LastIndexOf('.')` split produced an invalid type id (`type:NS.Foo.`). Without the fix, `find_references`, `blast_radius`, `dependants`, and every other read-side tool were unable to resolve `method:NS.Foo..ctor` (truncated) despite the symbol existing in the graph.
+- **Constructor resolver (regression fix).** `LifebloodSymbolResolver.TryParseMethodWithoutParens` recognizes the `..ctor` / `..cctor` suffixes explicitly - the leading dot is part of the canonical method name in Lifeblood's ID grammar, so a plain `LastIndexOf('.')` split produced an invalid type id (`type:NS.Foo.`). Without the fix, `find_references`, `blast_radius`, `dependants`, and every other read-side tool were unable to resolve `method:NS.Foo..ctor` (truncated) despite the symbol existing in the graph.
 
 ### Changed. Publish workflow hardening
 
@@ -158,7 +171,7 @@ Closes the three Roslyn extractor gaps that v0.6.4 left explicitly marked "by de
 - **`CLAUDE.md` trim.** 556 → 402 lines (~20% smaller) without dropping any invariant rule. Stale `## 17 MCP Tools` heading removed (actual: 22, authoritative source `docs/STATUS.md` + `ToolRegistry.cs`). Port Interfaces section compressed to a directory-layout pointer. Verbose evidence narratives trimmed on `INV-RESOLVER-005`, `INV-CANONICAL-001`, `INV-MCP-003`, `INV-TOOLREG-001`, `INV-DEADCODE-001`, `INV-FINDIMPL-001`, `INV-USAGE-*`, `INV-BCL-001..005`, `INV-TESTDISC-001`, `INV-INVARIANT-001`. `INV-DEADCODE-001` updated to document the three new closed FP classes.
 - **`docs/IMPROVEMENT_INBOX.md` hygiene.** Deleted the "Shipped since v0.6.0" block and the `LB-INBOX-007` RESOLVED block per the file's own "when the fix ships, delete the entry" rule. Resolved the `LB-INBOX-001..005` id collision between shipped-history entries and phase entries. Rewrote `LB-INBOX-002` Phase 2 to reflect current state.
 - **Self-analysis sample refreshed.** `docs/STATUS.md` self-analysis block showed pre-v0.6.4 numbers (1834 symbols / 5708 edges / 235 types / 57 invariants); updated to post-v0.6.4 values (1887 / 8223 / 238 / 63).
-- **`docs/ARCHITECTURE.md` Seam 4 wording.** Removed pre-release framing that referred to `INV-DEADCODE-001` "for the v0.6.4 investigation" — the v0.6.4 gap classes are now closed.
+- **`docs/ARCHITECTURE.md` Seam 4 wording.** Removed pre-release framing that referred to `INV-DEADCODE-001` "for the v0.6.4 investigation" - the v0.6.4 gap classes are now closed.
 - **Count refresh.** Test count 557 → 569 across STATUS / README / ARCHITECTURE / DOGFOOD. Invariant count 58 → 63.
 
 ### Internal
@@ -739,8 +752,7 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...HEAD
-[0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.6...v0.6.7
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.6...HEAD
 [0.6.6]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4

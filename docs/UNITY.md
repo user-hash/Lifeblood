@@ -10,7 +10,7 @@ Claude Code ──→ Unity MCP (action/control plane)
                     ├── built-in tools (scenes, GameObjects, scripts...)
                     │
                     └── [McpForUnityTool] custom tools ──→ Lifeblood MCP (child process)
-                        └── 22 semantic tools (analyze, references, blast radius, dead code, search, invariant check...)
+                        └── 25 semantic tools (analyze, references, blast radius, dead code, search, invariant check, authority report, port health, cycles, ...)
 ```
 
 Lifeblood does NOT run inside Unity. It spawns as a separate .NET process with its own Roslyn workspace. No assembly conflicts, no domain reload interference, no memory pressure on the Editor.
@@ -96,7 +96,7 @@ Streaming compilation with downgrading keeps memory bounded:
 
 Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction (peak stays under 600 MB on a 75-module Unity workspace). The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively, which pushes peak to ~2.5 GB on the same workspace. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools.
 
-Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Older docs cited ~4 GB peak — that figure was almost certainly measured against the MCP retained path without noting the distinction, and is closer to the 2.5 GB MCP peak than to the CLI 571 MB peak.
+Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Older docs cited ~4 GB peak - that figure was almost certainly measured against the MCP retained path without noting the distinction, and is closer to the 2.5 GB MCP peak than to the CLI 571 MB peak.
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 
@@ -105,3 +105,22 @@ Each module is compiled, extracted, then downgraded to a lightweight PE metadata
 - **Domain reload:** The bridge kills the sidecar process before Unity recompiles, and restarts it on next tool call.
 - **Editor quit:** Process is killed via `EditorApplication.quitting` hook.
 - **Crash recovery:** If the sidecar dies, the next tool call auto-restarts it.
+
+## Unity-Aware Reachability (`INV-UNITY-001`)
+
+Lifeblood detects Unity's framework dispatch automatically. `lifeblood_dead_code` does NOT flag:
+
+- Methods marked with Unity entrypoint attributes: `RuntimeInitializeOnLoadMethod`, `InitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `PostProcessBuild`, `PostProcessScene`, `CustomEditor`, `CustomPropertyDrawer`, `Test`, `UnityTest`, full attribute roster.
+- MonoBehaviour magic methods: `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnGUI`, `OnTriggerEnter` and variants, `OnCollisionEnter` and variants, `OnAudioFilterRead`, `OnRenderImage`, `OnDrawGizmos` and variants. Only flagged when the containing type's transitive inheritance chain reaches a Unity message-receiver base: `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, `UnityEngine.StateMachineBehaviour`.
+
+The chain walk uses `Symbol.Properties["baseType"]` (set by the C# extractor) so types that inherit directly from `UnityEngine.MonoBehaviour` still resolve - even though the engine DLL itself isn't analyzed source.
+
+**Dogfood vs DAWG (87-module Unity workspace):** dead-code findings 1095 → 729 (-33%), MonoBehaviour-magic FPs 378 → 13 (-97%). Remaining 13 are documented edge cases (UI Toolkit `VisualElement` subclasses with magic-named methods, audio callbacks on non-MonoBehaviour bases) that future tightening can target via custom adapter rosters.
+
+## Asmdef Edits (`INV-UNITY-002`)
+
+Editing an asmdef without forcing Unity to regenerate the on-disk csproj used to leave the analyzer running against stale module facts. `RoslynWorkspaceAnalyzer.IncrementalAnalyze` now scans every `*.asmdef` under the project root on every incremental call; any addition / removal / mtime change triggers a full re-analyze that round.
+
+## Execute Robustness on Unity (`INV-EXECUTE-001`)
+
+`lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch UnityEngine types without Unity being open. Empty `Library/` surfaces a `runtimeAssemblyWarnings` entry telling the caller to run a Unity build first. Optional `targetProfile` (host / net-standard-2.1 / net-6.0) selects the BCL ref-pack; missing packs fall back to host with `targetRuntimeWarnings`.

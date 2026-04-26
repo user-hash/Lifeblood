@@ -10,7 +10,15 @@ Anything that has shipped is deleted from this file. Anything speculative that n
 
 ---
 
-## Current state (as of v0.6.3, 2026-04-11)
+## Status snapshot (post P1-P6, 2026-04-26)
+
+The DAWG-dogfood plan landed in six phases on top of v0.6.5. Tests 569 to 632 (+63). Invariants 63 to 70 (+7). Ports 22 to 26 (+4). MCP tools 22 to 25 (+3). Five end-to-end smoke harnesses (`smoke-mcp-p1-dogfood.ps1` through `smoke-mcp-p5-dogfood.ps1`) drive the full wire surface against Lifeblood and DAWG.
+
+Shipped against the roadmap below: LB-INBOX-001 (truth envelope, `INV-ENVELOPE-001`), LB-INBOX-002 (`INV-DEADCODE-001` close-out + Unity reachability port `INV-UNITY-001`). Partially landed: LB-INBOX-004 (large-workspace wedge - authority report + forwarder classifier shipped). Open: LB-INBOX-003 (contract freeze), LB-INBOX-005 (public proof), LB-INBOX-006 (consolidated smoke script).
+
+---
+
+## Current state (review snapshot from v0.6.3, 2026-04-11)
 
 Consolidated from three independent external reviews on the day of the v0.6.3 release. The reviewers ran the audit against the live commit-pinned repo state, verified the architecture against the actual project-reference graph and ratchet tests, and in one case performed a real MCP round-trip against the built server to confirm end-to-end operability.
 
@@ -91,7 +99,7 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 1. **Ctor `Calls` edge.** `ObjectCreationExpressionSyntax` now emits both a type-level `References` edge AND a method-level `Calls` edge to the `.ctor`. `find_references` on a constructor returns its construction sites. The dead-code analyzer sees invoked ctors as reachable.
 2. **Field-initializer containing method.** `FindContainingMethodOrLocal` resolves a reference inside `static T _x = Bar()` or `T _x = Bar()` to the type's synthesized `.cctor` / first `.ctor`. Closes the `new Lazy<>(Load)` FP class.
-3. **Property accessor context.** `FindContainingMethodOrLocal` now returns the accessor `IMethodSymbol` instead of bailing out. `GetMethodId` routes accessors through `AssociatedSymbol` so the emitted edge source is the property id — the graph node the dead-code analyzer actually walks. Covers both bodied `get { return _field; }` and expression-bodied `=> _field` properties/indexers.
+3. **Property accessor context.** `FindContainingMethodOrLocal` now returns the accessor `IMethodSymbol` instead of bailing out. `GetMethodId` routes accessors through `AssociatedSymbol` so the emitted edge source is the property id - the graph node the dead-code analyzer actually walks. Covers both bodied `get { return _field; }` and expression-bodied `=> _field` properties/indexers.
 
 **Remaining expected after re-scan.** Runtime entry points (`Program.Main` × 6) and any genuine unused surface. Everything else listed in prior inbox tables (ctor "by design", accessor "known gap", field-initializer "no containing method") is now closed.
 
@@ -100,7 +108,7 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 - Update `INV-DEADCODE-001` wording in `CLAUDE.md` (remove obsolete "static field initializer method-groups" + "constructor by design" bullets from the remaining-known-FPs list).
 - Graduate `lifeblood_dead_code` out of experimental once the rescan is stable for at least one minor release AND the Phase-1 truth envelope is defined (so the graduated tool ships with the right `confidence` tier).
 
-**Why it matters.** Every call-graph tool (`find_references`, `dependants`, `blast_radius`, `file_impact`, `dead_code`) inherits the new edges automatically. `find_references` on a ctor now works — previously silently returned zero. Property-held constants used from their own getter are no longer flagged. Method-group refs from static field initializers are attributed correctly.
+**Why it matters.** Every call-graph tool (`find_references`, `dependants`, `blast_radius`, `file_impact`, `dead_code`) inherits the new edges automatically. `find_references` on a ctor now works - previously silently returned zero. Property-held constants used from their own getter are no longer flagged. Method-group refs from static field initializers are attributed correctly.
 
 ---
 

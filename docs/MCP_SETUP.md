@@ -1,10 +1,10 @@
 # MCP Server Setup
 
-Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 22 tools over stdio JSON-RPC. This page covers how it works, how to install it, and copy-paste configs for every major MCP client, including the Unity Editor via the Coplay MCP for Unity bridge.
+Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 25 tools over stdio JSON-RPC. This page covers how it works, how to install it, and copy-paste configs for every major MCP client, including the Unity Editor via the Coplay MCP for Unity bridge.
 
 ## How it works
 
-[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 8 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes 22 tools.
+[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 8 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes 25 tools.
 
 ```
 ┌─────────────────┐   spawn (stdin/stdout)   ┌──────────────────────────┐
@@ -57,7 +57,7 @@ cd Lifeblood
 dotnet build
 ```
 
-The build output lives at `src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`. Point `.mcp.json` at that path directly (see the dev example below). Every subsequent `dotnet build` or `dotnet test` refreshes it automatically — no publish step, no stale-binary drift class. The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form so you can copy it to `.mcp.json` locally and edit the path if you want a dev-build override. `.mcp.json` itself is gitignored, so machine-specific paths do not leak across contributors.
+The build output lives at `src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`. Point `.mcp.json` at that path directly (see the dev example below). Every subsequent `dotnet build` or `dotnet test` refreshes it automatically - no publish step, no stale-binary drift class. The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form so you can copy it to `.mcp.json` locally and edit the path if you want a dev-build override. `.mcp.json` itself is gitignored, so machine-specific paths do not leak across contributors.
 
 ### Verify the install
 
@@ -211,7 +211,7 @@ Call a tool:
 
 ## Unity Editor (via Coplay MCP for Unity)
 
-Lifeblood integrates with the Unity Editor as a **sidecar process** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds its 22 semantic tools to the same connection without competing for assemblies, without triggering domain reloads, and without colliding with Unity's own tooling.
+Lifeblood integrates with the Unity Editor as a **sidecar process** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds its 25 semantic tools to the same connection without competing for assemblies, without triggering domain reloads, and without colliding with Unity's own tooling.
 
 ### How the bridge works
 
@@ -236,7 +236,7 @@ Lifeblood integrates with the Unity Editor as a **sidecar process** under the [C
                                         │   (separate .NET 8 process) │
                                         │   - Roslyn workspace        │
                                         │   - Semantic graph          │
-                                        │   - 22 tools, all share     │
+                                        │   - 25 tools, all share     │
                                         │     one loaded state        │
                                         └─────────────────────────────┘
 ```
@@ -290,7 +290,7 @@ Assets/Editor/LifebloodBridge.meta
 
 The bridge files belong in the Lifeblood repo. They should not be committed to the consuming Unity project's git history.
 
-**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. All 22 Lifeblood tools appear in Coplay's tool list alongside the built-in Unity tools.
+**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. All 25 Lifeblood tools appear in Coplay's tool list alongside the built-in Unity tools.
 
 **Step 5. Connect any MCP client to Coplay MCP for Unity** following Coplay's own setup guide. From the client's perspective, Lifeblood tools (`lifeblood_analyze`, `lifeblood_lookup`, `lifeblood_blast_radius`, and so on) appear next to Coplay's tools (`unity_manage_scene`, `unity_find_gameobjects`, and so on) on a single MCP connection.
 
@@ -336,7 +336,7 @@ You can run both at the same time. Each is its own `lifeblood-mcp` process; noth
 5. For write-side Roslyn features, use `lifeblood_find_references` (pass `includeDeclarations=true` to also list every partial declaration site), `lifeblood_execute` (the script globals `Graph`, `Compilations`, and `ModuleDependencies` give you typed access to the loaded semantic state), and `lifeblood_compile_check`.
 6. After code changes, call `lifeblood_analyze` with `incremental: true` for fast re-analysis. Only changed modules recompile, and csproj edits trigger re-discovery.
 
-The graph stays in memory for the session. All 22 tools share the same loaded workspace.
+The graph stays in memory for the session. All 25 tools share the same loaded workspace.
 
 ## Notes for Unity, .NET Framework, and Mono workspaces
 
