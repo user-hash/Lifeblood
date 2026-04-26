@@ -246,6 +246,66 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains("\"maxDepth\": 1", result.Content[0].Text);
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // DAWG LB-NICE-005 + LB-FR-010: blast_radius summarize/maxResults
+    // and direct vs transitive count surfacing.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Handle_BlastRadius_AlwaysReportsDirectDependants()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_blast_radius", MakeArgs(new { symbolId = "type:Core.Bar" }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"directDependants\":", text);
+        Assert.Contains("\"affectedCount\":", text);
+        Assert.Contains("\"truncated\":", text);
+    }
+
+    [Fact]
+    public void Handle_BlastRadius_SummarizeMode_OmitsAffectedField_ReturnsPreview()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_blast_radius",
+            MakeArgs(new { symbolId = "type:Core.Bar", summarize = true }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        // Summarize mode renames the array slot to `preview` and adds the flag.
+        Assert.Contains("\"summarize\": true", text);
+        Assert.Contains("\"preview\":", text);
+        Assert.DoesNotContain("\"affected\":", text);
+    }
+
+    [Fact]
+    public void Handle_BlastRadius_MaxResults_TruncatesEmbeddedArray()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        // Cap at zero. Forces truncated:true regardless of how many
+        // affected symbols the test graph actually has.
+        var result = handler.Handle("lifeblood_blast_radius",
+            MakeArgs(new { symbolId = "type:Core.Bar", maxResults = 0 }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        // Either the affected list is truly empty (no transitive deps) or
+        // it was clipped — either way `affected` is empty array form.
+        Assert.Contains("\"affected\": []", text);
+        // affectedCount is the un-clipped figure; truncated:true iff anything was clipped.
+        if (text.Contains("\"affectedCount\": 0"))
+            Assert.Contains("\"truncated\": false", text);
+        else
+            Assert.Contains("\"truncated\": true", text);
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Search dispatch (lifeblood_search). Exercises the ToolHandler plumbing
     // for the search tool — args parsing, kinds filter coercion, limit

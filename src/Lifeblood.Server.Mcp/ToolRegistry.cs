@@ -131,7 +131,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_blast_radius",
   Availability = ToolAvailability.ReadSide,
-  Description = "Compute what breaks if a symbol is changed. Transitive BFS over incoming dependency edges.",
+  Description = "Compute what breaks if a symbol is changed. Transitive BFS over incoming dependency edges. Every response carries `directDependants` (the immediate one-hop count, distinct from the transitive total) so callers can distinguish a symbol with 5 direct callers from one with 5 transitive blast-radius members. Use `summarize:true` to get a compact result that does not embed the full affected-id array — useful when transitive blast on a popular type would otherwise return a multi-megabyte response. `maxResults` caps the embedded array regardless of summarize mode; the `truncated` flag tells callers whether the array was clipped.",
   InputSchema = new
   {
   type = "object",
@@ -140,6 +140,8 @@ public static class ToolRegistry
   {
   symbolId = new { type = "string", description = "Symbol ID" },
   maxDepth = new { type = "integer", description = "Maximum traversal depth (default: 10)" },
+  summarize = new { type = "boolean", description = "When true, omit the full affected-id array and return only counts + a small preview (size capped by maxResults). Defaults to false." },
+  maxResults = new { type = "integer", description = "Maximum number of affected-symbol IDs embedded in the response. When the transitive set is larger, the array is clipped and `truncated:true` is set. Default: 500 in normal mode, 25 in summarize mode." },
   },
   },
   },

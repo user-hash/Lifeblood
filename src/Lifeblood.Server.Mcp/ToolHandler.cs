@@ -200,10 +200,43 @@ public sealed class ToolHandler
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
         var maxDepth = WriteToolHandler.GetInt(args, "maxDepth") ?? 10;
+        var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
+        var maxResults = WriteToolHandler.GetInt(args, "maxResults") ?? (summarize ? 25 : 500);
+        if (maxResults < 0) maxResults = 0;
+
+        // Direct (one-hop) dependants computed independently of the transitive
+        // walk. The transitive blast can be 100x bigger than the direct count
+        // for popular types — callers need both to make the right decision
+        // (LB-FR-010 from the DAWG dogfood backlog).
+        var directDependants = _provider.GetDependants(_session.Graph!, resolved.CanonicalId);
+
         var affected = _provider.GetBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth);
-        return TextResult(JsonSerializer.Serialize(
-            new { symbolId = resolved.CanonicalId, maxDepth, affectedCount = affected.Length, affected },
-            JsonOpts));
+        var truncated = affected.Length > maxResults;
+        var preview = truncated ? affected.Take(maxResults).ToArray() : affected;
+
+        if (summarize)
+        {
+            return TextResult(JsonSerializer.Serialize(new
+            {
+                symbolId = resolved.CanonicalId,
+                maxDepth,
+                directDependants = directDependants.Length,
+                affectedCount = affected.Length,
+                truncated,
+                preview,
+                summarize = true,
+            }, JsonOpts));
+        }
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            symbolId = resolved.CanonicalId,
+            maxDepth,
+            directDependants = directDependants.Length,
+            affectedCount = affected.Length,
+            truncated,
+            affected = preview,
+        }, JsonOpts));
     }
 
     private McpToolResult HandleResolveShortName(JsonElement? args)
