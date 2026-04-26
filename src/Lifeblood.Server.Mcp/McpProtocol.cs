@@ -119,6 +119,18 @@ public sealed class ToolDefinition
   public required string Description { get; init; }
   public required object InputSchema { get; init; }
   public required ToolAvailability Availability { get; init; }
+
+  /// <summary>
+  /// Truth-envelope classification carried by every successful response
+  /// from this tool. Required for every <see cref="ToolAvailability.ReadSide"/>
+  /// tool (INV-ENVELOPE-001); ignored for write-side tools, whose
+  /// responses do not carry envelopes today. Single source of truth: the
+  /// envelope decorator reads this field directly off <c>ToolRegistry</c>
+  /// at decoration time, so the per-tool tier / confidence / evidence /
+  /// limitations cannot drift between the registry and the decorator.
+  /// Pinned by <c>ResponseEnvelopeTests.Decorator_AllReadSideToolsInRegistry_HaveClassification</c>.
+  /// </summary>
+  public Lifeblood.Domain.Results.EnvelopeClassification? EnvelopeClassification { get; init; }
 }
 
 public sealed class McpToolResult

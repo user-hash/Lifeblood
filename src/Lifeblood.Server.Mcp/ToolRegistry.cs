@@ -1,3 +1,5 @@
+using Lifeblood.Domain.Results;
+
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
@@ -6,6 +8,51 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class ToolRegistry
 {
+  // Envelope-classification presets. Single source of truth for the
+  // truth-tier / confidence each tool ships under (INV-ENVELOPE-001).
+  // Every read-side tool registration sets one of these on its
+  // EnvelopeClassification property; the response decorator reads
+  // them straight off ToolRegistry so registry and decorator cannot
+  // drift. Adding a new tier is a one-line entry here.
+  private static readonly EnvelopeClassification SemanticProven = new()
+  {
+    TruthTier = TruthTier.Semantic,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Semantic",
+  };
+
+  private static readonly EnvelopeClassification DerivedProven = new()
+  {
+    TruthTier = TruthTier.Derived,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Semantic",
+  };
+
+  private static readonly EnvelopeClassification DerivedInferred = new()
+  {
+    TruthTier = TruthTier.Derived,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Inferred",
+  };
+
+  private static readonly EnvelopeClassification HeuristicAdvisorySearch = new()
+  {
+    TruthTier = TruthTier.Heuristic,
+    Confidence = ConfidenceBand.Advisory,
+    EvidenceSource = "Heuristic",
+  };
+
+  private static readonly EnvelopeClassification HeuristicAdvisoryDeadCode = new()
+  {
+    TruthTier = TruthTier.Heuristic,
+    Confidence = ConfidenceBand.Advisory,
+    EvidenceSource = "Heuristic",
+    Limitations = new[]
+    {
+      "Dead-code is reachability-only — runtime entry points (Program.Main), Unity reflection-based dispatch ([RuntimeInitializeOnLoadMethod], MonoBehaviour magic methods, UnityEvent YAML bindings) are not visible to static analysis and may surface as false positives.",
+    },
+  };
+
   /// <summary>
   /// Returns the wire-format tool list for the MCP <c>tools/list</c>
   /// response. When <paramref name="hasCompilationState"/> is false,
@@ -61,6 +108,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_analyze",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Analyze a C# project or JSON graph file. Returns symbol/edge/module counts and violations. Loads the graph into memory for subsequent query tools.",
   InputSchema = new
   {
@@ -79,6 +127,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_context",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Generate an AI context pack from the loaded graph. Returns high-value files, boundaries, reading order, hotspots, dependency matrix.",
   InputSchema = new { type = "object", properties = new { } },
   },
@@ -86,6 +135,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_lookup",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Look up a symbol by ID. Returns the symbol's name, kind, file, line, visibility, and properties.",
   InputSchema = new
   {
@@ -101,6 +151,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_dependencies",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Get all symbols that the given symbol depends on (outgoing non-Contains edges).",
   InputSchema = new
   {
@@ -116,6 +167,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_dependants",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Get all symbols that depend on the given symbol (incoming non-Contains edges).",
   InputSchema = new
   {
@@ -131,6 +183,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_blast_radius",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = DerivedProven,
   Description = "Compute what breaks if a symbol is changed. Transitive BFS over incoming dependency edges. Every response carries `directDependants` (the immediate one-hop count, distinct from the transitive total) so callers can distinguish a symbol with 5 direct callers from one with 5 transitive blast-radius members. Use `summarize:true` to get a compact result that does not embed the full affected-id array — useful when transitive blast on a popular type would otherwise return a multi-megabyte response. `maxResults` caps the embedded array regardless of summarize mode; the `truncated` flag tells callers whether the array was clipped.",
   InputSchema = new
   {
@@ -149,6 +202,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_file_impact",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = DerivedInferred,
   Description = "Get file-level impact: which files depend on this file and which files this file depends on. Derived from symbol-level edges. Answers 'if I change this file, what other files are affected?'",
   InputSchema = new
   {
@@ -224,6 +278,7 @@ public static class ToolRegistry
   // tool sat under the write-side comment divider but none of the
   // prefix guards matched its name.
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Resolve a bare short name (e.g., 'MidiLearnManager') to its canonical symbol ID(s). Returns every matching symbol with its canonical id, file path, and kind. Use `mode` to control matching: 'exact' (default) is literal, 'contains' is substring, 'fuzzy' is a ranked near-match score. Zero-result responses automatically include ranked suggestions so you never hit a dead end.",
   InputSchema = new
   {
@@ -245,6 +300,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_dead_code",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = HeuristicAdvisoryDeadCode,
   Description = "[EXPERIMENTAL — ADVISORY ONLY] Scan the loaded graph for symbols with no incoming semantic references — dead code CANDIDATES. Defaults: excludes public-visibility symbols (assumed reachable from outside) and test files. Returns canonical ids, kinds, file:line locations, and a short reason per hit. Use `includeKinds` to narrow (e.g. ['Method']). **Known false-positive classes (INV-DEADCODE-001):** (1) symbols referenced only via method-group conversion — methods passed as delegates to `Lazy<T>`, event handlers, LINQ chains; (2) methods whose call-site canonical id diverges from the definition-side id in full multi-module workspaces (pre-existing extraction gap under investigation for v0.6.4); (3) fields read via same-class instance access when the enclosing type has no external references. Treat every finding as a candidate to verify with `lifeblood_find_references` before acting, and remember that `find_references` has the same known gap class. Phase 6 / DAWG R1.",
   InputSchema = new
   {
@@ -266,6 +322,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_partial_view",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Return the combined source of every partial declaration of a type. Takes a type symbol id, walks the incoming Contains edges from File symbols to discover every partial file, reads each file via IFileSystem, and emits both per-segment source and a concatenated combined view with file headers. Phase 6 / DAWG R2.",
   InputSchema = new
   {
@@ -281,6 +338,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_invariant_check",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Query the architectural invariants declared in the loaded project's CLAUDE.md. Three modes: (1) pass 'id' to fetch one invariant's full body, title, category, and source line; (2) pass mode='audit' (default) for a summary — total count, per-category breakdown, duplicate-id collisions, and parse warnings; (3) pass mode='list' for an id/title index across every declared invariant. The tool parses CLAUDE.md at the loaded project root, so lifeblood_analyze must have been called first to establish that root. Phase 8.",
   InputSchema = new
   {
@@ -296,6 +354,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_search",
   Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = HeuristicAdvisorySearch,
   Description = "Ranked keyword search across symbol names, qualified names, and persisted xml-documentation summaries. Use when you need to find a symbol by WHAT IT DOES, not by what it's NAMED — e.g., search 'canonicalize' and get back every symbol whose xmldoc mentions canonicalization even when none of them are literally called 'Canonicalize'. Returns ranked matches with canonical ids, file paths, lines, scores, and short context snippets. Distinct from lifeblood_resolve_short_name (which only searches the short-name index): this tool also mines the xmldoc corpus.",
   InputSchema = new
   {

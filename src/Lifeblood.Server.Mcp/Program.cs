@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Analysis;
@@ -59,11 +60,17 @@ class Program
         IInvariantProvider invariants = new LifebloodInvariantProvider(fs);
         // Phase P2 (v0.6.7): IResponseDecorator is the single source of truth
         // for the truth envelope attached to every read-side response
-        // (INV-ENVELOPE-001). The reference adapter owns the per-tool
-        // classification table; missing entries fall back to the
-        // most-conservative envelope so the audit ratchet (and a real
-        // caller) can spot the gap.
-        IResponseDecorator decorator = new LifebloodResponseDecorator();
+        // (INV-ENVELOPE-001). The classification table flows from
+        // ToolRegistry — every read-side ToolDefinition declares its own
+        // EnvelopeClassification — straight into the decorator at the
+        // composition root. Adding a new tool is one entry in the
+        // registry; the decorator picks it up automatically. Missing
+        // entries fall back to the most-conservative envelope so the
+        // audit ratchet (and a real caller) can spot the gap.
+        var classifications = ToolRegistry.GetDefinitions()
+            .Where(d => d.EnvelopeClassification != null)
+            .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
+        IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
         var toolHandler = new ToolHandler(
             session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants, decorator);
         var dispatcher = new McpDispatcher(session, toolHandler);

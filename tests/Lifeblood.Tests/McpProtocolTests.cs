@@ -49,7 +49,10 @@ public class McpProtocolTests
   IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(Fs);
   Lifeblood.Application.Ports.Right.Invariants.IInvariantProvider invariants
   = new LifebloodInvariantProvider(Fs);
-  IResponseDecorator decorator = new LifebloodResponseDecorator();
+  var classifications = ToolRegistry.GetDefinitions()
+      .Where(d => d.EnvelopeClassification != null)
+      .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
+  IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
   var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView, invariants, decorator);
   return new McpDispatcher(session, handler);
   }
