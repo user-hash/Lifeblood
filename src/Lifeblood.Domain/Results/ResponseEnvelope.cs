@@ -102,6 +102,21 @@ public enum TruthTier
 }
 
 /// <summary>
+/// Per-tool truth classification. Owned by each tool's registration in
+/// the MCP tool registry — the envelope decorator reads it directly so
+/// tier / confidence / evidence / limitations cannot drift between
+/// registry and classifier. Pure data; INV-DOMAIN-001 keeps the record
+/// dependency-free.
+/// </summary>
+public sealed class EnvelopeClassification
+{
+    public required TruthTier TruthTier { get; init; }
+    public required ConfidenceBand Confidence { get; init; }
+    public string EvidenceSource { get; init; } = "Semantic";
+    public string[] Limitations { get; init; } = System.Array.Empty<string>();
+}
+
+/// <summary>
 /// How much weight the caller should put behind a single result.
 /// Three bands: Proven (deterministic graph hit), Advisory (correct
 /// most of the time but with documented FP classes), Speculative

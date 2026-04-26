@@ -28,10 +28,24 @@ public class ResponseEnvelopeTests
     // 1. Classification table
     // ──────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Builds a decorator wired to ToolRegistry the same way the
+    /// production composition root does. Every test that exercises
+    /// real per-tool classification routes through this helper so a
+    /// single change in the production wiring carries into tests.
+    /// </summary>
+    private static LifebloodResponseDecorator BuildRegistryDecorator()
+    {
+        var classifications = ToolRegistry.GetDefinitions()
+            .Where(d => d.EnvelopeClassification != null)
+            .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
+        return new LifebloodResponseDecorator(classifications);
+    }
+
     [Fact]
     public void Decorator_KnownTools_DoNotFallBackToConservativeDefault()
     {
-        var d = new LifebloodResponseDecorator();
+        var d = BuildRegistryDecorator();
         // Sanity for a few representative tools; the comprehensive
         // coverage check is the registry ratchet below.
         var lookupEnv = d.Decorate("lifeblood_lookup", new EnvelopeContext());
@@ -50,7 +64,7 @@ public class ResponseEnvelopeTests
     [Fact]
     public void Decorator_UnknownTool_DegradesToConservativeDefault()
     {
-        var d = new LifebloodResponseDecorator();
+        var d = BuildRegistryDecorator();
         var env = d.Decorate("totally_made_up_tool_name", new EnvelopeContext());
         Assert.Equal(TruthTier.Heuristic, env.TruthTier);
         Assert.Equal(ConfidenceBand.Speculative, env.Confidence);
@@ -59,31 +73,39 @@ public class ResponseEnvelopeTests
     }
 
     /// <summary>
-    /// Pinning ratchet — every read-side tool advertised by
-    /// <c>ToolRegistry</c> must have a classification entry in the
-    /// decorator. Adding a new read-side tool without an entry fails
-    /// here (the unregistered-tool fallback would still ship a usable
-    /// response, but we deliberately make this a hard fail so
-    /// INV-ENVELOPE-001 is not silently weakened).
+    /// Pinning ratchet — every read-side ToolDefinition in the registry
+    /// must declare an EnvelopeClassification. Adding a new read-side
+    /// tool without one fails here so INV-ENVELOPE-001 is not silently
+    /// weakened. This is the structural guarantee the registry-driven
+    /// design buys us: classification cannot drift from the registry
+    /// because the registry IS the source.
     /// </summary>
     [Fact]
-    public void Decorator_AllReadSideToolsInRegistry_HaveClassification()
+    public void Registry_EveryReadSideTool_DeclaresEnvelopeClassification()
     {
-        var d = new LifebloodResponseDecorator();
-        var ctx = new EnvelopeContext();
-        var readSide = ToolRegistry.GetDefinitions()
+        var missing = ToolRegistry.GetDefinitions()
             .Where(t => t.Availability == ToolAvailability.ReadSide)
+            .Where(t => t.EnvelopeClassification == null)
             .Select(t => t.Name)
             .ToArray();
-        Assert.NotEmpty(readSide);
-        foreach (var tool in readSide)
+        Assert.True(missing.Length == 0,
+            "Every read-side ToolDefinition must declare EnvelopeClassification (INV-ENVELOPE-001). Missing: " +
+            string.Join(", ", missing));
+    }
+
+    [Fact]
+    public void Decorator_AllReadSideToolsInRegistry_ResolveToRealClassification()
+    {
+        var d = BuildRegistryDecorator();
+        var ctx = new EnvelopeContext();
+        foreach (var t in ToolRegistry.GetDefinitions().Where(t => t.Availability == ToolAvailability.ReadSide))
         {
-            var env = d.Decorate(tool, ctx);
-            Assert.True(
-                env.Confidence != ConfidenceBand.Speculative
-                || env.Limitations.Length == 0
-                || !env.Limitations[0].Contains("Unregistered tool"),
-                $"Read-side tool '{tool}' has no decorator classification — add an entry to LifebloodResponseDecorator.Classifications.");
+            var env = d.Decorate(t.Name, ctx);
+            // The envelope must reflect the registry's classification
+            // exactly — no fallback path may fire for a registered tool.
+            Assert.Equal(t.EnvelopeClassification!.TruthTier, env.TruthTier);
+            Assert.Equal(t.EnvelopeClassification.Confidence, env.Confidence);
+            Assert.Equal(t.EnvelopeClassification.EvidenceSource, env.EvidenceSource);
         }
     }
 
@@ -238,7 +260,7 @@ public class ResponseEnvelopeTests
         IPartialViewBuilder partial = new LifebloodPartialViewBuilder(fs);
         Lifeblood.Application.Ports.Right.Invariants.IInvariantProvider invariants
             = new LifebloodInvariantProvider(fs);
-        IResponseDecorator decorator = new LifebloodResponseDecorator();
+        IResponseDecorator decorator = BuildRegistryDecorator();
         var handler = new ToolHandler(session, provider, resolver, search, dead, partial, invariants, decorator);
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = tempPath }));
         return handler;

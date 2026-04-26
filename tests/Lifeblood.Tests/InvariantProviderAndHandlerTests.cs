@@ -303,7 +303,10 @@ public class InvariantProviderAndHandlerTests : IDisposable
         var deadCode = new LifebloodDeadCodeAnalyzer();
         var partialView = new LifebloodPartialViewBuilder(Fs);
         IInvariantProvider invariants = new LifebloodInvariantProvider(Fs);
-        IResponseDecorator decorator = new LifebloodResponseDecorator();
+        var classifications = Lifeblood.Server.Mcp.ToolRegistry.GetDefinitions()
+            .Where(d => d.EnvelopeClassification != null)
+            .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
+        IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
         return new Lifeblood.Server.Mcp.ToolHandler(
             session, provider, resolver, search, deadCode, partialView, invariants, decorator);
     }

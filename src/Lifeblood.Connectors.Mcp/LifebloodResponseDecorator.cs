@@ -4,71 +4,59 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Connectors.Mcp;
 
 /// <summary>
-/// Reference implementation of <see cref="IResponseDecorator"/>. Owns
-/// the per-tool classification table and the staleness scan. Pure with
-/// respect to call ordering — same input produces the same envelope.
+/// Reference implementation of <see cref="IResponseDecorator"/>. Pure
+/// with respect to call ordering — same input produces the same envelope.
 ///
-/// The classification table is the single source of truth for what
-/// truth-tier and confidence band each MCP tool ships at. Adding a new
-/// read-side tool is a one-line entry here; missing entries fall through
-/// to the conservative default (<see cref="TruthTier.Heuristic"/> /
-/// <see cref="ConfidenceBand.Speculative"/>) so a missed registration
-/// surfaces as an obviously-degraded envelope rather than silent
-/// over-confidence.
+/// The decorator does NOT own the per-tool classification table. The
+/// table is injected at construction time, sourced from whatever
+/// registry the host owns (in the Lifeblood MCP server it is
+/// <c>ToolRegistry.GetDefinitions()</c>; tests pass an inline map). This
+/// keeps the adapter project-independent: the same decorator drives any
+/// hexagonal MCP server whose registry can hand over a
+/// <see cref="EnvelopeClassification"/> per tool name.
+///
+/// Missing entries fall through to the conservative default
+/// (<see cref="TruthTier.Heuristic"/> / <see cref="ConfidenceBand.Speculative"/>)
+/// so a missed registration surfaces as an obviously-degraded envelope
+/// rather than silent over-confidence.
 ///
 /// See INV-ENVELOPE-001 in CLAUDE.md.
 /// </summary>
 public sealed class LifebloodResponseDecorator : IResponseDecorator
 {
+    private readonly System.Collections.Generic.IReadOnlyDictionary<string, EnvelopeClassification> _classifications;
+
     /// <summary>
-    /// Classification of every read-side tool currently shipped by
-    /// Lifeblood.Server.Mcp. Pinned by <c>ResponseEnvelopeTests</c>
-    /// against <c>ToolRegistry</c> so a new read-side tool added
-    /// without an entry here fails the ratchet.
+    /// Construct the decorator with an explicit classification lookup.
+    /// The composition root passes whatever its tool registry provides;
+    /// tests and contract checks can pass an inline dictionary.
     /// </summary>
-    private static readonly System.Collections.Generic.Dictionary<string, ResponseClassification>
-        Classifications = new(System.StringComparer.Ordinal)
+    public LifebloodResponseDecorator(
+        System.Collections.Generic.IReadOnlyDictionary<string, EnvelopeClassification> classifications)
     {
-        // Workspace load — the analyze response itself.
-        ["lifeblood_analyze"]             = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-
-        // Direct graph / compilation lookups.
-        ["lifeblood_lookup"]              = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_dependants"]          = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_dependencies"]        = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_resolve_short_name"]  = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_documentation"]       = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_partial_view"]        = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_invariant_check"]     = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_context"]             = new(TruthTier.Semantic, ConfidenceBand.Proven, "Semantic"),
-
-        // Graph rollups — semantic edges, derived aggregations.
-        ["lifeblood_blast_radius"]        = new(TruthTier.Derived,  ConfidenceBand.Proven, "Semantic"),
-        ["lifeblood_file_impact"]         = new(TruthTier.Derived,  ConfidenceBand.Proven, "Inferred"),
-
-        // Heuristic / advisory.
-        ["lifeblood_search"]              = new(TruthTier.Heuristic, ConfidenceBand.Advisory,    "Heuristic"),
-        ["lifeblood_dead_code"]           = new(TruthTier.Heuristic, ConfidenceBand.Advisory,    "Heuristic",
-            new[] {
-                "Dead-code is reachability-only — runtime entry points (Program.Main), Unity reflection-based dispatch ([RuntimeInitializeOnLoadMethod], MonoBehaviour magic methods, UnityEvent YAML bindings) are not visible to static analysis and may surface as false positives.",
-            }),
-    };
+        _classifications = classifications ?? throw new System.ArgumentNullException(nameof(classifications));
+    }
 
     /// <summary>
-    /// Per-tool classification entry. Compact record so the table above
-    /// reads cleanly. <see cref="Limitations"/> is the documented
-    /// known-FP / known-FN class for the tool; copied into the envelope
-    /// verbatim.
+    /// Parameterless ctor for tests and call sites that just want
+    /// envelope plumbing without per-tool tiers wired up. Every tool
+    /// resolves to the conservative default in this mode, which is
+    /// honest behavior for "I don't know what tool this is."
     /// </summary>
-    private sealed record ResponseClassification(
-        TruthTier TruthTier,
-        ConfidenceBand Confidence,
-        string EvidenceSource,
-        string[]? Limitations = null);
+    public LifebloodResponseDecorator()
+        : this(new System.Collections.Generic.Dictionary<string, EnvelopeClassification>(System.StringComparer.Ordinal))
+    {
+    }
 
     public ResponseEnvelope Decorate(string toolName, EnvelopeContext context)
     {
-        if (!Classifications.TryGetValue(toolName, out var cls))
+        // Staleness is computed regardless of tool registration — the
+        // timestamp + filesystem signal is independent of per-tool
+        // classification, and a caller of an unregistered tool still
+        // benefits from knowing how stale the workspace is.
+        var (stalenessSeconds, filesChanged) = ComputeStaleness(context);
+
+        if (!_classifications.TryGetValue(toolName, out var cls))
         {
             // Unknown tool — surface the degradation in the envelope
             // rather than throw. Caller still gets a usable response
@@ -79,15 +67,14 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 TruthTier = TruthTier.Heuristic,
                 Confidence = ConfidenceBand.Speculative,
                 EvidenceSource = "Unknown",
-                StalenessSeconds = 0,
-                FilesChangedSinceAnalyze = 0,
-                Limitations = new[] {
-                    $"Unregistered tool '{toolName}' — envelope downgraded to the most conservative classification. Add an entry to LifebloodResponseDecorator.Classifications.",
+                StalenessSeconds = stalenessSeconds,
+                FilesChangedSinceAnalyze = filesChanged,
+                Limitations = new[]
+                {
+                    $"Unregistered tool '{toolName}' — envelope downgraded to the most conservative classification. The host's tool registry has no EnvelopeClassification for this name.",
                 },
             };
         }
-
-        var (stalenessSeconds, filesChanged) = ComputeStaleness(context);
 
         return new ResponseEnvelope
         {
@@ -96,7 +83,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             EvidenceSource = cls.EvidenceSource,
             StalenessSeconds = stalenessSeconds,
             FilesChangedSinceAnalyze = filesChanged,
-            Limitations = cls.Limitations ?? System.Array.Empty<string>(),
+            Limitations = cls.Limitations,
         };
     }
 
