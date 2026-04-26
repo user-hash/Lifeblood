@@ -321,6 +321,40 @@ public class WriteSideIntegrationTests
   Assert.Contains("Greeter", result!.Name);
   }
 
+  // ── Write-side: file-scoped diagnostics (LB-BUG-016) ──
+
+  [SkippableFact]
+  public void GetDiagnostics_FilePathScope_OnlyReturnsDiagnosticsFromThatFile()
+  {
+  var (_, adapter) = EnsureAnalyzed();
+  var host = new RoslynCompilationHost(adapter.Compilations!);
+
+  // Pick any source file Roslyn knows about. The golden repo is clean
+  // (compiles without errors), so we can't assert non-empty results,
+  // but we CAN assert that scope is honored: the result subset for one
+  // file is contained in the project-wide result.
+  var allTrees = adapter.Compilations!.Values
+  .SelectMany(c => c.SyntaxTrees)
+  .Select(t => t.FilePath!)
+  .Where(p => !string.IsNullOrEmpty(p))
+  .Distinct()
+  .ToArray();
+  Assert.NotEmpty(allTrees);
+
+  var someFile = allTrees.First(f => f.EndsWith("Greeter.cs", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".cs"));
+
+  var allDiags = host.GetDiagnostics(new Lifeblood.Application.Ports.Left.DiagnosticsRequest());
+  var fileDiags = host.GetDiagnostics(new Lifeblood.Application.Ports.Left.DiagnosticsRequest
+  {
+  FilePath = someFile,
+  });
+
+  // Every file-scoped diagnostic must be one Roslyn produced for that file.
+  Assert.All(fileDiags, d => Assert.Equal(someFile, d.FilePath, ignoreCase: true));
+  // File-scoped count never exceeds project count.
+  Assert.True(fileDiags.Length <= allDiags.Length);
+  }
+
   // ── Helpers ──
 
 

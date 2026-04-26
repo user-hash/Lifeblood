@@ -47,8 +47,22 @@ internal sealed class WriteToolHandler
         if (CompilationStateError() is { } error) return error;
 
         var moduleName = GetString(args, "moduleName");
-        var diagnostics = _session.CompilationHost!.GetDiagnostics(moduleName);
-        return TextResult(JsonSerializer.Serialize(new { count = diagnostics.Length, diagnostics }, _jsonOpts));
+        var filePath = GetString(args, "filePath");
+
+        var request = new Lifeblood.Application.Ports.Left.DiagnosticsRequest
+        {
+            FilePath = string.IsNullOrEmpty(filePath) ? null : filePath,
+            ModuleName = string.IsNullOrEmpty(moduleName) ? null : moduleName,
+        };
+        var diagnostics = _session.CompilationHost!.GetDiagnostics(request);
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            scope = !string.IsNullOrEmpty(filePath) ? "file" : (!string.IsNullOrEmpty(moduleName) ? "module" : "project"),
+            filePath,
+            moduleName,
+            count = diagnostics.Length,
+            diagnostics,
+        }, _jsonOpts));
     }
 
     public McpToolResult HandleCompileCheck(JsonElement? args)
@@ -56,8 +70,31 @@ internal sealed class WriteToolHandler
         if (CompilationStateError() is { } error) return error;
 
         var code = GetString(args, "code");
-        if (string.IsNullOrEmpty(code))
-            return ErrorResult("code is required");
+        var filePath = GetString(args, "filePath");
+
+        // BUG-015: accept either inline `code` or a `filePath` to read off disk.
+        // Exactly one is required; both being set is a caller error because the
+        // resulting compile-check result would silently depend on which one
+        // wins in the handler.
+        if (string.IsNullOrEmpty(code) && string.IsNullOrEmpty(filePath))
+            return ErrorResult("Either 'code' or 'filePath' is required.");
+        if (!string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(filePath))
+            return ErrorResult("'code' and 'filePath' are mutually exclusive — supply exactly one.");
+
+        if (!string.IsNullOrEmpty(filePath))
+        {
+            var resolvedPath = ResolveWorkspacePath(filePath);
+            if (!_session.FileSystem.FileExists(resolvedPath))
+                return ErrorResult($"File not found: {filePath} (resolved to '{resolvedPath}'). Pass an absolute path or one relative to the loaded project root.");
+            try
+            {
+                code = _session.FileSystem.ReadAllText(resolvedPath);
+            }
+            catch (System.IO.IOException ex)
+            {
+                return ErrorResult($"Could not read '{filePath}': {ex.Message}");
+            }
+        }
 
         var moduleName = GetString(args, "moduleName");
 
@@ -70,7 +107,7 @@ internal sealed class WriteToolHandler
         var staleRefresh = GetBool(args, "staleRefresh") ?? true;
         var refreshed = staleRefresh ? _session.MaybeRefreshIfStale() : null;
 
-        var result = _session.CompilationHost!.CompileCheck(code, moduleName);
+        var result = _session.CompilationHost!.CompileCheck(code!, moduleName);
 
         if (refreshed is int changedFileCount)
         {
@@ -78,11 +115,34 @@ internal sealed class WriteToolHandler
             {
                 result.Success,
                 result.Diagnostics,
+                source = !string.IsNullOrEmpty(filePath) ? "filePath" : "code",
+                filePath,
                 autoRefreshed = true,
                 changedFileCount,
             }, _jsonOpts));
         }
-        return TextResult(JsonSerializer.Serialize(result, _jsonOpts));
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            result.Success,
+            result.Diagnostics,
+            source = !string.IsNullOrEmpty(filePath) ? "filePath" : "code",
+            filePath,
+        }, _jsonOpts));
+    }
+
+    /// <summary>
+    /// Resolve a user-supplied file path against the loaded workspace.
+    /// Absolute paths pass through unchanged. Relative paths are joined to
+    /// the session's project root. Empty project root (e.g. JSON-graph
+    /// mode) leaves the path unchanged so the caller's relative form is
+    /// preserved for the FileSystem call.
+    /// </summary>
+    private string ResolveWorkspacePath(string path)
+    {
+        if (System.IO.Path.IsPathRooted(path)) return path;
+        var root = _session.ProjectRoot;
+        if (string.IsNullOrEmpty(root)) return path;
+        return System.IO.Path.GetFullPath(System.IO.Path.Combine(root, path));
     }
 
     public McpToolResult HandleFindReferences(JsonElement? args)

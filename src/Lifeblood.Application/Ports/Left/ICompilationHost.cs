@@ -10,6 +10,18 @@ public interface ICompilationHost
 {
     bool IsAvailable { get; }
     DiagnosticInfo[] GetDiagnostics(string? moduleName = null);
+
+    /// <summary>
+    /// File-scoped or module-scoped diagnostics. <see cref="DiagnosticsRequest.FilePath"/>
+    /// (relative to the workspace root, or absolute) restricts the result to one
+    /// source file — useful for verifying a single edited file without drowning
+    /// in a whole-project dump. <see cref="DiagnosticsRequest.ModuleName"/>
+    /// disambiguates which compilation contains the file when the same path
+    /// appears in multiple modules. Either field may be omitted; both omitted
+    /// is equivalent to the parameterless overload. Closes LB-BUG-016.
+    /// </summary>
+    DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request);
+
     CompileCheckResult CompileCheck(string code, string? moduleName = null);
 
     /// <summary>
@@ -39,6 +51,22 @@ public interface ICompilationHost
 
     /// <summary>Get XML documentation for a symbol.</summary>
     string GetDocumentation(string symbolId);
+}
+
+/// <summary>
+/// Scope filter for <see cref="ICompilationHost.GetDiagnostics(DiagnosticsRequest)"/>.
+/// Both fields are optional. When <see cref="FilePath"/> is set, the result is
+/// limited to diagnostics whose syntax-tree path matches the requested file.
+/// When <see cref="ModuleName"/> is set, the search is restricted to that
+/// module's compilation; when both are set, the file must live inside the
+/// named module. Path comparison is case-insensitive on Windows-style paths
+/// and uses both relative-to-project and absolute matching so a caller can
+/// pass either form. Added 2026-04-26 for LB-BUG-016.
+/// </summary>
+public sealed class DiagnosticsRequest
+{
+    public string? FilePath { get; init; }
+    public string? ModuleName { get; init; }
 }
 
 /// <summary>

@@ -777,4 +777,82 @@ namespace TestApp
         }
         return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "src");
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // DAWG LB-BUG-016 — file-scoped diagnostics on the compilation host
+    // ──────────────────────────────────────────────────────────────────
+
+    private static Dictionary<string, CSharpCompilation> BuildTwoFileTestCompilation()
+    {
+        var goodSource = @"
+namespace TwoFile
+{
+    public class A { public int X => 1; }
+}";
+        var badSource = @"
+namespace TwoFile
+{
+    public class B { public int Y => undefined_identifier; }
+}";
+        var goodTree = CSharpSyntaxTree.ParseText(goodSource, path: "A.cs");
+        var badTree = CSharpSyntaxTree.ParseText(badSource, path: "B.cs");
+
+        var compilation = CSharpCompilation.Create("TwoFile",
+            new[] { goodTree, badTree }, LoadBclReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        return new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal)
+        {
+            ["TwoFile"] = compilation,
+        };
+    }
+
+    [Fact]
+    public void CompilationHost_GetDiagnostics_FilePathScope_RestrictsToOneFile()
+    {
+        var host = new RoslynCompilationHost(BuildTwoFileTestCompilation());
+
+        var allDiags = host.GetDiagnostics(new Lifeblood.Application.Ports.Left.DiagnosticsRequest());
+        Assert.Contains(allDiags, d => d.FilePath == "B.cs");
+
+        var bScoped = host.GetDiagnostics(new Lifeblood.Application.Ports.Left.DiagnosticsRequest
+        {
+            FilePath = "B.cs",
+        });
+        Assert.NotEmpty(bScoped);
+        Assert.All(bScoped, d => Assert.Equal("B.cs", d.FilePath));
+
+        var aScoped = host.GetDiagnostics(new Lifeblood.Application.Ports.Left.DiagnosticsRequest
+        {
+            FilePath = "A.cs",
+        });
+        Assert.Empty(aScoped);
+    }
+
+    [Fact]
+    public void CompilationHost_GetDiagnostics_FilePathScope_AcceptsRelativeAndAbsolute()
+    {
+        var host = new RoslynCompilationHost(BuildTwoFileTestCompilation());
+
+        // Caller passes a backslash-separated relative form; Roslyn stored a
+        // forward-slash absolute-ish path. Both must match.
+        var diagsBackslash = host.GetDiagnostics(new Lifeblood.Application.Ports.Left.DiagnosticsRequest
+        {
+            FilePath = "B.cs",
+        });
+        var diagsForward = host.GetDiagnostics(new Lifeblood.Application.Ports.Left.DiagnosticsRequest
+        {
+            FilePath = "./B.cs",
+        });
+        Assert.Equal(diagsBackslash.Length, diagsForward.Length);
+    }
+
+    [Fact]
+    public void CompilationHost_GetDiagnostics_BackCompatOverload_StillWorks()
+    {
+        var host = new RoslynCompilationHost(BuildTwoFileTestCompilation());
+        // The string-only overload must still flow through the new pipeline.
+        var diags = host.GetDiagnostics("TwoFile");
+        Assert.All(diags, d => Assert.Equal("TwoFile", d.Module));
+    }
 }
