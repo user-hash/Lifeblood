@@ -78,7 +78,8 @@ public class ToolHandlerTests : IDisposable
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(Fs);
         Lifeblood.Application.Ports.Right.Invariants.IInvariantProvider invariants
             = new LifebloodInvariantProvider(Fs);
-        return new ToolHandler(new GraphSession(Fs), provider, resolver, search, deadCode, partialView, invariants);
+        IResponseDecorator decorator = new LifebloodResponseDecorator();
+        return new ToolHandler(new GraphSession(Fs), provider, resolver, search, deadCode, partialView, invariants, decorator);
     }
 
     private static JsonElement? MakeArgs(object obj)

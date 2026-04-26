@@ -49,7 +49,8 @@ public class McpProtocolTests
   IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(Fs);
   Lifeblood.Application.Ports.Right.Invariants.IInvariantProvider invariants
   = new LifebloodInvariantProvider(Fs);
-  var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView, invariants);
+  IResponseDecorator decorator = new LifebloodResponseDecorator();
+  var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView, invariants, decorator);
   return new McpDispatcher(session, handler);
   }
 

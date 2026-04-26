@@ -29,6 +29,7 @@ public sealed class GraphSession : IDisposable
     private RoslynWorkspaceAnalyzer? _roslynAdapter;
     private string? _lastProjectPath;
     private string? _lastRulesPath;
+    private DateTime? _analyzedAtUtc;
 
     public GraphSession(IFileSystem fs) => _fs = fs;
 
@@ -43,6 +44,15 @@ public sealed class GraphSession : IDisposable
 
     /// <summary>Exposed file-system port for tool handlers that need disk access (partial view, compile_check auto-refresh).</summary>
     public IFileSystem FileSystem => _fs;
+
+    /// <summary>
+    /// UTC moment the most recent analyze (full or incremental) finished.
+    /// Null when no graph is loaded. Read by the response decorator
+    /// (LB-INBOX-001 / LB-OBS-004) to compute staleness on every read-side
+    /// tool response. JSON-graph imports set this to the import time so a
+    /// caller still sees a non-zero (but small) staleness signal.
+    /// </summary>
+    public DateTime? AnalyzedAtUtc => _analyzedAtUtc;
 
     // Delegate all state queries to the unified session
     public SemanticGraph? Graph => _session.Graph;
@@ -98,6 +108,7 @@ public sealed class GraphSession : IDisposable
             _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
             if (newCompilationHost != null)
                 _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+            _analyzedAtUtc = DateTime.UtcNow;
 
             return changedFileCount;
         }
@@ -206,6 +217,7 @@ public sealed class GraphSession : IDisposable
         _session.Load(graph, analysis, capability, language);
         if (newCompilationHost != null)
             _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+        _analyzedAtUtc = DateTime.UtcNow;
 
         return BuildLoadResult(
             mode: "full",
@@ -272,6 +284,7 @@ public sealed class GraphSession : IDisposable
         _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
         if (newCompilationHost != null)
             _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+        _analyzedAtUtc = DateTime.UtcNow;
 
         usage = capture.Stop();
         return BuildLoadResult(

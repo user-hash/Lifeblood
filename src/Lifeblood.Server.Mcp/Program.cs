@@ -57,8 +57,15 @@ class Program
         // The provider is session-scoped so its per-project-root cache
         // persists across tool calls.
         IInvariantProvider invariants = new LifebloodInvariantProvider(fs);
+        // Phase P2 (v0.6.7): IResponseDecorator is the single source of truth
+        // for the truth envelope attached to every read-side response
+        // (INV-ENVELOPE-001). The reference adapter owns the per-tool
+        // classification table; missing entries fall back to the
+        // most-conservative envelope so the audit ratchet (and a real
+        // caller) can spot the gap.
+        IResponseDecorator decorator = new LifebloodResponseDecorator();
         var toolHandler = new ToolHandler(
-            session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants);
+            session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants, decorator);
         var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)

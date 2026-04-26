@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.Ports.Right.Invariants;
 using Lifeblood.Connectors.Mcp;
 using Xunit;
@@ -302,8 +303,9 @@ public class InvariantProviderAndHandlerTests : IDisposable
         var deadCode = new LifebloodDeadCodeAnalyzer();
         var partialView = new LifebloodPartialViewBuilder(Fs);
         IInvariantProvider invariants = new LifebloodInvariantProvider(Fs);
+        IResponseDecorator decorator = new LifebloodResponseDecorator();
         return new Lifeblood.Server.Mcp.ToolHandler(
-            session, provider, resolver, search, deadCode, partialView, invariants);
+            session, provider, resolver, search, deadCode, partialView, invariants, decorator);
     }
 
     private void CreateMinimalRoslynWorkspaceWithClaudeMd()
