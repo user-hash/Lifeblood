@@ -29,8 +29,14 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
 
   public bool IsAvailable => _compilations.Count > 0;
 
-  public DiagnosticInfo[] GetDiagnostics(string? moduleName = null)
+  public DiagnosticInfo[] GetDiagnostics(string? moduleName = null) =>
+  GetDiagnostics(new DiagnosticsRequest { ModuleName = moduleName });
+
+  public DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request)
   {
+  var moduleName = request.ModuleName;
+  var requestedFile = request.FilePath;
+
   if (moduleName != null && !_compilations.ContainsKey(moduleName))
   return Array.Empty<DiagnosticInfo>();
 
@@ -49,6 +55,15 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   if (diag.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Info) continue;
 
   var lineSpan = diag.Location.GetMappedLineSpan();
+
+  // File scope filter: restrict to diagnostics whose syntax-tree path
+  // matches the requested file. Match end-of-path so callers can pass
+  // a relative form (e.g. "src/Foo/Bar.cs") and have it match the
+  // compilation's stored absolute path. Comparison is case-insensitive
+  // (Windows-friendly) on the path-separator-normalized form.
+  if (requestedFile != null && !PathsMatch(lineSpan.Path, requestedFile))
+  continue;
+
   results.Add(new DiagnosticInfo
   {
   Id = diag.Id,
@@ -63,6 +78,26 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }
 
   return results.ToArray();
+  }
+
+  /// <summary>
+  /// True if <paramref name="diagPath"/> (the absolute path Roslyn reports
+  /// for a diagnostic location) matches <paramref name="userPath"/> (the
+  /// caller-supplied scope filter, which may be relative or absolute).
+  /// Both forms are normalized to forward-slashes and lowercased before
+  /// the suffix comparison; either side may be the suffix of the other so
+  /// passing the absolute path or the project-relative path both work.
+  /// Returns false for null/empty diagnostic paths.
+  /// </summary>
+  private static bool PathsMatch(string? diagPath, string userPath)
+  {
+  if (string.IsNullOrEmpty(diagPath)) return false;
+  var a = diagPath.Replace('\\', '/').ToLowerInvariant();
+  var b = userPath.Replace('\\', '/').ToLowerInvariant();
+  if (a == b) return true;
+  if (a.EndsWith("/" + b, StringComparison.Ordinal)) return true;
+  if (b.EndsWith("/" + a, StringComparison.Ordinal)) return true;
+  return false;
   }
 
   public CompileCheckResult CompileCheck(string code, string? moduleName = null)

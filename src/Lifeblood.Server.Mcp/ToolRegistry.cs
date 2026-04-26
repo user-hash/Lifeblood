@@ -185,13 +185,14 @@ public static class ToolRegistry
   {
   Name = "lifeblood_diagnose",
   Availability = ToolAvailability.WriteSide,
-  Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Optionally filter by module name.",
+  Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Without filters, returns the full project's diagnostics. Pass `filePath` (relative or absolute) to scope diagnostics to one source file — useful when you want to verify a single file you just edited without drowning in a 300k-line project dump. Pass `moduleName` to scope to a single module. `filePath` and `moduleName` may be combined (file scope wins; module is used to disambiguate which compilation contains the file when the same path appears in multiple modules).",
   InputSchema = new
   {
   type = "object",
   properties = new
   {
-  moduleName = new { type = "string", description = "Specific module to diagnose, or omit for all" },
+  filePath = new { type = "string", description = "Source file path (relative to the project root, or absolute). When set, diagnostics are scoped to this file's syntax tree." },
+  moduleName = new { type = "string", description = "Specific module to diagnose, or omit for all. When combined with filePath, picks the module that contains the file." },
   },
   },
   },
@@ -199,14 +200,14 @@ public static class ToolRegistry
   {
   Name = "lifeblood_compile_check",
   Availability = ToolAvailability.WriteSide,
-  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`).",
+  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Pass either `code` (inline source) or `filePath` (relative or absolute path; the file is read off disk) — exactly one is required. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`).",
   InputSchema = new
   {
   type = "object",
-  required = new[] { "code" },
   properties = new
   {
-  code = new { type = "string", description = "C# code to compile-check" },
+  code = new { type = "string", description = "C# code to compile-check. Mutually exclusive with filePath." },
+  filePath = new { type = "string", description = "Path to a .cs file (relative to project root, or absolute) to read and compile-check. Mutually exclusive with code." },
   moduleName = new { type = "string", description = "Module context for type resolution" },
   staleRefresh = new { type = "boolean", description = "If true (default), incrementally re-analyze the workspace before compile_check when any tracked file has changed on disk since the last analyze. Set false to check against the pinned workspace state." },
   },
