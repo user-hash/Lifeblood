@@ -38,7 +38,15 @@ internal sealed class WriteToolHandler
         if (args?.TryGetProperty("imports", out var importsEl) == true && importsEl.ValueKind == JsonValueKind.Array)
             imports = importsEl.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s != "").ToArray();
 
-        var result = _session.CodeExecutor!.Execute(code, imports, timeoutMs);
+        var targetProfile = GetString(args, "targetProfile");
+        var request = new Lifeblood.Application.Ports.Left.CodeExecutionRequest
+        {
+            Code = code,
+            Imports = imports,
+            TimeoutMs = timeoutMs,
+            TargetProfile = string.IsNullOrEmpty(targetProfile) ? "host" : targetProfile,
+        };
+        var result = _session.CodeExecutor!.Execute(request);
         return TextResult(JsonSerializer.Serialize(result, _jsonOpts));
     }
 

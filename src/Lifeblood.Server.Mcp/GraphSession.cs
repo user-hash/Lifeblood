@@ -54,6 +54,19 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     public DateTime? AnalyzedAtUtc => _analyzedAtUtc;
 
+    /// <summary>
+    /// True when the project root looks like a Unity workspace —
+    /// presence of a top-level Library/ directory is the cheapest
+    /// reliable signal Unity has touched the project. Used to decide
+    /// whether to inject the Unity assembly resolver into the code
+    /// executor (Phase P4 / INV-EXECUTE-001).
+    /// </summary>
+    private bool LooksLikeUnityWorkspace(string? projectRoot)
+    {
+        if (string.IsNullOrEmpty(projectRoot)) return false;
+        return _fs.DirectoryExists(System.IO.Path.Combine(projectRoot, "Library"));
+    }
+
     // Delegate all state queries to the unified session
     public SemanticGraph? Graph => _session.Graph;
     public AnalysisResult? Analysis => _session.Analysis;
@@ -100,7 +113,10 @@ public sealed class GraphSession : IDisposable
                     graph,
                     _roslynAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
                 newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
-                newCodeExecutor = new RoslynCodeExecutor(view);
+                var unityResolver = LooksLikeUnityWorkspace(_lastProjectPath)
+                    ? new UnityAssemblyResolver(_fs, _lastProjectPath!)
+                    : null;
+                newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
                 newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
             }
 
@@ -193,7 +209,15 @@ public sealed class GraphSession : IDisposable
                     adapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
 
                 newCompilationHost = new RoslynCompilationHost(adapter.Compilations, adapter.ModuleDependencies);
-                newCodeExecutor = new RoslynCodeExecutor(view);
+                // Phase P4: when the project root looks Unity-shaped
+                // (Library/ exists), inject the Unity assembly resolver
+                // so executed scripts can touch UnityEngine types.
+                // Non-Unity workspaces get a null resolver → identical
+                // pre-P4 behavior. INV-EXECUTE-001.
+                var unityResolver = LooksLikeUnityWorkspace(projectPath)
+                    ? new UnityAssemblyResolver(_fs, projectPath)
+                    : null;
+                newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
                 newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations, adapter.ModuleDependencies);
             }
 
@@ -272,7 +296,10 @@ public sealed class GraphSession : IDisposable
                 _roslynAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
 
             newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
-            newCodeExecutor = new RoslynCodeExecutor(view);
+            var unityResolver = LooksLikeUnityWorkspace(_lastProjectPath)
+                ? new UnityAssemblyResolver(_fs, _lastProjectPath!)
+                : null;
+            newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
             newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
         }
 

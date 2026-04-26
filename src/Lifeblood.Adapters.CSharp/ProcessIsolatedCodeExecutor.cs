@@ -31,6 +31,9 @@ public sealed class ProcessIsolatedCodeExecutor : ICodeExecutor
         _scriptHostPath = scriptHostPath;
     }
 
+    public CodeExecutionResult Execute(CodeExecutionRequest request)
+        => Execute(request.Code, request.Imports, request.TimeoutMs);
+
     public CodeExecutionResult Execute(string code, string[]? imports = null, int timeoutMs = 5000)
     {
         var request = JsonSerializer.Serialize(new { code, imports }, JsonOpts);
