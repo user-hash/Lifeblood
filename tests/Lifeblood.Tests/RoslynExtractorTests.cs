@@ -1314,6 +1314,92 @@ public sealed class ModuleCompilationBuilder
             "  targetId = " + callsEdge.TargetId);
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // DAWG LB-BUG-001: invocation through array indexer receiver.
+    // Re-verification post v0.6.4/v0.6.5 walker work. The original DAWG
+    // session reported `voices[i].SetPatch(patch)` on a partial struct not
+    // emitting a Calls edge; this guards the resolved behavior so a future
+    // walker rewrite cannot silently regress it.
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_InvocationOnArrayElement_EmitsCallsEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public partial struct Voice
+{
+    public void SetPatch(int patch) { }
+}
+public class Synth
+{
+    private Voice[] _voices = new Voice[16];
+    public void Apply(int i, int patch)
+    {
+        _voices[i].SetPatch(patch);
+    }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId == "method:App.Synth.Apply(int,int)"
+            && e.TargetId == "method:App.Voice.SetPatch(int)");
+    }
+
+    [Fact]
+    public void ExtractEdges_InvocationOnListIndexer_EmitsCallsEdge()
+    {
+        var (model, root) = Compile(@"
+using System.Collections.Generic;
+namespace App;
+public class Item { public void Touch() { } }
+public class Bag
+{
+    private List<Item> _items = new();
+    public void Run() { _items[0].Touch(); }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId == "method:App.Bag.Run()"
+            && e.TargetId == "method:App.Item.Touch()");
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // DAWG LB-BUG-010: implicit interface implementation visible from
+    // find_references on the interface method. The v0.6.4 method-level
+    // Implements edges close this from the dead-code direction; this test
+    // pins the Implements-edge link that the find_references resolver
+    // walks when the user supplies the interface method id.
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_ImplicitInterfaceImpl_LinksConcreteToInterfaceMethod()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IGreeter { string Greet(string who); }
+public class Greeter : IGreeter { public string Greet(string who) => ""hi "" + who; }
+public class Caller
+{
+    public void Run(IGreeter g) { g.Greet(""x""); }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Method-level Implements edge: concrete impl → interface method.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId == "method:App.Greeter.Greet(string)"
+            && e.TargetId == "method:App.IGreeter.Greet(string)");
+
+        // The actual call site goes to the interface method (dispatch site).
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId == "method:App.Caller.Run(App.IGreeter)"
+            && e.TargetId == "method:App.IGreeter.Greet(string)");
+    }
+
     /// <summary>
     /// Compile two modules where Module B references Module A via PE metadata.
     /// Returns the semantic model for Module B — the consumer side where cross-module

@@ -28,6 +28,10 @@ namespace Lifeblood.Connectors.Mcp;
 ///     lenient single-overload match
 ///     (<see cref="ResolveOutcome.LenientMethodOverload"/>) or ambiguous
 ///     (<see cref="ResolveOutcome.AmbiguousMethodOverload"/>).</item>
+///   <item>Kind correction (LB-BUG-002): <c>method:</c> prefix on a member
+///     name that is a property / field / event on the resolved type, when
+///     no method by that name exists. Returns
+///     <see cref="ResolveOutcome.KindCorrectedOnContainingType"/>.</item>
 ///   <item>Bare short name with no kind prefix and no namespace dots —
 ///     unique (<see cref="ResolveOutcome.ShortNameUnique"/>) or ambiguous
 ///     (<see cref="ResolveOutcome.AmbiguousShortName"/>).</item>
@@ -103,6 +107,47 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
                     Overloads = overloads.Select(o => BuildOverloadInfo(o)).ToArray(),
                     Diagnostic = $"Method '{methodName}' on '{typeId}' has " +
                                  $"{overloads.Length} overloads. Pick one from Candidates.",
+                };
+            }
+
+            // Rule 2.5 (LB-BUG-002): kind correction. Zero method overloads
+            // by that name, but the parent type might carry a property /
+            // field / event / indexer with the requested simple name. Models
+            // the dogfood case of LLM agents copy-pasting member names
+            // without remembering the member kind. The type-scoped lookup
+            // is preferred over the global short-name fallback (Rule 4)
+            // because the user already committed to a namespace; the more
+            // specific resolution is the honest answer.
+            var nonMethodMembers = FindNonMethodMembersOnType(graph, typeId, methodName);
+            if (nonMethodMembers.Length == 1)
+            {
+                var member = nonMethodMembers[0];
+                var resolved = BuildResolved(graph, member.Id, member,
+                    ResolveOutcome.KindCorrectedOnContainingType);
+                return new SymbolResolutionResult
+                {
+                    CanonicalId = resolved.CanonicalId,
+                    Outcome = resolved.Outcome,
+                    Symbol = resolved.Symbol,
+                    PrimaryFilePath = resolved.PrimaryFilePath,
+                    DeclarationFilePaths = resolved.DeclarationFilePaths,
+                    Candidates = resolved.Candidates,
+                    Overloads = resolved.Overloads,
+                    Diagnostic = $"Resolved '{canonical}' via kind correction: " +
+                                 $"no method named '{methodName}' on '{typeId}', but a " +
+                                 $"{member.Kind.ToString().ToLowerInvariant()} '{methodName}' " +
+                                 $"exists on the same type at {member.Id}.",
+                };
+            }
+            if (nonMethodMembers.Length > 1)
+            {
+                return new SymbolResolutionResult
+                {
+                    Outcome = ResolveOutcome.AmbiguousMethodOverload,
+                    Candidates = nonMethodMembers.Select(m => m.Id).ToArray(),
+                    Diagnostic = $"No method named '{methodName}' on '{typeId}'. " +
+                                 $"{nonMethodMembers.Length} non-method members on the same " +
+                                 "type carry that name. Pick one from Candidates.",
                 };
             }
             // Fall through to short-name and not-found rules.
@@ -682,6 +727,37 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
             overloads.Add(member);
         }
         return overloads.ToArray();
+    }
+
+    /// <summary>
+    /// Find every non-method member symbol (Property, Field, Event) whose
+    /// <see cref="Symbol.ParentId"/> equals <paramref name="typeId"/> and
+    /// whose simple <see cref="Symbol.Name"/> equals
+    /// <paramref name="memberName"/>. Used by the
+    /// <see cref="ResolveOutcome.KindCorrectedOnContainingType"/> path
+    /// (LB-BUG-002): when the user supplied <c>method:NS.Type.X</c> but the
+    /// type carries a property / field / event named <c>X</c> instead, the
+    /// resolver returns the real member rather than fall through to the
+    /// global short-name fuzzy fallback.
+    /// </summary>
+    private static Symbol[] FindNonMethodMembersOnType(SemanticGraph graph, string typeId, string memberName)
+    {
+        if (graph.GetSymbol(typeId) == null) return System.Array.Empty<Symbol>();
+
+        var members = new List<Symbol>(2);
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Contains) continue;
+            var member = graph.GetSymbol(edge.TargetId);
+            if (member == null) continue;
+            if (member.Kind == SymbolKind.Method) continue;
+            if (member.Kind == SymbolKind.Type) continue;       // nested type — not a "member"
+            if (member.Kind == SymbolKind.Namespace) continue;  // defensive
+            if (!string.Equals(member.Name, memberName, StringComparison.Ordinal)) continue;
+            members.Add(member);
+        }
+        return members.ToArray();
     }
 
     /// <summary>

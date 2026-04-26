@@ -613,4 +613,139 @@ public class SymbolResolverTests
         Assert.Equal(ResolveOutcome.LenientMethodOverload, result.Outcome);
         Assert.Equal("method:N.Foo..cctor()", result.CanonicalId);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // DAWG LB-BUG-002: kind-mismatch tolerance — `method:Type.Member`
+    // resolves to a non-method member on the same type when no method
+    // by that name exists. Models the dogfood case of LLM agents
+    // copy-pasting member names without remembering whether the member
+    // is a method, property, or field.
+    //
+    // Resolution policy: when Rule 2 (truncated method on type) finds
+    // zero method overloads but the parent type has a property / field /
+    // event with the requested simple name, return that member with
+    // ResolveOutcome.KindCorrectedOnContainingType plus a diagnostic
+    // explaining the kind correction. Prefers the type-scoped lookup
+    // over the global short-name fallback because the user already
+    // committed to a namespace, so the more specific resolution is the
+    // honest answer.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Resolve_MethodPrefix_OnPropertyOnSameType_KindCorrected()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Foo",
+                Name = "Foo",
+                QualifiedName = "N.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "property:N.Foo.Name",
+                Name = "Name",
+                QualifiedName = "N.Foo.Name",
+                Kind = SymbolKind.Property,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:N.Foo",
+                TargetId = "property:N.Foo.Name",
+                Kind = EdgeKind.Contains,
+                Evidence = Evidence,
+            })
+            .Build();
+
+        var result = Resolver.Resolve(graph, "method:N.Foo.Name");
+
+        Assert.Equal(ResolveOutcome.KindCorrectedOnContainingType, result.Outcome);
+        Assert.Equal("property:N.Foo.Name", result.CanonicalId);
+        Assert.NotNull(result.Symbol);
+        Assert.Equal(SymbolKind.Property, result.Symbol!.Kind);
+        Assert.Contains("Name", result.Diagnostic ?? "");
+    }
+
+    [Fact]
+    public void Resolve_MethodPrefix_OnFieldOnSameType_KindCorrected()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Foo",
+                Name = "Foo",
+                QualifiedName = "N.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "field:N.Foo._count",
+                Name = "_count",
+                QualifiedName = "N.Foo._count",
+                Kind = SymbolKind.Field,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:N.Foo",
+                TargetId = "field:N.Foo._count",
+                Kind = EdgeKind.Contains,
+                Evidence = Evidence,
+            })
+            .Build();
+
+        var result = Resolver.Resolve(graph, "method:N.Foo._count");
+
+        Assert.Equal(ResolveOutcome.KindCorrectedOnContainingType, result.Outcome);
+        Assert.Equal("field:N.Foo._count", result.CanonicalId);
+        Assert.Equal(SymbolKind.Field, result.Symbol!.Kind);
+    }
+
+    [Fact]
+    public void Resolve_MethodPrefix_PrefersMethodOverProperty_WhenBothPresent()
+    {
+        // Method takes precedence — only fall back to a non-method member
+        // when zero method overloads exist by that name.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Foo",
+                Name = "Foo",
+                QualifiedName = "N.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Foo.Name()",
+                Name = "Name",
+                QualifiedName = "N.Foo.Name",
+                Kind = SymbolKind.Method,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "property:N.Foo.Name",
+                Name = "Name",
+                QualifiedName = "N.Foo.Name",
+                Kind = SymbolKind.Property,
+                FilePath = "Foo.cs",
+                ParentId = "type:N.Foo",
+            })
+            .AddEdge(new Edge { SourceId = "type:N.Foo", TargetId = "method:N.Foo.Name()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.Foo", TargetId = "property:N.Foo.Name", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .Build();
+
+        var result = Resolver.Resolve(graph, "method:N.Foo.Name");
+
+        Assert.Equal(ResolveOutcome.LenientMethodOverload, result.Outcome);
+        Assert.Equal("method:N.Foo.Name()", result.CanonicalId);
+    }
 }
