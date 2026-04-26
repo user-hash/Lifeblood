@@ -7,6 +7,45 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Phases P4 (execute robustness), P5 (authority + forwarder analysis), and P6 (resolver / observability mop-up) of the DAWG-dogfood plan ship as additions on top of v0.6.7. Tests: 608 → 632 (+24). Invariants: 67 → 70. Port count: 24 → 26. Tool count: 22 → 25 (+3 read-side: authority_report, port_health, cycles).
+
+### Added. Execute robustness (P4 / LB-BUG-014, LB-BUG-007, LB-BUG-008, LB-FR-012, LB-FR-013)
+
+`lifeblood_execute` is now trustworthy on Unity workspaces and gives sandbox scripts the introspection they need.
+
+- **`IRuntimeAssemblyResolver`** (Application port) + **`UnityAssemblyResolver`** (C# adapter) probe `Library/ScriptAssemblies/`, `Library/Bee/artifacts/` (Unity 2022+), and `Library/PackageCache/`. The C# code executor injects discovered DLLs as additional script references so scripts can touch `UnityEngine` types. Empty `Library/` surfaces a friendly `runtimeAssemblyWarnings` entry ("run a Unity build first") instead of letting scripts fail with cryptic CS0246 errors. `GraphSession` auto-injects the Unity adapter when `Library/` exists at the project root; non-Unity workspaces see zero behavior change.
+- **`ICodeExecutor.Execute(CodeExecutionRequest)`** typed-options overload + new `CodeExecutionRequest.TargetProfile` field (`host` default / `net-standard-2.1` / `net-6.0`). When non-default, the executor swaps host BCL refs for the matching reference pack from `dotnet/packs/`. Missing packs fall back to host BCL with a `targetRuntimeWarnings` entry. Unknown profile values fall back with a clear diagnostic. Both warning channels propagate on every result path: success, blocked-pattern, compile error, timeout, exception.
+- **`RoslynSemanticView`** gains `Help` (sandbox cheat sheet — globals, EdgeKind names, SymbolKind names, common queries), `SymbolsOfKind(string)`, and `EdgesOfKind(string)`. Scripts can write `SymbolsOfKind("Method").Count()` without importing the SymbolKind enum.
+- **`CodeExecutionResult`** ships `RuntimeAssemblyWarnings` + `TargetRuntimeWarnings` alongside Output/Error/ReturnValue/ElapsedMs. `WriteToolHandler.HandleExecute` surfaces both verbatim. `lifeblood_execute` schema gains optional `targetProfile` enum.
+
+Documented as **`INV-EXECUTE-001`** in CLAUDE.md.
+
+Dogfood (smoke-mcp-p4-dogfood.ps1):
+- Lifeblood: SymbolsOfKind("Type") = 257, EdgesOfKind("Contains") = 2080, Help reachable, host-profile execute returns "42" on `21*2`.
+- DAWG (87 modules): SymbolsOfKind("Type") = 3209, EdgesOfKind("Contains") = 54440. Unknown targetProfile fallback verified end-to-end.
+
+### Added. Authority report + forwarder classifier + port health + cycles (P5 / LB-FR-018, LB-FR-014, LB-FR-020, LB-NICE-007)
+
+Three new read-side MCP tools plus a heuristic method-body classifier on the extractor. Together they automate the manual ABG-extraction triage that ate ~30 min per stage in DAWG sessions.
+
+- **`IAuthorityReporter`** (Application port) + **`LifebloodAuthorityReporter`** (Connectors.Mcp adapter). Single graph walk produces `implementedInterfaceCount`, `ownedPublicSurface` (public method/property/field count, nested types excluded), per-implemented-interface usage (member count + distinct consumers via `Calls`/`References` edges), and `forwarderRatio` (in [0.0, 1.0] or sentinel `-1.0` when no method has classification). Tool: **`lifeblood_authority_report`**, envelope: Derived / Proven.
+- **Method body classification** — `RoslynSymbolExtractor.AttachMethodClassification` records on every method's `Properties["classification"]`: `PureForwarder` (single-statement / expression-bodied invocation), `ThinWrapper` (≤ 5 statements with exactly one invocation), `RealLogic` (everything else). Abstract / partial / extern methods get no entry. Dogfood: 1009 methods classified on Lifeblood (58 PureForwarders), **18,985 classified on DAWG with 3,367 PureForwarders** identified.
+- **`lifeblood_port_health`** — walks an interface or class's `Contains` members, classifies each as live (≥ 1 incoming non-Contains edge OR outgoing `Implements`) or dead. Returns `livenessPct` and a verdict: `healthy` (≥75%), `mixed` (≥25%), `vestigial` (<25%), or `empty`.
+- **`lifeblood_cycles`** — exposes the existing `CircularDependencyDetector` SCC results as a callable tool. No new analysis. Lifeblood self-analysis: 0 cycles. DAWG: 117 SCCs.
+
+Documented as **`INV-AUTHORITY-001`** + **`INV-FORWARDER-001`** in CLAUDE.md.
+
+### Added. Wire-shape clarifications (P6 / LB-OBSERVATION-001, LB-OBSERVATION-003)
+
+- **`changedSourceFiles`** + **`touchedGraphFiles`** added alongside the existing `changedFileCount` on `lifeblood_analyze` responses. Currently the same value; the surface is kept stable for future divergence (e.g. when graph-file churn is more than the .cs-file churn). Old `changedFileCount` field preserved for back-compat.
+- **`lifeblood_dependencies`** description spells out where outgoing edges actually live: `Calls` edges live on the calling METHOD, `References` edges live on the referencing field/property/method body. A type-level dependencies query typically returns 0 because the type itself doesn't author calls. Closes the dogfood report's "0 outbound edges from type:X is confusing" finding.
+- **`lifeblood_analyze`** description includes a Unity note about new-`.cs`-without-`.meta` files (the incremental walker picks them up; a later full analyze will refresh symbol IDs if Unity assigns a different GUID).
+
+### Internal
+
+- `ICodeExecutor.Execute(CodeExecutionRequest)` interface overload added; existing `Execute(string,string[],int)` overload preserved and now delegates to the typed path. `ProcessIsolatedCodeExecutor` updated to satisfy the new interface member.
+- Test count drift: `ToolRegistry_Returns22Tools` ratchet renamed to `ToolRegistry_Returns25Tools` and asserts the three new read-side tools by name.
+
 ## [0.6.7] - 2026-04-26
 
 P2 + P3 of the DAWG-dogfood plan ship together. Truth envelope on every read-side response (LB-INBOX-001 + LB-OBS-004). Unity-aware runtime-dispatch reachability cuts dead-code false positives by 97% on real Unity workspaces. Asmdef-edit detection promoted from LB-NICE-003. **Tests: 582 → 608 (+26). Invariants: 65 → 67. Port count: 23 → 24.** Hexagonal as ever — no patches, no special cases, every fix is a port + adapter + handler trio with regression tests + end-to-end dogfood.

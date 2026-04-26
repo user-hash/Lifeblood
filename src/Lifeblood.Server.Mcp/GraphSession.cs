@@ -377,7 +377,13 @@ public sealed class GraphSession : IDisposable
                 violations = analysis?.Violations.Length ?? 0,
                 cycles = analysis?.Cycles.Length ?? 0,
             },
+            // Legacy field — kept for back-compat with callers that
+            // already read it. Phase P6 (LB-OBSERVATION-003) splits the
+            // signal into the two named fields below; new callers
+            // should prefer those.
             changedFileCount,
+            changedSourceFiles = changedFileCount,
+            touchedGraphFiles = changedFileCount,
             skipped = skippedField,
             usage = usage == null ? null : new
             {
