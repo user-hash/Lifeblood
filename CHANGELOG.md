@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.6.6] - 2026-04-26
+## [0.6.7] - 2026-04-27
 
 ### Fixed. Resolver kind-correction (P1 / LB-BUG-002)
 
@@ -858,8 +858,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.6...HEAD
-[0.6.6]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.6
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...HEAD
+[0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.7
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
