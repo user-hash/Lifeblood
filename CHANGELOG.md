@@ -7,6 +7,43 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-04-26
+
+DAWG dogfood backlog triage. Six findings closed (3 already shipped silently in v0.6.4/v0.6.5; 3 net-new fixes). Hexagonal as ever — no patches, no handler-side string sniffing, every fix is a port + adapter + handler trio with regression tests. Tests: 569 to 582 (+13). Zero regressions.
+
+### Fixed. Resolver kind-correction (LB-BUG-002)
+
+`method:NS.Type.X` now resolves to a property / field / event named `X` on `NS.Type` when no method by that name exists. New `ResolveOutcome.KindCorrectedOnContainingType` plus a diagnostic explaining the correction. Type-scoped kind correction takes precedence over the global short-name fallback (Rule 4) because the user already committed to a namespace; the more specific resolution is the honest answer. Method-by-that-name still wins when both a method and a same-named property exist on the type — kind correction only fires when zero method overloads exist. Pinned by `SymbolResolverTests.Resolve_MethodPrefix_OnPropertyOnSameType_KindCorrected`, `Resolve_MethodPrefix_OnFieldOnSameType_KindCorrected`, `Resolve_MethodPrefix_PrefersMethodOverProperty_WhenBothPresent`. Documented as `INV-RESOLVER-006`.
+
+### Fixed. File-scoped diagnostics (LB-BUG-016)
+
+`lifeblood_diagnose` accepts a `filePath` parameter that restricts the response to one source file. New `DiagnosticsRequest` record on `ICompilationHost` (typed alongside `FindReferencesOptions` — not stringly-typed). The Roslyn adapter filters by syntax-tree path with case-insensitive forward-slash suffix matching so callers can pass either the relative or absolute form. Closes the silent-fallback-to-300k-line-dump failure mode that appeared in three DAWG sessions. The string-only `GetDiagnostics(moduleName)` overload is preserved for backwards-compat and now delegates to the new pipeline.
+
+### Fixed. compile_check accepts filePath (LB-BUG-015)
+
+`lifeblood_compile_check` accepts either inline `code` or a `filePath` (relative to the loaded project root, or absolute). The file is read via the existing `IFileSystem` port. Exactly one of the two is required; supplying both is rejected so the result never silently depends on which input wins. Tool schema drops `required: ["code"]` to allow either form. Response includes a `source: "code"|"filePath"` discriminator + the `filePath` echo so callers can distinguish inputs in transcripts.
+
+### Added. blast_radius summarize / direct dependants (LB-NICE-005, LB-FR-010)
+
+`lifeblood_blast_radius` now always reports `directDependants` (one-hop incoming edges, distinct sources, non-Contains) alongside the existing transitive `affectedCount`. The two are not interchangeable — a type with 5 direct callers and 200 transitive blast members should not be treated like one with 5 callers and 5 blast members. Adds `summarize:true` for compact responses that omit the full affected-id array (renamed `preview` and clipped). Closes the failure mode where transitive blast on a popular type produced 84KB+ JSON payloads that overflowed downstream agent thread guards. `maxResults` (default 500 normal mode, 25 summarize mode) caps the embedded array regardless of mode; `truncated:true/false` tells callers whether the array was clipped. `affectedCount` always reports the un-clipped figure.
+
+### Closed by re-verification. v0.6.4/v0.6.5 already shipped these silently
+
+Three regression tests against v0.6.5 confirmed the following are already closed by prior walker work; no functional change was needed for these, only a regression guard so a future rewrite cannot silently re-open them:
+
+- **LB-BUG-001** invocation through array indexer receiver (`voices[i].SetPatch(patch)` on partial struct). `RoslynEdgeExtractor.ExtractCallEdge` resolves the entire invocation semantically via `model.GetSymbolInfo(invocation)` — array-element + List indexer receivers both work. Pinned by `ExtractEdges_InvocationOnArrayElement_EmitsCallsEdge` and `ExtractEdges_InvocationOnListIndexer_EmitsCallsEdge`.
+- **LB-BUG-010** implicit interface implementation in `find_references`. The v0.6.4 method-level `Implements` edge work links the concrete impl to the interface method; the dispatch-site call goes to the interface method via `model.GetSymbolInfo`. Pinned by `ExtractEdges_ImplicitInterfaceImpl_LinksConcreteToInterfaceMethod`.
+
+### Documentation
+
+- **`CLAUDE.md`** adds `INV-RESOLVER-006` for the new kind-correction rule.
+- **`docs/plans/dawg-dogfood-polish-2026-04-26.md`** committed as the source plan for this release. Triages the full DAWG backlog into five phases (P1-P5 / v0.6.6-v0.7.0); P1 is what shipped here.
+
+### Internal
+
+- `ICompilationHost` gains `GetDiagnostics(DiagnosticsRequest)`; existing string-only overload preserved. `StubCompilationHost` in `UseCaseTests` extended.
+- `WriteToolHandler.ResolveWorkspacePath` helper added; absolute paths pass through, relative paths resolve against `GraphSession.ProjectRoot`.
+
 ## [0.6.5] - 2026-04-14
 
 Closes the three Roslyn extractor gaps that v0.6.4 left explicitly marked "by design / known gap" under `INV-DEADCODE-001`, plus a regression in `LifebloodSymbolResolver` that made the new ctor edges unreachable via the read-side tools. Publish workflow hardened against the drift class that would ship helper tags as real NuGet packages. `CLAUDE.md` trimmed 20% without dropping a single invariant rule. 569 tests (was 557, +12 new: 8 extractor, 4 resolver). 0 regressions. 0 build warnings.
@@ -610,7 +647,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/user-hash/Lifeblood/compare/v0.6.1...v0.6.3
