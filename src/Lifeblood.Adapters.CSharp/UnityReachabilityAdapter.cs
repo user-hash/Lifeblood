@@ -167,31 +167,55 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
 
     /// <summary>
     /// True when <paramref name="typeId"/> transitively inherits from a
-    /// known Unity message-receiver base. Walks <see cref="EdgeKind.Inherits"/>
-    /// edges; the loop is bounded by an explicit hop cap so a malformed
-    /// graph cycle cannot hang the reachability scan. The cap is a
-    /// generous 32 — Unity inheritance chains never exceed single
-    /// digits in practice.
+    /// known Unity message-receiver base. Walks the chain via the
+    /// extractor-recorded <c>Properties["baseType"]</c> on each type —
+    /// works even when the base lives in a different assembly
+    /// (UnityEngine.MonoBehaviour from UnityEngine.dll) because the
+    /// graph drops dangling Inherits edges to non-loaded targets but
+    /// the property carries the FQN regardless. Bounded hop cap to
+    /// shrug off malformed-graph cycles; Unity inheritance chains
+    /// never exceed single digits in practice.
     /// </summary>
     private static bool InheritsFromUnityMessageReceiver(SemanticGraph graph, string typeId)
     {
         const int maxHops = 32;
         var seen = new HashSet<string>(System.StringComparer.Ordinal);
-        var current = typeId;
-        for (int i = 0; i < maxHops; i++)
+        var currentSym = graph.GetSymbol(typeId);
+        for (int i = 0; i < maxHops && currentSym != null; i++)
         {
-            if (string.IsNullOrEmpty(current)) return false;
-            if (!seen.Add(current)) return false; // cycle guard
-            string? next = null;
-            foreach (int idx in graph.GetOutgoingEdgeIndexes(current))
+            if (!seen.Add(currentSym.Id)) return false; // cycle guard
+
+            // Read base FQN from the type's extractor-recorded property.
+            // Empty / missing means we've hit a root or an extractor that
+            // didn't record it (older snapshots). In that case, fall back
+            // to walking Inherits edges to in-graph targets.
+            string? baseFqn = null;
+            if (currentSym.Properties != null
+                && currentSym.Properties.TryGetValue("baseType", out var b)
+                && !string.IsNullOrEmpty(b))
+            {
+                baseFqn = b;
+            }
+
+            if (!string.IsNullOrEmpty(baseFqn))
+            {
+                if (UnityMessageReceiverBases.Contains(baseFqn))
+                    return true;
+                // Look up the next link in the chain by FQN. If the base
+                // is in-graph the lookup finds the symbol; if external
+                // the FQN already failed the receiver match above so
+                // we're done (external base that isn't a Unity receiver
+                // is the chain-terminator).
+                currentSym = graph.GetSymbol("type:" + baseFqn);
+                continue;
+            }
+
+            // Fallback: walk the first outgoing Inherits edge.
+            string? nextId = null;
+            foreach (int idx in graph.GetOutgoingEdgeIndexes(currentSym.Id))
             {
                 var edge = graph.Edges[idx];
                 if (edge.Kind != EdgeKind.Inherits) continue;
-
-                // Match by qualified name first (extractor preserves it
-                // on type symbols even when the base lives in a different
-                // assembly that wasn't loaded). Fall back to the symbol
-                // record if present in the graph.
                 var rawTarget = edge.TargetId;
                 var qualifiedFromId = StripTypePrefix(rawTarget);
                 if (UnityMessageReceiverBases.Contains(qualifiedFromId))
@@ -199,12 +223,11 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
                 var targetSym = graph.GetSymbol(rawTarget);
                 if (targetSym != null && UnityMessageReceiverBases.Contains(targetSym.QualifiedName))
                     return true;
-
-                next = rawTarget;
-                break; // single-inheritance for classes; pick the first Inherits edge.
+                nextId = rawTarget;
+                break;
             }
-            if (next == null) return false;
-            current = next;
+            if (nextId == null) return false;
+            currentSym = graph.GetSymbol(nextId);
         }
         return false;
     }

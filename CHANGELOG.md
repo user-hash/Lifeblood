@@ -7,6 +7,59 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-04-26
+
+P2 + P3 of the DAWG-dogfood plan ship together. Truth envelope on every read-side response (LB-INBOX-001 + LB-OBS-004). Unity-aware runtime-dispatch reachability cuts dead-code false positives by 97% on real Unity workspaces. Asmdef-edit detection promoted from LB-NICE-003. **Tests: 582 → 608 (+26). Invariants: 65 → 67. Port count: 23 → 24.** Hexagonal as ever — no patches, no special cases, every fix is a port + adapter + handler trio with regression tests + end-to-end dogfood.
+
+### Added. Truth envelope on every read-side response (P2 / INV-ENVELOPE-001)
+
+Every read-side MCP tool response now carries a top-level `envelope` field. The envelope tells callers HOW MUCH to trust a result and WHEN it was true: truth tier (Semantic / Derived / Heuristic / Inferred), confidence band (Proven / Advisory / Speculative), evidence-source string, wall-clock staleness in seconds, files-changed-since-analyze count, per-tool documented limitations.
+
+Pure-data record in Domain (`Lifeblood.Domain.Results.ResponseEnvelope` + `EnvelopeClassification`). Application port (`IResponseDecorator`) plus reference adapter (`LifebloodResponseDecorator`). Per-tool classification lives on `ToolDefinition.EnvelopeClassification` — registry IS the source. Composition root projects the registry into the decorator at startup; missing registrations fall through to the most-conservative envelope plus a `Limitations` entry naming the gap, so a missed registration surfaces as obviously-degraded metadata rather than silent over-confidence.
+
+Staleness math walks the loaded graph's `SymbolKind.File` symbols, mtime-stats each via `IFileSystem.GetLastWriteTimeUtc`, counts files newer than `GraphSession.AnalyzedAtUtc`. Per-call scan capped at 256 files (short-circuits as soon as any drift is detected) so even 87-module Unity workspaces stay cheap.
+
+Wire-format note: `lifeblood_dependencies` and `lifeblood_dependants` previously returned a bare JSON array. They now return `{ envelope, symbolId, count, dependencies/dependants }`. Callers must read the named field instead of the top-level array.
+
+Closes LB-INBOX-001 (truth envelope) + LB-OBS-004 (staleness surface).
+
+### Added. Unity-aware runtime-dispatch reachability (P3 / INV-UNITY-001, INV-UNITY-002)
+
+`IUnityReachabilityProvider` port + `UnityReachabilityAdapter` reference implementation. The adapter recognizes:
+
+- **Unity entrypoint attributes** — `RuntimeInitializeOnLoadMethod`, `InitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `PostProcessBuild`, `PostProcessScene`, `CustomEditor`, `CustomPropertyDrawer`, `Test`, `UnityTest`, full Unity message catalog.
+- **MonoBehaviour magic methods** — `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnGUI`, `OnTriggerEnter` + variants, `OnCollisionEnter` + variants, `OnAudioFilterRead`, `OnRenderImage` + lifecycle, etc. — only when the containing type's transitive inheritance chain reaches `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, or `UnityEngine.StateMachineBehaviour`.
+
+Crucially, the chain walk uses the extractor-recorded `Symbol.Properties["baseType"]` (FQN string) — works even when the chain ends in a type that lives in an external assembly not loaded into the graph (UnityEngine.dll). The graph drops dangling Inherits edges to external targets, so an edge-only walk would miss every direct `MonoBehaviour` subclass. The property carries the FQN regardless.
+
+`LifebloodDeadCodeAnalyzer` takes the provider via optional ctor; pre-P3 callers without it see identical behavior. Composition root wires the Unity adapter by default — non-Unity workspaces see zero degradation because nothing matches.
+
+Extractor adds two metadata properties on every type and method:
+- `Properties["attributes"]` — semicolon-separated simple class names (Attribute suffix stripped)
+- `Properties["baseType"]` — FQN of the direct base (Object/ValueType/Enum/Delegate skipped)
+
+Asmdef incremental (INV-UNITY-002, promoted LB-NICE-003): `AnalysisSnapshot.AsmdefTimestamps` + `HasAsmdefDrift` force a full re-analyze on any added / removed / edited `*.asmdef`. Necessary because Unity csprojs are generated from asmdefs — editing an asmdef without forcing Unity to regenerate the csproj leaves the csproj-timestamp tracker (INV-BCL-005) blind.
+
+Dogfooded on a real 87-module Unity workspace (53,882 symbols, 180,814 edges):
+- **Dead-code findings: 1095 → 729** (-33% / -366 false positives)
+- **MonoBehaviour-magic FPs: 378 → 13** (-97%)
+- **Unity-shaped magic-name FPs in Assets/Editor/Runtime paths: 226 → 10** (-95.5%)
+
+Remaining 13 are documented edge cases (UI Toolkit `VisualElement` subclasses, audio callbacks on non-MonoBehaviour bases) — not regressions; future tightening targets.
+
+Closes LB-FP-001 (MonoBehaviour message dispatch), LB-FP-002 (UnityEvent/Button.onClick — partially; YAML scanner deferred), LB-BUG-009 (RuntimeInitializeOnLoadMethod entrypoints), LB-NICE-003 (asmdef incremental — promoted to BUG).
+
+### Documentation
+
+- **`CLAUDE.md`** adds `INV-ENVELOPE-001`, `INV-UNITY-001`, `INV-UNITY-002`. Trim of duplicate `INV-RESOLVER-006` framing.
+- **`docs/STATUS.md`** updated counts: 608 tests, 24 ports, 67 invariants.
+- **`smoke-mcp-p2-dogfood.ps1`** + **`smoke-mcp-p3-dogfood.ps1`** committed as repeatable end-to-end MCP smoke harnesses.
+
+### Internal
+
+- `ToolHandler.JsonOpts` gains `JsonStringEnumConverter` so envelope and payload enums ship as readable strings (`"Semantic"`, `"Proven"`) instead of integer ordinals.
+- `GraphSession` records `AnalyzedAtUtc` on every successful Load (full + incremental + JSON-graph). Read by the response decorator via `EnvelopeContext`.
+
 ## [0.6.6] - 2026-04-26
 
 DAWG dogfood backlog triage. Six findings closed (3 already shipped silently in v0.6.4/v0.6.5; 3 net-new fixes). Hexagonal as ever — no patches, no handler-side string sniffing, every fix is a port + adapter + handler trio with regression tests. Tests: 569 to 582 (+13). Zero regressions.
@@ -647,7 +700,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.6...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...HEAD
+[0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4

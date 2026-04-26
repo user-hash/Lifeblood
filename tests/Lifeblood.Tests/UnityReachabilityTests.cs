@@ -161,6 +161,116 @@ public class UnityReachabilityTests
     }
 
     [Fact]
+    public void Adapter_MagicMethod_OnTypeWithExternalMonoBehaviourBase_ViaProperty_FlaggedAsReachable()
+    {
+        // Real-world Unity case: UnityEngine.MonoBehaviour is in
+        // UnityEngine.dll, NOT in the analyzed source. The Inherits edge
+        // CameraCtrl -> UnityEngine.MonoBehaviour is dropped as dangling
+        // by GraphBuilder. The extractor records the base FQN on
+        // Properties["baseType"] so the Unity adapter can still walk the
+        // chain. Pinned to prevent regression of the v0.6.7 bug where
+        // 378 magic methods on DAWG were flagged because the adapter
+        // only walked Inherits edges.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:CameraCtrl",
+                Name = "CameraCtrl",
+                QualifiedName = "CameraCtrl",
+                Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["baseType"] = "UnityEngine.MonoBehaviour",
+                },
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:CameraCtrl.Update()",
+                Name = "Update",
+                Kind = DomainSymbolKind.Method,
+                ParentId = "type:CameraCtrl",
+            })
+            .Build();
+
+        var sym = graph.GetSymbol("method:CameraCtrl.Update()")!;
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, sym, out var reason);
+        Assert.True(hit, "Update on CameraCtrl (external MonoBehaviour base via Properties[baseType]) must be flagged");
+        Assert.Contains("Update", reason);
+    }
+
+    [Fact]
+    public void Adapter_TransitiveExternalBase_ViaProperty_FlaggedAsReachable()
+    {
+        // Enemy : Character (in graph) : UnityEngine.MonoBehaviour (external).
+        // Walk via Properties["baseType"] across the in-graph hop, then
+        // match on the external FQN.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:App.Character",
+                Name = "Character",
+                QualifiedName = "App.Character",
+                Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["baseType"] = "UnityEngine.MonoBehaviour",
+                },
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "type:App.Enemy",
+                Name = "Enemy",
+                QualifiedName = "App.Enemy",
+                Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["baseType"] = "App.Character",
+                },
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:App.Enemy.Awake()",
+                Name = "Awake",
+                Kind = DomainSymbolKind.Method,
+                ParentId = "type:App.Enemy",
+            })
+            .Build();
+
+        var sym = graph.GetSymbol("method:App.Enemy.Awake()")!;
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, sym, out _);
+        Assert.True(hit, "Transitive walk through Properties[baseType] must reach external Unity base");
+    }
+
+    [Fact]
+    public void Extractor_RecordsBaseTypeFqn_OnPropertiesDictionary()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Animal { }
+public class Dog : Animal { }");
+
+        var symbols = new RoslynSymbolExtractor().Extract(model, root, "Pet.cs", "file:Pet.cs");
+        var dog = symbols.FirstOrDefault(s => s.Name == "Dog" && s.Kind == DomainSymbolKind.Type);
+        Assert.NotNull(dog);
+        Assert.True(dog!.Properties.TryGetValue("baseType", out var b));
+        Assert.Equal("App.Animal", b);
+    }
+
+    [Fact]
+    public void Extractor_DoesNotRecordObjectAsBaseType()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Plain { }");
+
+        var symbols = new RoslynSymbolExtractor().Extract(model, root, "Plain.cs", "file:Plain.cs");
+        var t = symbols.FirstOrDefault(s => s.Name == "Plain" && s.Kind == DomainSymbolKind.Type);
+        Assert.NotNull(t);
+        Assert.False(t!.Properties.ContainsKey("baseType"),
+            "System.Object should not be recorded — every class derives from it, would be noise.");
+    }
+
+    [Fact]
     public void Adapter_InheritsCycle_DoesNotHang()
     {
         // Malformed graph: A -> B -> A. The adapter must terminate.

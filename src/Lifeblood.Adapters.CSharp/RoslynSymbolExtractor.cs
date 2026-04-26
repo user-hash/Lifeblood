@@ -53,6 +53,7 @@ public sealed class RoslynSymbolExtractor
         {
             ["typeKind"] = typeSymbol.TypeKind.ToString().ToLowerInvariant(),
         };
+        AttachBaseTypeFqn(typeProps, typeSymbol);
         AttachAttributeNames(typeProps, typeSymbol);
         AttachXmlDocSummary(typeProps, typeSymbol);
         symbols.Add(new Symbol
@@ -468,6 +469,35 @@ public sealed class RoslynSymbolExtractor
         var summary = Internal.XmlDocExtractor.ExtractSummary(sym);
         if (!string.IsNullOrEmpty(summary))
             props["xmlDocSummary"] = summary;
+    }
+
+    /// <summary>
+    /// Record the qualified name of the type's direct base on its
+    /// <c>Properties["baseType"]</c>. Lets downstream analysis walk the
+    /// inheritance chain even into types that live outside the loaded
+    /// workspace (UnityEngine.MonoBehaviour, System.Attribute, ASP.NET
+    /// ControllerBase, etc.) where the C# adapter would otherwise drop
+    /// the Inherits edge as dangling. Skips System.Object /
+    /// System.ValueType / System.Enum / System.Delegate because every
+    /// type ultimately derives from one of those and recording it would
+    /// just be noise. Phase P3 (2026-04-26).
+    /// </summary>
+    private static void AttachBaseTypeFqn(IDictionary<string, string> props, INamedTypeSymbol typeSymbol)
+    {
+        var b = typeSymbol.BaseType;
+        if (b == null) return;
+        switch (b.SpecialType)
+        {
+            case SpecialType.System_Object:
+            case SpecialType.System_ValueType:
+            case SpecialType.System_Enum:
+            case SpecialType.System_Delegate:
+            case SpecialType.System_MulticastDelegate:
+                return;
+        }
+        var fqn = GetFullName(b);
+        if (!string.IsNullOrEmpty(fqn))
+            props["baseType"] = fqn;
     }
 
     /// <summary>
