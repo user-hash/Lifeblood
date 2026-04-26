@@ -27,6 +27,7 @@ public sealed class ToolHandler
     private readonly IPartialViewBuilder _partialView;
     private readonly IInvariantProvider _invariants;
     private readonly IResponseDecorator _decorator;
+    private readonly IAuthorityReporter _authority;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -48,7 +49,8 @@ public sealed class ToolHandler
         IDeadCodeAnalyzer deadCode,
         IPartialViewBuilder partialView,
         IInvariantProvider invariants,
-        IResponseDecorator decorator)
+        IResponseDecorator decorator,
+        IAuthorityReporter? authority = null)
     {
         _session = session;
         _provider = provider;
@@ -58,6 +60,7 @@ public sealed class ToolHandler
         _partialView = partialView;
         _invariants = invariants;
         _decorator = decorator;
+        _authority = authority ?? new Lifeblood.Connectors.Mcp.LifebloodAuthorityReporter();
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -80,6 +83,9 @@ public sealed class ToolHandler
                 "lifeblood_dead_code" => HandleDeadCode(arguments),
                 "lifeblood_partial_view" => HandlePartialView(arguments),
                 "lifeblood_invariant_check" => HandleInvariantCheck(arguments),
+                "lifeblood_authority_report" => HandleAuthorityReport(arguments),
+                "lifeblood_port_health" => HandlePortHealth(arguments),
+                "lifeblood_cycles" => HandleCycles(),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -520,6 +526,114 @@ public sealed class ToolHandler
             dependedOnByCount = result.DependedOnBy.Length,
             result.DependsOn,
             result.DependedOnBy,
+        }));
+    }
+
+    // ── P5: authority / port_health / cycles ──
+
+    private McpToolResult HandleAuthorityReport(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var raw = WriteToolHandler.GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("symbolId is required");
+
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var report = _authority.Analyze(_session.Graph!, resolved.CanonicalId);
+        return TextResult(WithEnvelope("lifeblood_authority_report", report));
+    }
+
+    private McpToolResult HandlePortHealth(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var raw = WriteToolHandler.GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("symbolId is required");
+
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var graph = _session.Graph!;
+        var typeId = resolved.CanonicalId;
+        var sym = graph.GetSymbol(typeId);
+        if (sym == null || sym.Kind != SymbolKind.Type)
+            return ErrorResult($"port_health requires a Type symbol; got Kind={sym?.Kind} for {typeId}");
+
+        var memberIds = new List<string>();
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Contains) continue;
+            var member = graph.GetSymbol(edge.TargetId);
+            if (member == null) continue;
+            if (member.Kind == SymbolKind.Type) continue; // exclude nested types
+            memberIds.Add(member.Id);
+        }
+
+        int liveCount = 0;
+        var live = new List<string>();
+        var dead = new List<string>();
+        foreach (var id in memberIds)
+        {
+            bool hasIncoming = false;
+            foreach (int idx in graph.GetIncomingEdgeIndexes(id))
+            {
+                var e = graph.Edges[idx];
+                if (e.Kind == EdgeKind.Contains) continue;
+                hasIncoming = true; break;
+            }
+            // Methods that implement an interface member are reachable
+            // through the interface — same liveness rule the dead-code
+            // analyzer uses (Implements outgoing = alive by definition).
+            if (!hasIncoming)
+            {
+                foreach (int idx in graph.GetOutgoingEdgeIndexes(id))
+                {
+                    if (graph.Edges[idx].Kind == EdgeKind.Implements) { hasIncoming = true; break; }
+                }
+            }
+            if (hasIncoming) { liveCount++; live.Add(id); }
+            else dead.Add(id);
+        }
+
+        double pct = memberIds.Count == 0 ? 0.0 : (double)liveCount / memberIds.Count;
+        string verdict = memberIds.Count == 0
+            ? "empty"
+            : pct >= 0.75 ? "healthy"
+            : pct >= 0.25 ? "mixed"
+            : "vestigial";
+
+        return TextResult(WithEnvelope("lifeblood_port_health", new
+        {
+            symbolId = typeId,
+            memberCount = memberIds.Count,
+            liveMembers = liveCount,
+            deadMembers = dead.Count,
+            livenessPct = System.Math.Round(pct, 3),
+            verdict,
+            live = live.ToArray(),
+            dead = dead.ToArray(),
+        }));
+    }
+
+    private McpToolResult HandleCycles()
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var cycles = Lifeblood.Analysis.CircularDependencyDetector.Detect(_session.Graph!);
+        return TextResult(WithEnvelope("lifeblood_cycles", new
+        {
+            count = cycles.Length,
+            cycles,
         }));
     }
 

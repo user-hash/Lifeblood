@@ -184,6 +184,7 @@ public sealed class RoslynSymbolExtractor
             ["paramCount"] = sym.Parameters.Length.ToString(),
         };
         AttachAttributeNames(methodProps, sym);
+        AttachMethodClassification(methodProps, methodDecl);
         AttachXmlDocSummary(methodProps, sym);
         symbols.Add(new Symbol
         {
@@ -498,6 +499,86 @@ public sealed class RoslynSymbolExtractor
         var fqn = GetFullName(b);
         if (!string.IsNullOrEmpty(fqn))
             props["baseType"] = fqn;
+    }
+
+    /// <summary>
+    /// Classify the method body by shape so authority / forwarder
+    /// analyzers can read the verdict directly off
+    /// <c>Properties["classification"]</c> without re-walking syntax:
+    /// <list type="bullet">
+    ///   <item><b>PureForwarder</b> — single-statement or expression-bodied
+    ///     method whose body is exactly one invocation on a member
+    ///     access (<c>x.Foo()</c>, <c>_field.Bar()</c>, <c>this.Baz()</c>).</item>
+    ///   <item><b>ThinWrapper</b> — body has at most 5 statements and
+    ///     contains exactly one invocation expression. Captures
+    ///     null-guard-then-delegate, simple cast-then-delegate, etc.</item>
+    ///   <item><b>RealLogic</b> — anything else (multi-call, control
+    ///     flow, loops, complex expressions).</item>
+    /// </list>
+    /// Abstract / partial / extern bodies and methods with no body are
+    /// not classified (no entry written) — there's no body shape to
+    /// classify and the authority report explicitly handles missing
+    /// classification with a sentinel ratio. Phase P5 (LB-FR-020).
+    /// </summary>
+    private static void AttachMethodClassification(
+        IDictionary<string, string> props,
+        MethodDeclarationSyntax methodDecl)
+    {
+        // Expression-bodied: `=> body` — one expression. If it's an
+        // invocation it's a PureForwarder; otherwise a ThinWrapper if
+        // it contains exactly one invocation, else RealLogic.
+        if (methodDecl.ExpressionBody != null)
+        {
+            var expr = methodDecl.ExpressionBody.Expression;
+            if (expr is InvocationExpressionSyntax)
+            {
+                props["classification"] = "PureForwarder";
+                return;
+            }
+            int invCount = expr.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>().Count();
+            props["classification"] = invCount == 1 ? "ThinWrapper" : "RealLogic";
+            return;
+        }
+
+        var body = methodDecl.Body;
+        if (body == null) return; // abstract / partial / extern
+
+        var stmts = body.Statements;
+        if (stmts.Count == 0)
+        {
+            props["classification"] = "RealLogic"; // empty {}; treat as not a forwarder
+            return;
+        }
+
+        // Single statement: ExpressionStatementSyntax wrapping an
+        // invocation, or ReturnStatementSyntax wrapping an invocation.
+        if (stmts.Count == 1)
+        {
+            var only = stmts[0];
+            if (only is ExpressionStatementSyntax es && es.Expression is InvocationExpressionSyntax)
+            {
+                props["classification"] = "PureForwarder";
+                return;
+            }
+            if (only is ReturnStatementSyntax rs && rs.Expression is InvocationExpressionSyntax)
+            {
+                props["classification"] = "PureForwarder";
+                return;
+            }
+        }
+
+        // ThinWrapper: <= 5 statements, exactly one invocation overall.
+        if (stmts.Count <= 5)
+        {
+            int invCount = body.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>().Count();
+            if (invCount == 1)
+            {
+                props["classification"] = "ThinWrapper";
+                return;
+            }
+        }
+
+        props["classification"] = "RealLogic";
     }
 
     /// <summary>

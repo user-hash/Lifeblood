@@ -431,11 +431,11 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns22Tools()
+    public void ToolRegistry_Returns25Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(22, tools.Length);
+        Assert.Equal(25, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_analyze");
         Assert.Contains(tools, t => t.Name == "lifeblood_context");
         Assert.Contains(tools, t => t.Name == "lifeblood_lookup");
@@ -445,6 +445,9 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains(tools, t => t.Name == "lifeblood_file_impact");
         Assert.Contains(tools, t => t.Name == "lifeblood_resolve_short_name");
         Assert.Contains(tools, t => t.Name == "lifeblood_invariant_check");
+        Assert.Contains(tools, t => t.Name == "lifeblood_authority_report");
+        Assert.Contains(tools, t => t.Name == "lifeblood_port_health");
+        Assert.Contains(tools, t => t.Name == "lifeblood_cycles");
         Assert.Contains(tools, t => t.Name == "lifeblood_execute");
         Assert.Contains(tools, t => t.Name == "lifeblood_diagnose");
         Assert.Contains(tools, t => t.Name == "lifeblood_compile_check");
