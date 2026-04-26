@@ -3,6 +3,8 @@ using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.Ports.Right.Invariants;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
+using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -24,12 +26,18 @@ public sealed class ToolHandler
     private readonly IDeadCodeAnalyzer _deadCode;
     private readonly IPartialViewBuilder _partialView;
     private readonly IInvariantProvider _invariants;
+    private readonly IResponseDecorator _decorator;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
+        // INV-ENVELOPE-001: human-readable enum names in every read-side
+        // response so envelope.truthTier / envelope.confidence ship as
+        // "Semantic" / "Proven" instead of integer ordinals. Applies to
+        // every tool's payload, not just the envelope.
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
     };
 
     public ToolHandler(
@@ -39,7 +47,8 @@ public sealed class ToolHandler
         ISemanticSearchProvider search,
         IDeadCodeAnalyzer deadCode,
         IPartialViewBuilder partialView,
-        IInvariantProvider invariants)
+        IInvariantProvider invariants,
+        IResponseDecorator decorator)
     {
         _session = session;
         _provider = provider;
@@ -48,6 +57,7 @@ public sealed class ToolHandler
         _deadCode = deadCode;
         _partialView = partialView;
         _invariants = invariants;
+        _decorator = decorator;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -101,7 +111,7 @@ public sealed class ToolHandler
         var readOnly = WriteToolHandler.GetBool(args, "readOnly") ?? false;
 
         var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly);
-        return TextResult(result);
+        return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
     }
 
     private McpToolResult HandleContext()
@@ -111,8 +121,7 @@ public sealed class ToolHandler
 
         var useCase = new GenerateContextUseCase(new AgentContextGenerator());
         var pack = useCase.Execute(_session.Graph!, _session.Analysis!);
-        var json = JsonSerializer.Serialize(pack, JsonOpts);
-        return TextResult(json);
+        return TextResult(WithEnvelope("lifeblood_context", pack));
     }
 
     private McpToolResult HandleLookup(JsonElement? args)
@@ -149,7 +158,7 @@ public sealed class ToolHandler
             sym.IsStatic,
             sym.Properties,
         };
-        return TextResult(JsonSerializer.Serialize(result, JsonOpts));
+        return TextResult(WithEnvelope("lifeblood_lookup", result));
     }
 
     private McpToolResult HandleDependencies(JsonElement? args)
@@ -166,7 +175,12 @@ public sealed class ToolHandler
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
         var deps = _provider.GetDependencies(_session.Graph!, resolved.CanonicalId);
-        return TextResult(JsonSerializer.Serialize(deps, JsonOpts));
+        return TextResult(WithEnvelope("lifeblood_dependencies", new
+        {
+            symbolId = resolved.CanonicalId,
+            count = deps.Length,
+            dependencies = deps,
+        }));
     }
 
     private McpToolResult HandleDependants(JsonElement? args)
@@ -183,7 +197,12 @@ public sealed class ToolHandler
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
         var deps = _provider.GetDependants(_session.Graph!, resolved.CanonicalId);
-        return TextResult(JsonSerializer.Serialize(deps, JsonOpts));
+        return TextResult(WithEnvelope("lifeblood_dependants", new
+        {
+            symbolId = resolved.CanonicalId,
+            count = deps.Length,
+            dependants = deps,
+        }));
     }
 
     private McpToolResult HandleBlastRadius(JsonElement? args)
@@ -216,7 +235,7 @@ public sealed class ToolHandler
 
         if (summarize)
         {
-            return TextResult(JsonSerializer.Serialize(new
+            return TextResult(WithEnvelope("lifeblood_blast_radius", new
             {
                 symbolId = resolved.CanonicalId,
                 maxDepth,
@@ -225,10 +244,10 @@ public sealed class ToolHandler
                 truncated,
                 preview,
                 summarize = true,
-            }, JsonOpts));
+            }));
         }
 
-        return TextResult(JsonSerializer.Serialize(new
+        return TextResult(WithEnvelope("lifeblood_blast_radius", new
         {
             symbolId = resolved.CanonicalId,
             maxDepth,
@@ -236,7 +255,7 @@ public sealed class ToolHandler
             affectedCount = affected.Length,
             truncated,
             affected = preview,
-        }, JsonOpts));
+        }));
     }
 
     private McpToolResult HandleResolveShortName(JsonElement? args)
@@ -252,9 +271,13 @@ public sealed class ToolHandler
         var mode = ParseResolutionMode(modeString);
 
         var matches = _resolver.ResolveShortName(_session.Graph!, name, mode);
-        return TextResult(JsonSerializer.Serialize(
-            new { name, mode = mode.ToString().ToLowerInvariant(), count = matches.Length, matches },
-            JsonOpts));
+        return TextResult(WithEnvelope("lifeblood_resolve_short_name", new
+        {
+            name,
+            mode = mode.ToString().ToLowerInvariant(),
+            count = matches.Length,
+            matches,
+        }));
     }
 
     /// <summary>
@@ -285,9 +308,12 @@ public sealed class ToolHandler
         var kinds = ParseKindsFilter(args);
 
         var results = _search.Search(_session.Graph!, new SearchQuery(query, kinds, limit));
-        return TextResult(JsonSerializer.Serialize(
-            new { query, count = results.Length, results },
-            JsonOpts));
+        return TextResult(WithEnvelope("lifeblood_search", new
+        {
+            query,
+            count = results.Length,
+            results,
+        }));
     }
 
     private McpToolResult HandleDeadCode(JsonElement? args)
@@ -301,25 +327,25 @@ public sealed class ToolHandler
 
         var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests);
         var findings = _deadCode.FindDeadCode(_session.Graph!, options);
-        return TextResult(JsonSerializer.Serialize(
-            new
-            {
-                // Surfaced in every response so agents cannot use the tool
-                // without seeing the caveat. INV-DEADCODE-001.
-                status = "experimental",
-                warning = "Findings are ADVISORY. Known false-positive classes: " +
-                          "(1) methods referenced via method-group conversion " +
-                          "(Lazy<T>, event handlers, delegate arguments); " +
-                          "(2) methods with call-site canonical-id drift in multi-module " +
-                          "workspaces (pre-existing extraction gap under investigation); " +
-                          "(3) private fields read via same-class access when the enclosing " +
-                          "type has no external references. Verify each finding with " +
-                          "lifeblood_find_references (which has the same gap class) and " +
-                          "direct code inspection before acting.",
-                count = findings.Length,
-                findings,
-            },
-            JsonOpts));
+        return TextResult(WithEnvelope("lifeblood_dead_code", new
+        {
+            // Surfaced in every response so agents cannot use the tool
+            // without seeing the caveat. INV-DEADCODE-001. Note: with
+            // INV-ENVELOPE-001 (v0.6.7) the same caveat is also carried
+            // in the typed envelope.limitations field.
+            status = "experimental",
+            warning = "Findings are ADVISORY. Known false-positive classes: " +
+                      "(1) methods referenced via method-group conversion " +
+                      "(Lazy<T>, event handlers, delegate arguments); " +
+                      "(2) methods with call-site canonical-id drift in multi-module " +
+                      "workspaces (pre-existing extraction gap under investigation); " +
+                      "(3) private fields read via same-class access when the enclosing " +
+                      "type has no external references. Verify each finding with " +
+                      "lifeblood_find_references (which has the same gap class) and " +
+                      "direct code inspection before acting.",
+            count = findings.Length,
+            findings,
+        }));
     }
 
     private McpToolResult HandlePartialView(JsonElement? args)
@@ -339,7 +365,7 @@ public sealed class ToolHandler
         // port stays free of session-specific state. The session owns
         // the root value and feeds it in here.
         var view = _partialView.Build(_session.Graph!, resolved.CanonicalId, _session.ProjectRoot);
-        return TextResult(JsonSerializer.Serialize(view, JsonOpts));
+        return TextResult(WithEnvelope("lifeblood_partial_view", view));
     }
 
     /// <summary>
@@ -391,20 +417,20 @@ public sealed class ToolHandler
                     $"{audit.TotalCount} invariants are declared. " +
                     "Use mode='list' to see every declared id.");
             }
-            return TextResult(JsonSerializer.Serialize(new
+            return TextResult(WithEnvelope("lifeblood_invariant_check", new
             {
                 inv.Id,
                 inv.Title,
                 inv.Category,
                 inv.SourceLine,
                 inv.Body,
-            }, JsonOpts));
+            }));
         }
 
         if (string.IsNullOrEmpty(mode) || string.Equals(mode, "audit", System.StringComparison.OrdinalIgnoreCase))
         {
             var audit = _invariants.Audit(projectRoot);
-            return TextResult(JsonSerializer.Serialize(new
+            return TextResult(WithEnvelope("lifeblood_invariant_check", new
             {
                 mode = "audit",
                 audit.SourcePath,
@@ -412,7 +438,7 @@ public sealed class ToolHandler
                 audit.CategoryCounts,
                 audit.Duplicates,
                 audit.ParseWarnings,
-            }, JsonOpts));
+            }));
         }
 
         if (string.Equals(mode, "list", System.StringComparison.OrdinalIgnoreCase))
@@ -428,12 +454,12 @@ public sealed class ToolHandler
                 inv.Category,
                 inv.SourceLine,
             }).ToArray();
-            return TextResult(JsonSerializer.Serialize(new
+            return TextResult(WithEnvelope("lifeblood_invariant_check", new
             {
                 mode = "list",
                 count = summaries.Length,
                 invariants = summaries,
-            }, JsonOpts));
+            }));
         }
 
         return ErrorResult(
@@ -486,7 +512,7 @@ public sealed class ToolHandler
             return ErrorResult($"File not found in graph: {filePath} (tried ID: {fileId})");
 
         var result = _provider.GetFileImpact(_session.Graph!, fileId);
-        return TextResult(JsonSerializer.Serialize(new
+        return TextResult(WithEnvelope("lifeblood_file_impact", new
         {
             result.FileId,
             result.FilePath,
@@ -494,7 +520,7 @@ public sealed class ToolHandler
             dependedOnByCount = result.DependedOnBy.Length,
             result.DependsOn,
             result.DependedOnBy,
-        }, JsonOpts));
+        }));
     }
 
     private static McpToolResult TextResult(string text) => new()
@@ -507,4 +533,95 @@ public sealed class ToolHandler
         Content = new[] { new McpContent { Type = "text", Text = message } },
         IsError = true,
     };
+
+    /// <summary>
+    /// Build the read-side <see cref="EnvelopeContext"/> for the currently
+    /// loaded session. Capped staleness scan: 256 files at full mtime
+    /// resolution, more than enough to detect drift on any realistically-
+    /// sized workspace without making every tool call an O(N) disk scan.
+    /// Empty context when no graph is loaded — the decorator degrades
+    /// gracefully (zero staleness, zero files-changed).
+    /// </summary>
+    private const int EnvelopeFileScanLimit = 256;
+
+    private EnvelopeContext BuildEnvelopeContext()
+    {
+        if (!_session.IsLoaded || _session.Graph == null)
+        {
+            return new EnvelopeContext { FileSystem = _session.FileSystem };
+        }
+
+        // Walk the graph for File symbols. Resolve relative paths against
+        // the project root so the file-system port can stat them; absolute
+        // paths pass through unchanged.
+        var root = _session.ProjectRoot;
+        var paths = _session.Graph.Symbols
+            .Where(s => s.Kind == SymbolKind.File && !string.IsNullOrEmpty(s.FilePath))
+            .Select(s => System.IO.Path.IsPathRooted(s.FilePath) || string.IsNullOrEmpty(root)
+                ? s.FilePath
+                : System.IO.Path.GetFullPath(System.IO.Path.Combine(root, s.FilePath)))
+            .ToArray();
+
+        return new EnvelopeContext
+        {
+            AnalyzedAtUtc = _session.AnalyzedAtUtc,
+            TrackedFilePaths = paths,
+            FileSystem = _session.FileSystem,
+            FileScanLimit = EnvelopeFileScanLimit,
+        };
+    }
+
+    /// <summary>
+    /// Wrap a payload object with the truth envelope and emit JSON.
+    /// Non-breaking: every existing top-level field is preserved verbatim;
+    /// the envelope is injected as a sibling <c>envelope</c> property. Every
+    /// read-side tool routes its successful response through this helper
+    /// so INV-ENVELOPE-001 holds. Errors go through <see cref="ErrorResult"/>
+    /// directly — envelopes are for successful results, not for
+    /// "no graph loaded" or input-validation errors.
+    /// </summary>
+    private string WithEnvelope(string toolName, object payload)
+    {
+        var envelope = _decorator.Decorate(toolName, BuildEnvelopeContext());
+        var node = System.Text.Json.JsonSerializer.SerializeToNode(payload, JsonOpts)
+            as System.Text.Json.Nodes.JsonObject;
+        if (node == null)
+        {
+            // Payload wasn't an object (string / array / scalar). Fall back to
+            // a thin wrapper so the envelope still ships.
+            return JsonSerializer.Serialize(new
+            {
+                envelope,
+                result = payload,
+            }, JsonOpts);
+        }
+        node["envelope"] = System.Text.Json.JsonSerializer.SerializeToNode(envelope, JsonOpts);
+        return node.ToJsonString(new System.Text.Json.JsonSerializerOptions(JsonOpts) { WriteIndented = true });
+    }
+
+    /// <summary>
+    /// Inject the envelope into a JSON string the session already
+    /// produced (analyze response, JSON-graph import). Idempotent: if the
+    /// payload already has an <c>envelope</c> field, the existing value
+    /// is preserved.
+    /// </summary>
+    private string MergeEnvelopeIntoJson(string toolName, string payloadJson)
+    {
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(payloadJson)
+                as System.Text.Json.Nodes.JsonObject;
+            if (node == null) return payloadJson;
+            if (node.ContainsKey("envelope")) return payloadJson;
+            var envelope = _decorator.Decorate(toolName, BuildEnvelopeContext());
+            node["envelope"] = System.Text.Json.JsonSerializer.SerializeToNode(envelope, JsonOpts);
+            return node.ToJsonString(new System.Text.Json.JsonSerializerOptions(JsonOpts) { WriteIndented = true });
+        }
+        catch
+        {
+            // Best-effort merge; never fail a tool call because envelope
+            // injection ran into an unparseable payload.
+            return payloadJson;
+        }
+    }
 }
