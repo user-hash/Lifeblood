@@ -24,6 +24,26 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
         SymbolKind.Method, SymbolKind.Type, SymbolKind.Property, SymbolKind.Field,
     };
 
+    private readonly IUnityReachabilityProvider? _runtimeReachability;
+
+    /// <summary>
+    /// Default constructor — no runtime-dispatch reachability provider.
+    /// Used for non-Unity workspaces and unit tests that want the pure
+    /// graph-walk classification.
+    /// </summary>
+    public LifebloodDeadCodeAnalyzer() { }
+
+    /// <summary>
+    /// Inject a runtime-dispatch reachability provider (Unity, ASP.NET,
+    /// MEF, etc.). When supplied, the analyzer treats symbols flagged
+    /// by the provider as live and excludes them from the result.
+    /// Phase P3 (2026-04-26).
+    /// </summary>
+    public LifebloodDeadCodeAnalyzer(IUnityReachabilityProvider? runtimeReachability)
+    {
+        _runtimeReachability = runtimeReachability;
+    }
+
     public DeadCodeResult[] FindDeadCode(SemanticGraph graph, DeadCodeOptions options)
     {
         var kinds = options.IncludeKinds != null && options.IncludeKinds.Length > 0
@@ -38,6 +58,13 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             if (options.ExcludeTests && LooksLikeTestFile(sym.FilePath)) continue;
 
             if (HasIncomingReference(graph, sym.Id)) continue;
+
+            // Runtime-dispatch reachability: framework-level entry points
+            // that no static call site reaches. The provider is optional;
+            // when unset, the analyzer behaves exactly as it did before P3.
+            if (_runtimeReachability != null
+                && _runtimeReachability.IsRuntimeReachable(graph, sym, out _))
+                continue;
 
             results.Add(new DeadCodeResult(
                 CanonicalId: sym.Id,

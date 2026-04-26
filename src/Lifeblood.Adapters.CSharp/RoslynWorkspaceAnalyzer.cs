@@ -98,6 +98,25 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 snapshot.CsprojTimestamps[csprojAbs] = _fs.GetLastWriteTimeUtc(csprojAbs);
         }
 
+        // Phase P3: record *.asmdef timestamps. Unity workspaces declare
+        // module-level options on asmdefs; their on-disk csprojs are
+        // generated from those declarations. Editing an asmdef without
+        // forcing Unity to regenerate csprojs leaves the on-disk csproj
+        // stale, so the csproj-timestamp tracker alone misses the change.
+        // INV-UNITY-002 / promoted LB-NICE-003.
+        foreach (var asmdefAbs in _fs.FindFiles(projectRoot, "*.asmdef", recursive: true))
+        {
+            try
+            {
+                snapshot.AsmdefTimestamps[asmdefAbs] = _fs.GetLastWriteTimeUtc(asmdefAbs);
+            }
+            catch
+            {
+                // Best-effort scan; permission errors on individual files
+                // shouldn't fail the entire analyze.
+            }
+        }
+
         // Phase 1: Create module symbols (lightweight — just names and metadata)
         foreach (var module in modules)
         {
@@ -230,6 +249,19 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         {
             var graph = AnalyzeWorkspace(projectRoot, config);
             // Return all files as "changed" since we did a full re-analyze
+            return (graph, _snapshot!.FileTimestamps.Count);
+        }
+
+        // Phase P3 / promoted LB-NICE-003: any *.asmdef edit, addition, or
+        // removal forces a full re-analyze on this round. Unity csprojs
+        // are generated from asmdefs; an asmdef edit not yet flushed
+        // through Unity's csproj regeneration would leave the on-disk
+        // csproj stale and the incremental walk would miss the change.
+        // The check is symmetric — added or removed asmdef files also
+        // trigger the full path. INV-UNITY-002.
+        if (HasAsmdefDrift(projectRoot))
+        {
+            var graph = AnalyzeWorkspace(projectRoot, config);
             return (graph, _snapshot!.FileTimestamps.Count);
         }
 
@@ -436,5 +468,35 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             foreach (var file in module.FilePaths)
                 index[file] = module.Name;
         return index;
+    }
+
+    /// <summary>
+    /// True when any *.asmdef under <paramref name="projectRoot"/> has a
+    /// different mtime than the snapshot, has been added since the
+    /// snapshot, or has been removed. Phase P3, promoted LB-NICE-003.
+    /// </summary>
+    private bool HasAsmdefDrift(string projectRoot)
+    {
+        if (_snapshot == null) return false;
+
+        var current = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var asmdefAbs in _fs.FindFiles(projectRoot, "*.asmdef", recursive: true))
+        {
+            current.Add(asmdefAbs);
+            DateTime currentTs;
+            try { currentTs = _fs.GetLastWriteTimeUtc(asmdefAbs); }
+            catch { continue; }
+
+            if (!_snapshot.AsmdefTimestamps.TryGetValue(asmdefAbs, out var prevTs)) return true; // new
+            if (currentTs != prevTs) return true;                                                 // edited
+        }
+
+        // Removed file? Snapshot tracked it, current scan missed it.
+        foreach (var prev in _snapshot.AsmdefTimestamps.Keys)
+        {
+            if (!current.Contains(prev)) return true;
+        }
+
+        return false;
     }
 }
