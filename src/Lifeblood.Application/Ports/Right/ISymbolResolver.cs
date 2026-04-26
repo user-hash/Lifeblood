@@ -253,6 +253,18 @@ public enum ResolveOutcome
     /// candidate in <see cref="SymbolResolutionResult.Candidates"/>.
     /// </summary>
     AmbiguousShortNameFromQualifiedInput,
+
+    /// <summary>
+    /// The input was a truncated kind-prefixed id (typically <c>method:NS.Type.Name</c>)
+    /// pointing at a type that exists, but the requested simple name is not a
+    /// member of the matching kind on that type — instead a non-method member
+    /// (property, field, event, indexer) on the same type carries that name
+    /// uniquely. The resolver corrects the kind silently and returns the real
+    /// member, with a diagnostic explaining the correction. Models the dogfood
+    /// case where agents copy-paste member names without remembering whether
+    /// the member is a method, property, or field. Closes LB-BUG-002.
+    /// </summary>
+    KindCorrectedOnContainingType,
 }
 
 /// <summary>
