@@ -101,6 +101,133 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }
 
   public CompileCheckResult CompileCheck(string code, string? moduleName = null)
+  => CompileCheck(new CompileCheckRequest { Code = code, ModuleName = moduleName });
+
+  public CompileCheckResult CompileCheck(CompileCheckRequest request)
+  {
+  // File-mode: caller passed a path. Auto-detect the owning module
+  // by matching the path against every compilation's syntax-tree
+  // paths, then SWAP the existing tree for fresh source. This is the
+  // only correct edit-then-check semantics for files that are
+  // already part of the workspace — adding the same file as a NEW
+  // tree (the legacy snippet path) duplicates every type declaration
+  // and emits CS0101 / CS0102 on first compile.
+  if (!string.IsNullOrEmpty(request.FilePath))
+  {
+  return CompileCheckFile(request.FilePath!, request.Code, request.ModuleName);
+  }
+
+  // Snippet-mode: legacy behavior. Pick the requested module (or the
+  // first compilation), wrap statements as a method body, ADD as a
+  // new tree, emit, filter to NEW diagnostics.
+  return CompileCheckSnippet(request.Code ?? string.Empty, request.ModuleName);
+  }
+
+  private CompileCheckResult CompileCheckFile(string filePath, string? overrideCode, string? moduleName)
+  {
+  // Find the owning compilation. If the caller pinned a moduleName,
+  // require the file to live in that module; otherwise scan every
+  // compilation for a matching syntax-tree path.
+  var (resolvedModule, owningCompilation, existingTree) =
+  FindOwningCompilation(filePath, moduleName);
+  if (owningCompilation == null)
+  {
+  return new CompileCheckResult
+  {
+  Success = false,
+  Diagnostics = new[] { new DiagnosticInfo
+  {
+  Id = "LB0002",
+  Message = moduleName != null
+  ? $"File '{filePath}' not found in module '{moduleName}'. Pass moduleName=null to auto-detect."
+  : $"File '{filePath}' not found in any loaded compilation. Did the analyze step include this module? " +
+  $"Compilations available: {string.Join(", ", _compilations.Keys)}.",
+  Severity = DomainDiagnosticSeverity.Error,
+  }},
+  ResolvedModule = resolvedModule ?? "",
+  };
+  }
+
+  // Source: explicit override (rare — caller knows file content
+  // differs from disk) or the existing tree's text. We deliberately
+  // do NOT read off disk here — the handler already routed through
+  // IFileSystem and may have applied a stale-refresh.
+  string newSource;
+  if (!string.IsNullOrEmpty(overrideCode))
+  {
+  newSource = overrideCode!;
+  }
+  else if (existingTree != null)
+  {
+  newSource = existingTree.GetText().ToString();
+  }
+  else
+  {
+  return new CompileCheckResult
+  {
+  Success = false,
+  Diagnostics = new[] { new DiagnosticInfo
+  {
+  Id = "LB0003",
+  Message = $"File '{filePath}' resolved to module '{resolvedModule}' but had no existing tree and no inline 'code' override; nothing to compile-check.",
+  Severity = DomainDiagnosticSeverity.Error,
+  }},
+  ResolvedModule = resolvedModule ?? "",
+  };
+  }
+
+  // Build the replacement tree at the SAME path so diagnostics keep
+  // pointing at the user's file, not a synthetic snippet path.
+  var preservedPath = existingTree?.FilePath ?? filePath;
+  var newTree = CSharpSyntaxTree.ParseText(newSource, path: preservedPath);
+
+  // Pre-existing diagnostics computed against the unswapped
+  // compilation so we don't surface errors that were already present
+  // in OTHER files in this module — only changes the user introduced
+  // in THIS file (or net-new errors caused by the swap) are reported.
+  var preExistingIds = new HashSet<string>(
+  owningCompilation.GetDiagnostics()
+  .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+  .Select(d => DiagnosticKey(d)));
+
+  var testCompilation = existingTree != null
+  ? owningCompilation.ReplaceSyntaxTree(existingTree, newTree)
+  : owningCompilation.AddSyntaxTrees(newTree);
+
+  using var ms = new MemoryStream();
+  var emitResult = testCompilation.Emit(ms);
+
+  var diagnostics = emitResult.Diagnostics
+  .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+  .Where(d => !preExistingIds.Contains(DiagnosticKey(d)))
+  .Select(d =>
+  {
+  var lineSpan = d.Location.GetMappedLineSpan();
+  return new DiagnosticInfo
+  {
+  Id = d.Id,
+  Message = d.GetMessage(),
+  Severity = MapSeverity(d.Severity),
+  FilePath = lineSpan.Path ?? "",
+  Line = lineSpan.StartLinePosition.Line + 1,
+  Column = lineSpan.StartLinePosition.Character + 1,
+  Module = resolvedModule,
+  };
+  })
+  .ToArray();
+
+  var hasErrors = diagnostics.Any(d => d.Severity == DomainDiagnosticSeverity.Error);
+
+  return new CompileCheckResult
+  {
+  Success = !hasErrors,
+  Diagnostics = diagnostics,
+  ResolvedModule = resolvedModule ?? "",
+  ExistingTreeReplaced = existingTree != null,
+  };
+  }
+
+  private CompileCheckResult CompileCheckSnippet(string code, string? moduleName)
   {
   var targetCompilation = ResolveCompilation(moduleName);
   if (targetCompilation == null)
@@ -117,11 +244,10 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }},
   };
 
-  // Collect pre-existing diagnostic IDs so we only report NEW diagnostics from the snippet
   var preExistingIds = new HashSet<string>(
   targetCompilation.GetDiagnostics()
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
-  .Select(d => $"{d.Id}:{d.Location.GetMappedLineSpan().Path}:{d.Location.GetMappedLineSpan().StartLinePosition.Line}"));
+  .Select(d => DiagnosticKey(d)));
 
   // Snippet preparation (auto-wrap statements as a method body so library
   // modules accept them — see Internal.SnippetWrapper for the contract).
@@ -133,14 +259,9 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   using var ms = new MemoryStream();
   var emitResult = testCompilation.Emit(ms);
 
-  // Filter to only diagnostics introduced by the snippet (not pre-existing in the compilation)
   var snippetDiagnostics = emitResult.Diagnostics
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
-  .Where(d =>
-  {
-  var key = $"{d.Id}:{d.Location.GetMappedLineSpan().Path}:{d.Location.GetMappedLineSpan().StartLinePosition.Line}";
-  return !preExistingIds.Contains(key);
-  })
+  .Where(d => !preExistingIds.Contains(DiagnosticKey(d)))
   .Select(d =>
   {
   var lineSpan = d.Location.GetMappedLineSpan();
@@ -157,7 +278,6 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   })
   .ToArray();
 
-  // Success = no NEW errors from the snippet (pre-existing errors don't count)
   var hasNewErrors = snippetDiagnostics.Any(d => d.Severity == DomainDiagnosticSeverity.Error);
 
   return new CompileCheckResult
@@ -165,6 +285,44 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   Success = !hasNewErrors,
   Diagnostics = snippetDiagnostics,
   };
+  }
+
+  private static string DiagnosticKey(Diagnostic d)
+  {
+  var span = d.Location.GetMappedLineSpan();
+  return $"{d.Id}:{span.Path}:{span.StartLinePosition.Line}";
+  }
+
+  /// <summary>
+  /// Walk every loaded compilation for the syntax tree whose path
+  /// matches <paramref name="filePath"/>. Match is case-insensitive
+  /// forward-slash suffix: a tree at <c>D:/Projekti/DAWG/Assets/.../Foo.cs</c>
+  /// resolves a request for <c>Assets/.../Foo.cs</c>, an absolute
+  /// path, or anything in between. When <paramref name="moduleName"/>
+  /// is set the search is restricted to that one compilation.
+  /// </summary>
+  private (string? Module, CSharpCompilation? Compilation, SyntaxTree? Tree) FindOwningCompilation(string filePath, string? moduleName)
+  {
+  var normalized = filePath.Replace('\\', '/').TrimStart('/').ToLowerInvariant();
+
+  IEnumerable<KeyValuePair<string, CSharpCompilation>> candidates =
+  moduleName != null && _compilations.TryGetValue(moduleName, out var pinned)
+  ? new[] { new KeyValuePair<string, CSharpCompilation>(moduleName, pinned) }
+  : _compilations;
+
+  foreach (var kv in candidates)
+  {
+  foreach (var tree in kv.Value.SyntaxTrees)
+  {
+  var treePath = (tree.FilePath ?? string.Empty).Replace('\\', '/').ToLowerInvariant();
+  if (treePath.Length == 0) continue;
+  if (treePath == normalized) return (kv.Key, kv.Value, tree);
+  if (treePath.EndsWith("/" + normalized, StringComparison.Ordinal)) return (kv.Key, kv.Value, tree);
+  if (normalized.EndsWith("/" + treePath, StringComparison.Ordinal)) return (kv.Key, kv.Value, tree);
+  }
+  }
+
+  return (moduleName, null, null);
   }
 
   public DomainReferenceLocation[] FindReferences(string symbolId)

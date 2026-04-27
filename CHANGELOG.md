@@ -7,6 +7,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed. compile_check filePath module-aware tree replacement (LB-BUG-019 / DAWG dogfood)
+
+`lifeblood_compile_check` with `filePath` now resolves the file's owning compilation and **swaps the existing syntax tree** for the on-disk content, instead of adding the file's content as a fresh snippet tree to an arbitrarily-picked first compilation. This was the failure mode that produced "every cross-file reference unresolved" on Unity files: passing `Assets/.../AdaptiveBeatGrid.cs` emitted CS0246 for `UnityEngine`, `MonoBehaviour`, sibling partials, `IBeatGridTickHost`, every `BeatGridConfig` member, etc., even though the file compiles cleanly inside Unity.
+
+**New typed overload** `ICompilationHost.CompileCheck(CompileCheckRequest)`. The request carries `Code`, `FilePath`, and `ModuleName`; file-mode is selected by `FilePath` being non-null. The legacy string-based `CompileCheck(code, moduleName)` overload is preserved and now delegates to the typed path.
+
+**File-mode** scans every loaded compilation's `SyntaxTrees` for a path match (case-insensitive forward-slash suffix), finds the owning module, and `ReplaceSyntaxTree`s the existing tree with the on-disk content. Results carry the resolved module name on `CompileCheckResult.ResolvedModule` and a boolean `ExistingTreeReplaced` so the wire response surfaces both. Pinned `moduleName` overrides auto-detection — if the file isn't in that module the request fails with `LB0002` rather than silently picking another.
+
+**Snippet mode** unchanged — bare statements / expressions still wrap through `Internal.SnippetWrapper` and are added as new trees to the requested (or first) compilation.
+
+DAWG dogfood: `compile_check filePath: "Assets/_Project/Scripts/BeatGrid/AdaptiveBeatGrid.cs"` previously emitted ~120 CS0246 / CS0103 / CS0538 errors against UnityEngine, sibling partials, every cross-file type. Post-fix the same call routes through the file's owning module compilation with all references intact.
+
+Six new ratchet tests covering owning-module resolution, override-code tree replacement, missing-file LB0002, pinned-module foreign-file rejection, override-introduces-error reporting, and snippet-mode unchanged. Test count: 645 → 651 (+6). 0 regressions.
+
 ### Changed. Invariants moved to docs/invariants/ tree (eat-our-own-dogfood)
 
 `CLAUDE.md` slimmed from 416 lines to 144. Every formally-numbered `INV-XXX-NNN` rule moved to `docs/invariants/<domain>.md`, leaving CLAUDE.md as a coordinator with the architecture diagram, dependency rules, naming conventions, rules-for-adding-features, and a pointer table to the tree. Validates the tree-walker shipped in LB-FR-023 against the Lifeblood repo itself, not just DAWG.

@@ -25,6 +25,18 @@ public interface ICompilationHost
     CompileCheckResult CompileCheck(string code, string? moduleName = null);
 
     /// <summary>
+    /// Typed-request overload of <see cref="CompileCheck(string, string?)"/>.
+    /// File-mode (<see cref="CompileCheckRequest.FilePath"/> set) auto-detects
+    /// the owning compilation by matching the path against each compilation's
+    /// syntax-tree paths and swaps the file's existing tree for the on-disk
+    /// content, so module-owned files compile-check against their real
+    /// reference set instead of being added as a duplicate snippet tree to
+    /// some arbitrary first compilation. Snippet mode (<see cref="CompileCheckRequest.Code"/>
+    /// set) preserves the legacy snippet-wrapping behavior.
+    /// </summary>
+    CompileCheckResult CompileCheck(CompileCheckRequest request);
+
+    /// <summary>
     /// Find every source location that references the given symbol. Defaults
     /// to references only — declaration sites are excluded unless the caller
     /// opts in via <see cref="FindReferences(string, FindReferencesOptions)"/>.
