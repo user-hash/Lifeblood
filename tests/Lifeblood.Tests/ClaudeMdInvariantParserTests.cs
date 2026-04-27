@@ -363,4 +363,82 @@ public class ClaudeMdInvariantParserTests
         Assert.Equal("Shape B title sentence", result.Invariants[1].Title);
         Assert.Equal("Shape C bare bold", result.Invariants[2].Title);
     }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Shape D — DAWG bullet with parenthesized version tag between the
+    // bold close and the colon: `- **INV-DSP-012** (v1.1.566): body...`
+    // ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Parse_ShapeD_ParenthesizedVersionTag_TitleExtractedFromBody()
+    {
+        const string md = "- **INV-DSP-012** (v1.1.566): POST_SAT_LP coefficient must be identical " +
+                          "in mono and stereo paths. Ratchet-tested.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        var inv = Assert.Single(result.Invariants);
+        Assert.Equal("INV-DSP-012", inv.Id);
+        Assert.Equal("DSP", inv.Category);
+        Assert.Equal(
+            "POST_SAT_LP coefficient must be identical in mono and stereo paths",
+            inv.Title);
+    }
+
+    [Fact]
+    public void Parse_ShapeD_VersionTagDoesNotLeakIntoTitle()
+    {
+        const string md = "- **INV-DSP-016** (v1.1.695): Production code may not call X directly.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        var inv = Assert.Single(result.Invariants);
+        Assert.DoesNotContain("v1.1.695", inv.Title);
+        Assert.DoesNotContain("(", inv.Title);
+        Assert.Equal("Production code may not call X directly", inv.Title);
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Shape E — colon inside the bold: `- **INV-ANIM-1:** body...`
+    // ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Parse_ShapeE_ColonInsideBold_TitleExtractedFromBody()
+    {
+        const string md = "- **INV-ANIM-1:** BPM synchronization — Derive timing from _bpm, " +
+                          "use modulo phase.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        var inv = Assert.Single(result.Invariants);
+        Assert.Equal("INV-ANIM-1", inv.Id);
+        Assert.Equal("ANIM", inv.Category);
+        Assert.Equal("BPM synchronization — Derive timing from _bpm, use modulo phase", inv.Title);
+    }
+
+    [Fact]
+    public void Parse_ShapeE_SingleDigitNumericTail_Recognised()
+    {
+        const string md = "- **INV-PREVIEW-001:** Atomic state transitions - Use TryCaptureTransitionState().";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        var inv = Assert.Single(result.Invariants);
+        Assert.Equal("INV-PREVIEW-001", inv.Id);
+        Assert.Contains("Atomic state transitions", inv.Title);
+    }
+
+    [Fact]
+    public void Parse_AllFiveShapes_NoWarnings()
+    {
+        const string md =
+            "- **INV-DOMAIN-001**: shape A.\n" +
+            "\n" +
+            "- **INV-CANONICAL-001. Shape B sentence.** Shape B body.\n" +
+            "\n" +
+            "**INV-WORK-001: Shape C.** Shape C body.\n" +
+            "\n" +
+            "- **INV-DSP-012** (v1.1.566): Shape D body sentence.\n" +
+            "\n" +
+            "- **INV-ANIM-1:** Shape E body sentence.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(5, result.Invariants.Length);
+    }
 }

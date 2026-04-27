@@ -43,6 +43,22 @@ namespace Lifeblood.Connectors.Mcp.Internal;
 /// </code>
 ///
 /// <para>
+/// <b>Shape D — shape-A + parenthesized version tag.</b> A bullet with
+/// a version annotation between the bold close and the colon:
+/// </para>
+/// <code>
+/// - **INV-DSP-012** (v1.1.566): POST_SAT_LP coefficient must be …
+/// </code>
+///
+/// <para>
+/// <b>Shape E — colon inside the bold (INDEX-style summary).</b> A
+/// bullet whose colon sits before the closing <c>**</c>:
+/// </para>
+/// <code>
+/// - **INV-ANIM-1:** BPM synchronization — Derive timing from _bpm …
+/// </code>
+///
+/// <para>
 /// The parser uses a line-by-line walker. A line whose trimmed prefix
 /// matches <c>- **INV-</c> (shapes A/B) OR opens with a bare
 /// <c>**INV-XXX-NNN:</c> (shape C) opens a new invariant block. The
@@ -131,6 +147,28 @@ internal static class ClaudeMdInvariantParser
     /// </summary>
     private static readonly Regex ShapeAColonBody = new(
         @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\*\*\s*:\s*(?<rest>.+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Shape D: shape-A with an optional parenthesized version/date tag
+    /// between the bold close and the colon. DAWG authoring style:
+    /// <c>- **INV-DSP-012** (v1.1.566): body...</c>. The parens contents
+    /// are not captured into the title — they're a version annotation,
+    /// not part of the rule.
+    /// </summary>
+    private static readonly Regex ShapeDColonBody = new(
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\*\*\s*\([^)]*\)\s*:\s*(?<rest>.+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Shape E: colon-inside-the-bold variant. INDEX-style listings use
+    /// this for terse summaries: <c>- **INV-ANIM-1:** BPM synchronization
+    /// - Derive timing from _bpm</c>. The colon is the LAST character
+    /// before the closing <c>**</c>; whitespace between id and colon is
+    /// allowed but not required.
+    /// </summary>
+    private static readonly Regex ShapeEColonBody = new(
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\s*:\*\*\s*(?<rest>.+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -287,27 +325,47 @@ internal static class ClaudeMdInvariantParser
             }
             else
             {
-                // Shape A: look for the colon-separated body and extract
-                // the first sentence from it.
-                var shapeAMatch = ShapeAColonBody.Match(blockText);
-                if (shapeAMatch.Success && shapeAMatch.Groups["id"].Value == id)
+                // Try shape D first (parenthesized version tag between
+                // bold and colon) — strictly more specific than shape A,
+                // so it must be checked first to avoid the parens text
+                // leaking into the body capture.
+                var shapeDMatch = ShapeDColonBody.Match(blockText);
+                if (shapeDMatch.Success && shapeDMatch.Groups["id"].Value == id)
                 {
-                    var rest = CollapseWhitespace(shapeAMatch.Groups["rest"].Value);
+                    var rest = CollapseWhitespace(shapeDMatch.Groups["rest"].Value);
                     title = ExtractFirstSentence(rest);
                 }
                 else
                 {
-                    // Last-resort fallback: title is the trimmed first line
-                    // minus the bullet prefix. This keeps the tool usable
-                    // even for invariants authored in a slightly different
-                    // shape.
-                    var firstPhysicalLine = blockText.Split('\n', 2)[0];
-                    title = firstPhysicalLine
-                        .TrimStart('-', ' ', '*')
-                        .TrimEnd('*', ' ');
-                    warnings.Add(
-                        $"line {openingLineNumber}: id '{id}' did not match shape A or B; " +
-                        "fell back to bullet-prefix title extraction");
+                    var shapeAMatch = ShapeAColonBody.Match(blockText);
+                    if (shapeAMatch.Success && shapeAMatch.Groups["id"].Value == id)
+                    {
+                        var rest = CollapseWhitespace(shapeAMatch.Groups["rest"].Value);
+                        title = ExtractFirstSentence(rest);
+                    }
+                    else
+                    {
+                        var shapeEMatch = ShapeEColonBody.Match(blockText);
+                        if (shapeEMatch.Success && shapeEMatch.Groups["id"].Value == id)
+                        {
+                            var rest = CollapseWhitespace(shapeEMatch.Groups["rest"].Value);
+                            title = ExtractFirstSentence(rest);
+                        }
+                        else
+                        {
+                            // Last-resort fallback: title is the trimmed first line
+                            // minus the bullet prefix. This keeps the tool usable
+                            // even for invariants authored in a slightly different
+                            // shape.
+                            var firstPhysicalLine = blockText.Split('\n', 2)[0];
+                            title = firstPhysicalLine
+                                .TrimStart('-', ' ', '*')
+                                .TrimEnd('*', ' ');
+                            warnings.Add(
+                                $"line {openingLineNumber}: id '{id}' did not match shape A, B, D, or E; " +
+                                "fell back to bullet-prefix title extraction");
+                        }
+                    }
                 }
             }
         }

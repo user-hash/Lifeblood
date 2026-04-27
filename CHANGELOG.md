@@ -7,6 +7,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. invariant_check shape D + shape E (LB-BUG-018 / DAWG dogfood)
+
+Two more invariant authoring shapes recognised, closing the 28 parse-warning tail surfaced in DAWG dogfood after the shape-C work landed.
+
+**Shape D — parenthesized version tag.** A bullet with a version annotation between the bold close and the colon:
+```
+- **INV-DSP-012** (v1.1.566): POST_SAT_LP coefficient must be identical in mono and stereo paths.
+```
+Without shape D, the existing `ShapeAColonBody` regex didn't match (the parens broke the `**ID**:` adjacency) and title extraction fell to the bullet-prefix fallback. The version tag is intentionally NOT captured into the title — it's an annotation, not part of the rule.
+
+**Shape E — colon inside the bold.** INDEX-style listings use this for terse summaries:
+```
+- **INV-ANIM-1:** BPM synchronization — Derive timing from _bpm
+```
+The colon sits before the closing `**` rather than after; whitespace between id and colon is allowed but not required. Single-digit numeric tails (`INV-ANIM-1` not just `INV-ANIM-001`) are accepted.
+
+Try-order in `BuildInvariant`: shape B → shape D (more specific than A; checked first to avoid parens leaking into body capture) → shape A → shape E → fallback. Five new ratchet tests covering shape D alone, version-tag-no-leak, shape E alone, single-digit tail, and an all-five-shapes mixed document with zero warnings.
+
+DAWG dogfood: 28 parse warnings → 0 (every previously-warned invariant now has a clean title). DAWG audit: 83 invariants across CLAUDE.md + AGENTS.md + `docs/invariants/**.md`.
+
+Test count: 640 → 645 (+5). 0 regressions.
+
 ### Added. invariant_check shape-C + dynamic source discovery (LB-BUG-017 / LB-FR-023 / DAWG dogfood)
 
 `lifeblood_invariant_check` now recognises DAWG's hot-rules authoring shape and discovers invariant sources dynamically across well-known repo conventions instead of reading a single hardcoded file.
