@@ -7,6 +7,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed. dead_code Unity Editor reflection roster + type-via-child propagation (LB-FP-003 / DAWG dogfood)
+
+`UnityReachabilityAdapter` was missing several Unity Editor reflection attributes — `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, plus the full NUnit fixture lifecycle (`SetUp` / `TearDown` / `OneTimeSetUp` / `OneTimeTearDown`, `TestCaseSource`, `TestFixtureSource`, `Theory`, `UnitySetUp`, `UnityTearDown`). Methods carrying any of these attributes are reflection-discovered by Unity / Burst / NUnit at runtime; without them in the entrypoint roster the dead-code analyzer surfaced their host types as false positives.
+
+Also adds **type-via-child propagation**: a type is reachable if ANY of its directly-contained members carries an entrypoint attribute. The standard Unity pattern is `[SettingsProvider]` on a static method inside the host type — pre-fix only the method became reachable while the type itself surfaced as a dead candidate. Post-fix the host type inherits liveness from any tagged child. Negative case (plain type with non-entrypoint children) still flags correctly, so the propagation doesn't mask real dead code.
+
+DAWG dogfood pre-fix: `XRaySettingsProvider` flagged dead. Post-fix: cleared via the new `[SettingsProvider]` + type-via-child rules.
+
+Six new ratchet tests: `[SettingsProvider]`, `[Shortcut]`, `[BurstCompile]`, NUnit `[SetUp]`, type-with-entrypoint-child-is-reachable, type-with-no-entrypoint-children-still-not-reachable. Test count: 655 → 661 (+6). 0 regressions on the existing 15-test reachability suite.
+
 ### Added. context smart-dynamic shaping (LB-FR-022 / DAWG dogfood)
 
 `lifeblood_context` previously returned the full pack on every call; on a 87-module workspace (DAWG) the response weighed ~375KB and overflowed downstream tool-result limits. Same DAWG-dogfood class as `cycles` (LB-FR-021): the analysis succeeded but the wire payload was too big to consume. Smart-dynamic shaping fixes it without forcing every caller to pass options.

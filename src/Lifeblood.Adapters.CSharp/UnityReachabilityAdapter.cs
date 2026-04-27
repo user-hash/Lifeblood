@@ -39,6 +39,7 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
     /// </summary>
     private static readonly HashSet<string> EntrypointAttributes = new(System.StringComparer.Ordinal)
     {
+        // ── Unity Editor — reflection-discovered entry points ──
         "ContextMenu",
         "ContextMenuItem",
         "CustomEditor",
@@ -48,6 +49,7 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
         "InitializeOnLoad",
         "InitializeOnLoadMethod",
         "MenuItem",
+        "OnOpenAsset",         // Editor: invoked when a matching asset is double-clicked
         "PostProcessBuild",
         "PostProcessScene",
         "PostProcessSceneAttribute",
@@ -55,10 +57,27 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
         "PropertyDrawer",
         "RuntimeInitializeOnLoadMethod",
         "ScriptedImporter",
+        "SettingsProvider",    // Editor: returns a SettingsProvider for Project Settings / Preferences
+        "SettingsProviderGroup",
+        "Shortcut",            // Editor: keyboard shortcut binding
+        "ShortcutAttribute",
+        // ── Native interop ──
+        "BurstCompile",        // Burst-compiled at build time; method body is the compile target
+        "MonoPInvokeCallback", // Reverse P/Invoke target — invoked from native
+        // ── NUnit / Unity Test Framework ──
         "Test",                // NUnit: any test runner-invoked method
         "TestCase",            // NUnit
+        "TestCaseSource",      // NUnit
         "TestFixture",         // NUnit
+        "TestFixtureSource",   // NUnit
+        "Theory",              // NUnit
+        "SetUp",               // NUnit fixture lifecycle
+        "TearDown",
+        "OneTimeSetUp",
+        "OneTimeTearDown",
         "UnityTest",           // Unity Test Framework
+        "UnitySetUp",
+        "UnityTearDown",
     };
 
     /// <summary>
@@ -138,6 +157,28 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
         {
             reason = $"MonoBehaviour magic method '{sym.Name}' on a Unity-message-receiver type";
             return true;
+        }
+
+        // 3. Type liveness via contained entrypoint child. Unity Editor
+        //    reflection (e.g. `[SettingsProvider]`, `[MenuItem]`,
+        //    `[InitializeOnLoadMethod]`) targets a STATIC METHOD; the
+        //    containing type has no incoming edges and would otherwise
+        //    surface as a false-positive dead type. A type is reachable
+        //    if ANY of its contained methods (or, conservatively, any
+        //    contained member) declares an entrypoint attribute. Walks
+        //    only direct Contains-children — sufficient for the standard
+        //    Unity pattern (entrypoint on a static method one level deep
+        //    inside the host type) and bounded.
+        if (sym.Kind == SymbolKind.Type)
+        {
+            foreach (var child in graph.ChildrenOf(sym.Id))
+            {
+                if (HasEntrypointAttribute(child, out var childAttr))
+                {
+                    reason = $"Type contains member tagged [{childAttr}] (Unity reflection entrypoint)";
+                    return true;
+                }
+            }
         }
 
         return false;

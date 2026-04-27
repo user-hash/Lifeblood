@@ -417,4 +417,160 @@ public class Config { }");
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         return (compilation.GetSemanticModel(tree), tree.GetRoot());
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // LB-FP-003 (DAWG dogfood): Unity Editor reflection attributes that
+    // were missing from the entrypoint roster, plus type-via-child
+    // propagation. Fix surfaced after the v0.6.7 P3 work landed and DAWG
+    // hit a fresh false-positive class on `XRaySettingsProvider` (host
+    // type for a `[SettingsProvider]` static method).
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Adapter_SettingsProvider_FlaggedAsReachable()
+    {
+        var sym = new Symbol
+        {
+            Id = "method:App.Settings.Build()",
+            Name = "Build",
+            Kind = DomainSymbolKind.Method,
+            ParentId = "type:App.Settings",
+            Properties = new System.Collections.Generic.Dictionary<string, string> { ["attributes"] = "SettingsProvider" },
+        };
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:App.Settings", Name = "Settings", QualifiedName = "App.Settings", Kind = DomainSymbolKind.Type })
+            .AddSymbol(sym)
+            .Build();
+
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, sym, out var reason);
+        Assert.True(hit);
+        Assert.Contains("SettingsProvider", reason);
+    }
+
+    [Fact]
+    public void Adapter_Shortcut_FlaggedAsReachable()
+    {
+        var sym = new Symbol
+        {
+            Id = "method:App.Hotkey.Toggle()",
+            Name = "Toggle",
+            Kind = DomainSymbolKind.Method,
+            ParentId = "type:App.Hotkey",
+            Properties = new System.Collections.Generic.Dictionary<string, string> { ["attributes"] = "Shortcut" },
+        };
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:App.Hotkey", Name = "Hotkey", QualifiedName = "App.Hotkey", Kind = DomainSymbolKind.Type })
+            .AddSymbol(sym)
+            .Build();
+
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, sym, out var reason);
+        Assert.True(hit);
+        Assert.Contains("Shortcut", reason);
+    }
+
+    [Fact]
+    public void Adapter_BurstCompile_FlaggedAsReachable()
+    {
+        var sym = new Symbol
+        {
+            Id = "method:App.Job.Execute()",
+            Name = "Execute",
+            Kind = DomainSymbolKind.Method,
+            ParentId = "type:App.Job",
+            Properties = new System.Collections.Generic.Dictionary<string, string> { ["attributes"] = "BurstCompile" },
+        };
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:App.Job", Name = "Job", QualifiedName = "App.Job", Kind = DomainSymbolKind.Type })
+            .AddSymbol(sym)
+            .Build();
+
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, sym, out var reason);
+        Assert.True(hit);
+        Assert.Contains("BurstCompile", reason);
+    }
+
+    [Fact]
+    public void Adapter_NUnitFixtureLifecycle_SetUp_FlaggedAsReachable()
+    {
+        var sym = new Symbol
+        {
+            Id = "method:App.Tests.Fixture.Init()",
+            Name = "Init",
+            Kind = DomainSymbolKind.Method,
+            ParentId = "type:App.Tests.Fixture",
+            Properties = new System.Collections.Generic.Dictionary<string, string> { ["attributes"] = "SetUp" },
+        };
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:App.Tests.Fixture", Name = "Fixture", QualifiedName = "App.Tests.Fixture", Kind = DomainSymbolKind.Type })
+            .AddSymbol(sym)
+            .Build();
+
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, sym, out var reason);
+        Assert.True(hit);
+        Assert.Contains("SetUp", reason);
+    }
+
+    [Fact]
+    public void Adapter_TypeContainingEntrypointMember_IsReachable()
+    {
+        // The host type has no incoming edges; only its static method
+        // carries [SettingsProvider]. Pre-fix the adapter only checked
+        // the symbol itself, so the type surfaced as a false-positive
+        // dead candidate. Post-fix the type is reachable via its child.
+        var hostType = new Symbol
+        {
+            Id = "type:App.XRaySettingsProvider",
+            Name = "XRaySettingsProvider",
+            QualifiedName = "App.XRaySettingsProvider",
+            Kind = DomainSymbolKind.Type,
+        };
+        var providerMethod = new Symbol
+        {
+            Id = "method:App.XRaySettingsProvider.Build()",
+            Name = "Build",
+            Kind = DomainSymbolKind.Method,
+            ParentId = hostType.Id,
+            Properties = new System.Collections.Generic.Dictionary<string, string> { ["attributes"] = "SettingsProvider" },
+        };
+        var graph = new GraphBuilder()
+            .AddSymbol(hostType)
+            .AddSymbol(providerMethod)
+            .AddEdge(new Edge { SourceId = hostType.Id, TargetId = providerMethod.Id, Kind = EdgeKind.Contains, Evidence = Ev })
+            .Build();
+
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, hostType, out var reason);
+        Assert.True(hit, $"Type with [SettingsProvider] child should be reachable; reason: {reason}");
+        Assert.Contains("SettingsProvider", reason);
+        Assert.Contains("entrypoint", reason);
+    }
+
+    [Fact]
+    public void Adapter_TypeWithNoEntrypointChildren_StillNotReachable()
+    {
+        // Negative case: a plain type with one non-entrypoint method
+        // must NOT surface as reachable just because we now walk
+        // children. Otherwise the propagation would mask real dead code.
+        var hostType = new Symbol
+        {
+            Id = "type:App.PlainType",
+            Name = "PlainType",
+            QualifiedName = "App.PlainType",
+            Kind = DomainSymbolKind.Type,
+        };
+        var plainMethod = new Symbol
+        {
+            Id = "method:App.PlainType.Run()",
+            Name = "Run",
+            Kind = DomainSymbolKind.Method,
+            ParentId = hostType.Id,
+        };
+        var graph = new GraphBuilder()
+            .AddSymbol(hostType)
+            .AddSymbol(plainMethod)
+            .AddEdge(new Edge { SourceId = hostType.Id, TargetId = plainMethod.Id, Kind = EdgeKind.Contains, Evidence = Ev })
+            .Build();
+
+        var hit = new UnityReachabilityAdapter().IsRuntimeReachable(graph, hostType, out var reason);
+        Assert.False(hit);
+    }
 }
