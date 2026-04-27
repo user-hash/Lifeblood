@@ -7,6 +7,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-04-27
+
+### Headline changes
+
+- **`dead_code` pagination**
+
+- **Stale-claim sweep**: `docs/architecture.html` refreshed to current counts (22→25 tools, 22→26 ports, 539→664 tests, 58→65 invariants, 12R+10W→15R+10W). `lifeblood_dead_code` description refreshed to drop "under investigation for v0.6.4" wording and reflect the actual closed-FP-class history (v0.6.4 → v0.6.5 → v0.6.7 → v0.7.0/LB-FP-003). `docs/IMPROVEMENT_INBOX.md` active-roadmap entries (`LB-INBOX-001`, `LB-INBOX-003`) refreshed; the dated "review snapshot from v0.6.3" block stays frozen as historical record.
+
 ### Documentation. Stale-claim sweep (post-v0.7.0 review fold-in)
 
 External reviewer flagged stale references to "22 tools / 22 ports / 539 tests / 58 invariants / 12R+10W" + "under investigation for v0.6.4" wording. Most of the surface was already current at v0.7.0 (README, STATUS, TOOLS, ARCHITECTURE, UNITY, DOGFOOD_FINDINGS); two real misses cleaned here:
@@ -976,7 +984,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/user-hash/Lifeblood/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...v0.7.0
 [0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.7
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
