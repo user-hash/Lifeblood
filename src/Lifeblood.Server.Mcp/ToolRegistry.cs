@@ -393,8 +393,16 @@ public static class ToolRegistry
   Name = "lifeblood_cycles",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = DerivedProven,
-  Description = "List all dependency cycles in the loaded graph. Each entry is a strongly-connected component of size >= 2 — symbol IDs in cycle order. Computed from the same Tarjan SCC pass that already runs in AnalysisPipeline; this tool just exposes the result without re-running analysis.",
-  InputSchema = new { type = "object", properties = new { } },
+  Description = "List all dependency cycles in the loaded graph. Each entry is a strongly-connected component of size >= 2 — symbol IDs in cycle order. Computed from the same Tarjan SCC pass that already runs in AnalysisPipeline; this tool just exposes the result without re-running analysis. Every response carries `count`, `totalSymbolCount`, `largestCycleSize`, and a `truncated` flag. Use `summarize:true` to get a compact result with `preview[]` instead of the full `cycles[]` — useful when a large workspace (DAWG: 117 SCCs ≈ 70KB) would otherwise overflow downstream tool-result limits. `maxResults` caps the embedded array regardless of mode.",
+  InputSchema = new
+  {
+  type = "object",
+  properties = new
+  {
+  summarize = new { type = "boolean", description = "When true, omit the full `cycles[]` array and return only counts + a small `preview[]` (size capped by maxResults). Defaults to false." },
+  maxResults = new { type = "integer", description = "Maximum number of cycles embedded in the response. When the SCC set is larger, the array is clipped and `truncated:true` is set. Default: 500 in normal mode, 25 in summarize mode." },
+  },
+  },
   },
   new()
   {

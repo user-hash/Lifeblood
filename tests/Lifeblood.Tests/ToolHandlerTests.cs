@@ -492,4 +492,60 @@ public class ToolHandlerTests : IDisposable
         var tools = ToolRegistry.GetTools(hasCompilationState: true);
         Assert.All(tools, t => Assert.DoesNotContain("[Unavailable", t.Description));
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // DAWG LB-FR-021: cycles summarize/maxResults — same shape as
+    // blast_radius. DAWG's 117 SCCs serialize to ~70KB which exceeds
+    // downstream tool-result limits; summarize:true closes that gap.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Handle_Cycles_AlwaysReportsCountAndTruncationShape()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_cycles", MakeArgs(new { }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"count\":", text);
+        Assert.Contains("\"totalSymbolCount\":", text);
+        Assert.Contains("\"largestCycleSize\":", text);
+        Assert.Contains("\"truncated\":", text);
+    }
+
+    [Fact]
+    public void Handle_Cycles_SummarizeMode_OmitsCyclesField_ReturnsPreview()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_cycles", MakeArgs(new { summarize = true }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"summarize\": true", text);
+        Assert.Contains("\"preview\":", text);
+        Assert.DoesNotContain("\"cycles\":", text);
+    }
+
+    [Fact]
+    public void Handle_Cycles_MaxResultsZero_ForcesTruncatedWhenAnyCycleExists()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_cycles", MakeArgs(new { maxResults = 0 }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        // `cycles` is the embedded (clipped) array. With maxResults=0 it must be empty.
+        Assert.Contains("\"cycles\": []", text);
+        // truncated:true iff the un-clipped count was > 0; truncated:false iff zero cycles.
+        if (text.Contains("\"count\": 0"))
+            Assert.Contains("\"truncated\": false", text);
+        else
+            Assert.Contains("\"truncated\": true", text);
+    }
 }

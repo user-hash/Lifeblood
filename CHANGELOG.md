@@ -7,6 +7,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. cycles summarize / pagination (LB-FR-021 / DAWG dogfood)
+
+`lifeblood_cycles` adopts the same `summarize` + `maxResults` shape as `lifeblood_blast_radius`. DAWG's 117 SCCs serialize to ~70KB, which exceeds downstream tool-result limits and surfaces as a fake "tool failed" to callers even though the analysis succeeded. Same fix shape as P1 LB-FR-010.
+
+- Every response now carries `count`, `totalSymbolCount`, `largestCycleSize`, and `truncated` alongside the existing array.
+- `summarize:true` returns `preview[]` (size capped by `maxResults`) instead of the full `cycles[]` array, plus a `summarize:true` flag.
+- `maxResults` caps the embedded array regardless of mode. Defaults: 500 in normal mode, 25 in summarize mode.
+- Tool description updated to call out the wire shape and the DAWG-scale rationale.
+- Three new ratchet tests (`Handle_Cycles_AlwaysReportsCountAndTruncationShape`, `Handle_Cycles_SummarizeMode_OmitsCyclesField_ReturnsPreview`, `Handle_Cycles_MaxResultsZero_ForcesTruncatedWhenAnyCycleExists`).
+- Test count: 632 → 635 (+3). 0 regressions.
+
+DAWG dogfood: pre-fix `lifeblood_cycles` on the 117-SCC workspace produced a 70,798-character payload that overflowed the harness limit. Post-fix `summarize:true` returns a small preview-only response that fits inside the limit.
+
 ## [0.6.7] - 2026-04-27
 
 DAWG-dogfood backlog plan, full sweep. Six phases (P1..P6) ship as one combined release on top of v0.6.5. **Tests: 569 to 632 (+63). Invariants: 63 to 70 (+7). Ports: 22 to 26 (+4). MCP tools: 22 to 25 (+3 read-side: authority_report, port_health, cycles).** Hexagonal as ever - no patches, no special cases, every fix lands as a port + adapter + handler trio with regression tests + end-to-end dogfood. Five repeatable smoke harnesses (`smoke-mcp-p1-dogfood.ps1` through `smoke-mcp-p5-dogfood.ps1`) drive the full wire surface against Lifeblood and a real 87-module Unity workspace (DAWG).

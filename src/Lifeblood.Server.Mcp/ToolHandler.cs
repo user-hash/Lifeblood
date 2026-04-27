@@ -85,7 +85,7 @@ public sealed class ToolHandler
                 "lifeblood_invariant_check" => HandleInvariantCheck(arguments),
                 "lifeblood_authority_report" => HandleAuthorityReport(arguments),
                 "lifeblood_port_health" => HandlePortHealth(arguments),
-                "lifeblood_cycles" => HandleCycles(),
+                "lifeblood_cycles" => HandleCycles(arguments),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -624,16 +624,51 @@ public sealed class ToolHandler
         }));
     }
 
-    private McpToolResult HandleCycles()
+    private McpToolResult HandleCycles(JsonElement? args)
     {
         if (!_session.IsLoaded)
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
         var cycles = Lifeblood.Analysis.CircularDependencyDetector.Detect(_session.Graph!);
+
+        // LB-FR-021 (DAWG dogfood): same shape as blast_radius summarize/maxResults.
+        // DAWG has 117 SCCs that serialize to ~70KB — exceeds downstream tool-result
+        // limits. summarize:true returns counts + a small preview without the full
+        // cycles array; maxResults caps the embedded array regardless of mode.
+        var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
+        var maxResults = WriteToolHandler.GetInt(args, "maxResults") ?? (summarize ? 25 : 500);
+        if (maxResults < 0) maxResults = 0;
+
+        var truncated = cycles.Length > maxResults;
+        var preview = truncated ? cycles.Take(maxResults).ToArray() : cycles;
+        var totalSymbolCount = 0;
+        var largestCycleSize = 0;
+        foreach (var c in cycles)
+        {
+            totalSymbolCount += c.Length;
+            if (c.Length > largestCycleSize) largestCycleSize = c.Length;
+        }
+
+        if (summarize)
+        {
+            return TextResult(WithEnvelope("lifeblood_cycles", new
+            {
+                count = cycles.Length,
+                totalSymbolCount,
+                largestCycleSize,
+                truncated,
+                preview,
+                summarize = true,
+            }));
+        }
+
         return TextResult(WithEnvelope("lifeblood_cycles", new
         {
             count = cycles.Length,
-            cycles,
+            totalSymbolCount,
+            largestCycleSize,
+            truncated,
+            cycles = preview,
         }));
     }
 
