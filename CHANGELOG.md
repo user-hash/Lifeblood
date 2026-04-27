@@ -7,6 +7,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed. dead_code Unity Editor reflection roster + type-via-child propagation (LB-FP-003 / ExampleApp dogfood)
+
+`UnityReachabilityAdapter` was missing several Unity Editor reflection attributes — `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, plus the full NUnit fixture lifecycle (`SetUp` / `TearDown` / `OneTimeSetUp` / `OneTimeTearDown`, `TestCaseSource`, `TestFixtureSource`, `Theory`, `UnitySetUp`, `UnityTearDown`). Methods carrying any of these attributes are reflection-discovered by Unity / Burst / NUnit at runtime; without them in the entrypoint roster the dead-code analyzer surfaced their host types as false positives.
+
+Also adds **type-via-child propagation**: a type is reachable if ANY of its directly-contained members carries an entrypoint attribute. The standard Unity pattern is `[SettingsProvider]` on a static method inside the host type — pre-fix only the method became reachable while the type itself surfaced as a dead candidate. Post-fix the host type inherits liveness from any tagged child. Negative case (plain type with non-entrypoint children) still flags correctly, so the propagation doesn't mask real dead code.
+
+Six new ratchet tests: `[SettingsProvider]`, `[Shortcut]`, `[BurstCompile]`, NUnit `[SetUp]`, type-with-entrypoint-child-is-reachable, type-with-no-entrypoint-children-still-not-reachable. Test count: 655 → 661 (+6). 0 regressions on the existing 15-test reachability suite.
+
 ### Added. context smart-dynamic shaping (LB-FR-022 / ExampleApp dogfood)
 
 **Per-section caps with sane defaults.** Five new optional ints: `maxFiles` (default 25), `maxBoundaries` (default 50), `maxHotspots` (default 20), `maxReadingOrder` (default 50), `maxMatrixEntries` (default 100). Each cap clips the section's array if the generator produced more; the response's new `truncated` map names every clipped section + its full pre-clip count so callers know what was hidden. `-1` means unlimited; `0` drops the section entirely.
