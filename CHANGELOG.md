@@ -7,6 +7,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. context smart-dynamic shaping (LB-FR-022 / ExampleApp dogfood)
+
+**Per-section caps with sane defaults.** Five new optional ints: `maxFiles` (default 25), `maxBoundaries` (default 50), `maxHotspots` (default 20), `maxReadingOrder` (default 50), `maxMatrixEntries` (default 100). Each cap clips the section's array if the generator produced more; the response's new `truncated` map names every clipped section + its full pre-clip count so callers know what was hidden. `-1` means unlimited; `0` drops the section entirely.
+
+**`summarize:true`** shortcut: drop every list-section to 0, keep only `summary` + `invariants` + `activeViolations`. Smallest viable shape — equivalent to passing `0` for every section cap.
+
+**`sections:[...]`** allowlist: emit only the named list-sections (`highValueFiles`, `boundaries`, `hotspots`, `readingOrder`, `dependencyMatrix`). Anything not on the list is replaced with an empty array. Summary, invariants, and violations are always retained because they're the cheapest signal.
+
+The shaping happens in the handler — `AgentContextGenerator` itself stays pure, returning the full pack as before. Application/Domain layers untouched.
+
+Four new ratchet tests covering summarize-mode-drops-all-lists, sections-allowlist-drops-unlisted, per-section-cap-truncates-and-reports, negative-cap-allows-unlimited. Test count: 651 → 655 (+4). 0 regressions.
+
 ### Fixed. compile_check filePath module-aware tree replacement (LB-BUG-019 / ExampleApp dogfood)
 
 **New typed overload** `ICompilationHost.CompileCheck(CompileCheckRequest)`. The request carries `Code`, `FilePath`, and `ModuleName`; file-mode is selected by `FilePath` being non-null. The legacy string-based `CompileCheck(code, moduleName)` overload is preserved and now delegates to the typed path.
