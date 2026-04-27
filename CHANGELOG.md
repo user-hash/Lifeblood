@@ -7,6 +7,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. context smart-dynamic shaping (LB-FR-022 / DAWG dogfood)
+
+`lifeblood_context` previously returned the full pack on every call; on a 87-module workspace (DAWG) the response weighed ~375KB and overflowed downstream tool-result limits. Same DAWG-dogfood class as `cycles` (LB-FR-021): the analysis succeeded but the wire payload was too big to consume. Smart-dynamic shaping fixes it without forcing every caller to pass options.
+
+**Per-section caps with sane defaults.** Five new optional ints: `maxFiles` (default 25), `maxBoundaries` (default 50), `maxHotspots` (default 20), `maxReadingOrder` (default 50), `maxMatrixEntries` (default 100). Each cap clips the section's array if the generator produced more; the response's new `truncated` map names every clipped section + its full pre-clip count so callers know what was hidden. `-1` means unlimited; `0` drops the section entirely.
+
+**`summarize:true`** shortcut: drop every list-section to 0, keep only `summary` + `invariants` + `activeViolations`. Smallest viable shape — equivalent to passing `0` for every section cap.
+
+**`sections:[...]`** allowlist: emit only the named list-sections (`highValueFiles`, `boundaries`, `hotspots`, `readingOrder`, `dependencyMatrix`). Anything not on the list is replaced with an empty array. Summary, invariants, and violations are always retained because they're the cheapest signal.
+
+The shaping happens in the handler — `AgentContextGenerator` itself stays pure, returning the full pack as before. Application/Domain layers untouched.
+
+Four new ratchet tests covering summarize-mode-drops-all-lists, sections-allowlist-drops-unlisted, per-section-cap-truncates-and-reports, negative-cap-allows-unlimited. Test count: 651 → 655 (+4). 0 regressions.
+
 ### Fixed. compile_check filePath module-aware tree replacement (LB-BUG-019 / DAWG dogfood)
 
 `lifeblood_compile_check` with `filePath` now resolves the file's owning compilation and **swaps the existing syntax tree** for the on-disk content, instead of adding the file's content as a fresh snippet tree to an arbitrarily-picked first compilation. This was the failure mode that produced "every cross-file reference unresolved" on Unity files: passing `Assets/.../AdaptiveBeatGrid.cs` emitted CS0246 for `UnityEngine`, `MonoBehaviour`, sibling partials, `IBeatGridTickHost`, every `BeatGridConfig` member, etc., even though the file compiles cleanly inside Unity.

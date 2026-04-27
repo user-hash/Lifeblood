@@ -128,8 +128,21 @@ public static class ToolRegistry
   Name = "lifeblood_context",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Generate an AI context pack from the loaded graph. Returns high-value files, boundaries, reading order, hotspots, dependency matrix.",
-  InputSchema = new { type = "object", properties = new { } },
+  Description = "Generate an AI context pack from the loaded graph. Returns summary, high-value files, boundaries, invariants, hotspots, reading order, and a module dependency matrix. Each section has a smart default cap so the response fits inside conservative tool-result budgets even on multi-module Unity workspaces (DAWG: 87 modules, 53k symbols). Override per-section caps with `maxFiles` / `maxBoundaries` / `maxHotspots` / `maxReadingOrder` / `maxMatrixEntries` (use -1 for unlimited or 0 to drop the section entirely). Pass `summarize:true` to drop every list-section to 0 and return only summary + invariants + violations — the smallest viable shape. Pass `sections:[\"summary\",\"boundaries\"]` to allow-list specific sections; everything not listed is replaced with an empty array. Every clipped section is reported in the response's `truncated` map with its full pre-clip count so callers know what was hidden. Closes LB-FR-022.",
+  InputSchema = new
+  {
+  type = "object",
+  properties = new
+  {
+  summarize = new { type = "boolean", description = "Smallest viable response: drop every list-section to 0, keep summary + invariants + violations. Defaults to false." },
+  sections = new { type = "array", items = new { type = "string" }, description = "Optional allowlist of section names to include. Sections not on the list are emitted as empty arrays. Recognised: highValueFiles, boundaries, hotspots, readingOrder, dependencyMatrix. Summary, invariants, and violations are always retained." },
+  maxFiles = new { type = "integer", description = "Cap on highValueFiles entries. Default 25. -1 unlimited; 0 drops the section." },
+  maxBoundaries = new { type = "integer", description = "Cap on boundaries entries (one per module). Default 50." },
+  maxHotspots = new { type = "integer", description = "Cap on hotspots entries. Default 20." },
+  maxReadingOrder = new { type = "integer", description = "Cap on readingOrder entries. Default 50." },
+  maxMatrixEntries = new { type = "integer", description = "Cap on dependencyMatrix entries (module-to-module edges). Default 100. The full matrix on a 87-module workspace is ~2600 entries." },
+  },
+  },
   },
   new()
   {

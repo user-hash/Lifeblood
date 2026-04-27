@@ -72,7 +72,7 @@ public sealed class ToolHandler
             {
                 // Read-side
                 "lifeblood_analyze" => HandleAnalyze(arguments),
-                "lifeblood_context" => HandleContext(),
+                "lifeblood_context" => HandleContext(arguments),
                 "lifeblood_lookup" => HandleLookup(arguments),
                 "lifeblood_dependencies" => HandleDependencies(arguments),
                 "lifeblood_dependants" => HandleDependants(arguments),
@@ -120,14 +120,91 @@ public sealed class ToolHandler
         return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
     }
 
-    private McpToolResult HandleContext()
+    private McpToolResult HandleContext(JsonElement? args)
     {
         if (!_session.IsLoaded)
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
         var useCase = new GenerateContextUseCase(new AgentContextGenerator());
         var pack = useCase.Execute(_session.Graph!, _session.Analysis!);
-        return TextResult(WithEnvelope("lifeblood_context", pack));
+
+        // LB-FR-022 (DAWG dogfood): default behaviour previously emitted the
+        // full pack (~375KB on a 87-module workspace), overflowing downstream
+        // tool-result limits. Same fix shape as cycles/blast_radius — every
+        // section gets a smart default cap, callers can override per-section
+        // or pass `summarize:true` for the smallest viable shape, and an
+        // explicit `sections` allowlist drops anything not requested. The
+        // response always carries a `truncated` map that names every clipped
+        // section + its full-pre-clip count, so callers know what was hidden.
+        var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
+        var sections = ReadSectionsArray(args);
+
+        // Per-section caps. -1 means unlimited; 0 means drop. Defaults are
+        // sized so the full default response fits inside conservative
+        // tool-result budgets even on multi-module Unity workspaces.
+        var maxFiles = WriteToolHandler.GetInt(args, "maxFiles") ?? (summarize ? 0 : 25);
+        var maxBoundaries = WriteToolHandler.GetInt(args, "maxBoundaries") ?? (summarize ? 0 : 50);
+        var maxHotspots = WriteToolHandler.GetInt(args, "maxHotspots") ?? (summarize ? 0 : 20);
+        var maxReadingOrder = WriteToolHandler.GetInt(args, "maxReadingOrder") ?? (summarize ? 0 : 50);
+        var maxMatrixEntries = WriteToolHandler.GetInt(args, "maxMatrixEntries") ?? (summarize ? 0 : 100);
+
+        var truncated = new Dictionary<string, object>(System.StringComparer.Ordinal);
+
+        var (highValueFiles, filesTrunc) = ApplyCap(pack.HighValueFiles, maxFiles);
+        var (boundaries, bndTrunc) = ApplyCap(pack.Boundaries, maxBoundaries);
+        var (hotspots, hsTrunc) = ApplyCap(pack.Hotspots, maxHotspots);
+        var (readingOrder, roTrunc) = ApplyCap(pack.ReadingOrder, maxReadingOrder);
+        var (matrix, mxTrunc) = ApplyCap(pack.DependencyMatrix, maxMatrixEntries);
+        if (filesTrunc.HasValue) truncated["highValueFiles"] = new { fullCount = filesTrunc.Value, included = highValueFiles.Length };
+        if (bndTrunc.HasValue) truncated["boundaries"] = new { fullCount = bndTrunc.Value, included = boundaries.Length };
+        if (hsTrunc.HasValue) truncated["hotspots"] = new { fullCount = hsTrunc.Value, included = hotspots.Length };
+        if (roTrunc.HasValue) truncated["readingOrder"] = new { fullCount = roTrunc.Value, included = readingOrder.Length };
+        if (mxTrunc.HasValue) truncated["dependencyMatrix"] = new { fullCount = mxTrunc.Value, included = matrix.Length };
+
+        // `sections` allowlist: when set, every section not on the list is
+        // dropped to an empty array. Summary, invariants, and violations
+        // are always retained because they're the cheapest signal.
+        bool Include(string name) => sections == null || sections.Contains(name, System.StringComparer.OrdinalIgnoreCase);
+
+        var shaped = new
+        {
+            pack.Summary,
+            HighValueFiles = Include("highValueFiles") ? highValueFiles : System.Array.Empty<HighValueFile>(),
+            Boundaries = Include("boundaries") ? boundaries : System.Array.Empty<BoundaryInfo>(),
+            pack.Invariants,
+            Hotspots = Include("hotspots") ? hotspots : System.Array.Empty<string>(),
+            ReadingOrder = Include("readingOrder") ? readingOrder : System.Array.Empty<string>(),
+            DependencyMatrix = Include("dependencyMatrix") ? matrix : System.Array.Empty<ModuleDependency>(),
+            pack.ActiveViolations,
+            truncated,
+            summarize,
+            sections,
+        };
+
+        return TextResult(WithEnvelope("lifeblood_context", shaped));
+    }
+
+    private static (T[] Items, int? FullCount) ApplyCap<T>(T[] source, int max)
+    {
+        if (max < 0) return (source, null);
+        if (max == 0) return (System.Array.Empty<T>(), source.Length > 0 ? source.Length : (int?)null);
+        if (source.Length <= max) return (source, null);
+        var clipped = new T[max];
+        System.Array.Copy(source, clipped, max);
+        return (clipped, source.Length);
+    }
+
+    private static string[]? ReadSectionsArray(JsonElement? args)
+    {
+        if (args == null || args.Value.ValueKind != JsonValueKind.Object) return null;
+        if (!args.Value.TryGetProperty("sections", out var arr) || arr.ValueKind != JsonValueKind.Array) return null;
+        var list = new List<string>();
+        foreach (var el in arr.EnumerateArray())
+        {
+            if (el.ValueKind == JsonValueKind.String && el.GetString() is { } s && s.Length > 0)
+                list.Add(s);
+        }
+        return list.ToArray();
     }
 
     private McpToolResult HandleLookup(JsonElement? args)
