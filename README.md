@@ -104,6 +104,18 @@ Every read-side response carries a typed truth envelope (v0.6.7 / `INV-ENVELOPE-
 
 - **Resolver kind correction**, file-scoped diagnose, `compile_check` from disk, `blast_radius` summarize mode + direct-vs-transitive split (P1).
 
+- **Cycles pagination**
+
+- **Invariant tree-walker**
+
+- **File-mode `compile_check`** (`LB-BUG-019`): when called with `filePath`, the host resolves the file's owning compilation and **swaps the existing syntax tree** for the on-disk content. Pre-fix Unity files emitted ~120 spurious CS0246 errors; post-fix `success:true` against the file's owning module.
+
+- **Context smart-dynamic shaping**
+
+- **Dead-code Unity reflection roster + type-via-child propagation** (`LB-FP-003`): adds `[SettingsProvider]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, the full NUnit fixture lifecycle. A type is reachable if any directly-contained member carries an entrypoint attribute.
+
+- **Invariants moved to `docs/invariants/` tree**
+
 [Full tool reference](docs/TOOLS.md)
 
 ---
@@ -122,7 +134,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
                       Analysis (optional)         └──  CLI / CI
 ```
 
-26 port interfaces, all wired (left-side adapters + right-side connectors + `ISymbolResolver` for identifier resolution + `IResponseDecorator` for truth envelope + `IInvariantProvider` for CLAUDE.md invariant introspection + `IUnityReachabilityProvider` for runtime-dispatch reachability + `IRuntimeAssemblyResolver` for execute-time DLL probing + `IAuthorityReporter` for type-level authority reports). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 70 typed invariants in [CLAUDE.md](CLAUDE.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired (left-side adapters + right-side connectors + `ISymbolResolver` for identifier resolution + `IResponseDecorator` for truth envelope + `IInvariantProvider` for tree-walking invariant introspection + `IUnityReachabilityProvider` for runtime-dispatch reachability + `IRuntimeAssemblyResolver` for execute-time DLL probing + `IAuthorityReporter` for type-level authority reports). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 65 typed invariants under [`docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -145,7 +157,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 25 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
 
-`lifeblood_dead_code` recognizes Unity message-dispatch patterns automatically: `MonoBehaviour` magic methods (`Awake`, `Update`, `OnTriggerEnter`, full Unity catalog), entrypoint attributes (`RuntimeInitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `CustomEditor`, ...), transitive bases (`ScriptableObject`, `Editor`, `EditorWindow`, `StateMachineBehaviour`). `lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch `UnityEngine` types without Unity being open.
+`lifeblood_dead_code` recognizes Unity message-dispatch patterns automatically: `MonoBehaviour` magic methods (`Awake`, `Update`, `OnTriggerEnter`, full Unity catalog), entrypoint attributes (`RuntimeInitializeOnLoadMethod`, `InitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `CustomEditor`, `CustomPropertyDrawer`, `SettingsProvider`, `Shortcut`, `OnOpenAsset`, `BurstCompile`, `MonoPInvokeCallback`, full NUnit / Unity Test Framework lifecycle, ...), transitive bases (`ScriptableObject`, `Editor`, `EditorWindow`, `StateMachineBehaviour`), and **type-via-child propagation** (a type is reachable if any directly-contained member carries an entrypoint attribute — handles the `[SettingsProvider]`-on-static-method-with-host-type pattern). `lifeblood_compile_check filePath="..."` resolves the file's owning compilation and swaps the existing tree, so module-owned Unity files compile-check against their real reference set instead of emitting CS0246 storms. `lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch `UnityEngine` types without Unity being open.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -153,7 +165,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against [CLAUDE.md](CLAUDE.md): 70 typed invariants, zero duplicate ids, zero parse warnings.
+Lifeblood audits its own architectural invariants via `lifeblood_invariant_check`. The tree-walker aggregates `<root>/CLAUDE.md` + every `*.md` under [`docs/invariants/`](docs/invariants/INDEX.md): **65 typed invariants across 31 categories**, zero duplicate ids, zero parse warnings.
 
 The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Exact numbers are surfaced live on every `lifeblood_analyze` response via the `usage` field so they can be cited deterministically.
 

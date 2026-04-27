@@ -58,7 +58,7 @@ Assets/Editor/LifebloodBridge.meta
 
 ### Step 4: Verify
 
-Open Unity. The bridge auto-discovers via `[McpForUnityTool]` attributes. All 18 Lifeblood tools should appear alongside Unity MCP's built-in tools.
+Open Unity. The bridge auto-discovers via `[McpForUnityTool]` attributes. All 25 Lifeblood tools should appear alongside Unity MCP's built-in tools.
 
 ## Server Discovery
 
@@ -111,8 +111,11 @@ Each module is compiled, extracted, then downgraded to a lightweight PE metadata
 
 Lifeblood detects Unity's framework dispatch automatically. `lifeblood_dead_code` does NOT flag:
 
-- Methods marked with Unity entrypoint attributes: `RuntimeInitializeOnLoadMethod`, `InitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `PostProcessBuild`, `PostProcessScene`, `CustomEditor`, `CustomPropertyDrawer`, `Test`, `UnityTest`, full attribute roster.
-- MonoBehaviour magic methods: `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnGUI`, `OnTriggerEnter` and variants, `OnCollisionEnter` and variants, `OnAudioFilterRead`, `OnRenderImage`, `OnDrawGizmos` and variants. Only flagged when the containing type's transitive inheritance chain reaches a Unity message-receiver base: `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, `UnityEngine.StateMachineBehaviour`.
+- **Unity Editor reflection attributes (full roster):** `RuntimeInitializeOnLoadMethod`, `InitializeOnLoad`, `InitializeOnLoadMethod`, `InitializeOnEnterPlayMode`, `DidReloadScripts`, `MenuItem`, `ContextMenu`, `ContextMenuItem`, `CustomEditor`, `CustomPropertyDrawer`, `PropertyDrawer`, `PostProcessBuild`, `PostProcessScene`, `ScriptedImporter`, `OnOpenAsset`, `SettingsProvider`, `SettingsProviderGroup`, `Shortcut`, `Preserve`. Plus native interop: `BurstCompile`, `MonoPInvokeCallback`. Plus the full NUnit / Unity Test Framework lifecycle: `Test`, `TestCase`, `TestCaseSource`, `TestFixture`, `TestFixtureSource`, `Theory`, `SetUp`, `TearDown`, `OneTimeSetUp`, `OneTimeTearDown`, `UnityTest`, `UnitySetUp`, `UnityTearDown`.
+
+- **MonoBehaviour magic methods:** `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnGUI`, `OnTriggerEnter` and variants, `OnCollisionEnter` and variants, `OnAudioFilterRead`, `OnRenderImage`, `OnDrawGizmos` and variants, full Unity message catalog. Only flagged when the containing type's transitive inheritance chain reaches a Unity message-receiver base: `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, `UnityEngine.StateMachineBehaviour`.
+
+- **Type-via-child propagation (`LB-FP-003`):** a type is reachable if ANY of its directly-contained members carries an entrypoint attribute. Closes the standard Unity pattern of `[SettingsProvider]` (or any other Unity reflection attr) on a static method inside a host type that otherwise has no incoming references — pre-fix the method became reachable while the host type surfaced as a dead candidate.
 
 The chain walk uses `Symbol.Properties["baseType"]` (set by the C# extractor) so types that inherit directly from `UnityEngine.MonoBehaviour` still resolve - even though the engine DLL itself isn't analyzed source.
 
@@ -123,3 +126,9 @@ Editing an asmdef without forcing Unity to regenerate the on-disk csproj used to
 ## Execute Robustness on Unity (`INV-EXECUTE-001`)
 
 `lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch UnityEngine types without Unity being open. Empty `Library/` surfaces a `runtimeAssemblyWarnings` entry telling the caller to run a Unity build first. Optional `targetProfile` (host / net-standard-2.1 / net-6.0) selects the BCL ref-pack; missing packs fall back to host with `targetRuntimeWarnings`.
+
+## File-mode `compile_check` for Unity files (`LB-BUG-019`)
+
+`lifeblood_compile_check filePath="Assets/.../YourFile.cs"` resolves the file's owning compilation by matching the path against every loaded compilation's syntax trees, then **swaps the existing tree** for the on-disk content via `ReplaceSyntaxTree` instead of adding the file as a fresh snippet tree to an arbitrary first compilation:
+
+Pre-fix the same call surfaced ~120 spurious CS0246 / CS0103 errors against `UnityEngine`, `MonoBehaviour`, sibling partials, and every cross-file type because the snippet path picked some arbitrary first compilation that didn't carry the file's references. File-mode preserves every reference in the file's real owning module compilation and filters pre-existing diagnostics in OTHER files in the module so only changes the user introduced in THIS file surface. Pinned `moduleName` overrides auto-detection — if the file isn't in that module the request fails with `LB0002` rather than silently picking another.

@@ -7,6 +7,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-27
+
+### Headline changes
+
+- **`cycles` pagination**
+
+- **Invariant tree-walker + parser shapes C/D/E**
+
+- **File-mode `compile_check`**
+
+- **`context` smart-dynamic shaping**
+
+- **Dead-code Unity Editor reflection roster + type-via-child propagation**
+
+- **Repo reorg: invariants moved to `docs/invariants/` tree.**
+
 ### Fixed. dead_code Unity Editor reflection roster + type-via-child propagation (LB-FP-003 / ExampleApp dogfood)
 
 `UnityReachabilityAdapter` was missing several Unity Editor reflection attributes — `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, plus the full NUnit fixture lifecycle (`SetUp` / `TearDown` / `OneTimeSetUp` / `OneTimeTearDown`, `TestCaseSource`, `TestFixtureSource`, `Theory`, `UnitySetUp`, `UnityTearDown`). Methods carrying any of these attributes are reflection-discovered by Unity / Burst / NUnit at runtime; without them in the entrypoint roster the dead-code analyzer surfaced their host types as false positives.
@@ -938,7 +954,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...v0.7.0
 [0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.7
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4
