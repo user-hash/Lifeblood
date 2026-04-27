@@ -87,7 +87,7 @@ The five phases are tracked below as `LB-INBOX-001` through `LB-INBOX-005`. A sm
 - `staleness`: optional timestamp or commit indicator when the result depends on a cached graph
 - `limitations`: optional free-form caveat when the tool knows it is operating outside its confident zone
 
-Every read-side tool declares its default tier. Advisory tools (today only `lifeblood_dead_code`, tomorrow possibly others) emit limitations in-band, not only in docs. Add response-shape golden tests across all 22 tools so no new tool can ship without the envelope.
+Every read-side tool declares its default tier. Advisory tools (today only `lifeblood_dead_code`, tomorrow possibly others) emit limitations in-band, not only in docs. Add response-shape golden tests across all 25 tools (15 read + 10 write) so no new tool can ship without the envelope.
 
 **Why it matters.** It amplifies the repo's strongest architectural idea (the syntax / semantic / derived distinction) without changing any engine underneath. Shortest path from "internally disciplined" to "externally trustworthy". Work compounds with Phase 3: once every response carries the envelope, versioning the envelope once covers every tool.
 
@@ -114,11 +114,11 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ## LB-INBOX-003. Phase 3. Contract freeze before the platform surface grows further
 
-**Observed.** Lifeblood's wire surface now includes 22 MCP tools, 22 ports, the semantic graph JSON schema, and a growing set of architectural invariants. Several single-source-of-truth sites already exist: `CanonicalSymbolFormat`, `CsprojPaths`, `McpProtocolSpec`, `CLAUDE.md`. But there is no formal versioning story for the tool schemas or the graph schema. A v0.6.4 that accidentally renames a response field would break every external integrator silently.
+**Observed.** Lifeblood's wire surface now includes 25 MCP tools, 26 ports, the semantic graph JSON schema, and a growing set of architectural invariants. Several single-source-of-truth sites already exist: `CanonicalSymbolFormat`, `CsprojPaths`, `McpProtocolSpec`, `CLAUDE.md` + `docs/invariants/` tree. But there is no formal versioning story for the tool schemas or the graph schema. A future minor that accidentally renames a response field would break every external integrator silently.
 
 **Suggested fix shape.**
 
-1. Publish versioned tool input and output schemas under `schemas/tools/<version>/*.json`. Start with a v1 snapshot of the current 22 tool shapes.
+1. Publish versioned tool input and output schemas under `schemas/tools/<version>/*.json`. Start with a v1 snapshot of the current 25 tool shapes.
 2. Add compatibility tests that replay a recorded v1 client session against a new server build and assert no field is missing, renamed, or changed in type.
 3. Version the graph JSON schema more aggressively. Today `schemas/graph.schema.json` is unversioned. Switch to `schemas/graph/v1.schema.json` and add evolution rules: what may be appended, what may not be renamed, what constitutes a major-version break.
 4. Introduce a deprecation policy for tools, fields, and invariants. Tools that are retired enter a deprecation window with a `deprecated: true` and `replacedBy: "..."` marker in `tools/list` for at least one minor-version release before removal.

@@ -410,24 +410,69 @@ public sealed class ToolHandler
 
         var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests);
         var findings = _deadCode.FindDeadCode(_session.Graph!, options);
+
+        // LB-FR-024 (DAWG dogfood): same shape as cycles / context.
+        // DAWG (53k symbols, default kinds) produces 286KB+ payloads that
+        // overflow downstream tool-result limits — the tool succeeded but
+        // the wire payload was unconsumable. summarize:true returns a
+        // small preview-only response. maxResults caps the embedded array
+        // regardless of mode. Per-kind breakdown always returned so the
+        // caller can decide whether to drill in via includeKinds.
+        var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
+        var maxResults = WriteToolHandler.GetInt(args, "maxResults") ?? (summarize ? 25 : 500);
+        if (maxResults < 0) maxResults = 0;
+
+        var truncated = findings.Length > maxResults;
+        var preview = truncated ? findings.Take(maxResults).ToArray() : findings;
+
+        // Per-kind breakdown — small map, always cheap, always emitted.
+        // SymbolKind is a Domain enum; serialize as its string name so the
+        // wire shape is callable as a stable kind filter via includeKinds.
+        var kindBreakdown = new Dictionary<string, int>(System.StringComparer.Ordinal);
+        foreach (var f in findings)
+        {
+            var key = f.Kind.ToString();
+            kindBreakdown.TryGetValue(key, out var c);
+            kindBreakdown[key] = c + 1;
+        }
+
+        const string sharedWarning =
+            "Findings are ADVISORY. Known false-positive classes: " +
+            "(1) methods referenced via method-group conversion " +
+            "(Lazy<T>, event handlers, delegate arguments); " +
+            "(2) methods with call-site canonical-id drift in multi-module " +
+            "workspaces (pre-existing extraction gap under investigation); " +
+            "(3) private fields read via same-class access when the enclosing " +
+            "type has no external references. Verify each finding with " +
+            "lifeblood_find_references (which has the same gap class) and " +
+            "direct code inspection before acting.";
+
+        if (summarize)
+        {
+            return TextResult(WithEnvelope("lifeblood_dead_code", new
+            {
+                // Surfaced in every response so agents cannot use the tool
+                // without seeing the caveat. INV-DEADCODE-001. Note: with
+                // INV-ENVELOPE-001 (v0.6.7) the same caveat is also carried
+                // in the typed envelope.limitations field.
+                status = "experimental",
+                warning = sharedWarning,
+                count = findings.Length,
+                kindBreakdown,
+                truncated,
+                preview,
+                summarize = true,
+            }));
+        }
+
         return TextResult(WithEnvelope("lifeblood_dead_code", new
         {
-            // Surfaced in every response so agents cannot use the tool
-            // without seeing the caveat. INV-DEADCODE-001. Note: with
-            // INV-ENVELOPE-001 (v0.6.7) the same caveat is also carried
-            // in the typed envelope.limitations field.
             status = "experimental",
-            warning = "Findings are ADVISORY. Known false-positive classes: " +
-                      "(1) methods referenced via method-group conversion " +
-                      "(Lazy<T>, event handlers, delegate arguments); " +
-                      "(2) methods with call-site canonical-id drift in multi-module " +
-                      "workspaces (pre-existing extraction gap under investigation); " +
-                      "(3) private fields read via same-class access when the enclosing " +
-                      "type has no external references. Verify each finding with " +
-                      "lifeblood_find_references (which has the same gap class) and " +
-                      "direct code inspection before acting.",
+            warning = sharedWarning,
             count = findings.Length,
-            findings,
+            kindBreakdown,
+            truncated,
+            findings = preview,
         }));
     }
 

@@ -7,6 +7,30 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation. Stale-claim sweep (post-v0.7.0 review fold-in)
+
+External reviewer flagged stale references to "22 tools / 22 ports / 539 tests / 58 invariants / 12R+10W" + "under investigation for v0.6.4" wording. Most of the surface was already current at v0.7.0 (README, STATUS, TOOLS, ARCHITECTURE, UNITY, DOGFOOD_FINDINGS); two real misses cleaned here:
+
+- **`docs/architecture.html`** — full refresh: 22→25 tools, 22→26 ports, 539→664 tests, 58→65 invariants, 12R+10W→15R+10W, 1863→2191 self symbols, 5777→10194 self edges, 235→264 self types. Adds pills for truth envelope + Unity reachability. Adapter section gains `LifebloodAuthorityReporter`, `LifebloodResponseDecorator`, `UnityReachabilityAdapter`, `UnityAssemblyResolver` cards.
+- **`lifeblood_dead_code` description** — refreshed in `ToolRegistry.cs` to drop the "v0.6.4 under investigation" wording and reflect the actual closed-FP-class history (v0.6.4 → v0.6.5 → v0.6.7 → v0.7.0 / LB-FP-003) + remaining advisory limitations.
+- **`docs/IMPROVEMENT_INBOX.md`** — `LB-INBOX-001` + `LB-INBOX-003` active-roadmap entries refreshed from "22 tools / 22 ports" to "25 tools / 26 ports". The historical "review snapshot from v0.6.3, 2026-04-11" block stays frozen as dated record.
+
+NuGet packages at v0.7.0 are immutable and unchanged — this is a doc-correctness pass, not a re-release. Test count unchanged: still 664 (LB-FR-024 below adds 3 more).
+
+### Added. dead_code summarize / kindBreakdown / pagination (LB-FR-024 / DAWG dogfood)
+
+`lifeblood_dead_code` adopts the same shape as `cycles` / `context`. DAWG (53k symbols, default kinds) produced ~286KB payloads that overflowed downstream tool-result limits — the analysis succeeded but the wire response was unconsumable. Same fix shape as `LB-FR-021` / `LB-FR-022`.
+
+- Every response now carries `count`, `kindBreakdown` (per-`SymbolKind` histogram), and `truncated` alongside the existing `findings[]` / `status` / `warning` fields.
+- `summarize:true` returns a compact response with `preview[]` (size capped by `maxResults`) instead of the full `findings[]` array, plus a `summarize:true` flag. Callers see the per-kind histogram + a small preview, then drill in via `includeKinds` if needed.
+- `maxResults` caps the embedded array regardless of mode. Defaults: 500 in normal mode, 25 in summarize mode.
+- `kindBreakdown` is always emitted — it's the cheap signal callers use to decide whether to call again with `includeKinds:["Type"]` or `includeKinds:["Method"]`.
+- Tool description + INV-DEADCODE-001 caveat unchanged; experimental/advisory contract preserved.
+
+DAWG dogfood: pre-fix `lifeblood_dead_code` on the 53k-symbol workspace produced a 286,954-character payload. Post-fix `summarize:true` returns counts + kind histogram + a small preview that fits inside the limit. Three new ratchet tests (`Handle_DeadCode_AlwaysReportsCountAndTruncationShape`, `Handle_DeadCode_SummarizeMode_OmitsFindingsField_ReturnsPreview`, `Handle_DeadCode_MaxResultsZero_ForcesTruncatedWhenAnyFinding`).
+
+Test count: 661 → 664 (+3). 0 regressions.
+
 ## [0.7.0] - 2026-04-27
 
 DAWG-dogfood polish on top of v0.6.7. Six findings + a repo reorg ship as one release. **Tests 632 → 661 (+29). Invariants restructured into `docs/invariants/` tree (8 domain files + INDEX), aggregated by the new dynamic tree-walker.** Hexagonal as ever — no patches, no special cases, every fix lands as a port + adapter + handler trio with regression tests + end-to-end DAWG dogfood.

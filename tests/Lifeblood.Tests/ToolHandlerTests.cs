@@ -501,6 +501,65 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains("lifeblood_find_references", text);
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // LB-FR-024 (DAWG dogfood): dead_code summarize / maxResults / kind
+    // breakdown. DAWG (53k symbols) overflowed downstream tool-result
+    // limits with default kinds — needed the same shape as cycles +
+    // context to stay consumable. Per-kind histogram always emitted so
+    // the caller can decide whether to drill in via includeKinds.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Handle_DeadCode_AlwaysReportsCountAndTruncationShape()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_dead_code", MakeArgs(new { }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"count\":", text);
+        Assert.Contains("\"kindBreakdown\":", text);
+        Assert.Contains("\"truncated\":", text);
+    }
+
+    [Fact]
+    public void Handle_DeadCode_SummarizeMode_OmitsFindingsField_ReturnsPreview()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_dead_code", MakeArgs(new { summarize = true }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"summarize\": true", text);
+        Assert.Contains("\"preview\":", text);
+        Assert.DoesNotContain("\"findings\":", text);
+        // kindBreakdown stays — it's the cheap signal callers use to drill.
+        Assert.Contains("\"kindBreakdown\":", text);
+    }
+
+    [Fact]
+    public void Handle_DeadCode_MaxResultsZero_ForcesTruncatedWhenAnyFinding()
+    {
+        var handler = CreateHandler();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        var result = handler.Handle("lifeblood_dead_code", MakeArgs(new { maxResults = 0 }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        // findings is the embedded (clipped) array. With maxResults=0 it is empty.
+        Assert.Contains("\"findings\": []", text);
+        // truncated:true iff the un-clipped count was > 0; truncated:false iff zero findings.
+        if (text.Contains("\"count\": 0"))
+            Assert.Contains("\"truncated\": false", text);
+        else
+            Assert.Contains("\"truncated\": true", text);
+    }
+
     [Fact]
     public void Handle_Search_KindsFilter_Applied()
     {
