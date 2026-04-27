@@ -7,6 +7,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed. Invariants moved to docs/invariants/ tree (eat-our-own-dogfood)
+
+`CLAUDE.md` slimmed from 416 lines to 144. Every formally-numbered `INV-XXX-NNN` rule moved to `docs/invariants/<domain>.md`, leaving CLAUDE.md as a coordinator with the architecture diagram, dependency rules, naming conventions, rules-for-adding-features, and a pointer table to the tree. Validates the tree-walker shipped in LB-FR-023 against the Lifeblood repo itself, not just DAWG.
+
+Tree layout (8 files + INDEX):
+
+- `docs/invariants/INDEX.md` — master pointer + the five recognised authoring shapes (A/B/C/D/E)
+- `docs/invariants/architecture.md` — DOMAIN, APP, GRAPH, ADAPT, CONN, ANALYSIS, TEST, PIPE, SCRIPTHOST, COMPROOT
+- `docs/invariants/resolver.md` — RESOLVER 1-6
+- `docs/invariants/csharp-adapter.md` — CANONICAL, VIEW 1-3, BCL 1-5, COMPFACT 1-3, full symbol-ID grammar
+- `docs/invariants/pipeline.md` — STREAM 1-5, FILE-EDGE, INCR
+- `docs/invariants/usage.md` — USAGE 1-2, USAGE-PORT 1-2, USAGE-PROBE 1-2
+- `docs/invariants/mcp-protocol.md` — MCP 1-3, TOOLREG, ENVELOPE
+- `docs/invariants/tools.md` — DEADCODE, INVARIANT, AUTHORITY, FORWARDER, EXECUTE, UNITY 1-2, FINDIMPL
+- `docs/invariants/governance.md` — DOCS, CHANGELOG, TESTDISC
+
+Self-tests still green: `LifebloodClaudeMdSelfTests` aggregates across CLAUDE.md + AGENTS.md (none) + the new tree, asserts TotalCount ≥ 50, required categories present (DOMAIN, GRAPH, MCP, RESOLVER, CANONICAL, BCL), known stable IDs resolvable (INV-CANONICAL-001, INV-RESOLVER-001, INV-RESOLVER-005, INV-BCL-001, INV-MCP-001, INV-TOOLREG-001), 0 duplicates, 0 parse warnings.
+
+Test count unchanged: 645 / 645. INV ids in tree: 68 unique (all formally-numbered rules preserved verbatim from the old CLAUDE.md; the 5 example IDs in INDEX/CLAUDE shape demos are inside `Shape X:` prefixed lines that the parser doesn't anchor on).
+
 ### Added. invariant_check shape D + shape E (LB-BUG-018 / DAWG dogfood)
 
 Two more invariant authoring shapes recognised, closing the 28 parse-warning tail surfaced in DAWG dogfood after the shape-C work landed.
