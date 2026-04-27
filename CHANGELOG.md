@@ -7,6 +7,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-27
+
+DAWG-dogfood polish on top of v0.6.7. Six findings + a repo reorg ship as one release. **Tests 632 → 661 (+29). Invariants restructured into `docs/invariants/` tree (8 domain files + INDEX), aggregated by the new dynamic tree-walker.** Hexagonal as ever — no patches, no special cases, every fix lands as a port + adapter + handler trio with regression tests + end-to-end DAWG dogfood.
+
+### Headline changes
+
+- **`cycles` pagination** (`LB-FR-021`). DAWG (117 SCCs ~70KB) overflowed downstream tool-result limits — now `summarize:true` returns a small `preview[]` and every response carries `count` / `totalSymbolCount` / `largestCycleSize` / `truncated`.
+- **Invariant tree-walker + parser shapes C/D/E** (`LB-BUG-017` + `LB-BUG-018` + `LB-FR-023`). `lifeblood_invariant_check` discovers sources dynamically — `<root>/CLAUDE.md` + `<root>/AGENTS.md` + any `<root>/docs/invariants/**.md` tree. Five authoring shapes recognised. DAWG: 0 → 83 invariants discovered across 25 categories.
+- **File-mode `compile_check`** (`LB-BUG-019`). Resolves the file's owning compilation by matching the path against every loaded compilation's syntax trees, then `ReplaceSyntaxTree`s the existing tree with the on-disk content. DAWG Unity files went from ~120 spurious CS0246 errors to `success:true`.
+- **`context` smart-dynamic shaping** (`LB-FR-022`). Per-section caps with sane defaults (25 files / 50 boundaries / 20 hotspots / 50 reading-order / 100 matrix entries), `summarize:true` shortcut, `sections:[...]` allowlist. DAWG default response went from ~375KB overflow to comfortably-fits.
+- **Dead-code Unity Editor reflection roster + type-via-child propagation** (`LB-FP-003`). Adds `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, full NUnit fixture lifecycle. A type is reachable if any directly-contained member carries an entrypoint attribute. DAWG type-level findings: 6 → 4.
+- **Repo reorg: invariants moved to `docs/invariants/` tree.** CLAUDE.md slimmed 416 → 144 lines. Every formally-numbered `INV-XXX-NNN` rule lives in `docs/invariants/<domain>.md` (8 files + INDEX). Validates the tree-walker against the Lifeblood repo itself, not just DAWG. Self-analysis: 65 typed invariants across 31 categories.
+
 ### Fixed. dead_code Unity Editor reflection roster + type-via-child propagation (LB-FP-003 / DAWG dogfood)
 
 `UnityReachabilityAdapter` was missing several Unity Editor reflection attributes — `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, plus the full NUnit fixture lifecycle (`SetUp` / `TearDown` / `OneTimeSetUp` / `OneTimeTearDown`, `TestCaseSource`, `TestFixtureSource`, `Theory`, `UnitySetUp`, `UnityTearDown`). Methods carrying any of these attributes are reflection-discovered by Unity / Burst / NUnit at runtime; without them in the entrypoint roster the dead-code analyzer surfaced their host types as false positives.
@@ -862,7 +875,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...v0.7.0
 [0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.7
 [0.6.5]: https://github.com/user-hash/Lifeblood/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/user-hash/Lifeblood/compare/v0.6.3...v0.6.4

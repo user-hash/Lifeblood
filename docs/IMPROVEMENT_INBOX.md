@@ -10,11 +10,11 @@ Anything that has shipped is deleted from this file. Anything speculative that n
 
 ---
 
-## Status snapshot (post P1-P6, 2026-04-26)
+## Status snapshot (post P1-P6 + post-v0.6.7 polish, 2026-04-27)
 
-The DAWG-dogfood plan landed in six phases on top of v0.6.5. Tests 569 to 632 (+63). Invariants 63 to 70 (+7). Ports 22 to 26 (+4). MCP tools 22 to 25 (+3). Five end-to-end smoke harnesses (`smoke-mcp-p1-dogfood.ps1` through `smoke-mcp-p5-dogfood.ps1`) drive the full wire surface against Lifeblood and DAWG.
+The DAWG-dogfood plan landed in six phases on top of v0.6.5 (Tests 569 → 632 / Invariants 63 → 70 / Ports 22 → 26 / MCP tools 22 → 25). A follow-up polish session shipped six DAWG-dogfood findings on top of v0.6.7, taking tests 632 → 661 (+29). Invariants restructured into `docs/invariants/` tree (slim CLAUDE.md as coordinator); the dynamic tree-walker now picks them up alongside `<root>/CLAUDE.md` + `<root>/AGENTS.md`. Lifeblood self: 65 typed invariants across 31 categories.
 
-Shipped against the roadmap below: LB-INBOX-001 (truth envelope, `INV-ENVELOPE-001`), LB-INBOX-002 (`INV-DEADCODE-001` close-out + Unity reachability port `INV-UNITY-001`). Partially landed: LB-INBOX-004 (large-workspace wedge - authority report + forwarder classifier shipped). Open: LB-INBOX-003 (contract freeze), LB-INBOX-005 (public proof), LB-INBOX-006 (consolidated smoke script).
+Shipped against the roadmap below: `LB-INBOX-001` (truth envelope, `INV-ENVELOPE-001`), `LB-INBOX-002` (`INV-DEADCODE-001` close-out + Unity reachability port `INV-UNITY-001` + Editor reflection roster `LB-FP-003`). Plus six post-v0.6.7 fixes: `LB-FR-021` (cycles pagination), `LB-BUG-017` + `LB-BUG-018` + `LB-FR-023` (invariant parser shapes C/D/E + dynamic source discovery), `LB-BUG-019` (compile_check file-mode owning-module resolution + tree replacement), `LB-FR-022` (context smart-dynamic shaping), `LB-FP-003` (dead_code Unity Editor reflection roster + type-via-child propagation). Plus `INV-INVARIANT-001` v2 — invariants moved out of CLAUDE.md to `docs/invariants/` tree, validated by self-tests aggregating across CLAUDE.md + every tree file. Partially landed: `LB-INBOX-004` (large-workspace wedge — authority report + forwarder classifier shipped; `cycles` + `context` + `compile_check` + `dead_code` polish shipped). Open: `LB-INBOX-003` (contract freeze), `LB-INBOX-005` (public proof), `LB-INBOX-006` (consolidated smoke script).
 
 ---
 
