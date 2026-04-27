@@ -54,8 +54,8 @@ lifeblood_blast_radius symbolId="type:MyApp.AuthService" → what breaks if I ch
 lifeblood_file_impact filePath="src/AuthService.cs"      → what files are affected?
 lifeblood_find_references symbolId="type:MyApp.IRepo"    → every caller, every consumer
 lifeblood_search query="quantize timing to grid"         → ranked keyword + xmldoc search
-lifeblood_invariant_check id="INV-CANONICAL-001"         → query architectural invariants from CLAUDE.md
-lifeblood_compile_check code="var x = 1 + 1;"            → snippet compiles, auto-wraps for library modules
+lifeblood_invariant_check id="INV-CANONICAL-001"         → query architectural invariants
+lifeblood_compile_check filePath="src/MyFile.cs"         → does this file still compile?
 lifeblood_execute code="typeof(MyApp.Foo).GetMethods()"  → run C# against your types
 ```
 
@@ -87,36 +87,12 @@ Connect an MCP client. Load a project. The AI agent gets **25 tools**: 15 read, 
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code¹, Partial View, Invariant Check, Authority Report, Port Health, Cycles |
+| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code, Partial View, Invariant Check, Authority Report, Port Health, Cycles |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
-Every read-side tool that takes a `symbolId` routes through one resolver. Exact canonical id, truncated method form, bare short name, kind correction (`method:NS.Type.X` resolves to a property/field/event named `X` when no method exists; v0.6.6 / `INV-RESOLVER-006`), and wrong-namespace-correct-short-name (v0.6.3 / `INV-RESOLVER-005`) all resolve to the same answer.
+Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
-Every read-side response carries a typed truth envelope (v0.6.7 / `INV-ENVELOPE-001`): truth tier (Semantic / Derived / Heuristic / Inferred), confidence band (Proven / Advisory / Speculative), evidence-source string, wall-clock staleness in seconds, files-changed-since-analyze count, per-tool documented limitations.
-
-- **Truth envelope** on every read-side response (P2).
-
-- **Unity-aware reachability** + asmdef-edit incremental detection (P3).
-
-- **Execute robustness**: Unity DLL probe (`Library/ScriptAssemblies`, `Library/Bee/artifacts`, `Library/PackageCache`), `targetProfile` for runtime ref-pack selection (`host` / `net-standard-2.1` / `net-6.0`), sandbox introspection helpers `Help` / `SymbolsOfKind(string)` / `EdgesOfKind(string)` (P4).
-
-- **Authority + port health + cycles tools** plus a forwarder classifier on every method (`PureForwarder` / `ThinWrapper` / `RealLogic`) (P5).
-
-- **Resolver kind correction**, file-scoped diagnose, `compile_check` from disk, `blast_radius` summarize mode + direct-vs-transitive split (P1).
-
-- **Cycles pagination**
-
-- **Invariant tree-walker**
-
-- **File-mode `compile_check`** (`LB-BUG-019`): when called with `filePath`, the host resolves the file's owning compilation and **swaps the existing syntax tree** for the on-disk content. Pre-fix Unity files emitted ~120 spurious CS0246 errors; post-fix `success:true` against the file's owning module.
-
-- **Context smart-dynamic shaping**
-
-- **Dead-code Unity reflection roster + type-via-child propagation** (`LB-FP-003`): adds `[SettingsProvider]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, the full NUnit fixture lifecycle. A type is reachable if any directly-contained member carries an entrypoint attribute.
-
-- **Invariants moved to `docs/invariants/` tree**
-
-[Full tool reference](docs/TOOLS.md)
+[Full tool reference](docs/TOOLS.md) · [What's new in v0.7.0](CHANGELOG.md)
 
 ---
 
@@ -134,11 +110,11 @@ JSON graph        ──┘       ↑                     ├──  Instruction
                       Analysis (optional)         └──  CLI / CI
 ```
 
-26 port interfaces, all wired (left-side adapters + right-side connectors + `ISymbolResolver` for identifier resolution + `IResponseDecorator` for truth envelope + `IInvariantProvider` for tree-walking invariant introspection + `IUnityReachabilityProvider` for runtime-dispatch reachability + `IRuntimeAssemblyResolver` for execute-time DLL probing + `IAuthorityReporter` for type-level authority reports). Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), 65 typed invariants under [`docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [65 typed invariants under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
-[Full architecture](docs/ARCHITECTURE.md) | [Interactive diagram](docs/architecture.html)
+[Full architecture](docs/ARCHITECTURE.md) · [Interactive diagram](docs/architecture.html)
 
 ---
 
@@ -149,15 +125,15 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 | **C# / Roslyn** | Compiler-grade semantic analysis. Cross-module resolution. Bidirectional: analysis + code execution. | Proven |
 | **TypeScript** | Standalone Node.js. `ts.createProgram` + `TypeChecker`. | High |
 | **Python** | Standalone `ast` module. Zero dependencies. | Structural |
-| **Any language** | Output JSON conforming to `schemas/graph.schema.json`. [Adapter guide](docs/ADAPTERS.md). | Varies |
+| **Any language** | Output JSON conforming to `schemas/graph.schema.json`. | Varies |
+
+[Adapter guide](docs/ADAPTERS.md)
 
 ---
 
-## Unity Integration
+## Unity
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 25 tools available in the Unity Editor via `[McpForUnityTool]` discovery. Runs as a separate process, so no assembly conflicts, no domain reload interference.
-
-`lifeblood_dead_code` recognizes Unity message-dispatch patterns automatically: `MonoBehaviour` magic methods (`Awake`, `Update`, `OnTriggerEnter`, full Unity catalog), entrypoint attributes (`RuntimeInitializeOnLoadMethod`, `InitializeOnLoadMethod`, `MenuItem`, `ContextMenu`, `CustomEditor`, `CustomPropertyDrawer`, `SettingsProvider`, `Shortcut`, `OnOpenAsset`, `BurstCompile`, `MonoPInvokeCallback`, full NUnit / Unity Test Framework lifecycle, ...), transitive bases (`ScriptableObject`, `Editor`, `EditorWindow`, `StateMachineBehaviour`), and **type-via-child propagation** (a type is reachable if any directly-contained member carries an entrypoint attribute — handles the `[SettingsProvider]`-on-static-method-with-host-type pattern). `lifeblood_compile_check filePath="..."` resolves the file's owning compilation and swaps the existing tree, so module-owned Unity files compile-check against their real reference set instead of emitting CS0246 storms. `lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch `UnityEngine` types without Unity being open.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 25 tools available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -165,9 +141,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Lifeblood audits its own architectural invariants via `lifeblood_invariant_check`. The tree-walker aggregates `<root>/CLAUDE.md` + every `*.md` under [`docs/invariants/`](docs/invariants/INDEX.md): **65 typed invariants across 31 categories**, zero duplicate ids, zero parse warnings.
-
-The MCP retained profile sits around 4x the CLI streaming profile because the write-side tools need the loaded workspace in memory to answer follow-up queries. Pass `readOnly: true` to `lifeblood_analyze` to drop MCP back to the streaming profile in exchange for no write-side tools. Both measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Exact numbers are surfaced live on every `lifeblood_analyze` response via the `usage` field so they can be cited deterministically.
+Self-analysis (post v0.7.0): 2,191 symbols, 10,194 edges, 11 modules, 264 types, 0 violations, 0 cycles. **661 tests** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **65 typed invariants across 31 categories**, zero duplicates, zero parse warnings.
 
 ---
 
@@ -185,9 +159,11 @@ The MCP retained profile sits around 4x the CLI streaming profile because the wr
 
 ## Related
 
-- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework): The methodology that shaped the architecture
-- [Roslyn](https://github.com/dotnet/roslyn): The C# compiler platform
-- [Case study](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md): The 400k LOC Unity project where we proved these ideas
+- [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — the methodology that shaped the architecture
+- [Roslyn](https://github.com/dotnet/roslyn) — the C# compiler platform
+- [Case study](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) — the 400k LOC Unity project where these ideas were proven
+
+---
 
 ## License
 
