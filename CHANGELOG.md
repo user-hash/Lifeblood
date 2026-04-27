@@ -7,6 +7,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. invariant_check shape-C + dynamic source discovery (LB-BUG-017 / LB-FR-023 / DAWG dogfood)
+
+`lifeblood_invariant_check` now recognises DAWG's hot-rules authoring shape and discovers invariant sources dynamically across well-known repo conventions instead of reading a single hardcoded file.
+
+**Shape C — bare bold paragraph (LB-BUG-017).** `ClaudeMdInvariantParser` accepts a third invariant shape used by DAWG's CLAUDE.md hot-rules section: `**INV-XXX-NNN: Title sentence.** body paragraph...`. No bullet prefix, id-and-title inside the bold separated by a colon, body following the closing `**`. Multiple consecutive shape-C blocks are recognised; block boundaries are the next opener (shape A/B/C) or a markdown heading. Pre-fix: parser returned 0 invariants on DAWG even though CLAUDE.md declared 30+.
+
+**Dynamic source discovery (LB-FR-023 / no hardcoding).** `LifebloodInvariantProvider` now walks well-known repo conventions via `IFileSystem` instead of reading only `<root>/CLAUDE.md`:
+
+- `<root>/CLAUDE.md` and `<root>/AGENTS.md` — root single-file conventions.
+- `<root>/docs/invariants/**.md` — invariants-tree convention for projects that have outgrown a single-file authoring layout (DAWG hot-rules-stay/tree-everything-else).
+
+Each discovered source is parsed with its own cache entry; results are aggregated. Per-id duplicate detection now spans the whole tree. The new `InvariantAudit.SourcePaths[]` reports every file that contributed; `SourcePath` returns the first source for back-compat. The conventions live in the adapter, NOT the port — a repo with a different layout supplies its own provider, reusing `ClaudeMdInvariantParser` + `InvariantParseCache<T>` without touching Application.
+
+Five new ratchet tests in `ClaudeMdInvariantParserTests` covering shape C alone, multiple consecutive shape-C blocks, block-termination semantics, and mixed shape A/B/C in one document.
+
+Test count: 635 → 640 (+5). 0 regressions.
+
 ### Added. cycles summarize / pagination (LB-FR-021 / DAWG dogfood)
 
 `lifeblood_cycles` adopts the same `summarize` + `maxResults` shape as `lifeblood_blast_radius`. DAWG's 117 SCCs serialize to ~70KB, which exceeds downstream tool-result limits and surfaces as a fake "tool failed" to callers even though the analysis succeeded. Same fix shape as P1 LB-FR-010.

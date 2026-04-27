@@ -39,11 +39,24 @@ public sealed class InvariantAudit
     public string[] ParseWarnings { get; init; } = System.Array.Empty<string>();
 
     /// <summary>
-    /// Absolute path to the source file the audit was computed from
-    /// (typically <c>&lt;projectRoot&gt;/CLAUDE.md</c>). Empty if the
-    /// source couldn't be located.
+    /// Absolute path to the primary source file the audit was computed
+    /// from. When the project uses an invariants tree (DAWG-style
+    /// <c>docs/invariants/**.md</c>) and the audit aggregates multiple
+    /// files, this is the first source in discovery order — the full
+    /// list is in <see cref="SourcePaths"/>. Empty if no source could
+    /// be located.
     /// </summary>
     public string SourcePath { get; init; } = "";
+
+    /// <summary>
+    /// Every source file the audit aggregated invariants from. Driven
+    /// by <see cref="IInvariantProvider"/> discovery, NOT a hardcoded
+    /// path list — the provider walks well-known repo conventions
+    /// (project-root <c>CLAUDE.md</c>, <c>AGENTS.md</c>, and any
+    /// <c>docs/invariants/**.md</c> tree) and reports back what it
+    /// actually found. Empty when no source could be located.
+    /// </summary>
+    public string[] SourcePaths { get; init; } = System.Array.Empty<string>();
 }
 
 /// <summary>

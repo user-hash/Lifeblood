@@ -9,8 +9,8 @@ namespace Lifeblood.Connectors.Mcp.Internal;
 /// records. The source-of-truth contract for the
 /// <c>lifeblood_invariant_check</c> tool.
 ///
-/// Two bullet shapes are recognised, both common in the Lifeblood
-/// CLAUDE.md authoring history:
+/// Three shapes are recognised, all common across the Lifeblood and
+/// DAWG CLAUDE.md authoring histories:
 ///
 /// <para>
 /// <b>Shape A — short, single-line body.</b> The bold contains only
@@ -33,13 +33,25 @@ namespace Lifeblood.Connectors.Mcp.Internal;
 /// </code>
 ///
 /// <para>
+/// <b>Shape C — bare bold paragraph (DAWG hot-rules style).</b> No
+/// bullet prefix; the bold encloses both the id and a title sentence
+/// separated by a colon, body continues after the closing <c>**</c>:
+/// </para>
+/// <code>
+/// **INV-WORK-001: Read before writing.** Read every file and method
+/// you reference end-to-end before writing about it. …
+/// </code>
+///
+/// <para>
 /// The parser uses a line-by-line walker. A line whose trimmed prefix
-/// matches <c>- **INV-</c> opens a new invariant block. The block
-/// continues until the next invariant-opening line or a markdown header
-/// (<c># ... ##### </c>). Body is the verbatim text of the block with
-/// the opening marker preserved. Title is extracted from the bold
-/// section: shape B yields the bold-enclosed title sentence; shape A
-/// falls back to the first sentence after the colon, capped at
+/// matches <c>- **INV-</c> (shapes A/B) OR opens with a bare
+/// <c>**INV-XXX-NNN:</c> (shape C) opens a new invariant block. The
+/// block continues until the next invariant-opening line or a markdown
+/// header (<c># ... ##### </c>). Body is the verbatim text of the block
+/// with the opening marker preserved. Title is extracted from the bold
+/// section: shape B yields the bold-enclosed title sentence; shape C
+/// yields the colon-separated title from inside the bold; shape A falls
+/// back to the first sentence after the colon. Capped at
 /// <see cref="MaxTitleLength"/> chars.
 /// </para>
 ///
@@ -72,13 +84,35 @@ internal static class ClaudeMdInvariantParser
     private const int MaxTitleLength = 140;
 
     /// <summary>
-    /// Regex that recognises an invariant-opening bullet. Anchored at
-    /// the start of a trimmed line to avoid matching inline references
-    /// like <c>see INV-FOO-001</c> in a body paragraph.
+    /// Regex that recognises an invariant-opening bullet (shapes A and
+    /// B). Anchored at the start of a trimmed line to avoid matching
+    /// inline references like <c>see INV-FOO-001</c> in a body
+    /// paragraph.
     /// </summary>
     private static readonly Regex InvariantBulletStart = new(
         @"^-\s+\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Shape C: bare bold paragraph with id-and-title inside the bold,
+    /// body text following the closing <c>**</c>. Recognised when a
+    /// line's trimmed prefix is <c>**INV-XXX-NNN:</c> (id, colon, then
+    /// title sentence still inside the bold). DAWG's CLAUDE.md hot-rule
+    /// section uses this shape — many INVs in a row, no bullets, no
+    /// section headers between them.
+    /// </summary>
+    private static readonly Regex InvariantBareBoldStart = new(
+        @"^\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\s*:",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Shape C title capture: the bold begins with the id, colon, then
+    /// the title sentence, then closes with <c>**</c>. The title may
+    /// span multiple physical lines if the bold wraps.
+    /// </summary>
+    private static readonly Regex BareBoldTitleCapture = new(
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\s*:\s*(?<title>.+?)\*\*",
+        RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
     /// <summary>
     /// Extracts the bold-enclosed title sentence of shape B — the text
@@ -132,8 +166,9 @@ internal static class ClaudeMdInvariantParser
         while (i < lines.Length)
         {
             var trimmedLine = TrimCarriageReturn(lines[i]).TrimStart();
-            var match = InvariantBulletStart.Match(trimmedLine);
-            if (!match.Success)
+            var bulletMatch = InvariantBulletStart.Match(trimmedLine);
+            var bareBoldMatch = bulletMatch.Success ? Match.Empty : InvariantBareBoldStart.Match(trimmedLine);
+            if (!bulletMatch.Success && !bareBoldMatch.Success)
             {
                 i++;
                 continue;
@@ -141,11 +176,12 @@ internal static class ClaudeMdInvariantParser
 
             var openingLineNumber = i + 1; // 1-based for human-friendly output
 
-            // Collect the invariant block: from the opening bullet down
-            // to the line BEFORE the next opening bullet or markdown
+            // Collect the invariant block: from the opening line down
+            // to the line BEFORE the next opening line or markdown
             // heading. Blank lines are allowed inside the block (they
-            // separate paragraphs); what terminates is another
-            // `- **INV-` or a `## ` heading.
+            // separate paragraphs); what terminates is another opening
+            // (`- **INV-` bullet or `**INV-XXX:` bare bold) or a `## `
+            // heading.
             var blockBuilder = new StringBuilder();
             blockBuilder.Append(TrimCarriageReturn(lines[i]));
             int j = i + 1;
@@ -154,6 +190,7 @@ internal static class ClaudeMdInvariantParser
                 var lookAhead = TrimCarriageReturn(lines[j]);
                 var lookAheadTrimmed = lookAhead.TrimStart();
                 if (InvariantBulletStart.IsMatch(lookAheadTrimmed)) break;
+                if (InvariantBareBoldStart.IsMatch(lookAheadTrimmed)) break;
                 if (MarkdownHeading.IsMatch(lookAhead)) break;
                 blockBuilder.Append('\n').Append(lookAhead);
                 j++;
@@ -200,14 +237,16 @@ internal static class ClaudeMdInvariantParser
     /// </summary>
     private static Invariant? BuildInvariant(string blockText, int openingLineNumber, List<string> warnings)
     {
-        var firstLineMatch = InvariantBulletStart.Match(blockText.TrimStart());
-        if (!firstLineMatch.Success)
+        var trimmedBlock = blockText.TrimStart();
+        var bulletMatch = InvariantBulletStart.Match(trimmedBlock);
+        var bareBoldMatch = bulletMatch.Success ? Match.Empty : InvariantBareBoldStart.Match(trimmedBlock);
+        if (!bulletMatch.Success && !bareBoldMatch.Success)
         {
-            warnings.Add($"line {openingLineNumber}: block does not open with a recognised invariant bullet");
+            warnings.Add($"line {openingLineNumber}: block does not open with a recognised invariant marker");
             return null;
         }
 
-        var id = firstLineMatch.Groups["id"].Value;
+        var id = bulletMatch.Success ? bulletMatch.Groups["id"].Value : bareBoldMatch.Groups["id"].Value;
         var category = ExtractCategoryFromId(id);
         if (string.IsNullOrEmpty(category))
         {
@@ -215,39 +254,61 @@ internal static class ClaudeMdInvariantParser
             return null;
         }
 
-        // Try shape B first — the richer form. The regex is singleline
-        // so the title sentence can span multiple physical lines.
-        var boldTitleMatch = BoldTitleCapture.Match(blockText);
         string title;
-        if (boldTitleMatch.Success && boldTitleMatch.Groups["id"].Value == id)
+        if (bareBoldMatch.Success)
         {
-            // Collapse internal whitespace so a wrapped title reads
-            // naturally as a single sentence.
-            title = CollapseWhitespace(boldTitleMatch.Groups["title"].Value).TrimEnd('.', ' ');
-        }
-        else
-        {
-            // Shape A: look for the colon-separated body and extract
-            // the first sentence from it.
-            var shapeAMatch = ShapeAColonBody.Match(blockText);
-            if (shapeAMatch.Success && shapeAMatch.Groups["id"].Value == id)
+            // Shape C: bold encloses `INV-XXX-NNN: <title>` with body
+            // following the closing `**`. The capture is singleline so
+            // a wrapped bold reads as one sentence.
+            var bareTitleMatch = BareBoldTitleCapture.Match(blockText);
+            if (bareTitleMatch.Success && bareTitleMatch.Groups["id"].Value == id)
             {
-                var rest = CollapseWhitespace(shapeAMatch.Groups["rest"].Value);
-                title = ExtractFirstSentence(rest);
+                title = CollapseWhitespace(bareTitleMatch.Groups["title"].Value).TrimEnd('.', ' ');
             }
             else
             {
-                // Last-resort fallback: title is the trimmed first line
-                // minus the bullet prefix. This keeps the tool usable
-                // even for invariants authored in a slightly different
-                // shape.
+                // Bold not closed on this block — first physical line
+                // minus markers as last-resort title.
                 var firstPhysicalLine = blockText.Split('\n', 2)[0];
-                title = firstPhysicalLine
-                    .TrimStart('-', ' ', '*')
-                    .TrimEnd('*', ' ');
+                title = firstPhysicalLine.TrimStart('*', ' ').TrimEnd('*', ' ');
                 warnings.Add(
-                    $"line {openingLineNumber}: id '{id}' did not match shape A or B; " +
-                    "fell back to bullet-prefix title extraction");
+                    $"line {openingLineNumber}: id '{id}' opened as shape C but bold was not closed; " +
+                    "fell back to first-line title extraction");
+            }
+        }
+        else
+        {
+            // Try shape B first — the richer form. The regex is singleline
+            // so the title sentence can span multiple physical lines.
+            var boldTitleMatch = BoldTitleCapture.Match(blockText);
+            if (boldTitleMatch.Success && boldTitleMatch.Groups["id"].Value == id)
+            {
+                title = CollapseWhitespace(boldTitleMatch.Groups["title"].Value).TrimEnd('.', ' ');
+            }
+            else
+            {
+                // Shape A: look for the colon-separated body and extract
+                // the first sentence from it.
+                var shapeAMatch = ShapeAColonBody.Match(blockText);
+                if (shapeAMatch.Success && shapeAMatch.Groups["id"].Value == id)
+                {
+                    var rest = CollapseWhitespace(shapeAMatch.Groups["rest"].Value);
+                    title = ExtractFirstSentence(rest);
+                }
+                else
+                {
+                    // Last-resort fallback: title is the trimmed first line
+                    // minus the bullet prefix. This keeps the tool usable
+                    // even for invariants authored in a slightly different
+                    // shape.
+                    var firstPhysicalLine = blockText.Split('\n', 2)[0];
+                    title = firstPhysicalLine
+                        .TrimStart('-', ' ', '*')
+                        .TrimEnd('*', ' ');
+                    warnings.Add(
+                        $"line {openingLineNumber}: id '{id}' did not match shape A or B; " +
+                        "fell back to bullet-prefix title extraction");
+                }
             }
         }
 

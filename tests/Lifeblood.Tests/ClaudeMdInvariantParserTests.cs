@@ -278,4 +278,89 @@ public class ClaudeMdInvariantParserTests
         var actual = ClaudeMdInvariantParser.ExtractCategoryFromId(id);
         Assert.Equal(string.Empty, actual);
     }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Shape C — DAWG hot-rules style. Bare bold paragraph, no bullet,
+    // id-and-title inside the bold separated by a colon. Multiple INVs
+    // appear in a row with body paragraphs in between, no headers.
+    // ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Parse_ShapeC_BareBoldParagraph_ExtractsIdAndTitle()
+    {
+        const string md = "**INV-WORK-001: Read before writing.** Read every file and method " +
+                          "you reference end-to-end before writing about it.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        var inv = Assert.Single(result.Invariants);
+        Assert.Equal("INV-WORK-001", inv.Id);
+        Assert.Equal("Read before writing", inv.Title);
+        Assert.Equal("WORK", inv.Category);
+        Assert.Contains("Read every file", inv.Body);
+    }
+
+    [Fact]
+    public void Parse_ShapeC_MultipleConsecutive_AllExtracted()
+    {
+        const string md =
+            "**INV-WORK-001: Read before writing.** Read every file end-to-end.\n" +
+            "\n" +
+            "**INV-WORK-002: Verify every claim.** Before stating something is done.\n" +
+            "\n" +
+            "**INV-WORK-003: Find simplifications.** When you read code and notice 6 identical methods.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(3, result.Invariants.Length);
+        Assert.Equal("INV-WORK-001", result.Invariants[0].Id);
+        Assert.Equal("INV-WORK-002", result.Invariants[1].Id);
+        Assert.Equal("INV-WORK-003", result.Invariants[2].Id);
+        Assert.Equal("Verify every claim", result.Invariants[1].Title);
+    }
+
+    [Fact]
+    public void Parse_ShapeC_BodyTerminatesAtNextOpener()
+    {
+        const string md =
+            "**INV-FOO-001: First rule.** Body of first.\n" +
+            "Continued body of first.\n" +
+            "\n" +
+            "**INV-BAR-002: Second rule.** Body of second.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(2, result.Invariants.Length);
+        Assert.Contains("Continued body of first", result.Invariants[0].Body);
+        Assert.DoesNotContain("Body of second", result.Invariants[0].Body);
+    }
+
+    [Fact]
+    public void Parse_ShapeC_HeadingTerminatesBlock()
+    {
+        const string md =
+            "**INV-FOO-001: First.** Body of first.\n" +
+            "## Some Section\n" +
+            "Not part of the invariant.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        var inv = Assert.Single(result.Invariants);
+        Assert.Contains("Body of first", inv.Body);
+        Assert.DoesNotContain("Not part of the invariant", inv.Body);
+    }
+
+    [Fact]
+    public void Parse_MixedShapes_AllRecognised()
+    {
+        const string md =
+            "- **INV-DOMAIN-001**: shape A inline body.\n" +
+            "\n" +
+            "- **INV-CANONICAL-001. Shape B title sentence.** Shape B body paragraph.\n" +
+            "\n" +
+            "**INV-WORK-001: Shape C bare bold.** Shape C body paragraph.";
+        var result = ClaudeMdInvariantParser.Parse(md);
+        Assert.Empty(result.Warnings);
+        Assert.Equal(3, result.Invariants.Length);
+        Assert.Equal("INV-DOMAIN-001", result.Invariants[0].Id);
+        Assert.Equal("INV-CANONICAL-001", result.Invariants[1].Id);
+        Assert.Equal("INV-WORK-001", result.Invariants[2].Id);
+        Assert.Equal("Shape B title sentence", result.Invariants[1].Title);
+        Assert.Equal("Shape C bare bold", result.Invariants[2].Title);
+    }
 }
