@@ -7,6 +7,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. invariant_check shape-C + dynamic source discovery (LB-BUG-017 / LB-FR-023 / ExampleApp dogfood)
+
+**Dynamic source discovery (LB-FR-023 / no hardcoding).** `LifebloodInvariantProvider` now walks well-known repo conventions via `IFileSystem` instead of reading only `<root>/CLAUDE.md`:
+
+Each discovered source is parsed with its own cache entry; results are aggregated. Per-id duplicate detection now spans the whole tree. The new `InvariantAudit.SourcePaths[]` reports every file that contributed; `SourcePath` returns the first source for back-compat. The conventions live in the adapter, NOT the port — a repo with a different layout supplies its own provider, reusing `ClaudeMdInvariantParser` + `InvariantParseCache<T>` without touching Application.
+
+Five new ratchet tests in `ClaudeMdInvariantParserTests` covering shape C alone, multiple consecutive shape-C blocks, block-termination semantics, and mixed shape A/B/C in one document.
+
+Test count: 635 → 640 (+5). 0 regressions.
+
 ### Added. cycles summarize / pagination (LB-FR-021 / ExampleApp dogfood)
 
 ## [0.6.7] - 2026-04-27
