@@ -7,6 +7,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed. compile_check filePath module-aware tree replacement (LB-BUG-019 / ExampleApp dogfood)
+
+**New typed overload** `ICompilationHost.CompileCheck(CompileCheckRequest)`. The request carries `Code`, `FilePath`, and `ModuleName`; file-mode is selected by `FilePath` being non-null. The legacy string-based `CompileCheck(code, moduleName)` overload is preserved and now delegates to the typed path.
+
+**File-mode** scans every loaded compilation's `SyntaxTrees` for a path match (case-insensitive forward-slash suffix), finds the owning module, and `ReplaceSyntaxTree`s the existing tree with the on-disk content. Results carry the resolved module name on `CompileCheckResult.ResolvedModule` and a boolean `ExistingTreeReplaced` so the wire response surfaces both. Pinned `moduleName` overrides auto-detection — if the file isn't in that module the request fails with `LB0002` rather than silently picking another.
+
+**Snippet mode** unchanged — bare statements / expressions still wrap through `Internal.SnippetWrapper` and are added as new trees to the requested (or first) compilation.
+
+Six new ratchet tests covering owning-module resolution, override-code tree replacement, missing-file LB0002, pinned-module foreign-file rejection, override-introduces-error reporting, and snippet-mode unchanged. Test count: 645 → 651 (+6). 0 regressions.
+
 ### Changed. Invariants moved to docs/invariants/ tree (eat-our-own-dogfood)
 
 Tree layout (8 files + INDEX):

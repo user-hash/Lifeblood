@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Application.Ports.Right;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -80,15 +81,24 @@ internal sealed class WriteToolHandler
         var code = GetString(args, "code");
         var filePath = GetString(args, "filePath");
 
-        // BUG-015: accept either inline `code` or a `filePath` to read off disk.
-        // Exactly one is required; both being set is a caller error because the
-        // resulting compile-check result would silently depend on which one
-        // wins in the handler.
+        // BUG-015: accept either inline `code` or a `filePath`. Exactly one
+        // is required; both being set is a caller error because the result
+        // would silently depend on which one wins in the handler.
         if (string.IsNullOrEmpty(code) && string.IsNullOrEmpty(filePath))
             return ErrorResult("Either 'code' or 'filePath' is required.");
         if (!string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(filePath))
             return ErrorResult("'code' and 'filePath' are mutually exclusive — supply exactly one.");
 
+        // File-mode hand-off: the host now owns owning-compilation
+        // detection AND tree-swapping (LB-BUG-019). Reading the file off
+        // disk and stuffing it through the snippet path is what produced
+        // the "every type unresolved" failure on Unity files — adding the
+        // same file as a fresh tree alongside its own existing tree means
+        // the compilation has zero references to the file's siblings,
+        // so every cross-file type lookup emits CS0246. The host instead
+        // ReplaceSyntaxTree's the file's own tree inside the file's own
+        // module compilation, preserving every reference.
+        string? overrideCode = null;
         if (!string.IsNullOrEmpty(filePath))
         {
             var resolvedPath = ResolveWorkspacePath(filePath);
@@ -96,7 +106,10 @@ internal sealed class WriteToolHandler
                 return ErrorResult($"File not found: {filePath} (resolved to '{resolvedPath}'). Pass an absolute path or one relative to the loaded project root.");
             try
             {
-                code = _session.FileSystem.ReadAllText(resolvedPath);
+                // Read the on-disk content so the host can swap it in for
+                // the existing tree. Stale-refresh below covers other
+                // edited files; this read covers THIS file's edits.
+                overrideCode = _session.FileSystem.ReadAllText(resolvedPath);
             }
             catch (System.IO.IOException ex)
             {
@@ -115,27 +128,39 @@ internal sealed class WriteToolHandler
         var staleRefresh = GetBool(args, "staleRefresh") ?? true;
         var refreshed = staleRefresh ? _session.MaybeRefreshIfStale() : null;
 
-        var result = _session.CompilationHost!.CompileCheck(code!, moduleName);
-
-        if (refreshed is int changedFileCount)
+        var request = new CompileCheckRequest
         {
-            return TextResult(JsonSerializer.Serialize(new
-            {
-                result.Success,
-                result.Diagnostics,
-                source = !string.IsNullOrEmpty(filePath) ? "filePath" : "code",
-                filePath,
-                autoRefreshed = true,
-                changedFileCount,
-            }, _jsonOpts));
-        }
-        return TextResult(JsonSerializer.Serialize(new
+            Code = !string.IsNullOrEmpty(filePath) ? overrideCode : code,
+            FilePath = !string.IsNullOrEmpty(filePath) ? filePath : null,
+            ModuleName = moduleName,
+        };
+        var result = _session.CompilationHost!.CompileCheck(request);
+
+        var commonShape = new
         {
             result.Success,
             result.Diagnostics,
             source = !string.IsNullOrEmpty(filePath) ? "filePath" : "code",
             filePath,
-        }, _jsonOpts));
+            resolvedModule = string.IsNullOrEmpty(result.ResolvedModule) ? null : result.ResolvedModule,
+            existingTreeReplaced = result.ExistingTreeReplaced,
+        };
+
+        if (refreshed is int changedFileCount)
+        {
+            return TextResult(JsonSerializer.Serialize(new
+            {
+                commonShape.Success,
+                commonShape.Diagnostics,
+                commonShape.source,
+                commonShape.filePath,
+                commonShape.resolvedModule,
+                commonShape.existingTreeReplaced,
+                autoRefreshed = true,
+                changedFileCount,
+            }, _jsonOpts));
+        }
+        return TextResult(JsonSerializer.Serialize(commonShape, _jsonOpts));
     }
 
     /// <summary>

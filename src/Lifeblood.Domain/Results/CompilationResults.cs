@@ -29,6 +29,49 @@ public sealed class CompileCheckResult
 {
     public required bool Success { get; init; }
     public DiagnosticInfo[] Diagnostics { get; init; } = Array.Empty<DiagnosticInfo>();
+
+    /// <summary>
+    /// Module that owned the file or hosted the snippet for this check.
+    /// Populated when a file-mode check found an owning module; empty
+    /// when the host fell through to the first available compilation
+    /// (the legacy snippet path) or the request couldn't be resolved.
+    /// </summary>
+    public string ResolvedModule { get; init; } = "";
+
+    /// <summary>
+    /// File-mode marker: when the file was already part of an owning
+    /// compilation, the host swapped its existing syntax tree for the
+    /// on-disk content (so the user gets edit-then-check semantics
+    /// without colliding type re-declarations). False when the host
+    /// added the input as a new tree (snippet mode, or a brand-new
+    /// file not yet in any module).
+    /// </summary>
+    public bool ExistingTreeReplaced { get; init; }
+}
+
+/// <summary>
+/// Typed request for <c>ICompilationHost.CompileCheck</c>. Pass
+/// <see cref="Code"/> for inline snippets or <see cref="FilePath"/>
+/// for full-file checks against the file's owning module compilation.
+/// At most one of <see cref="Code"/> / <see cref="FilePath"/> is set
+/// by the handler; supplying both is a caller error caught upstream.
+/// </summary>
+public sealed class CompileCheckRequest
+{
+    /// <summary>Inline source to check. Mutually exclusive with <see cref="FilePath"/>.</summary>
+    public string? Code { get; init; }
+
+    /// <summary>
+    /// Workspace-relative or absolute path to a source file. The host
+    /// detects which module's compilation owns the file by matching the
+    /// path against each compilation's syntax tree paths, then swaps the
+    /// file's existing tree for the on-disk content. Mutually exclusive
+    /// with <see cref="Code"/>.
+    /// </summary>
+    public string? FilePath { get; init; }
+
+    /// <summary>Explicit module override. When unset, file-mode auto-detects from the path; snippet-mode falls through to the first compilation.</summary>
+    public string? ModuleName { get; init; }
 }
 
 public sealed class CodeExecutionResult

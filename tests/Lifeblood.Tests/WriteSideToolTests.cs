@@ -152,6 +152,115 @@ namespace TestApp
         Assert.Contains(result.Diagnostics, d => d.Message.Contains("No compilations available"));
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // LB-BUG-019: file-mode compile_check must resolve the owning module
+    // and swap the existing tree, NOT add the file as a new tree to an
+    // arbitrary first compilation. The bug surfaced as every cross-file
+    // reference (UnityEngine, sibling partials, types in other namespaces)
+    // emitting CS0246 when a real Unity file was passed.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void CompilationHost_CompileCheck_FileMode_ResolvesOwningModule()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            FilePath = "TestApp.cs",
+        });
+        Assert.True(result.Success, $"Expected success; got diagnostics: {string.Join("; ", result.Diagnostics.Select(d => d.Id + " " + d.Message))}");
+        Assert.Equal("TestApp", result.ResolvedModule);
+        Assert.True(result.ExistingTreeReplaced);
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_FileMode_OverrideCodeReplacesTree()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        // The override introduces a fresh class — sibling Greeter / IService
+        // / MyService stay in the compilation because we only swap THIS tree.
+        const string editedSource = @"
+namespace TestApp
+{
+    public class Greeter
+    {
+        public string Name { get; set; } = """";
+        private int _count;
+        public string Greet() { _count++; return $""Hi {Name}""; }
+        public static int Add(int a, int b) => a + b;
+        public static int Add(int a, int b, int c) => a + b + c;
+        public static string Add(string a, string b) => a + b;
+    }
+
+    public interface IService { void Execute(); }
+    public class MyService : IService
+    {
+        private readonly Greeter _g = new();
+        public void Execute() { _g.Greet(); }
+    }
+}";
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            FilePath = "TestApp.cs",
+            Code = editedSource,
+        });
+        Assert.True(result.Success, $"Expected success; got: {string.Join("; ", result.Diagnostics.Select(d => d.Id + " " + d.Message))}");
+        Assert.True(result.ExistingTreeReplaced);
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_FileMode_FileNotInAnyModule_ReturnsLB0002()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            FilePath = "Nonexistent/Path.cs",
+        });
+        Assert.False(result.Success);
+        Assert.Contains(result.Diagnostics, d => d.Id == "LB0002");
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_FileMode_PinnedModule_RejectsForeignFile()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            FilePath = "OtherModule.cs",
+            ModuleName = "TestApp",
+        });
+        Assert.False(result.Success);
+        Assert.Contains(result.Diagnostics, d => d.Id == "LB0002" && d.Message.Contains("module 'TestApp'"));
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_FileMode_OverrideIntroducesError_ReportsIt()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        // Edit introduces a syntactic error.
+        const string brokenSource = "namespace TestApp { public class Greeter { public ;;; } }";
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            FilePath = "TestApp.cs",
+            Code = brokenSource,
+        });
+        Assert.False(result.Success);
+        Assert.NotEmpty(result.Diagnostics);
+    }
+
+    [Fact]
+    public void CompilationHost_CompileCheck_SnippetMode_StillWorks()
+    {
+        var host = new RoslynCompilationHost(BuildTestCompilations());
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            Code = "public class FreshSnippet { }",
+            ModuleName = "TestApp",
+        });
+        Assert.True(result.Success);
+        Assert.False(result.ExistingTreeReplaced);
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Snippet ergonomics: bare statements / expressions / using-prefixed
     // statements must compile inside library modules. Pre-fix, all of
