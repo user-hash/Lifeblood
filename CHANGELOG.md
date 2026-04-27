@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added. cycles summarize / pagination (LB-FR-021 / ExampleApp dogfood)
+
 ## [0.6.7] - 2026-04-27
 
 ### Fixed. Resolver kind-correction (P1 / LB-BUG-002)
