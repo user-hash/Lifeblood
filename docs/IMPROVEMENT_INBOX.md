@@ -172,6 +172,119 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ---
 
+## LB-INBOX-007. `lifeblood_diagnose` resolves `System.Math` against a colliding workspace `Math` namespace
+
+**Observed.** On a workspace whose root namespace contains a child `Math` namespace
+(e.g. `Foo.Bar.Math` with sub-types like a custom math/utility module), running
+`lifeblood_diagnose` against files that use plain `using System;` + `Math.PI` /
+`Math.Min` / `Math.Max` / `Math.Sin` produces diagnostics of the shape:
+
+```text
+CS0234: The type or namespace name 'PI' does not exist in the namespace 'Foo.Bar.Math'
+```
+
+The same files compile clean under the live IDE / build (Unity console reports
+zero errors), confirming the diagnostic is a Lifeblood standalone-resolution
+artifact: `Math.PI` is being bound to the workspace-local `Math` namespace
+instead of `System.Math`. Reproduces consistently across multiple files that
+exercise the conflict (audio, runtime, snapshot helpers — any file mixing
+`using System;` and a local-namespace `Math` reference).
+
+**Suggested fix shape.**
+
+1. Walk `using` directives at the head of each compilation unit when resolving
+   bare-identifier `Math.X` references; prefer `System.Math` when `using System;`
+   is in scope and the local `Math` namespace does not contain a member matching
+   `X` (PI, Min, Max, Sin, etc).
+2. If 1 is too intrusive for the resolver, surface the ambiguity in the diagnostic
+   payload: `resolutionAmbiguous: ["System.Math", "Foo.Bar.Math"]` with a hint to
+   add an explicit `using static System.Math;` or a fully-qualified call. Today
+   the diagnostic just claims the local-namespace binding as truth.
+3. Add a regression workspace fixture that has a top-level `Math` namespace and
+   asserts `Math.PI` in a `using System;`-only file resolves to `System.Math.PI`.
+
+**Why it matters.** Right now this class of false positive forces every Lifeblood
+diagnostic on a Unity-shaped workspace to be cross-checked against the Unity
+console before the user can act. Reduces the "verified by Lifeblood, ship it"
+trust budget by exactly one round-trip. The fix shape above keeps the strict
+resolver but makes the answer right when `using System;` is already declared,
+which is the overwhelming common case.
+
+---
+
+## LB-INBOX-008. Per-diagnostic preprocessor-scope reporting on the envelope
+
+**Observed.** During a player-build readiness audit of a workspace (see related
+session note in DAWG-archive feedback doc), Lifeblood's standalone diagnostic
+correctly flagged a method as a player-build risk because the caller was outside
+`#if UNITY_EDITOR || DEVELOPMENT_BUILD` and the callee was inside it. Unity
+Editor tests passed because the Editor symbol was defined; a release IL2CPP
+compile would have failed. Good catch — this is one of the highest-value
+findings the tool has produced on a real session.
+
+The friction: nothing on the diagnostic envelope tells the user "this finding
+was rendered against define set X" (e.g. `["UNITY_EDITOR", "DEVELOPMENT_BUILD"]`
+or `["UNITY_STANDALONE_WIN", "ENABLE_IL2CPP"]`). So the user can't distinguish
+"Editor-only-noise that is gated correctly" from "player-build-real risk that
+will fail on the release pipeline" without manually re-running both contexts
+and diff'ing.
+
+**Suggested fix shape.**
+
+1. Add a `definesActive: string[]` field to the truth envelope on every diagnostic
+   response (`lifeblood_diagnose`, `lifeblood_compile_check`). Lists the active
+   preprocessor symbols Lifeblood used when binding the snippet/file.
+2. Add `definesUnused: string[]` (optional, when known) — symbols NOT defined for
+   this scope but referenced in the codebase, so a user can trivially see
+   "you're checking the Editor define set; the player set would also exclude
+   `DEVELOPMENT_BUILD` and `UNITY_INCLUDE_TESTS`."
+3. Optionally, accept `defineConstraints: string[]` on `lifeblood_diagnose` /
+   `lifeblood_compile_check` so the user can request a one-shot "as-if-player"
+   check from a single tool call without running two server passes.
+
+**Why it matters.** Closes the L1-style auditor loop: every Lifeblood diagnostic
+becomes a self-classifying finding instead of "is this real or just an Editor-
+context artifact?" — the most common follow-up question on real sessions today.
+Pairs naturally with `INV-ENVELOPE-001` (the truth envelope contract is the
+existing surface to extend).
+
+---
+
+## LB-INBOX-009. Enum-member reference queries return inconclusive results
+
+**Observed.** Verifying "every declared enum value is produced by source code"
+on a real reject-reason / telemetry-bucket enum
+(`MyDomain.Audio.SomeRejectReason` with ~22 byte-backed values) required asking
+Lifeblood for incoming references on individual enum members like
+`MyDomain.Audio.SomeRejectReason.UnsupportedWaveform`. `lifeblood_find_references`
+returned hits that pointed back to the enum declaration site or did not
+distinguish "value referenced by name" vs "value never produced". The user
+fell back to source-grep / Roslyn syntactic walk to verify coverage, which is
+the workflow Lifeblood's premise targets.
+
+**Suggested fix shape.**
+
+1. Treat enum members as first-class queryable symbols on `lifeblood_find_references`.
+   Differentiate three reference kinds in the response:
+    - `MemberAccess` (`SomeRejectReason.UnsupportedWaveform` written explicitly)
+    - `Equality` (`x == SomeRejectReason.UnsupportedWaveform`)
+    - `SwitchArm` (`case SomeRejectReason.UnsupportedWaveform:`)
+   Combined empty result for all three = strong "declared but never produced" signal.
+2. Either add a dedicated read-side tool (e.g. `lifeblood_enum_coverage` or
+   `lifeblood_unproduced_enum_values`) that takes an enum type id and returns a
+   per-member coverage report, or document the find-references kind-filter pattern
+   as the canonical workflow for this audit.
+3. Tighten `lifeblood_dead_code` to optionally flag enum members with zero
+   producing references in the same way it flags methods with no incoming edges.
+
+**Why it matters.** Reject-reason / state-machine / event-bus enums are
+architectural surfaces; "declared value drifts from never-produced" is the
+class of bug review-passes have to find by hand today. A semantic answer would
+collapse a hand audit to one tool call. Pairs with `lifeblood_dead_code`'s
+existing advisory-mode discipline — same shape, applied to enum members.
+
+---
+
 ## How entries land here
 
 If you find a friction point during a real session:
