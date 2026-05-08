@@ -46,7 +46,10 @@ public sealed record SearchQuery(string Query, SymbolKind[]? Kinds = null, int L
 /// read-side tool), the kind, the file path, the line, and the relative
 /// score (higher = better). The <see cref="MatchSnippets"/> array carries
 /// up to three short snippets showing WHERE in the searched corpus the
-/// query matched, for human-readable result rendering.
+/// query matched, for human-readable result rendering. The
+/// <see cref="MatchKind"/> field STRUCTURALLY reports which scoring
+/// bucket(s) drove the rank so callers can filter without parsing the
+/// snippet strings. INV-SEARCH-MATCHKIND-001.
 /// </summary>
 public sealed record SearchResult(
     string CanonicalId,
@@ -55,4 +58,36 @@ public sealed record SearchResult(
     string FilePath,
     int Line,
     double Score,
-    string[] MatchSnippets);
+    string[] MatchSnippets,
+    MatchKind MatchKind);
+
+/// <summary>
+/// Which scoring bucket drove a <see cref="SearchResult"/>'s rank. Lifted
+/// from the adapter's existing first-hit-token tracking so callers can
+/// filter / sort by signal type without parsing the (human-rendered)
+/// <see cref="SearchResult.MatchSnippets"/> strings. INV-SEARCH-MATCHKIND-001.
+/// Adapter-agnostic; future TS / Python adapters reuse the same taxonomy.
+/// </summary>
+public enum MatchKind
+{
+    /// <summary>The query matched the symbol's bare <c>Name</c>.</summary>
+    Name,
+
+    /// <summary>The query matched the symbol's <c>QualifiedName</c> but
+    /// not the bare <c>Name</c>. (Bare-name matches always take precedence
+    /// per the C# adapter's scoring guard, so QualifiedName is exclusive
+    /// of Name in single-bucket results.)</summary>
+    QualifiedName,
+
+    /// <summary>The query matched only the symbol's persisted
+    /// <c>xmlDocSummary</c> property — the by-what-it-DOES path that
+    /// distinguishes <c>lifeblood_search</c> from name-only resolution.</summary>
+    XmlDoc,
+
+    /// <summary>More than one bucket fired (e.g. Name + XmlDoc, or
+    /// QualifiedName + XmlDoc). Adapter does not enumerate which combo —
+    /// the score reflects the cumulative weight, and the
+    /// <see cref="SearchResult.MatchSnippets"/> array enumerates the
+    /// per-bucket evidence for human consumption.</summary>
+    Multiple,
+}

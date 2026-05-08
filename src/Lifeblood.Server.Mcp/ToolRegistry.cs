@@ -425,7 +425,7 @@ public static class ToolRegistry
   Name = "lifeblood_search",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = HeuristicAdvisorySearch,
-  Description = "Ranked keyword search across symbol names, qualified names, and persisted xml-documentation summaries. Use when you need to find a symbol by WHAT IT DOES, not by what it's NAMED — e.g., search 'canonicalize' and get back every symbol whose xmldoc mentions canonicalization even when none of them are literally called 'Canonicalize'. Returns ranked matches with canonical ids, file paths, lines, scores, and short context snippets. Distinct from lifeblood_resolve_short_name (which only searches the short-name index): this tool also mines the xmldoc corpus.",
+  Description = "Ranked keyword search across symbol names, qualified names, and persisted xml-documentation summaries. Use when you need to find a symbol by WHAT IT DOES, not by what it's NAMED — e.g., search 'canonicalize' and get back every symbol whose xmldoc mentions canonicalization even when none of them are literally called 'Canonicalize'. Returns ranked matches with canonical ids, file paths, lines, scores, short context snippets, and a structurally-typed `matchKind` per hit (`name` / `qualifiedName` / `xmlDoc` / `multiple`) so callers can filter by signal source without parsing the snippet text. Distinct from lifeblood_resolve_short_name (which only searches the short-name index): this tool also mines the xmldoc corpus.",
   InputSchema = new
   {
   type = "object",
