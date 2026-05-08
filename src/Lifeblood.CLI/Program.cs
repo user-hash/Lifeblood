@@ -30,8 +30,22 @@ class Program
             "analyze" => RunAnalyze(args.Skip(1).ToArray()),
             "context" => RunContext(args.Skip(1).ToArray()),
             "export" => RunExport(args.Skip(1).ToArray()),
+            // Standard help arms — convention is that any of these prints
+            // usage and exits 0. Pre-fix the help arms hit the unknown-
+            // command branch and exited 1 with a misleading "Unknown command"
+            // message, which is bad public-CLI hygiene per the v0.7.2
+            // pre-tag review.
+            "--help" or "-h" or "/?" or "help"
+                => RunHelp(),
             _ => Error($"Unknown command: {args[0]}"),
         };
+    }
+
+    static int RunHelp()
+    {
+        PrintBanner();
+        PrintUsage();
+        return 0;
     }
 
     /// <summary>

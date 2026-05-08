@@ -9,6 +9,38 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.7.2] - 2026-05-08
 
+### Pre-tag review fixes (release-blockers)
+
+A pre-tag review found three release-grade holes after the initial wave landed. All fixed before tagging.
+
+- **`JsonGraphImporter` crashed on Windows PowerShell-redirected files** (B1, `INV-JSON-IMPORT-BOM-001`). The README documents `lifeblood export --project ... > graph.json`, but PowerShell `>` writes UTF-16-LE-with-BOM by default; `System.Text.Json.JsonSerializer.Deserialize<T>(Stream)` requires UTF-8 and throws an unhandled exception on any other BOM. Affects both CLI (`lifeblood analyze --graph ...`) and MCP (`graphPath` argument). Fix: read through `StreamReader(stream, UTF8, detectEncodingFromByteOrderMarks: true)` and pass the resulting string to the JSON deserializer. All five standard BOMs (UTF-8 no-BOM, UTF-8-BOM, UTF-16-LE-BOM, UTF-16-BE-BOM, UTF-32 variants) round-trip cleanly. Pinned by `JsonRoundTripTests.ImportDocument_AcceptsAllStandardBomEncodings` (4-case theory) and end-to-end-verified via `lifeblood analyze --graph <utf16-le-bom-file>` against a real on-disk transcoded file.
+
+- **MCP stdio defaulted to host-codepage instead of UTF-8** (broader-class self-finding from B1, `INV-MCP-STDIO-UTF8-001`). The MCP / JSON-RPC stdio transport mandates UTF-8 per the protocol spec, but the server's `Console.InputEncoding` / `Console.OutputEncoding` were not pinned, so on a Windows console with a non-UTF-8 ANSI codepage multi-byte characters in JSON args (Unicode identifiers, accented characters in search queries) could silently mangle. Fix: pin both to `Encoding.UTF8` at `Server.Mcp.Program.Main` entry. Defensive — no test failure observed pre-fix, but the broader class is the same as B1.
+
+- **`global.json` declared an invalid SDK version** (B2). `"version": "8.0.0"` is rejected by `dotnet --info` ("Version '8.0.0' is not valid for the 'sdk/version' value; SDK feature bands need values like 8.0.100"). Builds passed locally only because `rollForward: latestFeature` saved it; bad public-release hygiene. Fix: `8.0.0` → `8.0.100`.
+
+- **MCP `incremental:true` on a fresh session silently fell through to full analyze** (B3 — contract violation between docs and behavior). The `INV-ANALYZE-FALLBACK-001` contract says "NoPriorAnalysis is always Rejected"; the adapter's `IncrementalAnalyze` honored that, but `GraphSession.Load`'s `CanIncremental` gate routed the call past `LoadIncremental` entirely, so the typed `FallbackReason.NoPriorAnalysis` from the adapter was never reached through MCP. Caller's `incremental:true` "be cheap" intent was silently overridden by a slow full re-analyze. Fix: `GraphSession.Load` synthesizes the Rejected wire response directly when `incremental:true` is requested without a usable prior snapshot AND `allowFullFallback:false`. The same fix covers two cases: no prior analysis at all, AND a prior analysis for a different `projectPath`. Both surface as `mode:"rejected"` + `fallbackReason:"noPriorAnalysis"` + `canRetryFull:true` + `suggestedRetry`. Pinned by `AnalyzeWireShapeTests.Load_IncrementalOnFreshSession_AllowFallbackFalse_RejectsWithNoPriorAnalysis`.
+
+### Pre-tag review broader-class find — `ClaudeMdInvariantParser` silently dropped every multi-segment INV id
+
+While verifying the new INV-EXTRACT-ENUMMEMBER-001 / INV-ANALYZE-FALLBACK-001 / etc. claims showed up in `lifeblood_invariant_check`, the diagnostic surfaced 5 of 6 new invariants as `MISSING`. Broader-class probe found the same silent-drop hitting four pre-existing multi-segment invariants too: `INV-FILE-EDGE-001`, `INV-USAGE-PORT-001/002`, `INV-USAGE-PROBE-001/002`. Total impact: **10 invariants quietly missing from the audit repo-wide.**
+
+Root cause: the parser's regex `INV-[A-Z][A-Z0-9]*-\d+` (used by all five shape detectors A/B/C/D/E) only captures single-segment categories. The `[A-Z0-9]*` character class doesn't include `-`, so as soon as the id has a second dashed segment (`USAGE-PORT-001`, `EXTRACT-ENUMMEMBER-001`) the regex bails. The downstream `ExtractCategoryFromId` helper DOES support multi-segment categories — its tests covered that — but the upstream regex never invokes it with multi-segment input, leaving the bug hidden behind a passing helper-level theory.
+
+Fix: regex updated in all five places (`InvariantBulletStart`, `InvariantBareBoldStart`, `BareBoldTitleCapture`, `BoldTitleCapture`, `ShapeAColonBody`, `ShapeDColonBody`, `ShapeEColonBody`) to `INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+` — accepts arbitrary-depth multi-segment categories while still requiring a numeric tail. Six new ratchet tests in `ClaudeMdInvariantParserTests.Parse_*MultiSegmentId_Parses` cover all five shapes plus a three-segment-category case (`INV-MCP-STDIO-UTF8-001`). Self-audit jumped from 66 to 76 invariants and from 31 to 39 categories — same source files, same authoring shapes, just a parser that finally sees them all.
+
+The deeper class lesson: per-component coverage (helper test + regex test in isolation) doesn't catch wiring drift. End-to-end `lifeblood_invariant_check` smoke against the live tree now diagnostically lists every wave / pre-tag id with FOUND/MISSING so a doc count claim can never silently diverge from parser truth.
+
+### Pre-tag review polish
+
+- **Stale `mode:'full-fallback'` references in 5 sites** (FBT1). The wire mode for the widened-to-full path was refactored to `mode:"full"` + `requestedMode:"incremental"` mid-wave, but the doc/comment sweep missed five sites: `ToolRegistry.cs:123` analyze tool description, `docs/invariants/pipeline.md` (the INV body), `docs/STATUS.md`, `docs/DOGFOOD_FINDINGS.md`, and a doc-comment in `IncrementalAnalyzeResult.cs`. All swept.
+
+- **`docs/STATUS.md` self-analysis code-block had stale counts** (FBT2). Lines 44-50 quoted `Symbols: 2,191 / Edges: 10,194 / Files: 150` — pre-wave numbers, plus a `Files :` row that the CLI doesn't actually print (CLI emits Symbols/Edges/Modules/Types only). Refreshed to current numbers and removed the phantom row.
+
+- **`lifeblood --help` returned "Unknown command"** (FBT3). The CLI switch only recognized `analyze` / `context` / `export`; help arms (`--help`, `-h`, `/?`, `help`) hit the unknown-command branch and exited 1 with a misleading error. Fix: added a `RunHelp` arm that prints the banner + usage and exits 0.
+
+- **`LICENSE` was a 137-byte pointer** (FBT4). NuGet `PackageLicenseExpression` is fine, but repo convention for AGPL-3.0 ships the full license body. Replaced with the canonical 661-line GNU AGPL-3.0 text.
+
 ### Headline changes
 
 - **Enum-member extraction + resolver type-aware fallback**

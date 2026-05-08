@@ -161,13 +161,46 @@ public sealed class GraphSession : IDisposable
         // INV-ANALYZE-FALLBACK-001: caller's allowFullFallback flag flows through
         // to the adapter's policy gate. Default false = fail-loud (Rejected),
         // true = silent widening (FullFallback). Either path returns a typed
-        // result the wire shape surfaces as the incremental.{mode,fallbackReason}
-        // block.
-        if (incremental && CanIncremental
-            && !string.IsNullOrEmpty(projectPath)
-            && string.Equals(projectPath, _lastProjectPath, StringComparison.OrdinalIgnoreCase))
+        // result the wire shape surfaces as fallbackReason / canRetryFull /
+        // suggestedRetry on the response.
+        if (incremental && !string.IsNullOrEmpty(projectPath))
         {
-            return LoadIncremental(projectPath, rulesPath, allowFullFallback);
+            var canIncrementalThisProject = CanIncremental
+                && string.Equals(projectPath, _lastProjectPath, StringComparison.OrdinalIgnoreCase);
+
+            if (canIncrementalThisProject)
+            {
+                return LoadIncremental(projectPath, rulesPath, allowFullFallback);
+            }
+
+            // No prior snapshot (first call) OR snapshot is for a different
+            // project. Both are "no prior analysis for THIS project" from the
+            // caller's POV, both map to FallbackReason.NoPriorAnalysis. The
+            // adapter would return the same Rejected/NoPriorAnalysis result
+            // if invoked, but we don't have an adapter to invoke yet — so
+            // synthesize the wire response directly. INV-ANALYZE-FALLBACK-001
+            // requires this path to surface the structured rejection so the
+            // agent's incremental:true assumption isn't silently overridden
+            // by a slow full re-analyze.
+            if (!allowFullFallback)
+            {
+                var detail = !CanIncremental
+                    ? "No previous analysis snapshot. Call lifeblood_analyze first (without incremental:true)."
+                    : $"Previous analysis was for a different project ('{_lastProjectPath}'); current request is for '{projectPath}'.";
+
+                return BuildLoadResult(
+                    mode: "rejected",
+                    graph: null,
+                    analysis: null,
+                    usage: null,
+                    changedFileCount: 0,
+                    skipped: null,
+                    requestedMode: "incremental",
+                    fallbackReason: FallbackReason.NoPriorAnalysis,
+                    fallbackDetail: detail,
+                    canRetryFull: true);
+            }
+            // allowFullFallback==true: fall through to full re-analyze.
         }
 
         SemanticGraph graph;

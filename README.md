@@ -110,7 +110,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
                       Analysis (optional)         └──  CLI / CI
 ```
 
-26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [69 typed invariants under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [76 typed invariants under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -141,7 +141,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post G1+G2+G4+R2-3 wave): 2,373 symbols, 11,665 edges, 11 modules, 272 types, 0 violations, 0 cycles. **739 tests** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **69 typed invariants across 34 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post G1+G2+G4+R2-3 wave + reviewer-catch UTF-16/incremental fixes): 2,383 symbols, 11,720 edges, 11 modules, 272 types, 0 violations, 0 cycles. **751 tests** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **76 typed invariants across 39 categories**, zero duplicates, zero parse warnings.
 
 ---
 

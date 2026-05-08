@@ -27,6 +27,15 @@ class Program
 
     static async Task Main()
     {
+        // MCP / JSON-RPC over stdio mandates UTF-8 (per the protocol spec);
+        // pin stdin and stdout to UTF-8 explicitly so the host process's
+        // codepage (Windows console: typically a non-UTF-8 ANSI codepage)
+        // does not silently mangle multi-byte characters in JSON args or
+        // responses (e.g. Unicode identifiers, accented characters in
+        // search queries). INV-MCP-STDIO-UTF8-001.
+        Console.InputEncoding = System.Text.Encoding.UTF8;
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+
         IFileSystem fs = new PhysicalFileSystem();
         var session = new GraphSession(fs);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
