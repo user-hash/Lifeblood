@@ -193,6 +193,21 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         // old suggestion ranker was scoring the full canonical-shaped input
         // string against bare symbol names, which Levenshtein'd toward length
         // coincidence rather than semantic match. See INV-RESOLVER-005.
+        //
+        // INV-RESOLVER-007: when input parses as a member-kind ID (field:,
+        // property:, method:), Rule 4 substitutions MUST stay on the same
+        // containing-type short name AND the same Symbol.Kind. Pre-fix, an
+        // exact-prefixed query like field:NS.FieldMask.ShimmerPhase that
+        // missed Rule 1 fell through to FindByShortName("ShimmerPhase") and
+        // silently returned field:NS.BurstVoiceState.ShimmerPhase — a
+        // different containing type, returned as a successful resolution.
+        // Downstream tools (find_references / dependants / blast_radius) then
+        // walked the wrong target. The R2-3 dogfood case from a Unity workspace
+        // closes here. The rule's documented intent ("namespace was wrong but
+        // symbol uniquely identified") is preserved: same-short-type, different-
+        // namespace substitutions still resolve cleanly. Cross-type / cross-kind
+        // substitutions become NotFound + Did-you-mean candidates so the caller
+        // sees the ambiguity instead of acting on a wrong answer.
         var extractedShortName = ExtractLikelyShortName(canonical);
         bool triedExtractedShortName = false;
         if (!string.IsNullOrEmpty(extractedShortName)
@@ -200,10 +215,55 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         {
             triedExtractedShortName = true;
             var extractedMatches = graph.FindByShortName(extractedShortName);
-            if (extractedMatches.Count == 1)
+
+            // INV-RESOLVER-007 gate: filter member-kind candidates to those
+            // sharing the requested containing-type short name AND symbol kind.
+            // For non-member inputs (type: / ns:) the gate is a no-op and the
+            // existing namespace-substitution behavior applies.
+            IReadOnlyList<Symbol> safeCandidates = extractedMatches;
+            string? rejectionDiagnostic = null;
+            if (TryParseMemberInput(canonical, out var requestedPrefix,
+                                    out var requestedContainingFqn,
+                                    out _))
+            {
+                var requestedTypeShort = ShortNameOf(requestedContainingFqn);
+                var requestedKind = SymbolKindForPrefix(requestedPrefix);
+
+                var filtered = extractedMatches
+                    .Where(c => c.Kind == requestedKind
+                                && string.Equals(
+                                       ShortNameOf(StripTypePrefix(c.ParentId)),
+                                       requestedTypeShort,
+                                       System.StringComparison.Ordinal))
+                    .ToArray();
+
+                if (filtered.Length == 0 && extractedMatches.Count > 0)
+                {
+                    rejectionDiagnostic =
+                        $"Symbol not found: {canonical}. " +
+                        $"Short name '{extractedShortName}' matches {extractedMatches.Count} symbol(s), " +
+                        $"but none lives on a containing type named '{requestedTypeShort}' " +
+                        $"with kind '{requestedKind.ToString().ToLowerInvariant()}'. " +
+                        "Cross-type / cross-kind substitution refused (INV-RESOLVER-007). " +
+                        "Pick the correct containing type from Candidates.";
+                }
+                safeCandidates = filtered;
+            }
+
+            if (rejectionDiagnostic != null)
+            {
+                return new SymbolResolutionResult
+                {
+                    Outcome = ResolveOutcome.NotFound,
+                    Candidates = extractedMatches.Select(s => s.Id).ToArray(),
+                    Diagnostic = rejectionDiagnostic,
+                };
+            }
+
+            if (safeCandidates.Count == 1)
             {
                 var result = AttachOverloads(graph, BuildResolved(
-                    graph, extractedMatches[0].Id, extractedMatches[0],
+                    graph, safeCandidates[0].Id, safeCandidates[0],
                     ResolveOutcome.ShortNameFromQualifiedInput));
                 // Preserve the explanatory diagnostic so tools can surface
                 // "we interpreted X as Y" instead of silently re-pointing.
@@ -219,18 +279,18 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
                     Diagnostic = $"Resolved '{canonical}' via short-name fallback: " +
                                  $"the namespace did not match any symbol, but the trailing " +
                                  $"segment '{extractedShortName}' uniquely identifies " +
-                                 $"{extractedMatches[0].Id}.",
+                                 $"{safeCandidates[0].Id}.",
                 };
             }
-            if (extractedMatches.Count > 1)
+            if (safeCandidates.Count > 1)
             {
                 return new SymbolResolutionResult
                 {
                     Outcome = ResolveOutcome.AmbiguousShortNameFromQualifiedInput,
-                    Candidates = extractedMatches.Select(s => s.Id).ToArray(),
+                    Candidates = safeCandidates.Select(s => s.Id).ToArray(),
                     Diagnostic = $"Symbol not found: {canonical}. " +
                                  $"The trailing short name '{extractedShortName}' matches " +
-                                 $"{extractedMatches.Count} symbols across different namespaces. " +
+                                 $"{safeCandidates.Count} symbols across different namespaces. " +
                                  "Pick one from Candidates.",
                 };
             }
@@ -434,6 +494,74 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
 
         return working.Trim();
     }
+
+    /// <summary>
+    /// Parses a canonical member-kind ID into (prefix, containingTypeFqn, memberName).
+    /// Recognises <c>field:</c>, <c>property:</c>, and <c>method:</c> prefixes.
+    /// Method parameter lists are stripped before splitting on the final dot.
+    /// Used by Rule 4 (INV-RESOLVER-007) to constrain short-name fallback to the
+    /// requested containing type. Returns false for type:/ns:/file:/mod: inputs
+    /// or any input whose tail does not parse as Type.Member.
+    /// </summary>
+    internal static bool TryParseMemberInput(
+        string canonical,
+        out string prefix,
+        out string containingTypeFqn,
+        out string memberName)
+    {
+        prefix = "";
+        containingTypeFqn = "";
+        memberName = "";
+        if (string.IsNullOrWhiteSpace(canonical)) return false;
+
+        var colonIdx = canonical.IndexOf(':');
+        if (colonIdx <= 0) return false;
+
+        var detectedPrefix = canonical.Substring(0, colonIdx);
+        if (detectedPrefix != "field" && detectedPrefix != "property" && detectedPrefix != "method")
+            return false;
+
+        var rest = canonical.Substring(colonIdx + 1);
+        if (detectedPrefix == "method")
+        {
+            var parenIdx = rest.IndexOf('(');
+            if (parenIdx > 0) rest = rest.Substring(0, parenIdx);
+        }
+
+        var lastDot = rest.LastIndexOf('.');
+        if (lastDot <= 0 || lastDot == rest.Length - 1) return false;
+
+        prefix = detectedPrefix;
+        containingTypeFqn = rest.Substring(0, lastDot);
+        memberName = rest.Substring(lastDot + 1);
+        return true;
+    }
+
+    /// <summary>Last dot-separated segment of a fully-qualified name (or the whole string if none).</summary>
+    internal static string ShortNameOf(string fqn)
+    {
+        if (string.IsNullOrEmpty(fqn)) return "";
+        var idx = fqn.LastIndexOf('.');
+        return idx >= 0 ? fqn.Substring(idx + 1) : fqn;
+    }
+
+    /// <summary>Strips the <c>type:</c> prefix from a parent-id ParentId reference. No-op if absent.</summary>
+    internal static string StripTypePrefix(string parentId)
+    {
+        const string typePrefix = "type:";
+        return parentId.StartsWith(typePrefix, System.StringComparison.Ordinal)
+            ? parentId.Substring(typePrefix.Length)
+            : parentId;
+    }
+
+    /// <summary>Maps a Lifeblood symbol-id kind prefix to its <see cref="SymbolKind"/>.</summary>
+    internal static SymbolKind SymbolKindForPrefix(string prefix) => prefix switch
+    {
+        "field"    => SymbolKind.Field,
+        "property" => SymbolKind.Property,
+        "method"   => SymbolKind.Method,
+        _          => SymbolKind.Field, // unreachable when called after TryParseMemberInput true-path
+    };
 
     /// <summary>
     /// Score one candidate against the query. Zero means "drop this
