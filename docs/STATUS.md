@@ -99,7 +99,7 @@ cycles  : 117 SCCs
 
 Authority + classification + dead-code numbers from real DAWG dogfood:
 - Methods classified by body shape: 18,985.
-- `PureForwarder` count: 3,367 (direct ABG-extraction triage signal).
+- `PureForwarder` count: 3,367 (direct host-type / dispatcher / partial-class extraction triage signal — the DAWG dogfood case was an ABG partial-class wave; the same metric drives any host-with-many-subordinates split decision).
 - Dead-code findings (with Unity reachability injected): 729 (down from 1,095 pre-P3, -33%); 4 type-level findings post-`LB-FP-003` (down from 6 — XRaySettingsProvider + MpServiceResets cleared).
 - MonoBehaviour magic-method FPs: 13 (down from 378 pre-P3, -97%).
 - Invariant tree discovery: 83 invariants across 25 categories aggregated from CLAUDE.md + AGENTS.md + `docs/invariants/**.md`, 0 parse warnings.
