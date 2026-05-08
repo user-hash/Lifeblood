@@ -70,6 +70,133 @@ public enum Color { Red, Green, Blue }");
         Assert.Equal("enum", enumSym!.Properties["typeKind"]);
     }
 
+    // INV-EXTRACT-ENUMMEMBER-001: enum members are first-class graph symbols.
+    [Fact]
+    public void ExtractSymbols_EnumMembers_EmittedAsFieldKind()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public enum Color { Red, Green, Blue }");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Color.cs", "file:Color.cs");
+
+        var members = symbols.Where(s => s.Kind == DomainSymbolKind.Field
+                                      && s.Properties.TryGetValue("fieldKind", out var k)
+                                      && k == "enumMember")
+                             .ToArray();
+
+        Assert.Equal(3, members.Length);
+        Assert.All(members, m => Assert.True(m.IsStatic));
+        Assert.All(members, m => Assert.Equal("App.Color", m.Properties["fieldType"]));
+
+        Assert.Contains(members, m => m.Name == "Red"   && m.Properties["constantValue"] == "0");
+        Assert.Contains(members, m => m.Name == "Green" && m.Properties["constantValue"] == "1");
+        Assert.Contains(members, m => m.Name == "Blue"  && m.Properties["constantValue"] == "2");
+    }
+
+    [Fact]
+    public void ExtractSymbols_EnumMembers_IdsRoundTripThroughSymbolIds()
+    {
+        var (model, root) = Compile(@"
+namespace App.DSP;
+public enum FieldMask { ShimmerPhase, BellCutoff }");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "FieldMask.cs", "file:FieldMask.cs");
+
+        var shimmer = symbols.FirstOrDefault(s => s.Name == "ShimmerPhase");
+        Assert.NotNull(shimmer);
+        Assert.Equal("field:App.DSP.FieldMask.ShimmerPhase", shimmer!.Id);
+        Assert.Equal("App.DSP.FieldMask.ShimmerPhase", shimmer.QualifiedName);
+        Assert.Equal("type:App.DSP.FieldMask", shimmer.ParentId);
+    }
+
+    [Fact]
+    public void ExtractSymbols_EnumMembers_ExplicitValuesPreserved()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public enum Status { Idle = 0, Loading = 5, Ready = 10, Failed = 99 }");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Status.cs", "file:Status.cs");
+
+        var members = symbols.Where(s => s.Properties.TryGetValue("fieldKind", out var k) && k == "enumMember")
+                             .ToDictionary(s => s.Name, s => s.Properties["constantValue"]);
+
+        Assert.Equal("0",  members["Idle"]);
+        Assert.Equal("5",  members["Loading"]);
+        Assert.Equal("10", members["Ready"]);
+        Assert.Equal("99", members["Failed"]);
+    }
+
+    [Fact]
+    public void ExtractSymbols_EnumMembers_FlagsBitfieldPreserved()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+[System.Flags]
+public enum FileMode { None = 0, Read = 1, Write = 2, Execute = 4, All = Read | Write | Execute }");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "FileMode.cs", "file:FileMode.cs");
+
+        var members = symbols.Where(s => s.Properties.TryGetValue("fieldKind", out var k) && k == "enumMember")
+                             .ToDictionary(s => s.Name, s => s.Properties["constantValue"]);
+
+        Assert.Equal("0", members["None"]);
+        Assert.Equal("1", members["Read"]);
+        Assert.Equal("2", members["Write"]);
+        Assert.Equal("4", members["Execute"]);
+        Assert.Equal("7", members["All"]);
+    }
+
+    [Fact]
+    public void ExtractSymbols_NestedEnumMembers_ParentedToNestedEnum()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Outer
+{
+    public enum Inner { A, B, C }
+}");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Outer.cs", "file:Outer.cs");
+
+        var innerEnum = symbols.FirstOrDefault(s => s.Name == "Inner" && s.Kind == DomainSymbolKind.Type);
+        Assert.NotNull(innerEnum);
+        Assert.Equal("type:App.Outer.Inner", innerEnum!.Id);
+
+        var members = symbols.Where(s => s.Properties.TryGetValue("fieldKind", out var k) && k == "enumMember").ToArray();
+        Assert.Equal(3, members.Length);
+        Assert.All(members, m => Assert.Equal("type:App.Outer.Inner", m.ParentId));
+        Assert.Contains(members, m => m.Id == "field:App.Outer.Inner.A");
+    }
+
+    [Fact]
+    public void ExtractSymbols_EnumMembers_XmlDocSummaryAttached()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+/// <summary>Color states.</summary>
+public enum Color
+{
+    /// <summary>Warm primary.</summary>
+    Red,
+    Green
+}");
+
+        var extractor = new RoslynSymbolExtractor();
+        var symbols = extractor.Extract(model, root, "Color.cs", "file:Color.cs");
+
+        var red = symbols.FirstOrDefault(s => s.Name == "Red");
+        Assert.NotNull(red);
+        Assert.True(red!.Properties.TryGetValue("xmlDocSummary", out var summary));
+        Assert.Contains("Warm primary", summary);
+    }
+
     [Fact]
     public void ExtractSymbols_QualifiedNames()
     {
