@@ -95,8 +95,24 @@ public sealed class GraphSession : IDisposable
             return null;
         try
         {
-            var config = new AnalysisConfig { RetainCompilations = true };
-            var (graph, changedFileCount) = _roslynAdapter.IncrementalAnalyze(config);
+            // Auto-refresh contract: "make state fresh." This is an internal
+            // best-effort caller — if the adapter cannot honor incremental
+            // cleanly, the right move is to widen to a full re-analyze
+            // rather than leave compile_check running on a stale graph.
+            // Opt into AllowFullFallback=true here. INV-ANALYZE-FALLBACK-001.
+            var config = new AnalysisConfig
+            {
+                RetainCompilations = true,
+                AllowFullFallback = true,
+            };
+            var incremental = _roslynAdapter.IncrementalAnalyze(config);
+            // Mode==Rejected only happens here when the snapshot disappeared
+            // mid-run (CanIncremental gated above) — degrade silently per
+            // the best-effort contract.
+            if (incremental.Mode == IncrementalMode.Rejected || incremental.Graph == null)
+                return null;
+            var graph = incremental.Graph;
+            var changedFileCount = incremental.ChangedFileCount;
             if (changedFileCount == 0) return null;
 
             // Source changed — rebuild the session view. This mirrors the
@@ -137,14 +153,21 @@ public sealed class GraphSession : IDisposable
         }
     }
 
-    public string Load(string? projectPath, string? graphPath, string? rulesPath, bool incremental = false, bool readOnly = false)
+    public string Load(string? projectPath, string? graphPath, string? rulesPath,
+                       bool incremental = false, bool readOnly = false,
+                       bool allowFullFallback = false)
     {
-        // Incremental path: reuse existing adapter, only recompile changed modules
+        // Incremental path: reuse existing adapter, only recompile changed modules.
+        // INV-ANALYZE-FALLBACK-001: caller's allowFullFallback flag flows through
+        // to the adapter's policy gate. Default false = fail-loud (Rejected),
+        // true = silent widening (FullFallback). Either path returns a typed
+        // result the wire shape surfaces as the incremental.{mode,fallbackReason}
+        // block.
         if (incremental && CanIncremental
             && !string.IsNullOrEmpty(projectPath)
             && string.Equals(projectPath, _lastProjectPath, StringComparison.OrdinalIgnoreCase))
         {
-            return LoadIncremental(projectPath, rulesPath);
+            return LoadIncremental(projectPath, rulesPath, allowFullFallback);
         }
 
         SemanticGraph graph;
@@ -249,20 +272,49 @@ public sealed class GraphSession : IDisposable
             analysis: analysis,
             usage: usage,
             changedFileCount: null,
-            skipped: _roslynAdapter?.SkippedFiles);
+            skipped: _roslynAdapter?.SkippedFiles,
+            requestedMode: "full");
     }
 
-    private string LoadIncremental(string projectPath, string? rulesPath)
+    private string LoadIncremental(string projectPath, string? rulesPath, bool allowFullFallback)
     {
         var capture = UsageProbe.Start();
         AnalysisUsage? usage = null;
         try
         {
-        var config = new AnalysisConfig { RetainCompilations = true };
-        var (graph, changedFileCount) = _roslynAdapter!.IncrementalAnalyze(config);
+        var config = new AnalysisConfig
+        {
+            RetainCompilations = true,
+            AllowFullFallback = allowFullFallback,
+        };
+        var incremental = _roslynAdapter!.IncrementalAnalyze(config);
         capture.MarkPhase("incremental");
 
-        if (changedFileCount == 0)
+        // INV-ANALYZE-FALLBACK-001: caller refused widening; the adapter
+        // returned a typed Rejected. Surface it on the wire — the agent
+        // re-runs explicitly with allowFullFallback:true or switches to
+        // a non-incremental call.
+        if (incremental.Mode == IncrementalMode.Rejected)
+        {
+            usage = capture.Stop();
+            return BuildLoadResult(
+                mode: "rejected",
+                graph: null,
+                analysis: null,
+                usage: usage,
+                changedFileCount: 0,
+                skipped: _roslynAdapter?.SkippedFiles,
+                requestedMode: "incremental",
+                fallbackReason: incremental.Reason,
+                fallbackDetail: incremental.Detail,
+                canRetryFull: true);
+        }
+
+        // From here on Graph is non-null (Incremental or FullFallback).
+        var graph = incremental.Graph!;
+        var changedFileCount = incremental.ChangedFileCount;
+
+        if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0)
         {
             usage = capture.Stop();
             return BuildLoadResult(
@@ -271,7 +323,8 @@ public sealed class GraphSession : IDisposable
                 analysis: null,
                 usage: usage,
                 changedFileCount: 0,
-                skipped: _roslynAdapter?.SkippedFiles);
+                skipped: _roslynAdapter?.SkippedFiles,
+                requestedMode: "incremental");
         }
 
         // Validate the rebuilt graph
@@ -314,13 +367,22 @@ public sealed class GraphSession : IDisposable
         _analyzedAtUtc = DateTime.UtcNow;
 
         usage = capture.Stop();
+        // INV-ANALYZE-FALLBACK-001: `mode` reports what the adapter DID,
+        // `requestedMode` reports what the caller ASKED. FullFallback's
+        // `mode` is "full" (the truth: the adapter did a full re-analyze)
+        // and the `fallbackReason` field surfaces alongside so the caller
+        // sees the cache-miss without parsing a hybrid mode value.
+        var wireMode = incremental.Mode == IncrementalMode.FullFallback ? "full" : "incremental";
         return BuildLoadResult(
-            mode: "incremental",
+            mode: wireMode,
             graph: graph,
             analysis: analysis,
             usage: usage,
             changedFileCount: changedFileCount,
-            skipped: _roslynAdapter?.SkippedFiles);
+            skipped: _roslynAdapter?.SkippedFiles,
+            requestedMode: "incremental",
+            fallbackReason: incremental.Reason,
+            fallbackDetail: incremental.Detail);
         }
         catch
         {
@@ -339,11 +401,15 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     private static string BuildLoadResult(
         string mode,
-        SemanticGraph graph,
+        SemanticGraph? graph,
         Lifeblood.Domain.Results.AnalysisResult? analysis,
         AnalysisUsage? usage,
         int? changedFileCount,
-        IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null)
+        IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null,
+        string? requestedMode = null,
+        FallbackReason? fallbackReason = null,
+        string? fallbackDetail = null,
+        bool? canRetryFull = null)
     {
         // Phase 4 / C4: skipped files surface in the analyze response so
         // users can see exactly which files the adapter dropped and why.
@@ -364,10 +430,29 @@ public sealed class GraphSession : IDisposable
             };
         }
 
+        // INV-ANALYZE-FALLBACK-001 wire shape: `mode` reports what the
+        // adapter DID; `requestedMode` separately reports what the caller
+        // ASKED for. Disambiguates the fallback case (DID=full + ASKED=
+        // incremental) without inventing a hybrid mode value. Fallback
+        // reason + detail surface alongside whenever the cheap path could
+        // not be honored cleanly. Rejection responses additionally carry
+        // `canRetryFull` + `suggestedRetry` so the agent's next move is
+        // self-documenting — no out-of-band knowledge required.
+        object? suggestedRetry = null;
+        if (canRetryFull == true)
+        {
+            suggestedRetry = new
+            {
+                incremental = true,
+                allowFullFallback = true,
+            };
+        }
+
         var response = new
         {
             mode,
-            summary = new
+            requestedMode,
+            summary = graph == null ? null : new
             {
                 symbols = graph.Symbols.Count,
                 edges = graph.Edges.Count,
@@ -377,6 +462,10 @@ public sealed class GraphSession : IDisposable
                 violations = analysis?.Violations.Length ?? 0,
                 cycles = analysis?.Cycles.Length ?? 0,
             },
+            fallbackReason = fallbackReason.HasValue ? WireReasonName(fallbackReason.Value) : null,
+            fallbackDetail,
+            canRetryFull,
+            suggestedRetry,
             // Legacy field — kept for back-compat with callers that
             // already read it. Phase P6 (LB-OBSERVATION-003) splits the
             // signal into the two named fields below; new callers
@@ -408,6 +497,20 @@ public sealed class GraphSession : IDisposable
         };
         return JsonSerializer.Serialize(response, JsonOpts);
     }
+
+    /// <summary>
+    /// Maps <see cref="FallbackReason"/> to its stable wire string. The wire
+    /// names are deliberately camelCase (matching the MCP response style) and
+    /// distinct from the C# identifier names so the enum can be renamed
+    /// internally without breaking callers. INV-ANALYZE-FALLBACK-001.
+    /// </summary>
+    private static string WireReasonName(FallbackReason reason) => reason switch
+    {
+        FallbackReason.NoPriorAnalysis         => "noPriorAnalysis",
+        FallbackReason.ModuleSetChanged        => "moduleSetChanged",
+        FallbackReason.ModuleDescriptorChanged => "moduleDescriptorChanged",
+        _ => reason.ToString(),
+    };
 
     private ArchitectureRule[]? ResolveRules(string? rulesPath)
     {

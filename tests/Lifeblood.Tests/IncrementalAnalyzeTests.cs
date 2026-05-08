@@ -35,10 +35,13 @@ public class IncrementalAnalyzeTests : IDisposable
 
         Assert.True(analyzer.HasSnapshot);
 
-        var (graph, changedCount) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
-        Assert.Equal(0, changedCount);
-        Assert.True(graph.Symbols.Count > 0);
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.Null(r.Reason);
+        Assert.Equal(0, r.ChangedFileCount);
+        Assert.NotNull(r.Graph);
+        Assert.True(r.Graph!.Symbols.Count > 0);
     }
 
     [Fact]
@@ -55,10 +58,12 @@ public class IncrementalAnalyzeTests : IDisposable
         Thread.Sleep(50); // ensure timestamp changes
         File.WriteAllText(filePath, "public class Foo { public void Bar() { } }");
 
-        var (graph2, changedCount) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
-        Assert.True(changedCount > 0, "Should detect changed file");
-        Assert.Contains(graph2.Symbols, s => s.Name == "Bar" && s.Kind == SymbolKind.Method);
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.True(r.ChangedFileCount > 0, "Should detect changed file");
+        Assert.NotNull(r.Graph);
+        Assert.Contains(r.Graph!.Symbols, s => s.Name == "Bar" && s.Kind == SymbolKind.Method);
     }
 
     [Fact]
@@ -74,9 +79,11 @@ public class IncrementalAnalyzeTests : IDisposable
         Thread.Sleep(50);
         File.WriteAllText(filePath, "public class Foo { }\npublic class Extra { }");
 
-        var (graph2, _) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
-        Assert.Contains(graph2.Symbols, s => s.Name == "Extra" && s.Kind == SymbolKind.Type);
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.NotNull(r.Graph);
+        Assert.Contains(r.Graph!.Symbols, s => s.Name == "Extra" && s.Kind == SymbolKind.Type);
     }
 
     [Fact]
@@ -92,9 +99,11 @@ public class IncrementalAnalyzeTests : IDisposable
         Thread.Sleep(50);
         File.WriteAllText(filePath, "public class Foo { }");
 
-        var (graph2, _) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
-        Assert.DoesNotContain(graph2.Symbols, s => s.Name == "Remove" && s.Kind == SymbolKind.Method);
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.NotNull(r.Graph);
+        Assert.DoesNotContain(r.Graph!.Symbols, s => s.Name == "Remove" && s.Kind == SymbolKind.Method);
     }
 
     [Fact]
@@ -116,11 +125,13 @@ public class IncrementalAnalyzeTests : IDisposable
         Thread.Sleep(50);
         File.WriteAllText(dynamicPath, "public class Dynamic { public int Value { get; set; } }");
 
-        var (graph2, changedCount) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
-        Assert.Equal(1, changedCount); // only Dynamic.cs changed
-        Assert.Contains(graph2.Symbols, s => s.Name == "Keep"); // Stable.cs preserved
-        Assert.Contains(graph2.Symbols, s => s.Name == "Value" && s.Kind == SymbolKind.Property); // new member
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.Equal(1, r.ChangedFileCount); // only Dynamic.cs changed
+        Assert.NotNull(r.Graph);
+        Assert.Contains(r.Graph!.Symbols, s => s.Name == "Keep"); // Stable.cs preserved
+        Assert.Contains(r.Graph.Symbols, s => s.Name == "Value" && s.Kind == SymbolKind.Property); // new member
     }
 
     [Fact]
@@ -144,21 +155,52 @@ public class IncrementalAnalyzeTests : IDisposable
         Thread.Sleep(50);
         File.WriteAllText(stablePath, "public class Foo { }");
 
-        var (graph2, _) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.NotNull(r.Graph);
         // File-level edge should be gone
-        var fileEdge2 = graph2.Edges.FirstOrDefault(e =>
+        var fileEdge2 = r.Graph!.Edges.FirstOrDefault(e =>
             e.SourceId.Contains("Stable") && e.TargetId.Contains("Dynamic") && e.Kind == EdgeKind.References);
         Assert.Null(fileEdge2);
     }
 
+    // INV-ANALYZE-FALLBACK-001: NoPriorAnalysis is always Rejected. Pre-fix
+    // this path threw InvalidOperationException; the typed result is the
+    // fail-loud-without-throwing replacement.
     [Fact]
-    public void IncrementalAnalyze_WithoutPriorAnalysis_Throws()
+    public void IncrementalAnalyze_WithoutPriorAnalysis_ReturnsRejectedNoPriorAnalysis()
     {
         var analyzer = new RoslynWorkspaceAnalyzer(_fs);
 
         Assert.False(analyzer.HasSnapshot);
-        Assert.Throws<InvalidOperationException>(() => analyzer.IncrementalAnalyze(_config));
+
+        var r = analyzer.IncrementalAnalyze(_config);
+
+        Assert.Equal(IncrementalMode.Rejected, r.Mode);
+        Assert.Equal(FallbackReason.NoPriorAnalysis, r.Reason);
+        Assert.Null(r.Graph);
+        Assert.Equal(0, r.ChangedFileCount);
+        Assert.NotNull(r.Detail);
+    }
+
+    [Fact]
+    public void IncrementalAnalyze_WithoutPriorAnalysis_AllowFullFallbackTrue_StillRejects()
+    {
+        // NoPriorAnalysis cannot fall back even with AllowFullFallback=true
+        // — there's no projectRoot in scope without a snapshot. The remediation
+        // is fixed: caller must invoke AnalyzeWorkspace explicitly.
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        var allowingConfig = new AnalysisConfig
+        {
+            RetainCompilations = true,
+            AllowFullFallback = true,
+        };
+
+        var r = analyzer.IncrementalAnalyze(allowingConfig);
+
+        Assert.Equal(IncrementalMode.Rejected, r.Mode);
+        Assert.Equal(FallbackReason.NoPriorAnalysis, r.Reason);
     }
 
     // ── Csproj-edit invalidation (INV-BCL-005) ──
@@ -189,12 +231,15 @@ public class IncrementalAnalyzeTests : IDisposable
   </ItemGroup>
 </Project>");
 
-        var (_, changedCount) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
         // Csproj-only edit must mark the module's .cs files as changed and
-        // route them through the recompilation pipeline.
-        Assert.True(changedCount > 0,
-            "Csproj edit must trigger recompilation (changedCount > 0). " +
+        // route them through the recompilation pipeline. Csproj edits are
+        // handled INSIDE the per-file incremental walk, NOT as a fallback —
+        // the result is Mode=Incremental with a positive ChangedFileCount.
+        Assert.True(r.ChangedFileCount > 0,
+            "Csproj edit must trigger recompilation (ChangedFileCount > 0). " +
             "If this is 0, csproj-timestamp invalidation is broken and BclOwnership " +
             "edits go undetected — silent reintroduction of the double-BCL bug.");
 
@@ -220,15 +265,87 @@ public class IncrementalAnalyzeTests : IDisposable
         Thread.Sleep(50);
         File.WriteAllText(filePath, "public class Foo { public void Bar() { } }");
 
-        var (graph, changedCount) = analyzer.IncrementalAnalyze(_config);
+        var r = analyzer.IncrementalAnalyze(_config);
 
-        // The .cs change is detected, so changedCount > 0 — but for
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.NotNull(r.Graph);
+        // The .cs change is detected, so ChangedFileCount > 0 — but for
         // .cs reasons, not csproj reasons. The new symbol must be in the graph.
-        Assert.True(changedCount > 0);
-        Assert.Contains(graph.Symbols, s => s.Name == "Bar" && s.Kind == SymbolKind.Method);
+        Assert.True(r.ChangedFileCount > 0);
+        Assert.Contains(r.Graph!.Symbols, s => s.Name == "Bar" && s.Kind == SymbolKind.Method);
+    }
+
+    // ── Fallback gate (INV-ANALYZE-FALLBACK-001) ──
+    // Module-set drift triggers the gate. Two policies, two outcomes.
+
+    [Fact]
+    public void IncrementalAnalyze_ModuleSetChanged_AllowFullFallbackFalse_RejectsWithReason()
+    {
+        // Two-csproj workspace. Analyze. Delete one csproj → module set drifts.
+        // Default config (AllowFullFallback=false): adapter must reject and
+        // surface the reason. No work done, Graph is null.
+        WriteTwoModuleProject();
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        // Drop one module by deleting its csproj
+        File.Delete(Path.Combine(_tempDir, "ModuleB", "ModuleB.csproj"));
+        File.Delete(Path.Combine(_tempDir, "ModuleB", "B.cs"));
+
+        var r = analyzer.IncrementalAnalyze(_config);
+
+        Assert.Equal(IncrementalMode.Rejected, r.Mode);
+        Assert.Equal(FallbackReason.ModuleSetChanged, r.Reason);
+        Assert.Null(r.Graph);
+        Assert.Equal(0, r.ChangedFileCount);
+        Assert.NotNull(r.Detail);
+    }
+
+    [Fact]
+    public void IncrementalAnalyze_ModuleSetChanged_AllowFullFallbackTrue_WidensToFullWithReason()
+    {
+        // Same trigger, different policy. AllowFullFallback=true: adapter
+        // widens to a full re-analyze and reports both the result AND the
+        // reason it widened. Caller sees the cache miss without losing
+        // the result.
+        WriteTwoModuleProject();
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        File.Delete(Path.Combine(_tempDir, "ModuleB", "ModuleB.csproj"));
+        File.Delete(Path.Combine(_tempDir, "ModuleB", "B.cs"));
+
+        var allowingConfig = new AnalysisConfig
+        {
+            RetainCompilations = true,
+            AllowFullFallback = true,
+        };
+        var r = analyzer.IncrementalAnalyze(allowingConfig);
+
+        Assert.Equal(IncrementalMode.FullFallback, r.Mode);
+        Assert.Equal(FallbackReason.ModuleSetChanged, r.Reason);
+        Assert.NotNull(r.Graph);
+        Assert.NotNull(r.Detail);
+        // After widening, only ModuleA's symbols remain (B was deleted).
+        Assert.Contains(r.Graph!.Symbols, s => s.Name == "ATypeA");
+        Assert.DoesNotContain(r.Graph.Symbols, s => s.Name == "BTypeB");
     }
 
     // ── Helpers ──
+
+    private void WriteTwoModuleProject()
+    {
+        Directory.CreateDirectory(Path.Combine(_tempDir, "ModuleA"));
+        Directory.CreateDirectory(Path.Combine(_tempDir, "ModuleB"));
+
+        var csprojA = @"<Project Sdk=""Microsoft.NET.Sdk""><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>";
+        var csprojB = @"<Project Sdk=""Microsoft.NET.Sdk""><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>";
+
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleA", "ModuleA.csproj"), csprojA);
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "ModuleB.csproj"), csprojB);
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleA", "A.cs"), "namespace A; public class ATypeA { }");
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "B.cs"), "namespace B; public class BTypeB { }");
+    }
 
     private string WriteSingleFileProject(string code)
     {
