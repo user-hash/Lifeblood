@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lifeblood.Application.Ports.GraphIO;
@@ -23,7 +24,22 @@ public sealed class JsonGraphImporter : IGraphImporter
 
     public GraphDocument ImportDocument(Stream source)
     {
-        var doc = JsonSerializer.Deserialize<JsonGraphDocument>(source, Options)
+        // INV-JSON-IMPORT-BOM-001: System.Text.Json's stream-deserialize path
+        // requires UTF-8 input and does NOT auto-detect BOMs. The README-
+        // documented `lifeblood export --project ... > graph.json` pattern on
+        // Windows PowerShell writes UTF-16LE-with-BOM by default; passing the
+        // resulting file straight to `lifeblood analyze --graph graph.json`
+        // (or via the MCP `graphPath` arg) crashed with an unhandled JSON
+        // exception pre-fix. Read through a StreamReader with BOM detection
+        // enabled (defaults to UTF-8 if no BOM present) so any of the five
+        // standard encodings (UTF-8, UTF-8-BOM, UTF-16LE-BOM, UTF-16BE-BOM,
+        // UTF-32-BOM variants) round-trip cleanly. The string overload of
+        // JsonSerializer.Deserialize then handles the (already-Unicode) text
+        // safely.
+        using var reader = new StreamReader(source, Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true);
+        var text = reader.ReadToEnd();
+        var doc = JsonSerializer.Deserialize<JsonGraphDocument>(text, Options)
             ?? throw new InvalidOperationException("Failed to deserialize graph JSON");
 
         var builder = new GraphBuilder();

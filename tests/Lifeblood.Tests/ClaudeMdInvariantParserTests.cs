@@ -268,6 +268,89 @@ public class ClaudeMdInvariantParserTests
         Assert.Equal(expectedCategory, actual);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Multi-segment id Parse() coverage. Pre-fix the parser regex
+    // INV-[A-Z][A-Z0-9]*-\d+ silently dropped every multi-segment id
+    // (INV-USAGE-PORT-001, INV-FILE-EDGE-001, INV-EXTRACT-ENUMMEMBER-001
+    // etc.) — 10 invariants were quietly missing from the audit. The
+    // ExtractCategoryFromId tests above caught the OUTPUT shape but the
+    // INPUT regex bypassed it for multi-segment ids, leaving the bug
+    // hidden. These tests pin the regex end-to-end through every authored
+    // shape (A/B/C/D/E) so the silent-drop class can't return.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Parse_ShapeA_MultiSegmentId_Parses()
+    {
+        var text = "- **INV-USAGE-PORT-001**: Capture is single-use.\n";
+        var result = ClaudeMdInvariantParser.Parse(text);
+
+        Assert.Single(result.Invariants);
+        Assert.Equal("INV-USAGE-PORT-001", result.Invariants[0].Id);
+        Assert.Equal("USAGE-PORT", result.Invariants[0].Category);
+    }
+
+    [Fact]
+    public void Parse_ShapeB_MultiSegmentId_Parses()
+    {
+        var text = "- **INV-FILE-EDGE-001. Cross-file references derive file-level edges.** Body sentence.\n";
+        var result = ClaudeMdInvariantParser.Parse(text);
+
+        Assert.Single(result.Invariants);
+        Assert.Equal("INV-FILE-EDGE-001", result.Invariants[0].Id);
+        Assert.Equal("FILE-EDGE", result.Invariants[0].Category);
+        Assert.Contains("Cross-file references derive file-level edges", result.Invariants[0].Title);
+    }
+
+    [Fact]
+    public void Parse_ShapeC_MultiSegmentId_Parses()
+    {
+        // Shape C: bare bold paragraph without bullet, colon-inside-bold.
+        var text = "**INV-EXTRACT-ENUMMEMBER-001: Every enum member is a graph symbol.** Body text.\n";
+        var result = ClaudeMdInvariantParser.Parse(text);
+
+        Assert.Single(result.Invariants);
+        Assert.Equal("INV-EXTRACT-ENUMMEMBER-001", result.Invariants[0].Id);
+        Assert.Equal("EXTRACT-ENUMMEMBER", result.Invariants[0].Category);
+    }
+
+    [Fact]
+    public void Parse_ShapeD_MultiSegmentId_Parses()
+    {
+        // Shape D: parenthesized version tag between bold close and colon.
+        var text = "- **INV-ANALYZE-FALLBACK-001** (v0.7.2): Scope-widening is a caller policy.\n";
+        var result = ClaudeMdInvariantParser.Parse(text);
+
+        Assert.Single(result.Invariants);
+        Assert.Equal("INV-ANALYZE-FALLBACK-001", result.Invariants[0].Id);
+        Assert.Equal("ANALYZE-FALLBACK", result.Invariants[0].Category);
+    }
+
+    [Fact]
+    public void Parse_ShapeE_MultiSegmentId_Parses()
+    {
+        // Shape E: colon-inside-the-bold variant. Listing-style.
+        var text = "- **INV-SEARCH-MATCHKIND-001:** SearchResult.MatchKind reports the bucket.\n";
+        var result = ClaudeMdInvariantParser.Parse(text);
+
+        Assert.Single(result.Invariants);
+        Assert.Equal("INV-SEARCH-MATCHKIND-001", result.Invariants[0].Id);
+        Assert.Equal("SEARCH-MATCHKIND", result.Invariants[0].Category);
+    }
+
+    [Fact]
+    public void Parse_ThreeSegmentCategoryId_Parses()
+    {
+        // Three-segment category (FOO-BAR-BAZ-001) — the recursive structure
+        // of the regex must allow arbitrary depth, not just two segments.
+        var text = "- **INV-MCP-STDIO-UTF8-001**: MCP stdio is pinned to UTF-8.\n";
+        var result = ClaudeMdInvariantParser.Parse(text);
+
+        Assert.Single(result.Invariants);
+        Assert.Equal("INV-MCP-STDIO-UTF8-001", result.Invariants[0].Id);
+        Assert.Equal("MCP-STDIO-UTF8", result.Invariants[0].Category);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("NOT-AN-INVARIANT")]

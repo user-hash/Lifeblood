@@ -1,6 +1,6 @@
 # Status
 
-Dogfood-verified. 739 tests. **25 MCP tools** (15 read + 10 write). **26 port interfaces**. Truth envelope on every read-side response (`INV-ENVELOPE-001`). Caller-owned scope policy on `lifeblood_analyze` (`INV-ANALYZE-FALLBACK-001`): `incremental:true` rejects on detected drift unless `allowFullFallback:true`; rejection wire shape carries `mode` / `requestedMode` / `fallbackReason` / `canRetryFull` / `suggestedRetry` so the agent's next move is self-documenting. Native usage and timing reporting on every `lifeblood_analyze` response. Architectural-invariant introspection via `lifeblood_invariant_check` walks `<root>/CLAUDE.md` + `<root>/AGENTS.md` + any `<root>/docs/invariants/**.md` tree (`LB-FR-023`); five authoring shapes recognised (A/B/C/D/E). Lifeblood self: **69 typed invariants across 34 categories** in `docs/invariants/` tree. Enum members are first-class graph symbols (`INV-EXTRACT-ENUMMEMBER-001`); resolver Rule 4 short-name fallback is type-aware and refuses cross-type / cross-kind silent substitution for member-kind inputs (`INV-RESOLVER-007`). Search results are structurally typed by source bucket (`SearchResult.MatchKind`, `INV-SEARCH-MATCHKIND-001`). Smart-dynamic shaping on `cycles` (`LB-FR-021`) and `context` (`LB-FR-022`) keeps responses inside conservative tool-result budgets even on multi-module Unity workspaces. File-mode `compile_check` (`LB-BUG-019`) resolves the owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. CI green on Linux + Windows (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
+Dogfood-verified. 751 tests. **25 MCP tools** (15 read + 10 write). **26 port interfaces**. Truth envelope on every read-side response (`INV-ENVELOPE-001`). Caller-owned scope policy on `lifeblood_analyze` (`INV-ANALYZE-FALLBACK-001`): `incremental:true` rejects on detected drift unless `allowFullFallback:true`; rejection wire shape carries `mode` / `requestedMode` / `fallbackReason` / `canRetryFull` / `suggestedRetry` so the agent's next move is self-documenting. Native usage and timing reporting on every `lifeblood_analyze` response. Architectural-invariant introspection via `lifeblood_invariant_check` walks `<root>/CLAUDE.md` + `<root>/AGENTS.md` + any `<root>/docs/invariants/**.md` tree (`LB-FR-023`); five authoring shapes recognised (A/B/C/D/E). Lifeblood self: **76 typed invariants across 39 categories** in `docs/invariants/` tree. Enum members are first-class graph symbols (`INV-EXTRACT-ENUMMEMBER-001`); resolver Rule 4 short-name fallback is type-aware and refuses cross-type / cross-kind silent substitution for member-kind inputs (`INV-RESOLVER-007`). Search results are structurally typed by source bucket (`SearchResult.MatchKind`, `INV-SEARCH-MATCHKIND-001`). Smart-dynamic shaping on `cycles` (`LB-FR-021`) and `context` (`LB-FR-022`) keeps responses inside conservative tool-result budgets even on multi-module Unity workspaces. File-mode `compile_check` (`LB-BUG-019`) resolves the owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. CI green on Linux + Windows (4 jobs: build, TypeScript adapter, Python adapter, dogfood). Published on [NuGet](https://www.nuget.org/packages/Lifeblood).
 
 <!-- portCount: 26 --><!-- testCount: 739 --><!-- toolCount: 25 -->
 
@@ -20,7 +20,7 @@ Dogfood-verified. 739 tests. **25 MCP tools** (15 read + 10 write). **26 port in
 | adapters/typescript | Standalone TS compiler API adapter. Self-analyzing. |
 | adapters/python | Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
 | Unity bridge | 25 tools via `[McpForUnityTool]`. Sidecar process. Wire constants mirrored from `McpProtocolSpec` with a byte-equal ratchet. |
-| Lifeblood.Tests | 739 tests. Extractors (incl. enum-member emission with `constantValue` + xmldoc + nested-enum), golden repos, round-trip, architecture invariants, MCP server (including an end-to-end stdio-loop test that pins stdout purity), CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj + asmdef + caller-policy reject vs full-fallback shapes), analyze MCP wire-shape (full / incremental / incremental-noop / rejected / full-fallback with `requestedMode` + `fallbackReason` + `canRetryFull` + `suggestedRetry`), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent, wrong-namespace fallback, kind correction, type-aware Rule 4 cross-type / cross-kind refusal `INV-RESOLVER-007`), RoslynSemanticView script globals + Help / SymbolsOfKind / EdgesOfKind, ProcessUsageProbe, semantic search (incl. `MatchKind` per-bucket signal source), SnippetWrapper, ClaudeMdInvariantParser (all five authoring shapes A/B/C/D/E), tree-walking InvariantProvider (CLAUDE.md + AGENTS.md + docs/invariants/**.md aggregation), Lifeblood-self invariant audit, response-envelope (per-tool classification ratchet + staleness math), Unity reachability (attribute matching incl. SettingsProvider/Shortcut/BurstCompile/NUnit lifecycle, magic-method on direct + transitive subclass, base-via-Properties walk, cycle safety, type-via-child propagation), execute robustness (target-profile selection, Unity DLL probe, sandbox helpers), authority report + forwarder classifier (PureForwarder / ThinWrapper / RealLogic body shapes), `cycles` / `context` smart-dynamic shaping (summarize / per-section caps / sections allowlist), `compile_check` file-mode owning-module resolution + tree replacement, **wave-end functional ratchets** (`WaveFunctionalVerificationTests`: R2-3 dogfood reproduction with both `FieldMask.ShimmerPhase` AND `BurstVoiceState.ShimmerPhase` in the same graph; full wire-shape coverage; all four MatchKind values), **all-25-tools dispatch smoke** (`All25ToolsSmokeTests` invokes every MCP tool through `ToolHandler.Handle` against a real Roslyn workspace, including `lifeblood_execute` running real C# script). |
+| Lifeblood.Tests | 751 tests. Extractors (incl. enum-member emission with `constantValue` + xmldoc + nested-enum), golden repos, round-trip, architecture invariants, MCP server (including an end-to-end stdio-loop test that pins stdout purity), CLI pipeline, WorkspaceSession, security scanner, write-side integration, incremental re-analyze (file + csproj + asmdef + caller-policy reject vs widen-to-full shapes), analyze MCP wire-shape (`full` / `incremental` / `incremental-noop` / `rejected` with `requestedMode` + `fallbackReason` + `canRetryFull` + `suggestedRetry`; first-call incremental synthesizes Rejected at the GraphSession layer so the typed FallbackReason.NoPriorAnalysis surfaces through MCP), file-level edges, cross-assembly edges, BCL ownership compilation, symbol resolver (truncated id, partial-type multi-parent, wrong-namespace fallback, kind correction, type-aware Rule 4 cross-type / cross-kind refusal `INV-RESOLVER-007`), RoslynSemanticView script globals + Help / SymbolsOfKind / EdgesOfKind, ProcessUsageProbe, semantic search (incl. `MatchKind` per-bucket signal source), SnippetWrapper, ClaudeMdInvariantParser (all five authoring shapes A/B/C/D/E), tree-walking InvariantProvider (CLAUDE.md + AGENTS.md + docs/invariants/**.md aggregation), Lifeblood-self invariant audit, response-envelope (per-tool classification ratchet + staleness math), Unity reachability (attribute matching incl. SettingsProvider/Shortcut/BurstCompile/NUnit lifecycle, magic-method on direct + transitive subclass, base-via-Properties walk, cycle safety, type-via-child propagation), execute robustness (target-profile selection, Unity DLL probe, sandbox helpers), authority report + forwarder classifier (PureForwarder / ThinWrapper / RealLogic body shapes), `cycles` / `context` smart-dynamic shaping (summarize / per-section caps / sections allowlist), `compile_check` file-mode owning-module resolution + tree replacement, **wave-end functional ratchets** (`WaveFunctionalVerificationTests`: R2-3 dogfood reproduction with both `FieldMask.ShimmerPhase` AND `BurstVoiceState.ShimmerPhase` in the same graph; full wire-shape coverage; all four MatchKind values), **all-25-tools dispatch smoke** (`All25ToolsSmokeTests` invokes every MCP tool through `ToolHandler.Handle` against a real Roslyn workspace, including `lifeblood_execute` running real C# script). |
 
 ## Rule Packs
 
@@ -41,13 +41,10 @@ Built-in architecture rule packs:
 
 ```
 $ lifeblood analyze --project .
-Symbols : 2,191
-Edges   : 10,194
-Modules : 11
-Types   : 264
-Files   : 150
-Violations : 0
-Cycles  : 0
+Symbols: 2,383
+Edges:   11,720
+Modules: 11
+Types:   272
 
 ── usage (representative; exact numbers on every lifeblood_analyze response) ──
   Wall time : ~7-15 s
@@ -56,6 +53,7 @@ Cycles  : 0
   Peak working set : ~430 MB (MCP retained, full analyze)
   GC collections : low single digits
 ──────────────────────────────────────────────────────────────────────────────
+(0 violations + 0 cycles → both lines omitted; CLI prints them only when count > 0.)
 ```
 
 Lifeblood also audits its own invariants tree via `lifeblood_invariant_check`. The provider walks `<root>/CLAUDE.md`, `<root>/AGENTS.md` (none today), and every `*.md` under `<root>/docs/invariants/`:
@@ -63,8 +61,8 @@ Lifeblood also audits its own invariants tree via `lifeblood_invariant_check`. T
 ```
 > lifeblood_invariant_check { mode: "audit" }
 
-totalCount    : 65
-categories    : 31  (RESOLVER, BCL, STREAM, ADAPT, GRAPH, ANALYSIS, COMPFACT, …)
+totalCount    : 76
+categories    : 39  (RESOLVER, BCL, STREAM, ADAPT, GRAPH, ANALYSIS, COMPFACT, USAGE, USAGE-PORT, USAGE-PROBE, FILE-EDGE, ANALYZE-FALLBACK, EXTRACT-ENUMMEMBER, SEARCH-MATCHKIND, JSON-IMPORT-BOM, MCP-STDIO-UTF8, …)
 duplicates    : 0
 parseWarnings : 0
 sourcePaths   : [
@@ -83,7 +81,7 @@ sourcePaths   : [
 
 ## Production Verification (DAWG)
 
-Tested on a real 87-module Unity workspace (DAWG, ~400k+ LOC). Same workspace, two different call sites, two different memory profiles. Both are correct. Both are by design.
+Tested on a real 90-module Unity workspace (DAWG, ~400k+ LOC). Same workspace, two different call sites, two different memory profiles. Both are correct. Both are by design.
 
 ### MCP path (compilations retained for write-side tools)
 
@@ -91,14 +89,17 @@ Tested on a real 87-module Unity workspace (DAWG, ~400k+ LOC). Same workspace, t
 > lifeblood_analyze projectPath="D:/Projekti/DAWG"
 
 mode : full
-summary.symbols : 53,882
-summary.edges   : 180,814
-summary.modules : 87
-cycles  : 117 SCCs
+requestedMode : full
+summary.symbols : 60,775
+summary.edges   : 214,097
+summary.modules : 90
+cycles  : 122 SCCs
 ```
 
+Edge count grew +18% over the prior 180,814 baseline because enum-member references the dangling-edge filter was silently dropping (`R2-3`) now resolve as first-class graph edges (`INV-EXTRACT-ENUMMEMBER-001`).
+
 Authority + classification + dead-code numbers from real DAWG dogfood:
-- Methods classified by body shape: 18,985.
+- Methods classified by body shape (representative pre-wave snapshot): 18,985.
 - `PureForwarder` count: 3,367 (direct host-type / dispatcher / partial-class extraction triage signal — the DAWG dogfood case was an ABG partial-class wave; the same metric drives any host-with-many-subordinates split decision).
 - Dead-code findings (with Unity reachability injected): 729 (down from 1,095 pre-P3, -33%); 4 type-level findings post-`LB-FP-003` (down from 6 — XRaySettingsProvider + MpServiceResets cleared).
 - MonoBehaviour magic-method FPs: 13 (down from 378 pre-P3, -97%).

@@ -106,7 +106,7 @@ internal static class ClaudeMdInvariantParser
     /// paragraph.
     /// </summary>
     private static readonly Regex InvariantBulletStart = new(
-        @"^-\s+\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)",
+        @"^-\s+\*\*(?<id>INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -118,7 +118,7 @@ internal static class ClaudeMdInvariantParser
     /// section headers between them.
     /// </summary>
     private static readonly Regex InvariantBareBoldStart = new(
-        @"^\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\s*:",
+        @"^\*\*(?<id>INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+)\s*:",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -127,7 +127,7 @@ internal static class ClaudeMdInvariantParser
     /// span multiple physical lines if the bold wraps.
     /// </summary>
     private static readonly Regex BareBoldTitleCapture = new(
-        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\s*:\s*(?<title>.+?)\*\*",
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+)\s*:\s*(?<title>.+?)\*\*",
         RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -137,7 +137,7 @@ internal static class ClaudeMdInvariantParser
     /// below; the regex operates on a single joined string.
     /// </summary>
     private static readonly Regex BoldTitleCapture = new(
-        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\.\s+(?<title>.+?)\*\*",
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+)\.\s+(?<title>.+?)\*\*",
         RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -146,7 +146,7 @@ internal static class ClaudeMdInvariantParser
     /// was found inside the block.
     /// </summary>
     private static readonly Regex ShapeAColonBody = new(
-        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\*\*\s*:\s*(?<rest>.+)",
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+)\*\*\s*:\s*(?<rest>.+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -157,7 +157,7 @@ internal static class ClaudeMdInvariantParser
     /// not part of the rule.
     /// </summary>
     private static readonly Regex ShapeDColonBody = new(
-        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\*\*\s*\([^)]*\)\s*:\s*(?<rest>.+)",
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+)\*\*\s*\([^)]*\)\s*:\s*(?<rest>.+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -168,7 +168,7 @@ internal static class ClaudeMdInvariantParser
     /// allowed but not required.
     /// </summary>
     private static readonly Regex ShapeEColonBody = new(
-        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*-\d+)\s*:\*\*\s*(?<rest>.+)",
+        @"\*\*(?<id>INV-[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+)\s*:\*\*\s*(?<rest>.+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>

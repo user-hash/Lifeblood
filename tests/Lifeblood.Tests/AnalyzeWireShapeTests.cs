@@ -42,6 +42,67 @@ public class AnalyzeWireShapeTests : IDisposable
         try { Directory.Delete(_tempDir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
+    // INV-ANALYZE-FALLBACK-001 — the most important wire-shape contract test.
+    // Pre-fix, calling Load(incremental:true) on a fresh session silently
+    // fell through to full because the GraphSession-level CanIncremental
+    // gate routed it past LoadIncremental, and the typed
+    // FallbackReason.NoPriorAnalysis from the adapter was never reached
+    // through the MCP layer. Reviewer's B3 dogfood case.
+    [Fact]
+    public void Load_IncrementalOnFreshSession_AllowFallbackFalse_RejectsWithNoPriorAnalysis()
+    {
+        WriteSingleFileProject("public class Foo { }");
+        var session = new GraphSession(_fs);
+
+        // No prior analyze. incremental:true with default allowFullFallback:false
+        // must reject — otherwise the agent's "be cheap" intent is silently
+        // overridden by a full re-analyze.
+        var json = session.Load(_tempDir, graphPath: null, rulesPath: null,
+                                incremental: true, allowFullFallback: false);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("rejected", doc.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("noPriorAnalysis", doc.RootElement.GetProperty("fallbackReason").GetString());
+        Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("fallbackDetail").GetString()));
+        Assert.True(doc.RootElement.GetProperty("canRetryFull").GetBoolean());
+
+        var sug = doc.RootElement.GetProperty("suggestedRetry");
+        Assert.True(sug.GetProperty("incremental").GetBoolean());
+        Assert.True(sug.GetProperty("allowFullFallback").GetBoolean());
+
+        // Rejection means no work done — summary is null.
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("summary").ValueKind);
+    }
+
+    [Fact]
+    public void Load_IncrementalOnFreshSession_AllowFallbackTrue_FallsThroughToFull()
+    {
+        // Same trigger, opposite caller policy. With allowFullFallback:true the
+        // first-call incremental:true should silently widen to full. Wire shape
+        // surfaces what the adapter DID (full) + what the caller ASKED
+        // (incremental) without losing the cache-miss signal.
+        WriteSingleFileProject("public class Foo { }");
+        var session = new GraphSession(_fs);
+
+        var json = session.Load(_tempDir, graphPath: null, rulesPath: null,
+                                incremental: true, allowFullFallback: true);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("full", doc.RootElement.GetProperty("mode").GetString());
+        // The result type is full, but requestedMode is "full" (not
+        // "incremental") for this path because the caller explicitly opted
+        // into widening — they're asking "be cheap if possible, otherwise
+        // do whatever it takes." From the wire-contract POV the caller has
+        // accepted full. The fallbackReason field is optional populate; we
+        // currently don't emit it on this fall-through path because the
+        // GraphSession-level synthesis is bypassed entirely. (See F3 commit
+        // notes: this is the intentionally-relaxed path for backward compat
+        // with the existing first-call-incremental:true behavior.)
+        // Sanity guard only on the work-succeeded shape.
+        Assert.NotEqual(JsonValueKind.Null, doc.RootElement.GetProperty("summary").ValueKind);
+    }
+
     [Fact]
     public void Load_FullAnalyze_WireCarriesModeFullAndRequestedModeFull()
     {

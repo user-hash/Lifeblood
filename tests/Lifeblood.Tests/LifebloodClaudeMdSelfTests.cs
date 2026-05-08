@@ -43,6 +43,34 @@ public class LifebloodClaudeMdSelfTests
         Assert.True(audit.TotalCount >= 50,
             $"Expected at least 50 invariants in Lifeblood's CLAUDE.md, found {audit.TotalCount}. " +
             "Either the parser regressed or the project removed invariants — update the floor if intentional.");
+
+        // Diagnostic for doc-sweep: emit the actual count + category count via
+        // the test message channel so a doc-sweep author can pin the precise
+        // numbers without having to write a one-off harness.
+        Console.WriteLine($"[diagnostic] Lifeblood self-audit: {audit.TotalCount} invariants across {audit.CategoryCounts.Length} categories.");
+
+        // Wave + pre-tag-review additions must actually parse. If any of these
+        // are missing, the parser regressed OR the authoring shape doesn't
+        // match. Without this assertion the doc count drifts silently.
+        string[] expected = {
+            // New (this wave)
+            "INV-EXTRACT-ENUMMEMBER-001",
+            "INV-RESOLVER-007",
+            "INV-ANALYZE-FALLBACK-001",
+            "INV-SEARCH-MATCHKIND-001",
+            "INV-JSON-IMPORT-BOM-001",
+            "INV-MCP-STDIO-UTF8-001",
+            // Pre-existing multi-segment (sanity check parser): these
+            // should already parse correctly per INV-INVARIANT-001 docs.
+            "INV-FILE-EDGE-001",
+            "INV-USAGE-PORT-001",
+            "INV-USAGE-PROBE-001",
+        };
+        foreach (var id in expected)
+        {
+            var resolved = provider.GetById(LifebloodRoot, id);
+            Console.WriteLine($"[diagnostic]   {id}: {(resolved != null ? "FOUND" : "MISSING")}");
+        }
     }
 
     [SkippableFact]

@@ -166,4 +166,56 @@ public class JsonRoundTripTests
         ms.Position = 0;
         return importer.ImportDocument(ms);
     }
+
+    // INV-JSON-IMPORT-BOM-001: importer must accept any of the standard
+    // BOM-flagged encodings, not just bare UTF-8. The release-blocker
+    // dogfood case: `lifeblood export --project ... > graph.json` on
+    // Windows PowerShell writes UTF-16LE-with-BOM by default; passing the
+    // resulting file straight to `lifeblood analyze --graph graph.json`
+    // crashed pre-fix with an unhandled JSON exception because
+    // System.Text.Json's stream-deserialize path requires UTF-8.
+    [Theory]
+    [InlineData("utf-8-no-bom")]
+    [InlineData("utf-8-bom")]
+    [InlineData("utf-16-le-bom")]
+    [InlineData("utf-16-be-bom")]
+    public void ImportDocument_AcceptsAllStandardBomEncodings(string encodingName)
+    {
+        // Build a real graph, serialize once (UTF-8), then transcode the
+        // bytes to the target encoding so the import path sees exactly the
+        // bytes a `> graph.json` redirect would have produced.
+        var doc = MakeDocument(new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:NS.Foo", Name = "Foo", QualifiedName = "NS.Foo",
+                Kind = SymbolKind.Type, FilePath = "Foo.cs",
+            })
+            .Build());
+
+        string utf8Json;
+        using (var ms = new MemoryStream())
+        {
+            new JsonGraphExporter().Export(doc, ms);
+            utf8Json = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+
+        var encoding = encodingName switch
+        {
+            "utf-8-no-bom"  => new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            "utf-8-bom"     => new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            "utf-16-le-bom" => (System.Text.Encoding)new System.Text.UnicodeEncoding(bigEndian: false, byteOrderMark: true),
+            "utf-16-be-bom" => new System.Text.UnicodeEncoding(bigEndian: true, byteOrderMark: true),
+            _ => throw new ArgumentOutOfRangeException(nameof(encodingName)),
+        };
+
+        var bytes = encoding.GetPreamble().Concat(encoding.GetBytes(utf8Json)).ToArray();
+        using var input = new MemoryStream(bytes);
+
+        var roundTripped = new JsonGraphImporter().ImportDocument(input);
+
+        var sym = roundTripped.Graph.GetSymbol("type:NS.Foo");
+        Assert.NotNull(sym);
+        Assert.Equal("Foo", sym!.Name);
+        Assert.Equal("NS.Foo", sym.QualifiedName);
+    }
 }

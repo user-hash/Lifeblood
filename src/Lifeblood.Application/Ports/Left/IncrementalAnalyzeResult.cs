@@ -35,9 +35,10 @@ public sealed record IncrementalAnalyzeResult
     /// <see cref="IncrementalMode.Rejected"/>.</summary>
     public SemanticGraph? Graph { get; init; }
 
-    /// <summary>Number of source files that triggered re-extraction. For
-    /// the full-fallback path this counts every tracked file (the entire
-    /// workspace is re-analyzed). For Rejected this is 0.</summary>
+    /// <summary>Number of source files that triggered re-extraction. When
+    /// <see cref="Mode"/> is <see cref="IncrementalMode.FullFallback"/>
+    /// this counts every tracked file (the entire workspace is re-analyzed).
+    /// For <see cref="IncrementalMode.Rejected"/> this is 0.</summary>
     public int ChangedFileCount { get; init; }
 
     /// <summary>Why incremental was downgraded. Populated when

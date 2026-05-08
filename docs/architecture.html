@@ -193,8 +193,8 @@
   </p>
   <div class="pills">
   <div class="pill">11 assemblies + 2 standalone adapters</div>
-  <div class="pill">2,373 symbols, 11,665 edges</div>
-  <div class="pill">739 tests / CI green</div>
+  <div class="pill">2,383 symbols, 11,720 edges</div>
+  <div class="pill">751 tests / CI green</div>
   <div class="pill">C# + TypeScript + Python</div>
   <div class="pill">Cross-module: Proven</div>
   <div class="pill">26/26 ports wired</div>
@@ -208,7 +208,9 @@
   <div class="pill">RoslynSemanticView</div>
   <div class="pill">BCL ownership</div>
   <div class="pill">Native usage + timing</div>
-  <div class="pill">69 queryable invariants in tree</div>
+  <div class="pill">76 queryable invariants in tree</div>
+  <div class="pill">UTF-16 BOM-aware JSON import</div>
+  <div class="pill">UTF-8-pinned MCP stdio</div>
   <div class="pill">Caller-owned analyze scope policy</div>
   <div class="pill">SearchResult.MatchKind</div>
   <div class="pill">Enum members first-class</div>
@@ -302,7 +304,7 @@
 
   <div class="signal-card">
   <strong>Enforced invariants (tested AND queryable via lifeblood_invariant_check)</strong>
-  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. 739 tests. 25 MCP tools (15R + 10W). 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj + asmdef, INV-UNITY-002). Caller-owned scope policy on incremental analyze: rejects on detected drift unless allowFullFallback is opted in; wire shape carries mode + requestedMode + fallbackReason + canRetryFull + suggestedRetry (INV-ANALYZE-FALLBACK-001). File-level edges. Enum members are first-class graph symbols with constantValue (INV-EXTRACT-ENUMMEMBER-001). BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler with kind correction (INV-RESOLVER-001..006); Rule 4 short-name fallback never crosses containing types or kinds for member-kind inputs (INV-RESOLVER-007). SearchResult.MatchKind structurally reports which scoring bucket drove the rank (INV-SEARCH-MATCHKIND-001). RoslynSemanticView shared by reference (INV-VIEW-001..003). Truth envelope on every read-side response (INV-ENVELOPE-001). Unity reachability port (INV-UNITY-001) with full Editor reflection roster + type-via-child propagation. Authority report + forwarder classifier (INV-AUTHORITY-001, INV-FORWARDER-001). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). 69 typed architectural invariants under docs/invariants/ tree, aggregated dynamically by IInvariantProvider (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes (INV-DEADCODE-001).</span>
+  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. 751 tests. 25 MCP tools (15R + 10W). 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj + asmdef, INV-UNITY-002). Caller-owned scope policy on incremental analyze: rejects on detected drift unless allowFullFallback is opted in; wire shape carries mode + requestedMode + fallbackReason + canRetryFull + suggestedRetry (INV-ANALYZE-FALLBACK-001). File-level edges. Enum members are first-class graph symbols with constantValue (INV-EXTRACT-ENUMMEMBER-001). BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler with kind correction (INV-RESOLVER-001..006); Rule 4 short-name fallback never crosses containing types or kinds for member-kind inputs (INV-RESOLVER-007). SearchResult.MatchKind structurally reports which scoring bucket drove the rank (INV-SEARCH-MATCHKIND-001). RoslynSemanticView shared by reference (INV-VIEW-001..003). Truth envelope on every read-side response (INV-ENVELOPE-001). Unity reachability port (INV-UNITY-001) with full Editor reflection roster + type-via-child propagation. Authority report + forwarder classifier (INV-AUTHORITY-001, INV-FORWARDER-001). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). 76 typed architectural invariants under docs/invariants/ tree, aggregated dynamically by IInvariantProvider (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes (INV-DEADCODE-001).</span>
   </div>
   </div>
 
@@ -360,7 +362,7 @@
   <div class="footer">
   Solid = implemented and dogfood-verified. Dashed/faded = planned.
   Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-  → 2,373 symbols, 11,665 edges, 11 modules, 272 types, 0 violations. 26 ports, 25 MCP tools (15R + 10W), 69 queryable invariants in docs/invariants/ tree. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response (self: ~2 s wall MCP; production 90-module Unity workspace DAWG: ~14 s wall / ~570 MB peak CLI, ~47 s wall / ~1.1 GB MCP retained peak; 60,775 symbols, 214,097 edges, 122 SCCs — edge count +18% vs prior baseline since enum-member references the dangling-edge filter was silently dropping now resolve).
+  → 2,383 symbols, 11,720 edges, 11 modules, 272 types, 0 violations. 26 ports, 25 MCP tools (15R + 10W), 76 queryable invariants in docs/invariants/ tree. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response (self: ~2 s wall MCP; production 90-module Unity workspace DAWG: ~14 s wall / ~570 MB peak CLI, ~47 s wall / ~1.1 GB MCP retained peak; 60,775 symbols, 214,097 edges, 122 SCCs — edge count +18% vs prior baseline since enum-member references the dangling-edge filter was silently dropping now resolve).
   </div>
   </div>
 </body>
