@@ -59,7 +59,23 @@ lifeblood_analyze projectPath="/my/project"                    → full analysis
 lifeblood_analyze projectPath="/my/project" incremental=true   → seconds when nothing changed, else re-analyze only the dirty modules
 ```
 
-Module additions/removals automatically fall back to full re-analyze.
+### Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`)
+
+`lifeblood_analyze` does not silently widen scope when it detects drift. The
+adapter classifies the drift into a typed `fallbackReason`
+(`noPriorAnalysis` / `moduleSetChanged` / `moduleDescriptorChanged` —
+asmdef edits, csproj structural changes, etc.) and the caller decides
+what to do.
+
+| Caller setting | Adapter behaviour |
+|---------------|-------------------|
+| `incremental: false` | Always full analyze. `mode: "full"`, `requestedMode: "full"`. |
+| `incremental: true`, `allowFullFallback: false` (default) | Cheap path on success. On detected drift: REJECT — `mode: "rejected"`, `requestedMode: "incremental"`, `fallbackReason` + `fallbackDetail` populated, `canRetryFull: true`, plus a `suggestedRetry: { incremental: true, allowFullFallback: true }` block. No work done; caller decides. |
+| `incremental: true`, `allowFullFallback: true` | Cheap path on success. On detected drift: silently widen to full and report both — `mode: "full"`, `requestedMode: "incremental"`, `fallbackReason` populated so the cache miss stays visible, work succeeded with summary populated. |
+
+Rejection is a NORMAL structured result, not a transport / tool error.
+The `suggestedRetry` block is exactly the args needed to retry — pass it
+back to `lifeblood_analyze` to re-attempt with widened scope.
 
 ## Workspace auto-refresh for compile-check
 

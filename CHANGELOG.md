@@ -7,6 +7,57 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-05-08
+
+### Headline changes
+
+- **Enum-member extraction + resolver type-aware fallback**
+
+- **Caller-owned incremental scope policy**
+
+- **`SearchResult.MatchKind`**
+
+- **`authority_report` description broadened**
+
+### Verification
+
+### Added. Enum-member extraction (R2-3 Part A / INV-EXTRACT-ENUMMEMBER-001)
+
+`RoslynSymbolExtractor.ExtractEnum` walks `EnumDeclarationSyntax.Members` and emits one `Symbol` per member: `Kind = Field`, `Id = SymbolIds.Field(enumFqn, memberName)`, `ParentId = type:enumFqn`, `IsStatic = true`, `Properties[fieldKind] = "enumMember"`, `Properties[fieldType] = enumFqn`, `Properties[constantValue] = "<int-or-Flags-bitfield>"`. Pre-fix three failure modes followed: (1) exact-ID lookup `field:NS.Color.Red` missed in the resolver's Rule 1 and fell through to Rule 4 silent cross-type substitution; (2) References to enum members were dropped by `GraphBuilder`'s dangling-edge filter (line 89), so `find_references` / `dependants` / `blast_radius` returned 0 hits for valid usages; (3) dead-code analysis could never observe enum-member usage. Roslyn models enum members as `IFieldSymbol`, so `RoslynEdgeExtractor`'s existing `IFieldSymbol` arm already emits `References` edges to the field-shape ID — the symbols just had to exist.
+
+Latent dup fix surfaced by enum-member emission: `RoslynSymbolExtractor.Extract`'s outer `DescendantNodes()` scan visited nested types/enums TWICE (once with parentId=file, once via the type-member walker). `GraphBuilder`'s first-write-wins dedup hid the duplicate symbol emission, but enum-member synthesis multiplied the dup into duplicate child symbols. Fixed by guarding the outer scan to top-level declarations (parented to `CompilationUnit` / `Namespace` / `FileScopedNamespace`); nested decls reach extraction via `ExtractType`'s member loop with the correct ParentId.
+
+Six new ratchet tests (`RoslynExtractorTests.ExtractSymbols_EnumMembers_*`): emitted-as-Field with `constantValue`, ID round-trip through `SymbolIds.Field` grammar, implicit autoincrement constants, explicit values, `[Flags]` bitfield resolution, nested enum parented to nested enum, xmldoc summary attached to member.
+
+### Fixed. Resolver Rule 4 type-aware tightening (R2-3 Part B / INV-RESOLVER-007)
+
+### Added. Typed IncrementalAnalyzeResult + caller-owned scope policy (G1 / INV-ANALYZE-FALLBACK-001)
+
+New record `IncrementalAnalyzeResult { Mode (Incremental | FullFallback | Rejected), Graph?, ChangedFileCount, Reason? (NoPriorAnalysis | ModuleSetChanged | ModuleDescriptorChanged), Detail? }` in `Lifeblood.Application.Ports.Left`. Adapter-agnostic taxonomy — future Python / TS adapters reuse the same record + enums; adapter-specific descriptor names (asmdef, csproj, pyproject) live in `Detail`, not in the taxonomy.
+
+`AnalysisConfig.AllowFullFallback` flag, default `false`. Adapter does not own the scope-widening policy; caller does. `RoslynWorkspaceAnalyzer.IncrementalAnalyze` now branches every fallback site on the flag via a new `HandleFallback` helper. NoPriorAnalysis is always Rejected (no `projectRoot` to widen against without a snapshot). Pre-fix `InvalidOperationException` throw replaced with the structured Rejected result.
+
+`GraphSession.Load` gains `allowFullFallback` parameter, threaded through `LoadIncremental`. `MaybeRefreshIfStale` opts into `AllowFullFallback=true` because its contract is "make state fresh." `ToolHandler.HandleAnalyze` reads `allowFullFallback` from MCP args. **No auto-retry on rejection** — surfacing the signal is the point of the typed shape.
+
+Wire shape on the MCP layer: `mode` reports DID, `requestedMode` separately reports ASKED, `fallbackReason` + `fallbackDetail` populate whenever the cheap path could not be honored, rejection responses carry `canRetryFull: true` + `suggestedRetry: { incremental: true, allowFullFallback: true }`. Wire fallback-reason names are camelCase (`noPriorAnalysis` / `moduleSetChanged` / `moduleDescriptorChanged`) to match the rest of the MCP schema.
+
+10 adapter-level ratchets (`IncrementalAnalyzeTests`, +4): NoPriorAnalysis always Rejected (regardless of `AllowFullFallback`), ModuleSetChanged × {Rejected, FullFallback} both verified, eight happy-path tests migrated to the new record shape. 5 wire-shape ratchets (`AnalyzeWireShapeTests`, new file): full / incremental-noop / incremental / rejected / full-fallback shapes all asserted via parsed JSON.
+
+### Added. SearchResult.MatchKind (G2 / INV-SEARCH-MATCHKIND-001)
+
+New `MatchKind` enum on `Lifeblood.Application.Ports.Right`: `Name` / `QualifiedName` / `XmlDoc` / `Multiple`. `SearchResult` record gains a final positional `MatchKind` field. `LifebloodSemanticSearchProvider` derives the value from the existing `firstNameHitToken` / `firstQNameHitToken` / `firstXmlDocHitToken` trackers — bucketCount > 1 → `Multiple`; otherwise the single-bucket label. No re-scoring, no second pass — purely additive lift. Existing `MatchSnippets` strings unchanged so existing renderers keep working. MCP tool description for `lifeblood_search` names the new field.
+
+5 new ratchets (`SemanticSearchTests.Search_*MatchKind*`): name-only, qualifiedName-only-with-bare-name-guard, xmldoc-only, name+xmldoc Multiple, qualifiedName+xmldoc Multiple.
+
+### Documentation. authority_report broadening (G4 dogfood)
+
+### Added. Wave-end verification ratchets
+
+`WaveFunctionalVerificationTests` (4 tests):
+- `Wave_R2_3_DogfoodReproduction_FeatureFlagsAndSampleStateShareShortName` — exact reproduction of the user's R2-3 scenario; permanent regression ratchet for the silent-wrong-answer class.
+- `Wave_C3_WireShape_AllFiveStatesEndToEnd` + `Wave_C3_WireShape_RejectedAndFullFallback_ModuleSetDrift` — drives `GraphSession.Load` through every wire-shape state, parses actual JSON.
+- `Wave_C4_MatchKind_AllFourValuesAchievable` — confirms all four values reachable through real Roslyn extraction with xmldoc summaries.
+
 ## [0.7.1] - 2026-04-27
 
 ### Headline changes
@@ -984,7 +1035,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/user-hash/Lifeblood/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/user-hash/Lifeblood/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...v0.7.0
 [0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.7
