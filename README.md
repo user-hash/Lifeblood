@@ -92,7 +92,7 @@ Connect an MCP client. Load a project. The AI agent gets **25 tools**: 15 read, 
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
-[Full tool reference](docs/TOOLS.md) · [What's new in v0.7.0](CHANGELOG.md)
+[Full tool reference](docs/TOOLS.md) · [What's new](CHANGELOG.md)
 
 ---
 
@@ -110,7 +110,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
                       Analysis (optional)         └──  CLI / CI
 ```
 
-26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [65 typed invariants under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [69 typed invariants under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -141,9 +141,9 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post v0.7.0): 2,191 symbols, 10,194 edges, 11 modules, 264 types, 0 violations, 0 cycles. **661 tests** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **65 typed invariants across 31 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post G1+G2+G4+R2-3 wave): 2,373 symbols, 11,665 edges, 11 modules, 272 types, 0 violations, 0 cycles. **739 tests** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **69 typed invariants across 34 categories**, zero duplicates, zero parse warnings.
 
-Production-verified on a 87-module 400k LOC Unity workspace (DAWG): 53,882 symbols, 180,814 edges, 117 SCCs. Authority report classifies 18,985 methods, identifies 3,367 `PureForwarder` candidates. Memory profiles, throughput numbers, and the full DAWG-dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
+Production-verified on a 90-module 400k LOC Unity workspace (DAWG): 60,775 symbols, 214,097 edges, 122 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full DAWG-dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
 
 ---
 
@@ -163,7 +163,7 @@ Production-verified on a 87-module 400k LOC Unity workspace (DAWG): 53,882 symbo
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 26 port interfaces, invariant tree |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants tree](docs/invariants/INDEX.md) | 65 typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Invariants tree](docs/invariants/INDEX.md) | 69 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 50+ bugs found by self-analysis and reviewer dogfood sessions |

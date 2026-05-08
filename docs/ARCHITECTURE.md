@@ -124,9 +124,17 @@ Current Roslyn adapter capabilities:
 
 ## Incremental Re-Analyze
 
-After a full analysis, subsequent calls with `incremental: true` only recompile modules whose source files changed. The `AnalysisSnapshot` caches per-file extraction results (symbols, edges, timestamps). Changed files are detected via filesystem timestamps and surgically replaced. Csproj timestamp changes trigger per-module re-discovery so compilation facts (`BclOwnership`, `AllowUnsafeCode`, etc.) never go stale. Module additions/removals fall back to full re-analyze.
+After a full analysis, subsequent calls with `incremental: true` only recompile modules whose source files changed. The `AnalysisSnapshot` caches per-file extraction results (symbols, edges, timestamps). Changed files are detected via filesystem timestamps and surgically replaced. Csproj timestamp changes trigger per-module re-discovery so compilation facts (`BclOwnership`, `AllowUnsafeCode`, etc.) never go stale.
 
-v1 limitation: does not cascade to dependent modules when an API surface changes.
+**Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`).** The adapter does not silently widen scope when it detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited). It returns a typed `IncrementalAnalyzeResult { Mode, Graph?, ChangedFileCount, Reason?, Detail? }` and the caller chooses what to do via `AnalysisConfig.AllowFullFallback`:
+- `false` (default) → adapter returns `Mode = Rejected, Graph = null, Reason = ...`. Caller decides next step.
+- `true` → adapter widens to full and returns `Mode = FullFallback, Graph = ..., Reason = ...` so the result lands and the cache miss stays visible.
+
+`FallbackReason` taxonomy is adapter-agnostic (`NoPriorAnalysis` / `ModuleSetChanged` / `ModuleDescriptorChanged`); adapter-specific descriptor names (asmdef, csproj, pyproject, package.json) live in `Detail`. Internal best-effort callers (`GraphSession.MaybeRefreshIfStale`) deliberately set `AllowFullFallback = true` because their contract is "make state fresh"; user-facing callers preserve the user's flag unchanged.
+
+The MCP wire shape carries `mode` (what the adapter DID) + `requestedMode` (what the caller ASKED) + `fallbackReason` + `fallbackDetail`. Rejection responses additionally carry `canRetryFull: true` and a `suggestedRetry` block — the next move is self-documenting.
+
+v1 limitation: does not cascade to dependent modules when an API surface changes; full fallback (when allowed) handles that case.
 
 ## Unity Bridge
 
@@ -172,6 +180,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
-- **65 typed invariants under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
+- **69 typed invariants under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
 - DocsTests ratchets: `portCount`, `toolCount`, `testCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)

@@ -7,6 +7,72 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-05-08
+
+DAWG-dogfood wave covering the full G1+G2+G4+R2-3 finding set from a Unity-shaped audit session. **Tests 664 → 739 (+75). Invariants 65 → 69 (+4).** Six commits land as one coherent wave: the dangerous silent-wrong-answer class around enum-member resolution closes both-sided (extractor + resolver), the analyze pipeline gains a fail-loud caller-owned scope policy, search hits are structurally typed by source bucket, and the authority report stops sounding like an ABG-only tool. Hexagonal as ever — every fix lands as a port + adapter + handler trio with regression tests.
+
+### Headline changes
+
+- **Enum-member extraction + resolver type-aware fallback** (`R2-3` dogfood). Pre-fix `RoslynSymbolExtractor.ExtractEnum` emitted only the enum type — every enum member like `field:NS.FieldMask.ShimmerPhase` was missing from the graph. The resolver's Rule 4 short-name fallback then silently substituted `field:NS.BurstVoiceState.ShimmerPhase` (different containing type, same member name), and `find_references` walked the wrong target. Closed both-sided: extractor emits enum members as `Field`-kind children with `fieldKind=enumMember` + `constantValue` properties (`INV-EXTRACT-ENUMMEMBER-001`); resolver Rule 4 refuses cross-type and cross-kind silent substitution for member-kind inputs (`INV-RESOLVER-007`). Latent dup fix surfaced by enum-member emission: nested types/enums were extracted twice (file-parent + type-parent) and silently deduped — now top-level scan only handles top-level decls. DAWG impact: edge count +18% (180,818 → 214,097) — that's enum-member references the dangling-edge filter was silently dropping pre-fix.
+- **Caller-owned incremental scope policy** (`G1` dogfood / `INV-ANALYZE-FALLBACK-001`). `RoslynWorkspaceAnalyzer.IncrementalAnalyze` returned `(graph, count)` and silently widened to a full re-analyze when it detected drift it could not honor cheaply. Replaced with typed `IncrementalAnalyzeResult { Mode, Graph?, ChangedFileCount, Reason?, Detail? }` + `AnalysisConfig.AllowFullFallback` flag (default `false`). When the cheap path can't be honored cleanly the adapter now Rejects with a typed `FallbackReason` (`NoPriorAnalysis` / `ModuleSetChanged` / `ModuleDescriptorChanged`) and the caller decides whether to retry with widened scope. Wire shape: `mode` reports what the adapter DID (`full` / `incremental` / `incremental-noop` / `rejected`), `requestedMode` separately reports what the caller ASKED, `fallbackReason` + `fallbackDetail` populate alongside whenever the cheap path could not be honored. Rejection responses additionally carry `canRetryFull: true` and a `suggestedRetry: { incremental: true, allowFullFallback: true }` block so the agent's next move is self-documenting. Rejection is a NORMAL structured result, not a transport error. Internal best-effort callers (`MaybeRefreshIfStale`) opt into `AllowFullFallback=true` because their contract is "make state fresh."
+- **`SearchResult.MatchKind`** (`G2` dogfood / `INV-SEARCH-MATCHKIND-001`). The per-bucket scoring signal previously lived only in human-rendered `MatchSnippets` strings (`"name: …"` / `"qualifiedName: …"` / `"xmlDoc: …"`); callers wanting to filter by source had to parse those strings. Lifted to a typed `MatchKind` enum on `SearchResult` (`Name` / `QualifiedName` / `XmlDoc` / `Multiple`). Adapter-agnostic — future TS / Python search adapters reuse the same taxonomy. Snippet strings unchanged so existing renderers keep working; the structured field is purely additive.
+- **`authority_report` description broadened** (`G4` dogfood). The DAWG dogfood case for the tool happened to be an ABG partial-class wave, and the description / docs picked up that framing in three places. A reviewer almost skipped using the tool for filter-dispatch widening because the wording made it sound ABG-specific. Description now names the use cases up front: partial-class hosts, dispatchers routing across row paths (filter family selectors, kernel routers, capability dispatchers), facade types, ports with many implementations. STATUS.md + DOGFOOD_FINDINGS.md prose extended for the same reason.
+
+### Verification
+
+- All 5 commits + verification suite verified bottom-up:
+  - Clean rebuild from `dotnet clean`, zero warnings under `-warnaserror`.
+  - **Full unit suite: 739 / 739 passing, 0 regressions** across the existing 664-test baseline.
+  - Lifeblood self-analysis: exit 0, 0 architecture violations, 0 cycles. All architecture invariants Lifeblood enforces on itself stayed green through the wave.
+  - DAWG end-to-end: 60,775 symbols, 214,097 edges, 90 modules, 122 cycles, 0 violations, 47s wall.
+  - All 25 MCP tools dispatch + return valid JSON via `All25ToolsSmokeTests` (24 + analyze covered by setup), including `lifeblood_execute` running real C# script against the loaded graph.
+  - The R2-3 dogfood scenario reproduced as a permanent regression ratchet: a graph containing both `FieldMask.ShimmerPhase` (enum member) AND `BurstVoiceState.ShimmerPhase` (struct field) — exact-ID lookup returns the right one, cross-type query returns NotFound + both candidates as Did-you-mean.
+
+### Added. Enum-member extraction (R2-3 Part A / INV-EXTRACT-ENUMMEMBER-001)
+
+`RoslynSymbolExtractor.ExtractEnum` walks `EnumDeclarationSyntax.Members` and emits one `Symbol` per member: `Kind = Field`, `Id = SymbolIds.Field(enumFqn, memberName)`, `ParentId = type:enumFqn`, `IsStatic = true`, `Properties[fieldKind] = "enumMember"`, `Properties[fieldType] = enumFqn`, `Properties[constantValue] = "<int-or-Flags-bitfield>"`. Pre-fix three failure modes followed: (1) exact-ID lookup `field:NS.Color.Red` missed in the resolver's Rule 1 and fell through to Rule 4 silent cross-type substitution; (2) References to enum members were dropped by `GraphBuilder`'s dangling-edge filter (line 89), so `find_references` / `dependants` / `blast_radius` returned 0 hits for valid usages; (3) dead-code analysis could never observe enum-member usage. Roslyn models enum members as `IFieldSymbol`, so `RoslynEdgeExtractor`'s existing `IFieldSymbol` arm already emits `References` edges to the field-shape ID — the symbols just had to exist.
+
+Latent dup fix surfaced by enum-member emission: `RoslynSymbolExtractor.Extract`'s outer `DescendantNodes()` scan visited nested types/enums TWICE (once with parentId=file, once via the type-member walker). `GraphBuilder`'s first-write-wins dedup hid the duplicate symbol emission, but enum-member synthesis multiplied the dup into duplicate child symbols. Fixed by guarding the outer scan to top-level declarations (parented to `CompilationUnit` / `Namespace` / `FileScopedNamespace`); nested decls reach extraction via `ExtractType`'s member loop with the correct ParentId.
+
+Six new ratchet tests (`RoslynExtractorTests.ExtractSymbols_EnumMembers_*`): emitted-as-Field with `constantValue`, ID round-trip through `SymbolIds.Field` grammar, implicit autoincrement constants, explicit values, `[Flags]` bitfield resolution, nested enum parented to nested enum, xmldoc summary attached to member.
+
+### Fixed. Resolver Rule 4 type-aware tightening (R2-3 Part B / INV-RESOLVER-007)
+
+`LifebloodSymbolResolver.cs:196-237` — when input parses as a member-kind id (`field:` / `property:` / `method:`), Rule 4 short-name fallback substitutions MUST stay on the same containing-type short name AND the same `Symbol.Kind`. Pre-fix, an exact-prefixed query like `field:NS.FieldMask.ShimmerPhase` that missed Rule 1 fell through to `FindByShortName("ShimmerPhase")` and silently returned `field:NS.BurstVoiceState.ShimmerPhase` — a different containing type, returned as a successful resolution. The R2-3 dogfood case from a Unity workspace closes here. Cross-type / cross-kind hits become `ResolveOutcome.NotFound` with the unfiltered short-name candidates surfaced as `Did-you-mean`. Documented intent of `INV-RESOLVER-005` ("namespace was wrong but the symbol uniquely identified") is preserved: same-short-type-different-namespace substitutions still resolve cleanly.
+
+Four new internal helpers exposed for testability: `TryParseMemberInput`, `ShortNameOf`, `StripTypePrefix`, `SymbolKindForPrefix`. Pinned by `ResolverTypeAwareFallbackTests` (28 tests covering parser theories, the dogfood case, same-short-type accept, cross-kind refuse, method cross-type refuse, exact-ID Rule 1 fast-path under enum-member presence, type-input passthrough, multi-candidate cross-type NotFound).
+
+### Added. Typed IncrementalAnalyzeResult + caller-owned scope policy (G1 / INV-ANALYZE-FALLBACK-001)
+
+New record `IncrementalAnalyzeResult { Mode (Incremental | FullFallback | Rejected), Graph?, ChangedFileCount, Reason? (NoPriorAnalysis | ModuleSetChanged | ModuleDescriptorChanged), Detail? }` in `Lifeblood.Application.Ports.Left`. Adapter-agnostic taxonomy — future Python / TS adapters reuse the same record + enums; adapter-specific descriptor names (asmdef, csproj, pyproject) live in `Detail`, not in the taxonomy.
+
+`AnalysisConfig.AllowFullFallback` flag, default `false`. Adapter does not own the scope-widening policy; caller does. `RoslynWorkspaceAnalyzer.IncrementalAnalyze` now branches every fallback site on the flag via a new `HandleFallback` helper. NoPriorAnalysis is always Rejected (no `projectRoot` to widen against without a snapshot). Pre-fix `InvalidOperationException` throw replaced with the structured Rejected result.
+
+`GraphSession.Load` gains `allowFullFallback` parameter, threaded through `LoadIncremental`. `MaybeRefreshIfStale` opts into `AllowFullFallback=true` because its contract is "make state fresh." `ToolHandler.HandleAnalyze` reads `allowFullFallback` from MCP args. **No auto-retry on rejection** — surfacing the signal is the point of the typed shape.
+
+Wire shape on the MCP layer: `mode` reports DID, `requestedMode` separately reports ASKED, `fallbackReason` + `fallbackDetail` populate whenever the cheap path could not be honored, rejection responses carry `canRetryFull: true` + `suggestedRetry: { incremental: true, allowFullFallback: true }`. Wire fallback-reason names are camelCase (`noPriorAnalysis` / `moduleSetChanged` / `moduleDescriptorChanged`) to match the rest of the MCP schema.
+
+10 adapter-level ratchets (`IncrementalAnalyzeTests`, +4): NoPriorAnalysis always Rejected (regardless of `AllowFullFallback`), ModuleSetChanged × {Rejected, FullFallback} both verified, eight happy-path tests migrated to the new record shape. 5 wire-shape ratchets (`AnalyzeWireShapeTests`, new file): full / incremental-noop / incremental / rejected / full-fallback shapes all asserted via parsed JSON.
+
+### Added. SearchResult.MatchKind (G2 / INV-SEARCH-MATCHKIND-001)
+
+New `MatchKind` enum on `Lifeblood.Application.Ports.Right`: `Name` / `QualifiedName` / `XmlDoc` / `Multiple`. `SearchResult` record gains a final positional `MatchKind` field. `LifebloodSemanticSearchProvider` derives the value from the existing `firstNameHitToken` / `firstQNameHitToken` / `firstXmlDocHitToken` trackers — bucketCount > 1 → `Multiple`; otherwise the single-bucket label. No re-scoring, no second pass — purely additive lift. Existing `MatchSnippets` strings unchanged so existing renderers keep working. MCP tool description for `lifeblood_search` names the new field.
+
+5 new ratchets (`SemanticSearchTests.Search_*MatchKind*`): name-only, qualifiedName-only-with-bare-name-guard, xmldoc-only, name+xmldoc Multiple, qualifiedName+xmldoc Multiple.
+
+### Documentation. authority_report broadening (G4 dogfood)
+
+`ToolRegistry.cs` `lifeblood_authority_report` description names use cases up front (partial-class hosts, dispatchers routing across row paths — filter family selectors, kernel routers, capability dispatchers — facade types, ports with many implementations) and adds triage heuristics + pairs-with note for `lifeblood_port_health`. `INV-AUTHORITY-001` body in `docs/invariants/tools.md` adds an explicit "Use cases are general — not extraction-specific" paragraph naming the same set + noting the DAWG case was one instance of a broader pattern. `docs/STATUS.md` + `docs/DOGFOOD_FINDINGS.md` prose extended to clarify the `3,367 PureForwarder` metric drives any host-with-many-subordinates split decision, not just ABG.
+
+### Added. Wave-end verification ratchets
+
+`WaveFunctionalVerificationTests` (4 tests):
+- `Wave_R2_3_DogfoodReproduction_FieldMaskAndBurstVoiceStateShareShortName` — exact reproduction of the user's R2-3 scenario; permanent regression ratchet for the silent-wrong-answer class.
+- `Wave_C3_WireShape_AllFiveStatesEndToEnd` + `Wave_C3_WireShape_RejectedAndFullFallback_ModuleSetDrift` — drives `GraphSession.Load` through every wire-shape state, parses actual JSON.
+- `Wave_C4_MatchKind_AllFourValuesAchievable` — confirms all four values reachable through real Roslyn extraction with xmldoc summaries.
+
+`All25ToolsSmokeTests` (24 tests): invokes every one of the 25 MCP tools through `ToolHandler.Handle` against a real Roslyn-analyzed workspace, including `lifeblood_execute` running real C# script (`return Graph.Symbols.Count;`). Catches the regression class "C2 / C4 broke a tool's dispatch via the resolver / search seam I didn't have eyes on."
+
 ## [0.7.1] - 2026-04-27
 
 DAWG-dogfood polish on top of v0.7.0. **Tests 661 → 664 (+3).** One feature + one doc-correctness pass; both surfaced from real reviewer + DAWG-scan feedback.
@@ -908,7 +974,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/user-hash/Lifeblood/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/user-hash/Lifeblood/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...v0.7.0
 [0.6.7]: https://github.com/user-hash/Lifeblood/compare/v0.6.5...v0.6.7
