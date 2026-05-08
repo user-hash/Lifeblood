@@ -22,4 +22,6 @@ the MCP server.
 
 ## Incremental Re-Analyze
 
-- **INV-INCR-001**: Incremental re-analyze (`lifeblood_analyze` with `incremental: true`) only recompiles modules whose files changed since the last analysis. Per-file extraction results are cached in `AnalysisSnapshot`. Changed files are detected via filesystem timestamps. Module additions/removals fall back to full re-analyze. v1 limitation: does not cascade to dependent modules when API surface changes.
+- **INV-INCR-001**: Incremental re-analyze (`lifeblood_analyze` with `incremental: true`) only recompiles modules whose files changed since the last analysis. Per-file extraction results are cached in `AnalysisSnapshot`. Changed files are detected via filesystem timestamps. v1 limitation: does not cascade to dependent modules when API surface changes.
+
+- **INV-ANALYZE-FALLBACK-001. Scope-widening is a caller policy, not an adapter decision.**

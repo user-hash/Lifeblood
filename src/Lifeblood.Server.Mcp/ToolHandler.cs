@@ -115,8 +115,14 @@ public sealed class ToolHandler
         var rulesPath = WriteToolHandler.GetString(args, "rulesPath");
         var incremental = WriteToolHandler.GetBool(args, "incremental") ?? false;
         var readOnly = WriteToolHandler.GetBool(args, "readOnly") ?? false;
+        // INV-ANALYZE-FALLBACK-001: caller-owned scope policy. Default false
+        // = fail-loud rejection when adapter cannot honor incremental cleanly.
+        // Caller opts in to silent widening by passing allowFullFallback:true.
+        // This handler does NOT auto-retry on rejection — surfacing the
+        // signal is the whole point of the typed fallback shape.
+        var allowFullFallback = WriteToolHandler.GetBool(args, "allowFullFallback") ?? false;
 
-        var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly);
+        var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly, allowFullFallback);
         return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
     }
 

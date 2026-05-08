@@ -232,37 +232,61 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     ///   that type may be stale. Do a full re-analyze to fix this.
     /// - Module additions/removals trigger a full re-analyze automatically.
     /// </summary>
-    public (SemanticGraph graph, int changedFileCount) IncrementalAnalyze(AnalysisConfig config)
+    public IncrementalAnalyzeResult IncrementalAnalyze(AnalysisConfig config)
     {
+        // INV-ANALYZE-FALLBACK-001: NoPriorAnalysis is always Rejected.
+        // We have no projectRoot to AnalyzeWorkspace against without a
+        // snapshot, so AllowFullFallback cannot help here. The caller's
+        // remediation is fixed: invoke AnalyzeWorkspace explicitly first.
         if (_snapshot == null)
-            throw new InvalidOperationException("No previous analysis. Call AnalyzeWorkspace first.");
+        {
+            return new IncrementalAnalyzeResult
+            {
+                Mode = IncrementalMode.Rejected,
+                Graph = null,
+                ChangedFileCount = 0,
+                Reason = FallbackReason.NoPriorAnalysis,
+                Detail = "No previous analysis snapshot. Call AnalyzeWorkspace first.",
+            };
+        }
 
         var projectRoot = _snapshot.ProjectRoot;
 
         // Rediscover modules — cheap, just XML parsing
         var currentModules = _discovery.DiscoverModules(projectRoot);
 
-        // If module set changed (added/removed), fall back to full re-analyze
+        // INV-ANALYZE-FALLBACK-001 site 1: module set drift. If modules were
+        // added/removed since the snapshot we cannot safely walk per-file
+        // (module-level facts like dependencies and BCL ownership need
+        // re-derivation). Branch on the caller's AllowFullFallback policy.
         var prevModuleNames = new HashSet<string>(_snapshot.Modules.Select(m => m.Name), StringComparer.Ordinal);
         var currModuleNames = new HashSet<string>(currentModules.Select(m => m.Name), StringComparer.Ordinal);
         if (!prevModuleNames.SetEquals(currModuleNames))
         {
-            var graph = AnalyzeWorkspace(projectRoot, config);
-            // Return all files as "changed" since we did a full re-analyze
-            return (graph, _snapshot!.FileTimestamps.Count);
+            return HandleFallback(
+                config,
+                projectRoot,
+                FallbackReason.ModuleSetChanged,
+                detail: $"Module set drift detected: previous={prevModuleNames.Count}, current={currModuleNames.Count}.");
         }
 
+        // INV-ANALYZE-FALLBACK-001 site 2: descriptor (asmdef) drift.
         // Phase P3 / promoted LB-NICE-003: any *.asmdef edit, addition, or
         // removal forces a full re-analyze on this round. Unity csprojs
         // are generated from asmdefs; an asmdef edit not yet flushed
         // through Unity's csproj regeneration would leave the on-disk
         // csproj stale and the incremental walk would miss the change.
         // The check is symmetric — added or removed asmdef files also
-        // trigger the full path. INV-UNITY-002.
+        // trigger the full path. INV-UNITY-002. Reported as the
+        // adapter-agnostic ModuleDescriptorChanged with Detail naming the
+        // descriptor kind for human consumption.
         if (HasAsmdefDrift(projectRoot))
         {
-            var graph = AnalyzeWorkspace(projectRoot, config);
-            return (graph, _snapshot!.FileTimestamps.Count);
+            return HandleFallback(
+                config,
+                projectRoot,
+                FallbackReason.ModuleDescriptorChanged,
+                detail: "Unity asmdef edit/add/remove detected (descriptorKind=asmdef).");
         }
 
         // Detect changed files by timestamp comparison
@@ -338,7 +362,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         }
 
         if (changedFiles.Count == 0)
-            return (_snapshot.RebuildGraph(), 0);
+            return new IncrementalAnalyzeResult
+            {
+                Mode = IncrementalMode.Incremental,
+                Graph = _snapshot.RebuildGraph(),
+                ChangedFileCount = 0,
+            };
 
         // Recompile only changed modules
         var modulesToRecompile = currentModules
@@ -450,7 +479,47 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
         _moduleDependencies = BuildModuleDependencyMap(currentModules);
 
-        return (_snapshot.RebuildGraph(), changedFiles.Count);
+        return new IncrementalAnalyzeResult
+        {
+            Mode = IncrementalMode.Incremental,
+            Graph = _snapshot.RebuildGraph(),
+            ChangedFileCount = changedFiles.Count,
+        };
+    }
+
+    /// <summary>
+    /// INV-ANALYZE-FALLBACK-001: branch on caller policy. Either widen scope
+    /// to a full re-analyze (and report what happened) or refuse and surface
+    /// the rejection so the caller decides next step. Adapter does not own
+    /// the policy choice — caller does, via <see cref="AnalysisConfig.AllowFullFallback"/>.
+    /// </summary>
+    private IncrementalAnalyzeResult HandleFallback(
+        AnalysisConfig config,
+        string projectRoot,
+        FallbackReason reason,
+        string detail)
+    {
+        if (config.AllowFullFallback)
+        {
+            var graph = AnalyzeWorkspace(projectRoot, config);
+            return new IncrementalAnalyzeResult
+            {
+                Mode = IncrementalMode.FullFallback,
+                Graph = graph,
+                ChangedFileCount = _snapshot!.FileTimestamps.Count,
+                Reason = reason,
+                Detail = detail,
+            };
+        }
+
+        return new IncrementalAnalyzeResult
+        {
+            Mode = IncrementalMode.Rejected,
+            Graph = null,
+            ChangedFileCount = 0,
+            Reason = reason,
+            Detail = detail,
+        };
     }
 
     private static Dictionary<string, string[]> BuildModuleDependencyMap(ModuleInfo[] modules)

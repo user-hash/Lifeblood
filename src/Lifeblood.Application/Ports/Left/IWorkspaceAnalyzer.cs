@@ -24,4 +24,25 @@ public sealed class AnalysisConfig
     /// after extraction — dramatically reducing memory for large workspaces.
     /// </summary>
     public bool RetainCompilations { get; init; }
+
+    /// <summary>
+    /// Policy for incremental re-analyze when the adapter detects drift it
+    /// cannot honor cheaply (module set changed, descriptor file edited, no
+    /// prior cache). Default <c>false</c>: the adapter returns
+    /// <see cref="IncrementalAnalyzeResult"/> with
+    /// <see cref="IncrementalMode.Rejected"/> and a
+    /// <see cref="FallbackReason"/> so the caller decides whether to widen
+    /// scope explicitly. <c>true</c>: the adapter silently widens to a full
+    /// re-analyze and returns <see cref="IncrementalMode.FullFallback"/>
+    /// with the reason populated so the caller still sees what happened.
+    ///
+    /// Eternal-repo posture: scope-widening is a policy decision and lives
+    /// with the caller, not the adapter. Internal callers like the auto-
+    /// refresh-if-stale path deliberately opt in (their contract is "make
+    /// state fresh"); user-facing callers receive the rejection and surface
+    /// it so the agent can reason about cache miss patterns.
+    ///
+    /// INV-ANALYZE-FALLBACK-001.
+    /// </summary>
+    public bool AllowFullFallback { get; init; }
 }
