@@ -46,7 +46,7 @@ public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
         var tokens = TokenizeQuery(query.Query);
         if (tokens.Length == 0) return System.Array.Empty<SearchResult>();
 
-        var scored = new List<(double score, Symbol sym, List<string> snippets)>(capacity: 64);
+        var scored = new List<(double score, Symbol sym, List<string> snippets, MatchKind matchKind)>(capacity: 64);
 
         foreach (var sym in graph.Symbols)
         {
@@ -112,7 +112,21 @@ public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
                 snippets.Add($"xmlDoc: {TruncateSnippet(docSummary!, firstXmlDocHitToken)}");
             }
 
-            scored.Add((score, sym, snippets));
+            // INV-SEARCH-MATCHKIND-001: the per-token first-hit trackers
+            // already record which scoring buckets fired for this symbol.
+            // Lift that signal to a structured MatchKind on the result so
+            // callers can filter / sort by source without parsing the
+            // human-render snippet strings. Bucket count >1 → Multiple.
+            int bucketCount = (firstNameHitToken    != null ? 1 : 0)
+                            + (firstQNameHitToken   != null ? 1 : 0)
+                            + (firstXmlDocHitToken  != null ? 1 : 0);
+            MatchKind matchKind;
+            if (bucketCount > 1)        matchKind = MatchKind.Multiple;
+            else if (firstNameHitToken    != null) matchKind = MatchKind.Name;
+            else if (firstQNameHitToken   != null) matchKind = MatchKind.QualifiedName;
+            else                         matchKind = MatchKind.XmlDoc;
+
+            scored.Add((score, sym, snippets, matchKind));
         }
 
         return scored
@@ -126,7 +140,8 @@ public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
                 FilePath: t.sym.FilePath,
                 Line: t.sym.Line,
                 Score: t.score,
-                MatchSnippets: t.snippets.ToArray()))
+                MatchSnippets: t.snippets.ToArray(),
+                MatchKind: t.matchKind))
             .ToArray();
     }
 

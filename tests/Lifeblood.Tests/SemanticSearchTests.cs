@@ -299,6 +299,124 @@ public class SemanticSearchTests
     // End-to-end: xmldoc summaries persisted during real extraction
     // ─────────────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────────────
+    // INV-SEARCH-MATCHKIND-001 — structurally-typed match-source signal.
+    // Lifts the adapter's existing first-hit-token tracking to a typed
+    // SearchResult.MatchKind so callers can filter / sort by signal source
+    // without parsing the (human-rendered) snippet strings.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Search_NameOnlyHit_MatchKindIsName()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.UserRepository", Name = "UserRepository", Kind = SymbolKind.Type, FilePath = "UR.cs" })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("UserRepository"));
+
+        Assert.Single(results);
+        Assert.Equal(MatchKind.Name, results[0].MatchKind);
+    }
+
+    [Fact]
+    public void Search_QualifiedNameHit_NotInBareName_MatchKindIsQualifiedName()
+    {
+        // "Domain" appears in the qualified name but NOT in the bare name.
+        // The C# adapter scoring guard (line 83) makes QualifiedName
+        // exclusive of Name in the single-bucket case.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:My.Domain.Foo",
+                Name = "Foo",
+                QualifiedName = "My.Domain.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+            })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("Domain"));
+
+        Assert.Single(results);
+        Assert.Equal(MatchKind.QualifiedName, results[0].MatchKind);
+    }
+
+    [Fact]
+    public void Search_XmlDocOnlyHit_MatchKindIsXmlDoc()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.UserRepository",
+                Name = "UserRepository",
+                Kind = SymbolKind.Type,
+                FilePath = "UR.cs",
+                Properties = new Dictionary<string, string>
+                {
+                    ["xmlDocSummary"] = "Canonicalizes user input before persisting.",
+                },
+            })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("canonicaliz"));
+
+        Assert.Single(results);
+        Assert.Equal(MatchKind.XmlDoc, results[0].MatchKind);
+    }
+
+    [Fact]
+    public void Search_NamePlusXmlDocHit_MatchKindIsMultiple()
+    {
+        // Same token appears in BOTH the bare name and the xmldoc summary.
+        // Two buckets fired → MatchKind.Multiple.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.NormalizeService",
+                Name = "NormalizeService",
+                Kind = SymbolKind.Type,
+                FilePath = "NS.cs",
+                Properties = new Dictionary<string, string>
+                {
+                    ["xmlDocSummary"] = "Normalizes input strings.",
+                },
+            })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("Normalize"));
+
+        Assert.Single(results);
+        Assert.Equal(MatchKind.Multiple, results[0].MatchKind);
+    }
+
+    [Fact]
+    public void Search_QualifiedNamePlusXmlDocHit_MatchKindIsMultiple()
+    {
+        // Token in QualifiedName + xmldoc but NOT bare name. Two buckets,
+        // still Multiple. Bare-name guard makes this combo distinct from
+        // the Name+XmlDoc one above.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:Audio.Mixer.Foo",
+                Name = "Foo",
+                QualifiedName = "Audio.Mixer.Foo",
+                Kind = SymbolKind.Type,
+                FilePath = "Foo.cs",
+                Properties = new Dictionary<string, string>
+                {
+                    ["xmlDocSummary"] = "Routes mixer signals to the bus.",
+                },
+            })
+            .Build();
+
+        var results = Provider.Search(graph, new SearchQuery("mixer"));
+
+        Assert.Single(results);
+        Assert.Equal(MatchKind.Multiple, results[0].MatchKind);
+    }
+
     [Fact]
     public void AnalyzeWorkspace_ExtractsXmlDocSummariesOntoSymbolProperties()
     {
