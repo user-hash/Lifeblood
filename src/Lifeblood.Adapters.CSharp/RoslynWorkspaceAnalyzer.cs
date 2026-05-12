@@ -146,6 +146,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // incremental updates. Incremental analyze intentionally appends
         // rather than replaces — see the IncrementalAnalyze path.
         snapshot.SkippedFiles.Clear();
+        // Full analyze starts with no prior knowledge of any module — clear
+        // any carry-over downgraded refs so a re-analyze on the same
+        // analyzer instance does not inherit stale PE images from a prior
+        // project root. INV-INCREMENTAL-XREF-001.
+        snapshot.DowngradedRefs.Clear();
         // Merge discovery-level skips (csproj lists a .cs file that doesn't
         // exist on disk) into the snapshot so users see them in the
         // analyze response alongside compilation-level skips.
@@ -154,6 +159,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             modules, projectRoot, config,
             onModuleProgress: OnModuleProgress,
             skippedCollector: snapshot.SkippedFiles,
+            carryDowngraded: snapshot.DowngradedRefs,
             processor: (module, compilation) =>
             {
                 var moduleId = SymbolIds.Module(module.Name);
@@ -180,7 +186,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                     };
 
                     var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
-                    var edges = _edgeExtractor.Extract(model, tree.GetRoot());
+                    var edges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
 
                     snapshot.ReplaceFile(fileId, fileSymbol, symbols, edges);
 
@@ -361,6 +367,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             }
         }
 
+        // Symmetric pruning for the persistent downgraded-refs carry. Since
+        // module-set drift goes through HandleFallback (full re-analyze or
+        // Rejected), we know prevModuleNames.SetEquals(currModuleNames) here
+        // and there are no stale module entries to evict. Asmdef drift is
+        // handled by the same gate. Defensive sanity check would only fire
+        // if the invariant above broke. INV-INCREMENTAL-XREF-001.
+
         if (changedFiles.Count == 0)
             return new IncrementalAnalyzeResult
             {
@@ -389,10 +402,17 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         _snapshot.SkippedFiles.RemoveAll(sf =>
             changedModules.Contains(sf.ModuleName));
 
-        // For incremental, we always retain compilations (MCP server mode)
+        // For incremental, we always retain compilations (MCP server mode).
+        // INV-INCREMENTAL-XREF-001: thread the snapshot-owned downgraded
+        // refs through so the changed modules' compilations resolve types
+        // from UNCHANGED dependent modules via the carry. The carry is
+        // mutated in-place; on return it reflects the current world (new
+        // PE refs for recompiled modules, prior PE refs preserved for
+        // untouched dependencies).
         var newCompilations = compilationBuilder.ProcessInOrder(
             modulesToRecompile, projectRoot, config,
             skippedCollector: _snapshot.SkippedFiles,
+            carryDowngraded: _snapshot.DowngradedRefs,
             processor: (module, compilation) =>
             {
                 var moduleId = SymbolIds.Module(module.Name);
@@ -420,7 +440,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                     };
 
                     var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
-                    var edges = _edgeExtractor.Extract(model, tree.GetRoot());
+                    var edges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
 
                     _snapshot.ReplaceFile(fileId, fileSymbol, symbols, edges);
                     _snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
