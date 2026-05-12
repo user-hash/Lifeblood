@@ -84,6 +84,17 @@ public sealed class JsonGraphImporter : IGraphImporter
                         }
                         : Evidence.Default,
                     Properties = je.Properties ?? new(),
+                    CallSite = je.CallSite != null
+                        ? new CallSite
+                        {
+                            FilePath = je.CallSite.FilePath ?? "",
+                            Line = je.CallSite.Line,
+                            Column = je.CallSite.Column,
+                            EndLine = je.CallSite.EndLine,
+                            EndColumn = je.CallSite.EndColumn,
+                            ContainingSymbolId = je.CallSite.ContainingSymbolId ?? "",
+                        }
+                        : null,
                 });
             }
         }
@@ -166,6 +177,17 @@ internal sealed class JsonEdge
     public EdgeKind Kind { get; set; }
     public JsonEvidence? Evidence { get; set; }
     public Dictionary<string, string>? Properties { get; set; }
+    public JsonCallSite? CallSite { get; set; }
+}
+
+internal sealed class JsonCallSite
+{
+    public string? FilePath { get; set; }
+    public int Line { get; set; }
+    public int Column { get; set; }
+    public int EndLine { get; set; }
+    public int EndColumn { get; set; }
+    public string? ContainingSymbolId { get; set; }
 }
 
 internal sealed class JsonEvidence

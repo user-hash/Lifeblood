@@ -74,6 +74,17 @@ public sealed class JsonGraphExporter : IGraphExporter
                 },
                 Properties = e.Properties.Count > 0
                     ? new Dictionary<string, string>(e.Properties) : null,
+                CallSite = e.CallSite != null
+                    ? new JsonCallSite
+                    {
+                        FilePath = e.CallSite.FilePath,
+                        Line = e.CallSite.Line,
+                        Column = e.CallSite.Column,
+                        EndLine = e.CallSite.EndLine,
+                        EndColumn = e.CallSite.EndColumn,
+                        ContainingSymbolId = e.CallSite.ContainingSymbolId,
+                    }
+                    : null,
             }).ToArray(),
         };
 

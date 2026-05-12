@@ -30,8 +30,23 @@ public sealed class RoslynEdgeExtractor
     /// </summary>
     public HashSet<string>? KnownModuleAssemblies { get; set; }
 
+    /// <summary>
+    /// Repo-relative file path for the syntax tree currently being walked.
+    /// Set by <see cref="Extract"/> on entry, threaded into <see cref="AddEdge"/>
+    /// via the shared instance state so every source-derived edge can attach a
+    /// <see cref="CallSite"/> without every helper signature growing a relPath
+    /// parameter. Single-threaded by contract (the workspace analyzer walks
+    /// one tree at a time per extractor instance — same contract as
+    /// <see cref="KnownModuleAssemblies"/>).
+    /// </summary>
+    private string _currentRelPath = "";
+
     public List<Edge> Extract(SemanticModel model, SyntaxNode root)
+        => Extract(model, root, relPath: "");
+
+    public List<Edge> Extract(SemanticModel model, SyntaxNode root, string relPath)
     {
+        _currentRelPath = relPath ?? "";
         var edges = new List<Edge>();
         var seen = new HashSet<(string, string, EdgeKind)>();
 
@@ -221,7 +236,8 @@ public sealed class RoslynEdgeExtractor
             RoslynSymbolExtractor.GetFullName(target.ContainingType),
             target.Name, paramSig);
 
-        AddEdge(edges, seen, sourceId, targetId, EdgeKind.Calls);
+        AddEdge(edges, seen, sourceId, targetId, EdgeKind.Calls,
+            originatingNode: invocation, containingSymbolId: sourceId);
     }
 
     /// <summary>
@@ -249,7 +265,8 @@ public sealed class RoslynEdgeExtractor
 
         // Type-level edge: caller → containing type (module-coupling signal).
         var typeTargetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(target.ContainingType));
-        AddEdge(edges, seen, sourceId, typeTargetId, EdgeKind.References);
+        AddEdge(edges, seen, sourceId, typeTargetId, EdgeKind.References,
+            originatingNode: creation, containingSymbolId: sourceId);
 
         // Method-level edge: caller → .ctor. Only emit when the ctor itself is tracked
         // (source-declared or cross-module-known). Implicit default ctors produce metadata
@@ -258,7 +275,8 @@ public sealed class RoslynEdgeExtractor
         if (IsTracked(target))
         {
             var ctorTargetId = GetMethodId(target);
-            AddEdge(edges, seen, sourceId, ctorTargetId, EdgeKind.Calls);
+            AddEdge(edges, seen, sourceId, ctorTargetId, EdgeKind.Calls,
+                originatingNode: creation, containingSymbolId: sourceId);
         }
     }
 
@@ -284,7 +302,8 @@ public sealed class RoslynEdgeExtractor
             var sourceId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(containingType));
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(referencedType));
             if (sourceId != targetId)
-                AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+                AddEdge(edges, seen, sourceId, targetId, EdgeKind.References,
+                    originatingNode: identifier, containingSymbolId: sourceId);
             return;
         }
 
@@ -297,7 +316,8 @@ public sealed class RoslynEdgeExtractor
             if (caller == null) return;
             var callerMethodId = GetMethodId(caller);
             var fqn = RoslynSymbolExtractor.GetFullName(fieldSymbol.ContainingType);
-            AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, fieldSymbol.Name), EdgeKind.References);
+            AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, fieldSymbol.Name), EdgeKind.References,
+                originatingNode: identifier, containingSymbolId: callerMethodId);
             return;
         }
 
@@ -309,7 +329,9 @@ public sealed class RoslynEdgeExtractor
         {
             var caller = FindContainingMethodOrLocal(model, identifier);
             if (caller == null) return;
-            AddEdge(edges, seen, GetMethodId(caller), GetMethodId(methodSymbol), EdgeKind.Calls);
+            var callerMethodId = GetMethodId(caller);
+            AddEdge(edges, seen, callerMethodId, GetMethodId(methodSymbol), EdgeKind.Calls,
+                originatingNode: identifier, containingSymbolId: callerMethodId);
         }
     }
 
@@ -330,7 +352,8 @@ public sealed class RoslynEdgeExtractor
         var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(target.ContainingType));
 
         if (sourceId != targetId)
-            AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
+            AddEdge(edges, seen, sourceId, targetId, EdgeKind.References,
+                originatingNode: memberAccess, containingSymbolId: sourceId);
 
         // Symbol-level References edge so properties/fields show incoming references
         EmitSymbolLevelEdge(model, memberAccess, target, edges, seen);
@@ -358,7 +381,8 @@ public sealed class RoslynEdgeExtractor
         var targetTypeId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(target.ContainingType));
 
         if (sourceId != targetTypeId)
-            AddEdge(edges, seen, sourceId, targetTypeId, EdgeKind.References);
+            AddEdge(edges, seen, sourceId, targetTypeId, EdgeKind.References,
+                originatingNode: memberBinding, containingSymbolId: sourceId);
 
         // Symbol-level edge (shared helper)
         EmitSymbolLevelEdge(model, memberBinding, target, edges, seen);
@@ -385,19 +409,22 @@ public sealed class RoslynEdgeExtractor
                 var propId = prop.IsIndexer
                     ? SymbolIds.Property(fqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(prop)}]")
                     : SymbolIds.Property(fqn, prop.Name);
-                AddEdge(edges, seen, callerMethodId, propId, EdgeKind.References);
+                AddEdge(edges, seen, callerMethodId, propId, EdgeKind.References,
+                    originatingNode: node, containingSymbolId: callerMethodId);
                 break;
             }
             case IFieldSymbol field:
             {
                 var fqn = RoslynSymbolExtractor.GetFullName(field.ContainingType);
-                AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, field.Name), EdgeKind.References);
+                AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, field.Name), EdgeKind.References,
+                    originatingNode: node, containingSymbolId: callerMethodId);
                 break;
             }
             case IEventSymbol evt:
             {
                 var fqn = RoslynSymbolExtractor.GetFullName(evt.ContainingType);
-                AddEdge(edges, seen, callerMethodId, SymbolIds.Property(fqn, evt.Name), EdgeKind.References);
+                AddEdge(edges, seen, callerMethodId, SymbolIds.Property(fqn, evt.Name), EdgeKind.References,
+                    originatingNode: node, containingSymbolId: callerMethodId);
                 break;
             }
         }
@@ -638,9 +665,11 @@ public sealed class RoslynEdgeExtractor
         return false;
     }
 
-    private static void AddEdge(
+    private void AddEdge(
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen,
-        string sourceId, string targetId, EdgeKind kind)
+        string sourceId, string targetId, EdgeKind kind,
+        SyntaxNode? originatingNode = null,
+        string? containingSymbolId = null)
     {
         if (string.IsNullOrEmpty(sourceId) || string.IsNullOrEmpty(targetId)) return;
         // Guard against prefix-only IDs (e.g., "type:" with no name)
@@ -656,6 +685,33 @@ public sealed class RoslynEdgeExtractor
             TargetId = targetId,
             Kind = kind,
             Evidence = SemanticEvidence,
+            CallSite = BuildCallSite(originatingNode, containingSymbolId ?? sourceId),
         });
+    }
+
+    /// <summary>
+    /// Build a <see cref="CallSite"/> from a Roslyn syntax node and the
+    /// canonical id of the enclosing declaration. Returns null when the node
+    /// is null or has no source location (synthetic / compiler-generated).
+    /// The file path is taken from the instance state set by
+    /// <see cref="Extract(SemanticModel, SyntaxNode, string)"/> — callers do
+    /// not pass it per-edge. Reads are zero-allocation past the
+    /// <see cref="CallSite"/> instantiation itself.
+    /// </summary>
+    private CallSite? BuildCallSite(SyntaxNode? node, string containingSymbolId)
+    {
+        if (node == null) return null;
+        var location = node.GetLocation();
+        if (!location.IsInSource) return null;
+        var span = location.GetLineSpan();
+        return new CallSite
+        {
+            FilePath = !string.IsNullOrEmpty(_currentRelPath) ? _currentRelPath : span.Path,
+            Line = span.StartLinePosition.Line + 1,
+            Column = span.StartLinePosition.Character + 1,
+            EndLine = span.EndLinePosition.Line + 1,
+            EndColumn = span.EndLinePosition.Character + 1,
+            ContainingSymbolId = containingSymbolId ?? "",
+        };
     }
 }
