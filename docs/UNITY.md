@@ -91,7 +91,7 @@ Streaming compilation with downgrading keeps memory bounded:
 
 | Project size | Peak memory (CLI streaming) | Peak memory (MCP retained) | Graph |
 |---|---|---|---|
-| ~11 modules (Lifeblood itself) | ~220 MB | ~3.5 GB | 2,512 symbols, 12,439 edges (~2 s wall) |
+| ~11 modules (Lifeblood itself) | ~220 MB | ~3.5 GB | 2,513 symbols, 12,446 edges (~2 s wall) |
 
 Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Older docs cited ~4 GB peak - that figure was almost certainly measured against the MCP retained path without noting the distinction, and is closer to the 2.5 GB MCP peak than to the CLI 571 MB peak.
 

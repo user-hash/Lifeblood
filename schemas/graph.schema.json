@@ -68,10 +68,26 @@
         "targetId": { "type": "string" },
         "kind": { "type": "string", "enum": ["contains", "dependsOn", "implements", "inherits", "calls", "references", "overrides"] },
         "evidence": { "$ref": "#/$defs/evidence" },
+        "callSite": {
+          "$ref": "#/$defs/callSite",
+          "description": "Authoring provenance for expression-derived edges (Calls / References / member-level Implements). Null / omitted for graph-derived edges with no single authoring location (module→module DependsOn, type→type Inherits without a surfaced clause node). When multiple authoring expressions exist for the same (sourceId, targetId, kind) edge, this records the FIRST observed occurrence — graph-level dedup (`INV-STREAM-005`) collapses repeats. See `INV-EDGE-CALLSITE-001`."
+        },
         "properties": {
           "type": "object",
           "additionalProperties": { "type": "string" }
         }
+      }
+    },
+    "callSite": {
+      "type": "object",
+      "required": ["filePath", "line", "column"],
+      "properties": {
+        "filePath": { "type": "string", "description": "Repo-relative source-file path with forward-slash separators (matches `SymbolKind.File` symbols' filePath)." },
+        "line": { "type": "integer", "minimum": 1, "description": "One-based line number of the authoring expression's start." },
+        "column": { "type": "integer", "minimum": 1, "description": "One-based column number of the authoring expression's start." },
+        "endLine": { "type": "integer", "minimum": 0, "description": "One-based line number of the authoring expression's end. Zero when not available." },
+        "endColumn": { "type": "integer", "minimum": 0, "description": "One-based column number of the authoring expression's end. Zero when not available." },
+        "containingSymbolId": { "type": "string", "description": "Canonical id of the lexically enclosing declaration (method, property accessor, field initializer, etc.). Falls back to the containing type id for expressions outside any method-like enclosure. Empty when the extractor could not resolve a containing symbol." }
       }
     },
     "module": {
