@@ -14,6 +14,8 @@ public sealed class PhysicalFileSystem : IFileSystem
 
     public Stream OpenRead(string path) => File.OpenRead(path);
 
+    public Stream OpenWrite(string path) => File.Create(path);
+
     public bool FileExists(string path) => File.Exists(path);
 
     public bool DirectoryExists(string path) => Directory.Exists(path);

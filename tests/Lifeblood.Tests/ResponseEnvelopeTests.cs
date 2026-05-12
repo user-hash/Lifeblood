@@ -286,6 +286,7 @@ public class ResponseEnvelopeTests
         public string ReadAllText(string path) => "";
         public System.Collections.Generic.IEnumerable<string> ReadLines(string path) => System.Array.Empty<string>();
         public Stream OpenRead(string path) => Stream.Null;
+        public Stream OpenWrite(string path) => Stream.Null;
         public bool FileExists(string path) => _mtimes.ContainsKey(path);
         public bool DirectoryExists(string path) => false;
         public string[] FindFiles(string directory, string pattern, bool recursive = true) => System.Array.Empty<string>();

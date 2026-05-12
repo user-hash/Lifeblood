@@ -30,6 +30,7 @@ class Program
             "analyze" => RunAnalyze(args.Skip(1).ToArray()),
             "context" => RunContext(args.Skip(1).ToArray()),
             "export" => RunExport(args.Skip(1).ToArray()),
+            "verify" => RunVerify(args.Skip(1).ToArray()),
             // Standard help arms — convention is that any of these prints
             // usage and exits 0. Pre-fix the help arms hit the unknown-
             // command branch and exited 1 with a misleading "Unknown command"
@@ -71,6 +72,26 @@ class Program
 
     static int RunAnalyze(string[] args)
     {
+        // CLI is single-shot — there is no persistent adapter snapshot
+        // across process boundaries, so incremental analyze is structurally
+        // incoherent here (every first call would NoPriorAnalysis-reject
+        // regardless of the workspace state). Be honest about it: refuse
+        // the flag and point at the two paths that ARE coherent. INV-ANALYZE-
+        // FALLBACK-001's caller-owned scope policy applies in the MCP layer
+        // where the GraphSession holds a long-lived snapshot.
+        if (HasFlag(args, "--incremental"))
+        {
+            Console.Error.WriteLine(
+                "CLI analyze is single-shot; incremental analyze requires a persistent snapshot.");
+            Console.Error.WriteLine(
+                "Use the MCP server (lifeblood-mcp) for interactive incremental analyze across many calls,");
+            Console.Error.WriteLine(
+                "or `lifeblood verify --incremental --project <path>` for a one-shot drift check");
+            Console.Error.WriteLine(
+                "(runs full + incremental in one process and asserts INV-INCREMENTAL-XREF-001 holds).");
+            return 1;
+        }
+
         var (graph, _) = Preflight(args);
         if (graph == null) return 1;
 
@@ -178,8 +199,117 @@ class Program
             Adapter = source.Capability,
             Graph = graph,
         };
-        new JsonGraphExporter().Export(doc, Console.OpenStandardOutput());
+
+        // --out <path> writes to a file; otherwise stream to stdout.
+        // File-mode goes through IFileSystem so the path is created with
+        // the same atomicity / permissions semantics as every other
+        // Lifeblood file write.
+        var outPath = ParseFlagValue(args, "--out");
+        if (outPath != null)
+        {
+            using var stream = Fs.OpenWrite(outPath);
+            new JsonGraphExporter().Export(doc, stream);
+            Console.Error.WriteLine($"Exported graph to {outPath}");
+        }
+        else
+        {
+            new JsonGraphExporter().Export(doc, Console.OpenStandardOutput());
+        }
         return 0;
+    }
+
+    /// <summary>
+    /// `lifeblood verify` runs one of several drift / regression checks
+    /// against a workspace, each behind an explicit subflag. Subflag
+    /// rather than positional argument so future verify modes
+    /// (`--schema`, `--determinism`, etc.) compose cleanly. Today the
+    /// only mode is <c>--incremental</c>: the
+    /// <c>INV-INCREMENTAL-XREF-001</c> acceptance criterion as a CLI
+    /// regression check.
+    /// </summary>
+    static int RunVerify(string[] args)
+    {
+        if (HasFlag(args, "--incremental"))
+            return RunVerifyIncremental(args);
+
+        Console.Error.WriteLine("verify requires a mode flag:");
+        Console.Error.WriteLine("  --incremental    full vs incremental edge-count drift check (INV-INCREMENTAL-XREF-001)");
+        return 1;
+    }
+
+    /// <summary>
+    /// Verifies the cross-module-edge integrity acceptance criterion for
+    /// <c>INV-INCREMENTAL-XREF-001</c>: a full analyze followed by an
+    /// incremental analyze on the same source tree (no file changes
+    /// between the two calls) MUST produce identical <c>summary.edges</c>.
+    /// Pre-fix (LB-BUG-020), incremental dropped cross-module edges
+    /// silently in proportion to the unchanged-module fan-in.
+    ///
+    /// Single-process so the adapter snapshot is shared between the two
+    /// calls. Useful as a regression check any consumer can run against
+    /// their own workspace; non-zero exit on drift makes it CI-wireable.
+    /// </summary>
+    static int RunVerifyIncremental(string[] args)
+    {
+        var projectRoot = ParseFlagValue(args, "--project");
+        if (projectRoot == null)
+        {
+            Console.Error.WriteLine("verify --incremental requires --project <path>");
+            return 1;
+        }
+
+        var adapter = new RoslynWorkspaceAnalyzer(Fs);
+
+        Console.WriteLine("[1/2] Full analyze...");
+        var fullGraph = adapter.AnalyzeWorkspace(projectRoot, new AnalysisConfig());
+        var fullSymbols = fullGraph.Symbols.Count;
+        var fullEdges = fullGraph.Edges.Count;
+        Console.WriteLine($"      Symbols: {fullSymbols,8}  Edges: {fullEdges,8}");
+
+        Console.WriteLine("[2/2] Incremental re-analyze (no file changes expected)...");
+        var incremental = adapter.IncrementalAnalyze(new AnalysisConfig());
+        if (incremental.Graph == null)
+        {
+            Console.Error.WriteLine($"      Incremental returned mode={incremental.Mode}, reason={incremental.Reason}");
+            return 1;
+        }
+        var incSymbols = incremental.Graph.Symbols.Count;
+        var incEdges = incremental.Graph.Edges.Count;
+        Console.WriteLine($"      Symbols: {incSymbols,8}  Edges: {incEdges,8}  Mode: {incremental.Mode}  ChangedFiles: {incremental.ChangedFileCount}");
+
+        Console.WriteLine();
+        if (fullSymbols == incSymbols && fullEdges == incEdges)
+        {
+            Console.WriteLine("VERIFIED — full and incremental produce identical graphs (INV-INCREMENTAL-XREF-001).");
+            return 0;
+        }
+        Console.Error.WriteLine($"DRIFT DETECTED — symbols Δ={incSymbols - fullSymbols}, edges Δ={incEdges - fullEdges}.");
+        Console.Error.WriteLine("This indicates LB-BUG-020 or a regression. File a bug.");
+        return 1;
+    }
+
+    /// <summary>
+    /// Parses a single named flag with a value: <c>--flag value</c>. Returns
+    /// the value if found, null otherwise. For boolean flags (no value),
+    /// use <see cref="HasFlag"/>.
+    /// </summary>
+    static string? ParseFlagValue(string[] args, string flagName)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+            if (args[i] == flagName) return args[i + 1];
+        return null;
+    }
+
+    /// <summary>
+    /// Checks whether a value-less flag is present in the argument list.
+    /// Returns true if <paramref name="flagName"/> appears anywhere in
+    /// <paramref name="args"/>.
+    /// </summary>
+    static bool HasFlag(string[] args, string flagName)
+    {
+        foreach (var a in args)
+            if (a == flagName) return true;
+        return false;
     }
 
     static GraphSource BuildGraph(string? projectRoot, string? graphPath)
@@ -248,7 +378,9 @@ class Program
         Console.WriteLine("  lifeblood analyze --project <path> --rules <rules.json>    Analyze + custom rules");
         Console.WriteLine("  lifeblood context --project <path>                         Generate AI context pack (JSON)");
         Console.WriteLine("  lifeblood context --project <path> --format md             Generate instruction file (markdown)");
-        Console.WriteLine("  lifeblood export  --project <path>                         Export graph as JSON");
+        Console.WriteLine("  lifeblood export  --project <path>                         Export graph as JSON (stdout)");
+        Console.WriteLine("  lifeblood export  --project <path> --out <file>            Export graph as JSON to file");
+        Console.WriteLine("  lifeblood verify  --incremental --project <path>           Full vs incremental edge-count drift check (INV-INCREMENTAL-XREF-001)");
         Console.WriteLine();
         Console.WriteLine($"Built-in rule packs: {string.Join(", ", Analysis.RulePacks.BuiltIn)}");
     }
