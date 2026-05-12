@@ -31,7 +31,7 @@ Built-in architecture rule packs:
 
 ## Known Limitations
 
-**`lifeblood_dead_code` accuracy.** Eight extractor false-positive classes have been closed (five in v0.6.4: interface dispatch, member access granularity, null-conditional property, lambda context, method-group references; three in v0.6.5: ctor `Calls` edge, field-initializer containing method, property accessor body). Plus the root-cause compilation gap (missing implicit global usings). The Unity reachability port (`INV-UNITY-001`) closes the MonoBehaviour magic-method false-positive class on Unity workspaces. **`LB-FP-003`** extends the Unity reflection roster with `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, the full NUnit fixture lifecycle, plus type-via-child propagation (a type is reachable if any directly-contained member carries an entrypoint attribute — closes the `[SettingsProvider]`-on-static-method-with-dead-host-type FP class). Lifeblood self-analysis: 3 type findings (all `Program` composition roots — runtime entry points). DAWG dogfood (87 modules): 1,095 findings → 729 post-P3 (-33%), then 6 → 4 type-level findings post-`LB-FP-003` (XRaySettingsProvider + MpServiceResets cleared). Remaining advisory candidates are structural (UI Toolkit `VisualElement` subclasses, audio callbacks on non-MonoBehaviour bases, reflection-based dispatch via `Type.GetType` + `MethodInfo.Invoke`). See `INV-DEADCODE-001` + `INV-UNITY-001`.
+**`lifeblood_dead_code` accuracy.** Eight extractor false-positive classes have been closed (five in v0.6.4: interface dispatch, member access granularity, null-conditional property, lambda context, method-group references; three in v0.6.5: ctor `Calls` edge, field-initializer containing method, property accessor body). Plus the root-cause compilation gap (missing implicit global usings). The Unity reachability port (`INV-UNITY-001`) closes the MonoBehaviour magic-method false-positive class on Unity workspaces. **`LB-FP-003`** extends the Unity reflection roster with `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, the full NUnit fixture lifecycle, plus type-via-child propagation (a type is reachable if any directly-contained member carries an entrypoint attribute — closes the `[SettingsProvider]`-on-static-method-with-dead-host-type FP class). Lifeblood self-analysis: 3 type findings (all `Program` composition roots — runtime entry points). the dogfood pass on a 87-module Unity workspace: 1,095 findings → 729 post-P3 (-33%), then 6 → 4 type-level findings post-`LB-FP-003` (XRaySettingsProvider + MpServiceResets cleared). Remaining advisory candidates are structural (UI Toolkit `VisualElement` subclasses, audio callbacks on non-MonoBehaviour bases, reflection-based dispatch via `Type.GetType` + `MethodInfo.Invoke`). See `INV-DEADCODE-001` + `INV-UNITY-001`.
 
 **Call-graph completeness.** Eight extractor gaps closed across v0.6.4 + v0.6.5 raised edge count substantially. `find_references`, `dependants`, `blast_radius`, and `file_impact` all benefit.
 
@@ -79,14 +79,14 @@ sourcePaths   : [
 ]
 ```
 
-## Production Verification (DAWG)
+## Production Verification (Real-World Unity Workspace)
 
-Tested on a real 90-module Unity workspace (DAWG, ~400k+ LOC). Same workspace, two different call sites, two different memory profiles. Both are correct. Both are by design.
+Tested on a real 90-module Unity workspace (~400k+ LOC). Same workspace, two different call sites, two different memory profiles. Both are correct. Both are by design.
 
 ### MCP path (compilations retained for write-side tools)
 
 ```
-> lifeblood_analyze projectPath="D:/Projekti/DAWG"
+> lifeblood_analyze projectPath="/path/to/your/project"
 
 mode : full
 requestedMode : full
@@ -98,9 +98,9 @@ cycles  : 122 SCCs
 
 Edge count grew +18% over the prior 180,814 baseline because enum-member references the dangling-edge filter was silently dropping (`R2-3`) now resolve as first-class graph edges (`INV-EXTRACT-ENUMMEMBER-001`).
 
-Authority + classification + dead-code numbers from real DAWG dogfood:
+Authority + classification + dead-code numbers from the real-world dogfood pass:
 - Methods classified by body shape (representative pre-wave snapshot): 18,985.
-- `PureForwarder` count: 3,367 (direct host-type / dispatcher / partial-class extraction triage signal — the DAWG dogfood case was an ABG partial-class wave; the same metric drives any host-with-many-subordinates split decision).
+- `PureForwarder` count: 3,367 (direct host-type / dispatcher / partial-class extraction triage signal — the original dogfood case was an ABG partial-class wave; the same metric drives any host-with-many-subordinates split decision).
 - Dead-code findings (with Unity reachability injected): 729 (down from 1,095 pre-P3, -33%); 4 type-level findings post-`LB-FP-003` (down from 6 — XRaySettingsProvider + MpServiceResets cleared).
 - MonoBehaviour magic-method FPs: 13 (down from 378 pre-P3, -97%).
 - Invariant tree discovery: 83 invariants across 25 categories aggregated from CLAUDE.md + AGENTS.md + `docs/invariants/**.md`, 0 parse warnings.

@@ -85,7 +85,7 @@ public sealed class GraphSession : IDisposable
     /// changed, otherwise the number of files that were re-analyzed.
     /// Fails silently on non-Roslyn sessions (JSON graph imports) since
     /// those have no source on disk to diff against. Used by Phase 7 /
-    /// DAWG B2 to keep <c>lifeblood_compile_check</c> from running
+    /// the B2 finding to keep <c>lifeblood_compile_check</c> from running
     /// against a stale workspace after the user edits source between
     /// the initial <c>lifeblood_analyze</c> and the next compile_check.
     /// </summary>

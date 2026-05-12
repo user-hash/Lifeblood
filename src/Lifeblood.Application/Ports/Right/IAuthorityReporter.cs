@@ -5,7 +5,7 @@ namespace Lifeblood.Application.Ports.Right;
 /// <summary>
 /// Right-side analyzer that quantifies how much "authority" a type
 /// holds in the architecture. The output answers a triage question
-/// the DAWG ABG-extraction sessions kept asking by hand: when a
+/// the host-extraction sessions on real Unity workspaces kept asking by hand: when a
 /// host/owner type implements N interfaces, how much real surface
 /// does it own vs how much is delegation? A port whose host
 /// implements many interfaces but exposes only forwarder methods

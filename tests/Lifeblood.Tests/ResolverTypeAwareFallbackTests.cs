@@ -245,12 +245,12 @@ public class ResolverTypeAwareFallbackTests
         // type:Stale.NS.Adapter → type:Real.NS.Adapter is the original
         // INV-RESOLVER-005 dogfood case. The new gate must NOT regress it.
         var graph = Build(
-            Type("type:Real.NS.VoicePatchAdapter", "VoicePatchAdapter"));
+            Type("type:Real.NS.Repository", "Repository"));
 
-        var result = Resolver.Resolve(graph, "type:Stale.NS.VoicePatchAdapter");
+        var result = Resolver.Resolve(graph, "type:Stale.NS.Repository");
 
         Assert.Equal(ResolveOutcome.ShortNameFromQualifiedInput, result.Outcome);
-        Assert.Equal("type:Real.NS.VoicePatchAdapter", result.CanonicalId);
+        Assert.Equal("type:Real.NS.Repository", result.CanonicalId);
     }
 
     // ─────────────────────────────────────────────────────────────────────

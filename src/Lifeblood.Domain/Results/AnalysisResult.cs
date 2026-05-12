@@ -52,7 +52,7 @@ public sealed class BlastRadiusResult
     /// an <c>Implements</c> edge into a type whose contract changes is
     /// <see cref="BreakKind.SignatureChange"/>, and so on. Empty when
     /// the caller did not request classification. Added 2026-04-11
-    /// (Phase 6 / B7) to close DAWG R4.
+    /// (Phase 6 / B7) to close the R4 finding.
     /// </summary>
     public BreakInfo[] Breaks { get; init; } = Array.Empty<BreakInfo>();
 }

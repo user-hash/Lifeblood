@@ -59,7 +59,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     /// AnalyzeWorkspace / IncrementalAnalyze call. Empty when everything
     /// listed in the module csprojs parsed cleanly. Consumers surface this
     /// in the analyze response so users can see WHICH files were silently
-    /// dropped and WHY. Added 2026-04-11 for DAWG B4 / Phase 4 C4.
+    /// dropped and WHY. Added 2026-04-11 for the B4 finding / Phase 4 C4.
     /// </summary>
     public IReadOnlyList<Lifeblood.Domain.Results.SkippedFile> SkippedFiles =>
         _snapshot?.SkippedFiles as IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>

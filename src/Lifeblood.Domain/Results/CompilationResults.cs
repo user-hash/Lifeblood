@@ -112,7 +112,7 @@ public sealed class ReferenceLocation
     /// Whether this location is a declaration site of the symbol (e.g. the
     /// partial-type declaration header or the method definition) or a
     /// usage site (an invocation, an identifier reference, a member access).
-    /// Added 2026-04-11 to close DAWG F3. Defaults to <see cref="ReferenceKind.Usage"/>
+    /// Added 2026-04-11 to close the F3 finding. Defaults to <see cref="ReferenceKind.Usage"/>
     /// so existing emitters keep the old meaning until they opt into tagging.
     /// </summary>
     public ReferenceKind Kind { get; init; } = ReferenceKind.Usage;
@@ -168,7 +168,7 @@ public sealed class SymbolAtPosition
 
 /// <summary>
 /// A file the analyzer declined to process, with a machine-readable reason
-/// for why. Added 2026-04-11 (Phase 4 / C4) to close DAWG B4 — previously
+/// for why. Added 2026-04-11 (Phase 4 / C4) to close the B4 finding — previously
 /// the analyzer silently dropped files (missing on disk, non-.cs extension,
 /// outside any tracked module) and users had no way to discover that their
 /// change wasn't included in the graph.

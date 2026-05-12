@@ -135,8 +135,8 @@ public sealed class ToolHandler
         var useCase = new GenerateContextUseCase(new AgentContextGenerator());
         var pack = useCase.Execute(_session.Graph!, _session.Analysis!);
 
-        // LB-FR-022 (DAWG dogfood): default behaviour previously emitted the
-        // full pack (~375KB on a 87-module workspace), overflowing downstream
+        // LB-FR-022 (dogfood): default behaviour previously emitted the
+        // full pack (~375KB on an 80+-module workspace), overflowing downstream
         // tool-result limits. Same fix shape as cycles/blast_radius — every
         // section gets a smart default cap, callers can override per-section
         // or pass `summarize:true` for the smallest viable shape, and an
@@ -376,7 +376,7 @@ public sealed class ToolHandler
         // Direct (one-hop) dependants computed independently of the transitive
         // walk. The transitive blast can be 100x bigger than the direct count
         // for popular types — callers need both to make the right decision
-        // (LB-FR-010 from the DAWG dogfood backlog).
+        // (LB-FR-010 from the dogfood backlog).
         var directDependants = _provider.GetDependants(_session.Graph!, resolved.CanonicalId);
 
         var affected = _provider.GetBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth);
@@ -534,8 +534,8 @@ public sealed class ToolHandler
         var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests);
         var findings = _deadCode.FindDeadCode(_session.Graph!, options);
 
-        // LB-FR-024 (DAWG dogfood): same shape as cycles / context.
-        // DAWG (53k symbols, default kinds) produces 286KB+ payloads that
+        // LB-FR-024 (dogfood): same shape as cycles / context.
+        // large workspaces (53k+ symbols, default kinds) produces 286KB+ payloads that
         // overflow downstream tool-result limits — the tool succeeded but
         // the wire payload was unconsumable. summarize:true returns a
         // small preview-only response. maxResults caps the embedded array
@@ -876,8 +876,8 @@ public sealed class ToolHandler
 
         var cycles = Lifeblood.Analysis.CircularDependencyDetector.Detect(_session.Graph!);
 
-        // LB-FR-021 (DAWG dogfood): same shape as blast_radius summarize/maxResults.
-        // DAWG has 117 SCCs that serialize to ~70KB — exceeds downstream tool-result
+        // LB-FR-021 (dogfood): same shape as blast_radius summarize/maxResults.
+        // large workspaces commonly carry 100+ SCCs serializing to ~70KB — exceeds downstream tool-result
         // limits. summarize:true returns counts + a small preview without the full
         // cycles array; maxResults caps the embedded array regardless of mode.
         var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;

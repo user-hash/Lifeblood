@@ -17,7 +17,7 @@ namespace Lifeblood.Connectors.Mcp;
 /// itself goes through <see cref="IFileSystem"/> — no Roslyn required,
 /// so read-only / streaming-mode workspaces still get the feature.
 ///
-/// Added 2026-04-11 (Phase 6 / B6) to close DAWG R2.
+/// Added 2026-04-11 (Phase 6 / B6) to close the R2 finding.
 /// </summary>
 public sealed class LifebloodPartialViewBuilder : IPartialViewBuilder
 {

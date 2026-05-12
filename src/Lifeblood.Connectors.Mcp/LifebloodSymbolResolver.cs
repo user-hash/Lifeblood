@@ -176,9 +176,9 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
 
         // Rule 4: extracted-short-name fallback for prefixed / qualified inputs
         // whose namespace is wrong or stale. The user typed something like
-        //   type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter
+        //   type:Acme.Module.Storage.Repository
         // when the real symbol lives in
-        //   type:Nebulae.BeatGrid.Audio.Tuning.VoicePatchAdapter
+        //   type:Acme.Module.Caching.Repository
         // Rules 1-3 all passed because of the kind prefix / namespace dots,
         // so the bare short-name path never fired. Extract the trailing
         // short-name segment here and look it up in the same short-name
@@ -188,7 +188,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         // if zero we fall through to the not-found diagnostic.
         //
         // This is the fix for the dogfood report where "Did you mean" suggestions
-        // were three unrelated MixerScreenAdapter properties despite the user's
+        // were three unrelated WidgetSurfaceAdapter properties despite the user's
         // short name being uniquely resolvable via graph.FindByShortName — the
         // old suggestion ranker was scoring the full canonical-shaped input
         // string against bare symbol names, which Levenshtein'd toward length
@@ -197,9 +197,9 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         // INV-RESOLVER-007: when input parses as a member-kind ID (field:,
         // property:, method:), Rule 4 substitutions MUST stay on the same
         // containing-type short name AND the same Symbol.Kind. Pre-fix, an
-        // exact-prefixed query like field:NS.FieldMask.ShimmerPhase that
-        // missed Rule 1 fell through to FindByShortName("ShimmerPhase") and
-        // silently returned field:NS.BurstVoiceState.ShimmerPhase — a
+        // exact-prefixed query like field:NS.Flags.Active that
+        // missed Rule 1 fell through to FindByShortName("Active") and
+        // silently returned field:NS.Pool.Active — a
         // different containing type, returned as a successful resolution.
         // Downstream tools (find_references / dependants / blast_radius) then
         // walked the wrong target. The R2-3 dogfood case from a Unity workspace
@@ -518,7 +518,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
 
         // Short-name path. Take the last dot-separated segment when the
         // caller passed something namespace-shaped that didn't match, so
-        // `Nebulae.Foo.Bar` still falls into short-name lookup as `Bar`.
+        // `Acme.Foo.Bar` still falls into short-name lookup as `Bar`.
         var shortName = ExtractLikelyShortName(canonicalTypeInput);
         if (string.IsNullOrEmpty(shortName))
         {
@@ -603,12 +603,12 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     ///
     /// The ExtractLikelyShortName step is load-bearing. Before it, callers
     /// that passed a full canonical-shaped input (e.g.
-    /// <c>type:Foo.Bar.VoicePatchAdapter</c>) got ranked by Levenshtein
+    /// <c>type:Foo.Bar.Repository</c>) got ranked by Levenshtein
     /// distance over the ENTIRE string, which biased the ranking toward
     /// accidentally-long candidate names because
     /// <c>closeness = candidateLength - distance</c> grows with candidate
     /// length. Two independent dogfood reports landed on three unrelated
-    /// <c>MixerScreenAdapter.…ActivePresetName</c> suggestions as the
+    /// <c>WidgetSurfaceAdapter.…ActiveItemName</c> suggestions as the
     /// "best" matches. See INV-RESOLVER-005.
     /// </summary>
     internal static ShortNameMatch[] SuggestNearMatchesInternal(SemanticGraph graph, string query, int limit)
@@ -676,7 +676,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     ///
     /// Examples:
     /// <list type="bullet">
-    ///   <item><c>type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter</c> → <c>VoicePatchAdapter</c></item>
+    ///   <item><c>type:Acme.Module.Storage.Repository</c> → <c>Repository</c></item>
     ///   <item><c>method:App.Svc.Do(int)</c> → <c>Do</c></item>
     ///   <item><c>App.Svc.Do</c> → <c>Do</c></item>
     ///   <item><c>MidiLearnManager</c> → <c>MidiLearnManager</c> (no-op)</item>

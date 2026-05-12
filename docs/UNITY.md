@@ -116,7 +116,7 @@ Lifeblood detects Unity's framework dispatch automatically. `lifeblood_dead_code
 
 The chain walk uses `Symbol.Properties["baseType"]` (set by the C# extractor) so types that inherit directly from `UnityEngine.MonoBehaviour` still resolve - even though the engine DLL itself isn't analyzed source.
 
-**Dogfood vs DAWG (87-module Unity workspace):** dead-code findings 1,095 → 729 (-33%) post-`INV-UNITY-001`, MonoBehaviour-magic FPs 378 → 13 (-97%). Type-level findings 6 → 4 post-`LB-FP-003` (`XRaySettingsProvider` and `MpServiceResets` cleared via the new `[SettingsProvider]` + type-via-child rules). Remaining advisory candidates are structural — UI Toolkit `VisualElement` subclasses with magic-named methods, audio callbacks on non-MonoBehaviour bases, reflection-based dispatch via `Type.GetType` + `MethodInfo.Invoke` — that future tightening can target via custom adapter rosters.
+**Dogfood vs the consumer workspace (87-module Unity workspace):** dead-code findings 1,095 → 729 (-33%) post-`INV-UNITY-001`, MonoBehaviour-magic FPs 378 → 13 (-97%). Type-level findings 6 → 4 post-`LB-FP-003` (`XRaySettingsProvider` and `MpServiceResets` cleared via the new `[SettingsProvider]` + type-via-child rules). Remaining advisory candidates are structural — UI Toolkit `VisualElement` subclasses with magic-named methods, audio callbacks on non-MonoBehaviour bases, reflection-based dispatch via `Type.GetType` + `MethodInfo.Invoke` — that future tightening can target via custom adapter rosters.
 
 ## Asmdef Edits (`INV-UNITY-002`)
 
@@ -131,14 +131,14 @@ Editing an asmdef without forcing Unity to regenerate the on-disk csproj used to
 `lifeblood_compile_check filePath="Assets/.../YourFile.cs"` resolves the file's owning compilation by matching the path against every loaded compilation's syntax trees, then **swaps the existing tree** for the on-disk content via `ReplaceSyntaxTree` instead of adding the file as a fresh snippet tree to an arbitrary first compilation:
 
 ```
-> lifeblood_compile_check filePath="Assets/_Project/Scripts/BeatGrid/AdaptiveBeatGrid.cs"
+> lifeblood_compile_check filePath="Assets/Scripts/Core/MultiPartialHost.cs"
 
 {
   "success": true,
   "diagnostics": [],
-  "resolvedModule": "Nebulae.BeatGrid.Runtime",
+  "resolvedModule": "Acme.Module.Runtime",
   "existingTreeReplaced": true,
-  "filePath": "Assets/_Project/Scripts/BeatGrid/AdaptiveBeatGrid.cs"
+  "filePath": "Assets/Scripts/Core/MultiPartialHost.cs"
 }
 ```
 

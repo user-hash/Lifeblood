@@ -10,7 +10,7 @@ namespace Lifeblood.Connectors.Mcp;
 /// which is a structural parent→child relationship, not a reference).
 ///
 /// Stateless per INV-ANALYSIS-001. Read-only per INV-GRAPH-004. Added
-/// 2026-04-11 (Phase 6 / B5) to close DAWG R1.
+/// 2026-04-11 (Phase 6 / B5) to close the R1 finding.
 ///
 /// Lives in <c>Lifeblood.Connectors.Mcp</c> because <c>Lifeblood.Analysis</c>
 /// is Domain-only (no Application port dependency). Connectors are the

@@ -296,7 +296,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   /// <summary>
   /// Walk every loaded compilation for the syntax tree whose path
   /// matches <paramref name="filePath"/>. Match is case-insensitive
-  /// forward-slash suffix: a tree at <c>D:/Projekti/DAWG/Assets/.../Foo.cs</c>
+  /// forward-slash suffix: a tree at <c><project-root>/Assets/.../Foo.cs</c>
   /// resolves a request for <c>Assets/.../Foo.cs</c>, an absolute
   /// path, or anything in between. When <paramref name="moduleName"/>
   /// is set the search is restricted to that one compilation.
@@ -393,7 +393,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   // (method, property, indexer, field, ctor) or type declaration
   // as the coarser fallback. The canonical ID of that member is
   // what the find_references consumer uses to group usages by
-  // caller, drive containingTypeFilter (DAWG R5), and render
+  // caller, drive containingTypeFilter (the R5 finding), and render
   // call-graph UIs. O(depth) per reference — cheap.
   var containingSymbolId = ComputeContainingSymbolId(model, node);
 

@@ -333,8 +333,10 @@ public class IncrementalAnalyzeTests : IDisposable
 
     // ── Cross-module edge integrity (INV-INCREMENTAL-XREF-001 / closes LB-BUG-017) ──
     //
-    // The 2026-05-10 DAWG dogfood found incremental analyze silently dropping
-    // ~99 edges on a single-file touch. Root cause: ModuleCompilationBuilder.
+    // The 2026-05-10 dogfood pass against a real-world Unity workspace found
+    // incremental analyze silently dropping cross-module edges in proportion
+    // to the unchanged-module fan-in on a single-file touch. Root cause:
+    // ModuleCompilationBuilder.
     // ProcessInOrder kept a LOCAL `downgraded` Dictionary<string, MetadataReference>
     // that was discarded at end-of-call. Full analyze populated it for every
     // module; incremental analyze called ProcessInOrder with only the changed

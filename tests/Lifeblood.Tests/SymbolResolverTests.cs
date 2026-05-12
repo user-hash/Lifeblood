@@ -235,17 +235,17 @@ public class SymbolResolverTests
         // every observed ParentId is preserved and reachable via Contains
         // edges in the final graph.
         var graph = BuildPartialTypeGraph(
-            "AdaptiveBeatGrid",
+            "MultiPartialHost",
             new[]
             {
-                "AdaptiveBeatGrid.Audio.cs",
-                "AdaptiveBeatGrid.Mixer.cs",
-                "AdaptiveBeatGrid.cs",
-                "AdaptiveBeatGrid.Init.cs",
-                "AdaptiveBeatGrid.PadInput.cs",
+                "MultiPartialHost.Audio.cs",
+                "MultiPartialHost.Mixer.cs",
+                "MultiPartialHost.cs",
+                "MultiPartialHost.Init.cs",
+                "MultiPartialHost.PadInput.cs",
             });
 
-        var result = Resolver.Resolve(graph, "type:N.AdaptiveBeatGrid");
+        var result = Resolver.Resolve(graph, "type:N.MultiPartialHost");
 
         Assert.Equal(ResolveOutcome.ExactMatch, result.Outcome);
         // All 5 partial files must appear in DeclarationFilePaths.
@@ -254,14 +254,14 @@ public class SymbolResolverTests
         // before ".Init.cs" because "C" < "I" in OrdinalIgnoreCase.
         Assert.Equal(new[]
         {
-            "AdaptiveBeatGrid.Audio.cs",
-            "AdaptiveBeatGrid.cs",
-            "AdaptiveBeatGrid.Init.cs",
-            "AdaptiveBeatGrid.Mixer.cs",
-            "AdaptiveBeatGrid.PadInput.cs",
+            "MultiPartialHost.Audio.cs",
+            "MultiPartialHost.cs",
+            "MultiPartialHost.Init.cs",
+            "MultiPartialHost.Mixer.cs",
+            "MultiPartialHost.PadInput.cs",
         }, result.DeclarationFilePaths);
         // Primary picker rule 1 — filename matches type name exactly.
-        Assert.Equal("AdaptiveBeatGrid.cs", result.PrimaryFilePath);
+        Assert.Equal("MultiPartialHost.cs", result.PrimaryFilePath);
     }
 
     [Fact]
@@ -615,7 +615,7 @@ public class SymbolResolverTests
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // DAWG LB-BUG-002: kind-mismatch tolerance — `method:Type.Member`
+    // LB-BUG-002: kind-mismatch tolerance — `method:Type.Member`
     // resolves to a non-method member on the same type when no method
     // by that name exists. Models the dogfood case of LLM agents
     // copy-pasting member names without remembering whether the member

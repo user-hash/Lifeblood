@@ -10,11 +10,11 @@ namespace Lifeblood.Tests;
 /// Pins the Rule 4 extracted-short-name fallback added to
 /// <see cref="LifebloodSymbolResolver"/>. Two real dogfood reports landed
 /// the same failure: user types a kind-prefixed, namespaced symbol id
-/// with the wrong namespace (<c>type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter</c>
+/// with the wrong namespace (<c>type:Acme.Module.Storage.Repository</c>
 /// when the actual symbol lives in <c>Audio.Tuning</c>), the resolver's
 /// rules 1-3 all miss because of the kind prefix and namespace dots, and
 /// the old suggestion ranker surfaced three unrelated long-named symbols
-/// (MixerScreenAdapter properties) that beat the real target on
+/// (WidgetSurfaceAdapter properties) that beat the real target on
 /// Levenshtein closeness because
 /// <c>closeness = candidateLength - distance</c> grows with candidate
 /// length.
@@ -48,8 +48,8 @@ public class ResolverShortNameFallbackTests
 
     [Theory]
     // Kind-prefixed with namespace (the dogfood case).
-    [InlineData("type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter", "VoicePatchAdapter")]
-    [InlineData("type:Nebulae.BeatGrid.Audio.Tuning.DspPolicy", "DspPolicy")]
+    [InlineData("type:Acme.Module.Storage.Repository", "Repository")]
+    [InlineData("type:Acme.Module.Caching.Policy", "Policy")]
     [InlineData("type:App.Foo", "Foo")]
     // Kind-prefixed single-segment.
     [InlineData("type:Foo", "Foo")]
@@ -79,45 +79,45 @@ public class ResolverShortNameFallbackTests
     // ─────────────────────────────────────────────────────────────────────
     // Rule 4 — qualified-input short-name fallback. The two user-reported
     // cases reproduced exactly in a synthetic graph so the regression is
-    // pinned without a DAWG dependency.
+    // pinned without any consumer-project dependency.
     // ─────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Resolve_VoicePatchAdapter_WrongNamespace_ResolvesViaShortNameFallback()
+    public void Resolve_Repository_WrongNamespace_ResolvesViaShortNameFallback()
     {
-        // Dogfood case 1: user typed type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter
+        // Dogfood case 1: user typed type:Acme.Module.Storage.Repository
         // when the real symbol is in Audio.Tuning. Short name is unique.
         var graph = BuildGraphWithNoiseAndSingle(
-            shortName: "VoicePatchAdapter",
-            realId: "type:Nebulae.BeatGrid.Audio.Tuning.VoicePatchAdapter",
-            realFilePath: "Audio/Tuning/VoicePatchAdapter.cs");
+            shortName: "Repository",
+            realId: "type:Acme.Module.Caching.Repository",
+            realFilePath: "Module/Caching/Repository.cs");
 
         var result = Resolver.Resolve(
-            graph, "type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter");
+            graph, "type:Acme.Module.Storage.Repository");
 
         Assert.Equal(ResolveOutcome.ShortNameFromQualifiedInput, result.Outcome);
-        Assert.Equal("type:Nebulae.BeatGrid.Audio.Tuning.VoicePatchAdapter", result.CanonicalId);
+        Assert.Equal("type:Acme.Module.Caching.Repository", result.CanonicalId);
         Assert.NotNull(result.Symbol);
         Assert.Contains("short-name fallback", result.Diagnostic ?? "");
-        Assert.Contains("VoicePatchAdapter", result.Diagnostic ?? "");
+        Assert.Contains("Repository", result.Diagnostic ?? "");
     }
 
     [Fact]
-    public void Resolve_DspPolicy_WrongNamespace_ResolvesViaShortNameFallback()
+    public void Resolve_Policy_WrongNamespace_ResolvesViaShortNameFallback()
     {
-        // Dogfood case 2: user typed type:Nebulae.BeatGrid.Audio.Tuning.DspPolicy
+        // Dogfood case 2: user typed type:Acme.Module.Caching.Policy
         // when the real symbol is in Infrastructure.Audio.Synthesis.Recipes.
         var graph = BuildGraphWithNoiseAndSingle(
-            shortName: "DspPolicy",
-            realId: "type:Nebulae.BeatGrid.Infrastructure.Audio.Synthesis.Recipes.DspPolicy",
-            realFilePath: "Audio/Generation/Recipes/DspPolicy.cs");
+            shortName: "Policy",
+            realId: "type:Acme.Module.Infrastructure.Storage.Repository.Policy",
+            realFilePath: "Module/Infrastructure/Policy.cs");
 
         var result = Resolver.Resolve(
-            graph, "type:Nebulae.BeatGrid.Audio.Tuning.DspPolicy");
+            graph, "type:Acme.Module.Caching.Policy");
 
         Assert.Equal(ResolveOutcome.ShortNameFromQualifiedInput, result.Outcome);
         Assert.Equal(
-            "type:Nebulae.BeatGrid.Infrastructure.Audio.Synthesis.Recipes.DspPolicy",
+            "type:Acme.Module.Infrastructure.Storage.Repository.Policy",
             result.CanonicalId);
         Assert.NotNull(result.Symbol);
     }
@@ -188,28 +188,28 @@ public class ResolverShortNameFallbackTests
         var graph = new GraphBuilder()
             .AddSymbol(new Symbol
             {
-                Id = "type:Real.Namespace.VoicePatchAdapter",
-                Name = "VoicePatchAdapter",
+                Id = "type:Real.Namespace.Repository",
+                Name = "Repository",
                 Kind = SymbolKind.Type,
-                FilePath = "Real/VoicePatchAdapter.cs",
+                FilePath = "Real/Repository.cs",
             })
             // Noise: a symbol whose name bears no resemblance to
-            // "VoicePatchAdapter" but whose length makes old Levenshtein
+            // "Repository" but whose length makes old Levenshtein
             // closeness ~45 anyway.
             .AddSymbol(new Symbol
             {
-                Id = "property:Noise.MixerScreenAdapter.ActivePresetDisplayNameLongEnoughToBiasScoring",
-                Name = "ActivePresetDisplayNameLongEnoughToBiasScoring",
+                Id = "property:Noise.WidgetSurfaceAdapter.ActiveItemDisplayNameLongEnoughToBiasScoring",
+                Name = "ActiveItemDisplayNameLongEnoughToBiasScoring",
                 Kind = SymbolKind.Property,
-                FilePath = "Noise/MixerScreenAdapter.cs",
+                FilePath = "Noise/WidgetSurfaceAdapter.cs",
             })
             .Build();
 
         var matches = Resolver.SuggestNearMatches(
-            graph, "type:Nebulae.BeatGrid.Audio.DSP.VoicePatchAdapter", limit: 5);
+            graph, "type:Acme.Module.Storage.Repository", limit: 5);
 
         Assert.NotEmpty(matches);
-        Assert.Equal("type:Real.Namespace.VoicePatchAdapter", matches[0].CanonicalId);
+        Assert.Equal("type:Real.Namespace.Repository", matches[0].CanonicalId);
     }
 
     [Fact]

@@ -1442,8 +1442,8 @@ public sealed class ModuleCompilationBuilder
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // DAWG LB-BUG-001: invocation through array indexer receiver.
-    // Re-verification post v0.6.4/v0.6.5 walker work. The original DAWG
+    // LB-BUG-001: invocation through array indexer receiver.
+    // Re-verification post v0.6.4/v0.6.5 walker work. The original dogfood
     // session reported `voices[i].SetPatch(patch)` on a partial struct not
     // emitting a Calls edge; this guards the resolved behavior so a future
     // walker rewrite cannot silently regress it.
@@ -1495,7 +1495,7 @@ public class Bag
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // DAWG LB-BUG-010: implicit interface implementation visible from
+    // LB-BUG-010: implicit interface implementation visible from
     // find_references on the interface method. The v0.6.4 method-level
     // Implements edges close this from the dead-code direction; this test
     // pins the Implements-edge link that the find_references resolver

@@ -10,7 +10,7 @@ namespace Lifeblood.Connectors.Mcp.Internal;
 /// <c>lifeblood_invariant_check</c> tool.
 ///
 /// Three shapes are recognised, all common across the Lifeblood and
-/// DAWG CLAUDE.md authoring histories:
+/// real-world CLAUDE.md authoring histories:
 ///
 /// <para>
 /// <b>Shape A — short, single-line body.</b> The bold contains only
@@ -33,7 +33,7 @@ namespace Lifeblood.Connectors.Mcp.Internal;
 /// </code>
 ///
 /// <para>
-/// <b>Shape C — bare bold paragraph (DAWG hot-rules style).</b> No
+/// <b>Shape C — bare bold paragraph (flat-hot-rules authoring style).</b> No
 /// bullet prefix; the bold encloses both the id and a title sentence
 /// separated by a colon, body continues after the closing <c>**</c>:
 /// </para>
@@ -113,7 +113,7 @@ internal static class ClaudeMdInvariantParser
     /// Shape C: bare bold paragraph with id-and-title inside the bold,
     /// body text following the closing <c>**</c>. Recognised when a
     /// line's trimmed prefix is <c>**INV-XXX-NNN:</c> (id, colon, then
-    /// title sentence still inside the bold). DAWG's CLAUDE.md hot-rule
+    /// title sentence still inside the bold). the dogfood project's CLAUDE.md hot-rule
     /// section uses this shape — many INVs in a row, no bullets, no
     /// section headers between them.
     /// </summary>
@@ -151,7 +151,7 @@ internal static class ClaudeMdInvariantParser
 
     /// <summary>
     /// Shape D: shape-A with an optional parenthesized version/date tag
-    /// between the bold close and the colon. DAWG authoring style:
+    /// between the bold close and the colon. that authoring style:
     /// <c>- **INV-DSP-012** (v1.1.566): body...</c>. The parens contents
     /// are not captured into the title — they're a version annotation,
     /// not part of the rule.

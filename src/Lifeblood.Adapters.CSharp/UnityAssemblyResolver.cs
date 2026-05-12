@@ -11,7 +11,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// <list type="bullet">
 ///   <item><c>Library/ScriptAssemblies/</c> — Unity legacy / Mono path
 ///     containing the per-asmdef compiled DLLs (UnityEngine.dll proxies
-///     plus the user's Assembly-CSharp.dll, Nebulae.*.dll, etc.).</item>
+///     plus the user's Assembly-CSharp.dll and per-asmdef *.dll files).</item>
 ///   <item><c>Library/Bee/artifacts/</c> — Unity 2022+ Bee build cache.
 ///     Holds intermediate DLLs and copies of UnityEngine reference
 ///     assemblies. Scanned recursively, only top-level <c>*.dll</c>

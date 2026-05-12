@@ -40,7 +40,7 @@ public sealed class InvariantAudit
 
     /// <summary>
     /// Absolute path to the primary source file the audit was computed
-    /// from. When the project uses an invariants tree (DAWG-style
+    /// from. When the project uses an invariants tree (tree-style
     /// <c>docs/invariants/**.md</c>) and the audit aggregates multiple
     /// files, this is the first source in discovery order — the full
     /// list is in <see cref="SourcePaths"/>. Empty if no source could

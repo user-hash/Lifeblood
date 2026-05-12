@@ -31,7 +31,7 @@ namespace Lifeblood.Connectors.Mcp;
 ///     CLAUDE.md.</item>
 ///   <item><c>&lt;projectRoot&gt;/docs/invariants/**.md</c> — the
 ///     invariants-tree convention for projects that have outgrown a
-///     single-file authoring layout (DAWG hot-rules-stay/tree-everything-else).</item>
+///     single-file authoring layout (hot-rules-stay/tree-everything-else).</item>
 /// </list>
 ///
 /// <para>

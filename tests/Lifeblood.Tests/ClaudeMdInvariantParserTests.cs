@@ -363,7 +363,7 @@ public class ClaudeMdInvariantParserTests
     }
 
     // ───────────────────────────────────────────────────────────────────
-    // Shape C — DAWG hot-rules style. Bare bold paragraph, no bullet,
+    // Shape C — flat-hot-rules authoring style. Bare bold paragraph, no bullet,
     // id-and-title inside the bold separated by a colon. Multiple INVs
     // appear in a row with body paragraphs in between, no headers.
     // ───────────────────────────────────────────────────────────────────
@@ -448,7 +448,7 @@ public class ClaudeMdInvariantParserTests
     }
 
     // ───────────────────────────────────────────────────────────────────
-    // Shape D — DAWG bullet with parenthesized version tag between the
+    // Shape D — flat-bullet authoring style with parenthesized version tag between the
     // bold close and the colon: `- **INV-DSP-012** (v1.1.566): body...`
     // ───────────────────────────────────────────────────────────────────
 

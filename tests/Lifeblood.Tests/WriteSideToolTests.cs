@@ -276,7 +276,7 @@ namespace TestApp
     {
         var host = new RoslynCompilationHost(BuildTestCompilations());
         // Plain statement, no class wrapper. The original failing case
-        // from the dogfood sweep against DAWG.
+        // from the dogfood sweep against a real Unity workspace.
         var result = host.CompileCheck("var x = 1 + 1;", "TestApp");
         Assert.True(result.Success,
             $"compile_check should accept bare statements in a library module. Diagnostics: " +
@@ -888,7 +888,7 @@ namespace TestApp
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // DAWG LB-BUG-016 — file-scoped diagnostics on the compilation host
+    // LB-BUG-016 — file-scoped diagnostics on the compilation host
     // ──────────────────────────────────────────────────────────────────
 
     private static Dictionary<string, CSharpCompilation> BuildTwoFileTestCompilation()

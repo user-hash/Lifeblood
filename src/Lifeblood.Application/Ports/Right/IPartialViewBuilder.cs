@@ -12,7 +12,7 @@ namespace Lifeblood.Application.Ports.Right;
 /// <see cref="SymbolResolutionResult.DeclarationFilePaths"/>; this port
 /// adds the source-stitching step that sits on top.
 ///
-/// Added 2026-04-11 (Phase 6) to close DAWG R2. Implementation depends
+/// Added 2026-04-11 (Phase 6) to close the R2 finding. Implementation depends
 /// on <see cref="IFileSystem"/> only (no Roslyn), so read-only /
 /// streaming-mode workspaces still get the feature.
 /// </summary>

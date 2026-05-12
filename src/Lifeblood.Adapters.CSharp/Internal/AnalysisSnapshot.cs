@@ -77,9 +77,11 @@ internal sealed class AnalysisSnapshot
     /// <c>modulesToRecompile</c> subset, so unchanged dependencies had no
     /// metadata reference, every cross-module symbol bound to a Roslyn
     /// error symbol, and the corresponding edges were silently dropped by
-    /// <c>GraphBuilder</c>'s dangling-edge filter. DAWG repro showed ~99
-    /// edges lost per single-file touch (219,548 → 219,449). Minimal repro
-    /// in <c>IncrementalAnalyzeTests.IncrementalAnalyze_CrossModuleEdges_*</c>:
+    /// <c>GraphBuilder</c>'s dangling-edge filter. Empirical repro at
+    /// diagnosis time on a multi-module Unity workspace showed cross-module
+    /// edges silently dropping on a single-file touch in proportion to the
+    /// unchanged-module fan-in. Minimal synthetic repro in
+    /// <c>IncrementalAnalyzeTests.IncrementalAnalyze_CrossModuleEdges_*</c>:
     /// 5 → 1 (-4) on a 1-file touch in a 2-module project.
     ///
     /// Invariant: after every successful <c>ProcessInOrder</c> call, this
@@ -101,7 +103,7 @@ internal sealed class AnalysisSnapshot
     /// appended to (not replaced) on incremental analyze because incremental
     /// does not re-walk modules that had no changed files.
     ///
-    /// Closes DAWG B4 (Phase 4 / C4, 2026-04-11): previously the analyzer
+    /// Closes the B4 finding (Phase 4 / C4, 2026-04-11): previously the analyzer
     /// silently dropped non-.cs files and missing files, and users had no
     /// way to discover that their change wasn't included in the graph.
     /// </summary>
