@@ -169,7 +169,7 @@ public class UnityReachabilityTests
         // by GraphBuilder. The extractor records the base FQN on
         // Properties["baseType"] so the Unity adapter can still walk the
         // chain. Pinned to prevent regression of the v0.6.7 bug where
-        // 378 magic methods on ExampleApp were flagged because the adapter
+        // reachable engine callbacks were flagged because the adapter
         // only walked Inherits edges.
         var graph = new GraphBuilder()
             .AddSymbol(new Symbol
@@ -419,9 +419,9 @@ public class Config { }");
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // LB-FP-003 (ExampleApp dogfood): Unity Editor reflection attributes that
+    // LB-FP-003 (dogfood): Unity Editor reflection attributes that
     // were missing from the entrypoint roster, plus type-via-child
-    // propagation. Fix surfaced after the v0.6.7 P3 work landed and ExampleApp
+    // propagation. Fix surfaced after the v0.6.7 P3 work landed and the dogfood Unity workspace
     // hit a fresh false-positive class on `ExampleSettingsProvider` (host
     // type for a `[SettingsProvider]` static method).
     // ──────────────────────────────────────────────────────────────────

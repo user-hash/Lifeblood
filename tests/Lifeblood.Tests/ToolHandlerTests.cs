@@ -158,8 +158,7 @@ public class ToolHandlerTests : IDisposable
 
     // ──────────────────────────────────────────────────────────────────
     // LB-FR-022: context summarize / per-section caps / sections allowlist.
-    // ExampleApp dogfood: full pack ~375KB on 87-module workspace, overflowed
-    // tool-result limits. Smart-dynamic capping fits inside default budgets
+    // A full pack can exceed tool-result limits. Smart-dynamic capping fits inside default budgets
     // without forcing the caller to pass options.
     // ──────────────────────────────────────────────────────────────────
 
@@ -351,7 +350,7 @@ public class ToolHandlerTests : IDisposable
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // ExampleApp LB-NICE-005 + LB-FR-010: blast_radius summarize/maxResults
+    // LB-NICE-005 + LB-FR-010: blast_radius summarize/maxResults
     // and direct vs transitive count surfacing.
     // ──────────────────────────────────────────────────────────────────
 
@@ -502,8 +501,8 @@ public class ToolHandlerTests : IDisposable
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // LB-FR-024 (ExampleApp dogfood): dead_code summarize / maxResults / kind
-    // breakdown. ExampleApp (53k symbols) overflowed downstream tool-result
+    // LB-FR-024 (dogfood): dead_code summarize / maxResults / kind
+    // breakdown. large workspaces (53k+ symbols) overflowed downstream tool-result
     // limits with default kinds — needed the same shape as cycles +
     // context to stay consumable. Per-kind histogram always emitted so
     // the caller can decide whether to drill in via includeKinds.
@@ -654,8 +653,8 @@ public class ToolHandlerTests : IDisposable
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // ExampleApp LB-FR-021: cycles summarize/maxResults — same shape as
-    // blast_radius. ExampleApp's 117 SCCs serialize to ~70KB which exceeds
+    // LB-FR-021: cycles summarize/maxResults — same shape as
+    // blast_radius. Large workspaces' 100+ SCCs serialize to ~70KB which exceeds
     // downstream tool-result limits; summarize:true closes that gap.
     // ──────────────────────────────────────────────────────────────────
 

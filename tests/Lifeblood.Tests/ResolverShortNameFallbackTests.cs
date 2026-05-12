@@ -10,11 +10,11 @@ namespace Lifeblood.Tests;
 /// Pins the Rule 4 extracted-short-name fallback added to
 /// <see cref="LifebloodSymbolResolver"/>. Two real dogfood reports landed
 /// the same failure: user types a kind-prefixed, namespaced symbol id
-/// with the wrong namespace (<c>type:ExampleApp.SampleController.Audio.DSP.ExampleSettingsAdapter</c>
+/// with the wrong namespace (<c>type:Acme.Module.Storage.Repository</c>
 /// when the actual symbol lives in <c>Acme.Module.Caching</c>), the resolver's
 /// rules 1-3 all miss because of the kind prefix and namespace dots, and
 /// the old suggestion ranker surfaced three unrelated long-named symbols
-/// (MixerScreenAdapter properties) that beat the real target on
+/// (WidgetSurfaceAdapter properties) that beat the real target on
 /// Levenshtein closeness because
 /// <c>closeness = candidateLength - distance</c> grows with candidate
 /// length.
@@ -48,8 +48,8 @@ public class ResolverShortNameFallbackTests
 
     [Theory]
     // Kind-prefixed with namespace (the dogfood case).
-    [InlineData("type:ExampleApp.SampleController.Audio.DSP.ExampleSettingsAdapter", "ExampleSettingsAdapter")]
-    [InlineData("type:ExampleApp.SampleController.Acme.Module.Caching.DspPolicy", "DspPolicy")]
+    [InlineData("type:Acme.Module.Storage.Repository", "Repository")]
+    [InlineData("type:Acme.Module.Caching.Policy", "Policy")]
     [InlineData("type:App.Foo", "Foo")]
     // Kind-prefixed single-segment.
     [InlineData("type:Foo", "Foo")]
@@ -79,45 +79,45 @@ public class ResolverShortNameFallbackTests
     // ─────────────────────────────────────────────────────────────────────
     // Rule 4 — qualified-input short-name fallback. The two user-reported
     // cases reproduced exactly in a synthetic graph so the regression is
-    // pinned without a ExampleApp dependency.
+    // pinned without any consumer-project dependency.
     // ─────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Resolve_ExampleSettingsAdapter_WrongNamespace_ResolvesViaShortNameFallback()
+    public void Resolve_Repository_WrongNamespace_ResolvesViaShortNameFallback()
     {
-        // Dogfood case 1: user typed type:ExampleApp.SampleController.Audio.DSP.ExampleSettingsAdapter
+        // Dogfood case 1: user typed type:Acme.Module.Storage.Repository
         // when the real symbol is in Acme.Module.Caching. Short name is unique.
         var graph = BuildGraphWithNoiseAndSingle(
-            shortName: "ExampleSettingsAdapter",
-            realId: "type:ExampleApp.SampleController.Acme.Module.Caching.ExampleSettingsAdapter",
-            realFilePath: "Audio/Tuning/ExampleSettingsAdapter.cs");
+            shortName: "Repository",
+            realId: "type:Acme.Module.Caching.Repository",
+            realFilePath: "Module/Caching/Repository.cs");
 
         var result = Resolver.Resolve(
-            graph, "type:ExampleApp.SampleController.Audio.DSP.ExampleSettingsAdapter");
+            graph, "type:Acme.Module.Storage.Repository");
 
         Assert.Equal(ResolveOutcome.ShortNameFromQualifiedInput, result.Outcome);
-        Assert.Equal("type:ExampleApp.SampleController.Acme.Module.Caching.ExampleSettingsAdapter", result.CanonicalId);
+        Assert.Equal("type:Acme.Module.Caching.Repository", result.CanonicalId);
         Assert.NotNull(result.Symbol);
         Assert.Contains("short-name fallback", result.Diagnostic ?? "");
-        Assert.Contains("ExampleSettingsAdapter", result.Diagnostic ?? "");
+        Assert.Contains("Repository", result.Diagnostic ?? "");
     }
 
     [Fact]
-    public void Resolve_DspPolicy_WrongNamespace_ResolvesViaShortNameFallback()
+    public void Resolve_Policy_WrongNamespace_ResolvesViaShortNameFallback()
     {
-        // Dogfood case 2: user typed type:ExampleApp.SampleController.Acme.Module.Caching.DspPolicy
+        // Dogfood case 2: user typed type:Acme.Module.Caching.Policy
         // when the real symbol is in Acme.Module.Infrastructure.Storage.Repository.
         var graph = BuildGraphWithNoiseAndSingle(
-            shortName: "DspPolicy",
-            realId: "type:ExampleApp.SampleController.Acme.Module.Infrastructure.Storage.Repository.DspPolicy",
-            realFilePath: "Audio/Generation/Recipes/DspPolicy.cs");
+            shortName: "Policy",
+            realId: "type:Acme.Module.Infrastructure.Storage.Repository.Policy",
+            realFilePath: "Module/Infrastructure/Policy.cs");
 
         var result = Resolver.Resolve(
-            graph, "type:ExampleApp.SampleController.Acme.Module.Caching.DspPolicy");
+            graph, "type:Acme.Module.Caching.Policy");
 
         Assert.Equal(ResolveOutcome.ShortNameFromQualifiedInput, result.Outcome);
         Assert.Equal(
-            "type:ExampleApp.SampleController.Acme.Module.Infrastructure.Storage.Repository.DspPolicy",
+            "type:Acme.Module.Infrastructure.Storage.Repository.Policy",
             result.CanonicalId);
         Assert.NotNull(result.Symbol);
     }
@@ -188,28 +188,28 @@ public class ResolverShortNameFallbackTests
         var graph = new GraphBuilder()
             .AddSymbol(new Symbol
             {
-                Id = "type:Real.Namespace.ExampleSettingsAdapter",
-                Name = "ExampleSettingsAdapter",
+                Id = "type:Real.Namespace.Repository",
+                Name = "Repository",
                 Kind = SymbolKind.Type,
-                FilePath = "Real/ExampleSettingsAdapter.cs",
+                FilePath = "Real/Repository.cs",
             })
             // Noise: a symbol whose name bears no resemblance to
-            // "ExampleSettingsAdapter" but whose length makes old Levenshtein
+            // "Repository" but whose length makes old Levenshtein
             // closeness ~45 anyway.
             .AddSymbol(new Symbol
             {
-                Id = "property:Noise.MixerScreenAdapter.ActivePresetDisplayNameLongEnoughToBiasScoring",
-                Name = "ActivePresetDisplayNameLongEnoughToBiasScoring",
+                Id = "property:Noise.WidgetSurfaceAdapter.ActiveItemDisplayNameLongEnoughToBiasScoring",
+                Name = "ActiveItemDisplayNameLongEnoughToBiasScoring",
                 Kind = SymbolKind.Property,
-                FilePath = "Noise/MixerScreenAdapter.cs",
+                FilePath = "Noise/WidgetSurfaceAdapter.cs",
             })
             .Build();
 
         var matches = Resolver.SuggestNearMatches(
-            graph, "type:ExampleApp.SampleController.Audio.DSP.ExampleSettingsAdapter", limit: 5);
+            graph, "type:Acme.Module.Storage.Repository", limit: 5);
 
         Assert.NotEmpty(matches);
-        Assert.Equal("type:Real.Namespace.ExampleSettingsAdapter", matches[0].CanonicalId);
+        Assert.Equal("type:Real.Namespace.Repository", matches[0].CanonicalId);
     }
 
     [Fact]

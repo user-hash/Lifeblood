@@ -85,6 +85,17 @@ back to `lifeblood_analyze` to re-attempt with widened scope.
 
 When called with `filePath`, `lifeblood_compile_check` resolves the file's owning compilation by matching the path against every loaded compilation's syntax trees, then **swaps the existing tree** for the on-disk content via `ReplaceSyntaxTree` instead of adding the file as a new snippet tree to an arbitrary first compilation:
 
+```
+lifeblood_compile_check filePath="Assets/Scripts/Core/MultiPartialHost.cs"
+→ {
+    "success": true,
+    "diagnostics": [],
+    "resolvedModule": "Acme.Module.Runtime",
+    "existingTreeReplaced": true,
+    ...
+  }
+```
+
 Pre-fix the same call emitted ~120 spurious CS0246 / CS0103 errors (UnityEngine, MonoBehaviour, sibling partials, every cross-file type) because the snippet path was selected and the file's real owning compilation was never resolved. File-mode preserves every reference and filters pre-existing diagnostics in OTHER files in the module so only changes the user introduced in THIS file surface. Pinned `moduleName` overrides auto-detection — if the file isn't in that module the request fails with `LB0002` rather than silently picking another.
 
 ## Truth envelope on every read-side response

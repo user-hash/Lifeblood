@@ -131,4 +131,16 @@ Editing an asmdef without forcing Unity to regenerate the on-disk csproj used to
 
 `lifeblood_compile_check filePath="Assets/.../YourFile.cs"` resolves the file's owning compilation by matching the path against every loaded compilation's syntax trees, then **swaps the existing tree** for the on-disk content via `ReplaceSyntaxTree` instead of adding the file as a fresh snippet tree to an arbitrary first compilation:
 
+```
+> lifeblood_compile_check filePath="Assets/Scripts/Core/MultiPartialHost.cs"
+
+{
+  "success": true,
+  "diagnostics": [],
+  "resolvedModule": "Acme.Module.Runtime",
+  "existingTreeReplaced": true,
+  "filePath": "Assets/Scripts/Core/MultiPartialHost.cs"
+}
+```
+
 Pre-fix the same call surfaced ~120 spurious CS0246 / CS0103 errors against `UnityEngine`, `MonoBehaviour`, sibling partials, and every cross-file type because the snippet path picked some arbitrary first compilation that didn't carry the file's references. File-mode preserves every reference in the file's real owning module compilation and filters pre-existing diagnostics in OTHER files in the module so only changes the user introduced in THIS file surface. Pinned `moduleName` overrides auto-detection — if the file isn't in that module the request fails with `LB0002` rather than silently picking another.

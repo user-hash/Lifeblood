@@ -13,6 +13,13 @@ artifacts/
 # Published MCP server (local development — decouples build from running instance)
 dist/
 
+# Staging directory for hot-swap redeploy (detached-watcher pattern when MCP holds dist DLL handles)
+dist-staging/
+
+# Local hot-swap redeploy tooling — machine-local, not part of the eternal repo
+redeploy-watcher.ps1
+redeploy_log.txt
+
 # Published CLI output from measure-analyze.ps1
 cli-dist/
 
