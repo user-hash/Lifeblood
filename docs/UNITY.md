@@ -89,7 +89,7 @@ Streaming compilation with downgrading keeps memory bounded:
 
 | Project size | Peak memory (CLI streaming) | Peak memory (MCP retained) | Graph |
 |---|---|---|---|
-| ~11 modules (Lifeblood itself) | ~220 MB | ~3.5 GB | 2,512 symbols, 12,439 edges (~2 s wall) |
+| ~11 modules (Lifeblood itself) | ~220 MB | ~3.5 GB | 2,513 symbols, 12,446 edges (~2 s wall) |
 | ~90 modules (400k LOC Unity project) | ~570 MB | ~3.7 GB | 62,134 symbols, 219,548 edges (~48 s wall) |
 
 Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction (peak stays under 600 MB on a 75-module Unity workspace). The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively, which pushes peak to ~2.5 GB on the same workspace. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools.

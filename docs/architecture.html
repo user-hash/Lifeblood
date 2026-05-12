@@ -193,7 +193,7 @@
   </p>
   <div class="pills">
   <div class="pill">11 assemblies + 2 standalone adapters</div>
-  <div class="pill">2,512 symbols, 12,439 edges</div>
+  <div class="pill">2,513 symbols, 12,446 edges</div>
   <div class="pill">776 tests / CI green</div>
   <div class="pill">C# + TypeScript + Python</div>
   <div class="pill">Cross-module: Proven</div>
@@ -362,7 +362,7 @@
   <div class="footer">
   Solid = implemented and dogfood-verified. Dashed/faded = planned.
   Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-  → 2,512 symbols, 12,439 edges, 11 modules, 284 types, 0 violations. 26 ports, 26 MCP tools (16R + 10W), 80 queryable invariants in docs/invariants/ tree. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response (self: ~2 s wall MCP; production 90-module Unity workspace: ~14 s wall / ~570 MB peak CLI, ~47 s wall / ~1.1 GB MCP retained peak; 62,134 symbols, 219,548 edges, 123 SCCs — edge count +18% vs prior baseline since enum-member references the dangling-edge filter was silently dropping now resolve).
+  → 2,513 symbols, 12,446 edges, 11 modules, 284 types, 0 violations. 26 ports, 26 MCP tools (16R + 10W), 80 queryable invariants in docs/invariants/ tree. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response (self: ~2 s wall MCP; production 90-module Unity workspace: ~14 s wall / ~570 MB peak CLI, ~47 s wall / ~1.1 GB MCP retained peak; 62,134 symbols, 219,548 edges, 123 SCCs — edge count +18% vs prior baseline since enum-member references the dangling-edge filter was silently dropping now resolve).
   </div>
   </div>
 </body>
