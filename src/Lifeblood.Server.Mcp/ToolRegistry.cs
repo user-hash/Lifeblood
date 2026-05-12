@@ -166,7 +166,7 @@ public static class ToolRegistry
   Name = "lifeblood_dependencies",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Get all symbols that the given symbol depends on (outgoing non-Contains edges). Note: outgoing edges are recorded at the symbol level where the reference physically appears — `Calls` edges live on the calling method, `References` edges live on the referencing field/property/method body, etc. A query for type-level outbound edges (`type:My.Service`) typically returns 0 because the type itself does not author calls; query its members (or use `lifeblood_blast_radius` to walk the transitive incoming closure) to see real coupling. Closes LB-OBSERVATION-001.",
+  Description = "Get all symbols that the given symbol depends on (outgoing non-Contains edges). Each entry in `dependencies[]` carries `otherEndId`, `kind`, and an optional `callSite` object (`filePath`, `line`, `column`, `endLine`, `endColumn`, `containingSymbolId`) pointing at the exact authoring expression — populated for expression-derived edges (Calls / References / Implements at the member level); null for graph-derived edges (module→module DependsOn, type→type Inherits without a surfaced clause node). One call answers \"where in source does X depend on Y?\". Note: outgoing edges are recorded at the symbol level where the reference physically appears — `Calls` edges live on the calling method, `References` edges live on the referencing field/property/method body, etc. A query for type-level outbound edges (`type:My.Service`) typically returns 0 because the type itself does not author calls; query its members (or use `lifeblood_blast_radius` to walk the transitive incoming closure) to see real coupling. Closes LB-OBSERVATION-001 + field-report 2026-05-11 P1 CallSite ask.",
   InputSchema = new
   {
   type = "object",
@@ -182,7 +182,7 @@ public static class ToolRegistry
   Name = "lifeblood_dependants",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Get all symbols that depend on the given symbol (incoming non-Contains edges).",
+  Description = "Get all symbols that depend on the given symbol (incoming non-Contains edges). Each entry in `dependants[]` carries `otherEndId`, `kind`, and an optional `callSite` object (`filePath`, `line`, `column`, `endLine`, `endColumn`, `containingSymbolId`) pointing at the exact authoring expression — populated for expression-derived edges; null for graph-derived edges (module→module DependsOn, type→type Inherits without a surfaced clause node). Closes the field-report 2026-05-11 P1 CallSite ask.",
   InputSchema = new
   {
   type = "object",

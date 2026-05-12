@@ -7,6 +7,30 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cross-module edge drop under incremental analyze**
+
+### Added
+
+- **`Edge.CallSite` structured provenance** (field-report 2026-05-11 P1). New domain type `Lifeblood.Domain.Graph.CallSite` with `FilePath` / `Line` / `Column` / `EndLine` / `EndColumn` / `ContainingSymbolId`, nullable on `Edge.CallSite` for edges with no single authoring location (module→module DependsOn, type→type Inherits without a surfaced clause node). `RoslynEdgeExtractor.BuildCallSite` populates from the originating Roslyn syntax node during extraction. `JsonGraphExporter` / `JsonGraphImporter` round-trip the new field so cached graphs preserve provenance across save/load. Pinned by `EdgeCallSiteTests.Extract_CallEdge_AttachesCallSiteWithFileLineColumn`, `Extract_FieldReference_AttachesCallSite`, `JsonGraph_RoundTripsCallSite`.
+
+- **`lifeblood_dependencies` / `lifeblood_dependants` wire surface**
+
+- **`lifeblood_resolve_member` MCP tool** (field-report 2026-05-11 P1). Type-scoped member resolution with overload disambiguation. `typeName` accepts canonical `type:NS.T`, fully-qualified `NS.T`, or bare short name `T`; bare names dispatch through the short-name index and surface `AmbiguousContainingType` when more than one type carries the short name. `memberName` matches Method / Property / Field / Event members; `paramTypes[]` filters method overloads by parameter signature. Returns typed `outcome` (`Unique` / `MultipleMatches` / `NotFound` / `TypeNotFound` / `AmbiguousContainingType`), resolved containing-type id, every matching member with `kind` / `filePath` / `line` / `paramDisplay`. Use this instead of `lifeblood_resolve_short_name` when you know the containing type — scopes to ONE specific type instead of flattening every member sharing a global short name. Port: `ISymbolResolver.ResolveMember` + `MemberResolutionResult`. Adapter: `LifebloodSymbolResolver.ResolveMember` (mirrors Rule 4 short-name dispatch for bare type-name inputs). Pinned by `ResolveMemberTests` (12 cases covering every `ResolveMemberOutcome`).
+
+- **`lifeblood_blast_radius groupBy`** (field-report 2026-05-11 P1). Optional `groupBy=bucket|module|both` switches the response shape from a flat `affected[]` list to `byBucket` (Production / Test / Editor / Generated) and/or `byModule` (per-asmdef counts), each with optional per-group `preview[]` capped by `previewPerGroup` (default 5). Path-prefix bucketing (`Editor/`, `Tests/`, `.Generated.`) — no separate symbol-side metadata. Mutually exclusive with `summarize:true`. Closes the multi-megabyte-flat-list problem for transitive blasts on popular types: a caller asking "how much production code breaks if I touch X?" reads one number, not a megabyte. Pinned by `BlastRadiusGroupingTests`.
+
+### Changed
+
+- **Eternal-prose cleanup across src + tests + shipped docs**
+
+- **`lifeblood_dependencies` / `lifeblood_dependants` tool descriptions** updated to declare the new `callSite` wire field so callers can discover the shape from the schema without inspecting a response.
+
+- **`docs/STATUS.md`** counts: 751 → 775 tests, 25 → 26 MCP tools, 15 → 16 read-side tools.
+
+- **`docs/TOOLS.md`** adds the `Resolve member` row, expands `Dependencies` / `Dependants` / `Blast radius` rows with the new wire fields.
+
 ## [0.7.2] - 2026-05-08
 
 ### Pre-tag review fixes (release-blockers)

@@ -331,7 +331,7 @@ public class IncrementalAnalyzeTests : IDisposable
         Assert.DoesNotContain(r.Graph.Symbols, s => s.Name == "BTypeB");
     }
 
-    // ── Cross-module edge integrity (INV-INCREMENTAL-XREF-001 / closes LB-BUG-017) ──
+    // ── Cross-module edge integrity (INV-INCREMENTAL-XREF-001 / closes LB-BUG-020) ──
     //
     // The 2026-05-10 dogfood pass against a real-world Unity workspace found
     // incremental analyze silently dropping cross-module edges in proportion

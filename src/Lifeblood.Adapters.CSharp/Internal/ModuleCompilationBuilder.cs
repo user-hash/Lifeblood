@@ -79,7 +79,7 @@ internal sealed class ModuleCompilationBuilder
     /// compilation. After the call returns, every module the builder
     /// processed (or carried forward) has its current PE-image reference
     /// merged back into the same dict. Pass <c>null</c> to start fresh.
-    /// Closes LB-BUG-017 / INV-INCREMENTAL-XREF-001.</param>
+    /// Closes LB-BUG-020 / INV-INCREMENTAL-XREF-001.</param>
     public Dictionary<string, CSharpCompilation>? ProcessInOrder(
         ModuleInfo[] modules,
         string projectRoot,
