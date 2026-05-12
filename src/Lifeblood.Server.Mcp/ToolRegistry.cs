@@ -291,6 +291,33 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_resolve_member",
+  // Type+member structured lookup. Type-scoped counterpart to
+  // lifeblood_resolve_short_name. Closes the field-report P1 ask
+  // (2026-05-11): scope to a single containing type instead of
+  // flattening every member matching a global short name.
+  Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = SemanticProven,
+  Description = "Resolve a member by short name on a specific containing type, with optional overload disambiguation by parameter signature. typeName accepts canonical 'type:NS.T', fully-qualified 'NS.T', or bare short name 'T'; bare names dispatch through the short-name index and return AmbiguousContainingType when more than one type carries that name. memberName matches Method / Property / Field / Event members on the resolved type. paramTypes (optional array) filters method overloads by parameter signature — pass the comma-joined param list as separate array elements. Returns outcome (Unique / MultipleMatches / NotFound / TypeNotFound / AmbiguousContainingType), the resolved type id, every matching member with kind+file+line+paramDisplay, and ambiguous-type candidates when the short name was not unique. Use this instead of resolve_short_name when you know the containing type and want one specific member.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "typeName", "memberName" },
+  properties = new
+  {
+  typeName = new { type = "string", description = "Containing type: canonical 'type:NS.T', fully-qualified 'NS.T', or bare short name 'T'." },
+  memberName = new { type = "string", description = "Simple member name (no namespace, no parens)." },
+  paramTypes = new
+  {
+  type = "array",
+  items = new { type = "string" },
+  description = "Optional: fully-qualified parameter type names for method overload disambiguation. Each array entry is one parameter. Ignored for non-method members.",
+  },
+  },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_resolve_short_name",
   // ReadSide: consults SemanticGraph.GraphIndexes.FindByShortName (the
   // graph-level short-name bucket), not the Roslyn compilation host.
