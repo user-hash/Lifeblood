@@ -51,10 +51,147 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
         return dependants.ToArray();
     }
 
+    public EdgeDetail[] GetDependencyEdges(SemanticGraph graph, string symbolId)
+    {
+        var result = new List<EdgeDetail>();
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(symbolId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind == EdgeKind.Contains) continue;
+            result.Add(new EdgeDetail
+            {
+                OtherEndId = edge.TargetId,
+                Kind = edge.Kind,
+                CallSite = edge.CallSite,
+            });
+        }
+        return result.ToArray();
+    }
+
+    public EdgeDetail[] GetDependantEdges(SemanticGraph graph, string symbolId)
+    {
+        var result = new List<EdgeDetail>();
+        foreach (int idx in graph.GetIncomingEdgeIndexes(symbolId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind == EdgeKind.Contains) continue;
+            result.Add(new EdgeDetail
+            {
+                OtherEndId = edge.SourceId,
+                Kind = edge.Kind,
+                CallSite = edge.CallSite,
+            });
+        }
+        return result.ToArray();
+    }
+
     public string[] GetBlastRadius(SemanticGraph graph, string symbolId, int maxDepth = 10)
     {
         var result = _blastRadius.Analyze(graph, symbolId, maxDepth);
         return result.AffectedSymbolIds;
+    }
+
+    public BlastRadiusGroups ClassifyBlastRadius(
+        SemanticGraph graph, string symbolId, int maxDepth = 10, int maxResults = 10)
+    {
+        var affected = _blastRadius.Analyze(graph, symbolId, maxDepth).AffectedSymbolIds;
+
+        // Independent one-hop direct count (transitive can be 100x for popular types).
+        int directDependants = 0;
+        foreach (int idx in graph.GetIncomingEdgeIndexes(symbolId))
+        {
+            if (graph.Edges[idx].Kind != EdgeKind.Contains) directDependants++;
+        }
+
+        // Module lookup: walk Parent chain to find containing Module symbol.
+        // Maintained as a local cache so a popular module's symbols don't
+        // re-walk the chain N times.
+        var moduleCache = new Dictionary<string, string>(StringComparer.Ordinal);
+        string ModuleOf(string id)
+        {
+            if (moduleCache.TryGetValue(id, out var cached)) return cached;
+            string? cursor = id;
+            int hops = 0;
+            while (cursor != null && hops++ < 16)
+            {
+                var sym = graph.GetSymbol(cursor);
+                if (sym == null) { moduleCache[id] = "(unknown)"; return "(unknown)"; }
+                if (sym.Kind == SymbolKind.Module) { moduleCache[id] = sym.Name; return sym.Name; }
+                cursor = sym.ParentId;
+            }
+            moduleCache[id] = "(unknown)";
+            return "(unknown)";
+        }
+
+        var bucketLists = new Dictionary<string, List<string>>(StringComparer.Ordinal)
+        {
+            ["Production"] = new(),
+            ["Test"]       = new(),
+            ["Editor"]     = new(),
+            ["Generated"]  = new(),
+        };
+        var moduleLists = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        foreach (var aff in affected)
+        {
+            var sym = graph.GetSymbol(aff);
+            var path = sym?.FilePath ?? "";
+            var bucket = ClassifyBucket(path);
+            bucketLists[bucket].Add(aff);
+
+            var module = ModuleOf(aff);
+            if (!moduleLists.TryGetValue(module, out var list))
+                moduleLists[module] = list = new List<string>();
+            list.Add(aff);
+        }
+
+        IReadOnlyDictionary<string, GroupedBucket> Shape(Dictionary<string, List<string>> src) =>
+            src
+                .Where(kv => kv.Value.Count > 0)
+                .OrderByDescending(kv => kv.Value.Count)
+                .ToDictionary(
+                    kv => kv.Key,
+                    kv => new GroupedBucket
+                    {
+                        Count = kv.Value.Count,
+                        Preview = maxResults <= 0
+                            ? System.Array.Empty<string>()
+                            : kv.Value.Take(maxResults).ToArray(),
+                    },
+                    StringComparer.Ordinal);
+
+        return new BlastRadiusGroups
+        {
+            TotalAffected = affected.Length,
+            DirectDependants = directDependants,
+            ByBucket = Shape(bucketLists),
+            ByModule = Shape(moduleLists),
+        };
+    }
+
+    /// <summary>
+    /// Path-heuristic bucket classifier. Mirrors the conventions used by
+    /// <c>lifeblood_dead_code</c>'s test detector and extends them to
+    /// Editor + Generated so blast-radius triage stays consistent across
+    /// tools. Production = none of the special-case rules match.
+    /// </summary>
+    private static string ClassifyBucket(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return "Production";
+        var lower = filePath.ToLowerInvariant();
+
+        if (lower.Contains("/obj/") || lower.Contains("\\obj\\")) return "Generated";
+        if (lower.Contains("/generated/") || lower.Contains("\\generated\\")) return "Generated";
+        if (lower.EndsWith(".generated.cs", System.StringComparison.Ordinal)) return "Generated";
+        if (lower.EndsWith(".g.cs", System.StringComparison.Ordinal)) return "Generated";
+
+        if (lower.Contains("/tests/") || lower.Contains("\\tests\\")) return "Test";
+        if (lower.EndsWith("tests.cs", System.StringComparison.Ordinal)) return "Test";
+        if (lower.EndsWith("test.cs", System.StringComparison.Ordinal)) return "Test";
+
+        if (lower.Contains("/editor/") || lower.Contains("\\editor\\")) return "Editor";
+
+        return "Production";
     }
 
     public FileImpactResult GetFileImpact(SemanticGraph graph, string fileId)

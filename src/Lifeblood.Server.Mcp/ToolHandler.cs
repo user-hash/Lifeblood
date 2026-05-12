@@ -263,12 +263,12 @@ public sealed class ToolHandler
         if (resolved.CanonicalId == null)
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
-        var deps = _provider.GetDependencies(_session.Graph!, resolved.CanonicalId);
+        var edges = _provider.GetDependencyEdges(_session.Graph!, resolved.CanonicalId);
         return TextResult(WithEnvelope("lifeblood_dependencies", new
         {
             symbolId = resolved.CanonicalId,
-            count = deps.Length,
-            dependencies = deps,
+            count = edges.Length,
+            dependencies = edges.Select(BuildEdgeWire).ToArray(),
         }));
     }
 
@@ -285,14 +285,38 @@ public sealed class ToolHandler
         if (resolved.CanonicalId == null)
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
-        var deps = _provider.GetDependants(_session.Graph!, resolved.CanonicalId);
+        var edges = _provider.GetDependantEdges(_session.Graph!, resolved.CanonicalId);
         return TextResult(WithEnvelope("lifeblood_dependants", new
         {
             symbolId = resolved.CanonicalId,
-            count = deps.Length,
-            dependants = deps,
+            count = edges.Length,
+            dependants = edges.Select(BuildEdgeWire).ToArray(),
         }));
     }
+
+    /// <summary>
+    /// Build the wire shape for a single dependency / dependant edge: the
+    /// canonical id of the other endpoint, the edge kind, and the optional
+    /// call-site provenance (file/line/column + containing symbol id).
+    /// Closes the field-report 2026-05-11 P1 ask. <see cref="CallSite"/> is
+    /// null for edges with no single authoring location (module→module
+    /// DependsOn, type-level Inherits without a surfaced clause node).
+    /// </summary>
+    private static object BuildEdgeWire(EdgeDetail e) => new
+    {
+        otherEndId = e.OtherEndId,
+        kind = e.Kind.ToString(),
+        callSite = e.CallSite == null ? null : new
+        {
+            filePath = e.CallSite.FilePath,
+            line = e.CallSite.Line,
+            column = e.CallSite.Column,
+            endLine = e.CallSite.EndLine,
+            endColumn = e.CallSite.EndColumn,
+            containingSymbolId = e.CallSite.ContainingSymbolId,
+        } as object,
+    };
+
 
     private McpToolResult HandleBlastRadius(JsonElement? args)
     {
