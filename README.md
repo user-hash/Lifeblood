@@ -2,11 +2,9 @@
 
 Compiler-grade code intelligence for AI agents over MCP.
 
-Lifeblood loads a C# / Unity workspace through Roslyn, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP — so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get compiler-verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
+Lifeblood loads a C# / Unity workspace through Roslyn, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
 
 Roslyn is the engine. Lifeblood is the layer around it: persistent project graph, 26 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
-
-Born from shipping a [400k LOC Unity project](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) with AI assistance and realizing that AI writes code but does not verify what it wrote.
 
 ---
 
