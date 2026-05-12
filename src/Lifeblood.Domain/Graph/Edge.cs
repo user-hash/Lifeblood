@@ -12,6 +12,17 @@ public sealed class Edge
     public EdgeKind Kind { get; init; }
     public Evidence Evidence { get; init; } = Evidence.Default;
     public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Optional source-occurrence provenance for this edge: the
+    /// <c>(file, line, column)</c> where the authoring expression appears and
+    /// the canonical id of the enclosing declaration. Null for edges with no
+    /// single authoring location (module→module DependsOn, graph-derived
+    /// type-level Inherits/Implements when the inheritance clause itself is
+    /// not surfaced, etc.).
+    /// Closes the field-report 2026-05-11 P1 ask. See <see cref="CallSite"/>.
+    /// </summary>
+    public CallSite? CallSite { get; init; }
 }
 
 /// <summary>
