@@ -7,7 +7,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Post-v0.7.2 polish wave from a field-report dogfood pass on a real-world Unity workspace (2026-05-11). One high-severity silent-data-loss bug fixed (cross-module edge drop under incremental analyze), three structured-wire-shape improvements landed (CallSite provenance on every expression-derived edge, type-scoped member resolution, `blast_radius` bucket / per-module grouping), plus an eternal-prose cleanup that generalized consumer-project examples across src + tests + shipped docs so Lifeblood reads as a generic Roslyn-semantic tool rather than coupled to one consumer. **Tests 751 → 776 (+25). MCP tools 25 → 26. Read-side tools 15 → 16. Eight commits land the wave.** Every fix lands as a port + adapter + handler trio with regression tests; INV-INCREMENTAL-XREF-001 pinned in source on the snapshot invariant. Hexagonal as ever.
+## [0.7.3] - 2026-05-12
+
+Post-v0.7.2 polish wave from a field-report dogfood pass on a real-world Unity workspace (2026-05-11). One high-severity silent-data-loss bug fixed (cross-module edge drop under incremental analyze), three structured-wire-shape improvements landed (CallSite provenance on every expression-derived edge, type-scoped member resolution, `blast_radius` bucket / per-module grouping), plus an eternal-prose cleanup that generalized consumer-project examples across src + tests + shipped docs so Lifeblood reads as a generic Roslyn-semantic tool rather than coupled to one consumer. **Tests 751 → 776 (+25). MCP tools 25 → 26. Read-side tools 15 → 16. Eleven commits land the wave** (six feature/fix + one CLI + four polish — README lede, masterpolish contract truth, schema CallSite, final docs sweep). Every fix lands as a port + adapter + handler trio with regression tests; `INV-INCREMENTAL-XREF-001` + `INV-EDGE-CALLSITE-001` + `INV-RESOLVE-MEMBER-001` + `INV-BLAST-RADIUS-GROUP-001` pinned in the invariant tree. Hexagonal as ever.
 
 ### Fixed
 
@@ -1023,7 +1025,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/user-hash/Lifeblood/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/user-hash/Lifeblood/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/user-hash/Lifeblood/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/user-hash/Lifeblood/compare/v0.6.7...v0.7.0
