@@ -198,7 +198,7 @@ public static class ToolRegistry
   Name = "lifeblood_blast_radius",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = DerivedProven,
-  Description = "Compute what breaks if a symbol is changed. Transitive BFS over incoming dependency edges. Every response carries `directDependants` (the immediate one-hop count, distinct from the transitive total) so callers can distinguish a symbol with 5 direct callers from one with 5 transitive blast-radius members. Use `summarize:true` to get a compact result that does not embed the full affected-id array — useful when transitive blast on a popular type would otherwise return a multi-megabyte response. `maxResults` caps the embedded array regardless of summarize mode; the `truncated` flag tells callers whether the array was clipped.",
+  Description = "Compute what breaks if a symbol is changed. Transitive BFS over incoming dependency edges. Every response carries `directDependants` (the immediate one-hop count, distinct from the transitive total) so callers can distinguish a symbol with 5 direct callers from one with 5 transitive blast-radius members. Use `summarize:true` to get a compact result that does not embed the full affected-id array — useful when transitive blast on a popular type would otherwise return a multi-megabyte response. `maxResults` caps the embedded array regardless of summarize mode; the `truncated` flag tells callers whether the array was clipped. Use `groupBy:\"bucket\"|\"module\"|\"both\"` to switch the response shape from a flat affected list to grouped buckets (Production/Test/Editor/Generated) and/or per-module/asmdef counts with optional preview entries per group via `previewPerGroup` (default 5).",
   InputSchema = new
   {
   type = "object",
@@ -207,8 +207,15 @@ public static class ToolRegistry
   {
   symbolId = new { type = "string", description = "Symbol ID" },
   maxDepth = new { type = "integer", description = "Maximum traversal depth (default: 10)" },
-  summarize = new { type = "boolean", description = "When true, omit the full affected-id array and return only counts + a small preview (size capped by maxResults). Defaults to false." },
+  summarize = new { type = "boolean", description = "When true, omit the full affected-id array and return only counts + a small preview (size capped by maxResults). Defaults to false. Mutually exclusive with `groupBy` — when `groupBy` is set, the response shape switches to grouped buckets/modules and `summarize` is ignored." },
   maxResults = new { type = "integer", description = "Maximum number of affected-symbol IDs embedded in the response. When the transitive set is larger, the array is clipped and `truncated:true` is set. Default: 500 in normal mode, 25 in summarize mode." },
+  groupBy = new
+  {
+  type = "string",
+  description = "Optional grouping mode. 'bucket' = Production/Test/Editor/Generated; 'module' = per-module/asmdef counts; 'both' = both groupings populated; 'none' (default) = legacy flat shape. Closes the field-report 2026-05-11 P1 ask.",
+  @enum = new[] { "none", "bucket", "module", "both" },
+  },
+  previewPerGroup = new { type = "integer", description = "Cap on preview entries per bucket/module when `groupBy` is set. 0 = no preview, counts only. Default: 5." },
   },
   },
   },
