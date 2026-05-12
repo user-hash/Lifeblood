@@ -1,11 +1,20 @@
-name: Publish to NuGet
+name: Release Verification
 
 # Strict trigger: only pure triple-dot semver tags (v1.2.3).
 # Helper tags like v0.6.4.1-post-extractor or v0.7.0-rc1 must NOT fire this
 # workflow — Directory.Build.props uses MinVer, so the git tag becomes the
-# NuGet package version, and an accidental helper-tag publish ships a real
-# package with a garbage version. Pre-release and hotfix publishes must go
-# through workflow_dispatch (manual) so the operator consciously opts in.
+# NuGet package version, and an accidental helper-tag run produces garbage
+# artifacts. Pre-release and hotfix verifications must go through
+# workflow_dispatch (manual) so the operator consciously opts in.
+#
+# NOTE: this workflow VERIFIES a release tag (build + test + dogfood + pack +
+# semver guard) but does NOT push to NuGet. The actual `dotnet nuget push`
+# happens from the maintainer's local machine using a short-lived API key
+# they hold directly. This avoids storing a long-lived publish key as a
+# GitHub Actions secret, which is the canonical attack surface for supply-
+# chain compromise of NuGet packages. The packed .nupkg artifacts are
+# uploaded so the maintainer (or a reviewer) can download them, inspect,
+# and either confirm a local publish or push manually from a trusted host.
 on:
   push:
     tags:
@@ -13,19 +22,19 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type "publish" to confirm manual NuGet publish'
+        description: 'Type "verify" to confirm manual release verification'
         required: true
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - name: Guard — refuse manual run without explicit confirmation
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'publish'
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'verify'
         run: |
-          echo "Manual publish requires confirm=publish. Aborting."
+          echo "Manual verify requires confirm=verify. Aborting."
           exit 1
 
       - uses: actions/checkout@v4
@@ -48,13 +57,16 @@ jobs:
       - name: Dogfood — self-analysis with built-in rules
         run: dotnet run --project src/Lifeblood.CLI --no-build --configuration Release -- analyze --project . --rules lifeblood
 
+      - name: Verify — full vs incremental edge integrity (INV-INCREMENTAL-XREF-001)
+        run: dotnet run --project src/Lifeblood.CLI --no-build --configuration Release -- verify --incremental --project .
+
       - name: Pack CLI tool
         run: dotnet pack src/Lifeblood.CLI/Lifeblood.CLI.csproj --no-build --configuration Release --output ./artifacts
 
       - name: Pack MCP server tool
         run: dotnet pack src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj --no-build --configuration Release --output ./artifacts
 
-      - name: Guard — tag-triggered publishes must be pure semver
+      - name: Guard — tag-triggered runs must produce pure semver artifacts
         # Belt-and-braces. The tag filter above already refuses suffixed tags,
         # but MinVer could still produce a prerelease suffix (e.g., if someone
         # force-moves a tag or the dispatch path is abused). If we're here via
@@ -66,11 +78,15 @@ jobs:
             name=$(basename "$f")
             if echo "$name" | grep -qE -- '-(alpha|beta|rc|preview|dev|post)'; then
               echo "REFUSED: $name has a prerelease suffix but this run was triggered by a tag push." >&2
-              echo "Tag-triggered publishes must produce pure semver artifacts." >&2
+              echo "Tag-triggered runs must produce pure semver artifacts." >&2
               exit 1
             fi
           done
           echo "Pack guard passed — all artifacts are pure semver."
 
-      - name: Push to NuGet
-        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Upload .nupkg artifacts (for manual publish from a trusted host)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifeblood-${{ github.ref_name }}-nupkg
+          path: ./artifacts/*.nupkg
+          retention-days: 90
