@@ -331,6 +331,236 @@ public class IncrementalAnalyzeTests : IDisposable
         Assert.DoesNotContain(r.Graph.Symbols, s => s.Name == "BTypeB");
     }
 
+    // ── Cross-module edge integrity (INV-INCREMENTAL-XREF-001 / closes LB-BUG-017) ──
+    //
+    // The 2026-05-10 DAWG dogfood found incremental analyze silently dropping
+    // ~99 edges on a single-file touch. Root cause: ModuleCompilationBuilder.
+    // ProcessInOrder kept a LOCAL `downgraded` Dictionary<string, MetadataReference>
+    // that was discarded at end-of-call. Full analyze populated it for every
+    // module; incremental analyze called ProcessInOrder with only the changed
+    // modules subset, so unchanged dependencies had no metadata reference,
+    // every cross-module symbol bound to an error symbol, and the corresponding
+    // edges were dropped at GraphBuilder's dangling-edge filter.
+    //
+    // The fix persists the downgraded refs across calls via
+    // AnalysisSnapshot.DowngradedRefs, threaded through ProcessInOrder as
+    // a carry-in/carry-out parameter. Touching a file in module B must leave
+    // every B→A edge intact: same kind, same target, same count.
+
+    [Fact]
+    public void IncrementalAnalyze_CrossModuleEdges_IdenticalAfterContentlessTouch()
+    {
+        // Two-module project, B depends on A and references A.TypeA.
+        WriteCrossModuleProject();
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        var graph1 = analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        int totalEdges1 = graph1.Edges.Count;
+        int xrefEdges1 = CountCrossModuleEdges(graph1);
+        Assert.True(xrefEdges1 > 0,
+            "Setup precondition: cross-module project must produce >0 B->A edges " +
+            "in full analyze. If 0, the test scaffold itself is broken.");
+
+        // Touch B.cs with identical content. Roslyn re-binds. Pre-fix, this
+        // alone dropped cross-module edges because B's recompiled Compilation
+        // had no metadata ref to A.
+        var bFile = Path.Combine(_tempDir, "ModuleB", "B.cs");
+        var bContent = File.ReadAllText(bFile);
+        Thread.Sleep(50);
+        File.WriteAllText(bFile, bContent);
+
+        var r = analyzer.IncrementalAnalyze(_config);
+
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.NotNull(r.Graph);
+
+        int totalEdges2 = r.Graph!.Edges.Count;
+        int xrefEdges2 = CountCrossModuleEdges(r.Graph);
+
+        Assert.Equal(xrefEdges1, xrefEdges2);
+        Assert.Equal(totalEdges1, totalEdges2);
+    }
+
+    [Fact]
+    public void IncrementalAnalyze_CrossModuleEdges_PreservedAfterContentChangeInDependent()
+    {
+        // Add an unrelated method to B. The B→A reference edges must survive.
+        WriteCrossModuleProject();
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        var graph1 = analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        int xrefEdges1 = CountCrossModuleEdges(graph1);
+        Assert.True(xrefEdges1 > 0);
+
+        var bFile = Path.Combine(_tempDir, "ModuleB", "B.cs");
+        Thread.Sleep(50);
+        File.WriteAllText(bFile,
+            "namespace B; public class TypeB { " +
+            "  public void Consume() { var a = new A.TypeA(); a.Method(); } " +
+            "  public int Added() => 42; " +
+            "}");
+
+        var r = analyzer.IncrementalAnalyze(_config);
+
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.NotNull(r.Graph);
+        int xrefEdges2 = CountCrossModuleEdges(r.Graph!);
+        Assert.Equal(xrefEdges1, xrefEdges2);
+    }
+
+    [Fact]
+    public void IncrementalAnalyze_TransitiveDependencyChain_AllCrossModuleEdgesPreserved()
+    {
+        // Three-module chain: C → B → A. Touch C only.
+        // C's compilation must see both B AND A as metadata refs (Roslyn
+        // compilation refs are NOT transitive — every assembly whose types
+        // appear in C's source must be an explicit reference). The transitive
+        // walk in ComputeTransitiveDependencies + the persistent carry must
+        // jointly cover this. Pre-fix, neither A nor B was in `downgraded`
+        // during C's incremental recompile, so all of C's cross-module edges
+        // dropped.
+        WriteThreeModuleChain();
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        var graph1 = analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        int totalXref1 = CountModuleToModuleEdges(graph1);
+        Assert.True(totalXref1 > 0,
+            "Setup: 3-module chain must produce >0 cross-module edges");
+
+        // Touch C.cs
+        var cFile = Path.Combine(_tempDir, "ModuleC", "C.cs");
+        var cContent = File.ReadAllText(cFile);
+        Thread.Sleep(50);
+        File.WriteAllText(cFile, cContent);
+
+        var r = analyzer.IncrementalAnalyze(_config);
+
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.NotNull(r.Graph);
+        int totalXref2 = CountModuleToModuleEdges(r.Graph!);
+        Assert.Equal(totalXref1, totalXref2);
+    }
+
+    private void WriteThreeModuleChain()
+    {
+        Directory.CreateDirectory(Path.Combine(_tempDir, "ModuleA"));
+        Directory.CreateDirectory(Path.Combine(_tempDir, "ModuleB"));
+        Directory.CreateDirectory(Path.Combine(_tempDir, "ModuleC"));
+
+        var sdk = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>{0}</AssemblyName>
+  </PropertyGroup>
+  {1}
+</Project>";
+
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleA", "ModuleA.csproj"),
+            string.Format(sdk, "ModuleA", ""));
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "ModuleB.csproj"),
+            string.Format(sdk, "ModuleB",
+                @"<ItemGroup><ProjectReference Include=""..\ModuleA\ModuleA.csproj"" /></ItemGroup>"));
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleC", "ModuleC.csproj"),
+            string.Format(sdk, "ModuleC",
+                @"<ItemGroup>
+                    <ProjectReference Include=""..\ModuleA\ModuleA.csproj"" />
+                    <ProjectReference Include=""..\ModuleB\ModuleB.csproj"" />
+                  </ItemGroup>"));
+
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleA", "A.cs"),
+            "namespace A; public class TypeA { public void MA() { } }");
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "B.cs"),
+            "namespace B; public class TypeB { public void MB() { var a = new A.TypeA(); a.MA(); } }");
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleC", "C.cs"),
+            "namespace C; public class TypeC { public void MC() { var b = new B.TypeB(); b.MB(); var a = new A.TypeA(); a.MA(); } }");
+    }
+
+    private static int CountModuleToModuleEdges(SemanticGraph g)
+    {
+        var symById = g.Symbols.ToDictionary(s => s.Id, s => s);
+        string? ModuleOf(string symId)
+        {
+            string? cursor = symId;
+            int hops = 0;
+            while (cursor != null && hops++ < 16)
+            {
+                if (!symById.TryGetValue(cursor, out var sym)) return null;
+                if (sym.Kind == SymbolKind.Module) return sym.Name;
+                cursor = sym.ParentId;
+            }
+            return null;
+        }
+        int count = 0;
+        foreach (var e in g.Edges)
+        {
+            if (e.Kind == EdgeKind.Contains) continue;
+            if (e.Kind == EdgeKind.DependsOn) continue; // module→module edges, not what we test
+            var src = ModuleOf(e.SourceId);
+            var tgt = ModuleOf(e.TargetId);
+            if (src != null && tgt != null && src != tgt) count++;
+        }
+        return count;
+    }
+
+    private static int CountCrossModuleEdges(SemanticGraph g)
+    {
+        // Cross-module edges are non-Contains edges whose source qualified-name
+        // names module B and target qualified-name names module A. Walk symbols
+        // to classify by containing module via Parent chain.
+        var symById = g.Symbols.ToDictionary(s => s.Id, s => s);
+        string? ModuleOf(string symId)
+        {
+            string? cursor = symId;
+            int hops = 0;
+            while (cursor != null && hops++ < 16)
+            {
+                if (!symById.TryGetValue(cursor, out var sym)) return null;
+                if (sym.Kind == SymbolKind.Module) return sym.Name;
+                cursor = sym.ParentId;
+            }
+            return null;
+        }
+        int count = 0;
+        foreach (var e in g.Edges)
+        {
+            if (e.Kind == EdgeKind.Contains) continue;
+            var src = ModuleOf(e.SourceId);
+            var tgt = ModuleOf(e.TargetId);
+            if (src == "ModuleB" && tgt == "ModuleA") count++;
+        }
+        return count;
+    }
+
+    private void WriteCrossModuleProject()
+    {
+        Directory.CreateDirectory(Path.Combine(_tempDir, "ModuleA"));
+        Directory.CreateDirectory(Path.Combine(_tempDir, "ModuleB"));
+
+        var csprojA = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>ModuleA</AssemblyName>
+  </PropertyGroup>
+</Project>";
+
+        var csprojB = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>ModuleB</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include=""..\ModuleA\ModuleA.csproj"" />
+  </ItemGroup>
+</Project>";
+
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleA", "ModuleA.csproj"), csprojA);
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "ModuleB.csproj"), csprojB);
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleA", "A.cs"),
+            "namespace A; public class TypeA { public void Method() { } }");
+        File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "B.cs"),
+            "namespace B; public class TypeB { public void Consume() { var a = new A.TypeA(); a.Method(); } }");
+    }
+
     // ── Helpers ──
 
     private void WriteTwoModuleProject()

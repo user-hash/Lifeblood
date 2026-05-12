@@ -66,20 +66,41 @@ internal sealed class ModuleCompilationBuilder
     /// Retained compilations if config.RetainCompilations is true; null otherwise.
     /// When null, compilations have been downgraded — only the graph survives.
     /// </returns>
+    /// <summary>
+    /// Process modules in dependency order, one at a time. See class summary
+    /// for streaming-vs-retained memory tradeoff.
+    /// </summary>
+    /// <param name="modules">Modules to (re)compile. In a full analyze this is
+    /// every discovered module; in an incremental analyze this is only the
+    /// subset whose source files changed.</param>
+    /// <param name="carryDowngraded">Per-module downgraded MetadataReferences
+    /// from previous analyze calls. Seeded into the local working dict so
+    /// changed modules can see UNCHANGED dependent modules' PE images during
+    /// compilation. After the call returns, every module the builder
+    /// processed (or carried forward) has its current PE-image reference
+    /// merged back into the same dict. Pass <c>null</c> to start fresh.
+    /// Closes LB-BUG-017 / INV-INCREMENTAL-XREF-001.</param>
     public Dictionary<string, CSharpCompilation>? ProcessInOrder(
         ModuleInfo[] modules,
         string projectRoot,
         AnalysisConfig config,
         CompilationProcessor processor,
         Action<string, int, int>? onModuleProgress = null,
-        List<SkippedFile>? skippedCollector = null)
+        List<SkippedFile>? skippedCollector = null,
+        Dictionary<string, MetadataReference>? carryDowngraded = null)
     {
         var sorted = TopologicalSort(modules);
         var moduleLookup = modules.ToDictionary(m => m.Name, StringComparer.Ordinal);
 
         // Downgraded references: lightweight PE images for completed modules.
         // Downstream modules reference these instead of full compilations.
-        var downgraded = new Dictionary<string, MetadataReference>(StringComparer.Ordinal);
+        // INV-INCREMENTAL-XREF-001: seed from the snapshot-owned carry so
+        // changed modules can see UNCHANGED dependent modules' metadata
+        // refs during incremental re-analyze. Without this, cross-module
+        // symbol bindings collapse and the edges are silently dropped.
+        var downgraded = carryDowngraded != null
+            ? new Dictionary<string, MetadataReference>(carryDowngraded, StringComparer.Ordinal)
+            : new Dictionary<string, MetadataReference>(StringComparer.Ordinal);
 
         // Only allocated when retaining for write-side tools.
         Dictionary<string, CSharpCompilation>? retained = config.RetainCompilations
@@ -124,6 +145,21 @@ internal sealed class ModuleCompilationBuilder
             // Downstream modules only need the type metadata, not the full compilation.
             var downgradedRef = DowngradeCompilation(compilation);
             downgraded[module.Name] = downgradedRef;
+        }
+
+        // INV-INCREMENTAL-XREF-001: merge the working dict back into the
+        // caller-owned carry so subsequent incremental calls inherit fresh
+        // PE refs for modules we just (re)processed AND preserve refs for
+        // modules we carried forward without touching. Module removals are
+        // handled by the caller (RoslynWorkspaceAnalyzer) when it observes
+        // a deleted module — `carryDowngraded` is the snapshot's persistent
+        // mirror and only the snapshot owner knows when a module is gone.
+        if (carryDowngraded != null)
+        {
+            foreach (var (name, mref) in downgraded)
+            {
+                carryDowngraded[name] = mref;
+            }
         }
 
         return retained;

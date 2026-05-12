@@ -1,6 +1,7 @@
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
+using Microsoft.CodeAnalysis;
 
 namespace Lifeblood.Adapters.CSharp.Internal;
 
@@ -62,6 +63,33 @@ internal sealed class AnalysisSnapshot
     /// <summary>Module-level symbols (mod:Name) and edges (mod→mod DependsOn).</summary>
     public List<Symbol> ModuleSymbols { get; } = new();
     public List<Edge> ModuleEdges { get; } = new();
+
+    /// <summary>
+    /// Per-module downgraded MetadataReferences (PE images emitted by the
+    /// previous analyze pass). Persisted across calls so incremental
+    /// re-analyze can hand changed-modules' compilations the metadata
+    /// references for UNCHANGED dependent modules.
+    ///
+    /// Pre-fix (LB-BUG-017 / L-LIM-002, 2026-05-10): this dictionary lived
+    /// as a local in <c>ModuleCompilationBuilder.ProcessInOrder</c> and was
+    /// discarded at end-of-call. Full analyze populated it for every module;
+    /// incremental analyze called <c>ProcessInOrder</c> with only the
+    /// <c>modulesToRecompile</c> subset, so unchanged dependencies had no
+    /// metadata reference, every cross-module symbol bound to a Roslyn
+    /// error symbol, and the corresponding edges were silently dropped by
+    /// <c>GraphBuilder</c>'s dangling-edge filter. DAWG repro showed ~99
+    /// edges lost per single-file touch (219,548 → 219,449). Minimal repro
+    /// in <c>IncrementalAnalyzeTests.IncrementalAnalyze_CrossModuleEdges_*</c>:
+    /// 5 → 1 (-4) on a 1-file touch in a 2-module project.
+    ///
+    /// Invariant: after every successful <c>ProcessInOrder</c> call, this
+    /// dictionary contains exactly one entry per module that the analyzer
+    /// successfully compiled (including unchanged modules carried forward
+    /// from previous full analyze, with their stale-but-still-valid PE
+    /// metadata). INV-INCREMENTAL-XREF-001.
+    /// </summary>
+    public Dictionary<string, MetadataReference> DowngradedRefs { get; }
+        = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Files the analyzer declined to process during the last run of either
