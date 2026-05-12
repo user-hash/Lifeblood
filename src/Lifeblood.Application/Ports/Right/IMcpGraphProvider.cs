@@ -15,11 +15,17 @@ public interface IMcpGraphProvider
     FileImpactResult GetFileImpact(SemanticGraph graph, string fileId);
 
     /// <summary>
-    /// Outgoing edge detail for <paramref name="symbolId"/> — every edge whose
-    /// source is the symbol, with edge kind and source-occurrence
-    /// <see cref="CallSite"/> attached. Returns the unique (target,kind,callSite)
-    /// triples (a single source line may reference the same target multiple
-    /// times via multiple expressions, each becomes its own entry).
+    /// Outgoing edge detail for <paramref name="symbolId"/> — one entry per
+    /// unique (sourceId, targetId, kind) edge in the graph, with the first
+    /// observed source-location <see cref="CallSite"/> attached. Multiple
+    /// authoring expressions from the same source method to the same target
+    /// of the same kind (e.g. two <c>obj.Method()</c> calls on different
+    /// lines) collapse to ONE entry — graph-level edge deduplication
+    /// (<c>INV-STREAM-005</c>) is load-bearing and runs before this port
+    /// sees the data, so the CallSite reflects the FIRST extracted
+    /// occurrence, not every occurrence. CallSite is null for graph-derived
+    /// edges with no single authoring location (module→module DependsOn,
+    /// type→type Inherits without a surfaced clause node).
     /// Closes the field-report 2026-05-11 P1 ask: dependency / dependants
     /// responses needed per-edge file/line provenance so callers stop falling
     /// back to manual file reading.

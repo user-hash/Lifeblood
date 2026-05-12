@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Lifeblood.Server.Mcp</RootNamespace>
+    <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>lifeblood-mcp</ToolCommandName>
     <PackageId>Lifeblood.Server.Mcp</PackageId>

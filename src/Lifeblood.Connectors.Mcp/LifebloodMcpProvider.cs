@@ -97,11 +97,17 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
         var affected = _blastRadius.Analyze(graph, symbolId, maxDepth).AffectedSymbolIds;
 
         // Independent one-hop direct count (transitive can be 100x for popular types).
-        int directDependants = 0;
+        // Counts DISTINCT source symbols, matching the contract that
+        // <see cref="GetDependants"/> publishes — a single source with two
+        // edge kinds (e.g. a method that both Calls and References the target)
+        // collapses to ONE direct dependant, not two.
+        var directSources = new HashSet<string>(StringComparer.Ordinal);
         foreach (int idx in graph.GetIncomingEdgeIndexes(symbolId))
         {
-            if (graph.Edges[idx].Kind != EdgeKind.Contains) directDependants++;
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Contains) directSources.Add(edge.SourceId);
         }
+        int directDependants = directSources.Count;
 
         // Module lookup: walk Parent chain to find containing Module symbol.
         // Maintained as a local cache so a popular module's symbols don't

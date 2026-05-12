@@ -23,17 +23,17 @@ namespace Lifeblood.Tests;
 /// resolves the test target symbol. Per-tool semantics are covered by
 /// the dedicated test files.
 /// </summary>
-public class All25ToolsSmokeTests : IDisposable
+public class AllToolsSmokeTests : IDisposable
 {
     private readonly ITestOutputHelper _output;
     private readonly string _temp;
     private readonly PhysicalFileSystem _fs = new();
     private readonly ToolHandler _handler;
 
-    public All25ToolsSmokeTests(ITestOutputHelper output)
+    public AllToolsSmokeTests(ITestOutputHelper output)
     {
         _output = output;
-        _temp = Path.Combine(Path.GetTempPath(), $"lb-25smoke-{Guid.NewGuid():N}");
+        _temp = Path.Combine(Path.GetTempPath(), $"lb-tools-smoke-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_temp);
 
         File.WriteAllText(Path.Combine(_temp, "TestProject.csproj"),
@@ -91,6 +91,20 @@ public enum Mode { Idle, Active, Done }
         var args = JsonArgs(new Dictionary<string, object> { [symbolKey] = symbolValue });
         var result = _handler.Handle(toolName, args);
         AssertNotError(toolName, result);
+    }
+
+    [Fact]
+    public void Tool_ResolveMember_ReturnsUniqueForKnownMember()
+    {
+        // 26th MCP tool — type-scoped member resolution. Verifies the
+        // happy-path (Unique outcome) on a known member of the fixture.
+        var result = _handler.Handle("lifeblood_resolve_member",
+            JsonArgs(new { typeName = "ServiceImpl", memberName = "Run" }));
+        AssertNotError("lifeblood_resolve_member", result);
+        var doc = JsonDocument.Parse(ExtractText(result));
+        Assert.Equal("Unique", doc.RootElement.GetProperty("outcome").GetString());
+        Assert.True(doc.RootElement.GetProperty("count").GetInt32() >= 1);
+        Assert.True(doc.RootElement.TryGetProperty("resolvedTypeId", out _));
     }
 
     [Fact]
