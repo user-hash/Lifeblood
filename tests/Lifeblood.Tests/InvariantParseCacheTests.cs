@@ -60,6 +60,7 @@ public class InvariantParseCacheTests
 
         public IEnumerable<string> ReadLines(string path) => ReadAllText(path).Split('\n');
         public System.IO.Stream OpenRead(string path) => throw new NotImplementedException();
+        public System.IO.Stream OpenWrite(string path) => throw new NotImplementedException();
         public bool DirectoryExists(string path) => throw new NotImplementedException();
         public string[] FindFiles(string directory, string pattern, bool recursive = true) => System.Array.Empty<string>();
     }
