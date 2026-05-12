@@ -70,7 +70,7 @@ internal sealed class AnalysisSnapshot
     /// re-analyze can hand changed-modules' compilations the metadata
     /// references for UNCHANGED dependent modules.
     ///
-    /// Pre-fix (LB-BUG-017 / L-LIM-002, 2026-05-10): this dictionary lived
+    /// Pre-fix (LB-BUG-020 / L-LIM-002, 2026-05-10): this dictionary lived
     /// as a local in <c>ModuleCompilationBuilder.ProcessInOrder</c> and was
     /// discarded at end-of-call. Full analyze populated it for every module;
     /// incremental analyze called <c>ProcessInOrder</c> with only the
