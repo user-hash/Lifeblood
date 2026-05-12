@@ -13,6 +13,101 @@ public interface IMcpGraphProvider
     string[] GetDependants(SemanticGraph graph, string symbolId);
     string[] GetBlastRadius(SemanticGraph graph, string symbolId, int maxDepth = 10);
     FileImpactResult GetFileImpact(SemanticGraph graph, string fileId);
+
+    /// <summary>
+    /// Outgoing edge detail for <paramref name="symbolId"/> — every edge whose
+    /// source is the symbol, with edge kind and source-occurrence
+    /// <see cref="CallSite"/> attached. Returns the unique (target,kind,callSite)
+    /// triples (a single source line may reference the same target multiple
+    /// times via multiple expressions, each becomes its own entry).
+    /// Closes the field-report 2026-05-11 P1 ask: dependency / dependants
+    /// responses needed per-edge file/line provenance so callers stop falling
+    /// back to manual file reading.
+    /// </summary>
+    EdgeDetail[] GetDependencyEdges(SemanticGraph graph, string symbolId);
+
+    /// <summary>
+    /// Incoming edge detail for <paramref name="symbolId"/> — every edge whose
+    /// target is the symbol, with edge kind and source-occurrence
+    /// <see cref="CallSite"/> attached. Same shape contract as
+    /// <see cref="GetDependencyEdges"/> but with <see cref="EdgeDetail.OtherEndId"/>
+    /// pointing at the SOURCE rather than the target.
+    /// </summary>
+    EdgeDetail[] GetDependantEdges(SemanticGraph graph, string symbolId);
+
+    /// <summary>
+    /// Classify the blast-radius set of <paramref name="symbolId"/> into
+    /// buckets and per-module groups so callers can triage by source kind
+    /// (production / test / editor / generated) or by module/asmdef.
+    /// Closes the field-report 2026-05-11 P1 ask: <c>affectedCount=221</c>
+    /// alone is a warning; structured grouping makes it actionable.
+    ///
+    /// Classification heuristics are path-based and match the conventions
+    /// already used by <c>lifeblood_dead_code</c>:
+    /// <list type="bullet">
+    ///   <item><b>Test</b>: any path segment <c>/tests/</c>, or filename
+    ///         ending in <c>Tests.cs</c> / <c>Test.cs</c>.</item>
+    ///   <item><b>Editor</b>: any path segment <c>/Editor/</c> (Unity convention).</item>
+    ///   <item><b>Generated</b>: path segments <c>/obj/</c>, <c>/Generated/</c>,
+    ///         or files matching <c>*.Generated.cs</c> / <c>*.g.cs</c>.</item>
+    ///   <item><b>Production</b>: everything else.</item>
+    /// </list>
+    /// Module assignment walks each affected symbol's Parent chain to its
+    /// containing Module symbol.
+    /// </summary>
+    /// <param name="maxResults">Cap on preview entries per bucket / module. 0 = no preview.</param>
+    BlastRadiusGroups ClassifyBlastRadius(
+        SemanticGraph graph, string symbolId, int maxDepth = 10, int maxResults = 10);
+}
+
+/// <summary>
+/// Grouped view of a blast-radius result. Buckets classify by path
+/// convention (Test / Editor / Generated / Production); module map groups
+/// by containing assembly/asmdef. Counts are always populated; previews
+/// are capped by the caller's <c>maxResults</c> argument.
+/// Closes the field-report 2026-05-11 P1 ask for blast-radius grouping.
+/// </summary>
+public sealed class BlastRadiusGroups
+{
+    /// <summary>Transitive affected count (sum across all buckets / modules).</summary>
+    public required int TotalAffected { get; init; }
+
+    /// <summary>One-hop incoming non-Contains edge count.</summary>
+    public required int DirectDependants { get; init; }
+
+    /// <summary>
+    /// Bucket name (Production / Test / Editor / Generated) → grouped entries.
+    /// </summary>
+    public IReadOnlyDictionary<string, GroupedBucket> ByBucket { get; init; }
+        = new Dictionary<string, GroupedBucket>();
+
+    /// <summary>
+    /// Module name → grouped entries. Symbols whose containing module
+    /// cannot be resolved land under the synthetic key <c>"(unknown)"</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, GroupedBucket> ByModule { get; init; }
+        = new Dictionary<string, GroupedBucket>();
+}
+
+/// <summary>One bucket / module group in a <see cref="BlastRadiusGroups"/>.</summary>
+public sealed class GroupedBucket
+{
+    public required int Count { get; init; }
+    public string[] Preview { get; init; } = System.Array.Empty<string>();
+}
+
+/// <summary>
+/// One edge in a dependency / dependant query response. Carries the canonical
+/// id of the OTHER endpoint (target for dependency queries, source for
+/// dependant queries), the edge kind, and the optional source-occurrence
+/// <see cref="CallSite"/>. Closes the field-report 2026-05-11 P1 ask.
+/// </summary>
+public sealed class EdgeDetail
+{
+    /// <summary>Canonical id of the other endpoint (target or source depending on query direction).</summary>
+    public required string OtherEndId { get; init; }
+    public required EdgeKind Kind { get; init; }
+    public CallSite? CallSite { get; init; }
 }
 
 /// <summary>
