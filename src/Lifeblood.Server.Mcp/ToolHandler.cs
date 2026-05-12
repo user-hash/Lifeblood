@@ -336,6 +336,42 @@ public sealed class ToolHandler
         var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
         var maxResults = WriteToolHandler.GetInt(args, "maxResults") ?? (summarize ? 25 : 500);
         if (maxResults < 0) maxResults = 0;
+        // Stage 2.C — optional grouping by path-bucket and/or module. Default
+        // "none" preserves the legacy flat shape. Closes the field-report
+        // 2026-05-11 P1 ask.
+        var groupBy = (WriteToolHandler.GetString(args, "groupBy") ?? "none")
+            .ToLowerInvariant();
+
+        if (groupBy == "bucket" || groupBy == "module" || groupBy == "both")
+        {
+            var groupPreview = WriteToolHandler.GetInt(args, "previewPerGroup") ?? 5;
+            if (groupPreview < 0) groupPreview = 0;
+            var groups = _provider.ClassifyBlastRadius(
+                _session.Graph!, resolved.CanonicalId, maxDepth, groupPreview);
+
+            return TextResult(WithEnvelope("lifeblood_blast_radius", new
+            {
+                symbolId = resolved.CanonicalId,
+                maxDepth,
+                directDependants = groups.DirectDependants,
+                affectedCount = groups.TotalAffected,
+                groupBy,
+                byBucket = (groupBy == "bucket" || groupBy == "both")
+                    ? groups.ByBucket.ToDictionary(kv => kv.Key, kv => new
+                    {
+                        count = kv.Value.Count,
+                        preview = kv.Value.Preview,
+                    })
+                    : null,
+                byModule = (groupBy == "module" || groupBy == "both")
+                    ? groups.ByModule.ToDictionary(kv => kv.Key, kv => new
+                    {
+                        count = kv.Value.Count,
+                        preview = kv.Value.Preview,
+                    })
+                    : null,
+            }));
+        }
 
         // Direct (one-hop) dependants computed independently of the transitive
         // walk. The transitive blast can be 100x bigger than the direct count
