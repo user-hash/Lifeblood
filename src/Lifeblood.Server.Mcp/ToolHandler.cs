@@ -79,6 +79,7 @@ public sealed class ToolHandler
                 "lifeblood_blast_radius" => HandleBlastRadius(arguments),
                 "lifeblood_file_impact" => HandleFileImpact(arguments),
                 "lifeblood_resolve_short_name" => HandleResolveShortName(arguments),
+                "lifeblood_resolve_member" => HandleResolveMember(arguments),
                 "lifeblood_search" => HandleSearch(arguments),
                 "lifeblood_dead_code" => HandleDeadCode(arguments),
                 "lifeblood_partial_view" => HandlePartialView(arguments),
@@ -390,6 +391,62 @@ public sealed class ToolHandler
             mode = mode.ToString().ToLowerInvariant(),
             count = matches.Length,
             matches,
+        }));
+    }
+
+    private McpToolResult HandleResolveMember(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var typeName = WriteToolHandler.GetString(args, "typeName");
+        if (string.IsNullOrEmpty(typeName))
+            return ErrorResult("typeName is required");
+
+        var memberName = WriteToolHandler.GetString(args, "memberName");
+        if (string.IsNullOrEmpty(memberName))
+            return ErrorResult("memberName is required");
+
+        // paramTypes is an optional array of fully-qualified type names used
+        // to disambiguate method overloads. Non-array, null, and missing all
+        // collapse to "no filter" — the resolver returns every overload.
+        string[]? paramTypes = null;
+        if (args.HasValue && args.Value.TryGetProperty("paramTypes", out var p) &&
+            p.ValueKind == JsonValueKind.Array)
+        {
+            var list = new List<string>(p.GetArrayLength());
+            foreach (var el in p.EnumerateArray())
+            {
+                if (el.ValueKind == JsonValueKind.String)
+                {
+                    var s = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) list.Add(s!);
+                }
+            }
+            paramTypes = list.Count > 0 ? list.ToArray() : null;
+        }
+
+        var result = _resolver.ResolveMember(_session.Graph!, typeName, memberName, paramTypes);
+
+        return TextResult(WithEnvelope("lifeblood_resolve_member", new
+        {
+            typeName,
+            memberName,
+            paramTypes,
+            outcome = result.Outcome.ToString(),
+            resolvedTypeId = result.ResolvedTypeId,
+            count = result.Members.Length,
+            members = result.Members.Select(m => new
+            {
+                canonicalId = m.CanonicalId,
+                kind = m.Kind.ToString(),
+                name = m.Name,
+                filePath = m.FilePath,
+                line = m.Line,
+                paramDisplay = m.ParamDisplay,
+            }).ToArray(),
+            ambiguousTypeCandidates = result.AmbiguousTypeCandidates,
+            diagnostic = result.Diagnostic,
         }));
     }
 

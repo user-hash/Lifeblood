@@ -363,6 +363,215 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         return SuggestNearMatchesInternal(graph, canonical, limit);
     }
 
+    public MemberResolutionResult ResolveMember(
+        SemanticGraph graph,
+        string typeIdOrShortName,
+        string memberName,
+        System.Collections.Generic.IReadOnlyList<string>? paramTypeFilter = null)
+    {
+        if (string.IsNullOrWhiteSpace(typeIdOrShortName) || string.IsNullOrWhiteSpace(memberName))
+        {
+            return new MemberResolutionResult
+            {
+                Outcome = ResolveMemberOutcome.TypeNotFound,
+                Diagnostic = "Both typeIdOrShortName and memberName must be non-empty.",
+            };
+        }
+
+        // Step 0 — canonicalize the type input identically to Resolve(). The
+        // canonicalizer collapses BCL aliases, strips global::, etc., so
+        // `System.String.Length` and `string.Length` route to the same type.
+        var canonicalType = _canonicalizer.Canonicalize(typeIdOrShortName);
+
+        // Step 1 — resolve the containing type id. The user can supply a
+        // canonical id (`type:NS.T`), a fully-qualified bare name (`NS.T`),
+        // or a short name (`T`). For canonical and fully-qualified forms
+        // we hit the graph directly; for bare short names we dispatch
+        // through the short-name index and filter to Type-kind matches.
+        var typeResolution = ResolveContainingType(graph, canonicalType);
+        if (typeResolution.Outcome != ResolveMemberOutcome.Unique)
+        {
+            return typeResolution;
+        }
+
+        var typeId = typeResolution.ResolvedTypeId!;
+
+        // Step 2 — walk the type's outgoing Contains edges and collect every
+        // member symbol whose simple name equals memberName. This mirrors
+        // FindOverloadsOnType / FindNonMethodMembersOnType but does not
+        // discriminate on kind, which is the whole point — the caller asked
+        // "what members named X exist on this type?" and any kind is a
+        // legitimate answer.
+        var matches = new List<Symbol>(2);
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Contains) continue;
+            var member = graph.GetSymbol(edge.TargetId);
+            if (member == null) continue;
+            if (member.Kind == SymbolKind.Type) continue;      // nested type — not a member
+            if (member.Kind == SymbolKind.Namespace) continue; // defensive
+            if (!string.Equals(member.Name, memberName, StringComparison.Ordinal)) continue;
+            matches.Add(member);
+        }
+
+        // Step 3 — optional param-filter for method overload disambiguation.
+        // Filter only applies to methods; non-method members are not the
+        // subject of a paramTypeFilter (a property has no params). When the
+        // filter is supplied AND a method member exists, candidates that
+        // don't match the signature are dropped; non-methods stay through
+        // because the filter doesn't apply to them. Matching is exact on
+        // the comma-joined param list (after ExtractParamDisplay), which is
+        // canonical-form against canonical-form so callers paste the same
+        // shape Lifeblood emits.
+        if (paramTypeFilter != null && paramTypeFilter.Count > 0)
+        {
+            var wantedSig = string.Join(",", paramTypeFilter);
+            matches = matches
+                .Where(m =>
+                    m.Kind != SymbolKind.Method ||
+                    string.Equals(ExtractParamDisplay(m.Id), wantedSig, StringComparison.Ordinal))
+                .ToList();
+        }
+
+        // Step 4 — outcome shaping.
+        if (matches.Count == 0)
+        {
+            return new MemberResolutionResult
+            {
+                Outcome = ResolveMemberOutcome.NotFound,
+                ResolvedTypeId = typeId,
+                Diagnostic = paramTypeFilter != null && paramTypeFilter.Count > 0
+                    ? $"No member named '{memberName}' on {typeId} matching paramTypes " +
+                      $"[{string.Join(",", paramTypeFilter)}]."
+                    : $"No member named '{memberName}' on {typeId}.",
+            };
+        }
+
+        var memberMatches = matches.Select(BuildMemberMatch).ToArray();
+
+        if (matches.Count == 1)
+        {
+            return new MemberResolutionResult
+            {
+                Outcome = ResolveMemberOutcome.Unique,
+                Members = memberMatches,
+                ResolvedTypeId = typeId,
+            };
+        }
+
+        return new MemberResolutionResult
+        {
+            Outcome = ResolveMemberOutcome.MultipleMatches,
+            Members = memberMatches,
+            ResolvedTypeId = typeId,
+            Diagnostic = $"{matches.Count} members named '{memberName}' on {typeId}. " +
+                         "Pick one from Members (overload-disambiguate methods by passing paramTypeFilter).",
+        };
+    }
+
+    /// <summary>
+    /// Resolve the containing-type identifier for <see cref="ResolveMember"/>.
+    /// Accepts: canonical <c>type:NS.T</c>, fully-qualified <c>NS.T</c>, or
+    /// bare short name <c>T</c>. Bare names dispatch through
+    /// <see cref="SemanticGraph.FindByShortName"/> filtered to Type kind.
+    /// Returns a <see cref="MemberResolutionResult"/> whose
+    /// <see cref="ResolveMemberOutcome"/> is one of:
+    /// <see cref="ResolveMemberOutcome.Unique"/> (type resolved cleanly),
+    /// <see cref="ResolveMemberOutcome.TypeNotFound"/>, or
+    /// <see cref="ResolveMemberOutcome.AmbiguousContainingType"/>.
+    /// </summary>
+    private static MemberResolutionResult ResolveContainingType(SemanticGraph graph, string canonicalTypeInput)
+    {
+        // Canonical type id fast path.
+        if (canonicalTypeInput.StartsWith("type:", StringComparison.Ordinal))
+        {
+            if (graph.GetSymbol(canonicalTypeInput) is { Kind: SymbolKind.Type })
+            {
+                return new MemberResolutionResult
+                {
+                    Outcome = ResolveMemberOutcome.Unique,
+                    ResolvedTypeId = canonicalTypeInput,
+                };
+            }
+            return new MemberResolutionResult
+            {
+                Outcome = ResolveMemberOutcome.TypeNotFound,
+                Diagnostic = $"Type not found: {canonicalTypeInput}",
+            };
+        }
+
+        // Fully-qualified name (no kind prefix, has dots) — try prefixed.
+        if (canonicalTypeInput.Contains('.'))
+        {
+            var prefixed = "type:" + canonicalTypeInput;
+            if (graph.GetSymbol(prefixed) is { Kind: SymbolKind.Type })
+            {
+                return new MemberResolutionResult
+                {
+                    Outcome = ResolveMemberOutcome.Unique,
+                    ResolvedTypeId = prefixed,
+                };
+            }
+            // Fall through to short-name resolution against the trailing segment.
+        }
+
+        // Short-name path. Take the last dot-separated segment when the
+        // caller passed something namespace-shaped that didn't match, so
+        // `Nebulae.Foo.Bar` still falls into short-name lookup as `Bar`.
+        var shortName = ExtractLikelyShortName(canonicalTypeInput);
+        if (string.IsNullOrEmpty(shortName))
+        {
+            return new MemberResolutionResult
+            {
+                Outcome = ResolveMemberOutcome.TypeNotFound,
+                Diagnostic = $"Type input '{canonicalTypeInput}' is empty after canonicalization.",
+            };
+        }
+
+        var typeMatches = graph.FindByShortName(shortName)
+            .Where(s => s.Kind == SymbolKind.Type)
+            .ToArray();
+
+        if (typeMatches.Length == 0)
+        {
+            return new MemberResolutionResult
+            {
+                Outcome = ResolveMemberOutcome.TypeNotFound,
+                Diagnostic = $"No type matches short name '{shortName}' " +
+                             $"(from input '{canonicalTypeInput}').",
+            };
+        }
+
+        if (typeMatches.Length > 1)
+        {
+            return new MemberResolutionResult
+            {
+                Outcome = ResolveMemberOutcome.AmbiguousContainingType,
+                AmbiguousTypeCandidates = typeMatches.Select(t => t.Id).ToArray(),
+                Diagnostic = $"Short name '{shortName}' matches {typeMatches.Length} types " +
+                             "across different namespaces. Pick one from AmbiguousTypeCandidates " +
+                             "and pass the canonical type id to ResolveMember.",
+            };
+        }
+
+        return new MemberResolutionResult
+        {
+            Outcome = ResolveMemberOutcome.Unique,
+            ResolvedTypeId = typeMatches[0].Id,
+        };
+    }
+
+    private static MemberMatch BuildMemberMatch(Symbol sym) => new()
+    {
+        CanonicalId = sym.Id,
+        Kind = sym.Kind,
+        Name = sym.Name,
+        FilePath = sym.FilePath,
+        Line = sym.Line,
+        ParamDisplay = sym.Kind == SymbolKind.Method ? ExtractParamDisplay(sym.Id) : "",
+    };
+
     // ────────────────────────────────────────────────────────────────────────
     // Fuzzy scoring
     // ────────────────────────────────────────────────────────────────────────

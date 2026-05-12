@@ -73,6 +73,111 @@ public interface ISymbolResolver
     /// implementation for scoring weights.
     /// </summary>
     ShortNameMatch[] SuggestNearMatches(SemanticGraph graph, string shortName, int limit = 5);
+
+    /// <summary>
+    /// Resolve a member by short name on a specific containing type, with
+    /// optional overload disambiguation by parameter signature. The
+    /// <paramref name="typeIdOrShortName"/> may be either a canonical type id
+    /// (<c>type:NS.T</c>) or a bare short name (<c>T</c>); the latter is
+    /// dispatched through the short-name index, returning
+    /// <see cref="ResolveMemberOutcome.AmbiguousContainingType"/> when more
+    /// than one type carries that short name. Members of every kind
+    /// (Method, Property, Field, Event) are considered.
+    ///
+    /// Closes the field-report P1 ask (2026-05-11): the existing
+    /// <see cref="ResolveShortName"/> flattens every member of every type
+    /// matching a bare name. <c>ResolveMember</c> scopes to a single
+    /// containing type, which is the workflow callers actually want when
+    /// they ask "what overloads of <c>SetPatch</c> exist on
+    /// <c>PatchPublisher</c>" or "where does <c>TuningVoicePool</c> declare
+    /// <c>ClassifyFilterStateOutsideKernelRenderable</c>". The
+    /// <paramref name="paramTypeFilter"/> is optional and only applies to
+    /// method members — pass a non-null list of fully-qualified parameter
+    /// type names to match a specific overload. For non-method members the
+    /// filter is ignored.
+    ///
+    /// Hexagonal posture: this method is the type+member structured lookup
+    /// counterpart to <see cref="ResolveShortName"/>. Both surface the same
+    /// underlying graph; their difference is the entry shape — global short
+    /// name vs. type-scoped member name.
+    /// </summary>
+    MemberResolutionResult ResolveMember(
+        SemanticGraph graph,
+        string typeIdOrShortName,
+        string memberName,
+        System.Collections.Generic.IReadOnlyList<string>? paramTypeFilter = null);
+}
+
+/// <summary>
+/// Result of <see cref="ISymbolResolver.ResolveMember"/>. Carries the
+/// outcome (see <see cref="ResolveMemberOutcome"/>), every matching member
+/// (with kind / file / line / param signature), the resolved containing-type
+/// id, and ambiguous-type candidates when the short name was not unique.
+/// </summary>
+public sealed class MemberResolutionResult
+{
+    /// <summary>Which rule applied. Always populated.</summary>
+    public required ResolveMemberOutcome Outcome { get; init; }
+
+    /// <summary>
+    /// Zero, one, or many matching members. When
+    /// <see cref="ResolveMemberOutcome.Unique"/>, exactly one entry. When
+    /// <see cref="ResolveMemberOutcome.MultipleMatches"/>, all overloads or
+    /// kinds the caller must disambiguate. Empty for NotFound /
+    /// TypeNotFound / AmbiguousContainingType.
+    /// </summary>
+    public MemberMatch[] Members { get; init; } = System.Array.Empty<MemberMatch>();
+
+    /// <summary>
+    /// Canonical id of the containing type that was resolved. Null when the
+    /// type itself didn't resolve.
+    /// </summary>
+    public string? ResolvedTypeId { get; init; }
+
+    /// <summary>
+    /// Populated only on <see cref="ResolveMemberOutcome.AmbiguousContainingType"/>.
+    /// Lists every <c>type:</c> canonical id whose short name matched the
+    /// caller's input.
+    /// </summary>
+    public string[] AmbiguousTypeCandidates { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>Human-readable diagnostic explaining the outcome.</summary>
+    public string? Diagnostic { get; init; }
+}
+
+/// <summary>One matched member on the resolved containing type.</summary>
+public sealed class MemberMatch
+{
+    public required string CanonicalId { get; init; }
+    public required Lifeblood.Domain.Graph.SymbolKind Kind { get; init; }
+    public string Name { get; init; } = "";
+    public string FilePath { get; init; } = "";
+    public int Line { get; init; }
+
+    /// <summary>
+    /// Parameter signature display. For methods, the contents of the
+    /// canonical id's <c>(...)</c> — e.g. <c>"int,string"</c>. Empty for
+    /// non-method members.
+    /// </summary>
+    public string ParamDisplay { get; init; } = "";
+}
+
+/// <summary>
+/// Outcome of <see cref="ISymbolResolver.ResolveMember"/>. Tracks every
+/// path so callers can present meaningful errors and pick a next step.
+/// </summary>
+public enum ResolveMemberOutcome
+{
+    /// <summary>Exactly one member matched (with param filter applied when supplied).</summary>
+    Unique,
+    /// <summary>Multiple members named that on the containing type (overloads or kinds). <see cref="MemberResolutionResult.Members"/> lists them.</summary>
+    MultipleMatches,
+    /// <summary>The containing type resolved but carries no member by that name (after param filter).</summary>
+    NotFound,
+    /// <summary>The containing type identifier did not resolve.</summary>
+    TypeNotFound,
+    /// <summary>Type was supplied as a bare short name that matched multiple types. <see cref="MemberResolutionResult.AmbiguousTypeCandidates"/> lists them.</summary>
+    AmbiguousContainingType,
 }
 
 /// <summary>
