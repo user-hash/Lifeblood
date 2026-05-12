@@ -1,18 +1,10 @@
 # Lifeblood
 
-Compiler-as-a-service for AI agents.
+Compiler-grade code intelligence for AI agents over MCP.
 
-Lifeblood gives AI agents direct access to what compilers know. Type resolution, call graphs, diagnostics, reference finding, code execution. All over a standard MCP connection. No IDE required. Load a project, ask the compiler, get verified answers.
-Compilers already know everything about your code, just pipe that truth to AI agents instead of letting them grep and guess.
+Lifeblood loads a C# / Unity workspace through Roslyn, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP — so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get compiler-verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
 
-```
-Roslyn (C#)    ──┐                              ┌──  Execute code against project types
-TypeScript     ──┤  ┌────────────────────────┐  ├──  Diagnose / compile-check
-JSON graph     ──┼→ │    Semantic Graph      │ →┤──  Find references / rename / format
-               ──┤  │  (symbols / edges /    │  ├──  Blast radius / file impact
-  community    ──┘  │   evidence / trust)    │  └──  Context packs / architecture rules
-  adapters          └────────────────────────┘
-```
+Roslyn is the engine. Lifeblood is the layer around it: persistent project graph, 26 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
 
 Born from shipping a [400k LOC Unity project](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) with AI assistance and realizing that AI writes code but does not verify what it wrote.
 
@@ -85,6 +77,15 @@ dotnet test
 ---
 
 ## 26 Tools
+
+```
+Roslyn (C#)    ──┐                              ┌──  Execute code against project types
+TypeScript     ──┤  ┌────────────────────────┐  ├──  Diagnose / compile-check
+JSON graph     ──┼→ │    Semantic Graph      │ →┤──  Find references / rename / format
+               ──┤  │  (symbols / edges /    │  ├──  Blast radius / file impact
+  community    ──┘  │   evidence / trust)    │  └──  Context packs / architecture rules
+  adapters          └────────────────────────┘
+```
 
 Connect an MCP client. Load a project. The AI agent gets **26 tools**: 16 read, 10 write.
 
