@@ -67,8 +67,11 @@ After the first analysis, use `incremental: true` for fast re-analysis (seconds 
 lifeblood analyze --project /path/to/your/project
 lifeblood analyze --project /path/to/your/project --rules hexagonal
 lifeblood context --project /path/to/your/project
-lifeblood export  --project /path/to/your/project > graph.json
+lifeblood export  --project /path/to/your/project --out graph.json
+lifeblood verify  --incremental --project /path/to/your/project
 ```
+
+`export --out` writes the graph JSON to a file directly (preferred over shell redirection on Windows PowerShell, where `>` defaults to UTF-16-LE-with-BOM and breaks JSON re-import without the `INV-JSON-IMPORT-BOM-001` BOM-aware reader). `verify --incremental` runs full + incremental analyze in one process and asserts `summary.edges` are identical (`INV-INCREMENTAL-XREF-001`); non-zero exit on drift makes it CI-wireable.
 
 ### Build from source
 
@@ -81,13 +84,13 @@ dotnet test
 
 ---
 
-## 25 Tools
+## 26 Tools
 
-Connect an MCP client. Load a project. The AI agent gets **25 tools**: 15 read, 10 write.
+Connect an MCP client. Load a project. The AI agent gets **26 tools**: 16 read, 10 write.
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Search, Dead Code, Partial View, Invariant Check, Authority Report, Port Health, Cycles |
+| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Resolve Member, Search, Dead Code, Partial View, Invariant Check, Authority Report, Port Health, Cycles |
 | **Write** | Execute, Diagnose, Compile-check, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
@@ -104,13 +107,13 @@ Hexagonal. Pure domain core with zero dependencies. Language adapters on the lef
 LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
-Roslyn (C#)       ──┐                            ┌──  MCP Server (25 tools)
+Roslyn (C#)       ──┐                            ┌──  MCP Server (26 tools)
 TypeScript        ──┼→  Domain  →  Application  →┤──  Context Pack Generator
 JSON graph        ──┘       ↑                     ├──  Instruction File Generator
                       Analysis (optional)         └──  CLI / CI
 ```
 
-26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [76 typed invariants under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [80 typed invariants under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -133,7 +136,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 ## Unity
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 25 tools available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 26 tools available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -141,7 +144,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post G1+G2+G4+R2-3 wave + reviewer-catch UTF-16/incremental fixes): 2,383 symbols, 11,720 edges, 11 modules, 272 types, 0 violations, 0 cycles. **751 tests** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **76 typed invariants across 39 categories**, zero duplicates, zero parse warnings.
+Self-analysis (v0.7.3-candidate, post field-report 2026-05-11 polish wave): 2,512 symbols, 12,439 edges, 11 modules, 284 types, 0 violations, 0 cycles. **776 tests** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **80 typed invariants across 43 categories**, zero duplicates, zero parse warnings.
 
 ---
 

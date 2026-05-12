@@ -201,9 +201,11 @@ class Program
         };
 
         // --out <path> writes to a file; otherwise stream to stdout.
-        // File-mode goes through IFileSystem so the path is created with
-        // the same atomicity / permissions semantics as every other
-        // Lifeblood file write.
+        // File-mode goes through the IFileSystem abstraction, so test fakes
+        // can intercept the write the same way they intercept reads. The
+        // backing physical implementation is `File.Create` — truncate-and-
+        // overwrite, NOT atomic; consumers that need atomic-replace should
+        // write to a sibling temp path and rename themselves.
         var outPath = ParseFlagValue(args, "--out");
         if (outPath != null)
         {

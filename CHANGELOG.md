@@ -21,13 +21,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **`lifeblood_blast_radius groupBy`** (field-report 2026-05-11 P1). Optional `groupBy=bucket|module|both` switches the response shape from a flat `affected[]` list to `byBucket` (Production / Test / Editor / Generated) and/or `byModule` (per-asmdef counts), each with optional per-group `preview[]` capped by `previewPerGroup` (default 5). Path-prefix bucketing (`Editor/`, `Tests/`, `.Generated.`) — no separate symbol-side metadata. Mutually exclusive with `summarize:true`. Closes the multi-megabyte-flat-list problem for transitive blasts on popular types: a caller asking "how much production code breaks if I touch X?" reads one number, not a megabyte. Pinned by `BlastRadiusGroupingTests`.
 
+- **CLI: `lifeblood verify --incremental --project <path>`**
+
+- **CLI: `lifeblood export --project <path> --out <file>`** — writes the graph JSON to a file instead of stdout. Avoids the v0.7.2 PowerShell-redirect / UTF-16-BOM pitfall (`INV-JSON-IMPORT-BOM-001` was the pre-fix; `--out` removes the need to redirect at all). File writes route through the new `IFileSystem.OpenWrite` port for consistency with the existing read surface.
+
+- **CLI: `lifeblood analyze --incremental` rejects with guidance** — the CLI is single-shot, so there is no persistent snapshot for an incremental call to consult. The flag refuses with a clear message pointing the caller at `lifeblood-mcp` (for interactive incremental) or `lifeblood verify --incremental` (for a one-shot drift check). Silent no-op was hostile UX; refusing with guidance is honest.
+
 ### Changed
 
 - **Eternal-prose cleanup across src + tests + shipped docs**
 
 - **`lifeblood_dependencies` / `lifeblood_dependants` tool descriptions** updated to declare the new `callSite` wire field so callers can discover the shape from the schema without inspecting a response.
 
-- **`docs/STATUS.md`** counts: 751 → 775 tests, 25 → 26 MCP tools, 15 → 16 read-side tools.
+- **`docs/STATUS.md`** counts: 751 → 776 tests, 25 → 26 MCP tools, 15 → 16 read-side tools.
 
 - **`docs/TOOLS.md`** adds the `Resolve member` row, expands `Dependencies` / `Dependants` / `Blast radius` rows with the new wire fields.
 
