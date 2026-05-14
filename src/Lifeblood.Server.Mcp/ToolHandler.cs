@@ -559,6 +559,18 @@ public sealed class ToolHandler
             kindBreakdown[key] = c + 1;
         }
 
+        // Per-bucket breakdown — Production / Test / Editor / Generated
+        // counts in one map so a caller can fold the giant Editor or
+        // Generated tail in one pass instead of post-processing the
+        // findings array. INV-DEADCODE-TRIAGE-001.
+        var bucketBreakdown = new Dictionary<string, int>(System.StringComparer.Ordinal);
+        foreach (var f in findings)
+        {
+            var key = f.Bucket.ToString();
+            bucketBreakdown.TryGetValue(key, out var c);
+            bucketBreakdown[key] = c + 1;
+        }
+
         const string sharedWarning =
             "Findings are ADVISORY. Known false-positive classes: " +
             "(1) methods referenced via method-group conversion " +
@@ -582,6 +594,7 @@ public sealed class ToolHandler
                 warning = sharedWarning,
                 count = findings.Length,
                 kindBreakdown,
+                bucketBreakdown,
                 truncated,
                 preview,
                 summarize = true,
@@ -594,6 +607,7 @@ public sealed class ToolHandler
             warning = sharedWarning,
             count = findings.Length,
             kindBreakdown,
+            bucketBreakdown,
             truncated,
             findings = preview,
         }));
