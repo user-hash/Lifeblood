@@ -84,10 +84,10 @@ public sealed class GraphSession : IDisposable
     /// the last analyze. Idempotent: returns <c>null</c> when nothing
     /// changed, otherwise the number of files that were re-analyzed.
     /// Fails silently on non-Roslyn sessions (JSON graph imports) since
-    /// those have no source on disk to diff against. Used by Phase 7 /
-    /// the B2 finding to keep <c>lifeblood_compile_check</c> from running
-    /// against a stale workspace after the user edits source between
-    /// the initial <c>lifeblood_analyze</c> and the next compile_check.
+    /// those have no source on disk to diff against. Keeps
+    /// <c>lifeblood_compile_check</c> from running against a stale
+    /// workspace after the user edits source between the initial
+    /// <c>lifeblood_analyze</c> and the next compile_check.
     /// </summary>
     public int? MaybeRefreshIfStale()
     {
@@ -444,10 +444,10 @@ public sealed class GraphSession : IDisposable
         string? fallbackDetail = null,
         bool? canRetryFull = null)
     {
-        // Phase 4 / C4: skipped files surface in the analyze response so
-        // users can see exactly which files the adapter dropped and why.
-        // Emitted as `skipped` when non-empty, omitted entirely otherwise
-        // to keep the common-case response shape lean.
+        // Skipped files surface in the analyze response so users can see
+        // exactly which files the adapter dropped and why. Emitted as
+        // `skipped` when non-empty, omitted entirely otherwise to keep
+        // the common-case response shape lean.
         object? skippedField = null;
         if (skipped != null && skipped.Count > 0)
         {
