@@ -182,11 +182,10 @@ public enum ResolveMemberOutcome
 
 /// <summary>
 /// How <see cref="ISymbolResolver.ResolveShortName"/> compares the query
-/// against the graph's short-name index. Added 2026-04-11 as part of
-/// Phase 3 of the improvement-master plan (LB-INBOX-002). Every resolver
-/// implementation MUST handle every enum value; adding a new value is a
-/// breaking change to every resolver adapter, which is the intended
-/// contract (the enum deliberately has no <c>Unknown = 0</c> fallback).
+/// against the graph's short-name index. Every resolver implementation
+/// MUST handle every enum value; adding a new value is a breaking change
+/// to every resolver adapter, which is the intended contract (the enum
+/// deliberately has no <c>Unknown = 0</c> fallback).
 /// </summary>
 public enum ResolutionMode
 {

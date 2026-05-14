@@ -10,20 +10,15 @@ namespace Lifeblood.Application.Ports.Right;
 /// that treats <c>Symbol.Name</c>, <c>Symbol.QualifiedName</c>, and
 /// <c>Symbol.Properties["xmlDocSummary"]</c> as a searchable corpus.
 ///
-/// Added 2026-04-11 (Phase 5) to close LB-INBOX-003. The <c>lifeblood_search</c>
-/// MCP tool surfaces this port to AI agents who need to find symbols by
-/// what they DO, not by what they're NAMED. It is distinct from
-/// <c>ResolutionMode.Fuzzy</c> (which ranks short names) because search
-/// looks inside the xmldoc corpus as well, and is distinct from
-/// <see cref="IMcpGraphProvider"/> (which is a graph walker), because
-/// search does not traverse edges.
-///
-/// Keeping search as its own port — not a method on
-/// <see cref="IMcpGraphProvider"/> — was deliberate: that port is
-/// already five-methods heavy and serves a different concern (symbol
-/// lookup + graph walk). Merging them would violate single-responsibility
-/// and make future search-only adapters (e.g., a BM25 provider or a
-/// vector-embedding provider) harder to plug in.
+/// The <c>lifeblood_search</c> MCP tool surfaces this port to AI agents
+/// who need to find symbols by what they DO, not by what they're NAMED.
+/// Distinct from <c>ResolutionMode.Fuzzy</c> (which ranks short names
+/// only) because search looks inside the xmldoc corpus as well, and
+/// distinct from <see cref="IMcpGraphProvider"/> (which is a graph
+/// walker) because search does not traverse edges. Kept as its own port
+/// rather than a method on <see cref="IMcpGraphProvider"/> so future
+/// search-only adapters (BM25, vector-embedding) plug in without
+/// touching the graph-walker surface.
 /// </summary>
 public interface ISemanticSearchProvider
 {

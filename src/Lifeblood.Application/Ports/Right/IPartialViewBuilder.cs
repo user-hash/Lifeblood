@@ -10,10 +10,8 @@ namespace Lifeblood.Application.Ports.Right;
 /// to win the last-write-wins dedup in the graph. Partial-type
 /// unification is already a read model on
 /// <see cref="SymbolResolutionResult.DeclarationFilePaths"/>; this port
-/// adds the source-stitching step that sits on top.
-///
-/// Added 2026-04-11 (Phase 6) to close the R2 finding. Implementation depends
-/// on <see cref="IFileSystem"/> only (no Roslyn), so read-only /
+/// adds the source-stitching step that sits on top. Depends on
+/// <see cref="IFileSystem"/> only (no Roslyn), so read-only /
 /// streaming-mode workspaces still get the feature.
 /// </summary>
 public interface IPartialViewBuilder
