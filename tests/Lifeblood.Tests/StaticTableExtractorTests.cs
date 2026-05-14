@@ -288,6 +288,107 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_ObjectCreationRow_CellsBoundByPositionAndName()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id, string name) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(1, ""alpha""), new Row(2, ""beta"") };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var table = Assert.Single(report!.Tables);
+        Assert.Equal(2, table.Rows.Length);
+
+        var row0 = table.Rows[0];
+        Assert.NotNull(row0.ConstructorId);
+        Assert.Null(row0.Value);
+        Assert.Equal(2, row0.Cells.Length);
+
+        Assert.Equal("id", row0.Cells[0].ParameterName);
+        Assert.Equal(0, row0.Cells[0].Position);
+        Assert.Equal(StaticTableArgumentKind.Explicit, row0.Cells[0].ArgumentKind);
+        Assert.Equal(StaticTableValueKind.Number, row0.Cells[0].Value.Kind);
+        Assert.Equal(1d, row0.Cells[0].Value.NumberValue);
+
+        Assert.Equal("name", row0.Cells[1].ParameterName);
+        Assert.Equal(1, row0.Cells[1].Position);
+        Assert.Equal(StaticTableValueKind.String, row0.Cells[1].Value.Kind);
+        Assert.Equal("alpha", row0.Cells[1].Value.StringValue);
+    }
+
+    [Fact]
+    public void GetStaticTables_DefaultArgument_ReportedAsDefaultValueKind()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id, int multiplier = 7) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(1) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var row = report!.Tables[0].Rows[0];
+
+        Assert.Equal(2, row.Cells.Length);
+        Assert.Equal(StaticTableArgumentKind.Explicit, row.Cells[0].ArgumentKind);
+        Assert.Equal(StaticTableArgumentKind.DefaultValue, row.Cells[1].ArgumentKind);
+        Assert.Equal("multiplier", row.Cells[1].ParameterName);
+        Assert.Equal(StaticTableValueKind.Number, row.Cells[1].Value.Kind);
+        Assert.Equal(7d, row.Cells[1].Value.NumberValue);
+    }
+
+    [Fact]
+    public void GetStaticTables_NamedArgument_OutOfOrderStillBindsToParameterPosition()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id, string name) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(name: ""alpha"", id: 5) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cells = report!.Tables[0].Rows[0].Cells;
+
+        var idCell = Assert.Single(cells, c => c.ParameterName == "id");
+        Assert.Equal(0, idCell.Position);
+        Assert.Equal(5d, idCell.Value.NumberValue);
+
+        var nameCell = Assert.Single(cells, c => c.ParameterName == "name");
+        Assert.Equal(1, nameCell.Position);
+        Assert.Equal("alpha", nameCell.Value.StringValue);
+    }
+
+    [Fact]
+    public void GetStaticTables_SingleObjectCreationTable_RowCellsBound()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id) { } }
+  public class Foo {
+    public static readonly Row Default = new Row(42);
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var row = report!.Tables[0].Rows[0];
+
+        Assert.Equal(StaticTableContainerKind.ObjectCreation, report.Tables[0].ContainerKind);
+        var cell = Assert.Single(row.Cells);
+        Assert.Equal("id", cell.ParameterName);
+        Assert.Equal(42d, cell.Value.NumberValue);
+    }
+
+    [Fact]
     public void GetStaticTables_LiteralValuesCarryRawText()
     {
         const string source = @"
