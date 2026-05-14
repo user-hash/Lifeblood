@@ -59,7 +59,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     /// AnalyzeWorkspace / IncrementalAnalyze call. Empty when everything
     /// listed in the module csprojs parsed cleanly. Consumers surface this
     /// in the analyze response so users can see WHICH files were silently
-    /// dropped and WHY. Added 2026-04-11 for the B4 finding / Phase 4 C4.
+    /// dropped and WHY.
     /// </summary>
     public IReadOnlyList<Lifeblood.Domain.Results.SkippedFile> SkippedFiles =>
         _snapshot?.SkippedFiles as IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>
@@ -117,7 +117,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             }
         }
 
-        // Phase 1: Create module symbols (lightweight — just names and metadata)
+        // Create module symbols (lightweight — just names and metadata).
         foreach (var module in modules)
         {
             snapshot.ModuleSymbols.Add(new Symbol
@@ -130,11 +130,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             });
         }
 
-        // Phase 2+3: Streaming compilation + extraction.
-        // Each module is compiled, extracted, then downgraded (unless RetainCompilations=true).
-        // Memory: O(1 compilation) instead of O(N compilations).
-        // Set known module assemblies so the edge extractor creates cross-module edges
-        // (metadata symbols from other analyzed modules are tracked, not filtered).
+        // Streaming compilation + extraction: each module is compiled, extracted,
+        // then downgraded (unless RetainCompilations=true). Memory: O(1 compilation)
+        // instead of O(N compilations). Set known module assemblies so the edge
+        // extractor creates cross-module edges (metadata symbols from other
+        // analyzed modules are tracked, not filtered).
         _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
             modules.Select(m => m.Name), StringComparer.Ordinal);
 
@@ -195,7 +195,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 }
             });
 
-        // Phase 4: Module dependency edges
+        // Module dependency edges.
         var moduleNames = new HashSet<string>(modules.Select(m => m.Name), StringComparer.Ordinal);
         foreach (var module in modules)
         {

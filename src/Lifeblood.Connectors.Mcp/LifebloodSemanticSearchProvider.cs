@@ -26,8 +26,7 @@ namespace Lifeblood.Connectors.Mcp;
 ///   kind filter bonus            : +2 once per symbol if the caller supplied a Kinds filter and the symbol matches
 ///
 /// Ties are broken lexicographically on the canonical ID for stable
-/// ordering across test runs. Added 2026-04-11 (Phase 5); tokenized
-/// 2026-04-11 after dogfood found multi-word queries collapsed to zero.
+/// ordering across test runs.
 /// </summary>
 public sealed class LifebloodSemanticSearchProvider : ISemanticSearchProvider
 {

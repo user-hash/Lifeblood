@@ -210,7 +210,7 @@ internal sealed class ModuleCompilationBuilder
         List<SkippedFile>? skippedCollector)
     {
         // Surface every file the adapter declines to process so consumers
-        // can show users exactly what was dropped and why. Phase 4 / C4.
+        // can show users exactly what was dropped and why.
         // Order matters: extension filter runs first, then file-existence,
         // so a missing non-.cs file is reported as UnsupportedExtension
         // (the dominant reason) rather than FileNotFound.

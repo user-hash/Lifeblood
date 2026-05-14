@@ -10,10 +10,8 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 /// tools can key off the documentation WITHOUT needing live Roslyn
 /// compilations (read-side, streaming-mode workspaces included).
 ///
-/// Historically this logic lived inside a private helper on
-/// <c>RoslynCompilationHost</c>. Phase 5 (2026-04-11) promoted it to an
-/// internal shared helper so extraction and write-side tools can both
-/// route through it.
+/// Lives as an internal shared helper so extraction and write-side
+/// tools can both route through it.
 /// </summary>
 internal static class XmlDocExtractor
 {

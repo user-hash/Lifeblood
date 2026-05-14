@@ -7,10 +7,9 @@ namespace Lifeblood.Analysis;
 /// Computes what breaks if you change a given symbol.
 /// BFS over incoming edges (excluding Contains). INV-ANALYSIS-002: Read-only.
 ///
-/// Phase 6 / B7 (2026-04-11): the analyzer now also classifies each
-/// directly-adjacent break via <see cref="BreakInfo"/>. The classification
-/// uses the edge kind connecting the dependant to the target — that's
-/// the only information the graph has, and it's enough to categorize
+/// Each directly-adjacent break is classified via <see cref="BreakInfo"/>;
+/// the classification uses the edge kind connecting the dependant to the
+/// target — the only signal the graph carries, and enough to categorize
 /// into the coarse <see cref="BreakKind"/> buckets a developer asks
 /// about ("does this rename break callers? does this signature change
 /// break implementers? does this deletion break anything at all?").

@@ -852,14 +852,13 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     /// overload on the same containing type. For non-method resolutions,
     /// returns the result unchanged.
     ///
-    /// The modeling rationale (Phase 3 step 4 of the plan): LB-INBOX-004
-    /// asks for per-overload canonical IDs whenever resolution lands on a
-    /// method, so callers who copy-paste a method name get back a full
-    /// picker of overloads instead of just the one the resolver happened
-    /// to match. This shape lives on <c>Resolve()</c>, not on
+    /// Per-overload canonical IDs whenever resolution lands on a method
+    /// give callers who copy-paste a method name a full picker of
+    /// overloads instead of just the one the resolver happened to match.
+    /// This shape lives on <c>Resolve()</c>, not on
     /// <c>ResolveShortName()</c>, because <c>ResolveShortName</c> already
     /// returns a flat list of matches (one entry per canonical ID; method
-    /// overloads already appear as separate entries). Attaching overloads
+    /// overloads already appear as separate entries) — attaching overloads
     /// twice would double-count.
     /// </summary>
     private static SymbolResolutionResult AttachOverloads(SemanticGraph graph, SymbolResolutionResult result)

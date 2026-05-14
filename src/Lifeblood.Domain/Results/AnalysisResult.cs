@@ -51,8 +51,7 @@ public sealed class BlastRadiusResult
     /// into a removed method is <see cref="BreakKind.BindingRemoval"/>,
     /// an <c>Implements</c> edge into a type whose contract changes is
     /// <see cref="BreakKind.SignatureChange"/>, and so on. Empty when
-    /// the caller did not request classification. Added 2026-04-11
-    /// (Phase 6 / B7) to close the R4 finding.
+    /// the caller did not request classification.
     /// </summary>
     public BreakInfo[] Breaks { get; init; } = Array.Empty<BreakInfo>();
 }
