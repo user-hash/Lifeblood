@@ -16,11 +16,15 @@ The difference: the AI agent doesn't guess what your code does. It **asks the co
 
 ## ¹ `lifeblood_dead_code` status
 
-**Remaining false-positive classes (structural, not fixable by static analysis):**
+**Remaining false-positive classes (structural; not currently closed by the extractor):**
 - Runtime entry points (Program.Main, composition-root entries).
 - UI Toolkit `VisualElement` subclasses with magic-named methods (Awake/Update on a non-MonoBehaviour base).
 - Audio callbacks (`OnAudioFilterRead`) on bases not in the standard MonoBehaviour message-receiver set.
 - Reflection-based dispatch invisible to static analysis (`Type.GetType` + `MethodInfo.Invoke`, Unity `SendMessage`-dispatched handlers).
+
+- **Target-typed `new(MethodGroup)`** (`LB-INBOX-010`, open). The v0.6.4 method-group fix closed the explicit form (`new Lazy<T>(Method)`); the target-typed form (`new(Method)`, C# 9+) does not currently emit a `Calls` edge to the method-group argument. `find_references` sees the usage via Roslyn but `dependants` / `dead_code` / `blast_radius` walk the graph and miss it. Pinned by a skipped regression test (`ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor`) that will convert to a ratchet when the extractor fix ships.
+
+- **Generic-method call canonical-id drift** (`LB-INBOX-010`, open). Calls to a generic method via type-inferred arguments (e.g. `ApplyCap(pack.HighValueFiles, maxFiles)`) appear to bind to the instantiated `IMethodSymbol`; if the edge is emitted under that instantiated id rather than the source-declared generic id, the graph misses the back-reference.
 
 **Consumer guidance:**
 - Findings are advisory. Every response carries the `envelope.confidence = "Advisory"` band and a `limitations[]` entry naming the FP classes.
