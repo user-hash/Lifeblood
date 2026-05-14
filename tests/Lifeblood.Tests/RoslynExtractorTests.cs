@@ -1143,14 +1143,42 @@ public class Caller
     [Fact]
     public void ExtractEdges_StaticFieldInitializerMethodGroup_AttributedToCctor()
     {
-        // Closes the v0.6.4 "no containing method exists" gap:
-        // `static Lazy<T> _x = new(Load)` — `Load` must get an incoming edge so the
-        // dead-code analyzer does not flag it.
+        // Static-field-initializer method-group reference via EXPLICIT
+        // `new System.Lazy<T>(Load)`. The method-group `Load` argument
+        // must get an incoming Calls edge attributed to the synthesized
+        // .cctor so the dead-code analyzer does not flag it. Covers the
+        // explicit-form path only; target-typed `new(Load)` is exercised
+        // by the companion fixture below (LB-INBOX-010).
         var (model, root) = Compile(@"
 namespace App;
 public class Loader
 {
     private static readonly System.Lazy<string> _cache = new System.Lazy<string>(Load);
+    private static string Load() { return ""x""; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Loader.Load"));
+    }
+
+    [Fact(Skip = "Known extractor gap — see LB-INBOX-010. Target-typed `new(MethodGroup)` does not emit a Calls edge; lifeblood_find_references sees the usage via Roslyn but the graph index misses it.")]
+    public void ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor()
+    {
+        // Target-typed-new variant of the explicit form above. Reviewer
+        // audit (2026-05-14) found three live call-sites in Lifeblood
+        // itself (BclReferenceLoader.Load, RoslynCodeExecutor.LoadHostBclReferences,
+        // ToolHandler.ApplyCap) that report `directDependants=0` despite
+        // having real method-group references. This test pins the
+        // contract; ship the extractor fix from LB-INBOX-010 #1 and
+        // remove the Skip attribute to convert it into a regression
+        // ratchet.
+        var (model, root) = Compile(@"
+namespace App;
+public class Loader
+{
+    public static readonly System.Lazy<string> Cache = new(Load);
     private static string Load() { return ""x""; }
 }");
 
