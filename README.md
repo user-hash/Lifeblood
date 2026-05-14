@@ -4,7 +4,7 @@ Compiler-grade code intelligence for AI agents over MCP.
 
 Lifeblood loads a C# / Unity workspace through Roslyn, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
 
-Roslyn is the engine. Lifeblood is the layer around it: persistent project graph, 28 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
+Roslyn is the engine. Lifeblood is the layer around it: persistent project graph, 29 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
 
 ---
 
@@ -74,7 +74,7 @@ dotnet test
 
 ---
 
-## 28 Tools
+## 29 Tools
 
 ```
 Roslyn (C#)    ──┐                              ┌──  Execute code against project types
@@ -85,7 +85,7 @@ JSON graph     ──┼→ │    Semantic Graph      │ →┤──  Find re
   adapters          └────────────────────────┘
 ```
 
-Connect an MCP client. Load a project. The AI agent gets **28 tools**: 17 read, 11 write.
+Connect an MCP client. Load a project. The AI agent gets **29 tools**: 17 read, 12 write.
 
 | | Tools |
 |---|---|
@@ -106,7 +106,7 @@ Hexagonal. Pure domain core with zero dependencies. Language adapters on the lef
 LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
-Roslyn (C#)       ──┐                            ┌──  MCP Server (28 tools)
+Roslyn (C#)       ──┐                            ┌──  MCP Server (29 tools)
 TypeScript        ──┼→  Domain  →  Application  →┤──  Context Pack Generator
 JSON graph        ──┘       ↑                     ├──  Instruction File Generator
                       Analysis (optional)         └──  CLI / CI
@@ -135,7 +135,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 ## Unity
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 28 tools available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 29 tools available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -160,7 +160,7 @@ Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219
 
 | Page | Description |
 |------|-------------|
-| [Tools](docs/TOOLS.md) | All 28 tools — symbol ID format, incremental usage, dead_code caveats, file-mode compile_check, smart-dynamic context shaping |
+| [Tools](docs/TOOLS.md) | All 29 tools — symbol ID format, incremental usage, dead_code caveats, file-mode compile_check, smart-dynamic context shaping |
 | [MCP Setup](docs/MCP_SETUP.md) | Copy-paste configs for Claude Code, Cursor, VS Code, Claude Desktop, Unity |
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 26 port interfaces, invariant tree |
