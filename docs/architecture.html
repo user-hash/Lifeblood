@@ -193,7 +193,7 @@
   </p>
   <div class="pills">
   <div class="pill">11 assemblies + 2 standalone adapters</div>
-  <div class="pill">2,925 symbols, 14,500 edges</div>
+  <div class="pill">2,926 symbols, 14,502 edges</div>
   <div class="pill">946 tests + 1 skipped / CI green</div>
   <div class="pill">C# + TypeScript + Python</div>
   <div class="pill">Cross-module: Proven</div>
@@ -208,7 +208,7 @@
   <div class="pill">RoslynSemanticView</div>
   <div class="pill">BCL ownership</div>
   <div class="pill">Native usage + timing</div>
-  <div class="pill">80 queryable invariants in tree</div>
+  <div class="pill">90 queryable invariants in tree</div>
   <div class="pill">UTF-16 BOM-aware JSON import</div>
   <div class="pill">UTF-8-pinned MCP stdio</div>
   <div class="pill">Caller-owned analyze scope policy</div>
@@ -320,7 +320,7 @@
   <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius, file impact, short-name resolution.</small></div>
   <div class="item"><strong>LifebloodSymbolResolver</strong><small>Reference ISymbolResolver implementation. Routes every read-side handler through canonical → truncated method → bare short name → extracted short name from qualified input (wrong-namespace fallback, v0.6.3). Deterministic primary file path picker for partial types.</small></div>
   <div class="item"><strong>LifebloodSemanticSearchProvider</strong><small>Ranked search over symbol names, qualified names, and xmldoc summaries. Tokenized ranked-OR (v0.6.3).</small></div>
-  <div class="item"><strong>LifebloodInvariantProvider</strong><small>Tree-walking runtime parser. Aggregates &lt;root&gt;/CLAUDE.md + &lt;root&gt;/AGENTS.md + every *.md under docs/invariants/. Five authoring shapes recognised (A/B/C/D/E). Exposes 65 architectural invariants as queryable structured data via lifeblood_invariant_check (INV-INVARIANT-001).</small></div>
+  <div class="item"><strong>LifebloodInvariantProvider</strong><small>Tree-walking runtime parser. Aggregates &lt;root&gt;/CLAUDE.md + &lt;root&gt;/AGENTS.md + every *.md under docs/invariants/. Five authoring shapes recognised (A/B/C/D/E). Exposes 90 architectural invariants as queryable structured data via lifeblood_invariant_check (INV-INVARIANT-001).</small></div>
   <div class="item"><strong>LifebloodPartialViewBuilder</strong><small>Combined source view across every partial declaration of a type.</small></div>
   <div class="item"><strong>LifebloodAuthorityReporter</strong><small>Single graph walk produces implementedInterfaceCount, ownedPublicSurface, per-interface usage, forwarderRatio. Powers lifeblood_authority_report + lifeblood_port_health (INV-AUTHORITY-001, INV-FORWARDER-001).</small></div>
   <div class="item"><strong>LifebloodResponseDecorator</strong><small>Builds the truth envelope on every read-side response. Per-tool classification table sourced from ToolRegistry (INV-ENVELOPE-001).</small></div>
@@ -362,7 +362,7 @@
   <div class="footer">
   Solid = implemented and dogfood-verified. Dashed/faded = planned.
   Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-  → 2,925 symbols, 14,500 edges, 11 modules, 328 types, 0 violations. 26 ports, 29 MCP tools (17R + 12W), 90 queryable invariants across 52 categories in docs/invariants/ tree. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response (self: ~2 s wall MCP; production 90-module Unity workspace: ~14 s wall / ~570 MB peak CLI, ~47 s wall / ~1.1 GB MCP retained peak; 62,134 symbols, 219,548 edges, 123 SCCs — edge count +18% vs prior baseline since enum-member references the dangling-edge filter was silently dropping now resolve).
+  → 2,926 symbols, 14,502 edges, 11 modules, 328 types, 0 violations. 26 ports, 29 MCP tools (17R + 12W), 90 queryable invariants across 52 categories in docs/invariants/ tree. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response (self: ~2 s wall MCP; production 90-module Unity workspace: ~14 s wall / ~570 MB peak CLI, ~47 s wall / ~1.1 GB MCP retained peak; 62,134 symbols, 219,548 edges, 123 SCCs — edge count +18% vs prior baseline since enum-member references the dangling-edge filter was silently dropping now resolve).
   </div>
   </div>
 </body>

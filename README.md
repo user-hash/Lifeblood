@@ -112,7 +112,7 @@ JSON graph        ──┘       ↑                     ├──  Instruction
                       Analysis (optional)         └──  CLI / CI
 ```
 
-26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [87 typed invariants across 50 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [90 typed invariants across 52 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -143,7 +143,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-v0.7.4): 2,925 symbols, 14,500 edges, 11 modules, 328 types, 0 violations, 0 cycles. **946 tests + 1 skipped regression pin** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **90 typed invariants across 52 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post-v0.7.4): 2,926 symbols, 14,502 edges, 11 modules, 328 types, 0 violations, 0 cycles. **946 tests + 1 skipped regression pin** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **90 typed invariants across 52 categories**, zero duplicates, zero parse warnings.
 
 Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219,548 edges, 123 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
 
@@ -165,7 +165,7 @@ Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 26 port interfaces, invariant tree |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants tree](docs/invariants/INDEX.md) | 80 typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Invariants tree](docs/invariants/INDEX.md) | 90 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 50+ bugs found by self-analysis and reviewer dogfood sessions |
