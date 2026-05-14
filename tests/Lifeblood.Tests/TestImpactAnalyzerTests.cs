@@ -215,6 +215,126 @@ public class TestImpactAnalyzerTests
     }
 
     [Fact]
+    public void AnalyzeSymbol_TypeTarget_FindsTestThatReferencesAMember()
+    {
+        // The real-workspace shape: a test method references a SPECIFIC
+        // MEMBER of the target type, not the type itself. On Roslyn,
+        // member access produces References-to-member edges, never a
+        // References-to-type edge. Pre-fix the BFS seeded only with
+        // `type:Acme.Foo` walked its incoming edges, found no Calls
+        // (Calls target methods, not types), and returned zero tests
+        // even though FooTests.T directly touches Foo.SomeField.
+        //
+        // Post-fix: AnalyzeSymbol expands the source set to include
+        // every Contains-child of the type, so References-to-member
+        // edges count as direct (distance 1) reachability of the type.
+        // INV-TEST-IMPACT-001 / LB-TRACK-20260514-007.
+        var graph = new GraphBuilder()
+            .AddSymbol(Type("type:Acme.Foo", "Foo", "src/Foo.cs"))
+            .AddSymbol(new Symbol
+            {
+                Id = "field:Acme.Foo.SomeField",
+                Name = "SomeField",
+                QualifiedName = "Acme.Foo.SomeField",
+                Kind = SymbolKind.Field,
+                ParentId = "type:Acme.Foo",
+                FilePath = "src/Foo.cs",
+            })
+            .AddSymbol(Type("type:Acme.Tests.FooTests", "FooTests", "tests/FooTests.cs"))
+            .AddSymbol(Method("method:Acme.Tests.FooTests.T()", "T",
+                "type:Acme.Tests.FooTests", "tests/FooTests.cs", "Test"))
+            // Type → Field Contains (the extractor's normal shape).
+            .AddEdge(new Edge { SourceId = "type:Acme.Foo", TargetId = "field:Acme.Foo.SomeField", Kind = EdgeKind.Contains })
+            // Test method references the FIELD, not the type — the
+            // canonical real-workspace shape Roslyn emits.
+            .AddEdge(new Edge { SourceId = "method:Acme.Tests.FooTests.T()", TargetId = "field:Acme.Foo.SomeField", Kind = EdgeKind.References })
+            .Build();
+
+        var report = TestImpactAnalyzer.AnalyzeSymbol(graph, "type:Acme.Foo");
+
+        var row = Assert.Single(report.AffectedTestClasses);
+        Assert.Equal("FooTests", row.Name);
+        Assert.Equal(1, row.MinDistance);
+        Assert.Equal(TestImpactConfidence.Direct, row.Confidence);
+    }
+
+    [Fact]
+    public void AnalyzeSymbol_TypeTarget_FindsTestThatCallsAMethod()
+    {
+        // Mirror of the previous test for Calls-to-method edges (the
+        // shape Roslyn emits when a test invokes a target's method).
+        // The pre-fix walker missed this because Calls edges have
+        // method-id targets and BFS from `type:Foo` saw nothing.
+        var graph = new GraphBuilder()
+            .AddSymbol(Type("type:Acme.Foo", "Foo", "src/Foo.cs"))
+            .AddSymbol(new Symbol
+            {
+                Id = "method:Acme.Foo.DoWork()",
+                Name = "DoWork",
+                QualifiedName = "Acme.Foo.DoWork",
+                Kind = SymbolKind.Method,
+                ParentId = "type:Acme.Foo",
+                FilePath = "src/Foo.cs",
+            })
+            .AddSymbol(Type("type:Acme.Tests.FooTests", "FooTests", "tests/FooTests.cs"))
+            .AddSymbol(Method("method:Acme.Tests.FooTests.T()", "T",
+                "type:Acme.Tests.FooTests", "tests/FooTests.cs", "Test"))
+            .AddEdge(new Edge { SourceId = "type:Acme.Foo", TargetId = "method:Acme.Foo.DoWork()", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "method:Acme.Tests.FooTests.T()", TargetId = "method:Acme.Foo.DoWork()", Kind = EdgeKind.Calls })
+            .Build();
+
+        var report = TestImpactAnalyzer.AnalyzeSymbol(graph, "type:Acme.Foo");
+
+        var row = Assert.Single(report.AffectedTestClasses);
+        Assert.Equal("FooTests", row.Name);
+        Assert.Equal(1, row.MinDistance);
+    }
+
+    [Fact]
+    public void AnalyzeSymbol_MethodTarget_NoExpansion()
+    {
+        // Method targets MUST stay seeded with just the member id —
+        // expanding to outgoing Contains makes no sense on a method
+        // (methods don't Contain anything). Pin the no-expansion
+        // behavior so a future "always expand" change can't silently
+        // overreach. The pre-fix path was identical for methods.
+        var graph = new GraphBuilder()
+            .AddSymbol(Type("type:Acme.Foo", "Foo", "src/Foo.cs"))
+            .AddSymbol(new Symbol
+            {
+                Id = "method:Acme.Foo.DoWork()",
+                Name = "DoWork",
+                Kind = SymbolKind.Method,
+                ParentId = "type:Acme.Foo",
+                FilePath = "src/Foo.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:Acme.Foo.OtherWork()",
+                Name = "OtherWork",
+                Kind = SymbolKind.Method,
+                ParentId = "type:Acme.Foo",
+                FilePath = "src/Foo.cs",
+            })
+            .AddSymbol(Type("type:Acme.Tests.FooTests", "FooTests", "tests/FooTests.cs"))
+            .AddSymbol(Method("method:Acme.Tests.FooTests.T()", "T",
+                "type:Acme.Tests.FooTests", "tests/FooTests.cs", "Test"))
+            .AddEdge(new Edge { SourceId = "type:Acme.Foo", TargetId = "method:Acme.Foo.DoWork()", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "type:Acme.Foo", TargetId = "method:Acme.Foo.OtherWork()", Kind = EdgeKind.Contains })
+            // Test only touches OtherWork — querying DoWork must NOT
+            // surface it. Pre-fix and post-fix shapes both pass here;
+            // the test pins the no-overreach property.
+            .AddEdge(new Edge { SourceId = "method:Acme.Tests.FooTests.T()", TargetId = "method:Acme.Foo.OtherWork()", Kind = EdgeKind.Calls })
+            .Build();
+
+        var reportDoWork = TestImpactAnalyzer.AnalyzeSymbol(graph, "method:Acme.Foo.DoWork()");
+        Assert.Empty(reportDoWork.AffectedTestClasses);
+
+        var reportOtherWork = TestImpactAnalyzer.AnalyzeSymbol(graph, "method:Acme.Foo.OtherWork()");
+        Assert.Single(reportOtherWork.AffectedTestClasses);
+    }
+
+    [Fact]
     public void AnalyzeFile_MultiSourceBFS_AggregatesAcrossSymbols()
     {
         // File `src/Foo.cs` contains TWO types. A test references one,
