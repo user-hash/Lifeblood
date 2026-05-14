@@ -590,11 +590,12 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns26Tools()
+    public void ToolRegistry_Returns27Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(26, tools.Length);
+        Assert.Equal(27, tools.Length);
+        Assert.Contains(tools, t => t.Name == "lifeblood_enum_coverage");
         Assert.Contains(tools, t => t.Name == "lifeblood_resolve_member");
         Assert.Contains(tools, t => t.Name == "lifeblood_analyze");
         Assert.Contains(tools, t => t.Name == "lifeblood_context");

@@ -525,6 +525,21 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_enum_coverage",
+  Availability = ToolAvailability.WriteSide,
+  Description = "Per-member reference coverage for an enum type. Walks every loaded compilation once, classifies each member reference by parent syntax — `produced` (RHS of assignment, return / yield / arrow body, argument, variable initializer), `consumedComparison` (==, !=, <, <=, >, >=), `consumedSwitch` (case label, is-pattern, constant-pattern, switch-expression arm) — and returns one row per declared member with `totalReferences`, `producedCount`, `consumedComparisonCount`, `consumedSwitchCount`, `isUnproduced` (declared + referenced as a consumer but never assigned), `isUnreferenced` (zero references of any kind). Response carries `unproducedCount` + `unreferencedCount` as top-level summaries so the dogfood case (\"how many values in this state-machine enum are never produced?\") reads off one call instead of pairing find_references with manual syntax inspection per hit. `enumTypeId` accepts canonical (`type:NS.T`), fully-qualified (`NS.T`), or bare short name (`T`) — routed through the same resolver as every other type-id-taking tool. INV-ENUM-COVERAGE-001 / LB-TRACK-20260514-003.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "enumTypeId" },
+  properties = new
+  {
+  enumTypeId = new { type = "string", description = "Canonical, qualified, or short name of an enum type." },
+  },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_symbol_at_position",
   Availability = ToolAvailability.WriteSide,
   Description = "Resolve what symbol is at a specific source position. Returns symbol ID, name, kind, qualified name, and documentation.",

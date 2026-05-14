@@ -232,6 +232,92 @@ public sealed class SkippedFile
 }
 
 /// <summary>
+/// Per-member reference coverage for one enum type. Surfaces the
+/// reference-kind distribution that lets a caller answer "is this value
+/// declared but never produced?" in one call instead of pairing
+/// <c>find_references</c> with manual syntax inspection per hit.
+/// INV-ENUM-COVERAGE-001 / LB-TRACK-20260514-003.
+/// </summary>
+public sealed class EnumCoverageReport
+{
+    /// <summary>Canonical id of the enum type the report covers.</summary>
+    public required string EnumTypeId { get; init; }
+
+    /// <summary>Short type name (e.g. <c>FieldMask</c>) for display.</summary>
+    public required string EnumTypeName { get; init; }
+
+    /// <summary>One coverage row per declared member, in source order.</summary>
+    public required EnumMemberCoverage[] Members { get; init; }
+
+    /// <summary>
+    /// Count of members where <see cref="EnumMemberCoverage.IsUnproduced"/>
+    /// is true. Caller-friendly summary so the dogfood case ("how many
+    /// values in this state-machine enum are never produced?") reads
+    /// off the top of the response.
+    /// </summary>
+    public required int UnproducedCount { get; init; }
+
+    /// <summary>
+    /// Count of members with zero references of any kind. Strictly
+    /// stronger than unproduced — an unreferenced value is unproduced
+    /// AND unconsumed.
+    /// </summary>
+    public required int UnreferencedCount { get; init; }
+}
+
+/// <summary>
+/// Reference-kind distribution for one enum member. All counts are
+/// per-reference-site, so two production sites for the same value yield
+/// <c>ProducedCount == 2</c>.
+/// </summary>
+public sealed class EnumMemberCoverage
+{
+    /// <summary>Canonical id of the enum member (field-kind, fieldKind="enumMember").</summary>
+    public required string MemberId { get; init; }
+
+    /// <summary>Short member name (e.g. <c>ShimmerPhase</c>).</summary>
+    public required string Name { get; init; }
+
+    /// <summary>Total source-resolved references to this member (sum of all kinds + Other).</summary>
+    public required int TotalReferences { get; init; }
+
+    /// <summary>
+    /// References where the member appears in a value-producing
+    /// position: RHS of assignment, return-statement operand, argument
+    /// passed to a method/ctor, variable initializer, yield/arrow body.
+    /// </summary>
+    public required int ProducedCount { get; init; }
+
+    /// <summary>
+    /// References where the member is the right-hand side of an
+    /// equality / inequality comparison (<c>x == FieldMask.A</c>,
+    /// <c>FieldMask.A != y</c>) or a relational comparison.
+    /// </summary>
+    public required int ConsumedComparisonCount { get; init; }
+
+    /// <summary>
+    /// References where the member appears in a switch / pattern arm
+    /// (<c>case FieldMask.A:</c>, <c>x is FieldMask.A</c>,
+    /// switch-expression arms, constant-pattern matches).
+    /// </summary>
+    public required int ConsumedSwitchCount { get; init; }
+
+    /// <summary>
+    /// Convenience: <see cref="ProducedCount"/> == 0 AND
+    /// <see cref="TotalReferences"/> &gt; 0. The state-machine
+    /// drift signal — a value exists in the type, is checked for,
+    /// but is never assigned to anything.
+    /// </summary>
+    public required bool IsUnproduced { get; init; }
+
+    /// <summary>
+    /// Convenience: <see cref="TotalReferences"/> == 0. Stricter than
+    /// <see cref="IsUnproduced"/> — pure dead value.
+    /// </summary>
+    public required bool IsUnreferenced { get; init; }
+}
+
+/// <summary>
 /// Canonical reason codes for <see cref="SkippedFile.Reason"/>. These are
 /// string constants so new reasons can be added without bumping an enum
 /// and breaking adapter contracts.
