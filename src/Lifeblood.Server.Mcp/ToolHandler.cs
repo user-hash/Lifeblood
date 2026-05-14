@@ -588,9 +588,9 @@ public sealed class ToolHandler
             return TextResult(WithEnvelope("lifeblood_dead_code", new
             {
                 // Surfaced in every response so agents cannot use the tool
-                // without seeing the caveat. INV-DEADCODE-001. Note: with
-                // INV-ENVELOPE-001 (v0.6.7) the same caveat is also carried
-                // in the typed envelope.limitations field.
+                // without seeing the caveat. INV-DEADCODE-001. Same caveat
+                // is also carried in the typed envelope.limitations field
+                // per INV-ENVELOPE-001.
                 status = "experimental",
                 warning = sharedWarning,
                 count = findings.Length,
