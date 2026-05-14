@@ -240,6 +240,44 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
 
+            // Compilation fact: <LangVersion> (INV-COMPFACT-001..003 +
+            // LB-FOLLOWUP-001). Take the LAST <LangVersion> element's value
+            // — MSBuild semantics: later property assignments win. Stored
+            // raw; Roslyn's LanguageVersionFacts.TryParse handles the
+            // string-to-enum mapping at the compilation seam. Default
+            // empty string means "csproj did not declare it" → builder
+            // uses LanguageVersion.Default.
+            var languageVersion = doc.Descendants()
+                .Where(el => el.Name.LocalName == "LangVersion")
+                .Select(el => el.Value?.Trim() ?? string.Empty)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .LastOrDefault() ?? string.Empty;
+
+            // Compilation fact: <Nullable> (INV-COMPFACT-001..003 +
+            // LB-FOLLOWUP-002). Take the LAST <Nullable> element's value
+            // (MSBuild "later wins"). Stored raw — values "enable" /
+            // "disable" / "warnings" / "annotations" map at the
+            // compilation seam to NullableContextOptions. Empty string
+            // means "csproj did not declare it" → builder uses Disable.
+            var nullableContext = doc.Descendants()
+                .Where(el => el.Name.LocalName == "Nullable")
+                .Select(el => el.Value?.Trim() ?? string.Empty)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .LastOrDefault() ?? string.Empty;
+
+            // Compilation fact: <NoWarn> (INV-COMPFACT-001..003 +
+            // LB-FOLLOWUP-003). Multiple <NoWarn> elements union;
+            // semicolon split, trim, drop empties, dedup. Threaded at
+            // compilation time into CSharpCompilationOptions.WithSpecificDiagnosticOptions
+            // mapping each ID to ReportDiagnostic.Suppress.
+            var noWarnIds = doc.Descendants()
+                .Where(el => el.Name.LocalName == "NoWarn")
+                .SelectMany(el => (el.Value ?? string.Empty).Split(';', ','))
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
             // Pure detection: no PackageReference or assembly Reference
             bool isPure = !doc.Descendants().Any(el =>
                 el.Name.LocalName == "PackageReference"
@@ -275,6 +313,9 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 AllowUnsafeCode = allowUnsafeCode,
                 ImplicitUsings = implicitUsings,
                 PreprocessorSymbols = preprocessorSymbols,
+                LanguageVersion = languageVersion,
+                NullableContext = nullableContext,
+                NoWarnDiagnosticIds = noWarnIds,
                 ReferenceClosure = referenceClosure,
                 Properties = new Dictionary<string, string>
                 {

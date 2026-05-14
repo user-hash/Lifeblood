@@ -268,9 +268,19 @@ internal sealed class ModuleCompilationBuilder
         // RoslynCompilationHost.GetActiveDefines reads the canonical
         // PreprocessorSymbolNames property (empty array) rather than the
         // "options is null" fallback. Wire shape stays uniform.
-        var parseOptions = module.PreprocessorSymbols.Length > 0
-            ? CSharpParseOptions.Default.WithPreprocessorSymbols(module.PreprocessorSymbols)
-            : CSharpParseOptions.Default;
+        var parseOptions = CSharpParseOptions.Default;
+        if (module.PreprocessorSymbols.Length > 0)
+            parseOptions = parseOptions.WithPreprocessorSymbols(module.PreprocessorSymbols);
+
+        // <LangVersion> (LB-FOLLOWUP-001). Roslyn ships a canonical parser
+        // for the csproj string form; use it instead of a homegrown lookup
+        // so "latest" / "preview" / "12" / "11.0" / "7.3" all bind to the
+        // same enum the official compiler reaches.
+        if (!string.IsNullOrEmpty(module.LanguageVersion)
+            && LanguageVersionFacts.TryParse(module.LanguageVersion, out var langVersion))
+        {
+            parseOptions = parseOptions.WithLanguageVersion(langVersion);
+        }
 
         var trees = sourceFiles
             .Select(f =>
@@ -314,7 +324,22 @@ internal sealed class ModuleCompilationBuilder
         // once during discovery, consumed exactly once here. NEVER re-derive
         // from the csproj at this layer; NEVER sniff filenames as a substitute.
         var compilationOptions = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
-            .WithAllowUnsafe(module.AllowUnsafeCode);
+            .WithAllowUnsafe(module.AllowUnsafeCode)
+            .WithNullableContextOptions(ParseNullableContext(module.NullableContext));
+
+        // <NoWarn> (LB-FOLLOWUP-003). Csproj declares the IDs the build
+        // should suppress; mirror that in the Roslyn compilation so
+        // diagnose responses don't surface noise the caller already
+        // silenced. Each ID gets ReportDiagnostic.Suppress — Roslyn's
+        // canonical primitive for per-ID severity overrides.
+        if (module.NoWarnDiagnosticIds.Length > 0)
+        {
+            var noWarnDict = new Dictionary<string, ReportDiagnostic>(
+                module.NoWarnDiagnosticIds.Length, StringComparer.OrdinalIgnoreCase);
+            foreach (var id in module.NoWarnDiagnosticIds)
+                noWarnDict[id] = ReportDiagnostic.Suppress;
+            compilationOptions = compilationOptions.WithSpecificDiagnosticOptions(noWarnDict);
+        }
 
         // Implicit global usings (INV-COMPFACT-001..003). When the csproj declares
         // <ImplicitUsings>enable</ImplicitUsings>, MSBuild generates global usings
@@ -330,6 +355,22 @@ internal sealed class ModuleCompilationBuilder
             references,
             compilationOptions);
     }
+
+    /// <summary>
+    /// Map the csproj <c>&lt;Nullable&gt;</c> string value to Roslyn's
+    /// <see cref="NullableContextOptions"/>. Empty / unrecognized values fall
+    /// back to <see cref="NullableContextOptions.Disable"/> — the same
+    /// default Roslyn applies to a project that declares no Nullable
+    /// property. INV-COMPFACT-001..003 / LB-FOLLOWUP-002.
+    /// </summary>
+    private static NullableContextOptions ParseNullableContext(string raw)
+        => raw.ToLowerInvariant() switch
+        {
+            "enable" => NullableContextOptions.Enable,
+            "warnings" => NullableContextOptions.Warnings,
+            "annotations" => NullableContextOptions.Annotations,
+            _ => NullableContextOptions.Disable,
+        };
 
     /// <summary>
     /// Compute the transitive closure of module dependencies. Given module A

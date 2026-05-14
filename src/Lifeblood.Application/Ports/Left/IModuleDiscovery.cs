@@ -180,6 +180,60 @@ public sealed class ModuleInfo
     public string[] PreprocessorSymbols { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Raw <c>&lt;LangVersion&gt;</c> value declared in the csproj
+    /// (e.g. <c>"latest"</c>, <c>"preview"</c>, <c>"12"</c>, <c>"11.0"</c>,
+    /// <c>"7.3"</c>). Empty string means the csproj did not declare it;
+    /// the compilation builder falls back to Roslyn's default
+    /// <c>LanguageVersion.Default</c> (the same value
+    /// <c>CSharpParseOptions.Default</c> ships with). Parsed via
+    /// <c>LanguageVersionFacts.TryParse</c> — Roslyn's canonical primitive,
+    /// no homegrown lookup.
+    ///
+    /// Decided at discovery time by <see cref="RoslynModuleDiscovery"/>.
+    /// Consumed at compilation time by <c>ModuleCompilationBuilder.CreateCompilation</c>
+    /// when threading <c>CSharpParseOptions.WithLanguageVersion</c>.
+    /// Default empty preserves pre-fix behavior. INV-COMPFACT-001..003 /
+    /// LB-FOLLOWUP-20260514-001.
+    /// </summary>
+    public string LanguageVersion { get; init; } = "";
+
+    /// <summary>
+    /// Raw <c>&lt;Nullable&gt;</c> value declared in the csproj — one of
+    /// <c>"enable"</c>, <c>"disable"</c>, <c>"warnings"</c>,
+    /// <c>"annotations"</c>, or empty string (csproj did not declare it).
+    /// Mapped at compilation time to <c>NullableContextOptions</c> and
+    /// fed to <c>CSharpCompilationOptions.WithNullableContextOptions</c>
+    /// — Roslyn's canonical primitive. Without the threading, every
+    /// nullability-annotated symbol in a <c>&lt;Nullable&gt;enable&lt;/Nullable&gt;</c>
+    /// module loses its annotation context at extraction time and
+    /// compile-checks against the module silently flip ON/OFF for
+    /// nullable warnings depending on which compilation Lifeblood picked.
+    ///
+    /// Decided at discovery time by <see cref="RoslynModuleDiscovery"/>.
+    /// Consumed at compilation time by <c>ModuleCompilationBuilder.CreateCompilation</c>.
+    /// Default empty (treated as <c>Disable</c>) preserves pre-fix
+    /// behavior. INV-COMPFACT-001..003 / LB-FOLLOWUP-20260514-002.
+    /// </summary>
+    public string NullableContext { get; init; } = "";
+
+    /// <summary>
+    /// Diagnostic IDs declared in the csproj's <c>&lt;NoWarn&gt;</c> property
+    /// (semicolon-split, trimmed, empties dropped). Threaded at compilation
+    /// time into <c>CSharpCompilationOptions.WithSpecificDiagnosticOptions</c>
+    /// with each ID mapped to <c>ReportDiagnostic.Suppress</c>. Without
+    /// the threading, every <c>lifeblood_diagnose</c> response on a module
+    /// that suppresses <c>CS8632</c> / <c>CS8765</c> / etc. surfaces those
+    /// warnings as live findings — false noise the caller would have
+    /// silenced at build time.
+    ///
+    /// Decided at discovery time by <see cref="RoslynModuleDiscovery"/>.
+    /// Consumed at compilation time by <c>ModuleCompilationBuilder.CreateCompilation</c>.
+    /// Default empty preserves pre-fix behavior. INV-COMPFACT-001..003 /
+    /// LB-FOLLOWUP-20260514-003.
+    /// </summary>
+    public string[] NoWarnDiagnosticIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// How <see cref="Dependencies"/> expands into Roslyn compilation
     /// references. Decided at discovery time by inspecting the csproj
     /// schema; consumed by <c>ModuleCompilationBuilder</c>. Default
