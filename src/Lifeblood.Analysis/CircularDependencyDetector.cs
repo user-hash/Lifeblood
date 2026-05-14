@@ -1,4 +1,5 @@
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.PathClassification;
 using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Analysis;
@@ -40,7 +41,7 @@ public static class CircularDependencyDetector
         for (int i = 0; i < cycleSymbols.Length; i++)
         {
             var sym = graph.GetSymbol(cycleSymbols[i]);
-            if (sym != null && IsGeneratedOrStaticAnalysisPath(sym.FilePath))
+            if (sym != null && PathBucketClassifier.IsGenerated(sym.FilePath))
                 return new CycleDescriptor
                 {
                     Symbols = cycleSymbols,
@@ -98,36 +99,6 @@ public static class CircularDependencyDetector
             Symbols = cycleSymbols,
             Bucket = CycleBucket.LikelyRealLoop,
         };
-    }
-
-    /// <summary>
-    /// True when <paramref name="filePath"/> looks like build artifact
-    /// or source-generator output. Segment-aware on the lowercase
-    /// POSIX-normalized form so a folder named <c>obj</c> at the root
-    /// matches the same as a nested <c>/obj/</c>, and a filename
-    /// containing the word "generated" does not trigger unless the
-    /// dotted pattern matches. Mirrors the policy already enforced in
-    /// <c>LifebloodDeadCodeAnalyzer.ClassifyBucket</c>'s Generated tier
-    /// (INV-DEADCODE-TRIAGE-001). The duplicate logic is intentional
-    /// for now: extracting a shared <c>Lifeblood.Analysis.PathBucketClassifier</c>
-    /// across the dead-code analyzer, MCP provider, and this detector
-    /// is its own atom (three current callers + drifted definitions —
-    /// see <c>LifebloodMcpProvider.ClassifyBucket</c> for the older
-    /// substring-based variant).
-    /// </summary>
-    private static bool IsGeneratedOrStaticAnalysisPath(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return false;
-        var lower = filePath.Replace('\\', '/').ToLowerInvariant();
-
-        if (lower.EndsWith(".g.cs", StringComparison.Ordinal)) return true;
-        if (lower.Contains(".generated.")) return true;
-
-        foreach (var segment in lower.Split('/'))
-            if (segment == "obj" || segment == "bin" || segment == "generated")
-                return true;
-
-        return false;
     }
 
     /// <summary>

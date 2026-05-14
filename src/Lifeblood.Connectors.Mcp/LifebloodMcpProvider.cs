@@ -1,6 +1,7 @@
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.PathClassification;
 
 namespace Lifeblood.Connectors.Mcp;
 
@@ -182,23 +183,7 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
     /// tools. Production = none of the special-case rules match.
     /// </summary>
     private static string ClassifyBucket(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return "Production";
-        var lower = filePath.ToLowerInvariant();
-
-        if (lower.Contains("/obj/") || lower.Contains("\\obj\\")) return "Generated";
-        if (lower.Contains("/generated/") || lower.Contains("\\generated\\")) return "Generated";
-        if (lower.EndsWith(".generated.cs", System.StringComparison.Ordinal)) return "Generated";
-        if (lower.EndsWith(".g.cs", System.StringComparison.Ordinal)) return "Generated";
-
-        if (lower.Contains("/tests/") || lower.Contains("\\tests\\")) return "Test";
-        if (lower.EndsWith("tests.cs", System.StringComparison.Ordinal)) return "Test";
-        if (lower.EndsWith("test.cs", System.StringComparison.Ordinal)) return "Test";
-
-        if (lower.Contains("/editor/") || lower.Contains("\\editor\\")) return "Editor";
-
-        return "Production";
-    }
+        => PathBucketClassifier.Classify(filePath).ToString();
 
     public FileImpactResult GetFileImpact(SemanticGraph graph, string fileId)
     {
