@@ -48,21 +48,45 @@ public static class CircularDependencyDetector
                 };
         }
 
-        // Bucket 2: partial-class cluster — every member resolves up
-        // the Contains-chain to the same enclosing Type symbol. Captures
-        // intra-type mutual-recursion / method-pair cycles (the SCC
-        // surfaces them but they're not architectural loops).
-        string? sharedEnclosingType = null;
-        bool allShareEnclosingType = true;
+        // Bucket 2: partial-class cluster — every member of the SCC
+        // resolves to a non-empty set of "candidate enclosing types"
+        // and the intersection across every member is non-empty. The
+        // candidate set per member captures the Roslyn-canonical
+        // partial-class signature (INamedTypeSymbol.DeclaringSyntaxReferences
+        // pointing at multiple files) using the graph's existing
+        // Contains-edge encoding:
+        //
+        //   Type member:                  { self.Id }
+        //   Method / Field / Property:    { walk up Contains to first Type ancestor }
+        //   File member:                  { every Type the file declares via outgoing Contains }
+        //
+        // The set-intersection shape generalizes correctly across all
+        // SCC compositions Lifeblood observes empirically:
+        //   * method ↔ method cycles inside one partial type (the
+        //     original case the classifier was written for)
+        //   * file ↔ file cycles where every file is a partial decl
+        //     of the same type (the case the file-symbol classifier
+        //     used to miss — pre-fix every such cycle bucketed as
+        //     LikelyRealLoop because the walk-up returned null on
+        //     File roots)
+        //   * mixed-kind SCCs that happen to share an enclosing type
+        // INV-CYCLE-TAXONOMY-001.
+        HashSet<string>? sharedEnclosingTypes = null;
         for (int i = 0; i < cycleSymbols.Length; i++)
         {
-            var enclosing = WalkUpToEnclosingType(graph, cycleSymbols[i]);
-            if (enclosing == null) { allShareEnclosingType = false; break; }
-            if (sharedEnclosingType == null) sharedEnclosingType = enclosing;
-            else if (!string.Equals(enclosing, sharedEnclosingType, StringComparison.Ordinal))
-            { allShareEnclosingType = false; break; }
+            var candidates = EnclosingTypesOf(graph, cycleSymbols[i]);
+            if (candidates.Count == 0) { sharedEnclosingTypes = null; break; }
+            if (sharedEnclosingTypes == null)
+            {
+                sharedEnclosingTypes = candidates;
+            }
+            else
+            {
+                sharedEnclosingTypes.IntersectWith(candidates);
+                if (sharedEnclosingTypes.Count == 0) break;
+            }
         }
-        if (allShareEnclosingType && sharedEnclosingType != null)
+        if (sharedEnclosingTypes != null && sharedEnclosingTypes.Count > 0)
             return new CycleDescriptor
             {
                 Symbols = cycleSymbols,
@@ -107,20 +131,60 @@ public static class CircularDependencyDetector
     }
 
     /// <summary>
-    /// Walk <paramref name="symbolId"/> up the Contains-chain to the
-    /// first ancestor whose <see cref="Symbol.Kind"/> is
-    /// <see cref="SymbolKind.Type"/>. Returns the type's id, or the
-    /// original symbol's id if it already IS a Type, or null when no
-    /// type ancestor exists (file-scope members, namespace-scope, etc.).
-    /// Cycle-safe via a visited-set bounded to the graph's incoming-edge
-    /// fanout.
+    /// Compute the set of Type symbol ids that could "enclose"
+    /// <paramref name="symbolId"/> for partial-class classification.
+    /// Three shapes per <see cref="SymbolKind"/>:
+    ///
+    ///   <see cref="SymbolKind.Type"/>:           the type itself.
+    ///   Method / Field / Property / Event:        the unique Type
+    ///     ancestor reached by walking incoming Contains edges (the
+    ///     symbol's containing type). Empty set when the symbol is
+    ///     file-scope or namespace-scope and has no Type ancestor.
+    ///   <see cref="SymbolKind.File"/>:           every Type the file
+    ///     declares, surfaced via outgoing Contains edges. Files are
+    ///     graph roots — they have no Contains-parent — so the
+    ///     pre-fix incoming-edge walk returned null for every file
+    ///     node and the classifier missed every file-level
+    ///     partial-class SCC. INV-CYCLE-TAXONOMY-001 (post-fix).
+    ///   Other kinds (Module, Namespace, Parameter, etc.): empty.
+    ///
+    /// Cycle-safe via a per-call visited set. Returns a fresh mutable
+    /// HashSet because <see cref="Classify"/> intersects it in place.
     /// </summary>
-    private static string? WalkUpToEnclosingType(SemanticGraph graph, string symbolId)
+    private static HashSet<string> EnclosingTypesOf(SemanticGraph graph, string symbolId)
     {
+        var result = new HashSet<string>(StringComparer.Ordinal);
         var current = graph.GetSymbol(symbolId);
-        if (current == null) return null;
-        if (current.Kind == SymbolKind.Type) return current.Id;
+        if (current == null) return result;
 
+        if (current.Kind == SymbolKind.Type)
+        {
+            result.Add(current.Id);
+            return result;
+        }
+
+        if (current.Kind == SymbolKind.File)
+        {
+            // Files don't have a single enclosing type — they may
+            // declare zero, one, or many types. Surface every Type the
+            // file declares so a file-SCC where every file declares
+            // the same partial type still produces a non-empty
+            // intersection across cycle members.
+            foreach (var idx in graph.GetOutgoingEdgeIndexes(current.Id))
+            {
+                var edge = graph.Edges[idx];
+                if (edge.Kind != EdgeKind.Contains) continue;
+                var target = graph.GetSymbol(edge.TargetId);
+                if (target?.Kind == SymbolKind.Type)
+                    result.Add(target.Id);
+            }
+            return result;
+        }
+
+        // Members (Method / Field / Property / Event / etc.). Walk
+        // up Contains edges until we hit a Type ancestor; capture
+        // that single ancestor. Bounded by the visited set so a
+        // malformed graph with a Contains cycle can't loop forever.
         var visited = new HashSet<string>(StringComparer.Ordinal) { current.Id };
         var cursor = current;
         while (true)
@@ -135,11 +199,15 @@ public static class CircularDependencyDetector
                     break;
                 }
             }
-            if (parentId == null || !visited.Add(parentId)) return null;
+            if (parentId == null || !visited.Add(parentId)) return result;
 
             var parent = graph.GetSymbol(parentId);
-            if (parent == null) return null;
-            if (parent.Kind == SymbolKind.Type) return parent.Id;
+            if (parent == null) return result;
+            if (parent.Kind == SymbolKind.Type)
+            {
+                result.Add(parent.Id);
+                return result;
+            }
             cursor = parent;
         }
     }
