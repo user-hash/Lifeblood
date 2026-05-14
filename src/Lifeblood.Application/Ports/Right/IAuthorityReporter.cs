@@ -12,8 +12,7 @@ namespace Lifeblood.Application.Ports.Right;
 /// is a candidate for splitting; a host with concentrated public
 /// surface is doing real work and shouldn't be cut up.
 ///
-/// Pure read port. Stateless per INV-ANALYSIS-001. Phase P5
-/// (2026-04-26). See INV-AUTHORITY-001 in CLAUDE.md.
+/// Pure read port. Stateless per INV-ANALYSIS-001. See INV-AUTHORITY-001.
 /// </summary>
 public interface IAuthorityReporter
 {

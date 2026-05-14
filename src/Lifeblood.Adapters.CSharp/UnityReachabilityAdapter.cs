@@ -25,9 +25,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// payload (semicolon-separated simple attribute names) so it does not
 /// need a Roslyn compilation at query time — it works against any graph
 /// that was extracted by the C# adapter, including JSON-graph imports
-/// of previously-analyzed Unity workspaces. Phase P3 (2026-04-26).
-///
-/// See <c>INV-UNITY-001</c> in CLAUDE.md.
+/// of previously-analyzed Unity workspaces. See <c>INV-UNITY-001</c>.
 /// </summary>
 public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
 {

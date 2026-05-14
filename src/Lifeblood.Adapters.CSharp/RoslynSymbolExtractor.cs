@@ -545,7 +545,7 @@ public sealed class RoslynSymbolExtractor
     /// the Inherits edge as dangling. Skips System.Object /
     /// System.ValueType / System.Enum / System.Delegate because every
     /// type ultimately derives from one of those and recording it would
-    /// just be noise. Phase P3 (2026-04-26).
+    /// just be noise.
     /// </summary>
     private static void AttachBaseTypeFqn(IDictionary<string, string> props, INamedTypeSymbol typeSymbol)
     {
@@ -582,7 +582,7 @@ public sealed class RoslynSymbolExtractor
     /// Abstract / partial / extern bodies and methods with no body are
     /// not classified (no entry written) — there's no body shape to
     /// classify and the authority report explicitly handles missing
-    /// classification with a sentinel ratio. Phase P5 (LB-FR-020).
+    /// classification with a sentinel ratio. INV-FORWARDER-001.
     /// </summary>
     private static void AttachMethodClassification(
         IDictionary<string, string> props,
@@ -653,8 +653,7 @@ public sealed class RoslynSymbolExtractor
     /// Stores only the simple name (e.g. "RuntimeInitializeOnLoadMethod"),
     /// not the namespace, because attribute names are unique enough at
     /// the class-name level for the dispatch-detection use case and the
-    /// payload stays compact for very-large workspaces. Phase P3
-    /// (2026-04-26).
+    /// payload stays compact for very-large workspaces.
     /// </summary>
     private static void AttachAttributeNames(IDictionary<string, string> props, ISymbol sym)
     {

@@ -137,14 +137,14 @@ public sealed class ToolHandler
         var useCase = new GenerateContextUseCase(new AgentContextGenerator());
         var pack = useCase.Execute(_session.Graph!, _session.Analysis!);
 
-        // LB-FR-022 (dogfood): default behaviour previously emitted the
-        // full pack (~375KB on an 80+-module workspace), overflowing downstream
-        // tool-result limits. Same fix shape as cycles/blast_radius — every
-        // section gets a smart default cap, callers can override per-section
-        // or pass `summarize:true` for the smallest viable shape, and an
-        // explicit `sections` allowlist drops anything not requested. The
-        // response always carries a `truncated` map that names every clipped
-        // section + its full-pre-clip count, so callers know what was hidden.
+        // Default pack on an 80+-module workspace is ~375KB and overflows
+        // downstream tool-result limits, so every list-section carries a
+        // smart default cap. Callers can override per-section, pass
+        // `summarize:true` for the smallest viable shape (summary +
+        // invariants + violations only), or supply an explicit `sections`
+        // allowlist to drop anything not requested. The response always
+        // carries a `truncated` map naming every clipped section + its
+        // full pre-clip count so callers know what was hidden.
         var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
         var sections = ReadSectionsArray(args);
 
@@ -301,9 +301,9 @@ public sealed class ToolHandler
     /// Build the wire shape for a single dependency / dependant edge: the
     /// canonical id of the other endpoint, the edge kind, and the optional
     /// call-site provenance (file/line/column + containing symbol id).
-    /// Closes the field-report 2026-05-11 P1 ask. <see cref="CallSite"/> is
-    /// null for edges with no single authoring location (module→module
-    /// DependsOn, type-level Inherits without a surfaced clause node).
+    /// <see cref="CallSite"/> is null for edges with no single authoring
+    /// location (module→module DependsOn, type-level Inherits without a
+    /// surfaced clause node). INV-EDGE-CALLSITE-001.
     /// </summary>
     private static object BuildEdgeWire(EdgeDetail e) => new
     {
@@ -376,8 +376,7 @@ public sealed class ToolHandler
 
         // Direct (one-hop) dependants computed independently of the transitive
         // walk. The transitive blast can be 100x bigger than the direct count
-        // for popular types — callers need both to make the right decision
-        // (LB-FR-010 from the dogfood backlog).
+        // for popular types — callers need both to make the right decision.
         var directDependants = _provider.GetDependants(_session.Graph!, resolved.CanonicalId);
 
         var affected = _provider.GetBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth);
@@ -535,8 +534,8 @@ public sealed class ToolHandler
         var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests);
         var findings = _deadCode.FindDeadCode(_session.Graph!, options);
 
-        // LB-FR-024 (dogfood): same shape as cycles / context.
-        // large workspaces (53k+ symbols, default kinds) produces 286KB+ payloads that
+        // Same response-shape pattern as cycles / context.
+        // Large workspaces (53k+ symbols, default kinds) produce 286KB+ payloads that
         // overflow downstream tool-result limits — the tool succeeded but
         // the wire payload was unconsumable. summarize:true returns a
         // small preview-only response. maxResults caps the embedded array
@@ -890,15 +889,15 @@ public sealed class ToolHandler
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
         // Classified detection. Each descriptor is { symbols, bucket }.
-        // INV-CYCLE-TAXONOMY-001 / LB-TRACK-20260514-008 — caller can
-        // fold the Generated + Partial noise tail without re-walking
-        // the cycle members.
+        // INV-CYCLE-TAXONOMY-001 — caller can fold the Generated + Partial
+        // noise tail without re-walking the cycle members.
         var descriptors = Lifeblood.Analysis.CircularDependencyDetector.DetectClassified(_session.Graph!);
 
-        // LB-FR-021 (dogfood): same shape as blast_radius summarize/maxResults.
-        // large workspaces commonly carry 100+ SCCs serializing to ~70KB — exceeds downstream tool-result
-        // limits. summarize:true returns counts + a small preview without the full
-        // cycles array; maxResults caps the embedded array regardless of mode.
+        // Same response-shape pattern as blast_radius summarize / maxResults.
+        // Large workspaces commonly carry 100+ SCCs serializing to ~70KB —
+        // exceeds downstream tool-result limits. summarize:true returns
+        // counts + a small preview without the full cycles array;
+        // maxResults caps the embedded array regardless of mode.
         var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
         var maxResults = WriteToolHandler.GetInt(args, "maxResults") ?? (summarize ? 25 : 500);
         if (maxResults < 0) maxResults = 0;

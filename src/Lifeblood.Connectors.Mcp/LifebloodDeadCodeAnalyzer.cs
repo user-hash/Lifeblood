@@ -39,7 +39,6 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
     /// Inject a runtime-dispatch reachability provider (Unity, ASP.NET,
     /// MEF, etc.). When supplied, the analyzer treats symbols flagged
     /// by the provider as live and excludes them from the result.
-    /// Phase P3 (2026-04-26).
     /// </summary>
     public LifebloodDeadCodeAnalyzer(IUnityReachabilityProvider? runtimeReachability)
     {

@@ -491,8 +491,8 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }
   }
 
-  // LB-FR-003 / Plan v4 §2.6 / Correction 2: declaration locations are
-  // an opt-in operation policy on the host, NOT a side-effect of resolver
+  // Declaration locations are an opt-in operation policy on the host,
+  // NOT a side-effect of resolver
   // merging. Roslyn's ISymbol.Locations returns one entry per partial
   // declaration for partial types. Exactly the data the user wants
   // surfaced when querying "where is this type defined?"

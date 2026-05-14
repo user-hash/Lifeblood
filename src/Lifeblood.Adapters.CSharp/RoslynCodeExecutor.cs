@@ -108,7 +108,6 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     /// (Unity build artifacts, ASP.NET runtime pack, etc.). The resolver's
     /// probe paths are added to the script compiler's reference list so
     /// scripts can touch types that live outside the analyzed source.
-    /// Phase P4 (2026-04-26).
     /// </summary>
     public RoslynCodeExecutor(RoslynSemanticView view, IRuntimeAssemblyResolver? runtimeAssemblies)
     {
@@ -151,7 +150,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
 
         // Resolver diagnostics computed up-front so they're surfaced on
         // every result path (success, compilation error, blocked pattern,
-        // exception) — even when the script never actually runs. Phase P4.
+        // exception) — even when the script never actually runs.
         var runtimeAssemblyDiagnostics = _runtimeAssemblies?.GetDiagnostics() ?? Array.Empty<string>();
         var (bclRefs, targetWarnings) = ResolveTargetProfileBcl(request.TargetProfile);
 
@@ -200,7 +199,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
             foreach (var compilation in _compilations.Values)
                 allReferences.Add(compilation.ToMetadataReference());
 
-            // Phase P4: runtime assemblies the analyzed source doesn't carry
+            // Runtime assemblies the analyzed source doesn't carry
             // (UnityEngine.dll, UnityEditor.dll, ASP.NET runtime pack, etc.).
             // The resolver returns absolute paths; we filter to existing files
             // and skip duplicates by file name to avoid Roslyn's
@@ -355,7 +354,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     /// Returns the references plus any non-fatal diagnostics
     /// (unknown profile, ref-pack not installed locally, etc.). Falls
     /// back to the host BCL on any miss so the script still has SOME
-    /// reference set. Phase P4. Closes LB-FR-012 / LB-BUG-007.
+    /// reference set. See `INV-EXECUTE-001`.
     /// </summary>
     private static (MetadataReference[] refs, string[] warnings) ResolveTargetProfileBcl(string profile)
     {

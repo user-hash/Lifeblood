@@ -15,7 +15,7 @@ namespace Lifeblood.Application.Ports.Left;
 /// can echo them to the caller. The resolver does NOT load the
 /// assemblies — it just reports paths. The executor decides what to do.
 ///
-/// Closes LB-BUG-014. See INV-EXECUTE-001 in CLAUDE.md.
+/// See INV-EXECUTE-001.
 /// </summary>
 public interface IRuntimeAssemblyResolver
 {

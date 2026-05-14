@@ -59,7 +59,7 @@ public sealed class GraphSession : IDisposable
     /// presence of a top-level Library/ directory is the cheapest
     /// reliable signal Unity has touched the project. Used to decide
     /// whether to inject the Unity assembly resolver into the code
-    /// executor (Phase P4 / INV-EXECUTE-001).
+    /// executor. INV-EXECUTE-001.
     /// </summary>
     private bool LooksLikeUnityWorkspace(string? projectRoot)
     {
@@ -265,11 +265,10 @@ public sealed class GraphSession : IDisposable
                     adapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
 
                 newCompilationHost = new RoslynCompilationHost(adapter.Compilations, adapter.ModuleDependencies);
-                // Phase P4: when the project root looks Unity-shaped
-                // (Library/ exists), inject the Unity assembly resolver
-                // so executed scripts can touch UnityEngine types.
-                // Non-Unity workspaces get a null resolver → identical
-                // pre-P4 behavior. INV-EXECUTE-001.
+                // When the project root looks Unity-shaped (Library/ exists),
+                // inject the Unity assembly resolver so executed scripts can
+                // touch UnityEngine types. Non-Unity workspaces get a null
+                // resolver and identical behavior. INV-EXECUTE-001.
                 var unityResolver = LooksLikeUnityWorkspace(projectPath)
                     ? new UnityAssemblyResolver(_fs, projectPath)
                     : null;
@@ -500,9 +499,8 @@ public sealed class GraphSession : IDisposable
             canRetryFull,
             suggestedRetry,
             // Legacy field — kept for back-compat with callers that
-            // already read it. Phase P6 (LB-OBSERVATION-003) splits the
-            // signal into the two named fields below; new callers
-            // should prefer those.
+            // already read it. The signal is split into the two named
+            // fields below; new callers should prefer those.
             changedFileCount,
             changedSourceFiles = changedFileCount,
             touchedGraphFiles = changedFileCount,

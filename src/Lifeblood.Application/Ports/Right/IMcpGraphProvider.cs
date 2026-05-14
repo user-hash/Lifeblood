@@ -26,9 +26,7 @@ public interface IMcpGraphProvider
     /// occurrence, not every occurrence. CallSite is null for graph-derived
     /// edges with no single authoring location (module→module DependsOn,
     /// type→type Inherits without a surfaced clause node).
-    /// Closes the field-report 2026-05-11 P1 ask: dependency / dependants
-    /// responses needed per-edge file/line provenance so callers stop falling
-    /// back to manual file reading.
+    /// INV-EDGE-CALLSITE-001.
     /// </summary>
     EdgeDetail[] GetDependencyEdges(SemanticGraph graph, string symbolId);
 
@@ -45,8 +43,8 @@ public interface IMcpGraphProvider
     /// Classify the blast-radius set of <paramref name="symbolId"/> into
     /// buckets and per-module groups so callers can triage by source kind
     /// (production / test / editor / generated) or by module/asmdef.
-    /// Closes the field-report 2026-05-11 P1 ask: <c>affectedCount=221</c>
-    /// alone is a warning; structured grouping makes it actionable.
+    /// A flat <c>affectedCount=221</c> is a warning; structured grouping
+    /// makes it actionable. INV-BLAST-RADIUS-GROUP-001.
     ///
     /// Classification heuristics are path-based and match the conventions
     /// already used by <c>lifeblood_dead_code</c>:
@@ -71,7 +69,7 @@ public interface IMcpGraphProvider
 /// convention (Test / Editor / Generated / Production); module map groups
 /// by containing assembly/asmdef. Counts are always populated; previews
 /// are capped by the caller's <c>maxResults</c> argument.
-/// Closes the field-report 2026-05-11 P1 ask for blast-radius grouping.
+/// INV-BLAST-RADIUS-GROUP-001.
 /// </summary>
 public sealed class BlastRadiusGroups
 {
@@ -106,7 +104,7 @@ public sealed class GroupedBucket
 /// One edge in a dependency / dependant query response. Carries the canonical
 /// id of the OTHER endpoint (target for dependency queries, source for
 /// dependant queries), the edge kind, and the optional source-occurrence
-/// <see cref="CallSite"/>. Closes the field-report 2026-05-11 P1 ask.
+/// <see cref="CallSite"/>. INV-EDGE-CALLSITE-001.
 /// </summary>
 public sealed class EdgeDetail
 {

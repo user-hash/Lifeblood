@@ -244,8 +244,8 @@ class Program
     /// <c>INV-INCREMENTAL-XREF-001</c>: a full analyze followed by an
     /// incremental analyze on the same source tree (no file changes
     /// between the two calls) MUST produce identical <c>summary.edges</c>.
-    /// Pre-fix (LB-BUG-020), incremental dropped cross-module edges
-    /// silently in proportion to the unchanged-module fan-in.
+    /// The drift class this guards: incremental dropping cross-module
+    /// edges silently in proportion to the unchanged-module fan-in.
     ///
     /// Single-process so the adapter snapshot is shared between the two
     /// calls. Useful as a regression check any consumer can run against
@@ -286,7 +286,7 @@ class Program
             return 0;
         }
         Console.Error.WriteLine($"DRIFT DETECTED — symbols Δ={incSymbols - fullSymbols}, edges Δ={incEdges - fullEdges}.");
-        Console.Error.WriteLine("This indicates LB-BUG-020 or a regression. File a bug.");
+        Console.Error.WriteLine("This indicates an INV-INCREMENTAL-XREF-001 regression. File a bug.");
         return 1;
     }
 
