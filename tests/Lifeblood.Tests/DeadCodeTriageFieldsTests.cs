@@ -1,0 +1,207 @@
+using Lifeblood.Analysis;
+using Lifeblood.Application.Ports.Right;
+using Lifeblood.Connectors.Mcp;
+using Lifeblood.Domain.Capabilities;
+using Lifeblood.Domain.Graph;
+using Xunit;
+
+namespace Lifeblood.Tests;
+
+/// <summary>
+/// Regression tests for INV-DEADCODE-TRIAGE-001 — every dead-code finding
+/// carries <c>directDependants</c>, <c>bucket</c>, and <c>declarationOnly</c>
+/// so a consumer can triage findings without re-walking the graph.
+/// </summary>
+public class DeadCodeTriageFieldsTests
+{
+    private static readonly Evidence Evidence = new()
+    {
+        Kind = EvidenceKind.Semantic,
+        AdapterName = "test",
+        Confidence = ConfidenceLevel.Proven,
+    };
+
+    [Theory]
+    [InlineData("src/Production/Foo.cs",                       DeadCodeBucket.Production)]
+    [InlineData("D:\\repo\\src\\Production\\Foo.cs",           DeadCodeBucket.Production)]
+    [InlineData("tests/MyTests.cs",                            DeadCodeBucket.Test)]
+    [InlineData("src/foo/MyTest.cs",                           DeadCodeBucket.Test)]
+    [InlineData("D:/repo/Tests/Editor/CompTests.cs",           DeadCodeBucket.Test)]
+    [InlineData("Assets/Editor/Tools/Bar.cs",                  DeadCodeBucket.Editor)]
+    [InlineData("D:\\proj\\Assets\\Editor\\Tools\\Bar.cs",     DeadCodeBucket.Editor)]
+    [InlineData("Assets/Foo.Generated.cs",                     DeadCodeBucket.Generated)]
+    [InlineData("Assets/Generated/Schema.cs",                  DeadCodeBucket.Generated)]
+    [InlineData("obj/Debug/net8.0/Foo.cs",                     DeadCodeBucket.Generated)]
+    [InlineData("bin/Release/Bar.cs",                          DeadCodeBucket.Generated)]
+    [InlineData("",                                            DeadCodeBucket.Production)]
+    public void ClassifyBucket_PathPrefix_PicksMostSpecificSignal(string filePath, DeadCodeBucket expected)
+    {
+        // Generated wins over Editor wins over Test because the most
+        // specific signal should be the most authoritative classification.
+        // A file under Tests/Editor/ is a TEST (file convention) not an
+        // Editor utility; a file under obj/ is GENERATED even if it
+        // happens to end in *Tests.cs.
+        Assert.Equal(expected, LifebloodDeadCodeAnalyzer.ClassifyBucket(filePath));
+    }
+
+    [Fact]
+    public void FindDeadCode_AbstractMethod_FlagsDeclarationOnly()
+    {
+        // Symbol with IsAbstract=true must be flagged declarationOnly so
+        // a consumer doesn't treat interface/abstract members as routine
+        // cleanup candidates. Deleting one breaks every implementor.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:Acme.IFoo", Name = "IFoo", Kind = SymbolKind.Type,
+                FilePath = "src/IFoo.cs", Visibility = Visibility.Internal,
+                IsAbstract = true,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:Acme.IFoo.Bar()", Name = "Bar", Kind = SymbolKind.Method,
+                FilePath = "src/IFoo.cs", ParentId = "type:Acme.IFoo",
+                Visibility = Visibility.Internal, IsAbstract = true,
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:Acme.IFoo", TargetId = "method:Acme.IFoo.Bar()",
+                Kind = EdgeKind.Contains, Evidence = Evidence,
+            })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+
+        var barFinding = findings.FirstOrDefault(f => f.CanonicalId == "method:Acme.IFoo.Bar()");
+        Assert.NotNull(barFinding);
+        Assert.True(barFinding!.DeclarationOnly,
+            "Abstract method must be flagged DeclarationOnly so callers know deleting it breaks every implementor.");
+    }
+
+    [Fact]
+    public void FindDeadCode_ConcreteMethod_NotFlaggedDeclarationOnly()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:Acme.Foo", Name = "Foo", Kind = SymbolKind.Type,
+                FilePath = "src/Foo.cs", Visibility = Visibility.Internal,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:Acme.Foo.Bar()", Name = "Bar", Kind = SymbolKind.Method,
+                FilePath = "src/Foo.cs", ParentId = "type:Acme.Foo",
+                Visibility = Visibility.Internal, IsAbstract = false,
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:Acme.Foo", TargetId = "method:Acme.Foo.Bar()",
+                Kind = EdgeKind.Contains, Evidence = Evidence,
+            })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+
+        var bar = Assert.Single(findings, f => f.CanonicalId == "method:Acme.Foo.Bar()");
+        Assert.False(bar.DeclarationOnly);
+    }
+
+    [Fact]
+    public void FindDeadCode_ClassicFinding_DirectDependantsIsZero()
+    {
+        // The analyzer drops any symbol with non-Contains incoming edges
+        // via HasIncomingReference, so directDependants on every emitted
+        // finding is 0 by construction. The field carries the value
+        // anyway as forward-compatible signal for future relaxed criteria.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:Acme.Foo", Name = "Foo", Kind = SymbolKind.Type,
+                FilePath = "src/Foo.cs", Visibility = Visibility.Internal,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:Acme.Foo.Bar()", Name = "Bar", Kind = SymbolKind.Method,
+                FilePath = "src/Foo.cs", ParentId = "type:Acme.Foo",
+                Visibility = Visibility.Internal,
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:Acme.Foo", TargetId = "method:Acme.Foo.Bar()",
+                Kind = EdgeKind.Contains, Evidence = Evidence,
+            })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+
+        Assert.NotEmpty(findings);
+        Assert.All(findings, f => Assert.Equal(0, f.DirectDependants));
+    }
+
+    [Fact]
+    public void FindDeadCode_BucketReflectsFilePath()
+    {
+        // Drive the analyzer across four findings, one per bucket, and
+        // assert each one's bucket field reflects the path classification.
+        var graph = new GraphBuilder()
+            .AddSymbol(SymInProduction("type:Acme.Prod", "Prod", SymbolKind.Type))
+            .AddSymbol(SymInProduction("method:Acme.Prod.A()", "A", SymbolKind.Method))
+            .AddSymbol(SymInTest("type:Acme.Spec", "Spec", SymbolKind.Type))
+            .AddSymbol(SymInTest("method:Acme.Spec.B()", "B", SymbolKind.Method))
+            .AddSymbol(SymInEditor("type:Acme.Tool", "Tool", SymbolKind.Type))
+            .AddSymbol(SymInEditor("method:Acme.Tool.C()", "C", SymbolKind.Method))
+            .AddSymbol(SymInGenerated("type:Acme.Gen", "Gen", SymbolKind.Type))
+            .AddSymbol(SymInGenerated("method:Acme.Gen.D()", "D", SymbolKind.Method))
+            .AddEdge(ContainsEdge("type:Acme.Prod",  "method:Acme.Prod.A()"))
+            .AddEdge(ContainsEdge("type:Acme.Spec",  "method:Acme.Spec.B()"))
+            .AddEdge(ContainsEdge("type:Acme.Tool",  "method:Acme.Tool.C()"))
+            .AddEdge(ContainsEdge("type:Acme.Gen",   "method:Acme.Gen.D()"))
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(IncludeKinds: new[] { SymbolKind.Method },
+                                ExcludePublic: false, ExcludeTests: false));
+
+        Assert.Equal(DeadCodeBucket.Production, findings.Single(f => f.CanonicalId == "method:Acme.Prod.A()").Bucket);
+        Assert.Equal(DeadCodeBucket.Test,       findings.Single(f => f.CanonicalId == "method:Acme.Spec.B()").Bucket);
+        Assert.Equal(DeadCodeBucket.Editor,     findings.Single(f => f.CanonicalId == "method:Acme.Tool.C()").Bucket);
+        Assert.Equal(DeadCodeBucket.Generated,  findings.Single(f => f.CanonicalId == "method:Acme.Gen.D()").Bucket);
+    }
+
+    private static Symbol SymInProduction(string id, string name, SymbolKind kind) => new()
+    {
+        Id = id, Name = name, Kind = kind,
+        FilePath = "src/Production/Foo.cs",
+        ParentId = id.StartsWith("method:") ? "type:Acme.Prod" : "",
+        Visibility = Visibility.Internal,
+    };
+    private static Symbol SymInTest(string id, string name, SymbolKind kind) => new()
+    {
+        Id = id, Name = name, Kind = kind,
+        FilePath = "src/MySpecTests.cs",
+        ParentId = id.StartsWith("method:") ? "type:Acme.Spec" : "",
+        Visibility = Visibility.Internal,
+    };
+    private static Symbol SymInEditor(string id, string name, SymbolKind kind) => new()
+    {
+        Id = id, Name = name, Kind = kind,
+        FilePath = "Assets/Editor/Tools/Tool.cs",
+        ParentId = id.StartsWith("method:") ? "type:Acme.Tool" : "",
+        Visibility = Visibility.Internal,
+    };
+    private static Symbol SymInGenerated(string id, string name, SymbolKind kind) => new()
+    {
+        Id = id, Name = name, Kind = kind,
+        FilePath = "Assets/Foo.Generated.cs",
+        ParentId = id.StartsWith("method:") ? "type:Acme.Gen" : "",
+        Visibility = Visibility.Internal,
+    };
+    private static Edge ContainsEdge(string parent, string child) => new()
+    {
+        SourceId = parent, TargetId = child,
+        Kind = EdgeKind.Contains, Evidence = Evidence,
+    };
+}

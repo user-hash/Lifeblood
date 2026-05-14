@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
 
@@ -72,7 +74,12 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
                 Name: sym.Name,
                 FilePath: sym.FilePath,
                 Line: sym.Line,
-                Reason: BuildReason(sym, options)));
+                Reason: BuildReason(sym, options))
+            {
+                DirectDependants = CountDirectDependants(graph, sym.Id),
+                Bucket = ClassifyBucket(sym.FilePath),
+                DeclarationOnly = sym.IsAbstract,
+            });
         }
         return results
             .OrderBy(r => r.FilePath, StringComparer.Ordinal)
@@ -124,5 +131,77 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
     {
         var scope = options.ExcludePublic ? "non-public " : "";
         return $"{scope}{sym.Kind.ToString().ToLowerInvariant()} with no incoming semantic references";
+    }
+
+    /// <summary>
+    /// Count incoming non-Contains edges. Classic findings always carry 0
+    /// (the analyzer drops any symbol with such edges via
+    /// <see cref="HasIncomingReference"/>); the field is on the wire as
+    /// forward-compatible signal for future relaxed criteria where it
+    /// would surface the "barely reachable" class. INV-DEADCODE-TRIAGE-001.
+    /// </summary>
+    private static int CountDirectDependants(SemanticGraph graph, string symbolId)
+    {
+        int count = 0;
+        foreach (int idx in graph.GetIncomingEdgeIndexes(symbolId))
+        {
+            if (graph.Edges[idx].Kind == EdgeKind.Contains) continue;
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// Path bucket. Production by default. Mirrors the
+    /// <c>blast_radius groupBy=bucket</c> taxonomy
+    /// (INV-BLAST-RADIUS-GROUP-001) so a caller can join the two tool
+    /// surfaces. Classification is segment-aware (not substring): the
+    /// normalized POSIX path is split on <c>/</c> and matched as
+    /// whole segments, so a folder named <c>obj</c> at the project
+    /// root classifies identically to a nested <c>/obj/</c>, and a
+    /// filename containing the word "test" does not accidentally
+    /// trigger the Test bucket.
+    ///
+    /// Precedence (most authoritative signal wins):
+    ///   1. <see cref="DeadCodeBucket.Generated"/> — filename matches
+    ///      <c>*.Generated.*</c>, or any path segment is
+    ///      <c>generated</c> / <c>obj</c> / <c>bin</c>. Build artifacts
+    ///      and codegen are never a refactor target regardless of any
+    ///      other signal in the path.
+    ///   2. <see cref="DeadCodeBucket.Test"/> — any path segment is
+    ///      <c>tests</c>, or filename ends with <c>Tests.cs</c> /
+    ///      <c>Test.cs</c>. Test beats Editor because a fixture under
+    ///      <c>Tests/Editor/Foo.cs</c> is a test fixture (its Tests
+    ///      root + filename convention define what it is); the
+    ///      <c>Editor/</c> subfolder there is just NUnit PlayMode
+    ///      assembly placement.
+    ///   3. <see cref="DeadCodeBucket.Editor"/> — any path segment is
+    ///      <c>editor</c>. Unity editor-only utility, excluded from
+    ///      runtime builds.
+    ///   4. <see cref="DeadCodeBucket.Production"/> — otherwise.
+    ///
+    /// Comparisons are case-insensitive on the path-separator-normalized
+    /// form so Windows and POSIX inputs collapse to one match table.
+    /// INV-DEADCODE-TRIAGE-001.
+    /// </summary>
+    internal static DeadCodeBucket ClassifyBucket(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return DeadCodeBucket.Production;
+        var lower = filePath.Replace('\\', '/').ToLowerInvariant();
+        var segments = lower.Split('/');
+
+        if (lower.Contains(".generated.")
+            || segments.Any(s => s == "generated" || s == "obj" || s == "bin"))
+            return DeadCodeBucket.Generated;
+
+        if (segments.Any(s => s == "tests")
+            || lower.EndsWith("tests.cs", StringComparison.Ordinal)
+            || lower.EndsWith("test.cs", StringComparison.Ordinal))
+            return DeadCodeBucket.Test;
+
+        if (segments.Any(s => s == "editor"))
+            return DeadCodeBucket.Editor;
+
+        return DeadCodeBucket.Production;
     }
 }
