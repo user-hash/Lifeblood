@@ -159,6 +159,27 @@ public sealed class ModuleInfo
     public bool ImplicitUsings { get; init; }
 
     /// <summary>
+    /// Preprocessor symbols declared by the csproj's
+    /// <c>&lt;DefineConstants&gt;</c> property (split on <c>;</c>, trimmed,
+    /// empties dropped). When non-empty, the compilation builder MUST thread
+    /// these into <c>CSharpParseOptions.WithPreprocessorSymbols</c> on every
+    /// syntax tree parsed for the module; otherwise every <c>#if</c>-guarded
+    /// block whose token appears here is silently excluded from the
+    /// compilation unit, and any symbol referenced only inside such a guard
+    /// is invisible to <c>find_references</c> / <c>dead_code</c> /
+    /// <c>blast_radius</c> (the empirical L-LIM-001 trap on any Unity-
+    /// like workspace where production code wraps platform-specific
+    /// callsites in <c>#if</c> guards).
+    ///
+    /// Decided at discovery time by <see cref="RoslynModuleDiscovery"/>.
+    /// Consumed at compilation time by <c>ModuleCompilationBuilder.CreateCompilation</c>.
+    /// Default empty preserves pre-fix behavior for csprojs that declare no
+    /// <c>&lt;DefineConstants&gt;</c>. See INV-COMPFACT-001..003 in CLAUDE.md
+    /// and INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-TRACK-20260514-002.
+    /// </summary>
+    public string[] PreprocessorSymbols { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// How <see cref="Dependencies"/> expands into Roslyn compilation
     /// references. Decided at discovery time by inspecting the csproj
     /// schema; consumed by <c>ModuleCompilationBuilder</c>. Default
