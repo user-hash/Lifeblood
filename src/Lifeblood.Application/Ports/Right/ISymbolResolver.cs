@@ -289,7 +289,7 @@ public sealed class SymbolResolutionResult
 /// One overload of a method, surfaced on <see cref="SymbolResolutionResult.Overloads"/>.
 /// Carries the canonical id so a caller can feed it back into any read-side
 /// tool, the param display string for human-readable disambiguation, and
-/// the declaration location. Added 2026-04-11 for LB-INBOX-004.
+/// the declaration location.
 /// </summary>
 public sealed class OverloadInfo
 {

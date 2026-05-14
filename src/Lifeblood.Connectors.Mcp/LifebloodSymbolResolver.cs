@@ -21,8 +21,7 @@ namespace Lifeblood.Connectors.Mcp;
 ///     replaces the earlier "alias retry as final fallback" pattern —
 ///     canonicalization is NOT a retry, it's the first step of the
 ///     pipeline, and the grammar mismatch is fixed at the boundary
-///     instead of at the lookup layer. See Ground Rule 1 of the plan in
-///     <c>.claude/plans/improvement-master-2026-04-11.md</c>.</item>
+///     instead of at the lookup layer.</item>
 ///   <item>Exact canonical match (fast path; <see cref="ResolveOutcome.ExactMatch"/>).</item>
 ///   <item>Truncated method form <c>method:NS.Type.Name</c> with no parens —
 ///     lenient single-overload match
