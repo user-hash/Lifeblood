@@ -205,6 +205,108 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_LiteralIntArray_RowsCarryNumberValues()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly int[] Numbers = new int[] { 7, 11, 13 };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var table = Assert.Single(report!.Tables);
+
+        Assert.All(table.Rows, r =>
+        {
+            Assert.Null(r.ConstructorId);
+            Assert.Empty(r.Cells);
+            Assert.NotNull(r.Value);
+            Assert.Equal(StaticTableValueKind.Number, r.Value!.Kind);
+        });
+        Assert.Equal(7d, table.Rows[0].Value!.NumberValue);
+        Assert.Equal(11d, table.Rows[1].Value!.NumberValue);
+        Assert.Equal(13d, table.Rows[2].Value!.NumberValue);
+    }
+
+    [Fact]
+    public void GetStaticTables_LiteralStringArray_RowsCarryStringValues()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly string[] Tags = new string[] { ""alpha"", ""beta"" };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var table = Assert.Single(report!.Tables);
+
+        Assert.Equal(StaticTableValueKind.String, table.Rows[0].Value!.Kind);
+        Assert.Equal("alpha", table.Rows[0].Value!.StringValue);
+        Assert.Equal("beta", table.Rows[1].Value!.StringValue);
+    }
+
+    [Fact]
+    public void GetStaticTables_LiteralBoolArray_RowsCarryBoolValues()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly bool[] Flags = new bool[] { true, false, true };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var table = Assert.Single(report!.Tables);
+
+        Assert.Equal(StaticTableValueKind.Bool, table.Rows[0].Value!.Kind);
+        Assert.True(table.Rows[0].Value!.BoolValue);
+        Assert.False(table.Rows[1].Value!.BoolValue);
+        Assert.True(table.Rows[2].Value!.BoolValue);
+    }
+
+    [Fact]
+    public void GetStaticTables_LiteralObjectArrayWithNull_RowValueClassifiedAsNull()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly object[] Mixed = new object[] { null, 1 };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var table = Assert.Single(report!.Tables);
+
+        Assert.Equal(StaticTableValueKind.Null, table.Rows[0].Value!.Kind);
+        Assert.Equal(StaticTableValueKind.Number, table.Rows[1].Value!.Kind);
+    }
+
+    [Fact]
+    public void GetStaticTables_LiteralValuesCarryRawText()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly int[] Numbers = new int[] { 42 };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var v = report!.Tables[0].Rows[0].Value!;
+
+        Assert.Equal("42", v.RawText);
+        Assert.True(v.Line > 0);
+        Assert.True(v.Column > 0);
+    }
+
+    [Fact]
     public void GetStaticTables_ExpressionBodiedStaticProperty_Reported()
     {
         const string source = @"

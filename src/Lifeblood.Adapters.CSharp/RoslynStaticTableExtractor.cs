@@ -215,11 +215,23 @@ internal static class RoslynStaticTableExtractor
     private static StaticTableRow BuildRow(int ordinal, IOperation rowOp, Func<ISymbol, string> buildSymbolId)
     {
         var span = rowOp.Syntax.GetLocation().GetLineSpan();
+        var unwrapped = UnwrapTransparent(rowOp);
+
         string? ctorId = null;
-        if (UnwrapTransparent(rowOp) is IObjectCreationOperation ctorOp && ctorOp.Constructor != null)
+        StaticTableCell[] cells = Array.Empty<StaticTableCell>();
+        StaticTableValue? value = null;
+
+        if (unwrapped is IObjectCreationOperation ctorOp && ctorOp.Constructor != null)
         {
             ctorId = buildSymbolId(ctorOp.Constructor);
+            // Cell binding grows in a later lego; ConstructorId carries
+            // the contract until then.
         }
+        else
+        {
+            value = ClassifyValue(unwrapped, buildSymbolId);
+        }
+
         return new StaticTableRow
         {
             Ordinal = ordinal,
@@ -227,9 +239,96 @@ internal static class RoslynStaticTableExtractor
             Line = span.StartLinePosition.Line + 1,
             Column = span.StartLinePosition.Character + 1,
             ConstructorId = ctorId,
-            Cells = Array.Empty<StaticTableCell>(),
+            Cells = cells,
+            Value = value,
         };
     }
+
+    /// <summary>
+    /// Classify a value-position operation into a
+    /// <see cref="StaticTableValue"/>. The match table grows lego-by-lego;
+    /// any shape not yet covered falls back to
+    /// <see cref="StaticTableValueKind.Computed"/> with the raw source
+    /// span as the eternal provenance. INV-EXTRACT-STATIC-TABLES-001.
+    /// </summary>
+    private static StaticTableValue ClassifyValue(IOperation op, Func<ISymbol, string> buildSymbolId)
+    {
+        _ = buildSymbolId;
+        var inner = UnwrapTransparent(op);
+        var span = inner.Syntax.GetLocation().GetLineSpan();
+        var rawText = inner.Syntax.ToString();
+        var filePath = span.Path ?? "";
+        var line = span.StartLinePosition.Line + 1;
+        var column = span.StartLinePosition.Character + 1;
+
+        if (inner is ILiteralOperation literal && literal.ConstantValue.HasValue)
+        {
+            var constant = literal.ConstantValue.Value;
+            if (constant == null)
+            {
+                return new StaticTableValue
+                {
+                    Kind = StaticTableValueKind.Null,
+                    RawText = rawText,
+                    FilePath = filePath,
+                    Line = line,
+                    Column = column,
+                };
+            }
+            switch (constant)
+            {
+                case bool b:
+                    return new StaticTableValue
+                    {
+                        Kind = StaticTableValueKind.Bool,
+                        RawText = rawText,
+                        FilePath = filePath, Line = line, Column = column,
+                        BoolValue = b,
+                    };
+                case string s:
+                    return new StaticTableValue
+                    {
+                        Kind = StaticTableValueKind.String,
+                        RawText = rawText,
+                        FilePath = filePath, Line = line, Column = column,
+                        StringValue = s,
+                    };
+            }
+            if (IsNumericPrimitive(constant))
+            {
+                return new StaticTableValue
+                {
+                    Kind = StaticTableValueKind.Number,
+                    RawText = rawText,
+                    FilePath = filePath, Line = line, Column = column,
+                    NumberValue = Convert.ToDouble(constant, System.Globalization.CultureInfo.InvariantCulture),
+                };
+            }
+        }
+
+        // Roslyn surfaces a bare `null` literal in a non-nullable typed
+        // context as a default-literal / conversion combo. Cover the
+        // common case by checking the constant-value flag on the
+        // outermost original op too.
+        if (op.ConstantValue.HasValue && op.ConstantValue.Value == null)
+        {
+            return new StaticTableValue
+            {
+                Kind = StaticTableValueKind.Null,
+                RawText = rawText,
+                FilePath = filePath, Line = line, Column = column,
+            };
+        }
+
+        return new StaticTableValue
+        {
+            Kind = StaticTableValueKind.Computed,
+            RawText = rawText,
+            FilePath = filePath, Line = line, Column = column,
+        };
+    }
+
+    private static bool IsNumericPrimitive(object value) => value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;
 
     /// <summary>
     /// Find which retained compilation owns the source declaration for
