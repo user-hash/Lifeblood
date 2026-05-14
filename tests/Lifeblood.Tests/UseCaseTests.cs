@@ -357,6 +357,8 @@ public class UseCaseTests
         public bool IsAvailable => true;
         public DiagnosticInfo[] GetDiagnostics(string? moduleName = null) => Array.Empty<DiagnosticInfo>();
         public DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request) => Array.Empty<DiagnosticInfo>();
+        public DiagnosticsReport GetDiagnosticsReport(DiagnosticsRequest request)
+            => new() { Diagnostics = Array.Empty<DiagnosticInfo>(), DefinesActive = Array.Empty<string>() };
         public CompileCheckResult CompileCheck(string code, string? moduleName = null) => new() { Success = true };
         public CompileCheckResult CompileCheck(CompileCheckRequest request) => new() { Success = true };
         public ReferenceLocation[] FindReferences(string symbolId) => Array.Empty<ReferenceLocation>();

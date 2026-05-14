@@ -22,6 +22,19 @@ public interface ICompilationHost
     /// </summary>
     DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request);
 
+    /// <summary>
+    /// Diagnostics plus the preprocessor scope they were bound under. Same
+    /// scoping rules as <see cref="GetDiagnostics(DiagnosticsRequest)"/>;
+    /// the returned <see cref="DiagnosticsReport.DefinesActive"/> tells the
+    /// caller whether a finding is Editor-only noise or a release-build
+    /// risk without re-running the host under a different define set.
+    /// File-scope and single-module-scope return the owning compilation's
+    /// defines; project-wide scope returns the sorted, deduplicated union
+    /// across every loaded compilation. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001
+    /// / LB-INBOX-008.
+    /// </summary>
+    DiagnosticsReport GetDiagnosticsReport(DiagnosticsRequest request);
+
     CompileCheckResult CompileCheck(string code, string? moduleName = null);
 
     /// <summary>

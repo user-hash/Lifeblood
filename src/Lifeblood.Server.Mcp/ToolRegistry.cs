@@ -268,7 +268,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_diagnose",
   Availability = ToolAvailability.WriteSide,
-  Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Without filters, returns the full project's diagnostics. Pass `filePath` (relative or absolute) to scope diagnostics to one source file — useful when you want to verify a single file you just edited without drowning in a 300k-line project dump. Pass `moduleName` to scope to a single module. `filePath` and `moduleName` may be combined (file scope wins; module is used to disambiguate which compilation contains the file when the same path appears in multiple modules).",
+  Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Without filters, returns the full project's diagnostics. Pass `filePath` (relative or absolute) to scope diagnostics to one source file — useful when you want to verify a single file you just edited without drowning in a 300k-line project dump. Pass `moduleName` to scope to a single module. `filePath` and `moduleName` may be combined (file scope wins; module is used to disambiguate which compilation contains the file when the same path appears in multiple modules). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound this scope under) plus `resolvedModule` (the module the scope resolved to; null for project-wide) — distinguishes Editor-only findings from release-build risk without re-running under a different define set. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.",
   InputSchema = new
   {
   type = "object",
@@ -283,7 +283,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_compile_check",
   Availability = ToolAvailability.WriteSide,
-  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Pass either `code` (inline source) or `filePath` (relative or absolute path; the file is read off disk) — exactly one is required. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`).",
+  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Pass either `code` (inline source) or `filePath` (relative or absolute path; the file is read off disk) — exactly one is required. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound the snippet/file under) plus `resolvedModule` (the module the check resolved to) so a caller can tell Editor-only findings apart from release-build risk without re-running. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.",
   InputSchema = new
   {
   type = "object",
