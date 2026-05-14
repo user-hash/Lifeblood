@@ -389,6 +389,95 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_SingleEnumMember_ClassifiedAsEnumMember()
+    {
+        const string source = @"
+namespace Acme {
+  public enum Mode { Alpha, Beta, Gamma }
+  public class Row { public Row(Mode m) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(Mode.Beta) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.EnumMember, cell.Value.Kind);
+        Assert.NotNull(cell.Value.EnumMemberId);
+        Assert.Contains(".Beta", cell.Value.EnumMemberId);
+    }
+
+    [Fact]
+    public void GetStaticTables_ComposedEnumFlags_ClassifiedAsEnumFlags()
+    {
+        const string source = @"
+namespace Acme {
+  [System.Flags] public enum Bits { None=0, A=1, B=2, C=4 }
+  public class Row { public Row(Bits b) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(Bits.A | Bits.B) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.EnumFlags, cell.Value.Kind);
+        Assert.NotNull(cell.Value.EnumFlagMemberIds);
+        Assert.Equal(2, cell.Value.EnumFlagMemberIds!.Length);
+        Assert.Contains(cell.Value.EnumFlagMemberIds, id => id.EndsWith(".A"));
+        Assert.Contains(cell.Value.EnumFlagMemberIds, id => id.EndsWith(".B"));
+    }
+
+    [Fact]
+    public void GetStaticTables_NestedEnumFlags_FlattenedInAuthoringOrder()
+    {
+        const string source = @"
+namespace Acme {
+  [System.Flags] public enum Bits { None=0, A=1, B=2, C=4, D=8 }
+  public class Row { public Row(Bits b) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(Bits.A | Bits.B | Bits.D) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.EnumFlags, cell.Value.Kind);
+        Assert.Equal(3, cell.Value.EnumFlagMemberIds!.Length);
+        Assert.EndsWith(".A", cell.Value.EnumFlagMemberIds[0]);
+        Assert.EndsWith(".B", cell.Value.EnumFlagMemberIds[1]);
+        Assert.EndsWith(".D", cell.Value.EnumFlagMemberIds[2]);
+    }
+
+    [Fact]
+    public void GetStaticTables_SingleFlagValueWithoutOr_ClassifiedAsEnumMember()
+    {
+        const string source = @"
+namespace Acme {
+  [System.Flags] public enum Bits { None=0, A=1, B=2 }
+  public class Row { public Row(Bits b) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(Bits.A) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        // A bare flag value not composed via | is still a single enum
+        // member reference — caller can compose downstream.
+        Assert.Equal(StaticTableValueKind.EnumMember, cell.Value.Kind);
+        Assert.EndsWith(".A", cell.Value.EnumMemberId!);
+    }
+
+    [Fact]
     public void GetStaticTables_LiteralValuesCarryRawText()
     {
         const string source = @"
