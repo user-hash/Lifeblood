@@ -190,6 +190,16 @@ public sealed class StaticTableValue
     /// target has no source decl (compiled metadata), when the body has no <c>return</c> producing an enum-flag value, or
     /// when every return position falls back to <c>Computed</c>. INV-METHOD-FLAG-SUMMARY-001.
     /// </summary>
+    /// <remarks>
+    /// This field surfaces the narrow same-compilation return-position view only. For broader queries —
+    /// flag-field references anywhere in the body (not just <c>return</c> positions), cross-compilation
+    /// delegate targets, or transitive walks through helper-call chains — compose
+    /// <c>lifeblood_dependencies(methodGroupId)</c>: filter outbound <c>References</c> edges by enum-type-id
+    /// prefix on the caller side. The "does method M reference every flag in row R's cell?" question is a
+    /// pure client-side set-relation over two existing emissions; this field is one shape,
+    /// <c>lifeblood_dependencies</c> is the other. INV-FLAG-COVERAGE-COMPOSITION-001 pins the recipe and
+    /// forbids verdict-shaped wire tools on the join.
+    /// </remarks>
     public string[]? MethodReturnFlagIds { get; init; }
 
     /// <summary>Populated when <see cref="Kind"/> is <c>FieldReference</c>. Canonical field id of the referenced non-enum static field.</summary>
