@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Xunit;
@@ -135,6 +136,49 @@ public class DocsTests
   $"docs/STATUS.md has visible \"{m.Value}\" but hidden anchor declares toolCount={declared}. " +
   "Update the prose to match, or update the anchor.");
   }
+  }
+
+  [Fact]
+  public void StatusDoc_TestCount_MatchesDiscoveredCases()
+  {
+  // INV-DOCS-004. Single source of truth: <!-- testCount: N --> comment.
+  // Live truth: count of xUnit-discovered test cases across the
+  // Lifeblood.Tests assembly. Each [Fact]-derived method counts once;
+  // each [Theory] method counts once per [InlineData] row (fallback
+  // to 1 if a Theory uses [MemberData] / [ClassData] alone, since
+  // those expand only at runtime via test-case generators).
+  // Sibling to portCount / toolCount ratchets above.
+  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+  var status = File.ReadAllText(statusPath);
+
+  var match = Regex.Match(status, @"<!--\s*testCount:\s*(\d+)\s*-->");
+  Assert.True(match.Success,
+  "docs/STATUS.md must declare <!-- testCount: N --> so this ratchet has a single source of truth.");
+  var declared = int.Parse(match.Groups[1].Value);
+
+  var assembly = typeof(DocsTests).Assembly;
+  var factAttr = typeof(FactAttribute);
+  var theoryAttr = typeof(TheoryAttribute);
+  var inlineAttr = typeof(InlineDataAttribute);
+
+  var live = 0;
+  foreach (var t in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
+  {
+  foreach (var m in t.GetMethods(
+  BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+  {
+  if (m.GetCustomAttributes(factAttr, inherit: false).Length == 0) continue;
+  var isTheory = m.GetCustomAttributes(theoryAttr, inherit: false).Length > 0;
+  if (!isTheory) { live++; continue; }
+  var inlineRows = m.GetCustomAttributes(inlineAttr, inherit: false).Length;
+  live += Math.Max(1, inlineRows);
+  }
+  }
+
+  Assert.True(declared == live,
+  $"docs/STATUS.md declares testCount={declared} but Lifeblood.Tests discovery yields {live} " +
+  "test cases ([Fact] + per-[InlineData] expansion of [Theory]). Update the HTML comment in " +
+  "STATUS.md to the live count, or restore the test that caused the drift.");
   }
 
   [Fact]
