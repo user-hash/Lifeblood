@@ -94,8 +94,17 @@ public sealed class StaticTableRow
     /// <summary>Canonical id of the constructor invoked by the row. Null for non-constructed rows (literal arrays).</summary>
     public string? ConstructorId { get; init; }
 
-    /// <summary>One cell per constructor argument, in declaration order. Empty for literal-only rows.</summary>
+    /// <summary>One cell per constructor argument, in declaration order. Empty for literal-only rows — see <see cref="Value"/>.</summary>
     public required StaticTableCell[] Cells { get; init; }
+
+    /// <summary>
+    /// Classified value for non-constructor rows (literal arrays /
+    /// collection-expression scalar elements). Populated when
+    /// <see cref="ConstructorId"/> is null; null otherwise. Keeps the
+    /// row shape uniform across constructed and literal rows without
+    /// fabricating a fake cell.
+    /// </summary>
+    public StaticTableValue? Value { get; init; }
 }
 
 /// <summary>
