@@ -253,10 +253,29 @@ internal sealed class ModuleCompilationBuilder
             });
         }
 
+        // Preprocessor symbols are a discovered module fact (INV-COMPFACT-001..003
+        // + INV-DIAGNOSTIC-ENVELOPE-DEFINES-001). When the csproj declares
+        // <DefineConstants>X;Y</DefineConstants>, every #if-guarded block whose
+        // token matches X or Y must be included in the compilation unit;
+        // otherwise symbols referenced only inside those guards become
+        // invisible to find_references / dead_code / blast_radius (the
+        // empirical L-LIM-001 trap). Roslyn's primitive is
+        // CSharpParseOptions.WithPreprocessorSymbols — pass it to ParseText
+        // so every #if token resolves consistently across the module.
+        //
+        // When the module's symbol set is empty we still pass an explicit
+        // CSharpParseOptions instance instead of the default-null so
+        // RoslynCompilationHost.GetActiveDefines reads the canonical
+        // PreprocessorSymbolNames property (empty array) rather than the
+        // "options is null" fallback. Wire shape stays uniform.
+        var parseOptions = module.PreprocessorSymbols.Length > 0
+            ? CSharpParseOptions.Default.WithPreprocessorSymbols(module.PreprocessorSymbols)
+            : CSharpParseOptions.Default;
+
         var trees = sourceFiles
             .Select(f =>
             {
-                try { return CSharpSyntaxTree.ParseText(_fs.ReadAllText(f), path: f); }
+                try { return CSharpSyntaxTree.ParseText(_fs.ReadAllText(f), parseOptions, path: f); }
                 catch (IOException) { return null; }
             })
             .Where(t => t != null)

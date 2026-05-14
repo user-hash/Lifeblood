@@ -222,6 +222,24 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Select(el => el.Value)
                 .Any(v => string.Equals(v?.Trim(), "enable", StringComparison.OrdinalIgnoreCase));
 
+            // Compilation fact: <DefineConstants> (INV-COMPFACT-001..003 +
+            // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001). MSBuild concatenates every
+            // <DefineConstants> in the csproj (and PropertyGroup conditions,
+            // but Lifeblood doesn't evaluate MSBuild conditions — Unity emits
+            // the fully-expanded form). The value is a semicolon-separated
+            // list of preprocessor symbol names. Split, trim, drop empties.
+            // Multiple <DefineConstants> elements are unioned in declaration
+            // order; later identical entries deduplicate naturally because
+            // CSharpParseOptions.WithPreprocessorSymbols treats the symbol
+            // set as a set, not a multiset.
+            var preprocessorSymbols = doc.Descendants()
+                .Where(el => el.Name.LocalName == "DefineConstants")
+                .SelectMany(el => (el.Value ?? string.Empty).Split(';'))
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
             // Pure detection: no PackageReference or assembly Reference
             bool isPure = !doc.Descendants().Any(el =>
                 el.Name.LocalName == "PackageReference"
@@ -256,6 +274,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                     : BclOwnershipMode.HostProvided,
                 AllowUnsafeCode = allowUnsafeCode,
                 ImplicitUsings = implicitUsings,
+                PreprocessorSymbols = preprocessorSymbols,
                 ReferenceClosure = referenceClosure,
                 Properties = new Dictionary<string, string>
                 {
