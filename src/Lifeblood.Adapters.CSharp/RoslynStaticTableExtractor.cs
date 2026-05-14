@@ -301,6 +301,18 @@ internal static class RoslynStaticTableExtractor
         var line = span.StartLinePosition.Line + 1;
         var column = span.StartLinePosition.Character + 1;
 
+        var methodGroupId = TryExtractMethodGroupId(inner, buildSymbolId);
+        if (methodGroupId != null)
+        {
+            return new StaticTableValue
+            {
+                Kind = StaticTableValueKind.MethodGroup,
+                RawText = rawText,
+                FilePath = filePath, Line = line, Column = column,
+                MethodGroupId = methodGroupId,
+            };
+        }
+
         if (inner is IFieldReferenceOperation fieldRef
             && fieldRef.Field.ContainingType?.TypeKind == TypeKind.Enum
             && fieldRef.Field.IsConst)
@@ -397,6 +409,26 @@ internal static class RoslynStaticTableExtractor
     }
 
     private static bool IsNumericPrimitive(object value) => value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;
+
+    /// <summary>
+    /// Resolve a method-group cell value to its target method id when
+    /// the operation is a delegate creation over an IMethodReferenceOperation.
+    /// Returns null for inline lambdas / anonymous functions — the
+    /// extractor does not peek inside delegate bodies (that is dataflow,
+    /// a separate truth tier). Inline lambdas fall back to Computed.
+    /// </summary>
+    private static string? TryExtractMethodGroupId(IOperation op, Func<ISymbol, string> buildSymbolId)
+    {
+        if (op is IDelegateCreationOperation del)
+        {
+            var inner = UnwrapTransparent(del.Target);
+            if (inner is IMethodReferenceOperation methodRef)
+                return buildSymbolId(methodRef.Method);
+        }
+        if (op is IMethodReferenceOperation directRef)
+            return buildSymbolId(directRef.Method);
+        return null;
+    }
 
     /// <summary>
     /// Flatten an <c>|</c>-composed enum-flag expression into its leaf
