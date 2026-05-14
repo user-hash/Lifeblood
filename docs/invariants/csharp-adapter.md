@@ -66,9 +66,16 @@ consume at compilation time. The pattern is the contract. Every future
 csproj-driven option follows the same shape.
 
 - **INV-COMPFACT-001. Csproj is authoritative for module-level compilation
-  options.** Examples already shipped: `BclOwnership` (v2), `AllowUnsafeCode`
-  (v4). Future additions follow the same pattern: `LangVersion`, `Nullable`,
-  `DefineConstants`, `Platform`, `WarningLevel`, etc.
+  options.** Shipped facts: `BclOwnership` (v2), `AllowUnsafeCode` (v4),
+  `ImplicitUsings` (v0.6.4 — closes the implicit-global-usings extractor
+  gap), `LangVersion` / `Nullable` warning level / `NoWarn` (FOLLOWUP-001..003,
+  post-v0.7.3 — threaded into `CSharpParseOptions` /
+  `CSharpCompilationOptions` so a csproj declaring `<LangVersion>13</LangVersion>`
+  actually compiles under C# 13 instead of the host default), `DefineConstants`
+  (BUG-2, post-v0.7.3 — preprocessor symbols flow into `ParseOptions` so
+  `#if MY_FLAG` blocks survive parse instead of dead-code-eliminating).
+  Future additions (`Platform`, `WarningLevel`, etc.) follow the same
+  shape with zero new incremental work per INV-COMPFACT-003.
 
 - **INV-COMPFACT-002. Each compilation fact lives as a typed field on
   `ModuleInfo`.** Default value preserves pre-fix behavior. Set during

@@ -12,11 +12,12 @@ using Xunit.Abstractions;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Wave-end smoke: invoke every one of the 25 MCP tools through
-/// <see cref="ToolHandler.Handle"/> against a real Roslyn-analyzed
+/// Smoke: invoke every MCP tool registered in <see cref="ToolRegistry"/>
+/// through <see cref="ToolHandler.Handle"/> against a real Roslyn-analyzed
 /// workspace and assert each returns a structured JSON result without
-/// throwing. Catches the regression class "C2 / C4 broke a tool's
-/// dispatch via the resolver / search seam I didn't have eyes on."
+/// throwing. The tool list is read off the registry at test time so this
+/// fixture stays valid as new tools land. Catches the regression class
+/// "a refactor broke a tool's dispatch via the resolver / search seam."
 ///
 /// This is a SMOKE test — minimal fixture, happy-path inputs, asserts
 /// only that each tool responds with a JSON body and (where applicable)
