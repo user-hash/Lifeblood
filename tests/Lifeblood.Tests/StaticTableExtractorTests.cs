@@ -478,6 +478,51 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_MethodGroupCell_ClassifiedAsMethodGroup()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  public class Row { public Row(Func<int> producer) { } }
+  public class Foo {
+    static int Source() => 7;
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.MethodGroup, cell.Value.Kind);
+        Assert.NotNull(cell.Value.MethodGroupId);
+        Assert.Contains("Source", cell.Value.MethodGroupId);
+        Assert.StartsWith("method:", cell.Value.MethodGroupId);
+    }
+
+    [Fact]
+    public void GetStaticTables_InlineLambdaCell_FallsBackToComputed()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  public class Row { public Row(Func<int> producer) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(() => 11) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        // Inline lambdas are not method groups — extractor does not
+        // peek inside the body. Computed is the eternal fallback.
+        Assert.Equal(StaticTableValueKind.Computed, cell.Value.Kind);
+        Assert.Contains("=>", cell.Value.RawText);
+    }
+
+    [Fact]
     public void GetStaticTables_LiteralValuesCarryRawText()
     {
         const string source = @"
