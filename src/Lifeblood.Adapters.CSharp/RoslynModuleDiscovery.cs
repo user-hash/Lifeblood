@@ -227,6 +227,23 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 el.Name.LocalName == "PackageReference"
                 || el.Name.LocalName == "Reference");
 
+            // Reference closure detection (INV-MODULE-REFS-001).
+            // Old-format MSBuild 2003-schema csprojs (Unity asmdef generators,
+            // legacy .NET Framework projects) signature: xmlns of the root
+            // Project element is "http://schemas.microsoft.com/developer/msbuild/2003"
+            // AND there is no Sdk attribute. That schema's MSBuild targets
+            // never close ProjectReference transitively, so the source-of-truth
+            // compile classpath is direct-deps-only. SDK-style csprojs
+            // (<Project Sdk="..."> with no schema namespace) DO close
+            // transitively at build time, so Lifeblood mirrors that.
+            // Detection is csproj-shape only — no path heuristics, no Unity-
+            // specific markers, no filename sniffing. INV-MODULE-REFS-001.
+            bool hasSdkAttribute = !string.IsNullOrEmpty(doc.Root?.Attribute("Sdk")?.Value);
+            bool isOldFormatSchema = ns.NamespaceName == "http://schemas.microsoft.com/developer/msbuild/2003";
+            var referenceClosure = (isOldFormatSchema && !hasSdkAttribute)
+                ? ReferenceClosureMode.DirectOnly
+                : ReferenceClosureMode.Transitive;
+
             return new ModuleInfo
             {
                 Name = assemblyName,
@@ -239,6 +256,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                     : BclOwnershipMode.HostProvided,
                 AllowUnsafeCode = allowUnsafeCode,
                 ImplicitUsings = implicitUsings,
+                ReferenceClosure = referenceClosure,
                 Properties = new Dictionary<string, string>
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),

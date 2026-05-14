@@ -42,6 +42,49 @@ public enum BclOwnershipMode
     ModuleProvided = 1,
 }
 
+/// <summary>
+/// Whether the compilation reference set is the transitive closure of declared
+/// dependencies, or strictly the direct dependency list. Decided at discovery
+/// time from csproj inspection; consumed at compilation time. Adapter-agnostic.
+///
+/// See INV-MODULE-REFS-001 in <c>docs/invariants/module-refs.md</c>:
+///   INV-MODULE-REFS-001 — Reference closure mirrors the build tool that owns the csproj.
+///     SDK-style MSBuild closes ProjectReference transitively (the default
+///     for modern .NET projects). Old-format MSBuild 2003-schema csprojs
+///     (Unity asmdef generators) compile each module against direct
+///     dependencies only; transitively-reachable assemblies are NEVER added
+///     to the compile classpath. Lifeblood's compilation reference graph
+///     MUST mirror the closure semantics of the source-of-truth build tool,
+///     otherwise sibling-namespace assemblies become visible to lookup and
+///     shadow BCL types (the canonical failure: <c>Math.Min</c> in
+///     <c>namespace Acme.Foo</c> binds to <c>Acme.Math</c> namespace because
+///     <c>Acme.Math.dll</c> was transitively pulled in even though the
+///     module's asmdef does not declare a reference to it).
+/// </summary>
+public enum ReferenceClosureMode
+{
+    /// <summary>
+    /// Full transitive closure of <see cref="ModuleInfo.Dependencies"/> is
+    /// added to the compilation reference set. Mirrors SDK-style MSBuild,
+    /// where compiling A pulls in every assembly reachable through A's
+    /// ProjectReference graph so transitively-exposed types on B's public
+    /// surface can bind in A's source. Default — preserves pre-fix behavior
+    /// for SDK-style workspaces (Lifeblood self, NuGet ecosystem, modern .NET).
+    /// </summary>
+    Transitive = 0,
+
+    /// <summary>
+    /// Only the directly-declared dependencies (<see cref="ModuleInfo.Dependencies"/>
+    /// as-is) become compilation references. Mirrors Unity asmdef compile
+    /// semantics where each asmdef must explicitly list every assembly whose
+    /// types appear in its source — transitively-reachable assemblies are
+    /// NOT on the compile classpath. Set by <see cref="RoslynModuleDiscovery"/>
+    /// when the csproj uses the old-format MSBuild 2003 schema (Unity's
+    /// generator output). INV-MODULE-REFS-001.
+    /// </summary>
+    DirectOnly = 1,
+}
+
 public sealed class ModuleInfo
 {
     public string Name { get; init; } = "";
@@ -49,19 +92,16 @@ public sealed class ModuleInfo
 
     /// <summary>
     /// Names of the modules this one DIRECTLY depends on (populated from the
-    /// csproj's own <c>&lt;ProjectReference&gt;</c> elements only). These are
-    /// NOT the Roslyn compilation references — Roslyn compilations need the
-    /// full TRANSITIVE closure, because unlike MSBuild, Roslyn does not walk
-    /// indirect references automatically. Consumers that build compilation
-    /// reference lists MUST route this field through
-    /// <c>ModuleCompilationBuilder.ComputeTransitiveDependencies</c>.
+    /// csproj's own <c>&lt;ProjectReference&gt;</c> elements only). How this
+    /// field expands into Roslyn compilation references depends on
+    /// <see cref="ReferenceClosure"/>:
+    /// <see cref="ReferenceClosureMode.Transitive"/> walks the full closure
+    /// (SDK-style MSBuild); <see cref="ReferenceClosureMode.DirectOnly"/>
+    /// uses this list as-is (Unity asmdef).
     ///
-    /// Rationale and regression history: see INV-CANONICAL-001 in CLAUDE.md
-    /// and <c>tests/Lifeblood.Tests/CanonicalSymbolFormatTests.cs</c>. The
-    /// name of this field is kept as <c>Dependencies</c> rather than
-    /// <c>DirectDependencies</c> because it also feeds module→module graph
-    /// edges and the topological sort, both of which are correct with the
-    /// direct-only semantics.
+    /// Always direct-only when feeding module→module DependsOn graph edges
+    /// or the topological compile sort — both want the user-declared shape,
+    /// not the transitive closure. INV-MODULE-REFS-001 + INV-CANONICAL-001.
     /// </summary>
     public string[] Dependencies { get; init; } = Array.Empty<string>();
 
@@ -117,4 +157,14 @@ public sealed class ModuleInfo
     /// Default false preserves pre-fix behavior. See INV-COMPFACT-001..003 in CLAUDE.md.
     /// </summary>
     public bool ImplicitUsings { get; init; }
+
+    /// <summary>
+    /// How <see cref="Dependencies"/> expands into Roslyn compilation
+    /// references. Decided at discovery time by inspecting the csproj
+    /// schema; consumed by <c>ModuleCompilationBuilder</c>. Default
+    /// <see cref="ReferenceClosureMode.Transitive"/> preserves pre-fix
+    /// behavior for SDK-style workspaces. See <see cref="ReferenceClosureMode"/>
+    /// for the full invariant. INV-MODULE-REFS-001.
+    /// </summary>
+    public ReferenceClosureMode ReferenceClosure { get; init; } = ReferenceClosureMode.Transitive;
 }

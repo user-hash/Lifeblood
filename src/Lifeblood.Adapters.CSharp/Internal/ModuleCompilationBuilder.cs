@@ -112,21 +112,36 @@ internal sealed class ModuleCompilationBuilder
             var module = sorted[i];
             onModuleProgress?.Invoke(module.Name, i + 1, sorted.Length);
 
-            // Collect dependencies transitively. Roslyn compilation references
-            // are NOT transitive the way MSBuild project references are: if
-            // module A references B, and B references C, compiling A needs BOTH
-            // B and C as explicit references or Roslyn cannot bind any type
-            // from C used through B's public surface — the type becomes an
-            // error symbol with an empty ContainingNamespace, and every method
-            // symbol ID built from it loses its namespace qualifier, silently
-            // producing non-canonical IDs like `method:...Foo.Resolve(SemanticGraph,string)`
-            // instead of the fully-qualified `(Lifeblood.Domain.Graph.SemanticGraph,string)`.
-            // The topological sort above guarantees that every transitive
-            // dependency of `module` has already been compiled and downgraded,
-            // so the closure we compute here is always fully satisfiable.
-            // Root cause and dogfood evidence in
-            // .claude/plans/improvement-master-2026-04-11.md Part 1 NEW-01.
-            var depRefs = ComputeTransitiveDependencies(module, moduleLookup)
+            // Reference closure mode is a discovered module fact
+            // (INV-MODULE-REFS-001). Two semantics in one builder:
+            //
+            //   Transitive (SDK-style MSBuild, Lifeblood self): A → B → C
+            //     pulls C into A's compile classpath. Required so types from
+            //     C reachable through B's public surface bind in A's source
+            //     — without C as a ref, the type becomes an error symbol
+            //     with an empty ContainingNamespace and every derived
+            //     method id loses its namespace qualifier, silently
+            //     producing non-canonical IDs (NEW-01 / INV-CANONICAL-001).
+            //
+            //   DirectOnly (Unity asmdef, old-format MSBuild 2003-schema
+            //     csprojs): A → B does NOT pull B's other refs onto A's
+            //     classpath. Mirrors Unity's behavior where every asmdef
+            //     must explicitly list each direct AND transitively-exposed
+            //     assembly; a workspace that compiles in Unity provably
+            //     never has transitively-exposed types in any module's
+            //     source. Pulling them in anyway exposes sibling-namespace
+            //     assemblies (e.g. <c>Acme.Math.dll</c>) to lookup, where
+            //     they shadow BCL types — bare <c>Math.Min</c> in
+            //     <c>namespace Acme.X</c> binds to <c>Acme.Math</c>
+            //     namespace and emits a spurious CS0234. INV-MODULE-REFS-001.
+            //
+            // The topological sort above orders modules so every direct or
+            // transitive dependency of `module` has been compiled and
+            // downgraded by the time we read `downgraded` here, regardless
+            // of which closure mode we use to filter it.
+            var depRefs = (module.ReferenceClosure == ReferenceClosureMode.DirectOnly
+                    ? (IEnumerable<string>)module.Dependencies
+                    : ComputeTransitiveDependencies(module, moduleLookup))
                 .Where(downgraded.ContainsKey)
                 .Select(d => downgraded[d])
                 .ToArray();
