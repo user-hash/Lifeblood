@@ -17,8 +17,8 @@ public static class TestImpactAnalyzer
 {
     /// <summary>
     /// Method-level attribute names that mark a method as a test case.
-    /// Sourced from NUnit (the common DAWG / .NET testing baseline) and
-    /// Unity Test Framework. Lifecycle attributes (`SetUp`,
+    /// Sourced from NUnit (the common .NET testing baseline), Unity Test
+    /// Framework, and xUnit. Lifecycle attributes (`SetUp`,
     /// `OneTimeSetUp`, `TearDown`, `OneTimeTearDown`, `UnitySetUp`,
     /// `UnityTearDown`) are intentionally excluded — they participate
     /// in test execution but are not themselves the assertion-bearing
@@ -42,9 +42,48 @@ public static class TestImpactAnalyzer
 
     /// <summary>
     /// Compute the test-impact report for a target symbol.
+    ///
+    /// When the target's <see cref="Symbol.Kind"/> is
+    /// <see cref="SymbolKind.Type"/>, the BFS is multi-seeded with the
+    /// type AND every member it owns via outgoing Contains edges. The
+    /// canonical user query "what tests touch class Foo?" almost
+    /// always means "tests that touch any member of Foo" — tests
+    /// reference methods and fields, not the type itself, so
+    /// References/Calls edges typically terminate at members. Without
+    /// the expansion the walker walks incoming non-Contains from
+    /// `type:Foo` only, sees no Calls (those bind to methods), and
+    /// reports zero affected test classes even when 700+ tests touch
+    /// Foo's members. INV-TEST-IMPACT-001 / LB-TRACK-20260514-007
+    /// post-fix.
     /// </summary>
     public static TestImpactReport AnalyzeSymbol(SemanticGraph graph, string symbolId, int maxDepth = 12)
-        => Analyze(graph, new[] { symbolId }, symbolId, TestImpactTargetKind.Symbol, maxDepth);
+    {
+        var sources = ExpandTypeMembers(graph, symbolId);
+        return Analyze(graph, sources, symbolId, TestImpactTargetKind.Symbol, maxDepth);
+    }
+
+    /// <summary>
+    /// Return the BFS source seed set for <paramref name="symbolId"/>.
+    /// For a Type target, the set is the type itself plus every
+    /// directly-owned member reached via outgoing Contains. For every
+    /// other kind, the set is the single id (no expansion). See
+    /// <see cref="AnalyzeSymbol"/> for the rationale.
+    /// </summary>
+    private static string[] ExpandTypeMembers(SemanticGraph graph, string symbolId)
+    {
+        var sym = graph.GetSymbol(symbolId);
+        if (sym == null || sym.Kind != SymbolKind.Type)
+            return new[] { symbolId };
+
+        var sources = new List<string> { symbolId };
+        foreach (var idx in graph.GetOutgoingEdgeIndexes(symbolId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind == EdgeKind.Contains)
+                sources.Add(edge.TargetId);
+        }
+        return sources.ToArray();
+    }
 
     /// <summary>
     /// Compute the test-impact report for every symbol declared in
