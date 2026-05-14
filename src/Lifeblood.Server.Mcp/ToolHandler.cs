@@ -96,6 +96,7 @@ public sealed class ToolHandler
                 "lifeblood_find_definition" => _write.HandleFindDefinition(arguments),
                 "lifeblood_find_implementations" => _write.HandleFindImplementations(arguments),
                 "lifeblood_enum_coverage" => _write.HandleEnumCoverage(arguments),
+                "lifeblood_static_tables" => _write.HandleStaticTables(arguments),
                 "lifeblood_symbol_at_position" => _write.HandleGetSymbolAtPosition(arguments),
                 "lifeblood_documentation" => _write.HandleGetDocumentation(arguments),
                 "lifeblood_rename" => _write.HandleRename(arguments),

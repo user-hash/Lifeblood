@@ -555,6 +555,25 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_static_tables",
+  Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
+  Description = "Extract static collection-shaped initializers on a type as typed row + cell facts. Walks every `static` field / property whose initializer Roslyn surfaces as `IArrayCreationOperation`, `ICollectionExpressionOperation`, or a single `IObjectCreationOperation`, and reports one `table` entry per matching member with rows in source order. Row constructors carry `constructorId` + a `cells[]` array, where each cell binds a constructor argument to its parameter by name + ordinal and classifies the cell value into one of `Null` / `Bool` / `String` / `Number` / `EnumMember` / `EnumFlags` (e.g. `Bits.A | Bits.B` flattened to `enumFlagMemberIds[]` in authoring order) / `MethodGroup` (delegate-target method id, NOT body content) / `FieldReference` (non-enum static field) / `Array` (nested literal array, recursively classified) / `Computed` (eternal fallback for any shape the classifier doesn't cover yet — caller reads `rawText` for the source span). Literal-array / collection-expression rows carry their classified value on `row.value`; cells stay empty for non-constructor rows. Every value carries `filePath` + `line` + `column` provenance. `argumentKind` mirrors Roslyn's `IArgumentOperation.ArgumentKind` (`Explicit` / `DefaultValue` / `ParamArray`) so a caller can tell author-supplied cells apart from constructor defaults. The extractor is generic — it does not know consumer-domain row shapes; downstream rule-checks join row facts against project-specific contracts. `typeId` accepts canonical (`type:NS.T`), fully-qualified (`NS.T`), or bare short type names. Optional caps: `memberName` narrows to one field/property, `maxRows` (default 1024) clamps per-table rows, `maxTables` (default 64) clamps per-type tables — both fire the `rowsTruncated` / `tablesTruncated` flags. INV-EXTRACT-STATIC-TABLES-001.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "typeId" },
+  properties = new
+  {
+  typeId = new { type = "string", description = "Canonical, qualified, or short name of a type that may carry static table initializers." },
+  memberName = new { type = "string", description = "Optional. When set, only the matching static field / property is reported." },
+  maxRows = new { type = "integer", description = "Optional. Cap on rows extracted per table; defaults to 1024. Zero / negative values clamp to the default." },
+  maxTables = new { type = "integer", description = "Optional. Cap on tables extracted per type; defaults to 64. Zero / negative values clamp to the default." },
+  },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_symbol_at_position",
   Availability = ToolAvailability.WriteSide,
   Description = "Resolve what symbol is at a specific source position. Returns symbol ID, name, kind, qualified name, and documentation.",

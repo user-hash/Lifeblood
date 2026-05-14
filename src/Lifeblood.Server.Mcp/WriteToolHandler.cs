@@ -311,6 +311,32 @@ internal sealed class WriteToolHandler
         }, _jsonOpts));
     }
 
+    public McpToolResult HandleStaticTables(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+
+        var raw = GetString(args, "typeId");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("typeId is required");
+
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var options = new StaticTablesOptions
+        {
+            MemberName = GetString(args, "memberName"),
+            MaxRows = GetInt(args, "maxRows"),
+            MaxTables = GetInt(args, "maxTables"),
+        };
+
+        var report = _session.CompilationHost!.GetStaticTables(resolved.CanonicalId, options);
+        if (report == null)
+            return ErrorResult($"Type not found in source: {resolved.CanonicalId}");
+
+        return TextResult(JsonSerializer.Serialize(report, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
