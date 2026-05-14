@@ -148,4 +148,101 @@ public class CycleTaxonomyTests
     {
         Assert.Empty(CircularDependencyDetector.DetectClassified(new SemanticGraph()));
     }
+
+    [Fact]
+    public void DetectClassified_FileSccDeclaringSamePartialType_PartialClassCluster()
+    {
+        // File-level SCC where every file is a partial declaration of
+        // the same Type. The graph encodes the relationship through
+        // outgoing Contains edges (File → Type), exactly the way the
+        // CSharp extractor emits partials on a real workspace (every
+        // partial declaration of Voice surfaces as
+        // file:Voice.X.cs --Contains--> type:Voice).
+        //
+        // Pre-fix bucket: LikelyRealLoop (the walk-up returned null on
+        // File roots because Files have no Contains-parent). The fix:
+        // for File-kind cycle members, use outgoing Contains to Type
+        // children as the "candidate enclosing type" set and bucket as
+        // PartialClassCluster iff the intersection across every member
+        // is non-empty. INV-CYCLE-TAXONOMY-001.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Acme.Voice", Name = "Voice", Kind = SymbolKind.Type, FilePath = "src/Voice.cs" })
+            .AddSymbol(new Symbol { Id = "file:src/Voice.cs", Name = "Voice.cs", Kind = SymbolKind.File, FilePath = "src/Voice.cs" })
+            .AddSymbol(new Symbol { Id = "file:src/Voice.Filter.cs", Name = "Voice.Filter.cs", Kind = SymbolKind.File, FilePath = "src/Voice.Filter.cs" })
+            .AddSymbol(new Symbol { Id = "file:src/Voice.Modulation.cs", Name = "Voice.Modulation.cs", Kind = SymbolKind.File, FilePath = "src/Voice.Modulation.cs" })
+            // Every file declares the same partial type via outgoing Contains.
+            .AddEdge(new Edge { SourceId = "file:src/Voice.cs", TargetId = "type:Acme.Voice", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "file:src/Voice.Filter.cs", TargetId = "type:Acme.Voice", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "file:src/Voice.Modulation.cs", TargetId = "type:Acme.Voice", Kind = EdgeKind.Contains })
+            // 3-cycle on References between the file nodes (the empirical
+            // shape: method-in-Voice.cs calls method-in-Voice.Filter.cs
+            // produces a file→file References edge).
+            .AddEdge(new Edge { SourceId = "file:src/Voice.cs", TargetId = "file:src/Voice.Filter.cs", Kind = EdgeKind.References })
+            .AddEdge(new Edge { SourceId = "file:src/Voice.Filter.cs", TargetId = "file:src/Voice.Modulation.cs", Kind = EdgeKind.References })
+            .AddEdge(new Edge { SourceId = "file:src/Voice.Modulation.cs", TargetId = "file:src/Voice.cs", Kind = EdgeKind.References })
+            .Build();
+
+        var descriptors = CircularDependencyDetector.DetectClassified(graph);
+
+        // Only the file-SCC participates in a cycle; the type itself
+        // has no incoming non-Contains edges. Find that SCC and assert
+        // it bucketed as a partial cluster.
+        var fileScc = descriptors.Single(d =>
+            d.Symbols.All(s => s.StartsWith("file:")));
+        Assert.Equal(CycleBucket.PartialClassCluster, fileScc.Bucket);
+        Assert.Equal(3, fileScc.Symbols.Length);
+    }
+
+    [Fact]
+    public void DetectClassified_FileSccDeclaringDifferentTypes_LikelyRealLoop()
+    {
+        // Inverse of the previous test: file-level SCC where each file
+        // declares a DIFFERENT type. Intersection of candidate
+        // enclosing types across cycle members is empty — this is a
+        // real architectural file-coupling loop, not a partial-class
+        // cluster, and must bucket as LikelyRealLoop. Pins down that
+        // the new file-SCC handling doesn't over-claim "partial"
+        // status for unrelated files that happen to depend on each
+        // other.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Acme.A", Name = "A", Kind = SymbolKind.Type, FilePath = "src/A.cs" })
+            .AddSymbol(new Symbol { Id = "type:Acme.B", Name = "B", Kind = SymbolKind.Type, FilePath = "src/B.cs" })
+            .AddSymbol(new Symbol { Id = "file:src/A.cs", Name = "A.cs", Kind = SymbolKind.File, FilePath = "src/A.cs" })
+            .AddSymbol(new Symbol { Id = "file:src/B.cs", Name = "B.cs", Kind = SymbolKind.File, FilePath = "src/B.cs" })
+            .AddEdge(new Edge { SourceId = "file:src/A.cs", TargetId = "type:Acme.A", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "file:src/B.cs", TargetId = "type:Acme.B", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "file:src/A.cs", TargetId = "file:src/B.cs", Kind = EdgeKind.References })
+            .AddEdge(new Edge { SourceId = "file:src/B.cs", TargetId = "file:src/A.cs", Kind = EdgeKind.References })
+            .Build();
+
+        var descriptors = CircularDependencyDetector.DetectClassified(graph);
+
+        var fileScc = descriptors.Single(d =>
+            d.Symbols.All(s => s.StartsWith("file:")));
+        Assert.Equal(CycleBucket.LikelyRealLoop, fileScc.Bucket);
+    }
+
+    [Fact]
+    public void DetectClassified_MixedKindSccSamePartialType_PartialClassCluster()
+    {
+        // SCC whose members span File + Method kinds — the file
+        // declares partial type T, the methods are members of T. Every
+        // member's "candidate enclosing types" set contains T, so the
+        // intersection is { T } and the cycle is a partial cluster.
+        // Pins down that the generalized set-intersection logic
+        // doesn't regress on the mixed-kind case.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Acme.Voice", Name = "Voice", Kind = SymbolKind.Type, FilePath = "src/Voice.cs" })
+            .AddSymbol(new Symbol { Id = "method:Acme.Voice.Foo()", Name = "Foo", Kind = SymbolKind.Method, ParentId = "type:Acme.Voice", FilePath = "src/Voice.cs" })
+            .AddSymbol(new Symbol { Id = "file:src/Voice.Helpers.cs", Name = "Voice.Helpers.cs", Kind = SymbolKind.File, FilePath = "src/Voice.Helpers.cs" })
+            .AddEdge(new Edge { SourceId = "type:Acme.Voice", TargetId = "method:Acme.Voice.Foo()", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "file:src/Voice.Helpers.cs", TargetId = "type:Acme.Voice", Kind = EdgeKind.Contains })
+            .AddEdge(new Edge { SourceId = "method:Acme.Voice.Foo()", TargetId = "file:src/Voice.Helpers.cs", Kind = EdgeKind.References })
+            .AddEdge(new Edge { SourceId = "file:src/Voice.Helpers.cs", TargetId = "method:Acme.Voice.Foo()", Kind = EdgeKind.References })
+            .Build();
+
+        var descriptors = CircularDependencyDetector.DetectClassified(graph);
+
+        Assert.Equal(CycleBucket.PartialClassCluster, Assert.Single(descriptors).Bucket);
+    }
 }
