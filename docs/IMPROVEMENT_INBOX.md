@@ -308,4 +308,4 @@ If you find a friction point during a real session:
 2. Write the entry as: title, observation, suggested fix, why it matters.
 3. Anonymize all consumer-specific names. The Lifeblood repo carries no leakage from downstream workspaces. Describe shapes (`FooType`, `BarMethod`, `OuterType.PropertyName`) instead of real identifiers.
 4. Keep entries narrow. One observation, one fix shape per entry. Cross-reference with `LB-INBOX-NNN` ids when entries are related.
-5. When the fix ships, **delete the entry from this file**. The record of what shipped lives in `CHANGELOG.md` and the git history, not here. This file is an active roadmap, not a historical log.
+5. When the fix ships, **mark the entry SHIPPED at the heading** with the closing-commit / tag / INV-ID refs, preserve the original `Observed` / `Suggested fix shape` / `Why it matters` body verbatim, and keep the entry in this file. The CHANGELOG records what shipped from the release angle; this file records the original observation alongside its resolution so a future regression has a single page that links the symptom, the fix, and the contract that should be preventing recurrence.
