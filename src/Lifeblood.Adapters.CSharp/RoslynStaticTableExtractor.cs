@@ -301,6 +301,34 @@ internal static class RoslynStaticTableExtractor
         var line = span.StartLinePosition.Line + 1;
         var column = span.StartLinePosition.Character + 1;
 
+        if (inner is IFieldReferenceOperation fieldRef
+            && fieldRef.Field.ContainingType?.TypeKind == TypeKind.Enum
+            && fieldRef.Field.IsConst)
+        {
+            return new StaticTableValue
+            {
+                Kind = StaticTableValueKind.EnumMember,
+                RawText = rawText,
+                FilePath = filePath, Line = line, Column = column,
+                EnumMemberId = buildSymbolId(fieldRef.Field),
+            };
+        }
+
+        if (inner is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Or)
+        {
+            var flagIds = new List<string>();
+            if (TryCollectEnumFlagMembers(binary, flagIds, buildSymbolId))
+            {
+                return new StaticTableValue
+                {
+                    Kind = StaticTableValueKind.EnumFlags,
+                    RawText = rawText,
+                    FilePath = filePath, Line = line, Column = column,
+                    EnumFlagMemberIds = flagIds.ToArray(),
+                };
+            }
+        }
+
         if (inner is ILiteralOperation literal && literal.ConstantValue.HasValue)
         {
             var constant = literal.ConstantValue.Value;
@@ -369,6 +397,31 @@ internal static class RoslynStaticTableExtractor
     }
 
     private static bool IsNumericPrimitive(object value) => value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;
+
+    /// <summary>
+    /// Flatten an <c>|</c>-composed enum-flag expression into its leaf
+    /// member ids in authoring order. Recursion descends both operands;
+    /// each leaf must be an enum-const <see cref="IFieldReferenceOperation"/>
+    /// or the whole expression is rejected (returns false) so the
+    /// caller can fall back to <see cref="StaticTableValueKind.Computed"/>.
+    /// </summary>
+    private static bool TryCollectEnumFlagMembers(IOperation op, List<string> flagIds, Func<ISymbol, string> buildSymbolId)
+    {
+        var inner = UnwrapTransparent(op);
+        if (inner is IBinaryOperation binary && binary.OperatorKind == BinaryOperatorKind.Or)
+        {
+            return TryCollectEnumFlagMembers(binary.LeftOperand, flagIds, buildSymbolId)
+                && TryCollectEnumFlagMembers(binary.RightOperand, flagIds, buildSymbolId);
+        }
+        if (inner is IFieldReferenceOperation fieldRef
+            && fieldRef.Field.ContainingType?.TypeKind == TypeKind.Enum
+            && fieldRef.Field.IsConst)
+        {
+            flagIds.Add(buildSymbolId(fieldRef.Field));
+            return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// Find which retained compilation owns the source declaration for
