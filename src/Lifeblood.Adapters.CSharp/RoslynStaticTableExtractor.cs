@@ -313,16 +313,55 @@ internal static class RoslynStaticTableExtractor
             };
         }
 
-        if (inner is IFieldReferenceOperation fieldRef
-            && fieldRef.Field.ContainingType?.TypeKind == TypeKind.Enum
-            && fieldRef.Field.IsConst)
+        if (inner is IFieldReferenceOperation fieldRef)
         {
+            var isEnumConst = fieldRef.Field.ContainingType?.TypeKind == TypeKind.Enum && fieldRef.Field.IsConst;
+            if (isEnumConst)
+            {
+                return new StaticTableValue
+                {
+                    Kind = StaticTableValueKind.EnumMember,
+                    RawText = rawText,
+                    FilePath = filePath, Line = line, Column = column,
+                    EnumMemberId = buildSymbolId(fieldRef.Field),
+                };
+            }
             return new StaticTableValue
             {
-                Kind = StaticTableValueKind.EnumMember,
+                Kind = StaticTableValueKind.FieldReference,
                 RawText = rawText,
                 FilePath = filePath, Line = line, Column = column,
-                EnumMemberId = buildSymbolId(fieldRef.Field),
+                FieldReferenceId = buildSymbolId(fieldRef.Field),
+            };
+        }
+
+        if (inner is IArrayCreationOperation nestedArray)
+        {
+            var elements = nestedArray.Initializer?.ElementValues ?? (IReadOnlyList<IOperation>)Array.Empty<IOperation>();
+            var classified = new StaticTableValue[elements.Count];
+            for (var i = 0; i < elements.Count; i++)
+                classified[i] = ClassifyValue(elements[i], buildSymbolId);
+            return new StaticTableValue
+            {
+                Kind = StaticTableValueKind.Array,
+                RawText = rawText,
+                FilePath = filePath, Line = line, Column = column,
+                ArrayElements = classified,
+            };
+        }
+
+        var nestedCollection = TryUnpackCollectionExpression(inner, out _);
+        if (nestedCollection != null)
+        {
+            var classified = new StaticTableValue[nestedCollection.Count];
+            for (var i = 0; i < nestedCollection.Count; i++)
+                classified[i] = ClassifyValue(nestedCollection[i], buildSymbolId);
+            return new StaticTableValue
+            {
+                Kind = StaticTableValueKind.Array,
+                RawText = rawText,
+                FilePath = filePath, Line = line, Column = column,
+                ArrayElements = classified,
             };
         }
 

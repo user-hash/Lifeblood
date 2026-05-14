@@ -523,6 +523,69 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_StaticFieldReferenceCell_ClassifiedAsFieldReference()
+    {
+        const string source = @"
+namespace Acme {
+  public static class Shared { public static readonly int Common = 99; }
+  public class Row { public Row(int id) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(Shared.Common) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.FieldReference, cell.Value.Kind);
+        Assert.NotNull(cell.Value.FieldReferenceId);
+        Assert.Contains("Common", cell.Value.FieldReferenceId);
+    }
+
+    [Fact]
+    public void GetStaticTables_NestedArrayCell_ClassifiedAsArrayWithElements()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int[] tags) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(new int[] { 1, 2, 3 }) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.Array, cell.Value.Kind);
+        Assert.NotNull(cell.Value.ArrayElements);
+        Assert.Equal(3, cell.Value.ArrayElements!.Length);
+        Assert.Equal(StaticTableValueKind.Number, cell.Value.ArrayElements[0].Kind);
+        Assert.Equal(1d, cell.Value.ArrayElements[0].NumberValue);
+        Assert.Equal(2d, cell.Value.ArrayElements[1].NumberValue);
+    }
+
+    [Fact]
+    public void GetStaticTables_NestedCollectionExpressionCell_ClassifiedAsArray()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int[] tags) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row([ 7, 11 ]) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.Array, cell.Value.Kind);
+        Assert.Equal(2, cell.Value.ArrayElements!.Length);
+    }
+
+    [Fact]
     public void GetStaticTables_LiteralValuesCarryRawText()
     {
         const string source = @"
