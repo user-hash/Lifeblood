@@ -10,8 +10,7 @@ namespace Lifeblood.Application.Ports.Right;
 /// about (public-API boundary, reflection-reachable allow-list, test-
 /// only filter) is configuration on the input.
 ///
-/// Added 2026-04-11 (Phase 6) to close the R1 finding. Stateless per
-/// INV-ANALYSIS-001, read-only per INV-GRAPH-004.
+/// Stateless per INV-ANALYSIS-001, read-only per INV-GRAPH-004.
 /// </summary>
 public interface IDeadCodeAnalyzer
 {
