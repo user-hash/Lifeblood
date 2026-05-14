@@ -68,6 +68,22 @@ public interface ICompilationHost
     /// <summary>Find where a symbol is declared (definition site).</summary>
     DefinitionLocation? FindDefinition(string symbolId);
 
+    /// <summary>
+    /// Per-member reference coverage for an enum type. Walks every
+    /// loaded compilation once, classifies each reference site by parent
+    /// syntax (production / comparison / switch-pattern / other) and
+    /// returns a row per declared member. The dogfood case: a
+    /// state-machine or telemetry enum has values declared on the type
+    /// but never produced by runtime code — <c>find_references</c> hits
+    /// them as consumers (switch arms, equality checks) which masks the
+    /// drift. This call answers "is this value ever assigned to
+    /// anything?" in one step. Returns null when
+    /// <paramref name="enumTypeId"/> does not resolve to an enum type
+    /// in any loaded compilation. INV-ENUM-COVERAGE-001 /
+    /// LB-TRACK-20260514-003.
+    /// </summary>
+    EnumCoverageReport? GetEnumCoverage(string enumTypeId);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 

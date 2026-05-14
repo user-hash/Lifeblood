@@ -283,6 +283,36 @@ internal sealed class WriteToolHandler
             _jsonOpts));
     }
 
+    public McpToolResult HandleEnumCoverage(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+
+        var raw = GetString(args, "enumTypeId");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("enumTypeId is required");
+
+        // Route through the same resolver every other type-id-taking
+        // tool uses so callers can pass canonical / qualified / bare
+        // short type names interchangeably. Mirrors HandleFindReferences.
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var report = _session.CompilationHost!.GetEnumCoverage(resolved.CanonicalId);
+        if (report == null)
+            return ErrorResult($"Not an enum type: {resolved.CanonicalId}");
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            enumTypeId = report.EnumTypeId,
+            enumTypeName = report.EnumTypeName,
+            memberCount = report.Members.Length,
+            unproducedCount = report.UnproducedCount,
+            unreferencedCount = report.UnreferencedCount,
+            members = report.Members,
+        }, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;

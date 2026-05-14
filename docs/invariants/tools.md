@@ -58,6 +58,10 @@ robustness, Unity reachability, find-implementations.
 
 - **INV-BLAST-RADIUS-GROUP-001. `lifeblood_blast_radius` supports caller-selected response shapes for large transitive sets.** Default `groupBy = "none"` preserves the legacy flat shape (`affected[]` array + `summarize` / `maxResults` truncation). Caller passes `groupBy = "bucket" | "module" | "both"` to switch to grouped buckets (`byBucket: { Production, Test, Editor, Generated }`) and / or per-module counts (`byModule: { <moduleName>: { count, preview[] } }`) with optional per-group preview entries capped by `previewPerGroup` (default 5; `0` = counts only). Mutually exclusive with `summarize: true`. Bucketing is derived from file-path prefix (`Editor/`, `Tests/`, `.Generated.`) — no separate symbol-side metadata, so the policy generalises across consumer projects with conventional folder layouts. The flat-list shape returned a multi-megabyte response on transitive blasts of popular types; the grouped shape answers "how much production code breaks if I touch X?" in one number. Pinned by `BlastRadiusGroupingTests`. Closes the field-report 2026-05-11 P1 bucketing ask.
 
+## Enum Coverage (post-v0.7.3)
+
+- **INV-ENUM-COVERAGE-001. `lifeblood_enum_coverage` returns per-member reference coverage for an enum type — `produced` / `consumedComparison` / `consumedSwitch` / `other` counts classified by parent syntax, plus convenience flags `isUnproduced` (declared + referenced as a consumer but never assigned) and `isUnreferenced` (zero references of any kind).**
+
 ## Cycle Taxonomy (post-v0.7.3)
 
 - **INV-CYCLE-TAXONOMY-001. `lifeblood_cycles` classifies every detected SCC into one of three triage buckets and surfaces both per-cycle `bucket` and aggregate `bucketBreakdown` on the wire.**
