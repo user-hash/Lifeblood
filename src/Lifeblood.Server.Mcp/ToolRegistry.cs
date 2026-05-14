@@ -395,7 +395,7 @@ public static class ToolRegistry
   Name = "lifeblood_invariant_check",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Query the architectural invariants declared in the loaded project's CLAUDE.md. Three modes: (1) pass 'id' to fetch one invariant's full body, title, category, and source line; (2) pass mode='audit' (default) for a summary — total count, per-category breakdown, duplicate-id collisions, and parse warnings; (3) pass mode='list' for an id/title index across every declared invariant. The tool parses CLAUDE.md at the loaded project root, so lifeblood_analyze must have been called first to establish that root. Phase 8.",
+  Description = "Query the architectural invariants declared in the loaded project's invariant tree. The provider walks <root>/CLAUDE.md, <root>/AGENTS.md, and any <root>/docs/invariants/**.md, aggregating across every source. Three modes: (1) pass 'id' to fetch one invariant's full body, title, category, and source line; (2) pass mode='audit' (default) for a summary — total count, per-category breakdown, duplicate-id collisions, parse warnings, and contributing source paths; (3) pass mode='list' for an id/title index across every declared invariant. Requires a prior lifeblood_analyze to establish the project root.",
   InputSchema = new
   {
   type = "object",

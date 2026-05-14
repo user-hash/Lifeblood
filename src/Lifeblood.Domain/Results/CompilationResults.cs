@@ -160,8 +160,8 @@ public sealed class ReferenceLocation
     /// Whether this location is a declaration site of the symbol (e.g. the
     /// partial-type declaration header or the method definition) or a
     /// usage site (an invocation, an identifier reference, a member access).
-    /// Added 2026-04-11 to close the F3 finding. Defaults to <see cref="ReferenceKind.Usage"/>
-    /// so existing emitters keep the old meaning until they opt into tagging.
+    /// Defaults to <see cref="ReferenceKind.Usage"/> so existing emitters
+    /// keep the old meaning until they opt into tagging.
     /// </summary>
     public ReferenceKind Kind { get; init; } = ReferenceKind.Usage;
 }
