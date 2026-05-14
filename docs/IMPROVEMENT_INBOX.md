@@ -300,6 +300,89 @@ existing advisory-mode discipline — same shape, applied to enum members.
 
 ---
 
+## LB-INBOX-010. `dead_code` / `dependants` miss method-group references through target-typed `new(...)` and generic-method calls
+
+**Observed.** Self-dogfood on 2026-05-14 (post-v0.7.3, preparing v0.7.4)
+surfaced six `lifeblood_dead_code` method findings on Lifeblood itself.
+Three are legitimate runtime entry points (`Program.Main` × 3 across
+CLI / Server.Mcp / ScriptHost, documented in the response envelope's
+`limitations[]`). The other three are real graph-level false positives
+where `lifeblood_find_references` correctly sees the usage but
+`lifeblood_dependants` / `lifeblood_dead_code` / `lifeblood_blast_radius`
+miss it because the extractor never emitted a `Calls` edge:
+
+1. **Target-typed `new(MethodGroup)`** —
+   `src/Lifeblood.Adapters.CSharp/Internal/BclReferenceLoader.cs:20`
+   declares `public static readonly Lazy<MetadataReference[]> References = new(Load);`.
+   `find_references` returns one hit (Roslyn semantic), `dependants` count is `0`.
+   Same pattern at
+   `src/Lifeblood.Adapters.CSharp/RoslynCodeExecutor.cs:90` with
+   `new(LoadHostBclReferences)`.
+2. **Generic method-group / type-inferred call** —
+   `src/Lifeblood.Server.Mcp/ToolHandler.cs:162` calls `ApplyCap` five
+   times (`var (highValueFiles, filesTrunc) = ApplyCap(pack.HighValueFiles, maxFiles);`
+   …), but `method:Lifeblood.Server.Mcp.ToolHandler.ApplyCap(T[],int)`
+   shows `directDependants=0`. Suspected canonical-id drift between the
+   call-site's instantiated `IMethodSymbol` and the source-declared
+   generic definition.
+
+The tool already documents both classes in its response `warning`
+field ("methods referenced via method-group conversion (Lazy<T>, event
+handlers, delegate arguments); methods with call-site canonical-id
+drift in multi-module workspaces (pre-existing extraction gap under
+investigation)"), so consumers see the caveat. The audit caught a
+second, sharper miss: the test fixture
+`tests/Lifeblood.Tests/RoslynExtractorTests.cs:1145` claims to pin
+target-typed `new(Load)` coverage in its comment (
+"`static Lazy<T> _x = new(Load)` — `Load` must get an incoming edge so
+the dead-code analyzer does not flag it") but the actual source under
+test uses the EXPLICIT form
+(`private static readonly System.Lazy<string> _cache = new System.Lazy<string>(Load);`).
+The test pin and the contract diverge — a true regression-ratchet
+hole, not just a doc inconsistency.
+
+**Suggested fix shape.**
+
+1. **Close the target-typed gap.** Trace why
+   `RoslynEdgeExtractor.ExtractReferenceEdge`'s method-group handler
+   (lines 324-335) doesn't fire for the `Load` identifier inside
+   `new(Load)`. The handler matches `BaseObjectCreationExpressionSyntax`
+   for the ctor edge (correct), but the argument-position `Load`
+   `IdentifierNameSyntax` may resolve to a different `SymbolInfo` shape
+   under target-typed binding — `model.GetSymbolInfo` could return
+   `CandidateReason.OverloadResolutionFailure` until the target type
+   resolves the ctor, leaving `referencedSymbol` null at extraction
+   time. Likely fix: in target-typed contexts use
+   `GetSymbolInfo` on the OUTER `BaseObjectCreationExpressionSyntax` to
+   force target-type binding before re-querying the inner identifier,
+   or accept `CandidateReason.OverloadResolutionFailure` + walk
+   `CandidateSymbols`.
+2. **Close the generic-call canonical-id drift.** Investigate whether
+   the extractor emits the edge under the instantiated symbol-id
+   (e.g. `method:...ApplyCap(string[],int)`) versus the source-declared
+   generic id (`method:...ApplyCap(T[],int)`). If so, route through
+   `OriginalDefinition` before calling `GetMethodId` so the edge target
+   matches the canonical extracted symbol. (Mirrors the
+   `INV-CANONICAL-001` discipline applied elsewhere.)
+3. **Fix the test hole both ways.** Rename the existing fixture (which
+   covers the EXPLICIT-form path) to make its scope honest, then add a
+   new fixture that uses target-typed `new(Load)` and asserts the
+   `Calls` edge. The new test will fail until #1 ships — that's the
+   point. Pin as `[Fact(Skip="known FP — LB-INBOX-010")]` until then,
+   or as a regular `[Fact]` once #1 ships.
+4. **Promote both gaps into the published `INV-DEADCODE-001`
+   remaining-FP list** so the contract carries the constraint in the
+   invariant tree, not just in the runtime warning string.
+
+**Why it matters.** Tool-warning self-disclosure is honest; an extractor
+fix removes the warning. Three false positives on a 2,755-symbol
+codebase is small in absolute terms, but the gap class is exactly the
+kind of "AI agent decides a live method is dead" hazard the truth
+envelope is supposed to bound. Every percentage point removed from the
+advisory tail makes the `dead_code` tool more actionable.
+
+---
+
 ## How entries land here
 
 If you find a friction point during a real session:
