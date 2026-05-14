@@ -20,7 +20,7 @@ namespace Lifeblood.Tests;
 /// <see cref="FindReferencesCrossModuleTests"/> to exercise the real
 /// source/metadata boundary.
 /// </summary>
-public class FindReferencesPhase4Tests
+public class FindReferencesTests
 {
     private static MetadataReference[] BclReferences()
     {
