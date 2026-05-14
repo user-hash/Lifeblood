@@ -47,6 +47,54 @@ public sealed class CompileCheckResult
     /// file not yet in any module).
     /// </summary>
     public bool ExistingTreeReplaced { get; init; }
+
+    /// <summary>
+    /// Active preprocessor symbols Lifeblood used when binding the
+    /// snippet or file. Lets a caller tell apart Editor-only noise from
+    /// release-build risk without re-running the tool under a different
+    /// define set (e.g. distinguishing a finding gated behind
+    /// <c>UNITY_EDITOR</c> from one that will fail an IL2CPP player
+    /// build). Sorted ASCII-ordinal, deduplicated. Empty when the host
+    /// is unavailable. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 /
+    /// LB-INBOX-008.
+    /// </summary>
+    public string[] DefinesActive { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Diagnostic-set result with the preprocessor scope it was bound under.
+/// Returned by <c>ICompilationHost.GetDiagnosticsReport</c>; the legacy
+/// <c>GetDiagnostics</c> overloads keep their array shape for callers
+/// that do not care about define context. Lets a caller decide whether
+/// a flagged finding is Editor-only noise or release-build risk without
+/// re-running the tool under a different define set.
+/// INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.
+/// </summary>
+public sealed class DiagnosticsReport
+{
+    public required DiagnosticInfo[] Diagnostics { get; init; }
+
+    /// <summary>
+    /// Active preprocessor symbols for the requested scope. For
+    /// file-scope or module-scope requests this is the owning
+    /// compilation's parse-options symbol set. For project-wide
+    /// requests it is the union across every loaded compilation
+    /// (sorted ASCII-ordinal, deduplicated) — the honest answer is
+    /// "diagnostics were rendered across modules with these defines
+    /// active across the workspace", and the caller can re-query with
+    /// <see cref="DiagnosticsRequest.ModuleName"/> for per-module
+    /// precision when needed.
+    /// </summary>
+    public required string[] DefinesActive { get; init; }
+
+    /// <summary>
+    /// Module the report scope resolved to. Populated when the request
+    /// pinned a <see cref="DiagnosticsRequest.ModuleName"/> or
+    /// <see cref="DiagnosticsRequest.FilePath"/> mapped to exactly one
+    /// owning compilation; empty for project-wide scope spanning every
+    /// compilation.
+    /// </summary>
+    public string ResolvedModule { get; init; } = "";
 }
 
 /// <summary>

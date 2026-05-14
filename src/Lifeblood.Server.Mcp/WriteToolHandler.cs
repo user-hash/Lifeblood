@@ -63,14 +63,21 @@ internal sealed class WriteToolHandler
             FilePath = string.IsNullOrEmpty(filePath) ? null : filePath,
             ModuleName = string.IsNullOrEmpty(moduleName) ? null : moduleName,
         };
-        var diagnostics = _session.CompilationHost!.GetDiagnostics(request);
+        // Use the report shape so the wire carries definesActive +
+        // resolvedModule alongside the diagnostics. Callers no longer
+        // have to re-run with a different define set to tell Editor-
+        // only noise apart from release-build risk.
+        // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.
+        var report = _session.CompilationHost!.GetDiagnosticsReport(request);
         return TextResult(JsonSerializer.Serialize(new
         {
             scope = !string.IsNullOrEmpty(filePath) ? "file" : (!string.IsNullOrEmpty(moduleName) ? "module" : "project"),
             filePath,
             moduleName,
-            count = diagnostics.Length,
-            diagnostics,
+            resolvedModule = string.IsNullOrEmpty(report.ResolvedModule) ? null : report.ResolvedModule,
+            count = report.Diagnostics.Length,
+            definesActive = report.DefinesActive,
+            diagnostics = report.Diagnostics,
         }, _jsonOpts));
     }
 
@@ -144,6 +151,8 @@ internal sealed class WriteToolHandler
             filePath,
             resolvedModule = string.IsNullOrEmpty(result.ResolvedModule) ? null : result.ResolvedModule,
             existingTreeReplaced = result.ExistingTreeReplaced,
+            // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.
+            definesActive = result.DefinesActive,
         };
 
         if (refreshed is int changedFileCount)
@@ -156,6 +165,7 @@ internal sealed class WriteToolHandler
                 commonShape.filePath,
                 commonShape.resolvedModule,
                 commonShape.existingTreeReplaced,
+                commonShape.definesActive,
                 autoRefreshed = true,
                 changedFileCount,
             }, _jsonOpts));

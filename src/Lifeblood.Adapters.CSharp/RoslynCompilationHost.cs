@@ -32,6 +32,28 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   public DiagnosticInfo[] GetDiagnostics(string? moduleName = null) =>
   GetDiagnostics(new DiagnosticsRequest { ModuleName = moduleName });
 
+  public DiagnosticsReport GetDiagnosticsReport(DiagnosticsRequest request)
+  {
+  // File-scope: route through FindOwningCompilation (same path-match
+  // rules as the rest of the adapter). Module-scope: use the request's
+  // module name verbatim. Project-wide: empty resolvedModule, defines
+  // are the sorted-deduped union across every compilation.
+  // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001.
+  string resolvedModule = request.ModuleName ?? "";
+  if (!string.IsNullOrEmpty(request.FilePath) && string.IsNullOrEmpty(resolvedModule))
+  {
+  var owning = FindOwningCompilation(request.FilePath!, null);
+  resolvedModule = owning.Module ?? "";
+  }
+
+  return new DiagnosticsReport
+  {
+  Diagnostics = GetDiagnostics(request),
+  DefinesActive = CollectDefines(string.IsNullOrEmpty(resolvedModule) ? null : resolvedModule),
+  ResolvedModule = resolvedModule,
+  };
+  }
+
   public DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request)
   {
   var moduleName = request.ModuleName;
@@ -78,6 +100,48 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }
 
   return results.ToArray();
+  }
+
+  /// <summary>
+  /// Active preprocessor symbols for the resolved scope. Pulls
+  /// <c>CSharpParseOptions.PreprocessorSymbolNames</c> off the chosen
+  /// compilation's parse options; for project-wide scope (null
+  /// <paramref name="moduleName"/>), returns the union across every
+  /// loaded compilation. Always sorted ASCII-ordinal and deduplicated
+  /// so the wire form is stable across analyze runs. Skips
+  /// compilations whose parse options are not <c>CSharpParseOptions</c>
+  /// (defensive — every Roslyn C# compilation carries them in
+  /// practice). INV-DIAGNOSTIC-ENVELOPE-DEFINES-001.
+  /// </summary>
+  private string[] CollectDefines(string? moduleName)
+  {
+  IEnumerable<CSharpCompilation> targets;
+  if (moduleName != null)
+  {
+  if (!_compilations.TryGetValue(moduleName, out var pinned))
+  return Array.Empty<string>();
+  targets = new[] { pinned };
+  }
+  else
+  {
+  targets = _compilations.Values;
+  }
+
+  var defines = new SortedSet<string>(StringComparer.Ordinal);
+  foreach (var compilation in targets)
+  {
+  // ParseOptions on a CSharpCompilation is the project-level
+  // CSharpParseOptions; each SyntaxTree may override but in
+  // practice asmdef-generated modules carry one define set across
+  // every tree. Use the compilation's options for the canonical
+  // "what defines did Lifeblood compile this module with" answer.
+  if (compilation.SyntaxTrees.Length == 0) continue;
+  var opts = compilation.SyntaxTrees[0].Options as CSharpParseOptions;
+  if (opts == null) continue;
+  foreach (var sym in opts.PreprocessorSymbolNames)
+  if (!string.IsNullOrEmpty(sym)) defines.Add(sym);
+  }
+  return defines.ToArray();
   }
 
   /// <summary>
@@ -224,12 +288,16 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   Diagnostics = diagnostics,
   ResolvedModule = resolvedModule ?? "",
   ExistingTreeReplaced = existingTree != null,
+  DefinesActive = CollectDefines(resolvedModule),
   };
   }
 
   private CompileCheckResult CompileCheckSnippet(string code, string? moduleName)
   {
-  var targetCompilation = ResolveCompilation(moduleName);
+  // Route through ResolveCompilation so the snippet binds against a
+  // named compilation and DefinesActive reflects that module's
+  // parse-options symbol set. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001.
+  var (resolvedModuleName, targetCompilation) = ResolveCompilation(moduleName);
   if (targetCompilation == null)
   return new CompileCheckResult
   {
@@ -284,6 +352,8 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   {
   Success = !hasNewErrors,
   Diagnostics = snippetDiagnostics,
+  ResolvedModule = resolvedModuleName ?? "",
+  DefinesActive = CollectDefines(resolvedModuleName),
   };
   }
 
@@ -777,11 +847,23 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   };
   }
 
-  private CSharpCompilation? ResolveCompilation(string? moduleName)
+  /// <summary>
+  /// Single seam returning both the resolved module name AND its
+  /// compilation. Callers that need the name (e.g. surfacing
+  /// <c>resolvedModule</c> on a <see cref="CompileCheckResult"/> or
+  /// asking <see cref="CollectDefines"/> for the right define set)
+  /// no longer have to re-derive it from the picked compilation.
+  /// Project-wide fallback: first entry of <c>_compilations</c>
+  /// in insertion order. Returns <c>(null, null)</c> when
+  /// <paramref name="moduleName"/> names a module that does not
+  /// exist OR when there are no compilations at all.
+  /// </summary>
+  private (string? Module, CSharpCompilation? Compilation) ResolveCompilation(string? moduleName)
   {
   if (moduleName != null)
-  return _compilations.TryGetValue(moduleName, out var c) ? c : null;
-  return _compilations.Values.FirstOrDefault();
+  return _compilations.TryGetValue(moduleName, out var c) ? (moduleName, c) : (null, null);
+  var first = _compilations.FirstOrDefault();
+  return first.Key == null ? (null, null) : (first.Key, first.Value);
   }
 
   private static DomainDiagnosticSeverity MapSeverity(Microsoft.CodeAnalysis.DiagnosticSeverity severity) =>
