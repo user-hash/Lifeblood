@@ -1,16 +1,19 @@
 # Improvement Inbox
 
-State of Lifeblood going forward. Not a graveyard of shipped items and not a blog. Three things only:
+State of Lifeblood going forward. Four things:
 
 1. A current-state verdict compiled from the external reviews we run against the repo.
-2. A pointer to shipped work (tracked via git tags and `CHANGELOG.md`, not duplicated here).
-3. A small number of active forward-looking entries, each in a consistent format: title, observation, suggested fix shape, why it matters.
-
-Anything that has shipped is deleted from this file. Anything speculative that nobody is about to work on is also deleted. What remains is direction.
+2. A pointer to shipped work (tracked via git tags and `CHANGELOG.md`).
+3. Forward-looking entries: title, observation, suggested fix shape, why it matters.
+4. Shipped entries marked **SHIPPED** with closing-commit / INV-ID refs preserved verbatim. We keep them so a future regression has a trace path back to the fix that was supposed to prevent it — the inbox doubles as a regression catalogue, not a release blog. Anything speculative that nobody is about to work on is still deleted.
 
 ---
 
-## Status snapshot (post field-report 2026-05-11 polish wave, 2026-05-12 — preparing v0.7.3)
+## Status snapshot (post-v0.7.3 doc-refresh + comment-cleanup wave, 2026-05-14 — preparing v0.7.4)
+
+The post-v0.7.3 wave landed in two phases. Phase one shipped five new tool-facing capabilities (`lifeblood_test_impact`, `lifeblood_enum_coverage`, cycles taxonomy, dead_code triage fields, preprocessor scope on `diagnose` / `compile_check` envelopes), four follow-on bug fixes (BUG-1..4 from the 2026-05-14 fake-stuff audit), and the five-part FOLLOWUP series threading `LangVersion` / `Nullable` / `NoWarn` / `DefineConstants` into Roslyn options + extracting `PathBucketClassifier` as a Domain-layer SSoT. Phase two is a pre-release doc + comment refresh: doc tree updated everywhere (counts 26 → 28 tools, 776 → 893 tests, 80 → 87 invariants / 43 → 50 categories), one missing INV bullet authored (`INV-PATHBUCKET-SHARED-001` — was referenced inline + across source + tests but had no own body), and six-lego eternal-comment sweep across src/ + tests/ stripping Phase-X / Stage-N / dated "Added 2026-04-11" / finding-ID journey prose (~33 files, net ~70 LOC trimmed, every INV-ID + architectural rationale preserved). Three Phase-named test files renamed (AnalysisToolsPhase6Tests → AnalysisToolsTests, FindReferencesPhase4Tests → FindReferencesTests, ResolverPhase3Tests → ResolverCapabilityTests). **893/893 tests green throughout.** Inbox SHIPPED markers added on LB-INBOX-001 + LB-INBOX-002 + LB-INBOX-008 + LB-INBOX-009 with closing-commit + INV-ID refs preserved for regression-trace.
+
+## Status snapshot (post field-report 2026-05-11 polish wave, 2026-05-12 — v0.7.3 SHIPPED)
 
 The post-v0.7.2 polish wave landed eight commits closing one high-severity silent-data-loss bug + three structured-wire-shape asks from a real-world Unity workspace field report (2026-05-11) + an eternal-prose cleanup across src + tests + shipped docs. **Tests 751 → 776 (+25). MCP tools 25 → 26 (read-side 15 → 16). Authored invariants +4: `INV-INCREMENTAL-XREF-001`, `INV-EDGE-CALLSITE-001`, `INV-RESOLVE-MEMBER-001`, `INV-BLAST-RADIUS-GROUP-001`.** Closes `LB-BUG-020` (incremental analyze drops cross-module edges silently — false-positive dead-code class) plus the field-report 2026-05-11 P1 set (CallSite provenance on every expression-derived edge, type-scoped member resolution, blast-radius bucket / per-module grouping). Live-MCP dogfood on a real Unity workspace confirms all three new wire shapes — CallSite carried by 60.8% of edges (133,523 / 219,548; the remainder are graph-derived edges with no authoring location by design); `resolve_member` returns typed `Unique` outcome; `blast_radius groupBy=both` returns `byBucket: {Production, Test}` + `byModule: {<asmdef>}` populated with `previewPerGroup`-capped entries. Eternal-prose cleanup: 36 files / +141 −130 lines / 0 behavior change — Lifeblood now reads as a generic Roslyn semantic tool, no longer coupled to any one consumer project's symbol names or paths. **No tag yet — v0.7.3 is a candidate awaiting 3× verification per legacy-project policy.**
 
@@ -79,7 +82,9 @@ The five phases are tracked below as `LB-INBOX-001` through `LB-INBOX-005`. A sm
 
 ---
 
-## LB-INBOX-001. Phase 1. Uniform truth envelope across every read-side tool
+## LB-INBOX-001. Phase 1. Uniform truth envelope across every read-side tool — **SHIPPED v0.6.5 (INV-ENVELOPE-001)**
+
+**Resolution.** Truth envelope landed as `INV-ENVELOPE-001`: every read-side response carries `truthTier` (`Semantic` / `Derived` / `Heuristic` / `Inferred`), `confidence` (`Proven` / `Advisory` / `Speculative`), `evidenceSource`, `stalenessSeconds`, `filesChangedSinceAnalyze`, and per-tool `limitations[]`. Classification table lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into `LifebloodResponseDecorator` at composition time. Adding a new read-side tool without a classification fails the registry ratchet test. Original entry preserved below for regression-trace.
 
 **Observed.** `lifeblood_dead_code` ships with a `status: "experimental"` marker and a `warning` field that describes its known false-positive classes in-band. Every other tool returns results without a comparable metadata shape. A caller receiving a `find_references` hit has no way to tell from the payload alone whether that hit is compiler-resolved, parser-structural, or graph-derived. The existing separation of syntax / semantic / derived truth in `docs/ARCHITECTURE.md` is not projected to the wire.
 
@@ -97,7 +102,9 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ---
 
-## LB-INBOX-002. Phase 2. Close out `INV-DEADCODE-001` and the shared extraction gap
+## LB-INBOX-002. Phase 2. Close out `INV-DEADCODE-001` and the shared extraction gap — **SHIPPED v0.6.5 + v0.6.7 (INV-UNITY-001, LB-FP-003)**
+
+**Resolution.** Three extractor classes closed in v0.6.5 (constructor `Calls` edge, field-initializer containing method, property-accessor body context). Unity reachability port (`INV-UNITY-001`) added in v0.6.7 closes the MonoBehaviour magic-method false-positive class. `LB-FP-003` (v0.7.0) extends Unity reflection to `[SettingsProvider]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, full NUnit fixture lifecycle, plus type-via-child propagation. Post-v0.7.3 the `INV-DEADCODE-TRIAGE-001` triage fields (`directDependants` / `bucket` / `declarationOnly`) shipped on top, with `bucketBreakdown` summary. Live dogfood on an 87-module Unity workspace: 1095 → 729 findings (-33%), MonoBehaviour-magic FPs 378 → 13 (-97%), type-level findings 6 → 4 post-`LB-FP-003`. Original entry preserved below for regression-trace.
 
 **Observed.** After the v0.6.4 extraction pass (interface dispatch, member-access granularity, null-conditional property, lambda context) and the implicit-global-usings compilation fix, the `lifeblood_dead_code` self-analysis tail stabilized at 10 findings. A follow-up pass closed three more structural gaps that the original "by design / known gap" framing had enshrined:
 
@@ -216,7 +223,9 @@ which is the overwhelming common case.
 
 ---
 
-## LB-INBOX-008. Per-diagnostic preprocessor-scope reporting on the envelope
+## LB-INBOX-008. Per-diagnostic preprocessor-scope reporting on the envelope — **SHIPPED [Unreleased] (INV-DIAGNOSTIC-ENVELOPE-DEFINES-001)**
+
+**Resolution.** Every `lifeblood_diagnose` and `lifeblood_compile_check` response now surfaces `definesActive` (the sorted, deduplicated preprocessor symbols Lifeblood bound the scope under) plus `resolvedModule` (the module the scope resolved to; empty for project-wide). Scope rules mirror legacy diagnostics: file-scope routes through `FindOwningCompilation`; module-scope uses the request's module name; project-wide returns the sorted-deduped union across every loaded compilation. Domain `DiagnosticsReport { Diagnostics, DefinesActive, ResolvedModule }` + `DefinesActive` on `CompileCheckResult`. The `defineConstraints` option (fix shape #3) deferred — the live observation pattern is "did this finding bind under Editor or release defines?", answered by `definesActive` alone; an as-if-player one-shot can be added if real sessions demand it. Pinned by `DiagnosticEnvelopeDefinesTests` (7 facts). Closes `LB-TRACK-20260514-002`. Original entry preserved below for regression-trace.
 
 **Observed.** During a player-build readiness audit of a workspace (see related
 session note in dogfood-archive feedback doc), Lifeblood's standalone diagnostic
@@ -254,7 +263,9 @@ existing surface to extend).
 
 ---
 
-## LB-INBOX-009. Enum-member reference queries return inconclusive results
+## LB-INBOX-009. Enum-member reference queries return inconclusive results — **SHIPPED [Unreleased] (INV-ENUM-COVERAGE-001)**
+
+**Resolution.** Fix shape #2 shipped: dedicated `lifeblood_enum_coverage` tool takes an enum type id and returns per-member produced / consumedComparison / consumedSwitch / other counts plus `isUnproduced` / `isUnreferenced` flags, all classified by parent syntax in a single O(total_nodes) walk per compilation (cheaper than per-member `find_references`). Top-level `unproducedCount` + `unreferencedCount` summaries answer the dogfood audit ("which state-machine values are checked-for but never assigned?") off one call. Fix shape #1 (the three-way reference-kind classification on `find_references` itself) NOT shipped — `enum_coverage` superseded it as the canonical workflow because per-member find_references doesn't scale on real enums and the classification already lives inside enum_coverage. Fix shape #3 (`lifeblood_dead_code` flagging unproduced enum members) NOT shipped — `enum_coverage`'s `isUnproduced` flag is the answer; dead_code would just rediscover it. Pinned by `EnumCoverageTests` (8 facts). Closes `LB-TRACK-20260514-003`. Original entry preserved below for regression-trace.
 
 **Observed.** Verifying "every declared enum value is produced by source code"
 on a real reject-reason / telemetry-bucket enum
