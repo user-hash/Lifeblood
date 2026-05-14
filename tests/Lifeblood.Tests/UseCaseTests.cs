@@ -365,6 +365,7 @@ public class UseCaseTests
         public ReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options) => Array.Empty<ReferenceLocation>();
         public DefinitionLocation? FindDefinition(string symbolId) => null;
         public EnumCoverageReport? GetEnumCoverage(string enumTypeId) => null;
+        public StaticTableReport? GetStaticTables(string typeId, StaticTablesOptions options) => null;
         public string[] FindImplementations(string symbolId) => Array.Empty<string>();
         public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column) => null;
         public string GetDocumentation(string symbolId) => "";

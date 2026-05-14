@@ -83,6 +83,24 @@ public interface ICompilationHost
     /// </summary>
     EnumCoverageReport? GetEnumCoverage(string enumTypeId);
 
+    /// <summary>
+    /// Generic static-initializer table extraction. Walks every
+    /// <c>static</c> field / property on <paramref name="typeId"/>
+    /// whose initializer Roslyn surfaces as
+    /// <c>IArrayCreationOperation</c>, <c>ICollectionExpressionOperation</c>,
+    /// or a single <c>IObjectCreationOperation</c>, and emits one
+    /// <see cref="StaticTable"/> per match with row + cell facts sourced
+    /// from <c>SemanticModel.GetOperation</c> only. Cell values classify
+    /// into the canonical kind set in <c>StaticTableValueKind</c>;
+    /// unclassified shapes carry <c>Kind = Computed</c> with raw source
+    /// text as the eternal provenance. The host MUST NOT reference any
+    /// consumer-domain vocabulary in classification logic — pinned by
+    /// the name-leakage ratchet test. Returns null when
+    /// <paramref name="typeId"/> does not resolve to a type in any
+    /// loaded compilation. INV-EXTRACT-STATIC-TABLES-001.
+    /// </summary>
+    StaticTableReport? GetStaticTables(string typeId, StaticTablesOptions options);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 
