@@ -456,6 +456,22 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_test_impact",
+  Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = DerivedProven,
+  Description = "Which test classes transitively depend on a target symbol or file. BFS over incoming non-Contains edges with per-symbol distance tracking; classifies each affected symbol as test-vs-non-test via the extractor-recorded method-level attributes set (`[Test]`, `[TestCase]`, `[TestCaseSource]`, `[Theory]`, `[UnityTest]`, `[Fact]`). Lifecycle attributes (`[SetUp]`, `[OneTimeSetUp]`, `[TearDown]`) are excluded — they participate in test execution but are not the assertion-bearing methods. Test methods are folded by containing type; per-class `minDistance` is the smallest hop count to any of its affected methods, mapped to `confidence` Direct (1) / OneHop (2) / Transitive (3+). Response carries `target`, `targetKind` (Symbol or File), `totalTestMethodCount`, `directTestClassCount`, `affectedTestClassCount`, `affectedTestClasses[]` sorted by ascending distance then by qualified name, plus `recommendedFilters[]` — pre-composed `FullyQualifiedName~<class>` strings the caller pastes into `dotnet test --filter` without composing the filter syntax themselves. Disambiguation: a `target` value starting with a canonical-id prefix (`type:` / `method:` / `field:` / `property:` / `mod:` / `file:` / `ns:` / `namespace:`) routes through the symbol resolver; otherwise treated as a file path and every symbol declared in that file becomes a multi-source BFS start. INV-TEST-IMPACT-001 / LB-TRACK-20260514-007.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "target" },
+  properties = new
+  {
+  target = new { type = "string", description = "Symbol id (canonical / qualified / bare short name) OR a file path. Symbol-id routing happens when the value starts with a known id prefix; otherwise it's treated as a file." },
+  },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_search",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = HeuristicAdvisorySearch,
