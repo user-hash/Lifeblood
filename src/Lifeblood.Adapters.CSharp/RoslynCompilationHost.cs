@@ -803,6 +803,20 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }
 
   /// <summary>
+  /// Generic static-initializer table extraction. Routes through
+  /// <see cref="RoslynStaticTableExtractor"/> — keeps host wiring thin
+  /// and isolates the IOperation walker in its own type so the
+  /// name-leakage ratchet can scope cleanly. INV-EXTRACT-STATIC-TABLES-001.
+  /// </summary>
+  public StaticTableReport? GetStaticTables(string typeId, StaticTablesOptions options)
+  {
+    if (string.IsNullOrEmpty(typeId)) return null;
+    var resolved = ResolveFromSource(typeId);
+    if (resolved is not INamedTypeSymbol typeSymbol) return null;
+    return RoslynStaticTableExtractor.Extract(_compilations, typeSymbol, typeId, options, BuildSymbolId);
+  }
+
+  /// <summary>
   /// Reference-site role for an enum member's use, derived from its
   /// parent syntax. <see cref="EnumRefClass.Other"/> is the
   /// not-classified bucket — counted in TotalReferences only.
