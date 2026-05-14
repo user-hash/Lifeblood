@@ -15,7 +15,7 @@ namespace Lifeblood.Tests;
 ///   - LifebloodPartialViewBuilder (IPartialViewBuilder)
 ///   - BlastRadiusAnalyzer.Analyze break-kind classification
 /// </summary>
-public class AnalysisToolsPhase6Tests
+public class AnalysisToolsTests
 {
     private static readonly Evidence Evidence = new()
     {

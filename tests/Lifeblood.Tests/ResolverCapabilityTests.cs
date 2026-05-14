@@ -19,7 +19,7 @@ namespace Lifeblood.Tests;
 /// pin INV-RESOLVER-001 ("every read-side tool routes through ISymbolResolver")
 /// plus the resolver capability-layer behaviors enumerated above.
 /// </summary>
-public class ResolverPhase3Tests
+public class ResolverCapabilityTests
 {
     private static readonly Evidence Evidence = new()
     {
