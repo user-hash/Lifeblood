@@ -156,7 +156,7 @@ public static class TierClassifier
     private static bool IsTestCase(Symbol method)
     {
         if (method.Properties == null) return false;
-        if (!method.Properties.TryGetValue("attributes", out var attrs) || string.IsNullOrEmpty(attrs))
+        if (!method.Properties.TryGetValue(SymbolPropertyKeys.Attributes, out var attrs) || string.IsNullOrEmpty(attrs))
             return false;
         foreach (var name in attrs.Split(';'))
             if (TestCaseAttributes.Contains(name))
