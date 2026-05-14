@@ -14,7 +14,9 @@ silently corrupts every downstream feature: `find_references`,
 `dependants`, blast radius, the fuzzy short-name resolver, and every
 cross-module tool that relies on string equality of canonical IDs.
 
-- **INV-CANONICAL-001. Roslyn compilations receive the full transitive dependency closure, not just direct `ModuleInfo.Dependencies`.**
+- **INV-CANONICAL-001. Transitive-mode compilations receive the full transitive dependency closure, not just direct `ModuleInfo.Dependencies`.**
+
+- **INV-MODULE-REFS-001. Compilation reference closure mirrors the build tool that owns the csproj.**
 
 ## Adapter Semantic View
 
