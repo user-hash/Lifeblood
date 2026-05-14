@@ -17,10 +17,10 @@ internal sealed class TestBlastRadiusBridge : IBlastRadiusProvider
 }
 
 /// <summary>
-/// Stage 2.C — pins the blast-radius grouping contract. Field-report
-/// 2026-05-11 P1: <c>affectedCount=221</c> alone is a warning, not a
-/// triage tool. Grouping by path bucket (Production/Test/Editor/Generated)
-/// and by module/asmdef converts a flat count into actionable signal.
+/// Pins the blast-radius grouping contract (`INV-BLAST-RADIUS-GROUP-001`).
+/// A flat `affectedCount=221` is a warning, not a triage tool. Grouping
+/// by path bucket (Production/Test/Editor/Generated) and by module/asmdef
+/// converts a flat count into actionable signal.
 /// </summary>
 public class BlastRadiusGroupingTests : IDisposable
 {

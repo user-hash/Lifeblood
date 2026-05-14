@@ -10,7 +10,7 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Phase 6 (2026-04-11) regression tests for the new analysis tools:
+/// Regression tests for the analysis-tool surface:
 ///   - LifebloodDeadCodeAnalyzer (IDeadCodeAnalyzer)
 ///   - LifebloodPartialViewBuilder (IPartialViewBuilder)
 ///   - BlastRadiusAnalyzer.Analyze break-kind classification

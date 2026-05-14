@@ -9,16 +9,15 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Phase 3 regression tests for the resolver capability layer (2026-04-11):
-/// primitive-alias canonicalization at step 0, <see cref="ResolutionMode"/>
-/// semantics, fuzzy scoring, zero-result suggestion fallback, and overload
+/// Regression tests for the resolver capability layer: primitive-alias
+/// canonicalization at step 0, <see cref="ResolutionMode"/> semantics,
+/// fuzzy scoring, zero-result suggestion fallback, and overload
 /// surfacing on <see cref="SymbolResolutionResult"/>.
 ///
 /// Each test builds a minimal in-memory graph via <see cref="GraphBuilder"/>
 /// and exercises the resolver through its public port contract. These tests
 /// pin INV-RESOLVER-001 ("every read-side tool routes through ISymbolResolver")
-/// plus the Phase 3 additions from
-/// <c>.claude/plans/improvement-master-2026-04-11.md</c> Part 4 Group B.
+/// plus the resolver capability-layer behaviors enumerated above.
 /// </summary>
 public class ResolverPhase3Tests
 {

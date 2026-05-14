@@ -9,7 +9,7 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Phase 5 tests for <see cref="LifebloodSemanticSearchProvider"/> and the
+/// Tests for <see cref="LifebloodSemanticSearchProvider"/> and the
 /// xmldoc-summary persistence path. Pins:
 ///   - Name match scoring
 ///   - XmlDoc-only match (the killer feature — find symbols by WHAT they do)
@@ -50,8 +50,8 @@ public class SemanticSearchTests
     public void Search_XmlDocOnly_FindsSymbolByDocText()
     {
         // The symbol's NAME has nothing to do with "canonicalize" but its
-        // xmldoc summary does. Before Phase 5, this was only discoverable
-        // via a full-text search tool; now lifeblood_search finds it.
+        // xmldoc summary does. lifeblood_search finds it via the xmldoc
+        // corpus.
         var graph = new GraphBuilder()
             .AddSymbol(new Symbol
             {

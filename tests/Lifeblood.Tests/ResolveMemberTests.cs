@@ -7,8 +7,8 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Stage 2.A — pins the <see cref="ISymbolResolver.ResolveMember"/> contract.
-/// Field-report P1 ask (2026-05-11): type-scoped member lookup with optional
+/// Pins the <see cref="ISymbolResolver.ResolveMember"/> contract
+/// (`INV-RESOLVE-MEMBER-001`): type-scoped member lookup with optional
 /// overload disambiguation by param signature. Covers every outcome in
 /// <see cref="ResolveMemberOutcome"/> plus the three input shapes (canonical
 /// type id, fully-qualified name, short name).

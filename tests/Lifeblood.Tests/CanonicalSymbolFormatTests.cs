@@ -8,7 +8,7 @@ namespace Lifeblood.Tests;
 /// <summary>
 /// Regression tests for canonical method-ID determinism — INV-CANONICAL-001.
 ///
-/// Background (dogfood finding NEW-01, 2026-04-11):
+/// Background:
 /// Self-analysis of the Lifeblood repo discovered two symbols with identical
 /// method shape — <c>ISymbolResolver.Resolve(SemanticGraph, string)</c> and
 /// <c>LifebloodSymbolResolver.Resolve(SemanticGraph, string)</c> — storing

@@ -5,16 +5,14 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Decisive experiment for the Phase 2 live-drift investigation. The
-/// synthetic three-module integration test
+/// Live-drift regression for INV-CANONICAL-001. The synthetic
+/// three-module integration test
 /// (<see cref="CanonicalSymbolFormatTests.AnalyzeWorkspace_ThreeModuleTransitiveChain_ProducesCanonicalMethodIds"/>)
-/// passes, but live self-analysis of the Lifeblood repo via the MCP
-/// server still shows `method:Lifeblood.Connectors.Mcp.LifebloodSymbolResolver.Resolve(SemanticGraph,string)`
-/// (unqualified) instead of the fully-qualified form. This test runs
-/// the REAL analyzer against the REAL Lifeblood.sln on disk and asserts
-/// the fully-qualified form exists. If it passes, the fix is correct
-/// and the drift is environmental (stale installed tool). If it fails,
-/// the fix has a bug the synthetic test doesn't exercise.
+/// covers the transitive-deps closure on a minimal in-memory project;
+/// this test runs the REAL analyzer against the REAL Lifeblood.sln on
+/// disk and asserts the fully-qualified canonical form exists. Catches
+/// the drift class where the synthetic path passes but a non-test
+/// callsite (size, layout, csproj-resolved-deps) regresses.
 /// </summary>
 public class LiveSelfAnalyzeDriftTests
 {
@@ -34,11 +32,11 @@ public class LiveSelfAnalyzeDriftTests
         var analyzer = new RoslynWorkspaceAnalyzer(fs);
         var graph = analyzer.AnalyzeWorkspace(projectRoot, new AnalysisConfig());
 
-        // The FQ canonical ID we expect after Phase 2's transitive-deps fix.
+        // The FQ canonical ID the transitive-deps closure produces.
         var canonical = "method:Lifeblood.Connectors.Mcp.LifebloodSymbolResolver.Resolve(Lifeblood.Domain.Graph.SemanticGraph,string)";
         var fqMatch = graph.GetSymbol(canonical);
 
-        // The buggy unqualified form Phase 2 was meant to eliminate.
+        // The buggy unqualified form INV-CANONICAL-001 forbids.
         var unqualified = "method:Lifeblood.Connectors.Mcp.LifebloodSymbolResolver.Resolve(SemanticGraph,string)";
         var uqMatch = graph.GetSymbol(unqualified);
 
