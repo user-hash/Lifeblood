@@ -21,7 +21,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     /// with the reason code. Populated for .cs files listed in a csproj
     /// via explicit <c>&lt;Compile&gt;</c> items whose target path does
     /// not exist on disk. Reset at the start of every discovery run so
-    /// callers always see a fresh picture. Added 2026-04-11 (Phase 4 C4).
+    /// callers always see a fresh picture.
     /// </summary>
     public IReadOnlyList<SkippedFile> LastDiscoverySkipped => _lastSkipped;
 
@@ -97,10 +97,10 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Select(v => Path.GetFullPath(Path.Combine(projectDir, Internal.CsprojPaths.NormalizeSeparators(v!))))
                 .ToArray();
 
-            // Phase 4 / C4 (2026-04-11): surface files that the csproj lists
-            // but the filesystem does not contain. Before this change the
-            // analyzer silently filtered them out and users had no way to
-            // discover "why isn't my file in the graph?".
+            // Surface files that the csproj lists but the filesystem does
+            // not contain. Without this, the analyzer silently filters them
+            // out and users have no way to discover "why isn't my file in
+            // the graph?".
             var compileItems = new List<string>(compileItemCandidates.Length);
             foreach (var path in compileItemCandidates)
             {

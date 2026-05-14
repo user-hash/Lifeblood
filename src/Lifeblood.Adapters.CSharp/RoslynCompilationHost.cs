@@ -419,15 +419,13 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
 
   var results = new List<DomainReferenceLocation>();
 
-  // Logical-reference dedup (Phase 4 / A3, 2026-04-11): an invocation
-  // expression `x.Foo(args)` and its identifier token `Foo` are two
-  // distinct syntax nodes but ONE logical reference. The old dedup key
-  // was (filePath, line, column) which preserved both because their
-  // columns differ. The new key is (filePath, line, containingSymbolId,
-  // referencedSymbolId). Since referencedSymbolId is fixed at
-  // `targetCanonicalId` for every hit in this method, the effective key
+  // Logical-reference dedup: an invocation expression `x.Foo(args)` and
+  // its identifier token `Foo` are two distinct syntax nodes but ONE
+  // logical reference. Key is (filePath, line, containingSymbolId,
+  // referencedSymbolId) — since referencedSymbolId is fixed at
+  // targetCanonicalId for every hit in this method, the effective key
   // reduces to (filePath, line, containingSymbolId) and one entry per
-  // logical call-site is emitted instead of two. Closes NEW-02.
+  // logical call-site is emitted instead of two.
   var seen = new HashSet<(string filePath, int line, string containingSymbolId, string referencedSymbolId)>();
 
   foreach (var compilation in _compilations.Values)
@@ -458,13 +456,12 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   var column = span.StartLinePosition.Character + 1;
   var filePath = span.Path ?? "";
 
-  // Phase 4 / C2 (2026-04-11): populate containingSymbolId. Walk
-  // the node's ancestors to the first enclosing member declaration
-  // (method, property, indexer, field, ctor) or type declaration
-  // as the coarser fallback. The canonical ID of that member is
-  // what the find_references consumer uses to group usages by
-  // caller, drive containingTypeFilter (the R5 finding), and render
-  // call-graph UIs. O(depth) per reference — cheap.
+  // Populate containingSymbolId by walking the node's ancestors to the
+  // first enclosing member declaration (method, property, indexer, field,
+  // ctor) or type declaration as the coarser fallback. The canonical ID
+  // of that member is what find_references consumers use to group usages
+  // by caller, drive containingTypeFilter, and render call-graph UIs.
+  // O(depth) per reference — cheap.
   var containingSymbolId = ComputeContainingSymbolId(model, node);
 
   // Dedup key. When containingSymbolId is non-empty, it distinguishes

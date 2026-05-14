@@ -202,7 +202,7 @@ internal sealed class RoslynWorkspaceManager : IDisposable
         // Track project IDs by module name for ProjectReference linking.
         var projectIds = new Dictionary<string, ProjectId>(StringComparer.Ordinal);
 
-        // Phase 1: Create all projects with metadata references.
+        // Create all projects with metadata references.
         foreach (var (name, compilation) in _compilations)
         {
             var projectId = ProjectId.CreateNewId(name);
@@ -240,9 +240,9 @@ internal sealed class RoslynWorkspaceManager : IDisposable
             }
         }
 
-        // Phase 2: Add ProjectReference links between modules.
-        // This replaces the downgraded PE metadata references with proper project links,
-        // so Roslyn's SymbolFinder can follow cross-assembly references.
+        // Add ProjectReference links between modules. Replaces the downgraded
+        // PE metadata references with proper project links so Roslyn's
+        // SymbolFinder can follow cross-assembly references.
         if (_moduleDependencies != null)
         {
             var solution = _workspace.CurrentSolution;

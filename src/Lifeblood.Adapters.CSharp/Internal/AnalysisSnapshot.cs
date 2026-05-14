@@ -103,9 +103,9 @@ internal sealed class AnalysisSnapshot
     /// appended to (not replaced) on incremental analyze because incremental
     /// does not re-walk modules that had no changed files.
     ///
-    /// Closes the B4 finding (Phase 4 / C4, 2026-04-11): previously the analyzer
-    /// silently dropped non-.cs files and missing files, and users had no
-    /// way to discover that their change wasn't included in the graph.
+    /// Without this list the analyzer silently drops non-.cs files and
+    /// missing files, and users have no way to discover that their change
+    /// wasn't included in the graph.
     /// </summary>
     public List<SkippedFile> SkippedFiles { get; } = new();
 

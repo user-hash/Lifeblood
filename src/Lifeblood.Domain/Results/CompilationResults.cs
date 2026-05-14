@@ -216,10 +216,10 @@ public sealed class SymbolAtPosition
 
 /// <summary>
 /// A file the analyzer declined to process, with a machine-readable reason
-/// for why. Added 2026-04-11 (Phase 4 / C4) to close the B4 finding — previously
-/// the analyzer silently dropped files (missing on disk, non-.cs extension,
-/// outside any tracked module) and users had no way to discover that their
-/// change wasn't included in the graph.
+/// for why. Without this list the analyzer would silently drop files
+/// (missing on disk, non-.cs extension, outside any tracked module) and
+/// users would have no way to discover that their change wasn't included
+/// in the graph.
 ///
 /// Language-agnostic: each adapter reports its own reasons using the
 /// canonical string codes in <see cref="SkipReason"/>.

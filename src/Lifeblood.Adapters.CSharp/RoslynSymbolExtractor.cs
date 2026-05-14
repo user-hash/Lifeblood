@@ -528,7 +528,6 @@ public sealed class RoslynSymbolExtractor
     ///
     /// Only persists when the documentation is non-empty — an empty value
     /// would bloat the serialized graph for every undocumented symbol.
-    /// Phase 5 (2026-04-11).
     /// </summary>
     private static void AttachXmlDocSummary(IDictionary<string, string> props, ISymbol sym)
     {
