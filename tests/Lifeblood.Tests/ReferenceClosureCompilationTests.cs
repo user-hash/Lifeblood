@@ -32,7 +32,10 @@ public class ReferenceClosureCompilationTests
     ///   - MathLib    : declares <c>namespace Acme.Math</c>, no deps
     ///   - Bridge     : references MathLib (declares dep, has trivial source)
     ///   - Consumer   : references Bridge ONLY. Bare <c>Math.PI</c> usage in
-    ///                  <c>namespace Acme.App</c>. This is the DAWG repro shape.
+    ///                  <c>namespace Acme.App</c>. The shape under test: an
+    ///                  old-format MSBuild 2003-schema csproj, bare BCL type
+    ///                  usage in a sibling namespace, no transitive metadata
+    ///                  reference declared.
     ///
     /// All three csprojs use the old-format MSBuild 2003 schema so discovery
     /// flags them DirectOnly. The .sln ties them together.
@@ -86,8 +89,10 @@ EndProject
         var consumerDir = Path.Combine(root, "Consumer");
         Directory.CreateDirectory(consumerDir);
         // The repro: bare Math.PI in Acme.App namespace, sibling to Acme.Math.
-        // No alias workaround. No MathLib reference declared. Unity ships
-        // this shape clean every day on DAWG.
+        // No alias workaround. No MathLib reference declared. The shape ships
+        // every day on any old-format MSBuild 2003-schema project (Unity
+        // asmdef generators, legacy .NET Framework workspaces) where MSBuild
+        // does not close ProjectReference transitively.
         File.WriteAllText(Path.Combine(consumerDir, "App.cs"), @"
 using System;
 namespace Acme.App
@@ -117,10 +122,10 @@ namespace Acme.App
     [Fact]
     public void OldFormatCsproj_BareMathInSiblingNamespace_BindsToSystemMath()
     {
-        // The DAWG repro shape, distilled. With DirectOnly mode inferred from
-        // the 2003-schema csprojs, the Consumer compilation never gets MathLib
-        // as a metadata reference, so the Acme.Math namespace is invisible
-        // and bare Math.PI / Math.Min bind cleanly to System.Math.
+        // The old-format MSBuild 2003-schema shape, distilled. With DirectOnly
+        // mode inferred from the schema, the Consumer compilation never gets
+        // MathLib as a metadata reference, so the Acme.Math namespace is
+        // invisible and bare Math.PI / Math.Min bind cleanly to System.Math.
         var root = BuildWorkspace();
         try
         {
@@ -199,7 +204,8 @@ namespace Acme.App
             Assert.NotNull(consumerComp);
 
             // Under Transitive mode, MathLib leaks into Consumer's classpath
-            // — the very leak that produced the DAWG false positives.
+            // — the very leak that produced false-positive sibling-namespace
+            // shadow bindings on old-format MSBuild 2003-schema workspaces.
             Assert.Contains(consumerComp!.SourceModule.ReferencedAssemblies,
                 ra => ra.Name.Equals("MathLib", StringComparison.Ordinal));
 
