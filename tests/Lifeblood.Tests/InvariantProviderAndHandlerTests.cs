@@ -8,7 +8,7 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Integration coverage for the Phase 8 invariant pipeline:
+/// Integration coverage for the invariant pipeline:
 ///   - <see cref="LifebloodInvariantProvider"/> direct tests exercise
 ///     the provider against a real temp-dir <c>CLAUDE.md</c>, proving
 ///     the end-to-end filesystem → parser → cache → port-shape path
@@ -21,7 +21,7 @@ namespace Lifeblood.Tests;
 ///     proves the real <c>lifeblood_analyze → lifeblood_invariant_check</c>
 ///     chain surfaces them via the MCP tool response.
 ///
-/// This file pins the architectural contract of Phase 8: the tool
+/// This file pins the architectural contract: the tool
 /// reads CLAUDE.md from the loaded project root, parses it without
 /// extra configuration, and returns structured data on every query.
 /// </summary>

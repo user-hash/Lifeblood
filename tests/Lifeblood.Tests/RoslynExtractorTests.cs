@@ -1001,7 +1001,7 @@ public class Service
     }
 
     // ──────────────────────────────────────────────────────────────
-    // Phase 4: Method-group references
+    // Method-group references
     // ──────────────────────────────────────────────────────────────
 
     [Fact]

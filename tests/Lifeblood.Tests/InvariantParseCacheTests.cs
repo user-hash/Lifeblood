@@ -6,7 +6,7 @@ namespace Lifeblood.Tests;
 
 /// <summary>
 /// Direct coverage for <see cref="InvariantParseCache{T}"/>. The cache is
-/// the generic, reusable side of the Phase 8 invariant stack: it knows
+/// the generic, reusable side of the invariant stack: it knows
 /// only paths, timestamps, and delegation. The provider integration
 /// tests in <see cref="InvariantProviderAndHandlerTests"/> exercise the
 /// cache through <see cref="Lifeblood.Connectors.Mcp.LifebloodInvariantProvider"/>,

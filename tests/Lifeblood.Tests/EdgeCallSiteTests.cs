@@ -6,8 +6,8 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Stage 2.B — pins the CallSite provenance on extractor-emitted edges.
-/// Field-report 2026-05-11 P1 ask: every dependency / dependant query must
+/// Pins the CallSite provenance on extractor-emitted edges
+/// (`INV-EDGE-CALLSITE-001`). Every dependency / dependant query must
 /// surface the (file, line, column) of the authoring expression plus the
 /// canonical id of the enclosing declaration so callers stop falling back
 /// to manual file reading.

@@ -5,7 +5,7 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Dogfoods the Phase 8 invariant pipeline against Lifeblood's own
+/// Dogfoods the invariant pipeline against Lifeblood's own
 /// <c>CLAUDE.md</c>. Proves that:
 ///
 /// <list type="bullet">

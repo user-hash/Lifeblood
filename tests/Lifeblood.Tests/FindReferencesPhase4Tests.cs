@@ -8,8 +8,8 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Phase 4 regression tests for RoslynCompilationHost.FindReferences and
-/// the skipped-file surface. Pins:
+/// Regression tests for RoslynCompilationHost.FindReferences and the
+/// skipped-file surface. Pins:
 ///   - C2: ContainingSymbolId populated on every reference location
 ///   - C3: Kind tagged as Declaration or Usage
 ///   - A3: Logical-reference dedup emits exactly one entry per (file, line, container)
@@ -218,9 +218,9 @@ namespace App
     public void Analyze_CsprojListingMissingCsFile_SurfacesFileNotFoundSkipped()
     {
         // A csproj that lists a .cs file which doesn't exist on disk should
-        // produce a SkippedFile entry with reason=file-not-found. Before
-        // Phase 4 / C4, the analyzer silently dropped the file and the
-        // user had no way to discover the discrepancy.
+        // produce a SkippedFile entry with reason=file-not-found. Without
+        // this surface the analyzer silently drops the file and the user
+        // has no way to discover the discrepancy.
         var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-skipped-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         try
