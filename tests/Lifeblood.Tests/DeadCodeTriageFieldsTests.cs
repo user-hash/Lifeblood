@@ -3,6 +3,7 @@ using Lifeblood.Application.Ports.Right;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.PathClassification;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -41,7 +42,11 @@ public class DeadCodeTriageFieldsTests
         // A file under Tests/Editor/ is a TEST (file convention) not an
         // Editor utility; a file under obj/ is GENERATED even if it
         // happens to end in *Tests.cs.
-        Assert.Equal(expected, LifebloodDeadCodeAnalyzer.ClassifyBucket(filePath));
+        // ClassifyBucket lives in Lifeblood.Domain.PathClassification.PathBucketClassifier
+        // post-FOLLOWUP-005. Cast bridges the parallel wire enum DeadCodeBucket
+        // (Application port surface) to the canonical PathBucket — integer
+        // parity is pinned by PathBucketParityTests.
+        Assert.Equal(expected, (DeadCodeBucket)PathBucketClassifier.Classify(filePath));
     }
 
     [Fact]

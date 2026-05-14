@@ -54,7 +54,10 @@ public sealed record DeadCodeOptions(
 /// does not accidentally trigger the Test bucket.
 ///
 /// Precedence (most authoritative signal wins): Generated → Test →
-/// Editor → Production. See <see cref="Lifeblood.Connectors.Mcp.LifebloodDeadCodeAnalyzer.ClassifyBucket"/>.
+/// Editor → Production. Integer values mirror
+/// <c>Lifeblood.Domain.PathClassification.PathBucket</c> — the canonical
+/// classifier — so the analyzer casts the result directly. Drift caught
+/// by <c>PathBucketParityTests</c>.
 /// </summary>
 public enum DeadCodeBucket
 {

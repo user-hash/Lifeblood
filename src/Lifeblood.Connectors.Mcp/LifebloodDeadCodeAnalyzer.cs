@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.PathClassification;
 
 namespace Lifeblood.Connectors.Mcp;
 
@@ -57,7 +58,7 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
         {
             if (!kinds.Contains(sym.Kind)) continue;
             if (options.ExcludePublic && sym.Visibility == Visibility.Public) continue;
-            if (options.ExcludeTests && LooksLikeTestFile(sym.FilePath)) continue;
+            if (options.ExcludeTests && PathBucketClassifier.IsTest(sym.FilePath)) continue;
 
             if (HasIncomingReference(graph, sym.Id)) continue;
 
@@ -77,7 +78,7 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
                 Reason: BuildReason(sym, options))
             {
                 DirectDependants = CountDirectDependants(graph, sym.Id),
-                Bucket = ClassifyBucket(sym.FilePath),
+                Bucket = (DeadCodeBucket)PathBucketClassifier.Classify(sym.FilePath),
                 DeclarationOnly = sym.IsAbstract,
             });
         }
@@ -112,21 +113,6 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
         return false;
     }
 
-    /// <summary>
-    /// Heuristic test-file detector: any path segment named "tests" or
-    /// any filename matching <c>*Tests.cs</c> or <c>*Test.cs</c>. Not
-    /// exhaustive, but covers the conventional project layouts.
-    /// </summary>
-    private static bool LooksLikeTestFile(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return false;
-        var lower = filePath.ToLowerInvariant();
-        if (lower.Contains("/tests/") || lower.Contains("\\tests\\")) return true;
-        if (lower.EndsWith("tests.cs", System.StringComparison.Ordinal)) return true;
-        if (lower.EndsWith("test.cs", System.StringComparison.Ordinal)) return true;
-        return false;
-    }
-
     private static string BuildReason(Symbol sym, DeadCodeOptions options)
     {
         var scope = options.ExcludePublic ? "non-public " : "";
@@ -151,57 +137,4 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
         return count;
     }
 
-    /// <summary>
-    /// Path bucket. Production by default. Mirrors the
-    /// <c>blast_radius groupBy=bucket</c> taxonomy
-    /// (INV-BLAST-RADIUS-GROUP-001) so a caller can join the two tool
-    /// surfaces. Classification is segment-aware (not substring): the
-    /// normalized POSIX path is split on <c>/</c> and matched as
-    /// whole segments, so a folder named <c>obj</c> at the project
-    /// root classifies identically to a nested <c>/obj/</c>, and a
-    /// filename containing the word "test" does not accidentally
-    /// trigger the Test bucket.
-    ///
-    /// Precedence (most authoritative signal wins):
-    ///   1. <see cref="DeadCodeBucket.Generated"/> — filename matches
-    ///      <c>*.Generated.*</c>, or any path segment is
-    ///      <c>generated</c> / <c>obj</c> / <c>bin</c>. Build artifacts
-    ///      and codegen are never a refactor target regardless of any
-    ///      other signal in the path.
-    ///   2. <see cref="DeadCodeBucket.Test"/> — any path segment is
-    ///      <c>tests</c>, or filename ends with <c>Tests.cs</c> /
-    ///      <c>Test.cs</c>. Test beats Editor because a fixture under
-    ///      <c>Tests/Editor/Foo.cs</c> is a test fixture (its Tests
-    ///      root + filename convention define what it is); the
-    ///      <c>Editor/</c> subfolder there is just NUnit PlayMode
-    ///      assembly placement.
-    ///   3. <see cref="DeadCodeBucket.Editor"/> — any path segment is
-    ///      <c>editor</c>. Unity editor-only utility, excluded from
-    ///      runtime builds.
-    ///   4. <see cref="DeadCodeBucket.Production"/> — otherwise.
-    ///
-    /// Comparisons are case-insensitive on the path-separator-normalized
-    /// form so Windows and POSIX inputs collapse to one match table.
-    /// INV-DEADCODE-TRIAGE-001.
-    /// </summary>
-    internal static DeadCodeBucket ClassifyBucket(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return DeadCodeBucket.Production;
-        var lower = filePath.Replace('\\', '/').ToLowerInvariant();
-        var segments = lower.Split('/');
-
-        if (lower.Contains(".generated.")
-            || segments.Any(s => s == "generated" || s == "obj" || s == "bin"))
-            return DeadCodeBucket.Generated;
-
-        if (segments.Any(s => s == "tests")
-            || lower.EndsWith("tests.cs", StringComparison.Ordinal)
-            || lower.EndsWith("test.cs", StringComparison.Ordinal))
-            return DeadCodeBucket.Test;
-
-        if (segments.Any(s => s == "editor"))
-            return DeadCodeBucket.Editor;
-
-        return DeadCodeBucket.Production;
-    }
 }
