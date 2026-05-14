@@ -241,9 +241,15 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   }
 
   // Build the replacement tree at the SAME path so diagnostics keep
-  // pointing at the user's file, not a synthetic snippet path.
+  // pointing at the user's file, not a synthetic snippet path. Thread
+  // the owning module's CSharpParseOptions (LangVersion, Nullable,
+  // PreprocessorSymbols — set per INV-COMPFACT-001..003 in
+  // ModuleCompilationBuilder) so AddSyntaxTrees / ReplaceSyntaxTree
+  // does not throw "Inconsistent language versions" when the module
+  // declares a non-default LangVersion.
   var preservedPath = existingTree?.FilePath ?? filePath;
-  var newTree = CSharpSyntaxTree.ParseText(newSource, path: preservedPath);
+  var moduleParseOptions = GetModuleParseOptions(owningCompilation);
+  var newTree = CSharpSyntaxTree.ParseText(newSource, moduleParseOptions, path: preservedPath);
 
   // Pre-existing diagnostics computed against the unswapped
   // compilation so we don't surface errors that were already present
@@ -321,7 +327,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   // modules accept them — see Internal.SnippetWrapper for the contract).
   // The wrapper preserves diagnostic line numbers via MapLineToUser so the
   // user sees errors at the line they typed, not at the synthetic wrapper.
-  var prepared = Internal.SnippetWrapper.Prepare(code);
+  var prepared = Internal.SnippetWrapper.Prepare(code, GetModuleParseOptions(targetCompilation));
   var testCompilation = targetCompilation.AddSyntaxTrees(prepared.Tree);
 
   using var ms = new MemoryStream();
@@ -355,6 +361,30 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   ResolvedModule = resolvedModuleName ?? "",
   DefinesActive = CollectDefines(resolvedModuleName),
   };
+  }
+
+  /// <summary>
+  /// Return the <see cref="CSharpParseOptions"/> the owning compilation
+  /// parses its source trees under. compile_check must parse replacement
+  /// + snippet trees with these same options so `AddSyntaxTrees` /
+  /// `ReplaceSyntaxTree` does not throw "Inconsistent language versions"
+  /// when the module declares non-default `LangVersion` / `Nullable`
+  /// / `DefineConstants` (set per INV-COMPFACT-001..003 in
+  /// `ModuleCompilationBuilder`). Returns null when the compilation is
+  /// empty or carries only synthetic trees (paths starting with `&lt;`),
+  /// in which case `CSharpSyntaxTree.ParseText` falls back to defaults
+  /// — the same behavior as before INV-COMPFACT thread-through.
+  /// </summary>
+  private static CSharpParseOptions? GetModuleParseOptions(CSharpCompilation compilation)
+  {
+  foreach (var tree in compilation.SyntaxTrees)
+  {
+  // Skip synthetic trees (e.g. `<ImplicitGlobalUsings>.cs`) — those
+  // are parsed with default options and don't represent module facts.
+  if (!string.IsNullOrEmpty(tree.FilePath) && tree.FilePath.StartsWith("<")) continue;
+  return tree.Options as CSharpParseOptions;
+  }
+  return null;
   }
 
   private static string DiagnosticKey(Diagnostic d)
