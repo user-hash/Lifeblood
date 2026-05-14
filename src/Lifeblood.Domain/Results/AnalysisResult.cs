@@ -102,6 +102,97 @@ public sealed class GraphMetrics
 }
 
 /// <summary>
+/// Result of <c>TestImpactAnalyzer.Analyze</c>: which test classes
+/// transitively depend on a given symbol or file. Lets a caller
+/// answer "which tests prove that my change to X is safe?" in one
+/// call instead of pairing blast_radius with manual test discovery.
+/// INV-TEST-IMPACT-001 / LB-TRACK-20260514-007.
+/// </summary>
+public sealed class TestImpactReport
+{
+    /// <summary>The resolved id or file path the analyzer ran against.</summary>
+    public required string Target { get; init; }
+
+    /// <summary>Whether <see cref="Target"/> was treated as a symbol or a file.</summary>
+    public required TestImpactTargetKind TargetKind { get; init; }
+
+    /// <summary>
+    /// Per-class impact rows, sorted by ascending <see cref="TestClassImpact.MinDistance"/>
+    /// then by qualified name. Each row aggregates one test class's
+    /// affected test methods.
+    /// </summary>
+    public required TestClassImpact[] AffectedTestClasses { get; init; }
+
+    /// <summary>Total number of affected test methods (sum of <see cref="TestClassImpact.TestMethodNames"/>.Length).</summary>
+    public required int TotalTestMethodCount { get; init; }
+
+    /// <summary>
+    /// Count of test classes at <see cref="TestImpactConfidence.Direct"/>
+    /// distance — caller-friendly "how many tests directly touch this
+    /// symbol" headline.
+    /// </summary>
+    public required int DirectTestClassCount { get; init; }
+
+    /// <summary>
+    /// Recommended `dotnet test --filter` strings, one per affected
+    /// class, in distance order. Caller pastes them into their test
+    /// runner without composing the filter syntax themselves.
+    /// </summary>
+    public required string[] RecommendedFilters { get; init; }
+}
+
+/// <summary>
+/// One test class transitively affected by a target change.
+/// </summary>
+public sealed class TestClassImpact
+{
+    public required string TypeId { get; init; }
+    public required string Name { get; init; }
+    public required string QualifiedName { get; init; }
+    public required string FilePath { get; init; }
+
+    /// <summary>
+    /// Minimum hop count from the target to any of this class's test
+    /// methods (or the class itself). 1 = direct reference, 2 = one
+    /// hop through an intermediate symbol, etc.
+    /// </summary>
+    public required int MinDistance { get; init; }
+
+    /// <summary>
+    /// Confidence bucket derived from <see cref="MinDistance"/> —
+    /// Direct (1) / OneHop (2) / Transitive (3+). Caller reads the
+    /// label without computing thresholds.
+    /// </summary>
+    public required TestImpactConfidence Confidence { get; init; }
+
+    /// <summary>Short names of the affected test methods in this class.</summary>
+    public required string[] TestMethodNames { get; init; }
+}
+
+/// <summary>
+/// Confidence bucket on a <see cref="TestClassImpact"/>. Derived from
+/// graph hop distance; coarse on purpose so a wire consumer can render
+/// "high / medium / low" without computing thresholds.
+/// </summary>
+public enum TestImpactConfidence
+{
+    Direct,        // MinDistance == 1
+    OneHop,        // MinDistance == 2
+    Transitive,    // MinDistance >= 3
+}
+
+/// <summary>
+/// Whether the analyzer interpreted its <c>target</c> argument as a
+/// single symbol or as a file (every symbol declared in that file is
+/// treated as a multi-source BFS start).
+/// </summary>
+public enum TestImpactTargetKind
+{
+    Symbol,
+    File,
+}
+
+/// <summary>
 /// One detected cycle (strongly-connected component) classified by what
 /// it most likely represents. Pairs the raw symbol-id member list from
 /// the Tarjan SCC pass with a triage bucket so a caller can fold the

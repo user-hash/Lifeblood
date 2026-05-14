@@ -87,6 +87,7 @@ public sealed class ToolHandler
                 "lifeblood_authority_report" => HandleAuthorityReport(arguments),
                 "lifeblood_port_health" => HandlePortHealth(arguments),
                 "lifeblood_cycles" => HandleCycles(arguments),
+                "lifeblood_test_impact" => HandleTestImpact(arguments),
                 // Write-side
                 "lifeblood_execute" => _write.HandleExecute(arguments),
                 "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
@@ -949,6 +950,75 @@ public sealed class ToolHandler
             cycles = previewSymbolArrays,
             descriptors = previewClassified,
         }));
+    }
+
+    private McpToolResult HandleTestImpact(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var raw = WriteToolHandler.GetString(args, "target");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("target is required (a symbol id or file path)");
+
+        // Disambiguation: a value with a `:` in the canonical-id prefix
+        // position (`type:`, `method:`, `field:`, `mod:`, `file:`,
+        // `property:`) is a symbol id. Otherwise treat as a file path
+        // and route to the multi-source file analyzer. The `file:` id
+        // prefix routes through the symbol resolver too (the graph
+        // builds a File-kind symbol with that id); both shapes work.
+        var isSymbolId = LooksLikeSymbolId(raw);
+
+        TestImpactReport report;
+        if (isSymbolId)
+        {
+            var resolved = _resolver.Resolve(_session.Graph!, raw);
+            if (resolved.CanonicalId == null)
+                return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+            report = Lifeblood.Analysis.TestImpactAnalyzer.AnalyzeSymbol(_session.Graph!, resolved.CanonicalId);
+        }
+        else
+        {
+            report = Lifeblood.Analysis.TestImpactAnalyzer.AnalyzeFile(_session.Graph!, raw);
+        }
+
+        return TextResult(WithEnvelope("lifeblood_test_impact", new
+        {
+            target = report.Target,
+            targetKind = report.TargetKind.ToString(),
+            totalTestMethodCount = report.TotalTestMethodCount,
+            directTestClassCount = report.DirectTestClassCount,
+            affectedTestClassCount = report.AffectedTestClasses.Length,
+            affectedTestClasses = report.AffectedTestClasses.Select(c => new
+            {
+                typeId = c.TypeId,
+                name = c.Name,
+                qualifiedName = c.QualifiedName,
+                filePath = c.FilePath,
+                minDistance = c.MinDistance,
+                confidence = c.Confidence.ToString(),
+                testMethodCount = c.TestMethodNames.Length,
+                testMethodNames = c.TestMethodNames,
+            }).ToArray(),
+            recommendedFilters = report.RecommendedFilters,
+        }));
+    }
+
+    /// <summary>
+    /// True when <paramref name="raw"/> starts with one of the canonical
+    /// Lifeblood symbol-id prefixes. Used by <c>HandleTestImpact</c> to
+    /// route between symbol-mode and file-mode without forcing the
+    /// caller to pick the route explicitly.
+    /// </summary>
+    private static bool LooksLikeSymbolId(string raw)
+    {
+        var colon = raw.IndexOf(':');
+        if (colon <= 0) return false;
+        var prefix = raw.AsSpan(0, colon);
+        return prefix.SequenceEqual("type") || prefix.SequenceEqual("method")
+            || prefix.SequenceEqual("field") || prefix.SequenceEqual("property")
+            || prefix.SequenceEqual("mod") || prefix.SequenceEqual("file")
+            || prefix.SequenceEqual("ns") || prefix.SequenceEqual("namespace");
     }
 
     private static McpToolResult TextResult(string text) => new()
