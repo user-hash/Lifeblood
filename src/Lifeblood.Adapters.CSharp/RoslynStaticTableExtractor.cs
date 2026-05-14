@@ -224,8 +224,7 @@ internal static class RoslynStaticTableExtractor
         if (unwrapped is IObjectCreationOperation ctorOp && ctorOp.Constructor != null)
         {
             ctorId = buildSymbolId(ctorOp.Constructor);
-            // Cell binding grows in a later lego; ConstructorId carries
-            // the contract until then.
+            cells = BuildCells(ctorOp, buildSymbolId);
         }
         else
         {
@@ -243,6 +242,47 @@ internal static class RoslynStaticTableExtractor
             Value = value,
         };
     }
+
+    /// <summary>
+    /// Bind every <see cref="IArgumentOperation"/> on a constructor row
+    /// to its corresponding parameter and classify the cell value.
+    /// IArgumentOperation already routes named / positional / optional
+    /// args to <see cref="IParameterSymbol"/>, so this method does not
+    /// need to re-implement C# overload resolution — Roslyn surfaces
+    /// the bound parameter on every argument operation.
+    /// </summary>
+    private static StaticTableCell[] BuildCells(IObjectCreationOperation ctorOp, Func<ISymbol, string> buildSymbolId)
+    {
+        var args = ctorOp.Arguments;
+        if (args.IsDefaultOrEmpty) return Array.Empty<StaticTableCell>();
+        var cells = new StaticTableCell[args.Length];
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            var parameter = arg.Parameter;
+            cells[i] = new StaticTableCell
+            {
+                ParameterName = parameter?.Name,
+                Position = parameter?.Ordinal ?? i,
+                ArgumentKind = MapArgumentKind(arg.ArgumentKind),
+                Value = ClassifyValue(arg.Value, buildSymbolId),
+            };
+        }
+        return cells;
+    }
+
+    /// <summary>
+    /// Map <see cref="ArgumentKind"/> to the stable wire string. Names
+    /// mirror the Roslyn enum so cross-version drift surfaces as a
+    /// "unknown" fallback string the caller can still reason about.
+    /// </summary>
+    private static string MapArgumentKind(ArgumentKind kind) => kind switch
+    {
+        ArgumentKind.Explicit => StaticTableArgumentKind.Explicit,
+        ArgumentKind.DefaultValue => StaticTableArgumentKind.DefaultValue,
+        ArgumentKind.ParamArray => StaticTableArgumentKind.ParamArray,
+        _ => kind.ToString(),
+    };
 
     /// <summary>
     /// Classify a value-position operation into a
