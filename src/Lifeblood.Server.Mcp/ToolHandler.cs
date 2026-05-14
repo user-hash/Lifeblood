@@ -888,7 +888,11 @@ public sealed class ToolHandler
         if (!_session.IsLoaded)
             return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
 
-        var cycles = Lifeblood.Analysis.CircularDependencyDetector.Detect(_session.Graph!);
+        // Classified detection. Each descriptor is { symbols, bucket }.
+        // INV-CYCLE-TAXONOMY-001 / LB-TRACK-20260514-008 — caller can
+        // fold the Generated + Partial noise tail without re-walking
+        // the cycle members.
+        var descriptors = Lifeblood.Analysis.CircularDependencyDetector.DetectClassified(_session.Graph!);
 
         // LB-FR-021 (dogfood): same shape as blast_radius summarize/maxResults.
         // large workspaces commonly carry 100+ SCCs serializing to ~70KB — exceeds downstream tool-result
@@ -898,36 +902,51 @@ public sealed class ToolHandler
         var maxResults = WriteToolHandler.GetInt(args, "maxResults") ?? (summarize ? 25 : 500);
         if (maxResults < 0) maxResults = 0;
 
-        var truncated = cycles.Length > maxResults;
-        var preview = truncated ? cycles.Take(maxResults).ToArray() : cycles;
+        var truncated = descriptors.Length > maxResults;
         var totalSymbolCount = 0;
         var largestCycleSize = 0;
-        foreach (var c in cycles)
+        var bucketCounts = new Dictionary<string, int>(3, StringComparer.Ordinal);
+        foreach (var d in descriptors)
         {
-            totalSymbolCount += c.Length;
-            if (c.Length > largestCycleSize) largestCycleSize = c.Length;
+            totalSymbolCount += d.Symbols.Length;
+            if (d.Symbols.Length > largestCycleSize) largestCycleSize = d.Symbols.Length;
+            var bucketName = d.Bucket.ToString();
+            bucketCounts[bucketName] = bucketCounts.TryGetValue(bucketName, out var prior) ? prior + 1 : 1;
         }
+
+        var previewDescriptors = truncated ? descriptors.Take(maxResults).ToArray() : descriptors;
+        // Project into wire shape AFTER truncation so the legacy
+        // `cycles[][]` array view stays available alongside the new
+        // `descriptors[]` shape — purely additive, no field removal.
+        var previewSymbolArrays = previewDescriptors.Select(d => d.Symbols).ToArray();
+        var previewClassified = previewDescriptors
+            .Select(d => new { symbols = d.Symbols, bucket = d.Bucket.ToString() })
+            .ToArray();
 
         if (summarize)
         {
             return TextResult(WithEnvelope("lifeblood_cycles", new
             {
-                count = cycles.Length,
+                count = descriptors.Length,
                 totalSymbolCount,
                 largestCycleSize,
                 truncated,
-                preview,
+                bucketBreakdown = bucketCounts,
+                preview = previewSymbolArrays,
+                previewClassified,
                 summarize = true,
             }));
         }
 
         return TextResult(WithEnvelope("lifeblood_cycles", new
         {
-            count = cycles.Length,
+            count = descriptors.Length,
             totalSymbolCount,
             largestCycleSize,
             truncated,
-            cycles = preview,
+            bucketBreakdown = bucketCounts,
+            cycles = previewSymbolArrays,
+            descriptors = previewClassified,
         }));
     }
 

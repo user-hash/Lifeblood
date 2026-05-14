@@ -102,6 +102,52 @@ public sealed class GraphMetrics
 }
 
 /// <summary>
+/// One detected cycle (strongly-connected component) classified by what
+/// it most likely represents. Pairs the raw symbol-id member list from
+/// the Tarjan SCC pass with a triage bucket so a caller can fold the
+/// noise tail without re-walking the cycle members.
+/// INV-CYCLE-TAXONOMY-001 / LB-TRACK-20260514-008.
+/// </summary>
+public sealed class CycleDescriptor
+{
+    /// <summary>Symbol ids participating in the cycle, in SCC order.</summary>
+    public required string[] Symbols { get; init; }
+
+    /// <summary>
+    /// Triage bucket. <see cref="CycleBucket.LikelyRealLoop"/> by
+    /// default; the analyzer downgrades to one of the noise buckets
+    /// when the cycle matches the matching pattern.
+    /// </summary>
+    public required CycleBucket Bucket { get; init; }
+}
+
+/// <summary>
+/// Cycle triage buckets. Precedence (most-authoritative wins):
+///   1. <see cref="GeneratedOrStaticAnalysisArtifact"/> — any
+///      participating symbol's file path matches a generated-code
+///      pattern (<c>obj</c>/<c>bin</c>/<c>generated</c> segment,
+///      <c>*.Generated.*</c> / <c>*.g.cs</c> filename). Build
+///      artifacts and source-generator output are never an
+///      architectural-refactor target.
+///   2. <see cref="PartialClassCluster"/> — every participating
+///      method/property/field walks (via <see cref="Lifeblood.Domain.Graph.EdgeKind.Contains"/>
+///      reverse-chain) to the same enclosing Type. Intra-type
+///      mutual recursion / method-pair cycles inside one host
+///      (partial classes manifest the same way at the SCC level
+///      because Roslyn surfaces them as one type with members
+///      spread across files).
+///   3. <see cref="LikelyRealLoop"/> — everything else. Cross-type
+///      / cross-module loops; the actual architectural-cycle
+///      backlog.
+/// </summary>
+public enum CycleBucket
+{
+    LikelyRealLoop,
+    PartialClassCluster,
+    GeneratedOrStaticAnalysisArtifact,
+}
+
+/// <summary>
 /// A rule violation. Result object, not a graph mutation.
 /// INV-GRAPH-004: Analyzers do not modify the graph.
 /// </summary>
