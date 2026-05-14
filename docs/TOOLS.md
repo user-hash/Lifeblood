@@ -50,13 +50,15 @@ The difference: the AI agent doesn't guess what your code does. It **asks the co
 
 ## ¹ `lifeblood_dead_code` status
 
-Self-analysis (post P3 / v0.6.7): 8 findings on Lifeblood itself. Five false-positive classes were closed in v0.6.4 (interface dispatch, member access granularity, null-conditional property access, lambda context attribution, method-group references) plus the root-cause compilation gap (missing implicit global usings). Three more closed in v0.6.5 (constructor `Calls` edge, field-initializer containing method, property-accessor body context). The Unity reachability port (`INV-UNITY-001`) closed the MonoBehaviour magic-method false-positive class on real Unity workspaces: the dogfood Unity workspace (87 modules) went from 1095 dead-code findings to 729 (-33%), MonoBehaviour-magic FPs from 378 to 13 (-97%).
+Self-analysis (post-v0.7.3): 6 findings on Lifeblood itself, 3 legitimate (`Program.Main` × 3) + 3 false positives currently tracked as `LB-INBOX-010`. Five false-positive classes were closed in v0.6.4 (interface dispatch, member access granularity, null-conditional property access, lambda context attribution, **explicit-form** method-group references via `new Lazy<T>(Method)`) plus the root-cause compilation gap (missing implicit global usings). Three more closed in v0.6.5 (constructor `Calls` edge, field-initializer containing method, property-accessor body context). The Unity reachability port (`INV-UNITY-001`) closed the MonoBehaviour magic-method false-positive class on real Unity workspaces: the dogfood Unity workspace (87 modules) went from 1095 dead-code findings to 729 (-33%), MonoBehaviour-magic FPs from 378 to 13 (-97%).
 
-**Remaining false-positive classes (structural, not fixable by static analysis):**
+**Remaining false-positive classes (structural; not currently closed by the extractor):**
 - Runtime entry points (Program.Main, composition-root entries).
 - UI Toolkit `VisualElement` subclasses with magic-named methods (Awake/Update on a non-MonoBehaviour base).
 - Audio callbacks (`OnAudioFilterRead`) on bases not in the standard MonoBehaviour message-receiver set.
 - Reflection-based dispatch invisible to static analysis (`Type.GetType` + `MethodInfo.Invoke`, Unity `SendMessage`-dispatched handlers).
+- **Target-typed `new(MethodGroup)`** (`LB-INBOX-010`, open). The v0.6.4 method-group fix closed the explicit form (`new Lazy<T>(Method)`); the target-typed form (`new(Method)`, C# 9+) does not currently emit a `Calls` edge to the method-group argument. `find_references` sees the usage via Roslyn but `dependants` / `dead_code` / `blast_radius` walk the graph and miss it. Pinned by a skipped regression test (`ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor`) that will convert to a ratchet when the extractor fix ships.
+- **Generic-method call canonical-id drift** (`LB-INBOX-010`, open). Calls to a generic method via type-inferred arguments (e.g. `ApplyCap(pack.HighValueFiles, maxFiles)`) appear to bind to the instantiated `IMethodSymbol`; if the edge is emitted under that instantiated id rather than the source-declared generic id, the graph misses the back-reference.
 
 **Consumer guidance:**
 - Findings are advisory. Every response carries the `envelope.confidence = "Advisory"` band and a `limitations[]` entry naming the FP classes.
