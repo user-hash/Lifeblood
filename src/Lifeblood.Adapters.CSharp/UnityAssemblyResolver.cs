@@ -26,7 +26,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// so the tool layer can echo it instead of letting the script fail
 /// with cryptic CS0246 errors.
 ///
-/// Phase P4 (2026-04-26). See INV-EXECUTE-001 in CLAUDE.md.
+/// See INV-EXECUTE-001.
 /// </summary>
 public sealed class UnityAssemblyResolver : IRuntimeAssemblyResolver
 {

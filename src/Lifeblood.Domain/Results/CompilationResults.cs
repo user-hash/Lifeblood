@@ -131,7 +131,7 @@ public sealed class CodeExecutionResult
     public double ElapsedMs { get; init; }
 
     /// <summary>
-    /// Non-fatal diagnostics from the runtime-assembly resolver (Phase P4).
+    /// Non-fatal diagnostics from the runtime-assembly resolver.
     /// Examples: "Unity workspace detected but no build artifacts found —
     /// run a Unity build first" when the executor expected to inject
     /// UnityEngine.dll references and couldn't. Empty in the happy path.
@@ -139,7 +139,7 @@ public sealed class CodeExecutionResult
     public string[] RuntimeAssemblyWarnings { get; init; } = Array.Empty<string>();
 
     /// <summary>
-    /// Non-fatal diagnostics from the target-runtime pre-flight (Phase P4).
+    /// Non-fatal diagnostics from the target-runtime pre-flight.
     /// Each entry is a single API the script touches that isn't available
     /// in the requested target profile (e.g. <c>MathF.Log2</c> doesn't
     /// exist in <c>net-standard-2.1</c>). Empty when the script's API

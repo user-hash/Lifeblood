@@ -14,7 +14,7 @@ public interface ICodeExecutor
     /// <summary>
     /// Typed-options overload. Use this when supplying
     /// <see cref="CodeExecutionRequest.TargetProfile"/> or other fields
-    /// that don't fit the back-compatible signature. Phase P4.
+    /// that don't fit the back-compatible signature.
     /// </summary>
     CodeExecutionResult Execute(CodeExecutionRequest request);
 }
@@ -25,7 +25,6 @@ public interface ICodeExecutor
 /// (target-profile selection, allow-host-network, deterministic seed,
 /// etc.) can be added without further signature churn — same pattern
 /// as <see cref="FindReferencesOptions"/> and <see cref="DiagnosticsRequest"/>.
-/// Phase P4 (2026-04-26).
 /// </summary>
 public sealed class CodeExecutionRequest
 {

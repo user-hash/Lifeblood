@@ -84,8 +84,7 @@ public interface ISymbolResolver
     /// than one type carries that short name. Members of every kind
     /// (Method, Property, Field, Event) are considered.
     ///
-    /// Closes the field-report P1 ask (2026-05-11): the existing
-    /// <see cref="ResolveShortName"/> flattens every member of every type
+    /// Where <see cref="ResolveShortName"/> flattens every member of every type
     /// matching a bare name. <c>ResolveMember</c> scopes to a single
     /// containing type, which is the workflow callers actually want when
     /// they ask "what overloads of <c>SetPatch</c> exist on
@@ -366,7 +365,7 @@ public enum ResolveOutcome
     /// uniquely. The resolver corrects the kind silently and returns the real
     /// member, with a diagnostic explaining the correction. Models the dogfood
     /// case where agents copy-paste member names without remembering whether
-    /// the member is a method, property, or field. Closes LB-BUG-002.
+    /// the member is a method, property, or field. INV-RESOLVER-006.
     /// </summary>
     KindCorrectedOnContainingType,
 }

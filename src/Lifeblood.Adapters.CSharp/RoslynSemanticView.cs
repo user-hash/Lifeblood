@@ -65,7 +65,7 @@ public sealed class RoslynSemanticView
     /// Sandbox-introspection cheat sheet. Scripts call <c>Help</c> from
     /// the top level and get back the available globals, common
     /// query shapes, and the EdgeKind / SymbolKind value names so you
-    /// don't have to remember the enum members. Phase P4 / LB-FR-013.
+    /// don't have to remember the enum members.
     /// </summary>
     public string Help => HelpText;
 
@@ -107,7 +107,6 @@ public sealed class RoslynSemanticView
     /// ergonomics — scripts can write
     /// <c>SymbolsOfKind("Method")</c> instead of having to import
     /// the enum. Unknown kind names return an empty sequence (no throw).
-    /// Phase P4 / LB-BUG-008.
     /// </summary>
     public IEnumerable<Symbol> SymbolsOfKind(string kindName)
     {
@@ -121,7 +120,7 @@ public sealed class RoslynSemanticView
     /// String-accepting filter over <see cref="SemanticGraph.Edges"/>.
     /// Sandbox ergonomic — scripts use <c>EdgesOfKind("Calls")</c>
     /// instead of importing <c>EdgeKind</c>. Unknown kind names return
-    /// an empty sequence. Phase P4 / LB-BUG-008.
+    /// an empty sequence.
     /// </summary>
     public IEnumerable<Edge> EdgesOfKind(string kindName)
     {

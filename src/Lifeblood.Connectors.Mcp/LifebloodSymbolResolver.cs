@@ -27,7 +27,7 @@ namespace Lifeblood.Connectors.Mcp;
 ///     lenient single-overload match
 ///     (<see cref="ResolveOutcome.LenientMethodOverload"/>) or ambiguous
 ///     (<see cref="ResolveOutcome.AmbiguousMethodOverload"/>).</item>
-///   <item>Kind correction (LB-BUG-002): <c>method:</c> prefix on a member
+///   <item>Kind correction (INV-RESOLVER-006): <c>method:</c> prefix on a member
 ///     name that is a property / field / event on the resolved type, when
 ///     no method by that name exists. Returns
 ///     <see cref="ResolveOutcome.KindCorrectedOnContainingType"/>.</item>
@@ -109,7 +109,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
                 };
             }
 
-            // Rule 2.5 (LB-BUG-002): kind correction. Zero method overloads
+            // Rule 2.5 (INV-RESOLVER-006): kind correction. Zero method overloads
             // by that name, but the parent type might carry a property /
             // field / event / indexer with the requested simple name. Models
             // the dogfood case of LLM agents copy-pasting member names
@@ -1070,7 +1070,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     /// whose simple <see cref="Symbol.Name"/> equals
     /// <paramref name="memberName"/>. Used by the
     /// <see cref="ResolveOutcome.KindCorrectedOnContainingType"/> path
-    /// (LB-BUG-002): when the user supplied <c>method:NS.Type.X</c> but the
+    /// (INV-RESOLVER-006): when the user supplied <c>method:NS.Type.X</c> but the
     /// type carries a property / field / event named <c>X</c> instead, the
     /// resolver returns the real member rather than fall through to the
     /// global short-name fuzzy fallback.

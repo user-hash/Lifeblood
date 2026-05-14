@@ -49,7 +49,7 @@ internal sealed class AnalysisSnapshot
     /// stays current to the previous-state asmdef and this analyzer
     /// silently runs against a stale module model. Any asmdef-timestamp
     /// drift triggers a full re-analyze on the next round, which catches
-    /// the change. Phase P3 (2026-04-26), promoted from LB-NICE-003.
+    /// the change. INV-UNITY-002.
     /// </summary>
     public Dictionary<string, DateTime> AsmdefTimestamps { get; }
         = new(StringComparer.OrdinalIgnoreCase);
@@ -70,16 +70,16 @@ internal sealed class AnalysisSnapshot
     /// re-analyze can hand changed-modules' compilations the metadata
     /// references for UNCHANGED dependent modules.
     ///
-    /// Pre-fix (LB-BUG-020 / L-LIM-002, 2026-05-10): this dictionary lived
-    /// as a local in <c>ModuleCompilationBuilder.ProcessInOrder</c> and was
-    /// discarded at end-of-call. Full analyze populated it for every module;
-    /// incremental analyze called <c>ProcessInOrder</c> with only the
+    /// The drift class this guards (INV-INCREMENTAL-XREF-001): when this
+    /// dictionary lived as a local in <c>ModuleCompilationBuilder.ProcessInOrder</c>
+    /// and was discarded at end-of-call, full analyze populated it for every
+    /// module; incremental analyze called <c>ProcessInOrder</c> with only the
     /// <c>modulesToRecompile</c> subset, so unchanged dependencies had no
     /// metadata reference, every cross-module symbol bound to a Roslyn
     /// error symbol, and the corresponding edges were silently dropped by
-    /// <c>GraphBuilder</c>'s dangling-edge filter. Empirical repro at
-    /// diagnosis time on a multi-module Unity workspace showed cross-module
-    /// edges silently dropping on a single-file touch in proportion to the
+    /// <c>GraphBuilder</c>'s dangling-edge filter. Empirical repro on a
+    /// multi-module Unity workspace showed cross-module edges silently
+    /// dropping on a single-file touch in proportion to the
     /// unchanged-module fan-in. Minimal synthetic repro in
     /// <c>IncrementalAnalyzeTests.IncrementalAnalyze_CrossModuleEdges_*</c>:
     /// 5 → 1 (-4) on a 1-file touch in a 2-module project.

@@ -9,7 +9,7 @@ namespace Lifeblood.Connectors.Mcp;
 /// the analyzer holds no state between calls.
 ///
 /// Lives in <c>Lifeblood.Connectors.Mcp</c> because <c>Lifeblood.Analysis</c>
-/// has no Application-port dependency. INV-CONN-001. Phase P5.
+/// has no Application-port dependency. INV-CONN-001.
 /// </summary>
 public sealed class LifebloodAuthorityReporter : IAuthorityReporter
 {

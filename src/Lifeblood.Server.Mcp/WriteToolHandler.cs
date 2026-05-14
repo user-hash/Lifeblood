@@ -96,8 +96,8 @@ internal sealed class WriteToolHandler
         if (!string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(filePath))
             return ErrorResult("'code' and 'filePath' are mutually exclusive — supply exactly one.");
 
-        // File-mode hand-off: the host now owns owning-compilation
-        // detection AND tree-swapping (LB-BUG-019). Reading the file off
+        // File-mode hand-off: the host owns owning-compilation detection
+        // AND tree-swapping. Reading the file off
         // disk and stuffing it through the snippet path is what produced
         // the "every type unresolved" failure on Unity files — adding the
         // same file as a fresh tree alongside its own existing tree means

@@ -98,12 +98,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 snapshot.CsprojTimestamps[csprojAbs] = _fs.GetLastWriteTimeUtc(csprojAbs);
         }
 
-        // Phase P3: record *.asmdef timestamps. Unity workspaces declare
-        // module-level options on asmdefs; their on-disk csprojs are
-        // generated from those declarations. Editing an asmdef without
-        // forcing Unity to regenerate csprojs leaves the on-disk csproj
-        // stale, so the csproj-timestamp tracker alone misses the change.
-        // INV-UNITY-002 / promoted LB-NICE-003.
+        // Record *.asmdef timestamps. Unity workspaces declare module-level
+        // options on asmdefs; their on-disk csprojs are generated from those
+        // declarations. Editing an asmdef without forcing Unity to regenerate
+        // csprojs leaves the on-disk csproj stale, so the csproj-timestamp
+        // tracker alone misses the change. INV-UNITY-002.
         foreach (var asmdefAbs in _fs.FindFiles(projectRoot, "*.asmdef", recursive: true))
         {
             try
@@ -277,8 +276,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         }
 
         // INV-ANALYZE-FALLBACK-001 site 2: descriptor (asmdef) drift.
-        // Phase P3 / promoted LB-NICE-003: any *.asmdef edit, addition, or
-        // removal forces a full re-analyze on this round. Unity csprojs
+        // Any *.asmdef edit, addition, or removal forces a full re-analyze
+        // on this round. Unity csprojs
         // are generated from asmdefs; an asmdef edit not yet flushed
         // through Unity's csproj regeneration would leave the on-disk
         // csproj stale and the incremental walk would miss the change.
@@ -562,7 +561,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     /// <summary>
     /// True when any *.asmdef under <paramref name="projectRoot"/> has a
     /// different mtime than the snapshot, has been added since the
-    /// snapshot, or has been removed. Phase P3, promoted LB-NICE-003.
+    /// snapshot, or has been removed. INV-UNITY-002.
     /// </summary>
     private bool HasAsmdefDrift(string projectRoot)
     {

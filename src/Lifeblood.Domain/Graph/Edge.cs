@@ -19,8 +19,7 @@ public sealed class Edge
     /// the canonical id of the enclosing declaration. Null for edges with no
     /// single authoring location (module→module DependsOn, graph-derived
     /// type-level Inherits/Implements when the inheritance clause itself is
-    /// not surfaced, etc.).
-    /// Closes the field-report 2026-05-11 P1 ask. See <see cref="CallSite"/>.
+    /// not surfaced, etc.). See <see cref="CallSite"/>. INV-EDGE-CALLSITE-001.
     /// </summary>
     public CallSite? CallSite { get; init; }
 }

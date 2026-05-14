@@ -7,12 +7,12 @@ namespace Lifeblood.Domain.Graph;
 /// declaration (method / property / field / etc.) that lexically owns the
 /// reference.
 ///
-/// Closes the field-report 2026-05-11 P1 ask: dependency / dependants /
-/// find-references responses previously returned only <c>SourceId / TargetId</c>
-/// pairs, forcing callers to fall back to manual file reading to answer
-/// "where and why does this depend on X?". The structured shape lifts the
-/// information the adapter already had at extraction time into the wire
-/// surface.
+/// Dependency / dependants / find-references responses without CallSite
+/// would return only <c>SourceId / TargetId</c> pairs, forcing callers to
+/// fall back to manual file reading to answer "where and why does this
+/// depend on X?". The structured shape lifts the information the adapter
+/// already had at extraction time into the wire surface.
+/// INV-EDGE-CALLSITE-001.
 ///
 /// Nullable on <see cref="Edge.CallSite"/>: not every edge has a single
 /// authoring location (module→module DependsOn, type→type Inherits, etc.).

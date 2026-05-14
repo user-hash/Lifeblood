@@ -6,13 +6,13 @@ namespace Lifeblood.Domain.Graph;
 /// reachability provider) MUST reference these constants instead of
 /// literal strings.
 ///
-/// BUG-4 (2026-05-14) was exactly this drift shape: <c>TierClassifier</c>
-/// read <c>Properties["isTooling"]</c> which the extractor never wrote
-/// (permanent dead read, silent classification miss). Centralizing the
-/// key set in one place makes the writer/reader pair impossible to
-/// drift in isolation — pinned by <c>SymbolPropertyKeysParityTests</c>.
-///
-/// INV-PROPERTY-KEY-PARITY-001 / LB-FOLLOWUP-20260514-004.
+/// The drift class this guards: a reader looking up a property key the
+/// writer never emitted (e.g. <c>TierClassifier</c> reading
+/// <c>Properties["isTooling"]</c> when the extractor only wrote
+/// <c>"attributes"</c>) is a permanent dead read with no compile-time
+/// signal. Centralizing the key set here makes the writer/reader pair
+/// impossible to drift in isolation — pinned by
+/// <c>SymbolPropertyKeysParityTests</c>. INV-PROPERTY-KEY-PARITY-001.
 /// </summary>
 public static class SymbolPropertyKeys
 {

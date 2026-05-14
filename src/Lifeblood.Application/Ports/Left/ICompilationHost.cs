@@ -18,7 +18,7 @@ public interface ICompilationHost
     /// in a whole-project dump. <see cref="DiagnosticsRequest.ModuleName"/>
     /// disambiguates which compilation contains the file when the same path
     /// appears in multiple modules. Either field may be omitted; both omitted
-    /// is equivalent to the parameterless overload. Closes LB-BUG-016.
+    /// is equivalent to the parameterless overload.
     /// </summary>
     DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request);
 
@@ -61,7 +61,6 @@ public interface ICompilationHost
     /// (<see cref="FindReferencesOptions.IncludeDeclarations"/> etc.).
     /// "Include declarations or not" is a write-side reference-search policy
     /// — it is NOT something the resolver can decide from a symbol id alone.
-    /// See LB-FR-003 / Plan v4 §2.6 / Correction 2 from the external review.
     /// </summary>
     ReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options);
 
@@ -102,7 +101,7 @@ public interface ICompilationHost
 /// module's compilation; when both are set, the file must live inside the
 /// named module. Path comparison is case-insensitive on Windows-style paths
 /// and uses both relative-to-project and absolute matching so a caller can
-/// pass either form. Added 2026-04-26 for LB-BUG-016.
+/// pass either form.
 /// </summary>
 public sealed class DiagnosticsRequest
 {
