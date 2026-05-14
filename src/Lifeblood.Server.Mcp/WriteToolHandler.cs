@@ -126,12 +126,10 @@ internal sealed class WriteToolHandler
 
         var moduleName = GetString(args, "moduleName");
 
-        // Phase 7 / C5 (2026-04-11): auto-refresh the workspace if source
-        // has been edited since the last analyze. Prevents the failure mode
-        // where a user edits a file, runs compile_check, and gets stale
-        // errors against the old source. Opt-out via `staleRefresh:false`
-        // for callers that explicitly want to check against the pinned
-        // workspace.
+        // Auto-refresh the workspace if source has been edited since the
+        // last analyze. Prevents stale-source errors when a user edits a
+        // file then runs compile_check. Opt-out via `staleRefresh:false`
+        // for callers that explicitly want the pinned-workspace check.
         var staleRefresh = GetBool(args, "staleRefresh") ?? true;
         var refreshed = staleRefresh ? _session.MaybeRefreshIfStale() : null;
 

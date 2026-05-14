@@ -379,7 +379,7 @@ public static class ToolRegistry
   Name = "lifeblood_partial_view",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Return the combined source of every partial declaration of a type. Takes a type symbol id, walks the incoming Contains edges from File symbols to discover every partial file, reads each file via IFileSystem, and emits both per-segment source and a concatenated combined view with file headers. Phase 6 / the R2 finding.",
+  Description = "Return the combined source of every partial declaration of a type. Takes a type symbol id, walks the incoming Contains edges from File symbols to discover every partial file, reads each file via IFileSystem, and emits both per-segment source and a concatenated combined view with file headers.",
   InputSchema = new
   {
   type = "object",

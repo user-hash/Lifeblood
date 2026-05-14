@@ -39,44 +39,38 @@ class Program
         IFileSystem fs = new PhysicalFileSystem();
         var session = new GraphSession(fs);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
-        // Composition root: concrete adapter/connector types are constructed here
-        // and injected into ToolHandler as ports. Per hexagonal invariants, no
-        // non-root class may hold a direct reference to LifebloodMcpProvider or
-        // LifebloodSymbolResolver. Phase 0 cleanup, 2026-04-11.
+        // Composition root: concrete adapter/connector types are constructed
+        // here and injected into ToolHandler as ports. Per hexagonal invariants,
+        // no non-root class may hold a direct reference to LifebloodMcpProvider
+        // or LifebloodSymbolResolver.
         IMcpGraphProvider graphProvider = new LifebloodMcpProvider(blastRadius);
-        // Phase 3: the resolver routes every user-supplied identifier through
-        // a language-adapter canonicalizer at step 0. For the MCP server the
-        // C# adapter is the only language in play, so wire its canonicalizer
-        // directly. Future multi-language hosts will pick the canonicalizer
-        // based on loaded adapters.
+        // Every user-supplied identifier routes through a language-adapter
+        // canonicalizer at resolver step 0. For the MCP server the C# adapter
+        // is the only language in play; future multi-language hosts pick the
+        // canonicalizer based on loaded adapters.
         IUserInputCanonicalizer canonicalizer = new CSharpUserInputCanonicalizer();
         ISymbolResolver resolver = new LifebloodSymbolResolver(canonicalizer);
-        // Phase 5: lifeblood_search is backed by a separate port so it can
-        // plug in future scorers (BM25, vector embeddings) without touching
-        // the existing IMcpGraphProvider surface.
+        // lifeblood_search lives behind its own port so future scorers (BM25,
+        // vector embeddings) plug in without touching IMcpGraphProvider.
         ISemanticSearchProvider searchProvider = new LifebloodSemanticSearchProvider();
-        // Phase 6: dead-code analyzer and partial-view builder. Both live
-        // in Connectors.Mcp (not Lifeblood.Analysis, which is Domain-only
-        // and cannot reference Application ports). The partial-view
-        // builder takes projectRoot as a method parameter at each call,
-        // so it's session-state-free.
-        // Phase P3 (v0.6.7): wire Unity-aware runtime reachability into
-        // the dead-code analyzer. The Unity adapter knows about Unity's
-        // framework-dispatch surface (entrypoint attributes,
-        // MonoBehaviour magic methods, lifecycle hooks). Non-Unity
-        // workspaces still get correct dead-code findings — the adapter
-        // just returns false for everything, so the analyzer behaves
-        // identically to v0.6.6. INV-UNITY-001.
+        // Dead-code analyzer + partial-view builder live in Connectors.Mcp
+        // (not Lifeblood.Analysis, which is Domain-only and cannot reference
+        // Application ports). The partial-view builder takes projectRoot as
+        // a method parameter at each call, so it's session-state-free.
+        // The Unity-aware reachability provider knows Unity's framework-dispatch
+        // surface (entrypoint attributes, MonoBehaviour magic methods, lifecycle
+        // hooks); non-Unity workspaces still get correct dead-code findings
+        // because the adapter returns false for everything (INV-UNITY-001).
         IUnityReachabilityProvider unityReachability = new UnityReachabilityAdapter();
         IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer(unityReachability);
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(fs);
-        // Phase 8: invariant provider parses CLAUDE.md at the loaded
-        // project root. No graph dependency; pure text-in, data-out.
-        // The provider is session-scoped so its per-project-root cache
-        // persists across tool calls.
+        // Invariant provider parses CLAUDE.md + AGENTS.md + docs/invariants/**.md
+        // at the loaded project root. No graph dependency; pure text-in,
+        // data-out. Session-scoped so its per-project-root cache persists
+        // across tool calls.
         IInvariantProvider invariants = new LifebloodInvariantProvider(fs);
-        // Phase P2 (v0.6.7): IResponseDecorator is the single source of truth
-        // for the truth envelope attached to every read-side response
+        // IResponseDecorator is the single source of truth for the truth
+        // envelope attached to every read-side response
         // (INV-ENVELOPE-001). The classification table flows from
         // ToolRegistry — every read-side ToolDefinition declares its own
         // EnvelopeClassification — straight into the decorator at the

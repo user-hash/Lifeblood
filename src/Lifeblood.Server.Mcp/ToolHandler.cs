@@ -338,9 +338,8 @@ public sealed class ToolHandler
         var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
         var maxResults = WriteToolHandler.GetInt(args, "maxResults") ?? (summarize ? 25 : 500);
         if (maxResults < 0) maxResults = 0;
-        // Stage 2.C — optional grouping by path-bucket and/or module. Default
-        // "none" preserves the legacy flat shape. Closes the field-report
-        // 2026-05-11 P1 ask.
+        // Optional grouping by path-bucket and/or module. Default "none"
+        // preserves the flat affected[] shape; INV-BLAST-RADIUS-GROUP-001.
         var groupBy = (WriteToolHandler.GetString(args, "groupBy") ?? "none")
             .ToLowerInvariant();
 
