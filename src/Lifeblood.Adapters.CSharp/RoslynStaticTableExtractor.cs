@@ -350,15 +350,16 @@ internal static class RoslynStaticTableExtractor
         var line = span.StartLinePosition.Line + 1;
         var column = span.StartLinePosition.Character + 1;
 
-        var methodGroupId = TryExtractMethodGroupId(inner, buildSymbolId);
-        if (methodGroupId != null)
+        var methodGroupSymbol = TryExtractMethodGroupSymbol(inner);
+        if (methodGroupSymbol != null)
         {
             return new StaticTableValue
             {
                 Kind = StaticTableValueKind.MethodGroup,
                 RawText = rawText,
                 FilePath = filePath, Line = line, Column = column,
-                MethodGroupId = methodGroupId,
+                MethodGroupId = buildSymbolId(methodGroupSymbol),
+                MethodReturnFlagIds = TryExtractMethodReturnFlags(methodGroupSymbol, inner, buildSymbolId),
             };
         }
 
@@ -499,23 +500,96 @@ internal static class RoslynStaticTableExtractor
     private static bool IsNumericPrimitive(object value) => value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;
 
     /// <summary>
-    /// Resolve a method-group cell value to its target method id when
+    /// Resolve a method-group cell value to its target method symbol when
     /// the operation is a delegate creation over an IMethodReferenceOperation.
     /// Returns null for inline lambdas / anonymous functions — the
     /// extractor does not peek inside delegate bodies (that is dataflow,
     /// a separate truth tier). Inline lambdas fall back to Computed.
     /// </summary>
-    private static string? TryExtractMethodGroupId(IOperation op, Func<ISymbol, string> buildSymbolId)
+    private static IMethodSymbol? TryExtractMethodGroupSymbol(IOperation op)
     {
         if (op is IDelegateCreationOperation del)
         {
             var inner = UnwrapTransparent(del.Target);
             if (inner is IMethodReferenceOperation methodRef)
-                return buildSymbolId(methodRef.Method);
+                return methodRef.Method;
         }
         if (op is IMethodReferenceOperation directRef)
-            return buildSymbolId(directRef.Method);
+            return directRef.Method;
         return null;
+    }
+
+    /// <summary>
+    /// Best-effort summary of enum-flag values reachable in <c>return</c> positions of <paramref name="target"/>'s body.
+    /// Walks the target's IOperation tree, collecting every <c>IReturnOperation.ReturnedValue</c> that classifies as a
+    /// single enum-const <c>IFieldReferenceOperation</c> or an <c>|</c>-composed <c>IBinaryOperation</c> tree of
+    /// enum-const leaves (reusing <see cref="TryCollectEnumFlagMembers"/>). Returns the deduplicated, ordinal-sorted
+    /// union of leaf field ids. Returns null when the target carries no source declaration, lives in a compilation other
+    /// than <paramref name="siteOp"/>'s, has no walkable body, or has zero return positions that classify into
+    /// enum-flag values. The walker skips into nested anonymous functions / local functions — their returns belong to
+    /// the inner symbol, not <paramref name="target"/>. INV-METHOD-FLAG-SUMMARY-001.
+    /// </summary>
+    private static string[]? TryExtractMethodReturnFlags(
+        IMethodSymbol target,
+        IOperation siteOp,
+        Func<ISymbol, string> buildSymbolId)
+    {
+        var siteCompilation = siteOp.SemanticModel?.Compilation;
+        if (siteCompilation == null) return null;
+
+        var declRef = target.DeclaringSyntaxReferences.FirstOrDefault();
+        if (declRef == null) return null;
+
+        var syntax = declRef.GetSyntax();
+        if (!siteCompilation.SyntaxTrees.Contains(syntax.SyntaxTree)) return null;
+
+        var model = siteCompilation.GetSemanticModel(syntax.SyntaxTree);
+        var bodyOp = model.GetOperation(syntax);
+        if (bodyOp == null) return null;
+
+        var collector = new ReturnFlagCollector(buildSymbolId);
+        collector.Visit(bodyOp);
+        if (collector.FlagIds.Count == 0) return null;
+
+        var sorted = collector.FlagIds.ToArray();
+        Array.Sort(sorted, StringComparer.Ordinal);
+        return sorted;
+    }
+
+    /// <summary>
+    /// Roslyn <see cref="OperationWalker"/> that collects enum-flag member ids from every <c>IReturnOperation</c>
+    /// it encounters, while skipping descents into nested anonymous-function / local-function bodies whose returns
+    /// belong to a different enclosing symbol. INV-METHOD-FLAG-SUMMARY-001.
+    /// </summary>
+    private sealed class ReturnFlagCollector : OperationWalker
+    {
+        private readonly Func<ISymbol, string> _buildSymbolId;
+        internal HashSet<string> FlagIds { get; } = new(StringComparer.Ordinal);
+
+        internal ReturnFlagCollector(Func<ISymbol, string> buildSymbolId)
+        {
+            _buildSymbolId = buildSymbolId;
+        }
+
+        public override void VisitAnonymousFunction(IAnonymousFunctionOperation operation)
+        {
+        }
+
+        public override void VisitLocalFunction(ILocalFunctionOperation operation)
+        {
+        }
+
+        public override void VisitReturn(IReturnOperation operation)
+        {
+            if (operation.ReturnedValue != null)
+            {
+                var leaves = new List<string>();
+                if (TryCollectEnumFlagMembers(operation.ReturnedValue, leaves, _buildSymbolId))
+                {
+                    foreach (var leaf in leaves) FlagIds.Add(leaf);
+                }
+            }
+        }
     }
 
     /// <summary>

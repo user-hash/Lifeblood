@@ -181,6 +181,17 @@ public sealed class StaticTableValue
     /// <summary>Populated when <see cref="Kind"/> is <c>MethodGroup</c>. Canonical method id of the referenced delegate target.</summary>
     public string? MethodGroupId { get; init; }
 
+    /// <summary>
+    /// Populated when <see cref="Kind"/> is <c>MethodGroup</c> AND the delegate target carries a source declaration
+    /// (<see cref="Microsoft.CodeAnalysis.ISymbol.DeclaringSyntaxReferences"/> non-empty) AND at least one return position in
+    /// the target's body resolves to an enum-flag value — either a single enum-const <c>IFieldReferenceOperation</c> or
+    /// an <c>|</c>-composed <c>IBinaryOperation</c> tree of enum-const leaves. The array carries the UNION of enum-flag
+    /// member ids reachable across all return paths, sorted by canonical id for deterministic output. Null when the
+    /// target has no source decl (compiled metadata), when the body has no <c>return</c> producing an enum-flag value, or
+    /// when every return position falls back to <c>Computed</c>. INV-METHOD-FLAG-SUMMARY-001.
+    /// </summary>
+    public string[]? MethodReturnFlagIds { get; init; }
+
     /// <summary>Populated when <see cref="Kind"/> is <c>FieldReference</c>. Canonical field id of the referenced non-enum static field.</summary>
     public string? FieldReferenceId { get; init; }
 

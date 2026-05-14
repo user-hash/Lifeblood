@@ -613,6 +613,8 @@ namespace Acme {
         Assert.NotNull(cell.Value.MethodGroupId);
         Assert.Contains("Source", cell.Value.MethodGroupId);
         Assert.StartsWith("method:", cell.Value.MethodGroupId);
+        // Source() returns int — no enum-flag return positions, MethodReturnFlagIds stays null.
+        Assert.Null(cell.Value.MethodReturnFlagIds);
     }
 
     [Fact]
@@ -829,5 +831,209 @@ namespace Acme {
         var table = Assert.Single(report!.Tables);
         Assert.Equal("Numbers", table.MemberName);
         Assert.Equal(3, table.Rows.Length);
+    }
+
+    // INV-METHOD-FLAG-SUMMARY-001 — MethodGroup cell return-flag enrichment.
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_SingleFlagReturn_SurfacesFlagId()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  [Flags] public enum Bits { None = 0, A = 1, B = 2, C = 4 }
+  public class Row { public Row(Func<Bits> producer) { } }
+  public class Foo {
+    static Bits Source() => Bits.A;
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.MethodGroup, cell.Value.Kind);
+        Assert.NotNull(cell.Value.MethodReturnFlagIds);
+        var single = Assert.Single(cell.Value.MethodReturnFlagIds!);
+        Assert.EndsWith(".A", single);
+    }
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_OrComposedReturn_SurfacesAllLeaves()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  [Flags] public enum Bits { None = 0, A = 1, B = 2, C = 4 }
+  public class Row { public Row(Func<Bits> producer) { } }
+  public class Foo {
+    static Bits Source() => Bits.A | Bits.C;
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.NotNull(cell.Value.MethodReturnFlagIds);
+        Assert.Equal(2, cell.Value.MethodReturnFlagIds!.Length);
+        Assert.Contains(cell.Value.MethodReturnFlagIds!, id => id.EndsWith(".A"));
+        Assert.Contains(cell.Value.MethodReturnFlagIds!, id => id.EndsWith(".C"));
+    }
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_MultipleReturnPaths_UnionsAcrossBranches()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  [Flags] public enum Bits { None = 0, A = 1, B = 2, C = 4 }
+  public class Row { public Row(Func<int, Bits> producer) { } }
+  public class Foo {
+    static Bits Source(int x) { if (x > 0) return Bits.A; return Bits.B | Bits.C; }
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.NotNull(cell.Value.MethodReturnFlagIds);
+        Assert.Equal(3, cell.Value.MethodReturnFlagIds!.Length);
+        Assert.Contains(cell.Value.MethodReturnFlagIds!, id => id.EndsWith(".A"));
+        Assert.Contains(cell.Value.MethodReturnFlagIds!, id => id.EndsWith(".B"));
+        Assert.Contains(cell.Value.MethodReturnFlagIds!, id => id.EndsWith(".C"));
+    }
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_ComputedReturn_StaysNull()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  [Flags] public enum Bits { None = 0, A = 1, B = 2 }
+  public class Row { public Row(Func<Bits> producer) { } }
+  public class Foo {
+    static Bits Other() => Bits.A;
+    static Bits Source() => Other();
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.MethodGroup, cell.Value.Kind);
+        // Return value is a method invocation, not an enum-const / OR-composition — classification declines.
+        Assert.Null(cell.Value.MethodReturnFlagIds);
+    }
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_MixedReturns_SurfacesOnlyClassifiedFlags()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  [Flags] public enum Bits { None = 0, A = 1, B = 2 }
+  public class Row { public Row(Func<int, Bits> producer) { } }
+  public class Foo {
+    static Bits Compute() => Bits.B;
+    static Bits Source(int x) { if (x > 0) return Bits.A; return Compute(); }
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.NotNull(cell.Value.MethodReturnFlagIds);
+        var single = Assert.Single(cell.Value.MethodReturnFlagIds!);
+        Assert.EndsWith(".A", single);
+    }
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_NestedLambdaReturn_DoesNotBleedThrough()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  [Flags] public enum Bits { None = 0, A = 1, B = 2 }
+  public class Row { public Row(Func<int> producer) { } }
+  public class Foo {
+    static int Source() {
+      Func<Bits> inner = () => Bits.A;
+      return 0;
+    }
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.MethodGroup, cell.Value.Kind);
+        // Outer Source() returns int 0; inner lambda's Bits.A return belongs to the lambda, not Source.
+        Assert.Null(cell.Value.MethodReturnFlagIds);
+    }
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_DuplicateReturns_DeduplicateAndSort()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  [Flags] public enum Bits { None = 0, Zeta = 1, Alpha = 2, Mu = 4 }
+  public class Row { public Row(Func<int, Bits> producer) { } }
+  public class Foo {
+    static Bits Source(int x) {
+      if (x > 0) return Bits.Zeta | Bits.Mu;
+      if (x < 0) return Bits.Alpha;
+      return Bits.Zeta;
+    }
+    public static readonly Row[] All = new Row[] { new Row(Source) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.NotNull(cell.Value.MethodReturnFlagIds);
+        // Zeta appears in two returns — must dedupe to single occurrence.
+        Assert.Equal(3, cell.Value.MethodReturnFlagIds!.Length);
+        // Ordinal sort: ".Alpha" < ".Mu" < ".Zeta" suffix order is not the right comparison — full ids sort ordinally.
+        var sorted = cell.Value.MethodReturnFlagIds!.ToArray();
+        var resorted = sorted.ToArray();
+        Array.Sort(resorted, StringComparer.Ordinal);
+        Assert.Equal(resorted, sorted);
+    }
+
+    [Fact]
+    public void GetStaticTables_MethodGroupReturnFlags_CompiledMetadataTarget_StaysNull()
+    {
+        const string source = @"
+using System;
+namespace Acme {
+  public class Row { public Row(Func<string, int> producer) { } }
+  public class Foo {
+    // Method group to a BCL method — target lives in compiled metadata, no source decl reachable.
+    public static readonly Row[] All = new Row[] { new Row(int.Parse) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.MethodGroup, cell.Value.Kind);
+        Assert.NotNull(cell.Value.MethodGroupId);
+        // No DeclaringSyntaxReferences on BCL method → cannot walk body → null flags.
+        Assert.Null(cell.Value.MethodReturnFlagIds);
     }
 }
