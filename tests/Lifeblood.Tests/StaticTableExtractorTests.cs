@@ -344,6 +344,121 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_DefaultArgument_ProvenanceFromParameterDefaultSyntax()
+    {
+        // Roslyn's IArgumentOperation.Value.Syntax for an omitted /
+        // default-bound argument points back at the call-site span
+        // (the `new Row(1)` invocation), not at the parameter's
+        // default expression. Caller-side provenance is misleading —
+        // the raw text should report the default expression ("7")
+        // so a downstream tool reads what the type's contract
+        // actually says, not the row's authoring span.
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id, int multiplier = 7) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(1) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var defaultCell = report!.Tables[0].Rows[0].Cells[1];
+
+        Assert.Equal(StaticTableArgumentKind.DefaultValue, defaultCell.ArgumentKind);
+        Assert.Equal("7", defaultCell.Value.RawText);
+    }
+
+    [Fact]
+    public void GetStaticTables_DefaultArgument_NullDefault_ProvenanceFromParameter()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id, string label = null) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(1) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var cell = host.GetStaticTables("type:Acme.Foo", Default)!.Tables[0].Rows[0].Cells[1];
+
+        Assert.Equal(StaticTableArgumentKind.DefaultValue, cell.ArgumentKind);
+        Assert.Equal(StaticTableValueKind.Null, cell.Value.Kind);
+        Assert.Equal("null", cell.Value.RawText);
+    }
+
+    [Fact]
+    public void GetStaticTables_DefaultArgument_BoolDefault_ProvenanceFromParameter()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id, bool enabled = true) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(1) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var cell = host.GetStaticTables("type:Acme.Foo", Default)!.Tables[0].Rows[0].Cells[1];
+
+        Assert.Equal(StaticTableArgumentKind.DefaultValue, cell.ArgumentKind);
+        Assert.Equal(StaticTableValueKind.Bool, cell.Value.Kind);
+        Assert.True(cell.Value.BoolValue);
+        Assert.Equal("true", cell.Value.RawText);
+    }
+
+    [Fact]
+    public void GetStaticTables_DefaultArgument_EnumDefault_ProvenanceFromParameter()
+    {
+        const string source = @"
+namespace Acme {
+  public enum Mode { Alpha, Beta, Gamma }
+  public class Row { public Row(int id, Mode m = Mode.Beta) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(1) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var cell = host.GetStaticTables("type:Acme.Foo", Default)!.Tables[0].Rows[0].Cells[1];
+
+        Assert.Equal(StaticTableArgumentKind.DefaultValue, cell.ArgumentKind);
+        Assert.Equal(StaticTableValueKind.EnumMember, cell.Value.Kind);
+        Assert.Contains(".Beta", cell.Value.EnumMemberId);
+        Assert.Equal("Mode.Beta", cell.Value.RawText);
+    }
+
+    [Fact]
+    public void GetStaticTables_ManyOmittedOptionalArgs_EachCellSourcedFromItsParameter()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(int id, int a = 1, int b = 2, int c = 3, int d = 4) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(99) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var cells = host.GetStaticTables("type:Acme.Foo", Default)!.Tables[0].Rows[0].Cells;
+
+        Assert.Equal(5, cells.Length);
+        Assert.Equal("99", cells[0].Value.RawText);
+        Assert.Equal(StaticTableArgumentKind.Explicit, cells[0].ArgumentKind);
+
+        for (var i = 1; i < cells.Length; i++)
+        {
+            Assert.Equal(StaticTableArgumentKind.DefaultValue, cells[i].ArgumentKind);
+            Assert.Equal(StaticTableValueKind.Number, cells[i].Value.Kind);
+        }
+        Assert.Equal("1", cells[1].Value.RawText);
+        Assert.Equal("2", cells[2].Value.RawText);
+        Assert.Equal("3", cells[3].Value.RawText);
+        Assert.Equal("4", cells[4].Value.RawText);
+    }
+
+    [Fact]
     public void GetStaticTables_NamedArgument_OutOfOrderStillBindsToParameterPosition()
     {
         const string source = @"

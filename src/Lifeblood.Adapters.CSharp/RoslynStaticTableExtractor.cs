@@ -86,7 +86,7 @@ internal static class RoslynStaticTableExtractor
                     rowsTruncated = true;
                     break;
                 }
-                rowSlots.Add(BuildRow(i, rowOps[i], buildSymbolId));
+                rowSlots.Add(BuildRow(i, rowOps[i], buildSymbolId, compilation));
             }
 
             var memberSpan = initializer.GetLocation().GetLineSpan();
@@ -212,7 +212,7 @@ internal static class RoslynStaticTableExtractor
         return list;
     }
 
-    private static StaticTableRow BuildRow(int ordinal, IOperation rowOp, Func<ISymbol, string> buildSymbolId)
+    private static StaticTableRow BuildRow(int ordinal, IOperation rowOp, Func<ISymbol, string> buildSymbolId, CSharpCompilation compilation)
     {
         var span = rowOp.Syntax.GetLocation().GetLineSpan();
         var unwrapped = UnwrapTransparent(rowOp);
@@ -224,7 +224,7 @@ internal static class RoslynStaticTableExtractor
         if (unwrapped is IObjectCreationOperation ctorOp && ctorOp.Constructor != null)
         {
             ctorId = buildSymbolId(ctorOp.Constructor);
-            cells = BuildCells(ctorOp, buildSymbolId);
+            cells = BuildCells(ctorOp, buildSymbolId, compilation);
         }
         else
         {
@@ -251,7 +251,7 @@ internal static class RoslynStaticTableExtractor
     /// need to re-implement C# overload resolution — Roslyn surfaces
     /// the bound parameter on every argument operation.
     /// </summary>
-    private static StaticTableCell[] BuildCells(IObjectCreationOperation ctorOp, Func<ISymbol, string> buildSymbolId)
+    private static StaticTableCell[] BuildCells(IObjectCreationOperation ctorOp, Func<ISymbol, string> buildSymbolId, CSharpCompilation compilation)
     {
         var args = ctorOp.Arguments;
         if (args.IsDefaultOrEmpty) return Array.Empty<StaticTableCell>();
@@ -260,15 +260,63 @@ internal static class RoslynStaticTableExtractor
         {
             var arg = args[i];
             var parameter = arg.Parameter;
+
+            // DefaultValue args: Roslyn binds the value semantically
+            // (the literal / member-ref the parameter declares) but
+            // arg.Value.Syntax points at the call site (the row's
+            // `new Row(…)` invocation), not the parameter's default
+            // expression. Re-source BOTH provenance AND the bound
+            // operation from the parameter's own declaration site:
+            // GetSemanticModel(parameter-tree).GetOperation(default-
+            // syntax) returns the authoring operation (e.g. an
+            // IFieldReferenceOperation for `Mode.Beta`) instead of the
+            // lowered constant that arg.Value surfaces. No string
+            // matching, no consumer-domain knowledge — ParameterSyntax.Default
+            // is the authoritative source.
+            IOperation classifyOp = arg.Value;
+            SyntaxNode? provenanceOverride = null;
+            if (arg.ArgumentKind == ArgumentKind.DefaultValue && parameter != null)
+            {
+                var (paramSyntax, paramOp) = ResolveParameterDefault(parameter, compilation);
+                if (paramSyntax != null)
+                {
+                    provenanceOverride = paramSyntax;
+                    if (paramOp != null) classifyOp = paramOp;
+                }
+            }
+
             cells[i] = new StaticTableCell
             {
                 ParameterName = parameter?.Name,
                 Position = parameter?.Ordinal ?? i,
                 ArgumentKind = MapArgumentKind(arg.ArgumentKind),
-                Value = ClassifyValue(arg.Value, buildSymbolId),
+                Value = ClassifyValue(classifyOp, buildSymbolId, provenanceOverride),
             };
         }
         return cells;
+    }
+
+    /// <summary>
+    /// Resolve the source-syntax node + bound operation for a
+    /// parameter's default-value expression. Returns the expression
+    /// inside <c>= …</c> on the parameter declaration paired with
+    /// its <see cref="IOperation"/>, or <c>(null, null)</c> when the
+    /// parameter is metadata-only or carries no source declaration.
+    /// </summary>
+    private static (SyntaxNode? Syntax, IOperation? Op) ResolveParameterDefault(IParameterSymbol parameter, CSharpCompilation compilation)
+    {
+        foreach (var reference in parameter.DeclaringSyntaxReferences)
+        {
+            if (reference.GetSyntax() is ParameterSyntax ps && ps.Default != null)
+            {
+                var syntax = ps.Default.Value;
+                IOperation? op = null;
+                if (compilation.SyntaxTrees.Any(t => ReferenceEquals(t, syntax.SyntaxTree)))
+                    op = compilation.GetSemanticModel(syntax.SyntaxTree).GetOperation(syntax);
+                return (syntax, op);
+            }
+        }
+        return (null, null);
     }
 
     /// <summary>
@@ -291,12 +339,13 @@ internal static class RoslynStaticTableExtractor
     /// <see cref="StaticTableValueKind.Computed"/> with the raw source
     /// span as the eternal provenance. INV-EXTRACT-STATIC-TABLES-001.
     /// </summary>
-    private static StaticTableValue ClassifyValue(IOperation op, Func<ISymbol, string> buildSymbolId)
+    private static StaticTableValue ClassifyValue(IOperation op, Func<ISymbol, string> buildSymbolId, SyntaxNode? provenanceOverride = null)
     {
         _ = buildSymbolId;
         var inner = UnwrapTransparent(op);
-        var span = inner.Syntax.GetLocation().GetLineSpan();
-        var rawText = inner.Syntax.ToString();
+        var provenance = provenanceOverride ?? inner.Syntax;
+        var span = provenance.GetLocation().GetLineSpan();
+        var rawText = provenance.ToString();
         var filePath = span.Path ?? "";
         var line = span.StartLinePosition.Line + 1;
         var column = span.StartLinePosition.Character + 1;
