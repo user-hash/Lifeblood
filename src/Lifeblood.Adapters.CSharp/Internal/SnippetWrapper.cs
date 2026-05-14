@@ -80,11 +80,11 @@ internal static class SnippetWrapper
     /// CompilationUnit contains any type / namespace / delegate
     /// declaration, pass through; otherwise wrap.
     /// </summary>
-    public static PrepareResult Prepare(string code)
+    public static PrepareResult Prepare(string code, CSharpParseOptions? parseOptions = null)
     {
         if (code == null) throw new ArgumentNullException(nameof(code));
 
-        var originalTree = CSharpSyntaxTree.ParseText(code);
+        var originalTree = CSharpSyntaxTree.ParseText(code, parseOptions);
         var root = (CompilationUnitSyntax)originalTree.GetRoot();
 
         if (HasTopLevelTypeOrNamespace(root))
@@ -92,7 +92,7 @@ internal static class SnippetWrapper
             return new PrepareResult(originalTree, WasWrapped: false, WrapperLineNumber: 0);
         }
 
-        return WrapAsMethodBody(originalTree, root, code);
+        return WrapAsMethodBody(originalTree, root, code, parseOptions);
     }
 
     /// <summary>
@@ -123,7 +123,7 @@ internal static class SnippetWrapper
         return false;
     }
 
-    private static PrepareResult WrapAsMethodBody(SyntaxTree originalTree, CompilationUnitSyntax root, string originalCode)
+    private static PrepareResult WrapAsMethodBody(SyntaxTree originalTree, CompilationUnitSyntax root, string originalCode, CSharpParseOptions? parseOptions)
     {
         // Insertion point: immediately after the last using directive's
         // FullSpan end (which includes its trailing trivia, normally a
@@ -172,7 +172,7 @@ internal static class SnippetWrapper
         var prefixLineCount = CountLines(prefix);
         var wrapperLineNumber = prefixLineCount + 1;
 
-        var wrappedTree = CSharpSyntaxTree.ParseText(wrapped);
+        var wrappedTree = CSharpSyntaxTree.ParseText(wrapped, parseOptions);
         return new PrepareResult(wrappedTree, WasWrapped: true, WrapperLineNumber: wrapperLineNumber);
     }
 
