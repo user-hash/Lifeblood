@@ -250,7 +250,7 @@ public static class TestImpactAnalyzer
     private static bool IsTestMethod(Symbol sym)
     {
         if (sym.Properties == null) return false;
-        if (!sym.Properties.TryGetValue("attributes", out var attrs) || string.IsNullOrEmpty(attrs))
+        if (!sym.Properties.TryGetValue(SymbolPropertyKeys.Attributes, out var attrs) || string.IsNullOrEmpty(attrs))
             return false;
         foreach (var name in attrs.Split(';'))
             if (TestCaseAttributes.Contains(name))

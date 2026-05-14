@@ -674,7 +674,7 @@ public sealed class RoslynSymbolExtractor
             names.Add(n);
         }
         if (names.Count == 0) return;
-        props["attributes"] = string.Join(";", names);
+        props[SymbolPropertyKeys.Attributes] = string.Join(";", names);
     }
 
     internal static string GetFullName(ISymbol symbol)

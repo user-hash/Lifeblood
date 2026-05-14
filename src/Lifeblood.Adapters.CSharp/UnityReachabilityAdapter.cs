@@ -193,7 +193,7 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
     {
         matchedName = "";
         if (sym.Properties == null) return false;
-        if (!sym.Properties.TryGetValue("attributes", out var attrs)) return false;
+        if (!sym.Properties.TryGetValue(SymbolPropertyKeys.Attributes, out var attrs)) return false;
         if (string.IsNullOrEmpty(attrs)) return false;
         foreach (var name in attrs.Split(';'))
         {
