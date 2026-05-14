@@ -1,6 +1,6 @@
 # Tools
 
-Lifeblood exposes **28 MCP tools** in one session. 17 read, 11 write. All share the same loaded workspace.
+Lifeblood exposes **29 MCP tools** in one session. 17 read, 12 write. All share the same loaded workspace.
 
 Every read-side tool that takes a `symbolId` routes through `ISymbolResolver` before any graph or workspace lookup. Resolution order: exact canonical match, truncated method form (single-overload lenient), kind correction (`method:` prefix on a property/field/event name on the same type, `INV-RESOLVER-006`), bare short name, extracted short name from a kind-prefixed or qualified input (`INV-RESOLVER-005`). Truncated ids, bare short names, qualified-but-wrong-namespace ids, and kind-mismatched ids all resolve correctly across the whole read surface.
 

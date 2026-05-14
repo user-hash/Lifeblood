@@ -125,7 +125,7 @@ v1 limitation: does not cascade to dependent modules when an API surface changes
 
 ## Unity Bridge
 
-The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes all 28 tools to Unity MCP. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
+The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes all 29 tools to Unity MCP. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
 
 ```
 Unity Editor ──→ Unity MCP (scenes, GameObjects, assets)
