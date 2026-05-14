@@ -105,6 +105,65 @@ public class DocsTests
   string.Join(", ", referencesWithoutHeading));
   }
 
+  [Fact]
+  public void StatusDoc_VisibleToolCount_MatchesHiddenAnchor()
+  {
+  // INV-DOCS-002. Visible "N MCP tools" / "N tools" prose in docs/STATUS.md
+  // must match the hidden `<!-- toolCount: N -->` anchor. Catches the
+  // drift class that shipped 28→29 transitions to 6 doc surfaces while
+  // the live-truth ratchet stayed silent (it only reads the HTML anchor).
+  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+  var status = File.ReadAllText(statusPath);
+
+  var anchor = Regex.Match(status, @"<!--\s*toolCount:\s*(\d+)\s*-->");
+  Assert.True(anchor.Success, "docs/STATUS.md must declare <!-- toolCount: N --> anchor.");
+  var declared = int.Parse(anchor.Groups[1].Value);
+
+  // Match any "<number> MCP tools" / "<number> tools" / "<number>R + <number>W"
+  // prose in the body. The visible-count regex deliberately captures the
+  // FIRST numeric token preceding "tools" / "MCP tools" so a future
+  // re-phrasing doesn't silently bypass the ratchet.
+  // Negative-lookbehind on `.` / word-char so version strings like
+  // "v0.7.3 tools land" don't false-positive against "3 tools".
+  var visibleMatches = Regex.Matches(status, @"(?<![.\w])(\d+)\s+(?:MCP\s+)?tools?\b");
+  Assert.NotEmpty(visibleMatches);
+
+  foreach (Match m in visibleMatches)
+  {
+  var visible = int.Parse(m.Groups[1].Value);
+  Assert.True(visible == declared,
+  $"docs/STATUS.md has visible \"{m.Value}\" but hidden anchor declares toolCount={declared}. " +
+  "Update the prose to match, or update the anchor.");
+  }
+  }
+
+  [Fact]
+  public void StatusDoc_VisibleReadWriteSplit_MatchesRegistryAvailability()
+  {
+  // INV-DOCS-003. Visible "(17 read + 12 write)" / "(17R + 12W)" prose in
+  // docs/STATUS.md must match the live ReadSide / WriteSide split in
+  // ToolRegistry.cs. Mirrors the visible-tool-count ratchet for the
+  // read/write breakdown — a second drift class the original ratchet
+  // missed.
+  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+  var status = File.ReadAllText(statusPath);
+
+  var registryPath = Path.Combine(RepoRoot, "src", "Lifeblood.Server.Mcp", "ToolRegistry.cs");
+  var registry = File.ReadAllText(registryPath);
+  var liveRead = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.ReadSide").Count;
+  var liveWrite = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.WriteSide").Count;
+
+  // Two phrase shapes appear in the doc: "(17 read + 12 write)" and "17R + 12W".
+  var prose = Regex.Matches(status, @"\(\s*(\d+)\s+read(?:-side)?\s*\+\s*(\d+)\s+write(?:-side)?\s*\)");
+  foreach (Match m in prose)
+  {
+  var r = int.Parse(m.Groups[1].Value);
+  var w = int.Parse(m.Groups[2].Value);
+  Assert.True(r == liveRead && w == liveWrite,
+  $"docs/STATUS.md has visible \"{m.Value}\" but registry has {liveRead} read + {liveWrite} write.");
+  }
+  }
+
   private static string FindRepoRoot()
   {
   var dir = AppDomain.CurrentDomain.BaseDirectory;
