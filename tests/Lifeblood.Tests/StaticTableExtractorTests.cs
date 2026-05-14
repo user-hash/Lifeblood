@@ -586,6 +586,100 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_TypeofCell_FallsBackToComputed()
+    {
+        const string source = @"
+namespace Acme {
+  public class Row { public Row(System.Type t) { } }
+  public class Foo {
+    public static readonly Row[] All = new Row[] { new Row(typeof(int)) };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var cell = report!.Tables[0].Rows[0].Cells[0];
+
+        Assert.Equal(StaticTableValueKind.Computed, cell.Value.Kind);
+        Assert.Contains("typeof(int)", cell.Value.RawText);
+    }
+
+    [Fact]
+    public void GetStaticTables_MaxRowsCap_TruncatesAndFlags()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly int[] Numbers = new int[] { 1, 2, 3, 4, 5 };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", new StaticTablesOptions { MaxRows = 2 });
+        var table = Assert.Single(report!.Tables);
+
+        Assert.Equal(2, table.Rows.Length);
+        Assert.True(table.RowsTruncated);
+    }
+
+    [Fact]
+    public void GetStaticTables_MaxTablesCap_TruncatesAndFlags()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly int[] A = new int[] { 1 };
+    public static readonly int[] B = new int[] { 2 };
+    public static readonly int[] C = new int[] { 3 };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", new StaticTablesOptions { MaxTables = 2 });
+
+        Assert.Equal(2, report!.Tables.Length);
+        Assert.True(report.TablesTruncated);
+    }
+
+    [Fact]
+    public void GetStaticTables_EmptyArrayInitializer_ZeroRowsNoTruncation()
+    {
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly int[] Numbers = new int[0];
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        var table = Assert.Single(report!.Tables);
+
+        Assert.Empty(table.Rows);
+        Assert.False(table.RowsTruncated);
+    }
+
+    [Fact]
+    public void GetStaticTables_NegativeMaxRows_ClampedToDefault()
+    {
+        // Caller cannot disable extraction by passing a zero / negative
+        // cap — adapter clamps to the default so the contract stays
+        // honest.
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly int[] Numbers = new int[] { 1, 2, 3 };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", new StaticTablesOptions { MaxRows = -5 });
+
+        Assert.Equal(3, report!.Tables[0].Rows.Length);
+        Assert.False(report.Tables[0].RowsTruncated);
+    }
+
+    [Fact]
     public void GetStaticTables_LiteralValuesCarryRawText()
     {
         const string source = @"
