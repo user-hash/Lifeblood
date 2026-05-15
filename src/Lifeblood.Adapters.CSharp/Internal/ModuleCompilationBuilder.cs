@@ -345,9 +345,20 @@ internal sealed class ModuleCompilationBuilder
         // <ImplicitUsings>enable</ImplicitUsings>, MSBuild generates global usings
         // for the standard namespaces. We inject the same set as a synthetic tree
         // because we compile from source, not through MSBuild.
-        var allTrees = module.ImplicitUsings
-            ? trees.Append(ImplicitGlobalUsings).ToArray()
-            : trees;
+        //
+        // <InternalsVisibleTo Include="X"> items (INV-DIAGNOSTIC-IVT-PARITY-001).
+        // MSBuild's GenerateAssemblyInfo target writes one
+        // [assembly: InternalsVisibleTo("X")] per item into
+        // obj/<Tfm>/<AssemblyName>.AssemblyInfo.cs; Lifeblood's SDK-style scan
+        // skips obj/ so we synthesize the equivalent attribute tree here.
+        // Parsed with the module's parse options so AddSyntaxTrees /
+        // ReplaceSyntaxTree downstream do not throw "Inconsistent language
+        // versions" when the module declares a non-default LangVersion.
+        var allTrees = trees;
+        if (module.ImplicitUsings)
+            allTrees = allTrees.Append(ImplicitGlobalUsings).ToArray();
+        if (module.InternalsVisibleTo.Length > 0)
+            allTrees = allTrees.Append(BuildInternalsVisibleToTree(module.InternalsVisibleTo, parseOptions)).ToArray();
 
         // Assembly identity unification (INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001).
         // Without this, a module whose NuGet closure brings in System.* contract
@@ -365,6 +376,26 @@ internal sealed class ModuleCompilationBuilder
             allTrees,
             dedupedReferences,
             compilationOptions);
+    }
+
+    /// <summary>
+    /// Build the synthetic syntax tree that mirrors MSBuild's
+    /// <c>GenerateAssemblyInfo</c> output for <c>&lt;InternalsVisibleTo
+    /// Include="X" /&gt;</c> item-group entries. One
+    /// <c>[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("X")]</c>
+    /// per declared target, fully-qualified so the tree compiles regardless
+    /// of which usings the module's source declares. Parsed with the
+    /// module's own <see cref="CSharpParseOptions"/> so downstream
+    /// <c>AddSyntaxTrees</c> / <c>ReplaceSyntaxTree</c> calls do not throw
+    /// "Inconsistent language versions" against a module that declared a
+    /// non-default <c>&lt;LangVersion&gt;</c>. INV-DIAGNOSTIC-IVT-PARITY-001.
+    /// </summary>
+    private static SyntaxTree BuildInternalsVisibleToTree(string[] targets, CSharpParseOptions parseOptions)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var target in targets)
+            sb.Append("[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(\"").Append(target).AppendLine("\")]");
+        return CSharpSyntaxTree.ParseText(sb.ToString(), parseOptions, path: "<InternalsVisibleTo>.cs");
     }
 
     /// <summary>

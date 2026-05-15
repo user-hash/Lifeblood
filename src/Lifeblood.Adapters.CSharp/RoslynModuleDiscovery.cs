@@ -278,6 +278,25 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            // Compilation fact: <InternalsVisibleTo Include="X" /> items
+            // (INV-DIAGNOSTIC-IVT-PARITY-001 / INV-COMPFACT-001..003).
+            // MSBuild's GenerateAssemblyInfo target turns each item into an
+            // [assembly: InternalsVisibleTo("X")] attribute emitted onto the
+            // producer PE via obj/<Tfm>/<AssemblyName>.AssemblyInfo.cs. The
+            // SDK-style source scan above (line ~139) skips obj/, so the
+            // generated file never reaches the compilation; without surfacing
+            // the items the emitted PE has no IVT metadata and every internal
+            // access from a friend module fails with CS0122. Surface the items
+            // here so the compilation seam can synthesize an equivalent
+            // attribute tree — same outcome MSBuild would produce on disk.
+            // Multiple item-group entries union; trim + dedupe by ordinal.
+            var internalsVisibleTo = doc.Descendants()
+                .Where(el => el.Name.LocalName == "InternalsVisibleTo")
+                .Select(el => el.Attribute("Include")?.Value?.Trim() ?? string.Empty)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
             // Pure detection: no PackageReference or assembly Reference
             bool isPure = !doc.Descendants().Any(el =>
                 el.Name.LocalName == "PackageReference"
@@ -317,6 +336,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 NullableContext = nullableContext,
                 NoWarnDiagnosticIds = noWarnIds,
                 ReferenceClosure = referenceClosure,
+                InternalsVisibleTo = internalsVisibleTo,
                 Properties = new Dictionary<string, string>
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),

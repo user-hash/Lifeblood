@@ -242,4 +242,31 @@ public sealed class ModuleInfo
     /// for the full invariant. INV-MODULE-REFS-001.
     /// </summary>
     public ReferenceClosureMode ReferenceClosure { get; init; } = ReferenceClosureMode.Transitive;
+
+    /// <summary>
+    /// Assembly names this module grants friend-assembly access to via
+    /// the csproj's <c>&lt;InternalsVisibleTo Include="X" /&gt;</c> item
+    /// group elements (MSBuild SDK 2.1+ convention; surfaces as an
+    /// <c>[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("X")]</c>
+    /// attribute on the emitted PE through MSBuild's <c>GenerateAssemblyInfo</c>
+    /// target). Lifeblood scans <c>obj/</c> out of the SDK-style compile
+    /// set so the MSBuild-generated <c>*.AssemblyInfo.cs</c> file never
+    /// reaches the compilation; without surfacing the IVT items here the
+    /// emitted PE carries no friend-assembly metadata and every internal
+    /// access from a friend module fails with <c>CS0122</c> (inaccessible
+    /// due to protection level). When non-empty the compilation builder
+    /// MUST synthesize an <c>[assembly: InternalsVisibleTo("X")]</c>
+    /// attribute tree (one entry per target) so the producer PE matches
+    /// what MSBuild would emit on disk.
+    ///
+    /// Decided at discovery time by <see cref="RoslynModuleDiscovery"/>.
+    /// Consumed at compilation time by <c>ModuleCompilationBuilder.CreateCompilation</c>.
+    /// Default empty preserves pre-fix behavior for modules that declare
+    /// no <c>&lt;InternalsVisibleTo&gt;</c> items. Modules that surface
+    /// friend access through hand-authored <c>[assembly: InternalsVisibleTo]</c>
+    /// attributes in source compile correctly without this field — their
+    /// IVT lives on a .cs file that flows through normal source discovery.
+    /// INV-DIAGNOSTIC-IVT-PARITY-001 / INV-COMPFACT-001..003.
+    /// </summary>
+    public string[] InternalsVisibleTo { get; init; } = Array.Empty<string>();
 }
