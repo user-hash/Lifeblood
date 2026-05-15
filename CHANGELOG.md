@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001` — dispatch-table cells emit graph edges through existing identifier walkers**
+
 - **`INV-EXTRACT-STATIC-IMPLICIT-ARRAY-001` — implicit array initializers classify as Array container**
 
 - **`INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001` — extractor edges always target the source-declared open-generic form**
