@@ -193,6 +193,7 @@ public static class CircularDependencyDetector
         foreach (var edge in graph.Edges)
         {
             if (edge.Kind == EdgeKind.Contains) continue;
+            if (IsCycleNeutralInitializerOwnerEdge(edge)) continue;
             if (adj.ContainsKey(edge.SourceId))
                 adj[edge.SourceId].Add(edge.TargetId);
         }
@@ -214,6 +215,11 @@ public static class CircularDependencyDetector
         // Only return SCCs with more than one member (actual cycles)
         return sccs.Where(scc => scc.Length > 1).ToArray();
     }
+
+    private static bool IsCycleNeutralInitializerOwnerEdge(Edge edge)
+        => edge.Kind == EdgeKind.References
+           && edge.Properties.TryGetValue(EdgePropertyKeys.InitializerOwner, out var value)
+           && value == EdgePropertyKeys.InitializerOwnerMethodGroup;
 
     private static void StrongConnect(
         string v,

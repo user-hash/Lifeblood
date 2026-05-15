@@ -95,6 +95,105 @@ public class DispatchTableLivenessRatchetTests
         Assert.DoesNotContain(findings, f => f.CanonicalId == "method:App.Registry..cctor()");
     }
 
+    [Fact]
+    public void DispatchTableWithExplicitStaticConstructor_KeepsDelegateTargetsLive()
+    {
+        using var tempDir = new ScratchDir();
+        tempDir.WriteFile("CapabilityRow.cs", """
+            namespace App;
+
+            public readonly struct RowContext { }
+            [System.Flags]
+            public enum TransitionStateMask { None = 0, First = 1, Second = 2 }
+            public delegate bool RowProbe(RowContext context);
+            public delegate TransitionStateMask TransitionStateAllowedFn(in RowContext context);
+
+            public sealed class CapabilityRow
+            {
+                public CapabilityRow(
+                    int key,
+                    bool enabled,
+                    RowProbe probe,
+                    string description = "",
+                    TransitionStateAllowedFn? movingStateAllowed = null)
+                {
+                }
+            }
+            """);
+        tempDir.WriteFile("Registry.cs", """
+            namespace App;
+
+            public static class Registry
+            {
+                static Registry()
+                {
+                    _ = Features.Length;
+                }
+
+                public static readonly CapabilityRow[] Features = new CapabilityRow[]
+                {
+                    new CapabilityRow(
+                        key: 1,
+                        enabled: true,
+                        probe: ProbeAlwaysActive,
+                        description: "example row",
+                        movingStateAllowed: TransitionStateForRow),
+                };
+
+                private static bool ProbeAlwaysActive(RowContext context) => true;
+
+                private static TransitionStateMask TransitionStateForRow(in RowContext context)
+                    => TransitionStateMask.First | TransitionStateMask.Second;
+            }
+            """);
+        tempDir.WriteFile("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <AssemblyName>App</AssemblyName>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem());
+        var graph = analyzer.AnalyzeWorkspace(tempDir.Path, new AnalysisConfig());
+
+        var cctor = "method:App.Registry..cctor()";
+        var features = "field:App.Registry.Features";
+        var movingState = "method:App.Registry.TransitionStateForRow(App.RowContext)";
+        Assert.True(graph.GetSymbol(cctor) != null, $"{cctor} missing from graph");
+        Assert.True(graph.GetSymbol(features) != null, $"{features} missing from graph");
+        Assert.True(graph.GetSymbol(movingState) != null, $"{movingState} missing from graph");
+
+        var hasTransitionStateEdge = false;
+        foreach (var idx in graph.GetIncomingEdgeIndexes(movingState))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Calls || edge.SourceId != cctor) continue;
+            hasTransitionStateEdge = true;
+            break;
+        }
+        Assert.True(hasTransitionStateEdge,
+            "TransitionStateForRow has no Calls edge from the explicit static constructor.");
+
+        var hasFieldReferenceEdge = false;
+        foreach (var idx in graph.GetOutgoingEdgeIndexes(features))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.References || edge.TargetId != movingState) continue;
+            hasFieldReferenceEdge = true;
+            break;
+        }
+        Assert.True(hasFieldReferenceEdge,
+            "Features has no References edge to its method-group delegate target.");
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+        Assert.DoesNotContain(findings, f => f.CanonicalId == movingState);
+        Assert.DoesNotContain(findings, f => f.CanonicalId == cctor);
+    }
+
     private sealed class ScratchDir : IDisposable
     {
         public string Path { get; }

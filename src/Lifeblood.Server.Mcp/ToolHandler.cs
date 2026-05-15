@@ -574,14 +574,15 @@ public sealed class ToolHandler
 
         const string sharedWarning =
             "Findings are ADVISORY. Known false-positive classes: " +
-            "(1) methods referenced via method-group conversion " +
-            "(Lazy<T>, event handlers, delegate arguments); " +
+            "(1) runtime/reflection-dispatched methods and framework entry points " +
+            "not modeled by the active reachability provider; " +
             "(2) methods with call-site canonical-id drift in multi-module " +
             "workspaces (pre-existing extraction gap under investigation); " +
             "(3) private fields read via same-class access when the enclosing " +
-            "type has no external references. Verify each finding with " +
-            "lifeblood_find_references (which has the same gap class) and " +
-            "direct code inspection before acting.";
+            "type has no external references. Method-group delegate arguments " +
+            "are expected to be covered by graph edges; if one appears here, " +
+            "treat it as an extractor regression. Verify each finding with " +
+            "lifeblood_find_references and direct code inspection before acting.";
 
         if (summarize)
         {

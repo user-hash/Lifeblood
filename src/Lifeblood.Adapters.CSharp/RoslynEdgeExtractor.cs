@@ -318,7 +318,8 @@ public sealed class RoslynEdgeExtractor
             if (caller == null) return;
             var callerMethodId = GetMethodId(caller);
             var fqn = RoslynSymbolExtractor.GetFullName(fieldSymbol.ContainingType);
-            AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, fieldSymbol.Name), EdgeKind.References,
+            var fieldId = SymbolIds.Field(fqn, fieldSymbol.Name);
+            AddEdge(edges, seen, callerMethodId, fieldId, EdgeKind.References,
                 originatingNode: identifier, containingSymbolId: callerMethodId);
             return;
         }
@@ -332,8 +333,10 @@ public sealed class RoslynEdgeExtractor
             var caller = FindContainingMethodOrLocal(model, identifier);
             if (caller == null) return;
             var callerMethodId = GetMethodId(caller);
-            AddEdge(edges, seen, callerMethodId, GetMethodId(methodSymbol), EdgeKind.Calls,
+            var targetMethodId = GetMethodId(methodSymbol);
+            AddEdge(edges, seen, callerMethodId, targetMethodId, EdgeKind.Calls,
                 originatingNode: identifier, containingSymbolId: callerMethodId);
+            AddInitializerOwnerReferenceEdge(model, identifier, targetMethodId, edges, seen);
         }
     }
 
@@ -418,18 +421,39 @@ public sealed class RoslynEdgeExtractor
             case IFieldSymbol field:
             {
                 var fqn = RoslynSymbolExtractor.GetFullName(field.ContainingType);
-                AddEdge(edges, seen, callerMethodId, SymbolIds.Field(fqn, field.Name), EdgeKind.References,
+                var fieldId = SymbolIds.Field(fqn, field.Name);
+                AddEdge(edges, seen, callerMethodId, fieldId, EdgeKind.References,
                     originatingNode: node, containingSymbolId: callerMethodId);
                 break;
             }
             case IEventSymbol evt:
             {
                 var fqn = RoslynSymbolExtractor.GetFullName(evt.ContainingType);
-                AddEdge(edges, seen, callerMethodId, SymbolIds.Property(fqn, evt.Name), EdgeKind.References,
+                var eventId = SymbolIds.Property(fqn, evt.Name);
+                AddEdge(edges, seen, callerMethodId, eventId, EdgeKind.References,
                     originatingNode: node, containingSymbolId: callerMethodId);
                 break;
             }
         }
+    }
+
+    private void AddInitializerOwnerReferenceEdge(
+        SemanticModel model,
+        SyntaxNode node,
+        string targetId,
+        List<Edge> edges,
+        HashSet<(string, string, EdgeKind)> seen)
+    {
+        var ownerId = FindInitializerOwnerId(model, node);
+        if (ownerId == null) return;
+
+        AddEdge(edges, seen, ownerId, targetId, EdgeKind.References,
+            originatingNode: node,
+            containingSymbolId: ownerId,
+            properties: new Dictionary<string, string>
+            {
+                [EdgePropertyKeys.InitializerOwner] = EdgePropertyKeys.InitializerOwnerMethodGroup,
+            });
     }
 
     /// <summary>
@@ -597,6 +621,40 @@ public sealed class RoslynEdgeExtractor
         return null;
     }
 
+    private static string? FindInitializerOwnerId(SemanticModel model, SyntaxNode node)
+    {
+        foreach (var ancestor in node.Ancestors())
+        {
+            switch (ancestor)
+            {
+                case VariableDeclaratorSyntax varDecl
+                    when varDecl.Initializer != null
+                      && varDecl.Initializer.Span.Contains(node.SpanStart)
+                      && varDecl.Parent is VariableDeclarationSyntax varList
+                      && varList.Parent is FieldDeclarationSyntax:
+                {
+                    var fieldSym = model.GetDeclaredSymbol(varDecl) as IFieldSymbol;
+                    if (fieldSym?.ContainingType == null) return null;
+                    var fqn = RoslynSymbolExtractor.GetFullName(fieldSym.ContainingType);
+                    return SymbolIds.Field(fqn, fieldSym.Name);
+                }
+                case PropertyDeclarationSyntax propDecl
+                    when propDecl.Initializer != null
+                      && propDecl.Initializer.Span.Contains(node.SpanStart):
+                {
+                    var propSym = model.GetDeclaredSymbol(propDecl) as IPropertySymbol;
+                    if (propSym?.ContainingType == null) return null;
+                    var fqn = RoslynSymbolExtractor.GetFullName(propSym.ContainingType);
+                    return propSym.IsIndexer
+                        ? SymbolIds.Property(fqn, $"this[{CanonicalSymbolFormat.BuildIndexerParamSignature(propSym)}]")
+                        : SymbolIds.Property(fqn, propSym.Name);
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static INamedTypeSymbol? FindContainingType(SemanticModel model, SyntaxNode node)
     {
         var typeNode = node.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
@@ -725,7 +783,8 @@ public sealed class RoslynEdgeExtractor
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen,
         string sourceId, string targetId, EdgeKind kind,
         SyntaxNode? originatingNode = null,
-        string? containingSymbolId = null)
+        string? containingSymbolId = null,
+        IReadOnlyDictionary<string, string>? properties = null)
     {
         if (string.IsNullOrEmpty(sourceId) || string.IsNullOrEmpty(targetId)) return;
         // Guard against prefix-only IDs (e.g., "type:" with no name)
@@ -741,6 +800,7 @@ public sealed class RoslynEdgeExtractor
             TargetId = targetId,
             Kind = kind,
             Evidence = SemanticEvidence,
+            Properties = properties ?? new Dictionary<string, string>(),
             CallSite = BuildCallSite(originatingNode, containingSymbolId ?? sourceId),
         });
     }
