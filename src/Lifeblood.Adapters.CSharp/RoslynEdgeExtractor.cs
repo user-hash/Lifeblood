@@ -231,10 +231,11 @@ public sealed class RoslynEdgeExtractor
         if (caller == null) return;
 
         var sourceId = GetMethodId(caller);
-        var paramSig = CanonicalSymbolFormat.BuildParamSignature(target);
-        var targetId = SymbolIds.Method(
-            RoslynSymbolExtractor.GetFullName(target.ContainingType),
-            target.Name, paramSig);
+        // INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001: route through
+        // GetMethodId (which canonicalizes to OriginalDefinition) so an
+        // instantiated generic call-site lands on the source-declared
+        // open-generic id, not the per-call-site constructed form.
+        var targetId = GetMethodId(target);
 
         AddEdge(edges, seen, sourceId, targetId, EdgeKind.Calls,
             originatingNode: invocation, containingSymbolId: sourceId);
@@ -649,6 +650,22 @@ public sealed class RoslynEdgeExtractor
 
     private static string GetMethodId(IMethodSymbol method)
     {
+        // Constructed-generic call-sites resolve to an IMethodSymbol whose
+        // ContainingType + parameter types have been substituted with the
+        // call's type arguments (e.g. `ApplyCap(stringArr, n)` binds to
+        // `ApplyCap<string>(string[], int)`). Build the canonical id off
+        // the source-declared open-generic form so dependants /
+        // dead_code / blast_radius queries against the declared
+        // `method:NS.T.ApplyCap(T[],int)` symbol find every instantiated
+        // call-site. Mirrors INV-CANONICAL-001 / the same OriginalDefinition
+        // discipline RoslynCompilationHost.FindReferences applies. The
+        // empirical class (LB-INBOX-010 part 2): ToolHandler.ApplyCap
+        // was called 5× yet showed `directDependants=0` because every
+        // edge landed on a per-call-site instantiated symbol id that did
+        // not match the source-declared generic id. INV-EXTRACT-METHOD-
+        // ORIGINAL-DEFINITION-001.
+        method = (IMethodSymbol)method.OriginalDefinition;
+
         // Property/indexer accessors (MethodKind.PropertyGet/Set) and event accessors
         // (MethodKind.EventAdd/Remove) are not extracted as independent graph symbols —
         // only the associated property/event is. Route the id through AssociatedSymbol

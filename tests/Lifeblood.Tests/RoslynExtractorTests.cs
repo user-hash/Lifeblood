@@ -1190,6 +1190,46 @@ public class Loader
     }
 
     [Fact]
+    public void ExtractEdges_GenericMethodCall_AttributesToOriginalDefinitionId()
+    {
+        // Closes the second half of LB-INBOX-010 — generic method
+        // canonical-id drift. Pre-fix, calling a generic method via
+        // type-inferred arguments emitted the Calls edge under the
+        // INSTANTIATED symbol id (`method:App.Helper.Pick(string[],int)`)
+        // instead of the source-declared OPEN-generic id
+        // (`method:App.Helper.Pick(T[],int)`), so dependants() against
+        // the declared method returned zero. INV-EXTRACT-METHOD-ORIGINAL-
+        // DEFINITION-001 routes every IMethodSymbol through
+        // OriginalDefinition before building the id; the constructed
+        // form is never emitted to the graph.
+        var (model, root) = Compile(@"
+namespace App;
+public static class Helper
+{
+    public static (T[] kept, int dropped) Pick<T>(T[] items, int cap)
+    {
+        return (items, 0);
+    }
+}
+public class Caller
+{
+    public void Drive(string[] items)
+    {
+        var (kept, dropped) = Helper.Pick(items, 5);
+    }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.Drive")
+            && e.TargetId == "method:App.Helper.Pick(T[],int)");
+        // The constructed-generic form must never reach the graph.
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Pick(string[]"));
+    }
+
+    [Fact]
     public void ExtractEdges_TargetTypedNewMethodGroup_OverloadedMethod_PicksFirstCandidate()
     {
         // Overloaded method-group via target-typed new — Roslyn surfaces
