@@ -25,16 +25,22 @@ namespace Lifeblood.Connectors.Mcp;
 public sealed class LifebloodResponseDecorator : IResponseDecorator
 {
     private readonly System.Collections.Generic.IReadOnlyDictionary<string, EnvelopeClassification> _classifications;
+    private readonly StalenessPolicy _stalenessPolicy;
 
     /// <summary>
-    /// Construct the decorator with an explicit classification lookup.
-    /// The composition root passes whatever its tool registry provides;
-    /// tests and contract checks can pass an inline dictionary.
+    /// Construct the decorator with an explicit classification lookup
+    /// and an optional <see cref="StalenessPolicy"/>. The composition
+    /// root passes whatever its tool registry provides; tests and
+    /// contract checks can pass an inline dictionary. Defaults to
+    /// <see cref="StalenessPolicy.Default"/> when no policy is
+    /// supplied — INV-ANALYZE-SKIPPED-PROMINENCE-001.
     /// </summary>
     public LifebloodResponseDecorator(
-        System.Collections.Generic.IReadOnlyDictionary<string, EnvelopeClassification> classifications)
+        System.Collections.Generic.IReadOnlyDictionary<string, EnvelopeClassification> classifications,
+        StalenessPolicy? stalenessPolicy = null)
     {
         _classifications = classifications ?? throw new System.ArgumentNullException(nameof(classifications));
+        _stalenessPolicy = stalenessPolicy ?? StalenessPolicy.Default;
     }
 
     /// <summary>
@@ -62,6 +68,13 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             // rather than throw. Caller still gets a usable response
             // with maximally-conservative metadata so an audit can
             // spot the missing registration.
+            var unregisteredLimits = AppendStalenessLimitations(
+                new[]
+                {
+                    $"Unregistered tool '{toolName}' — envelope downgraded to the most conservative classification. The host's tool registry has no EnvelopeClassification for this name.",
+                },
+                stalenessSeconds,
+                filesChanged);
             return new ResponseEnvelope
             {
                 TruthTier = TruthTier.Heuristic,
@@ -69,10 +82,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 EvidenceSource = "Unknown",
                 StalenessSeconds = stalenessSeconds,
                 FilesChangedSinceAnalyze = filesChanged,
-                Limitations = new[]
-                {
-                    $"Unregistered tool '{toolName}' — envelope downgraded to the most conservative classification. The host's tool registry has no EnvelopeClassification for this name.",
-                },
+                Limitations = unregisteredLimits,
             };
         }
 
@@ -83,8 +93,41 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             EvidenceSource = cls.EvidenceSource,
             StalenessSeconds = stalenessSeconds,
             FilesChangedSinceAnalyze = filesChanged,
-            Limitations = cls.Limitations,
+            Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged),
         };
+    }
+
+    /// <summary>
+    /// Promote the staleness signal into one or two
+    /// <see cref="ResponseEnvelope.Limitations"/> entries when it
+    /// exceeds the configured <see cref="StalenessPolicy"/> thresholds.
+    /// Static tool-classification limitations come first; staleness
+    /// limitations are appended so a consumer reading from index 0
+    /// still sees the per-tool caveats. Returns the original array
+    /// when nothing is above threshold so existing tests of the
+    /// non-stale path stay byte-stable.
+    /// INV-ANALYZE-SKIPPED-PROMINENCE-001.
+    /// </summary>
+    private string[] AppendStalenessLimitations(string[] baseLimitations, long stalenessSeconds, int filesChanged)
+    {
+        bool stalenessAboveThreshold = stalenessSeconds >= _stalenessPolicy.StalenessSecondsWarnThreshold;
+        bool filesChangedAboveThreshold = filesChanged >= _stalenessPolicy.FilesChangedWarnThreshold;
+        if (!stalenessAboveThreshold && !filesChangedAboveThreshold)
+            return baseLimitations;
+
+        var merged = new System.Collections.Generic.List<string>(baseLimitations.Length + 2);
+        merged.AddRange(baseLimitations);
+        if (stalenessAboveThreshold)
+        {
+            merged.Add(
+                $"Workspace graph is {stalenessSeconds} s stale (threshold {_stalenessPolicy.StalenessSecondsWarnThreshold} s) — re-run analyze before acting on results that depend on current-source truth.");
+        }
+        if (filesChangedAboveThreshold)
+        {
+            merged.Add(
+                $"{filesChanged} tracked file(s) changed since analyze (threshold {_stalenessPolicy.FilesChangedWarnThreshold}) — re-run analyze for accurate edge/symbol coverage.");
+        }
+        return merged.ToArray();
     }
 
     /// <summary>
