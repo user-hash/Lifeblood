@@ -162,10 +162,15 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 // File missing / inaccessible — not stale, just gone.
                 // Do not throw out of envelope decoration.
             }
-            // Honor the scan cap once we've found at least one drift signal,
-            // so the response can report "yes, something changed" even when
-            // the workspace is huge and we don't want to stat all of it.
-            if (scanned >= ctx.FileScanLimit && changed > 0) break;
+            // Honor the scan cap unconditionally — the cap exists to
+            // bound per-call cost on large workspaces, and bounding only
+            // when drift is already found leaves the no-drift case
+            // paying the full scan cost (silently violating the port
+            // contract). When the cap is hit, the response reports the
+            // count observed within the scanned subset; callers who
+            // need exhaustive drift detection pass FileScanLimit =
+            // int.MaxValue (the default).
+            if (scanned >= ctx.FileScanLimit) break;
         }
         return (seconds, changed);
     }

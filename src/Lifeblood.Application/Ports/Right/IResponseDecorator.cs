@@ -62,13 +62,20 @@ public sealed class EnvelopeContext
     public IFileSystem? FileSystem { get; init; }
 
     /// <summary>
-    /// Optional cap on how many tracked files the decorator will mtime-
-    /// stat per call. Defaults to <see cref="int.MaxValue"/> (full scan);
-    /// callers serving very large workspaces can lower it to bound the
-    /// per-call cost. The decorator stops as soon as the cap is reached
-    /// AND it has found at least one stale file (so the response still
-    /// reports `filesChangedSinceAnalyze >= 1` accurately for the "any
-    /// drift?" case).
+    /// Hard cap on how many tracked files the decorator will mtime-stat
+    /// per call. Defaults to <see cref="int.MaxValue"/> (full scan);
+    /// callers serving very large workspaces lower it to bound the
+    /// per-call cost. The decorator stops as soon as the cap is reached,
+    /// regardless of whether any drift has been detected yet, so the
+    /// cost guarantee is unconditional. The reported
+    /// <see cref="ResponseEnvelope.FilesChangedSinceAnalyze"/> reflects
+    /// the count observed within the scanned subset — callers who need
+    /// exhaustive drift detection leave the cap at the default. The
+    /// staleness limitation thresholding in
+    /// <c>StalenessPolicy.FilesChangedWarnThreshold</c> consumes the
+    /// reported count as-is, so a cap that under-reports drift is
+    /// allowed to fall under threshold; the operator owns the
+    /// cost-vs-fidelity trade.
     /// </summary>
     public int FileScanLimit { get; init; } = int.MaxValue;
 }

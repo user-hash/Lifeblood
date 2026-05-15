@@ -111,6 +111,35 @@ public class StalenessPolicyEnvelopeTests
     }
 
     [Fact]
+    public void Decorate_FileScanLimit_HonorsCapUnconditionally_EvenOnCleanWorkspace()
+    {
+        // Soundness pin (post-W6 audit): the cap on tracked-file mtime
+        // stats must bound cost unconditionally — not only after a
+        // drift is observed. Pre-fix, a clean workspace with 100 cap
+        // and 10,000 tracked files paid the full 10,000-stat cost
+        // because the break only fired when changed > 0. The fix stops
+        // at the cap regardless; the under-reported FilesChangedSinceAnalyze
+        // is the operator-owned cost-vs-fidelity trade documented on
+        // the EnvelopeContext.FileScanLimit port surface.
+        var analyzedAt = System.DateTime.UtcNow.AddSeconds(-60);
+        var decorator = new LifebloodResponseDecorator(Classifications);
+        var stallingFs = new CountingFs(GetLastWriteTimeUtcReturn: analyzedAt.AddSeconds(-3600));
+        var manyPaths = new string[1000];
+        for (int i = 0; i < manyPaths.Length; i++) manyPaths[i] = $"src/Unchanged_{i}.cs";
+
+        decorator.Decorate("lifeblood_lookup", new EnvelopeContext
+        {
+            AnalyzedAtUtc = analyzedAt,
+            TrackedFilePaths = manyPaths,
+            FileSystem = stallingFs,
+            FileScanLimit = 25,
+        });
+
+        Assert.True(stallingFs.Calls <= 25,
+            $"FileScanLimit=25 should cap the stat calls; saw {stallingFs.Calls}.");
+    }
+
+    [Fact]
     public void Decorate_UnregisteredTool_StillSurfacesStalenessLimitation()
     {
         // The unregistered-tool path must also honor the policy —
@@ -138,5 +167,20 @@ public class StalenessPolicyEnvelopeTests
         public System.IO.Stream OpenWrite(string path) => new System.IO.MemoryStream();
         public string[] FindFiles(string directory, string pattern, bool recursive = true) => System.Array.Empty<string>();
         public System.DateTime GetLastWriteTimeUtc(string path) => System.DateTime.UtcNow;
+    }
+
+    private sealed class CountingFs : Lifeblood.Application.Ports.Infrastructure.IFileSystem
+    {
+        public CountingFs(System.DateTime GetLastWriteTimeUtcReturn) { _mtime = GetLastWriteTimeUtcReturn; }
+        private readonly System.DateTime _mtime;
+        public int Calls { get; private set; }
+        public bool FileExists(string path) => true;
+        public bool DirectoryExists(string path) => true;
+        public string ReadAllText(string path) => string.Empty;
+        public System.Collections.Generic.IEnumerable<string> ReadLines(string path) => System.Array.Empty<string>();
+        public System.IO.Stream OpenRead(string path) => new System.IO.MemoryStream();
+        public System.IO.Stream OpenWrite(string path) => new System.IO.MemoryStream();
+        public string[] FindFiles(string directory, string pattern, bool recursive = true) => System.Array.Empty<string>();
+        public System.DateTime GetLastWriteTimeUtc(string path) { Calls++; return _mtime; }
     }
 }
