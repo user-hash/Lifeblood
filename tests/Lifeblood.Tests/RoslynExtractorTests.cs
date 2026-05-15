@@ -1190,6 +1190,62 @@ public class Loader
     }
 
     [Fact]
+    public void ExtractEdges_DispatchTableWithMethodGroupAndEnumCells_FullCoverage()
+    {
+        // The empirical LB-INBOX-011 part 2 case: a dispatch-table-shape
+        // static initializer with mixed cell kinds (enum members, field
+        // references, method groups). All three reference classes must
+        // produce graph edges so dependants() / dead_code / port_health /
+        // blast_radius see the delegate targets and enum members as live
+        // through the table. Confirmed in DAWG-class workspaces that all
+        // three pre-existing handlers (ExtractMemberAccessEdge for
+        // enum/field qualified refs, ExtractReferenceEdge for bare
+        // method-group identifiers via the W2-A CandidateSymbols path)
+        // already feed edges from the synthesized .cctor.
+        var (model, root) = Compile(@"
+namespace App;
+public enum Mode { A, B }
+public static class Constants { public const string Prefix = ""x:""; }
+public class Capability
+{
+    public Capability(Mode mode, string prefix, System.Action handler) { }
+}
+public static class Registry
+{
+    public static readonly Capability[] All =
+    {
+        new Capability(Mode.A, Constants.Prefix, HandleA),
+        new Capability(Mode.B, Constants.Prefix, HandleB),
+    };
+    private static void HandleA() { }
+    private static void HandleB() { }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Method-group cells → Calls edges from .cctor.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Registry..cctor")
+            && e.TargetId == "method:App.Registry.HandleA()");
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Registry..cctor")
+            && e.TargetId == "method:App.Registry.HandleB()");
+
+        // Enum-member cell `Mode.A` / `Mode.B` → References edges. The
+        // extractor emits these via ExtractMemberAccessEdge for the
+        // qualified name; .cctor is the containing method.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Registry..cctor")
+            && e.TargetId == "field:App.Mode.A");
+
+        // FieldReference cell `Constants.Prefix` → References edge to the
+        // const field via ExtractMemberAccessEdge.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId.Contains("Registry..cctor")
+            && e.TargetId == "field:App.Constants.Prefix");
+    }
+
+    [Fact]
     public void ExtractEdges_GenericMethodCall_AttributesToOriginalDefinitionId()
     {
         // Closes the second half of LB-INBOX-010 — generic method
