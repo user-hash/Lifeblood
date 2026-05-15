@@ -383,6 +383,70 @@ advisory tail makes the `dead_code` tool more actionable.
 
 ---
 
+## LB-INBOX-011. Static-table facts do not yet feed graph liveness, and implicit array tables can be missed
+
+**Observed.** Dogfood on a real 90-module Unity workspace after v0.7.4
+surfaced two related gaps around table-driven code:
+
+1. `lifeblood_static_tables` extracted object-creation dispatch tables
+   correctly, including `MethodGroup` cells and source provenance, but
+   returned zero tables for static primitive recipe arrays authored as
+   `private static readonly float[] Weights = { ... };` /
+   `private static readonly byte[] Ratios = { ... };`. Those implicit
+   array-initializer fields are table-shaped and should be queryable by
+   the same tool. If Roslyn surfaces this as a different operation shape
+   than `IArrayCreationOperation`, the extractor contract needs to include
+   that shape explicitly while still staying operation-based, not syntax
+   text-based.
+2. For extracted dispatch tables, `MethodGroup` cells surface the target
+   `MethodGroupId`, and `lifeblood_find_references` can see the method
+   group usage at the source line. The graph, however, does not receive a
+   corresponding dependency edge. As a result `lifeblood_dependants`,
+   `lifeblood_dead_code`, `lifeblood_port_health`, and
+   `lifeblood_blast_radius` can treat table-delegate target methods as
+   dead or dependency-free even though they are live through the table.
+
+This is distinct from `LB-INBOX-010`: that entry covers method-group
+references in target-typed `new(...)` and generic-call canonical-id drift.
+This entry covers the static-table extraction surface itself - facts are
+already present in `static_tables`, but not reflected into graph liveness.
+
+**Suggested fix shape.**
+
+1. Add a regression fixture with implicit primitive arrays:
+   `static readonly float[] Weights = { 0.1f, 0.2f };`,
+   `static readonly byte[] Ratios = { 1, 2, 4 };`, and an enum array.
+   Assert `lifeblood_static_tables` returns one table per member with
+   ordered literal rows. Implement by inspecting the Roslyn operation tree
+   shape for implicit array initializers; do not fall back to regex or
+   raw syntax-text parsing.
+2. When the C# adapter classifies static-table values that carry stable
+   symbol ids (`MethodGroupId`, `FieldReferenceId`, `EnumMemberId`,
+   `EnumFlagMemberIds`), emit graph `References` edges from the containing
+   static field/property symbol to those referenced symbols, with the same
+   `CallSite` provenance already attached to expression-derived edges.
+   Use `References`, not `Calls`, for method groups: storing a delegate in
+   a table is a data reference, not an invocation.
+3. Verify the derived tools automatically improve from those edges:
+   `dependants(targetMethod)` reports the table field/property,
+   `dependencies(tableField)` reports the delegate target,
+   `port_health(tableOwnerType)` stops marking delegate row methods dead,
+   and `dead_code` no longer emits table-only delegate targets as classic
+   zero-incoming findings.
+4. Add a focused skipped regression if the edge emission is not fixed in
+   the same pass, named around `LB-INBOX-011`, so future releases cannot
+   accidentally present green coverage for table-delegate liveness.
+
+**Why it matters.** Serious C# systems often encode behavior in capability
+matrices, recipe registries, dispatch tables, analyzer tables, and kernel
+policy rows. Lifeblood already exposes those facts through
+`lifeblood_static_tables`; the graph must see the same references or the
+read-side tools split reality in two. This is exactly the kind of gap that
+makes an AI agent believe a table-driven method is unused when it is
+actually load-bearing.
+
+---
+
 ## How entries land here
 
 If you find a friction point during a real session:

@@ -23,6 +23,14 @@ Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOP
 | **Rename** | Safe rename across the workspace. Returns text edits as preview. The agent decides whether to apply. |
 | **Format** | Roslyn's own formatter. Not regex hacks. |
 
+**Static table caveat:** `LB-INBOX-011` tracks two open gaps from real-workspace
+dogfood: implicit array initializers such as `static readonly float[] X = { ... }`
+may be missed by `lifeblood_static_tables`, and extracted `MethodGroupId` /
+field / enum references do not yet synthesize graph dependency edges. Until
+that lands, cross-check `dead_code`, `port_health`, `dependants`, and
+`blast_radius` findings around table-driven delegate methods with
+`lifeblood_static_tables` and `lifeblood_find_references`.
+
 ## Read-side (semantic intelligence)
 
 | Tool | What it does |
@@ -60,6 +68,7 @@ Self-analysis (post-v0.7.3): 6 findings on Lifeblood itself, 3 legitimate (`Prog
 - Reflection-based dispatch invisible to static analysis (`Type.GetType` + `MethodInfo.Invoke`, Unity `SendMessage`-dispatched handlers).
 - **Target-typed `new(MethodGroup)`** (`LB-INBOX-010`, open). The v0.6.4 method-group fix closed the explicit form (`new Lazy<T>(Method)`); the target-typed form (`new(Method)`, C# 9+) does not currently emit a `Calls` edge to the method-group argument. `find_references` sees the usage via Roslyn but `dependants` / `dead_code` / `blast_radius` walk the graph and miss it. Pinned by a skipped regression test (`ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor`) that will convert to a ratchet when the extractor fix ships.
 - **Generic-method call canonical-id drift** (`LB-INBOX-010`, open). Calls to a generic method via type-inferred arguments (e.g. `ApplyCap(pack.HighValueFiles, maxFiles)`) appear to bind to the instantiated `IMethodSymbol`; if the edge is emitted under that instantiated id rather than the source-declared generic id, the graph misses the back-reference.
+- **Static-table delegate references** (`LB-INBOX-011`, open). `lifeblood_static_tables` can expose `MethodGroupId` values for dispatch-table rows while the graph still lacks a corresponding incoming `References` edge to the target method. `dead_code` and `port_health` can therefore mark table-only delegate targets as dead; verify with `lifeblood_static_tables` / `lifeblood_find_references` before acting.
 
 **Consumer guidance:**
 - Findings are advisory. Every response carries the `envelope.confidence = "Advisory"` band and a `limitations[]` entry naming the FP classes.
