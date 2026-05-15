@@ -90,6 +90,18 @@ csproj-driven option follows the same shape.
   entire `ModuleInfo` on csproj edit, not just one field. The next compilation
   fact added under this convention ships with zero new incremental work.
 
+## Diagnostic Parity Wall
+
+Lifeblood's `diagnose` output on a workspace `dotnet build` calls clean
+must itself be clean within a canonical parity diagnostic class.
+Individual INVs below (`INV-DIAGNOSTIC-MSBUILD-IMPLICIT-NOWARN-001`,
+`INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001`, `INV-DIAGNOSTIC-IVT-PARITY-001`,
+`INV-MODULE-REFS-001`) each close one historical regression class; the
+wall ratchet pins all of them at one chokepoint so a future regression
+that re-opens any of the classes fails the same test.
+
+- **INV-DIAGNOSTIC-PARITY-001. Lifeblood diagnose on Lifeblood itself never fires parity-class diagnostics.** The canonical parity ID set is `{ CS0122, CS0117, CS0234, CS1503, CS1701, CS1702, CS1705, CS1729 }` — every member corresponds to one historical Lifeblood-side regression class an existing INV already prevents at the compilation seam (IVT propagation, reference closure, binding-redirect baseline, friend-assembly downstream). Lifeblood's own source tree is the fixture: every commit on `main` must pass `dotnet build` before reaching the test suite, so any parity-class diagnostic firing under Lifeblood's discovery + `ModuleCompilationBuilder` + `RoslynCompilationHost` pipeline against Lifeblood's own modules is by definition a Lifeblood-side false positive. Adding a new parity ID costs one string in the set; **removing one requires written justification + user approval (per `INV-WORK-008`) — relaxing the wall defeats the regression catch it exists to provide**. Pinned by `BuildDiagnosticParityTests.LifebloodSelfDiagnose_NeverFiresParityClassDiagnostics`.
+
 ## Reference Set Normalization
 
 A workspace's reference set frequently carries multiple `MetadataReference`
