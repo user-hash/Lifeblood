@@ -197,9 +197,16 @@ public class CsprojCompilationFactsTests
             var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
 
             Assert.Single(modules);
-            Assert.Equal(
-                new HashSet<string> { "CS8632", "CS8765", "CS1591" },
-                new HashSet<string>(modules[0].NoWarnDiagnosticIds));
+            // INV-DIAGNOSTIC-MSBUILD-IMPLICIT-NOWARN-001: the csproj-
+            // declared set unions with the MSBuild csc-default baseline
+            // (CS1701, CS1702). The user-declared entries are still all
+            // present; baseline is additive, never replaces.
+            var declared = new HashSet<string>(modules[0].NoWarnDiagnosticIds);
+            Assert.Contains("CS8632", declared);
+            Assert.Contains("CS8765", declared);
+            Assert.Contains("CS1591", declared);
+            Assert.Contains("CS1701", declared);
+            Assert.Contains("CS1702", declared);
         }
         finally { Directory.Delete(tempDir, true); }
     }

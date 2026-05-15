@@ -14,6 +14,21 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     private readonly IFileSystem _fs;
     private readonly List<SkippedFile> _lastSkipped = new();
 
+    /// <summary>
+    /// Diagnostic IDs that MSBuild's <c>Microsoft.CSharp.CurrentVersion.targets</c>
+    /// adds to every csc invocation's <c>/nowarn</c> flag by default
+    /// (the <c>&lt;NoWarn&gt;$(NoWarn);1701;1702&lt;/NoWarn&gt;</c>
+    /// baseline). Lifeblood unions these into every discovered
+    /// module's <see cref="ModuleInfo.NoWarnDiagnosticIds"/> so the
+    /// compile-time diagnostic stream matches what the workspace's own
+    /// <c>dotnet build</c> would produce. Both IDs are cross-module
+    /// TypeRef binding-redirect warnings (CS1701: "assuming assembly
+    /// reference matches identity"; CS1702: same family with a stricter
+    /// version comparison shape). They are documented MSBuild defaults,
+    /// not Lifeblood opinions. INV-DIAGNOSTIC-MSBUILD-IMPLICIT-NOWARN-001.
+    /// </summary>
+    private static readonly string[] MsbuildImplicitNoWarnBaseline = new[] { "CS1701", "CS1702" };
+
     public RoslynModuleDiscovery(IFileSystem fs) => _fs = fs;
 
     /// <summary>
@@ -270,11 +285,32 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             // semicolon split, trim, drop empties, dedup. Threaded at
             // compilation time into CSharpCompilationOptions.WithSpecificDiagnosticOptions
             // mapping each ID to ReportDiagnostic.Suppress.
-            var noWarnIds = doc.Descendants()
+            //
+            // INV-DIAGNOSTIC-MSBUILD-IMPLICIT-NOWARN-001: union the
+            // csproj-declared set with MSBuild's csc-default suppression
+            // baseline. Microsoft.CSharp.CurrentVersion.targets sets
+            //   <NoWarn>$(NoWarn);1701;1702</NoWarn>
+            // for every csc invocation, so any `dotnet build` against an
+            // SDK-style or framework-style csproj already silences both
+            // IDs — they are cross-module TypeRef binding-redirect
+            // warnings that fire per consuming reference whenever an
+            // upstream PE's recorded version of a transitively-shared
+            // assembly disagrees with the version currently loaded
+            // (e.g. xunit.core baked against System.Runtime 4.0.0.0 vs
+            // BCL ref pack 8.0.0.0). Lifeblood mirrors what the
+            // workspace's own toolchain sees; not mirroring means
+            // diagnose ships 7,000+ warnings the consumer's CI does not.
+            // User-declared <NoWarn> still wins over the baseline (union
+            // semantics), and any module that genuinely wants 1701/1702
+            // back can use <WarningsNotAsErrors> + per-module override —
+            // exactly the same escape hatch MSBuild offers.
+            var declaredNoWarn = doc.Descendants()
                 .Where(el => el.Name.LocalName == "NoWarn")
                 .SelectMany(el => (el.Value ?? string.Empty).Split(';', ','))
                 .Select(s => s.Trim())
-                .Where(s => !string.IsNullOrEmpty(s))
+                .Where(s => !string.IsNullOrEmpty(s));
+            var noWarnIds = declaredNoWarn
+                .Concat(MsbuildImplicitNoWarnBaseline)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
