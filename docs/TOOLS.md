@@ -26,6 +26,8 @@ The difference: the AI agent doesn't guess what your code does. It **asks the co
 
 - **Generic-method call canonical-id drift** (`LB-INBOX-010`, open). Calls to a generic method via type-inferred arguments (e.g. `ApplyCap(pack.HighValueFiles, maxFiles)`) appear to bind to the instantiated `IMethodSymbol`; if the edge is emitted under that instantiated id rather than the source-declared generic id, the graph misses the back-reference.
 
+- **Static-table delegate references** (`LB-INBOX-011`, open). `lifeblood_static_tables` can expose `MethodGroupId` values for dispatch-table rows while the graph still lacks a corresponding incoming `References` edge to the target method. `dead_code` and `port_health` can therefore mark table-only delegate targets as dead; verify with `lifeblood_static_tables` / `lifeblood_find_references` before acting.
+
 **Consumer guidance:**
 - Findings are advisory. Every response carries the `envelope.confidence = "Advisory"` band and a `limitations[]` entry naming the FP classes.
 - Cross-check with `lifeblood_find_references` (which has the same gap class) and direct code inspection before acting.
