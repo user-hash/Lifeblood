@@ -88,6 +88,24 @@ public sealed class RoslynSymbolExtractor
             Properties = typeProps,
         });
 
+        // Surface synthesized .cctor / parameterless .ctor when the type
+        // carries field or property initializers. RoslynEdgeExtractor
+        // attributes initializer-derived edges (method-group references,
+        // member-access references, etc.) to the synthesized constructor
+        // returned by `ContainingType.StaticConstructors.FirstOrDefault()`
+        // / `InstanceConstructors.FirstOrDefault()`. GraphBuilder drops
+        // any edge whose source is not also a Symbol, so without these
+        // surfaces every dispatch-table delegate target and every static-
+        // initializer-referenced enum/field would silently vanish from
+        // the graph — exactly the LB-INBOX-011 part 2 false-positive
+        // class observed in DAWG (delegate row methods reported as
+        // dead despite live use via dispatch tables). The surfaced
+        // symbols carry the same canonical id the edge attribution
+        // uses (`method:NS.T..cctor()` or `method:NS.T..ctor()`) so
+        // GraphBuilder's edge filter retains them.
+        // INV-EXTRACT-SYNTHESIZED-CTOR-001.
+        SurfaceSynthesizedInitializerConstructors(typeSymbol, typeId, filePath, symbols);
+
         // Extract members from TypeDeclarationSyntax (has .Members)
         foreach (var member in typeDecl.Members)
         {
@@ -232,6 +250,102 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             Properties = new Dictionary<string, string> { ["typeKind"] = "delegate" },
         });
+    }
+
+    /// <summary>
+    /// Emit Symbol records for synthesized `.cctor` and parameterless
+    /// `.ctor()` when the type's initializers would route graph edges
+    /// through them. The static and instance cases are independent:
+    /// a type that mixes a user-declared parameterized ctor with one
+    /// or more static field initializers still synthesizes `.cctor`
+    /// even though `InstanceConstructors[0]` belongs to the user.
+    /// Likewise a type with only instance initializers but a
+    /// user-declared parameterized ctor still synthesizes a default
+    /// parameterless `.ctor()` only if no user-declared `.ctor()`
+    /// exists — Roslyn surfaces the synthesizer's emit choices on
+    /// `INamedTypeSymbol.{StaticConstructors,InstanceConstructors}`
+    /// with empty `DeclaringSyntaxReferences`.
+    /// </summary>
+    private void SurfaceSynthesizedInitializerConstructors(
+        INamedTypeSymbol typeSymbol, string typeId, string filePath, List<Symbol> symbols)
+    {
+        bool hasStaticInitializer = false;
+        bool hasInstanceInitializer = false;
+        foreach (var member in typeSymbol.GetMembers())
+        {
+            switch (member)
+            {
+                case IFieldSymbol field when MemberHasInitializerSyntax(field):
+                    if (field.IsStatic) hasStaticInitializer = true;
+                    else hasInstanceInitializer = true;
+                    break;
+                case IPropertySymbol prop when MemberHasInitializerSyntax(prop):
+                    if (prop.IsStatic) hasStaticInitializer = true;
+                    else hasInstanceInitializer = true;
+                    break;
+            }
+            if (hasStaticInitializer && hasInstanceInitializer) break;
+        }
+
+        var typeName = ExtractTypeFromId(typeId);
+
+        if (hasStaticInitializer)
+        {
+            var cctor = typeSymbol.StaticConstructors.FirstOrDefault(c => c.DeclaringSyntaxReferences.IsEmpty);
+            if (cctor != null)
+                symbols.Add(BuildSynthesizedConstructorSymbol(cctor, typeName, typeId, filePath, isStatic: true));
+        }
+
+        if (hasInstanceInitializer)
+        {
+            var defaultCtor = typeSymbol.InstanceConstructors
+                .FirstOrDefault(c => c.Parameters.Length == 0 && c.DeclaringSyntaxReferences.IsEmpty);
+            if (defaultCtor != null)
+                symbols.Add(BuildSynthesizedConstructorSymbol(defaultCtor, typeName, typeId, filePath, isStatic: false));
+        }
+    }
+
+    private static bool MemberHasInitializerSyntax(IFieldSymbol field)
+    {
+        foreach (var syntaxRef in field.DeclaringSyntaxReferences)
+        {
+            if (syntaxRef.GetSyntax() is VariableDeclaratorSyntax v && v.Initializer != null)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool MemberHasInitializerSyntax(IPropertySymbol prop)
+    {
+        foreach (var syntaxRef in prop.DeclaringSyntaxReferences)
+        {
+            if (syntaxRef.GetSyntax() is PropertyDeclarationSyntax p && p.Initializer != null)
+                return true;
+        }
+        return false;
+    }
+
+    private static Symbol BuildSynthesizedConstructorSymbol(
+        IMethodSymbol ctor, string typeName, string typeId, string filePath, bool isStatic)
+    {
+        var name = isStatic ? ".cctor" : ".ctor";
+        return new Symbol
+        {
+            Id = SymbolIds.Method(typeName, name, paramSignature: string.Empty),
+            Name = name,
+            QualifiedName = $"{typeName}.{name}",
+            Kind = DomainSymbolKind.Method,
+            FilePath = filePath,
+            Line = 0,
+            ParentId = typeId,
+            Visibility = MapVisibility(ctor.DeclaredAccessibility),
+            IsStatic = isStatic,
+            Properties = new Dictionary<string, string>
+            {
+                ["paramCount"] = "0",
+                ["synthesized"] = "true",
+            },
+        };
     }
 
     private void ExtractMethod(
