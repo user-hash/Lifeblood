@@ -156,6 +156,8 @@ because they refer to the same underlying method symbol.
 
 ## Symbol Extraction Coverage
 
+- **INV-EXTRACT-SYNTHESIZED-CTOR-001. Synthesized `.cctor` and parameterless `.ctor()` surfaces appear as graph Symbols whenever the containing type carries field or property initializers, so initializer-derived edges survive `GraphBuilder`'s source/target filter.**
+
 - **INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001. Dispatch-table-shaped static initializers emit graph edges for every method-group, enum-member, and field-reference cell through the same identifier / member-access walkers regular code paths use — no separate static-table-edge synthesizer is needed.**
 
 - **INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001. Graph edges target the source-declared `OriginalDefinition` of any `IMethodSymbol`, never an instantiated constructed-generic form.**
