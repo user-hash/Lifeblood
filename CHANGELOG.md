@@ -7,6 +7,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001` — assembly identity unification on every compilation reference set**
+
 ## [0.7.5] - 2026-05-14
 
 Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 method-return-flag enrichment, one new doc-honesty INV pin, one new live-counting test-count ratchet, and a pre-tag counter audit closing four invariant-count callsites the v0.7.4 sweep missed. **Tests 896 → 946 + 1 skipped regression pin (+50, skipped pin unchanged at `LB-INBOX-010`). MCP tools 28 → 29 (read-side 17, write-side 12 — `lifeblood_static_tables` lives on the write-side handler under the Compilation-required convention). Invariants 87 / 50 categories → 90 / 52 categories.** Three new INVs pinned (`INV-EXTRACT-STATIC-TABLES-001`, `INV-METHOD-FLAG-SUMMARY-001`, `INV-FLAG-COVERAGE-COMPOSITION-001`) plus `INV-DOCS-004` (testCount ratchet). Hexagonal as ever — the new tool ships as Domain DTOs (zero Roslyn dep) + `ICompilationHost.GetStaticTables` port + `RoslynStaticTableExtractor` adapter + `WriteToolHandler` dispatch trio.
