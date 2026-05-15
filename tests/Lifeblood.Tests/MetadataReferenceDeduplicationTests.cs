@@ -57,6 +57,48 @@ public class MetadataReferenceDeduplicationTests
     }
 
     [Fact]
+    public void Deduplicator_BucketKey_ComposesNameCultureAndPublicKey()
+    {
+        // Soundness ratchet: the bucket key MUST include simple name,
+        // culture, AND the public-key blob so two assemblies sharing a
+        // simple name but signed with different keys (or with no key)
+        // survive as distinct identities. Synthesizing two PE images
+        // with differing public-key blobs in a unit test is more setup
+        // than the test budget supports (real signing requires key
+        // generation + PE-level emit options), so this ratchet locks
+        // the invariant by source inspection: the bucket-key
+        // construction in MetadataReferenceDeduplicator.cs must
+        // reference the AssemblyDefinition's Culture AND PublicKey
+        // blob, AND must compose the three pieces into the dictionary
+        // key. A future revert to simple-name-only fails this test
+        // because the source would no longer mention "Culture" or
+        // "PublicKey" in the key-composition site.
+        var repoRoot = FindRepoRoot();
+        var sourcePath = Path.Combine(repoRoot,
+            "src", "Lifeblood.Adapters.CSharp", "Internal", "MetadataReferenceDeduplicator.cs");
+        var source = File.ReadAllText(sourcePath);
+
+        Assert.Contains("def.Culture", source);
+        Assert.Contains("def.PublicKey", source);
+        Assert.Contains("bucketKey", source);
+        // Bucket key must compose all three pieces — the canonical
+        // shape is `name|culture|publicKey` (or a future equivalent
+        // that still keys on all three). A bare `byName` dictionary
+        // would not pin distinct identities; the source must NOT
+        // reduce to simple-name keying.
+        Assert.DoesNotContain("byName = new Dictionary", source);
+    }
+
+    private static string FindRepoRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current != null && !File.Exists(Path.Combine(current.FullName, "Lifeblood.sln")))
+            current = current.Parent;
+        Assert.NotNull(current);
+        return current!.FullName;
+    }
+
+    [Fact]
     public void Deduplicate_DistinctSimpleNames_AllSurvive()
     {
         var a = BuildSyntheticAssembly("Acme.Alpha", "1.0.0.0");

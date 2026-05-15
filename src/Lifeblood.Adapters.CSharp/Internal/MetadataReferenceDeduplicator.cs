@@ -5,16 +5,30 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 
 /// <summary>
 /// Collapses a compilation reference set down to one
-/// <see cref="MetadataReference"/> per assembly simple-name, keeping the
-/// highest <see cref="AssemblyIdentity.Version"/> when duplicates appear.
-/// Mirrors MSBuild's <c>&lt;AutoUnify&gt;true&lt;/AutoUnify&gt;</c> default
-/// for SDK-style projects so a Lifeblood compilation sees the same
-/// resolved reference graph an MSBuild invocation would. Stops Roslyn
-/// from emitting CS1701 / CS1702 / CS1705 once per type-ref when the
-/// raw reference set carries multiple identities for the same simple
-/// name (BCL ref pack + NuGet contract assembly is the canonical
-/// collision; the empirical 7,537 × CS1701 measured against
+/// <see cref="MetadataReference"/> per distinct assembly identity
+/// (simple-name + culture + public-key), keeping the highest
+/// <see cref="AssemblyIdentity.Version"/> within each identity
+/// bucket. Mirrors MSBuild's <c>&lt;AutoUnify&gt;true&lt;/AutoUnify&gt;</c>
+/// default for SDK-style projects so a Lifeblood compilation sees the
+/// same resolved reference graph an MSBuild invocation would. Stops
+/// Roslyn from emitting CS1701 / CS1702 / CS1705 once per type-ref
+/// when the raw reference set carries multiple versions of the same
+/// assembly identity (BCL ref pack + NuGet contract assembly is the
+/// canonical collision; the empirical 7,537 × CS1701 measured against
 /// <c>Lifeblood.Tests</c> originated from this class).
+///
+/// **Identity granularity** (post-W6 audit). Pre-fix the dedup keyed
+/// on the simple name alone, which would collapse two legitimately
+/// distinct identities sharing a simple name but disagreeing on
+/// culture / public-key (e.g. an official Microsoft-signed assembly
+/// + a third-party shim with the same simple name). The bucket key
+/// is now <c>name|culture|publicKey</c> so distinct identities
+/// survive; only true version collisions inside a bucket unify.
+/// Public-key bytes are compared as a raw hex string — same blob =
+/// same identity — which is strictly more conservative than the
+/// truncated 8-byte token MSBuild typically prints, and avoids the
+/// token-collision corner case entirely.
+///
 /// Refs whose metadata cannot be read as an assembly (modules, native
 /// DLLs sneaking past the loader filter, in-memory compilation refs
 /// without an emitted identity) pass through unchanged — dedup is a
@@ -25,60 +39,61 @@ internal static class MetadataReferenceDeduplicator
     /// <summary>
     /// Apply MSBuild-equivalent assembly identity unification to a
     /// reference collection. Order of refs whose identity can be read
-    /// is determined by the surviving entry per simple name; refs
+    /// is determined by the surviving entry per identity bucket; refs
     /// without a readable identity are appended after, in their
     /// original relative order.
     /// </summary>
     internal static IReadOnlyList<MetadataReference> Deduplicate(
         IEnumerable<MetadataReference> references)
     {
-        var byName = new Dictionary<string, MetadataReference>(StringComparer.OrdinalIgnoreCase);
-        var bestVersionByName = new Dictionary<string, Version>(StringComparer.OrdinalIgnoreCase);
+        var byBucket = new Dictionary<string, MetadataReference>(StringComparer.Ordinal);
+        var bestVersionByBucket = new Dictionary<string, Version>(StringComparer.Ordinal);
         var unkeyed = new List<MetadataReference>();
 
         foreach (var reference in references)
         {
-            var identity = TryReadAssemblyIdentity(reference);
-            if (identity == null)
+            var fingerprint = TryReadIdentityFingerprint(reference);
+            if (fingerprint == null)
             {
                 unkeyed.Add(reference);
                 continue;
             }
 
-            var name = identity.Name;
-            var version = identity.Version;
-            if (bestVersionByName.TryGetValue(name, out var bestSoFar))
+            var (bucketKey, version) = fingerprint.Value;
+            if (bestVersionByBucket.TryGetValue(bucketKey, out var bestSoFar))
             {
                 if (version > bestSoFar)
                 {
-                    byName[name] = reference;
-                    bestVersionByName[name] = version;
+                    byBucket[bucketKey] = reference;
+                    bestVersionByBucket[bucketKey] = version;
                 }
                 continue;
             }
 
-            byName[name] = reference;
-            bestVersionByName[name] = version;
+            byBucket[bucketKey] = reference;
+            bestVersionByBucket[bucketKey] = version;
         }
 
-        var result = new List<MetadataReference>(byName.Count + unkeyed.Count);
-        result.AddRange(byName.Values);
+        var result = new List<MetadataReference>(byBucket.Count + unkeyed.Count);
+        result.AddRange(byBucket.Values);
         result.AddRange(unkeyed);
         return result;
     }
 
     /// <summary>
-    /// Read the assembly simple-name and version off a metadata reference
-    /// without forcing a compilation. Routes through Roslyn's public
-    /// <see cref="AssemblyMetadata.GetModules"/> +
-    /// <see cref="ModuleMetadata.GetMetadataReader"/> primitive so the
-    /// identity comes directly from the PE's <c>AssemblyDef</c> row —
-    /// the same data MSBuild reads when applying <c>&lt;AutoUnify&gt;</c>.
+    /// Read the strong-identity fingerprint off a metadata reference
+    /// without forcing a compilation. The fingerprint is a
+    /// version-stripped identity bucket key (<c>name|culture|publicKey</c>)
+    /// plus the actual <see cref="Version"/>; the caller bucketizes
+    /// references by key and unifies by version inside each bucket.
+    /// Routes through Roslyn's public <see cref="AssemblyMetadata.GetModules"/>
+    /// + <see cref="ModuleMetadata.GetMetadataReader"/> primitive so the
+    /// identity comes directly from the PE's <c>AssemblyDef</c> row.
     /// Module-only references (<see cref="ModuleMetadata"/>) and references
     /// whose backing data fails to parse return null — they flow through
     /// dedup as-is.
     /// </summary>
-    private static AssemblyIdentity? TryReadAssemblyIdentity(MetadataReference reference)
+    private static (string BucketKey, Version Version)? TryReadIdentityFingerprint(MetadataReference reference)
     {
         if (reference is not PortableExecutableReference peRef) return null;
         try
@@ -90,7 +105,20 @@ internal static class MetadataReferenceDeduplicator
             var def = reader.GetAssemblyDefinition();
             var name = reader.GetString(def.Name);
             if (string.IsNullOrEmpty(name)) return null;
-            return new AssemblyIdentity(name, def.Version);
+
+            var culture = def.Culture.IsNil ? string.Empty : reader.GetString(def.Culture);
+            var publicKeyHex = def.PublicKey.IsNil
+                ? string.Empty
+                : Convert.ToHexString(reader.GetBlobBytes(def.PublicKey));
+
+            // Bucket key is case-insensitive on name + culture (MSBuild
+            // identity comparison rule), case-sensitive on the public-key
+            // hex (hex digits round-trip identically through ToHexString).
+            var bucketKey = string.Concat(
+                name.ToLowerInvariant(), "|",
+                culture.ToLowerInvariant(), "|",
+                publicKeyHex);
+            return (bucketKey, def.Version);
         }
         catch (Exception ex) when (ex is BadImageFormatException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
