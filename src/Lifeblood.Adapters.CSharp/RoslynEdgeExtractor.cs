@@ -290,7 +290,8 @@ public sealed class RoslynEdgeExtractor
         if (identifier.Parent is BaseTypeDeclarationSyntax) return;
 
         var symbolInfo = model.GetSymbolInfo(identifier);
-        var referencedSymbol = symbolInfo.Symbol;
+        var referencedSymbol = symbolInfo.Symbol
+            ?? ResolveCandidateMethodGroup(symbolInfo);
         if (referencedSymbol == null) return;
 
         // Type references (existing behavior)
@@ -606,6 +607,44 @@ public sealed class RoslynEdgeExtractor
             return model.GetDeclaredSymbol(enumNode);
 
         return null;
+    }
+
+    /// <summary>
+    /// Method-group references in target-typed contexts
+    /// (<c>new Lazy&lt;T&gt;(Load)</c> via target-typed <c>new(Load)</c>;
+    /// delegate ctor arguments; <c>Task.Run(MyMethod)</c>; etc.) bind
+    /// through <see cref="SymbolInfo.CandidateSymbols"/> when the outer
+    /// type-inference context has not yet narrowed the candidate set.
+    /// <see cref="SymbolInfo.Symbol"/> stays <c>null</c> in that state
+    /// even though Roslyn knows the candidate set — and the existing
+    /// extractor early-returned, silently dropping the method-group
+    /// edge. The empirical class: <c>BclReferenceLoader.References =
+    /// new(Load)</c> and <c>RoslynCodeExecutor._cache = new(LoadHostBclReferences)</c>
+    /// in Lifeblood self showed <c>find_references</c> hits but
+    /// <c>dependants=0</c> on the target method (LB-INBOX-010).
+    ///
+    /// Roslyn primitive: <see cref="CandidateReason"/>. We accept the
+    /// shapes where every candidate names the same method group
+    /// (<see cref="CandidateReason.MemberGroup"/>) or where target-type
+    /// resolution is the only missing piece
+    /// (<see cref="CandidateReason.OverloadResolutionFailure"/>) and
+    /// emit the edge to the first candidate's
+    /// <see cref="ISymbol.OriginalDefinition"/>. For an overloaded
+    /// method-group with a true ambiguity that nothing has resolved
+    /// yet, this attributes the edge approximately — the only honest
+    /// alternative is dropping the edge entirely, which is the
+    /// pre-fix behavior the empirical false-positive class proves is
+    /// worse for downstream tooling. INV-EXTRACT-METHOD-GROUP-CANDIDATE-001.
+    /// </summary>
+    private static ISymbol? ResolveCandidateMethodGroup(SymbolInfo symbolInfo)
+    {
+        if (symbolInfo.CandidateSymbols.Length == 0) return null;
+        return symbolInfo.CandidateReason switch
+        {
+            CandidateReason.MemberGroup => symbolInfo.CandidateSymbols[0],
+            CandidateReason.OverloadResolutionFailure => symbolInfo.CandidateSymbols[0],
+            _ => null,
+        };
     }
 
     private static string GetMethodId(IMethodSymbol method)
