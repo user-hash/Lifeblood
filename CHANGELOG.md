@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-05-15
+
 ### Fixed
 
 - **`INV-EXTRACT-STATIC-CTOR-ID-001` - explicit static constructors use `.cctor` canonical IDs**
