@@ -91,6 +91,58 @@ namespace Acme {
     }
 
     [Fact]
+    public void GetStaticTables_StaticImplicitArrayField_DetectedAsArrayContainer()
+    {
+        // Implicit array initializer (`= { 0.1f, 0.2f }` with no `new T[]` prefix)
+        // is the canonical shape for recipe tables. Closes the first half
+        // of LB-INBOX-011: the extractor recognises the implicit form
+        // through Roslyn's IArrayInitializerOperation alongside the
+        // explicit-form IArrayCreationOperation. Container kind is still
+        // reported as Array because authoring intent is identical;
+        // distinguishing them downstream would create a brittle two-shape
+        // contract for one logical construct.
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static readonly float[] Weights = { 0.1f, 0.2f, 0.4f };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+
+        Assert.NotNull(report);
+        var table = Assert.Single(report!.Tables);
+        Assert.Equal("Weights", table.MemberName);
+        Assert.Equal(StaticTableContainerKind.Array, table.ContainerKind);
+        Assert.Equal(3, table.Rows.Length);
+        Assert.Equal("type:System.Single", table.ElementTypeId);
+    }
+
+    [Fact]
+    public void GetStaticTables_StaticImplicitArrayProperty_DetectedAsArrayContainer()
+    {
+        // Property variant of the implicit-array form. Auto-property with
+        // a `{ get; } = { ... }` initializer routes through Roslyn the
+        // same way as a field with a brace-initialized array.
+        const string source = @"
+namespace Acme {
+  public class Foo {
+    public static byte[] Ratios { get; } = { 1, 2, 4, 8 };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+
+        var table = Assert.Single(report!.Tables);
+        Assert.Equal("Ratios", table.MemberName);
+        Assert.Equal(StaticTableContainerKind.Array, table.ContainerKind);
+        Assert.Equal(4, table.Rows.Length);
+        Assert.Equal("type:System.Byte", table.ElementTypeId);
+    }
+
+    [Fact]
     public void GetStaticTables_StaticCollectionExpression_DetectedAsCollectionExpression()
     {
         const string source = @"

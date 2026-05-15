@@ -66,7 +66,21 @@ internal static class RoslynStaticTableExtractor
             var rootOp = model.GetOperation(initializer);
             if (rootOp == null) continue;
 
-            var classified = ClassifyContainer(rootOp);
+            // INV-EXTRACT-STATIC-IMPLICIT-ARRAY-001: implicit array initializer
+            // `T[] X = { ... }` surfaces in Roslyn as IArrayInitializerOperation,
+            // not IArrayCreationOperation, and IArrayInitializerOperation does
+            // NOT carry its element type — the type is only derivable from the
+            // declaring member. Pass the member's type into ClassifyContainer so
+            // the array-initializer branch can resolve the element type without
+            // walking syntax back up to the variable declaration.
+            var memberType = member switch
+            {
+                IFieldSymbol f => f.Type,
+                IPropertySymbol p => p.Type,
+                _ => null,
+            };
+
+            var classified = ClassifyContainer(rootOp, memberType);
             if (classified == null) continue;
 
             if (tables.Count >= maxTables)
@@ -145,7 +159,7 @@ internal static class RoslynStaticTableExtractor
     /// non-table static initializers (scalar literals, expression
     /// chains, etc.) are silently skipped.
     /// </summary>
-    private static (string Kind, IReadOnlyList<IOperation> Rows, ITypeSymbol? ElementType)? ClassifyContainer(IOperation rootOp)
+    private static (string Kind, IReadOnlyList<IOperation> Rows, ITypeSymbol? ElementType)? ClassifyContainer(IOperation rootOp, ITypeSymbol? memberType)
     {
         var op = UnwrapTransparent(rootOp);
 
@@ -153,6 +167,16 @@ internal static class RoslynStaticTableExtractor
         {
             var elems = array.Initializer?.ElementValues ?? (IReadOnlyList<IOperation>)Array.Empty<IOperation>();
             return (StaticTableContainerKind.Array, elems, (array.Type as IArrayTypeSymbol)?.ElementType);
+        }
+
+        // Implicit-array initializer (T[] X = { ... } with no `new T[]` prefix)
+        // surfaces as IArrayInitializerOperation. The operation itself has no
+        // Type — derive the element type from the declaring member's array type
+        // when available. INV-EXTRACT-STATIC-IMPLICIT-ARRAY-001.
+        if (op is IArrayInitializerOperation arrInit)
+        {
+            var elementType = (memberType as IArrayTypeSymbol)?.ElementType;
+            return (StaticTableContainerKind.Array, arrInit.ElementValues, elementType);
         }
 
         var collectionElems = TryUnpackCollectionExpression(op, out var collectionElemType);
