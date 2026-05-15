@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001` — extractor edges always target the source-declared open-generic form**
+
 - **`INV-EXTRACT-METHOD-GROUP-CANDIDATE-001` — target-typed `new(MethodGroup)` and other `CandidateSymbols`-bound method-group references now emit `Calls` edges**
 
 ### Changed
