@@ -23,13 +23,20 @@ Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOP
 | **Rename** | Safe rename across the workspace. Returns text edits as preview. The agent decides whether to apply. |
 | **Format** | Roslyn's own formatter. Not regex hacks. |
 
-**Static table caveat:** `LB-INBOX-011` tracks two open gaps from real-workspace
-dogfood: implicit array initializers such as `static readonly float[] X = { ... }`
-may be missed by `lifeblood_static_tables`, and extracted `MethodGroupId` /
-field / enum references do not yet synthesize graph dependency edges. Until
-that lands, cross-check `dead_code`, `port_health`, `dependants`, and
-`blast_radius` findings around table-driven delegate methods with
-`lifeblood_static_tables` and `lifeblood_find_references`.
+**Static table coverage (v0.7.6 prep wave, SHIPPED on `main`):** `LB-INBOX-011`
+is closed. `lifeblood_static_tables` recognises both explicit
+`new T[] { ... }` and implicit `static readonly float[] X = { ... }` array
+shapes (`INV-EXTRACT-STATIC-IMPLICIT-ARRAY-001`). Dispatch-table delegate
+method-group cells AND member-access enum / field references emit graph
+edges through the regular identifier / member-access walkers via
+`INV-EXTRACT-METHOD-GROUP-CANDIDATE-001` (target-typed `new(MethodGroup)`)
++ `INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001` (no separate synthesizer
+needed) + `INV-EXTRACT-SYNTHESIZED-CTOR-001` (synthesized `.cctor` /
+`.ctor()` surface as Symbols so `GraphBuilder` no longer drops the
+initializer-derived edges). `dead_code`, `port_health`, `dependants`, and
+`blast_radius` consume the synthesized edges directly; the cross-check
+recommended in earlier docs is no longer required for table-driven
+delegate methods.
 
 ## Read-side (semantic intelligence)
 
@@ -59,16 +66,17 @@ The difference: the AI agent doesn't guess what your code does. It **asks the co
 
 ## ¹ `lifeblood_dead_code` status
 
-Self-analysis (post-v0.7.3): 6 findings on Lifeblood itself, 3 legitimate (`Program.Main` × 3) + 3 false positives currently tracked as `LB-INBOX-010`. Five false-positive classes were closed in v0.6.4 (interface dispatch, member access granularity, null-conditional property access, lambda context attribution, **explicit-form** method-group references via `new Lazy<T>(Method)`) plus the root-cause compilation gap (missing implicit global usings). Three more closed in v0.6.5 (constructor `Calls` edge, field-initializer containing method, property-accessor body context). The Unity reachability port (`INV-UNITY-001`) closed the MonoBehaviour magic-method false-positive class on real Unity workspaces: the dogfood Unity workspace (87 modules) went from 1095 dead-code findings to 729 (-33%), MonoBehaviour-magic FPs from 378 to 13 (-97%).
+Post-v0.7.6 prep wave: the LB-INBOX-010 + LB-INBOX-011 false-positive classes are closed on `main` (tag pending fresh-MCP redeploy verification). Eight false-positive classes were closed across v0.6.4 → v0.7.6 prep: interface dispatch, member access granularity, null-conditional property access, lambda context attribution, explicit-form method-group references via `new Lazy<T>(Method)`, the root-cause compilation gap (missing implicit global usings), constructor `Calls` edge, field-initializer containing method, property-accessor body context. The Unity reachability port (`INV-UNITY-001`) closed the MonoBehaviour magic-method false-positive class on real Unity workspaces: the dogfood Unity workspace (87 modules) went from 1095 dead-code findings to 729 (-33%), MonoBehaviour-magic FPs from 378 to 13 (-97%). The v0.7.6 prep wave additionally closed:
 
-**Remaining false-positive classes (structural; not currently closed by the extractor):**
+- **Target-typed `new(MethodGroup)`** — `INV-EXTRACT-METHOD-GROUP-CANDIDATE-001` (`LB-INBOX-010`). `RoslynEdgeExtractor.ResolveCandidateMethodGroup` accepts `CandidateSymbols`-bound method groups, so `dependants` / `dead_code` / `blast_radius` now see the target.
+- **Generic-method call canonical-id drift** — `INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001` (`LB-INBOX-010`). `GetMethodId` routes through `OriginalDefinition` so an instantiated call lands on the source-declared open-generic id.
+- **Static-table delegate references** — `INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001` + `INV-EXTRACT-SYNTHESIZED-CTOR-001` (`LB-INBOX-011`). Dispatch-table cells emit through the regular identifier walkers; synthesized `.cctor` / `.ctor()` surface as Symbols so `GraphBuilder`'s dangling-edge filter no longer drops the initializer-derived edges.
+
+**Remaining false-positive classes (structural; not closed by the extractor):**
 - Runtime entry points (Program.Main, composition-root entries).
 - UI Toolkit `VisualElement` subclasses with magic-named methods (Awake/Update on a non-MonoBehaviour base).
 - Audio callbacks (`OnAudioFilterRead`) on bases not in the standard MonoBehaviour message-receiver set.
 - Reflection-based dispatch invisible to static analysis (`Type.GetType` + `MethodInfo.Invoke`, Unity `SendMessage`-dispatched handlers).
-- **Target-typed `new(MethodGroup)`** (`LB-INBOX-010`, open). The v0.6.4 method-group fix closed the explicit form (`new Lazy<T>(Method)`); the target-typed form (`new(Method)`, C# 9+) does not currently emit a `Calls` edge to the method-group argument. `find_references` sees the usage via Roslyn but `dependants` / `dead_code` / `blast_radius` walk the graph and miss it. Pinned by a skipped regression test (`ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor`) that will convert to a ratchet when the extractor fix ships.
-- **Generic-method call canonical-id drift** (`LB-INBOX-010`, open). Calls to a generic method via type-inferred arguments (e.g. `ApplyCap(pack.HighValueFiles, maxFiles)`) appear to bind to the instantiated `IMethodSymbol`; if the edge is emitted under that instantiated id rather than the source-declared generic id, the graph misses the back-reference.
-- **Static-table delegate references** (`LB-INBOX-011`, open). `lifeblood_static_tables` can expose `MethodGroupId` values for dispatch-table rows while the graph still lacks a corresponding incoming `References` edge to the target method. `dead_code` and `port_health` can therefore mark table-only delegate targets as dead; verify with `lifeblood_static_tables` / `lifeblood_find_references` before acting.
 
 **Consumer guidance:**
 - Findings are advisory. Every response carries the `envelope.confidence = "Advisory"` band and a `limitations[]` entry naming the FP classes.
