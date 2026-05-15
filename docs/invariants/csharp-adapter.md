@@ -90,6 +90,17 @@ csproj-driven option follows the same shape.
   entire `ModuleInfo` on csproj edit, not just one field. The next compilation
   fact added under this convention ships with zero new incremental work.
 
+## Reference Set Normalization
+
+A workspace's reference set frequently carries multiple `MetadataReference`
+entries that share an assembly simple-name but disagree on version (BCL ref
+pack 8.0.x.x vs NuGet contract assembly 4.x.x.x is the canonical collision;
+xunit / Microsoft.NET.Test.Sdk closures hit it deterministically). MSBuild
+silently unifies these through its `<AutoUnify>true</AutoUnify>` default
+before the compiler ever sees them. Roslyn does not.
+
+- **INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001. Reference sets handed to `CSharpCompilation.Create` are unified by assembly simple-name, highest version wins.** Mirrors MSBuild's `<AutoUnify>true</AutoUnify>` default so a Lifeblood compilation sees the same resolved reference graph an MSBuild invocation would. Without unification, Roslyn emits CS1701 / CS1702 / CS1705 once per consuming type-ref whenever the raw reference set carries multiple identities for the same simple-name — empirically 7,537 spurious findings on Lifeblood's own test assembly while `dotnet build` was clean on the same compilation. The single enforcement seam is `Internal.MetadataReferenceDeduplicator.Deduplicate`, called by `Internal.ModuleCompilationBuilder.CreateCompilation` after the per-module reference list is assembled (BCL + NuGet + external DLLs + downgraded dependency PE refs) and immediately before `CSharpCompilation.Create`. Identity is read off `PortableExecutableReference.GetMetadata()` as `AssemblyMetadata.GetAssembly().Identity`; references whose metadata cannot be parsed as an assembly (modules, native DLLs that escaped the loader filter, in-memory refs without an emitted identity) pass through unchanged so the loader can still surface the underlying load failure as a regular diagnostic. NEVER suppress CS1701 / CS1702 / CS1705 via `<NoWarn>` as a substitute for unification — the spec-correct fix removes the duplicate identity, not the symptom. Pinned by `MetadataReferenceDeduplicationTests` (highest-version wins, order-independent, distinct simple-names all survive, empty input, unreadable identity passes through, end-to-end zero CS1701 on a synthesized duplicate-identity compilation).
+
 ## Symbol ID Grammar (C# Adapter)
 
 Lifeblood symbol IDs are stable identifiers produced by `Lifeblood.Adapters.CSharp.Internal.SymbolIds`

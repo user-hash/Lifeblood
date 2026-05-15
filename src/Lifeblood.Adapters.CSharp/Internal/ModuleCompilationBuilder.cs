@@ -349,10 +349,21 @@ internal sealed class ModuleCompilationBuilder
             ? trees.Append(ImplicitGlobalUsings).ToArray()
             : trees;
 
+        // Assembly identity unification (INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001).
+        // Without this, a module whose NuGet closure brings in System.* contract
+        // assemblies that overlap simple-names with the SDK BCL ref pack (the
+        // canonical xunit / Microsoft.NET.Test.Sdk / xunit.runner.visualstudio
+        // shape) makes Roslyn emit CS1701 / CS1702 / CS1705 once per type-ref —
+        // empirically 7,537 spurious findings on Lifeblood's own test assembly
+        // while MSBuild was clean on the same compilation. The fix mirrors
+        // MSBuild's `<AutoUnify>true</AutoUnify>` default: collapse to one ref
+        // per simple-name keeping the highest version. No per-name special case.
+        var dedupedReferences = MetadataReferenceDeduplicator.Deduplicate(references);
+
         return CSharpCompilation.Create(
             module.Name,
             allTrees,
-            references,
+            dedupedReferences,
             compilationOptions);
     }
 
