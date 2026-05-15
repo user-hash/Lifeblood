@@ -98,9 +98,9 @@ public sealed class RoslynSymbolExtractor
         // surfaces every dispatch-table delegate target and every static-
         // initializer-referenced enum/field would silently vanish from
         // the graph — exactly the LB-INBOX-011 part 2 false-positive
-        // class observed in DAWG (delegate row methods reported as
-        // dead despite live use via dispatch tables). The surfaced
-        // symbols carry the same canonical id the edge attribution
+        // class where delegate row methods were reported as dead
+        // despite live use via dispatch tables. The surfaced symbols
+        // carry the same canonical id the edge attribution
         // uses (`method:NS.T..cctor()` or `method:NS.T..ctor()`) so
         // GraphBuilder's edge filter retains them.
         // INV-EXTRACT-SYNTHESIZED-CTOR-001.
@@ -390,11 +390,12 @@ public sealed class RoslynSymbolExtractor
 
         var typeName = ExtractTypeFromId(containingTypeId);
         var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
+        var name = sym.IsStatic ? ".cctor" : ".ctor";
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(typeName, ".ctor", paramSig),
-            Name = ".ctor",
-            QualifiedName = $"{typeName}..ctor",
+            Id = SymbolIds.Method(typeName, name, paramSig),
+            Name = name,
+            QualifiedName = $"{typeName}.{name}",
             Kind = DomainSymbolKind.Method,
             FilePath = filePath,
             Line = ctorDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,

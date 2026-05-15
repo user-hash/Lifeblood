@@ -496,7 +496,8 @@ public class ToolHandlerTests : IDisposable
         Assert.Null(result.IsError);
         var text = result.Content[0].Text;
         Assert.Contains("\"status\": \"experimental\"", text);
-        Assert.Contains("method-group conversion", text);
+        Assert.Contains("runtime/reflection-dispatched methods", text);
+        Assert.Contains("extractor regression", text);
         Assert.Contains("canonical-id drift", text);
         Assert.Contains("lifeblood_find_references", text);
     }

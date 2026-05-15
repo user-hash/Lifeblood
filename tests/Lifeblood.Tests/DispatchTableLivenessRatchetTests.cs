@@ -95,6 +95,123 @@ public class DispatchTableLivenessRatchetTests
         Assert.DoesNotContain(findings, f => f.CanonicalId == "method:App.Registry..cctor()");
     }
 
+    [Fact]
+    public void DispatchTableWithExplicitStaticConstructor_KeepsDelegateTargetsLive()
+    {
+        using var tempDir = new ScratchDir();
+        tempDir.WriteFile("CapabilityRow.cs", """
+            namespace App;
+
+            public readonly struct RowContext { }
+            public enum CapabilityId { None, Envelope }
+            public enum CapabilityStage { Evaluate }
+            public enum RejectReason { None }
+            [System.Flags]
+            public enum WriteMask { None = 0, EnvelopeState = 1, OnsetRamp = 2 }
+            [System.Flags]
+            public enum MovingStateMask { None = 0, OnsetRamp = 1, Smoother = 2 }
+            public delegate bool RowProbe(RowContext context);
+            public delegate MovingStateMask MovingStateAllowedFn(in RowContext context);
+            public delegate string[]? SubTagEmitter(RowContext context);
+            public delegate int RejectSubReasonClassifier(RowContext context);
+
+            public sealed class CapabilityRow
+            {
+                public CapabilityRow(
+                    CapabilityId id,
+                    bool implementsFastPath,
+                    RowProbe probe,
+                    WriteMask writebackFields,
+                    string description,
+                    CapabilityStage stage,
+                    RejectReason rejectReason,
+                    SubTagEmitter? subTags = null,
+                    CapabilityId nestedInsideRow = CapabilityId.None,
+                    MovingStateAllowedFn? movingStateAllowed = null,
+                    RejectSubReasonClassifier? subReasonClassifier = null,
+                    string[]? subReasonNames = null,
+                    bool participatesInClassification = true)
+                {
+                }
+            }
+            """);
+        tempDir.WriteFile("Registry.cs", """
+            namespace App;
+
+            public static class Registry
+            {
+                static Registry()
+                {
+                    _ = Features.Length;
+                }
+
+                public static readonly CapabilityRow[] Features = new CapabilityRow[]
+                {
+                    new CapabilityRow(
+                        id: CapabilityId.Envelope,
+                        implementsFastPath: true,
+                        probe: ProbeAlwaysActive,
+                        writebackFields: WriteMask.EnvelopeState | WriteMask.OnsetRamp,
+                        description: "wide row",
+                        stage: CapabilityStage.Evaluate,
+                        rejectReason: RejectReason.None,
+                        movingStateAllowed: MovingStateForEnvelope),
+                };
+
+                private static bool ProbeAlwaysActive(RowContext context) => true;
+
+                private static MovingStateMask MovingStateForEnvelope(in RowContext context)
+                    => MovingStateMask.OnsetRamp | MovingStateMask.Smoother;
+            }
+            """);
+        tempDir.WriteFile("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <AssemblyName>App</AssemblyName>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem());
+        var graph = analyzer.AnalyzeWorkspace(tempDir.Path, new AnalysisConfig());
+
+        var cctor = "method:App.Registry..cctor()";
+        var features = "field:App.Registry.Features";
+        var movingState = "method:App.Registry.MovingStateForEnvelope(App.RowContext)";
+        Assert.True(graph.GetSymbol(cctor) != null, $"{cctor} missing from graph");
+        Assert.True(graph.GetSymbol(features) != null, $"{features} missing from graph");
+        Assert.True(graph.GetSymbol(movingState) != null, $"{movingState} missing from graph");
+
+        var hasMovingStateEdge = false;
+        foreach (var idx in graph.GetIncomingEdgeIndexes(movingState))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Calls || edge.SourceId != cctor) continue;
+            hasMovingStateEdge = true;
+            break;
+        }
+        Assert.True(hasMovingStateEdge,
+            "MovingStateForEnvelope has no Calls edge from the explicit static constructor.");
+
+        var hasFieldReferenceEdge = false;
+        foreach (var idx in graph.GetOutgoingEdgeIndexes(features))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.References || edge.TargetId != movingState) continue;
+            hasFieldReferenceEdge = true;
+            break;
+        }
+        Assert.True(hasFieldReferenceEdge,
+            "Features has no References edge to its method-group delegate target.");
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+        Assert.DoesNotContain(findings, f => f.CanonicalId == movingState);
+        Assert.DoesNotContain(findings, f => f.CanonicalId == cctor);
+    }
+
     private sealed class ScratchDir : IDisposable
     {
         public string Path { get; }

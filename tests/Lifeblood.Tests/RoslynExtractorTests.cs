@@ -37,6 +37,25 @@ public class Foo
     }
 
     [Fact]
+    public void ExtractSymbols_StaticConstructor_EmitsCctorSymbol()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public static class Registry
+{
+    static Registry() { }
+}");
+
+        var symbols = new RoslynSymbolExtractor().Extract(model, root, "Registry.cs", "file:Registry.cs");
+
+        Assert.Contains(symbols, s => s.Id == "method:App.Registry..cctor()"
+            && s.Name == ".cctor"
+            && s.Kind == DomainSymbolKind.Method
+            && s.IsStatic);
+        Assert.DoesNotContain(symbols, s => s.Id == "method:App.Registry..ctor()");
+    }
+
+    [Fact]
     public void ExtractSymbols_Interface()
     {
         var (model, root) = Compile(@"
@@ -1197,8 +1216,8 @@ public class Loader
         // references, method groups). All three reference classes must
         // produce graph edges so dependants() / dead_code / port_health /
         // blast_radius see the delegate targets and enum members as live
-        // through the table. Confirmed in DAWG-class workspaces that all
-        // three pre-existing handlers (ExtractMemberAccessEdge for
+        // through the table. All three pre-existing handlers
+        // (ExtractMemberAccessEdge for
         // enum/field qualified refs, ExtractReferenceEdge for bare
         // method-group identifiers via the W2-A CandidateSymbols path)
         // already feed edges from the synthesized .cctor.

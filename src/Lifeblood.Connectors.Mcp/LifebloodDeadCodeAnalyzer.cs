@@ -60,15 +60,18 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
 
             if (HasIncomingReference(graph, sym.Id)) continue;
 
-            // Synthesized .cctor / parameterless .ctor surfaces (see
+            // Static constructors are runtime entry points: explicit and
+            // synthesized .cctor methods are invoked by the CLR on type init.
+            // Without this guard, a dispatch table with a correctly surfaced
+            // explicit .cctor would shift the dead-code false positive from
+            // the delegate target to the static constructor itself.
+            if (sym.Kind == SymbolKind.Method && sym.Name == ".cctor") continue;
+
+            // Synthesized parameterless .ctor surfaces (see
             // RoslynSymbolExtractor.SurfaceSynthesizedInitializerConstructors,
-            // INV-EXTRACT-SYNTHESIZED-CTOR-001). The CLR always invokes
-            // these on type init / first instance construction, so they
-            // are inherently live regardless of static-graph reachability.
-            // Without this guard, every type that surfaces a synthesized
-            // ctor for initializer-edge attribution would itself be
-            // flagged dead — the same noise class the surfacing exists
-            // to eliminate, shifted one symbol over.
+            // INV-EXTRACT-SYNTHESIZED-CTOR-001). The CLR invokes these on
+            // first instance construction, so they are inherently live
+            // regardless of static-graph reachability.
             if (sym.Properties.TryGetValue("synthesized", out var synthesized)
                 && synthesized == "true") continue;
 

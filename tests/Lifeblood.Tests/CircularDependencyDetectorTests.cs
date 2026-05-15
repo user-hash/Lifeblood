@@ -64,6 +64,35 @@ public class CircularDependencyDetectorTests
     }
 
     [Fact]
+    public void Detect_IgnoresInitializerOwnerMethodGroupEdges()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:A", Name = "A", Kind = SymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "field:A.Table", Name = "Table", Kind = SymbolKind.Field, ParentId = "type:A" })
+            .AddSymbol(new Symbol { Id = "method:A.Handler()", Name = "Handler", Kind = SymbolKind.Method, ParentId = "type:A" })
+            .AddEdge(new Edge
+            {
+                SourceId = "field:A.Table",
+                TargetId = "method:A.Handler()",
+                Kind = EdgeKind.References,
+                Properties = new Dictionary<string, string>
+                {
+                    [EdgePropertyKeys.InitializerOwner] = EdgePropertyKeys.InitializerOwnerMethodGroup,
+                },
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "method:A.Handler()",
+                TargetId = "field:A.Table",
+                Kind = EdgeKind.References,
+            })
+            .Build();
+
+        var cycles = CircularDependencyDetector.Detect(graph);
+        Assert.Empty(cycles);
+    }
+
+    [Fact]
     public void Detect_EmptyGraph_NoCycles()
     {
         var graph = new SemanticGraph();
