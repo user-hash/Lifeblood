@@ -7,6 +7,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`smoke-mcp-analyze.ps1` server-DLL auto-discovery** (`LB-INBOX-006` Wave W6). Pre-fix, the default `-ServerDll` parameter was a hardcoded `Debug/net8.0/` path that failed at first run for any operator who had only built Release (or had not built yet). The single biggest first-run friction point external reviewers hit on the v0.6.3 round-trip script. New `Resolve-ServerDll` helper walks Debug first then Release under `$PSScriptRoot/src/Lifeblood.Server.Mcp/bin/<Config>/net8.0/`; if neither exists, the one-line diagnostic names every path tried and the exact `dotnet build` command the operator can run to fix the gap. Passing an explicit `-ServerDll` short-circuits discovery but still validates the file exists before launching. Closes the credibility multiplier the v0.6.3 external review flagged at small surface area.
+
 ### Added
 
 - **`docs/PLAYBOOK_CSHARP.md` + first anonymized case study** (`LB-INBOX-004` + `LB-INBOX-005` Wave W5). Closes the wedge-proof half of the post-v0.6.3 roadmap. The playbook documents seven concrete workflows for large C# / Roslyn / Unity workspaces (triage a breakage, audit module boundaries, safe rename, inspect blast radius, validate a snippet, recover from a merge conflict, find a dead method) with named tool calls, argument shapes, expected outputs, and an envelope cheat sheet mapping `confidence` bands to ship-or-investigate decisions. First case study `docs/case-studies/unity-daw-parity-2026-05.md` documents the end-to-end resolution of the 7,772-diagnostic gap between Lifeblood `diagnose` and `dotnet build` on a 90-module Unity workspace through Wave W1-A / Ab / B / C — written with the empirical counts that drove each INV, anonymized to "Project A", and explicit about what is deliberately not claimed (dedup alone did NOT close CS1701; MSBuild NoWarn baseline is fixed-list, not introspected). Closes the credibility-multiplier asks from the v0.6.3 external review.

@@ -1,9 +1,43 @@
 param(
     [Parameter(Mandatory=$true)][string]$Project,
-    [string]$ServerDll = "$PSScriptRoot/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll"
+    [string]$ServerDll
 )
 
 $ErrorActionPreference = 'Stop'
+
+# LB-INBOX-006 W6: auto-discover the server DLL when the caller does
+# not pass -ServerDll explicitly. Walk the Debug build first
+# (matches the path most operators have on disk after a `dotnet build`
+# without -c), fall through to Release, and surface a one-line
+# diagnostic that names the exact paths tried + the build command the
+# operator can run to fix the gap. The cosmetic fail this replaces
+# was the single biggest first-run friction point external reviewers
+# hit on the v0.6.3 round-trip script.
+function Resolve-ServerDll {
+    $candidates = @(
+        (Join-Path $PSScriptRoot 'src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll'),
+        (Join-Path $PSScriptRoot 'src/Lifeblood.Server.Mcp/bin/Release/net8.0/Lifeblood.Server.Mcp.dll')
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+    Write-Host "[fail] server dll not found. Tried in order:"
+    foreach ($candidate in $candidates) {
+        Write-Host "         $candidate"
+    }
+    Write-Host ""
+    Write-Host "        Either build first:"
+    Write-Host "          dotnet build $PSScriptRoot/src/Lifeblood.Server.Mcp -c Debug"
+    Write-Host "        or pass an explicit -ServerDll <path> argument."
+    exit 1
+}
+
+if ([string]::IsNullOrEmpty($ServerDll)) {
+    $ServerDll = Resolve-ServerDll
+} elseif (-not (Test-Path $ServerDll)) {
+    Write-Host "[fail] -ServerDll '$ServerDll' does not exist."
+    exit 1
+}
 
 Write-Host ""
 Write-Host "================================================================"
@@ -12,11 +46,6 @@ Write-Host "  Server : $ServerDll"
 Write-Host "  Project: $Project"
 Write-Host "================================================================"
 Write-Host ""
-
-if (-not (Test-Path $ServerDll)) {
-    Write-Host "[fail] server dll not found"
-    exit 1
-}
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "dotnet"

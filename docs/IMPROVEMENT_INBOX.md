@@ -169,7 +169,9 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ---
 
-## LB-INBOX-006. `smoke-mcp-analyze.ps1` default `ServerDll` path is brittle on Windows
+## LB-INBOX-006. `smoke-mcp-analyze.ps1` default `ServerDll` path is brittle on Windows — **SHIPPED [Unreleased] (Wave W6)**
+
+**Resolution.** Closed by replacing the hardcoded default with auto-discovery (`Resolve-ServerDll` helper at the top of `smoke-mcp-analyze.ps1`). The helper walks Debug first then Release under `$PSScriptRoot/src/Lifeblood.Server.Mcp/bin/<Config>/net8.0/`; if neither exists, the one-line diagnostic names every path tried AND the exact `dotnet build` command the operator can run to populate one. Passing an explicit `-ServerDll` short-circuits discovery but still validates the file exists before launching. The fix shape #1 (auto-discovery), #2 (existence assertion + named-path diagnostic), and #3 (operator-facing one-liner) all shipped in one atom; #3's standalone README was rolled into the inline diagnostic so a reviewer with no documentation context still sees the build command at first-run failure. Original entry preserved below for regression-trace.
 
 **Observed.** Review 3 launched the v0.6.3 smoke script on Windows and the default `ServerDll` path construction failed at first run. The actual server worked correctly once the script was pointed at the right DLL location explicitly. Not a code defect in the MCP server; a path-construction bug in the smoke wrapper script. The script exists to make it trivial for an external reviewer to verify a live MCP round-trip against a freshly cloned repo, so a broken default path hits exactly the audience it was written for.
 
