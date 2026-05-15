@@ -72,3 +72,42 @@ public sealed class EnvelopeContext
     /// </summary>
     public int FileScanLimit { get; init; } = int.MaxValue;
 }
+
+/// <summary>
+/// Thresholds that turn the always-computed staleness signal
+/// (<see cref="ResponseEnvelope.StalenessSeconds"/> /
+/// <see cref="ResponseEnvelope.FilesChangedSinceAnalyze"/>) into an
+/// explicit <see cref="ResponseEnvelope.Limitations"/> entry on every
+/// read-side response. Pre-policy, a caller with a 30-day stale graph
+/// got the same envelope as a caller whose graph is one second old —
+/// the numbers were on the wire but every consumer had to walk them by
+/// hand to know whether to act on the response. The policy promotes
+/// "yes, the workspace has drifted enough to matter" into the
+/// limitations array so an AI agent or human reader sees the warning
+/// alongside the tool-specific limitations, in one place.
+///
+/// Thresholds are configuration, not code. Composition roots can
+/// override either field via environment variables at startup
+/// (<c>LIFEBLOOD_STALENESS_SECONDS_THRESHOLD</c> /
+/// <c>LIFEBLOOD_FILES_CHANGED_THRESHOLD</c>); tests pass explicit
+/// instances; the documented <see cref="Default"/> values are
+/// conservative anchors, not Lifeblood opinions. Setting a threshold
+/// to <see cref="int.MaxValue"/> / <see cref="long.MaxValue"/>
+/// effectively disables the corresponding limitation entry.
+/// INV-ANALYZE-SKIPPED-PROMINENCE-001.
+/// </summary>
+public sealed record StalenessPolicy(
+    long StalenessSecondsWarnThreshold,
+    int FilesChangedWarnThreshold)
+{
+    /// <summary>
+    /// Default thresholds: emit a staleness limitation when the loaded
+    /// graph is more than one hour old (3600 s), or when at least ten
+    /// tracked files have mtimes newer than the analyze timestamp. Both
+    /// numbers are documented anchors picked to surface "workspace has
+    /// meaningfully drifted" without firing for normal edit loops.
+    /// </summary>
+    public static StalenessPolicy Default { get; } = new(
+        StalenessSecondsWarnThreshold: 3600,
+        FilesChangedWarnThreshold: 10);
+}

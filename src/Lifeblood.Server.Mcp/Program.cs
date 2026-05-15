@@ -81,7 +81,21 @@ class Program
         var classifications = ToolRegistry.GetDefinitions()
             .Where(d => d.EnvelopeClassification != null)
             .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
-        IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
+
+        // INV-ANALYZE-SKIPPED-PROMINENCE-001: thresholds come from
+        // environment so the operator can tune them per deployment
+        // without code change. Missing / malformed values fall through
+        // to the documented StalenessPolicy.Default — a Lifeblood
+        // opinion only at the default level, never hardcoded into the
+        // decorator path.
+        var stalenessPolicy = new StalenessPolicy(
+            StalenessSecondsWarnThreshold: ReadEnvLong(
+                "LIFEBLOOD_STALENESS_SECONDS_THRESHOLD",
+                StalenessPolicy.Default.StalenessSecondsWarnThreshold),
+            FilesChangedWarnThreshold: ReadEnvInt(
+                "LIFEBLOOD_FILES_CHANGED_THRESHOLD",
+                StalenessPolicy.Default.FilesChangedWarnThreshold));
+        IResponseDecorator decorator = new LifebloodResponseDecorator(classifications, stalenessPolicy);
         var toolHandler = new ToolHandler(
             session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants, decorator);
         var dispatcher = new McpDispatcher(session, toolHandler);
@@ -139,6 +153,30 @@ class Program
         // Clean up write-side resources (AdhocWorkspace, compilations)
         session.Dispose();
         Console.Error.WriteLine("Lifeblood MCP server stopped.");
+    }
+
+    /// <summary>
+    /// Read a long from an environment variable, falling back to the
+    /// supplied default when the variable is unset, empty, or fails
+    /// to parse. INV-ANALYZE-SKIPPED-PROMINENCE-001.
+    /// </summary>
+    private static long ReadEnvLong(string name, long fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        return long.TryParse(raw, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
+    }
+
+    /// <summary>
+    /// Read an int from an environment variable, falling back to the
+    /// supplied default when the variable is unset, empty, or fails
+    /// to parse. INV-ANALYZE-SKIPPED-PROMINENCE-001.
+    /// </summary>
+    private static int ReadEnvInt(string name, int fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        return int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
     }
 
     /// <summary>
