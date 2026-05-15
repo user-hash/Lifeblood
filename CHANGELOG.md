@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-05-15
+
 ### Fixed
 
 - **`INV-EXTRACT-STATIC-CTOR-ID-001` - explicit static constructors use `.cctor` canonical IDs** (`LB-TRACK-20260515-010` Stage 0 gate). DAWG dogfood exposed the missing half of W2-E: `RoslynEdgeExtractor` correctly attributed static field-initializer method-group cells to Roslyn's `.cctor`, but `RoslynSymbolExtractor.ExtractConstructor` emitted explicit `static TypeName()` declarations as `method:NS.T..ctor()` instead of `method:NS.T..cctor()`. `GraphBuilder` then dropped every dispatch-table edge whose source was the unsurfaced `.cctor`, so `find_references` and `static_tables` saw the method group while `dependants` / `dependencies` / `dead_code` did not. Fix: explicit static constructors now surface as `.cctor`; initializer-owned field/property symbols also receive cycle-neutral declarative `References` edges to method-group delegate targets, so `dependencies(field:...Features)` answers the dispatch-table row shape directly while `.cctor` keeps the executable `Calls` edge; `dead_code` treats all `.cctor` methods (explicit and synthesized) as runtime-invoked; the warning text no longer lists method-group delegate arguments as a known false-positive class. Pinned by a DAWG-shaped wide constructor-row ratchet with an explicit static constructor plus a symbol-extractor `.cctor` pin.
