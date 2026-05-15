@@ -1163,17 +1163,18 @@ public class Loader
             && e.TargetId.Contains("Loader.Load"));
     }
 
-    [Fact(Skip = "Known extractor gap — see LB-INBOX-010. Target-typed `new(MethodGroup)` does not emit a Calls edge; lifeblood_find_references sees the usage via Roslyn but the graph index misses it.")]
+    [Fact]
     public void ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor()
     {
-        // Target-typed-new variant of the explicit form above. Reviewer
-        // audit (2026-05-14) found three live call-sites in Lifeblood
-        // itself (BclReferenceLoader.Load, RoslynCodeExecutor.LoadHostBclReferences,
-        // ToolHandler.ApplyCap) that report `directDependants=0` despite
-        // having real method-group references. This test pins the
-        // contract; ship the extractor fix from LB-INBOX-010 #1 and
-        // remove the Skip attribute to convert it into a regression
-        // ratchet.
+        // Target-typed-new variant of the explicit form above. Closes
+        // the first half of LB-INBOX-010: `new(Load)` in a static field
+        // initializer must emit a Calls edge to `Load` so dependants /
+        // dead_code / blast_radius see the same usage that
+        // find_references already sees via Roslyn. Pinned by
+        // INV-EXTRACT-METHOD-GROUP-CANDIDATE-001 — the extractor accepts
+        // method-group bindings surfaced via SymbolInfo.CandidateSymbols
+        // when target-type inference has not narrowed the candidate
+        // set yet.
         var (model, root) = Compile(@"
 namespace App;
 public class Loader
@@ -1186,6 +1187,32 @@ public class Loader
 
         Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
             && e.TargetId.Contains("Loader.Load"));
+    }
+
+    [Fact]
+    public void ExtractEdges_TargetTypedNewMethodGroup_OverloadedMethod_PicksFirstCandidate()
+    {
+        // Overloaded method-group via target-typed new — Roslyn surfaces
+        // CandidateSymbols with CandidateReason.OverloadResolutionFailure
+        // for the inner identifier until the outer ctor's target-type
+        // narrows the choice. The extractor accepts the first candidate
+        // so the graph still records the relationship even when an
+        // exact overload disambiguation requires upstream resolution.
+        // For graph-coupling purposes (dependants / dead_code) approximate
+        // attribution is strictly better than dropping the edge.
+        var (model, root) = Compile(@"
+namespace App;
+public class Loader
+{
+    public static readonly System.Action<int> ByInt = new(Handle);
+    private static void Handle(int x) { }
+    private static void Handle(string x) { }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Loader.Handle"));
     }
 
     [Fact]
