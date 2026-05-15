@@ -7,6 +7,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`smoke-mcp-analyze.ps1` server-DLL auto-discovery** (`LB-INBOX-006` Wave W6). Pre-fix, the default `-ServerDll` parameter was a hardcoded `Debug/net8.0/` path that failed at first run for any operator who had only built Release (or had not built yet). The single biggest first-run friction point external reviewers hit on the v0.6.3 round-trip script. New `Resolve-ServerDll` helper walks Debug first then Release under `$PSScriptRoot/src/Lifeblood.Server.Mcp/bin/<Config>/net8.0/`; if neither exists, the one-line diagnostic names every path tried and the exact `dotnet build` command the operator can run to fix the gap. Passing an explicit `-ServerDll` short-circuits discovery but still validates the file exists before launching. Closes the credibility multiplier the v0.6.3 external review flagged at small surface area.
+
 ### Added
 
 - **`docs/PLAYBOOK_CSHARP.md`**
