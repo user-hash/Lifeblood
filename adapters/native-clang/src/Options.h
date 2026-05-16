@@ -11,5 +11,6 @@ struct Options
     std::filesystem::path compilationDatabaseDir;
     std::filesystem::path outputPath;
     std::string profile = "default";
+    bool allowPartial = false;
 };
 }

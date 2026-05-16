@@ -124,10 +124,24 @@ public class NativeClangExecutableRatchetTests
         AssertAllNativeFactsCarryBuildProfile(graph, "multi-debug");
     }
 
+    [SkippableFact]
+    public void Executable_PartialFixture_CanEmitGraphMarkedPartial()
+    {
+        var graph = RunFixture("partial-parse-c", "partial-debug", allowPartial: true).Graph;
+
+        Assert.Empty(GraphValidator.Validate(graph));
+        AssertModuleParseHealth(graph, "mod:partial-parse-c", total: 2, parsed: 1, failed: 1);
+        Assert.NotNull(graph.GetSymbol("method:decode_good(Packet*)"));
+        Assert.NotNull(graph.GetSymbol("method:normalize(int)"));
+        AssertCall(graph, "method:decode_good(Packet*)", "method:normalize(int)");
+        AssertAllNativeFactsCarryBuildProfile(graph, "partial-debug");
+    }
+
     private static GraphDocument RunFixture(
         string fixtureName,
         string profile,
-        string? compilationDatabase = null)
+        string? compilationDatabase = null,
+        bool allowPartial = false)
     {
         var repoRoot = FindRepoRoot();
         var executable = NativeExecutablePath(repoRoot);
@@ -159,6 +173,8 @@ public class NativeClangExecutableRatchetTests
         start.ArgumentList.Add(compileDatabaseRoot);
         start.ArgumentList.Add("--profile");
         start.ArgumentList.Add(profile);
+        if (allowPartial)
+            start.ArgumentList.Add("--allow-partial");
 
         using var process = Process.Start(start)
             ?? throw new InvalidOperationException("Failed to start native Clang executable.");
