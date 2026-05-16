@@ -55,6 +55,8 @@ add_executable(lifeblood-native-clang
     src/NativeGraphSink.h
     src/NativeIncludeEmitter.cpp
     src/NativeIncludeEmitter.h
+    src/NativeKindInventory.cpp
+    src/NativeKindInventory.h
     src/NativeMacroEmitter.cpp
     src/NativeMacroEmitter.h
     src/NativeDeclarationEmitter.cpp
