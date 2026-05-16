@@ -1,8 +1,9 @@
 #pragma once
 
+#include "NativeDirectionalSymbolCounts.h"
+
 #include <clang-c/Index.h>
 
-#include <map>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -37,7 +38,6 @@ private:
     std::string buildProfile_;
     NativeGraphSink& graph_;
     const ClangSourceMapper& sourceMap_;
-    std::map<std::string, unsigned> directCallOutCounts_;
-    std::map<std::string, unsigned> directCallInCounts_;
+    NativeDirectionalSymbolCounts directCallCounts_;
 };
 }
