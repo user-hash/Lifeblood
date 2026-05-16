@@ -123,6 +123,8 @@ add_executable(lifeblood-native-clang
     src/NativeTypeEmitter.h
     src/NativeTypeMemberEmitter.cpp
     src/NativeTypeMemberEmitter.h
+    src/NativeTranslationUnitFileProperties.cpp
+    src/NativeTranslationUnitFileProperties.h
     src/NativeVisibilityCounts.cpp
     src/NativeVisibilityCounts.h
     src/NativeVisibilityNames.h
