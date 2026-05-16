@@ -84,6 +84,9 @@ NativeAstVisitor::VisitState NativeAstVisitor::ProcessCursor(
                 state.currentInitializerOwnerId = initializerOwnerId;
             break;
         }
+        case CXCursor_InitListExpr:
+            state = ProcessInitializerList(state);
+            break;
         case CXCursor_FunctionDecl:
             if (declarations_.AddFunction(cursor))
                 state.currentFunctionId = FunctionId(cursor);
@@ -92,11 +95,15 @@ NativeAstVisitor::VisitState NativeAstVisitor::ProcessCursor(
             references_.AddDirectCall(cursor, state.currentFunctionId);
             break;
         case CXCursor_DeclRefExpr:
+        {
+            auto initializerRowOrdinal = InitializerRowOrdinalForReference(state);
             references_.AddDeclarationReference(
                 cursor,
                 state.currentFunctionId,
-                state.currentInitializerOwnerId);
+                state.currentInitializerOwnerId,
+                initializerRowOrdinal);
             break;
+        }
         case CXCursor_MemberRefExpr:
             references_.AddMemberReference(cursor, state.currentFunctionId);
             break;
@@ -116,6 +123,32 @@ void NativeAstVisitor::ProcessEnumConstant(CXCursor cursor, const VisitState& st
     if (!declarations_.AddRecordType(parent, NativeKindNames::Enum)) return;
 
     declarations_.AddEnumConstant(cursor, TypeId(parent));
+}
+
+NativeAstVisitor::VisitState NativeAstVisitor::ProcessInitializerList(VisitState state)
+{
+    if (state.currentInitializerOwnerId.empty())
+        return state;
+
+    if (state.initializerListDepth == 1)
+    {
+        state.currentInitializerRowOrdinal =
+            initializerRowOrdinals_[state.currentInitializerOwnerId]++;
+    }
+
+    state.initializerListDepth++;
+    return state;
+}
+
+std::optional<unsigned> NativeAstVisitor::InitializerRowOrdinalForReference(VisitState state)
+{
+    if (state.currentInitializerOwnerId.empty())
+        return std::nullopt;
+    if (state.currentInitializerRowOrdinal)
+        return state.currentInitializerRowOrdinal;
+    if (state.initializerListDepth == 1)
+        return initializerRowOrdinals_[state.currentInitializerOwnerId]++;
+    return std::nullopt;
 }
 
 std::string NativeAstVisitor::ProcessVariable(CXCursor cursor, const VisitState& state)

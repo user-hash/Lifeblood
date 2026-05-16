@@ -1,9 +1,11 @@
 #pragma once
 
 #include "NativeDirectionalSymbolCounts.h"
+#include "NativeTableRowEmitter.h"
 
 #include <clang-c/Index.h>
 
+#include <optional>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -30,6 +32,12 @@ public:
         const std::string& targetId,
         const std::string& referenceKind);
 
+    void AddCallbackTarget(
+        CXCursor cursor,
+        const std::string& tableId,
+        std::optional<unsigned> rowOrdinal,
+        const std::string& targetId);
+
     void MarkCallbackTable(const std::string& symbolId);
 
 private:
@@ -39,5 +47,6 @@ private:
     NativeGraphSink& graph_;
     const ClangSourceMapper& sourceMap_;
     NativeDirectionalSymbolCounts directCallCounts_;
+    NativeTableRowEmitter tableRows_;
 };
 }

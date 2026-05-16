@@ -35,7 +35,8 @@ void NativeReferenceEmitter::AddDirectCall(
 void NativeReferenceEmitter::AddDeclarationReference(
     CXCursor cursor,
     const std::string& currentFunctionId,
-    const std::string& initializerOwnerId)
+    const std::string& initializerOwnerId,
+    std::optional<unsigned> initializerRowOrdinal)
 {
     CXCursor referenced = clang_getCursorReferenced(cursor);
     if (clang_Cursor_isNull(referenced)) return;
@@ -45,12 +46,11 @@ void NativeReferenceEmitter::AddDeclarationReference(
         if (clang_getCursorKind(referenced) == CXCursor_FunctionDecl &&
             declarations_.AddFunction(referenced))
         {
-            edges_.MarkCallbackTable(initializerOwnerId);
-            edges_.AddReference(
+            edges_.AddCallbackTarget(
                 cursor,
                 initializerOwnerId,
-                FunctionId(referenced),
-                NativeReferenceKinds::CallbackTarget);
+                initializerRowOrdinal,
+                FunctionId(referenced));
         }
         return;
     }

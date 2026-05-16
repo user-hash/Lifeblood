@@ -244,11 +244,17 @@ public class NativeClangExecutableRatchetTests
         AssertModuleGraphInventory(
             graph,
             "mod:callback-table-c",
-            symbols: 13,
+            symbols: 17,
             edges: 12,
             references: 12,
             calls: 0);
-        AssertModuleNativeKindInventory(graph, "mod:callback-table-c", macros: 1, callbackTables: 1);
+        AssertModuleNativeKindInventory(
+            graph,
+            "mod:callback-table-c",
+            macros: 1,
+            callbackTables: 1,
+            tableRows: 2,
+            tableCells: 2);
         AssertModuleReferenceKindInventory(
             graph,
             "mod:callback-table-c",
@@ -256,7 +262,13 @@ public class NativeClangExecutableRatchetTests
             globalAccesses: 1,
             fieldAccesses: 3,
             parameterTypes: 3);
-        AssertFileNativeKindInventory(graph, "file:src/registry.c", macros: 0, callbackTables: 1);
+        AssertFileNativeKindInventory(
+            graph,
+            "file:src/registry.c",
+            macros: 0,
+            callbackTables: 1,
+            tableRows: 2,
+            tableCells: 2);
         AssertFileReferenceKindInventory(
             graph,
             "file:src/registry.c",
@@ -289,6 +301,20 @@ public class NativeClangExecutableRatchetTests
         AssertCallbackTargetCounts(graph, "field:codec_table", incoming: 0, outgoing: 2);
         AssertCallbackTargetCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 0);
         AssertCallbackTargetCounts(graph, "method:decode_video(Packet*)", incoming: 1, outgoing: 0);
+        AssertCallbackTableCell(
+            graph,
+            "field:codec_table",
+            rowOrdinal: 0,
+            cellOrdinal: 0,
+            methodId: "method:decode_audio(Packet*)",
+            buildProfile: "callback-debug");
+        AssertCallbackTableCell(
+            graph,
+            "field:codec_table",
+            rowOrdinal: 1,
+            cellOrdinal: 0,
+            methodId: "method:decode_video(Packet*)",
+            buildProfile: "callback-debug");
         AssertGlobalTypeCounts(graph, "field:codec_table", incoming: 0, outgoing: 1);
         AssertGlobalTypeCounts(graph, "type:CodecRegistration", incoming: 1, outgoing: 0);
         AssertTypeReferenceCounts(graph, "field:codec_table", incoming: 0, outgoing: 1);
@@ -678,6 +704,41 @@ public class NativeClangExecutableRatchetTests
         AssertUsableEvidence(edge);
     }
 
+    private static void AssertCallbackTableCell(
+        SemanticGraph graph,
+        string tableId,
+        int rowOrdinal,
+        int cellOrdinal,
+        string methodId,
+        string buildProfile)
+    {
+        var table = graph.GetSymbol(tableId);
+        Assert.NotNull(table);
+        Assert.Equal("2", table!.Properties["native.tableRowCount"]);
+
+        var rowId = $"{tableId}:row:{rowOrdinal}";
+        var row = graph.GetSymbol(rowId);
+        Assert.NotNull(row);
+        Assert.Equal(tableId, row!.ParentId);
+        Assert.Equal("tableRow", row.Properties["native.kind"]);
+        Assert.Equal(tableId, row.Properties["native.tableOwnerId"]);
+        Assert.Equal(rowOrdinal.ToString(), row.Properties["native.tableRowOrdinal"]);
+        Assert.Equal("1", row.Properties["native.tableCellCount"]);
+        Assert.Equal(buildProfile, row.Properties["native.buildProfile"]);
+
+        var cell = graph.GetSymbol($"{rowId}:cell:{cellOrdinal}");
+        Assert.NotNull(cell);
+        Assert.Equal(rowId, cell!.ParentId);
+        Assert.Equal("tableCell", cell.Properties["native.kind"]);
+        Assert.Equal(tableId, cell.Properties["native.tableOwnerId"]);
+        Assert.Equal(rowOrdinal.ToString(), cell.Properties["native.tableRowOrdinal"]);
+        Assert.Equal(cellOrdinal.ToString(), cell.Properties["native.tableCellOrdinal"]);
+        Assert.Equal("MethodGroup", cell.Properties["native.tableValueKind"]);
+        Assert.Equal(methodId, cell.Properties["native.methodGroupId"]);
+        Assert.Equal(methodId, cell.Properties["native.callbackTargetId"]);
+        Assert.Equal(buildProfile, cell.Properties["native.buildProfile"]);
+    }
+
     private static Edge AssertEdge(
         SemanticGraph graph,
         string sourceId,
@@ -890,13 +951,17 @@ public class NativeClangExecutableRatchetTests
         string moduleId,
         int macros,
         int globals = 0,
-        int callbackTables = 0)
+        int callbackTables = 0,
+        int tableRows = 0,
+        int tableCells = 0)
     {
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
         Assert.Equal(macros.ToString(), module!.Properties["native.macroCount"]);
         Assert.Equal(globals.ToString(), module.Properties["native.globalVariableCount"]);
         Assert.Equal(callbackTables.ToString(), module.Properties["native.callbackTableCount"]);
+        Assert.Equal(tableRows.ToString(), module.Properties["native.tableRowCount"]);
+        Assert.Equal(tableCells.ToString(), module.Properties["native.tableCellCount"]);
     }
 
     private static void AssertModuleTypeInventory(
@@ -972,13 +1037,17 @@ public class NativeClangExecutableRatchetTests
         string fileId,
         int macros,
         int globals = 0,
-        int callbackTables = 0)
+        int callbackTables = 0,
+        int tableRows = 0,
+        int tableCells = 0)
     {
         var file = graph.GetSymbol(fileId);
         Assert.NotNull(file);
         Assert.Equal(macros.ToString(), file!.Properties["native.fileMacroCount"]);
         Assert.Equal(globals.ToString(), file.Properties["native.fileGlobalVariableCount"]);
         Assert.Equal(callbackTables.ToString(), file.Properties["native.fileCallbackTableCount"]);
+        Assert.Equal(tableRows.ToString(), file.Properties["native.fileTableRowCount"]);
+        Assert.Equal(tableCells.ToString(), file.Properties["native.fileTableCellCount"]);
     }
 
     private static void AssertFileReferenceKindInventory(

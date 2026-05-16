@@ -15,6 +15,8 @@ struct NativeKindInventoryCounts
     unsigned typedefCount = 0;
     unsigned structFieldCount = 0;
     unsigned enumMemberCount = 0;
+    unsigned tableRowCount = 0;
+    unsigned tableCellCount = 0;
 };
 
 class NativeKindInventory

@@ -137,6 +137,81 @@
         "native.callbackTable": "true",
         "native.linkage": "external",
         "native.fieldType": "CodecRegistration[2]",
+        "native.tableRowCount": "2",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:0",
+      "name": "codec_table[0]",
+      "qualifiedName": "codec_table[0]",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 13,
+      "parentId": "field:codec_table",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableRow",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "0",
+        "native.tableCellCount": "1",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:0:cell:0",
+      "name": "cell:0",
+      "qualifiedName": "codec_table[0].cell:0",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 13,
+      "parentId": "field:codec_table:row:0",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "0",
+        "native.tableCellOrdinal": "0",
+        "native.tableValueKind": "MethodGroup",
+        "native.methodGroupId": "method:decode_audio(Packet*)",
+        "native.callbackTargetId": "method:decode_audio(Packet*)",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:1",
+      "name": "codec_table[1]",
+      "qualifiedName": "codec_table[1]",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 14,
+      "parentId": "field:codec_table",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableRow",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "1",
+        "native.tableCellCount": "1",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:1:cell:0",
+      "name": "cell:0",
+      "qualifiedName": "codec_table[1].cell:0",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 14,
+      "parentId": "field:codec_table:row:1",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "1",
+        "native.tableCellOrdinal": "0",
+        "native.tableValueKind": "MethodGroup",
+        "native.methodGroupId": "method:decode_video(Packet*)",
+        "native.callbackTargetId": "method:decode_video(Packet*)",
         "native.buildProfile": "callback-debug"
       }
     },
