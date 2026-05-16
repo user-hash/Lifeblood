@@ -37,6 +37,8 @@ add_executable(lifeblood-native-clang
     src/ClangUtilities.cpp
     src/ClangUtilities.h
     src/GraphModel.h
+    src/JsonGraphElements.cpp
+    src/JsonGraphElements.h
     src/JsonGraphWriter.cpp
     src/JsonGraphWriter.h
     src/LibClangExtractor.cpp
