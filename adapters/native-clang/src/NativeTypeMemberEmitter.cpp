@@ -6,6 +6,7 @@
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
+#include "NativePropertyWriter.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
@@ -48,9 +49,15 @@ bool NativeTypeMemberEmitter::AddEnumConstant(CXCursor cursor, const std::string
     symbol.parentId = enumTypeId;
     symbol.visibility = NativeVisibilityNames::Public;
     symbol.isStatic = true;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::EnumMember;
-    symbol.properties["native.enumValue"] = std::to_string(clang_getEnumConstantDeclValue(cursor));
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::NativeKind,
+        NativeKindNames::EnumMember);
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::EnumValue,
+        std::to_string(clang_getEnumConstantDeclValue(cursor)));
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(symbol);
     return true;
 }
@@ -74,10 +81,12 @@ void NativeTypeMemberEmitter::AddField(CXCursor cursor, const std::string& owner
     field.line = sourceMap_.Line(cursor);
     field.parentId = ownerTypeId;
     field.visibility = NativeVisibilityNames::Public;
-    field.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::StructField;
-    field.properties["native.fieldType"] = NormalizeTypeForId(
-        ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
-    field.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(field, NativeGraphPropertyKeys::NativeKind, NativeKindNames::StructField);
+    NativePropertyWriter::Set(
+        field,
+        NativeGraphPropertyKeys::FieldType,
+        NormalizeTypeForId(ToString(clang_getTypeSpelling(clang_getCursorType(cursor)))));
+    NativePropertyWriter::Set(field, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(field);
 
     types_.AddTypeReference(

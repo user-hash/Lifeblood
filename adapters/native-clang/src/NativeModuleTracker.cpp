@@ -4,6 +4,7 @@
 #include "NativeKindNames.h"
 #include "NativeMacroSources.h"
 #include "NativeParseStatuses.h"
+#include "NativePropertyWriter.h"
 #include "NativeSymbolIds.h"
 #include "NativeVisibilityNames.h"
 
@@ -71,8 +72,8 @@ void NativeModuleTracker::AddModuleSymbol()
     module.name = moduleName_;
     module.qualifiedName = moduleName_;
     module.kind = "module";
-    module.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Library;
-    module.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(module, NativeGraphPropertyKeys::NativeKind, NativeKindNames::Library);
+    NativePropertyWriter::Set(module, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(module);
 }
 
@@ -86,45 +87,78 @@ void NativeModuleTracker::AddCommandLineMacroSymbol(const CommandLineDefine& def
     symbol.parentId = moduleId_;
     symbol.visibility = NativeVisibilityNames::Internal;
     symbol.isStatic = true;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Macro;
-    symbol.properties["native.macroSource"] = NativeMacroSources::CommandLine;
-    symbol.properties["native.macroValue"] = define.value;
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::NativeKind, NativeKindNames::Macro);
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::MacroSource,
+        NativeMacroSources::CommandLine);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::MacroValue, define.value);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(symbol);
 }
 
 void NativeModuleTracker::UpdateModuleProperties()
 {
     graph_.UpdateSymbol(moduleId_, [this](Symbol& module) {
-        module.properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
-        module.properties["native.parsedTranslationUnitCount"] =
-            std::to_string(parsedTranslationUnitCount_);
-        module.properties["native.failedTranslationUnitCount"] =
-            std::to_string(failedTranslationUnitCount_);
-        module.properties["native.warningDiagnosticCount"] =
-            std::to_string(diagnostics_.warningCount);
-        module.properties["native.errorDiagnosticCount"] =
-            std::to_string(diagnostics_.errorCount);
-        module.properties["native.fatalDiagnosticCount"] =
-            std::to_string(diagnostics_.fatalCount);
-        module.properties["native.parseStatus"] =
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::TranslationUnitCount,
+            translationUnitCount_);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::ParsedTranslationUnitCount,
+            parsedTranslationUnitCount_);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::FailedTranslationUnitCount,
+            failedTranslationUnitCount_);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::WarningDiagnosticCount,
+            diagnostics_.warningCount);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::ErrorDiagnosticCount,
+            diagnostics_.errorCount);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::FatalDiagnosticCount,
+            diagnostics_.fatalCount);
+        NativePropertyWriter::Set(
+            module,
+            NativeGraphPropertyKeys::ParseStatus,
             failedTranslationUnitCount_ == 0
                 ? NativeParseStatuses::Complete
-                : NativeParseStatuses::Partial;
+                : NativeParseStatuses::Partial);
         if (!commandLineDefines_.empty())
-            module.properties["native.defines"] = JoinDefines();
+            NativePropertyWriter::Set(module, NativeGraphPropertyKeys::Defines, JoinDefines());
         if (!commandLineUndefines_.empty())
-            module.properties["native.undefines"] = Join(commandLineUndefines_);
+            NativePropertyWriter::Set(
+                module,
+                NativeGraphPropertyKeys::Undefines,
+                Join(commandLineUndefines_));
         if (!sourceLanguages_.empty())
-            module.properties["native.sourceLanguages"] = Join(sourceLanguages_);
+            NativePropertyWriter::Set(
+                module,
+                NativeGraphPropertyKeys::SourceLanguages,
+                Join(sourceLanguages_));
         if (!languageStandards_.empty())
-            module.properties["native.languageStandards"] = Join(languageStandards_);
-        module.properties["native.includeSearchPathCount"] =
-            std::to_string(includeSearchPathCount_);
-        module.properties["native.systemIncludeSearchPathCount"] =
-            std::to_string(systemIncludeSearchPathCount_);
-        module.properties["native.quoteIncludeSearchPathCount"] =
-            std::to_string(quoteIncludeSearchPathCount_);
+            NativePropertyWriter::Set(
+                module,
+                NativeGraphPropertyKeys::LanguageStandards,
+                Join(languageStandards_));
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::IncludeSearchPathCount,
+            includeSearchPathCount_);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::SystemIncludeSearchPathCount,
+            systemIncludeSearchPathCount_);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::QuoteIncludeSearchPathCount,
+            quoteIncludeSearchPathCount_);
     });
 }
 

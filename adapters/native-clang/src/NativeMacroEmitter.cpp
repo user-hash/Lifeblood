@@ -8,6 +8,7 @@
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
 #include "NativeMacroSources.h"
+#include "NativePropertyWriter.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeVisibilityNames.h"
@@ -67,9 +68,11 @@ void NativeMacroEmitter::AddMacroExpansion(CXCursor cursor)
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Syntax);
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
-    edge.properties[NativeGraphPropertyKeys::ReferenceKind] =
-        NativeReferenceKinds::MacroExpansion;
-    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(
+        edge,
+        NativeGraphPropertyKeys::ReferenceKind,
+        NativeReferenceKinds::MacroExpansion);
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddEdge(edge);
 }
 
@@ -98,10 +101,10 @@ void NativeMacroEmitter::AddMacroSymbol(
     }
     symbol.visibility = NativeVisibilityNames::Internal;
     symbol.isStatic = true;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Macro;
-    symbol.properties["native.macroSource"] = source;
-    symbol.properties["native.macroValue"] = value;
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::NativeKind, NativeKindNames::Macro);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::MacroSource, source);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::MacroValue, value);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(symbol);
 }
 
