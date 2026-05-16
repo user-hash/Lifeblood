@@ -12,6 +12,9 @@ dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json
 ```
 
 The TypeScript adapter (`adapters/typescript/`) is a working example of this approach.
+The planned Native Clang adapter (`adapters/native-clang/`) will follow the same
+external JSON boundary for C/C++ so LLVM/Clang dependencies stay outside the
+Lifeblood core.
 
 ### Required JSON structure
 
@@ -93,6 +96,23 @@ The Roslyn adapter (`src/Lifeblood.Adapters.CSharp/`) is the reference implement
 | **Compiler-grade** | Type resolution, overloads | Everything, full trust | proven |
 
 Start with Syntax. It is already useful. Upgrade confidence claims as you add capabilities.
+
+## Native C/C++ Guidance
+
+C and C++ adapters must use a real compilation database and compiler-grade
+front end for semantic claims. A `compile_commands.json` file is the normal
+input because it records the exact command line for each translation unit:
+include paths, defines, language mode, generated config headers, and target
+flags.
+
+Native adapters should start as external JSON producers. Do not add LLVM,
+Clang, CodeQL, Joern, or CMake dependencies to `Lifeblood.Domain`,
+`Lifeblood.Application`, `Lifeblood.Analysis`, or existing connectors. Keep the
+adapter under `adapters/`, emit `graph.json`, and let `JsonGraphImporter` bring
+the graph into Lifeblood.
+
+The [Native Clang stage plan](plans/native-clang-adapter-masterplan-2026-05-16.md)
+tracks the rollout.
 
 ## Adapter Checklist
 
