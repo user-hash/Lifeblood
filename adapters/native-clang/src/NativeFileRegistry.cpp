@@ -3,6 +3,8 @@
 #include "ClangUtilities.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeKindNames.h"
+#include "NativeParseStatuses.h"
+#include "NativeVisibilityNames.h"
 
 #include <filesystem>
 #include <utility>
@@ -35,7 +37,7 @@ void NativeFileRegistry::EnsureFileSymbol(const std::string& relativePath)
     symbol.kind = "file";
     symbol.filePath = relativePath;
     symbol.parentId = moduleId_;
-    symbol.visibility = "internal";
+    symbol.visibility = NativeVisibilityNames::Internal;
     const bool isHeader = EndsWith(relativePath, ".h") || EndsWith(relativePath, ".hpp");
     symbol.properties[NativeGraphPropertyKeys::NativeKind] =
         isHeader ? NativeKindNames::Header : NativeKindNames::TranslationUnit;
@@ -53,7 +55,7 @@ void NativeFileRegistry::MarkTranslationUnitPending(
     const std::string& relativePath,
     const NativeCompileCommand& command)
 {
-    UpdateTranslationUnitHealth(relativePath, "pending", {});
+    UpdateTranslationUnitHealth(relativePath, NativeParseStatuses::Pending, {});
     graph_.UpdateSymbol("file:" + relativePath, [&](Symbol& file) {
         file.properties["native.parseArgumentCount"] =
             std::to_string(command.parseArguments.size());
@@ -77,12 +79,12 @@ void NativeFileRegistry::MarkTranslationUnitParsed(
     const std::string& relativePath,
     const NativeDiagnosticSummary& diagnostics)
 {
-    UpdateTranslationUnitHealth(relativePath, "parsed", diagnostics);
+    UpdateTranslationUnitHealth(relativePath, NativeParseStatuses::Parsed, diagnostics);
 }
 
 void NativeFileRegistry::MarkTranslationUnitFailed(const std::string& relativePath)
 {
-    UpdateTranslationUnitHealth(relativePath, "failed", {});
+    UpdateTranslationUnitHealth(relativePath, NativeParseStatuses::Failed, {});
 }
 
 void NativeFileRegistry::UpdateTranslationUnitHealth(

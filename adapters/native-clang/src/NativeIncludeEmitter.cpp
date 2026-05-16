@@ -1,6 +1,7 @@
 #include "NativeIncludeEmitter.h"
 
 #include "ClangSourceMapper.h"
+#include "NativeEvidenceKinds.h"
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
@@ -43,7 +44,7 @@ void NativeIncludeEmitter::AddInclude(CXCursor cursor)
     edge.sourceId = "file:" + *sourceFile;
     edge.targetId = "file:" + *includedPath;
     edge.kind = "references";
-    edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
+    edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Syntax);
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
     edge.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Include;
     edge.properties["native.include"] = fs::path(*includedPath).filename().string();

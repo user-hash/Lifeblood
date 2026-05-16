@@ -2,13 +2,16 @@
 
 #include "ClangSourceMapper.h"
 #include "ClangUtilities.h"
+#include "NativeDeclarationKinds.h"
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
+#include "NativeLinkageNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
+#include "NativeVisibilityNames.h"
 
 #include <sstream>
 #include <utility>
@@ -50,12 +53,16 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
     symbol.filePath = *file;
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
-    symbol.visibility = storage == CX_SC_Static ? "private" : "public";
+    symbol.visibility = storage == CX_SC_Static
+        ? NativeVisibilityNames::Private
+        : NativeVisibilityNames::Public;
     symbol.isStatic = storage == CX_SC_Static;
     symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Function;
     symbol.properties[NativeGraphPropertyKeys::DeclarationKind] =
-        isDefinition ? "definition" : "declaration";
-    symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
+        isDefinition ? NativeDeclarationKinds::Definition : NativeDeclarationKinds::Declaration;
+    symbol.properties["native.linkage"] = storage == CX_SC_Static
+        ? NativeLinkageNames::Internal
+        : NativeLinkageNames::External;
     symbol.properties["native.signature"] = Signature(cursor);
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
@@ -79,7 +86,7 @@ bool NativeFunctionEmitter::ExistingDefinitionShouldWin(
     if (existing == nullptr) return false;
 
     auto it = existing->properties.find(NativeGraphPropertyKeys::DeclarationKind);
-    return it != existing->properties.end() && it->second == "definition";
+    return it != existing->properties.end() && it->second == NativeDeclarationKinds::Definition;
 }
 
 void NativeFunctionEmitter::AddParameterTypeReferences(

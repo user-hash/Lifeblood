@@ -1,10 +1,13 @@
 #include "NativeTypeEmitter.h"
 
 #include "ClangUtilities.h"
+#include "NativeEvidenceKinds.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeKindNames.h"
+#include "NativeLinkageNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
+#include "NativeVisibilityNames.h"
 
 #include <utility>
 
@@ -40,9 +43,9 @@ bool NativeTypeEmitter::AddRecordType(CXCursor cursor, const std::string& native
     symbol.filePath = *file;
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
-    symbol.visibility = "public";
+    symbol.visibility = NativeVisibilityNames::Public;
     symbol.properties[NativeGraphPropertyKeys::NativeKind] = nativeKind;
-    symbol.properties["native.linkage"] = "none";
+    symbol.properties["native.linkage"] = NativeLinkageNames::None;
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
     return true;
@@ -65,7 +68,7 @@ bool NativeTypeEmitter::AddTypedefType(CXCursor cursor)
     symbol.filePath = *file;
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
-    symbol.visibility = "public";
+    symbol.visibility = NativeVisibilityNames::Public;
     symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Typedef;
     symbol.properties["native.underlyingType"] = NormalizeTypeForId(
         ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor))));
@@ -99,7 +102,7 @@ void NativeTypeEmitter::AddTypeReference(
     edge.sourceId = sourceId;
     edge.targetId = targetId;
     edge.kind = "references";
-    edge.evidence = sourceMap_.EvidenceFor(evidenceCursor, "semantic");
+    edge.evidence = sourceMap_.EvidenceFor(evidenceCursor, NativeEvidenceKinds::Semantic);
     edge.callSite = sourceMap_.CallSiteFor(evidenceCursor, sourceId);
     edge.properties[NativeGraphPropertyKeys::ReferenceKind] = referenceKind;
     edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;

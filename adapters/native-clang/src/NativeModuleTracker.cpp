@@ -2,7 +2,10 @@
 
 #include "NativeGraphPropertyKeys.h"
 #include "NativeKindNames.h"
+#include "NativeMacroSources.h"
+#include "NativeParseStatuses.h"
 #include "NativeSymbolIds.h"
+#include "NativeVisibilityNames.h"
 
 #include <sstream>
 #include <utility>
@@ -81,10 +84,10 @@ void NativeModuleTracker::AddCommandLineMacroSymbol(const CommandLineDefine& def
     symbol.qualifiedName = define.name;
     symbol.kind = "field";
     symbol.parentId = moduleId_;
-    symbol.visibility = "internal";
+    symbol.visibility = NativeVisibilityNames::Internal;
     symbol.isStatic = true;
     symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Macro;
-    symbol.properties["native.macroSource"] = "commandLine";
+    symbol.properties["native.macroSource"] = NativeMacroSources::CommandLine;
     symbol.properties["native.macroValue"] = define.value;
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
@@ -105,7 +108,9 @@ void NativeModuleTracker::UpdateModuleProperties()
         module.properties["native.fatalDiagnosticCount"] =
             std::to_string(diagnostics_.fatalCount);
         module.properties["native.parseStatus"] =
-            failedTranslationUnitCount_ == 0 ? "complete" : "partial";
+            failedTranslationUnitCount_ == 0
+                ? NativeParseStatuses::Complete
+                : NativeParseStatuses::Partial;
         if (!commandLineDefines_.empty())
             module.properties["native.defines"] = JoinDefines();
         if (!commandLineUndefines_.empty())

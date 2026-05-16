@@ -1,12 +1,14 @@
 #include "NativeVisibilityCounts.h"
 
+#include "NativeVisibilityNames.h"
+
 namespace lifeblood::native_clang
 {
 void NativeVisibilityCounter::Add(NativeVisibilityCounts& counts, const Symbol& symbol)
 {
-    if (symbol.visibility == "public")
+    if (symbol.visibility == NativeVisibilityNames::Public)
         counts.publicCount++;
-    else if (symbol.visibility == "private")
+    else if (symbol.visibility == NativeVisibilityNames::Private)
         counts.privateCount++;
     else
         counts.internalCount++;

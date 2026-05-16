@@ -6,9 +6,11 @@
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
+#include "NativeLinkageNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
+#include "NativeVisibilityNames.h"
 
 #include <utility>
 
@@ -51,7 +53,9 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
     symbol.filePath = *file;
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
-    symbol.visibility = storage == CX_SC_Static ? "private" : "public";
+    symbol.visibility = storage == CX_SC_Static
+        ? NativeVisibilityNames::Private
+        : NativeVisibilityNames::Public;
     symbol.isStatic = storage == CX_SC_Static;
     symbol.properties[NativeGraphPropertyKeys::NativeKind] =
         existing != nullptr &&
@@ -59,7 +63,9 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
         existing->properties.at(NativeGraphPropertyKeys::NativeKind) == NativeKindNames::CallbackTable
             ? NativeKindNames::CallbackTable
             : NativeKindNames::Global;
-    symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
+    symbol.properties["native.linkage"] = storage == CX_SC_Static
+        ? NativeLinkageNames::Internal
+        : NativeLinkageNames::External;
     symbol.properties["native.fieldType"] = NormalizeTypeForId(
         ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
