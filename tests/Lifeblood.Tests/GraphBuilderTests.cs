@@ -58,6 +58,44 @@ public class GraphBuilderTests
     }
 
     [Fact]
+    public void Build_PreservesDistinctEdgeRolesForSamePair()
+    {
+        var method = new Symbol { Id = "method:Echo(Packet*)", Name = "Echo", Kind = SymbolKind.Method };
+        var packet = new Symbol { Id = "type:Packet", Name = "Packet", Kind = SymbolKind.Type };
+
+        var graph = new GraphBuilder()
+            .AddSymbol(method)
+            .AddSymbol(packet)
+            .AddEdge(new Edge
+            {
+                SourceId = method.Id,
+                TargetId = packet.Id,
+                Kind = EdgeKind.References,
+                Properties = new Dictionary<string, string>
+                {
+                    ["native.referenceKind"] = "parameterType",
+                },
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = method.Id,
+                TargetId = packet.Id,
+                Kind = EdgeKind.References,
+                Properties = new Dictionary<string, string>
+                {
+                    ["native.referenceKind"] = "returnType",
+                },
+            })
+            .Build();
+
+        Assert.Equal(2, graph.Edges.Count);
+        Assert.Contains(graph.Edges, e =>
+            e.Properties.GetValueOrDefault("native.referenceKind") == "parameterType");
+        Assert.Contains(graph.Edges, e =>
+            e.Properties.GetValueOrDefault("native.referenceKind") == "returnType");
+    }
+
+    [Fact]
     public void Build_NoDuplicateContains_WhenExplicitContainsExists()
     {
         var parent = new Symbol { Id = "type:Parent", Name = "Parent", Kind = SymbolKind.Type };
@@ -243,6 +281,49 @@ public class GraphBuilderTests
             e.SourceId == "file:A.cs" && e.TargetId == "file:B.cs" && e.Kind == EdgeKind.References);
         Assert.NotNull(fileEdge);
         Assert.Equal("3", fileEdge!.Properties["edgeCount"]);
+    }
+
+    [Fact]
+    public void Build_FileEdges_DoesNotDuplicateExplicitFileReference()
+    {
+        var fileA = new Symbol { Id = "file:A.c", Name = "A.c", Kind = SymbolKind.File, FilePath = "A.c" };
+        var fileB = new Symbol { Id = "file:B.h", Name = "B.h", Kind = SymbolKind.File, FilePath = "B.h" };
+        var method = new Symbol { Id = "method:decode(Packet*)", Name = "decode", Kind = SymbolKind.Method, FilePath = "A.c" };
+        var type = new Symbol { Id = "type:Packet", Name = "Packet", Kind = SymbolKind.Type, FilePath = "B.h" };
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { fileA, fileB, method, type })
+            .AddEdge(new Edge
+            {
+                SourceId = "file:A.c",
+                TargetId = "file:B.h",
+                Kind = EdgeKind.References,
+                Properties = new Dictionary<string, string>
+                {
+                    ["native.kind"] = "include",
+                },
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = method.Id,
+                TargetId = type.Id,
+                Kind = EdgeKind.References,
+                Properties = new Dictionary<string, string>
+                {
+                    ["native.referenceKind"] = "parameterType",
+                },
+            })
+            .Build();
+
+        var fileEdges = graph.Edges
+            .Where(e => e.SourceId == "file:A.c" &&
+                        e.TargetId == "file:B.h" &&
+                        e.Kind == EdgeKind.References)
+            .ToArray();
+
+        var fileEdge = Assert.Single(fileEdges);
+        Assert.Equal("include", fileEdge.Properties["native.kind"]);
+        Assert.False(fileEdge.Properties.ContainsKey("edgeCount"));
     }
 
     [Fact]

@@ -133,15 +133,19 @@ public sealed class GraphBuilder
             .OrderBy(s => s.Id, StringComparer.Ordinal)
             .ToArray();
 
-        // Deduplicate all edges by (source, target, kind).
+        // Deduplicate all edges by semantic identity. Edges with the same
+        // source, target, and coarse EdgeKind can still carry distinct roles
+        // (for example native parameterType + returnType edges from one C
+        // function to the same struct), so edge properties participate through
+        // EdgeIdentity.
         // Partial classes cause the same edge (especially Overrides, Inherits, Implements)
         // to be emitted once per partial file — typeSymbol.GetMembers() returns all members
         // including from other partial declarations, and each file's Extract() call has
         // its own dedup set. The builder is the single source of truth for deduplication.
-        var dedupedEdges = new Dictionary<(string, string, EdgeKind), Edge>();
+        var dedupedEdges = new Dictionary<EdgeIdentityKey, Edge>();
         foreach (var edge in allEdges)
         {
-            var key = (edge.SourceId, edge.TargetId, edge.Kind);
+            var key = EdgeIdentity.KeyFor(edge);
             dedupedEdges.TryAdd(key, edge); // first-write-wins, consistent with symbol dedup
         }
 
@@ -160,7 +164,7 @@ public sealed class GraphBuilder
         return new SemanticGraph(sortedSymbols, sortedEdges);
     }
 
-    private void DeriveFileEdges(Dictionary<(string, string, EdgeKind), Edge> dedupedEdges)
+    private void DeriveFileEdges(Dictionary<EdgeIdentityKey, Edge> dedupedEdges)
     {
         // Build symbolId → fileId reverse index using Symbol.FilePath.
         // This is more accurate than walking ParentId for partial classes,
@@ -198,8 +202,13 @@ public sealed class GraphBuilder
         // Emit file-level References edges
         foreach (var ((src, tgt), count) in fileEdgeCounts)
         {
-            var edgeKey = (src, tgt, EdgeKind.References);
-            dedupedEdges.TryAdd(edgeKey, new Edge
+            if (dedupedEdges.Values.Any(e =>
+                    e.SourceId == src &&
+                    e.TargetId == tgt &&
+                    e.Kind == EdgeKind.References))
+                continue;
+
+            var fileEdge = new Edge
             {
                 SourceId = src,
                 TargetId = tgt,
@@ -214,7 +223,8 @@ public sealed class GraphBuilder
                 {
                     ["edgeCount"] = count.ToString(),
                 },
-            });
+            };
+            dedupedEdges.TryAdd(EdgeIdentity.KeyFor(fileEdge), fileEdge);
         }
     }
 }

@@ -36,7 +36,7 @@ void NativeGraphBuilder::AddSymbol(Symbol symbol)
 
 void NativeGraphBuilder::AddEdge(Edge edge)
 {
-    auto key = std::make_tuple(edge.sourceId, edge.targetId, edge.kind);
+    auto key = std::make_tuple(edge.sourceId, edge.targetId, edge.kind, EdgeRole(edge));
     if (edgeKeys_.insert(key).second)
     {
         if (edge.kind == "references")
@@ -52,6 +52,23 @@ void NativeGraphBuilder::AddEdge(Edge edge)
 
         graph_.edges.push_back(std::move(edge));
     }
+}
+
+std::string NativeGraphBuilder::EdgeRole(const Edge& edge)
+{
+    auto referenceKind = edge.properties.find("native.referenceKind");
+    if (referenceKind != edge.properties.end())
+        return "reference:" + referenceKind->second;
+
+    auto nativeKind = edge.properties.find("native.kind");
+    if (nativeKind != edge.properties.end())
+        return "native:" + nativeKind->second;
+
+    auto callKind = edge.properties.find("native.callKind");
+    if (callKind != edge.properties.end())
+        return "call:" + callKind->second;
+
+    return "";
 }
 
 bool NativeGraphBuilder::HasSymbol(const std::string& symbolId) const
