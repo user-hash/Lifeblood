@@ -8,6 +8,7 @@ void NativeReferenceMetrics::Clear()
     callbackTargetCounts_.Clear();
     globalAccessCounts_.Clear();
     fieldAccessCounts_.Clear();
+    parameterTypeCounts_.Clear();
 }
 
 void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
@@ -21,6 +22,8 @@ void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
         RecordGlobalAccessCounts(edge.sourceId, edge.targetId);
     if (reference.isFieldAccess)
         RecordFieldAccessCounts(edge.sourceId, edge.targetId);
+    if (reference.isParameterType)
+        RecordParameterTypeCounts(edge.sourceId, edge.targetId);
 }
 
 void NativeReferenceMetrics::RecordReferenceCounts(
@@ -51,6 +54,13 @@ void NativeReferenceMetrics::RecordFieldAccessCounts(
     fieldAccessCounts_.Record(sourceId, targetId);
 }
 
+void NativeReferenceMetrics::RecordParameterTypeCounts(
+    const std::string& sourceId,
+    const std::string& targetId)
+{
+    parameterTypeCounts_.Record(sourceId, targetId);
+}
+
 void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
 {
     referenceCounts_.Decorate(
@@ -69,5 +79,9 @@ void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
         symbol,
         "native.fieldAccessInCount",
         "native.fieldAccessOutCount");
+    parameterTypeCounts_.Decorate(
+        symbol,
+        "native.parameterTypeInCount",
+        "native.parameterTypeOutCount");
 }
 }
