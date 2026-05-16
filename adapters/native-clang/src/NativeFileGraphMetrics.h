@@ -40,6 +40,8 @@ private:
         unsigned incomingReferenceEdgeCount = 0;
         unsigned outgoingIncludeEdgeCount = 0;
         unsigned incomingIncludeEdgeCount = 0;
+        unsigned outgoingGlobalAccessEdgeCount = 0;
+        unsigned incomingGlobalAccessEdgeCount = 0;
         unsigned outgoingCallbackTargetEdgeCount = 0;
         unsigned incomingCallbackTargetEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;
