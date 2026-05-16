@@ -1,7 +1,7 @@
 # Native Clang Adapter
 
-**Status:** Planned. Stage 1 fixture contract exists; no extractor
-implementation code has shipped yet.
+**Status:** Stage 1 bootstrap. The tiny fixture contract exists and the first
+`libclang` executable can emit a Lifeblood graph for it.
 
 This adapter will translate C/C++ projects into Lifeblood's universal semantic
 graph using Clang/LLVM as the parser and semantic engine.
@@ -27,13 +27,13 @@ No LLVM or Clang dependency belongs in `Lifeblood.Domain`,
 
 ## Planned Engine
 
-Stage 1 targets a small native command-line tool over Clang's API. On the
+Stage 1 uses a small native command-line tool over Clang's API. On the
 current Windows machine, the official LLVM installer provides `libclang`
 headers/libs (`clang-c/Index.h`, `clang-c/CXCompilationDatabase.h`,
 `libclang.lib`, `libclang.dll`) but not the full C++ LibTooling development
-surface. So the bootstrap extractor should use `libclang`; C++ LibTooling stays
-available as a richer later path if we add a heavier LLVM development package
-or source-build story.
+surface. So the bootstrap extractor uses `libclang`; C++ LibTooling stays
+available as a richer later path if we add a heavier LLVM development package or
+source-build story.
 
 The adapter will read a `compile_commands.json` compilation database and run
 Clang over each translation unit with the same include paths, defines, language
@@ -87,6 +87,42 @@ Expected tools:
 - CMake.
 - A C++ compiler compatible with the selected LLVM distribution.
 - Lifeblood CLI from this repo for graph validation.
+
+## Build And Run
+
+On Windows, launch the build through the Visual Studio developer environment so
+Clang can find the MSVC and Windows SDK libraries:
+
+```powershell
+cmd /c 'call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -S adapters/native-clang -B artifacts/native-clang-build -G Ninja -DCMAKE_MAKE_PROGRAM="C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe" -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe" -DCMAKE_RC_COMPILER="C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe" && "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build artifacts/native-clang-build'
+```
+
+Run the tiny fixture extraction:
+
+```powershell
+artifacts/native-clang-build/lifeblood-native-clang.exe `
+  --project adapters/native-clang/test-fixtures/tiny-c `
+  --profile tiny-debug `
+  --out artifacts/native-clang-build/tiny.graph.json
+
+dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang-build/tiny.graph.json
+```
+
+## Source Layout
+
+The Stage 1 executable keeps adapter responsibilities separated:
+
+- `main.cpp` is the primary adapter: command-line parsing, orchestration, and
+  file output only.
+- `LibClangExtractor.*` is the driven adapter over `libclang` and
+  `compile_commands.json`.
+- `GraphModel.h` is the local graph DTO set matching Lifeblood's JSON graph
+  schema shape.
+- `JsonGraphWriter.*` serializes the graph boundary without bringing a JSON
+  dependency into the tiny bootstrap.
+
+LLVM remains isolated under `adapters/native-clang`; Lifeblood core continues
+to consume only the emitted graph JSON.
 
 ## First Fixture Contract
 
