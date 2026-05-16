@@ -35,6 +35,7 @@ void NativeIncludeEmitter::AddInclude(CXCursor cursor)
 
     files_.EnsureFileSymbol(*sourceFile);
     files_.EnsureFileSymbol(*includedPath);
+    RecordIncludeCounts(*sourceFile, *includedPath);
 
     Edge edge;
     edge.sourceId = "file:" + *sourceFile;
@@ -46,5 +47,20 @@ void NativeIncludeEmitter::AddInclude(CXCursor cursor)
     edge.properties["native.include"] = fs::path(*includedPath).filename().string();
     edge.properties["native.buildProfile"] = buildProfile_;
     graph_.AddEdge(edge);
+}
+
+void NativeIncludeEmitter::RecordIncludeCounts(
+    const std::string& sourceFile,
+    const std::string& includedFile)
+{
+    const auto sourceCount = ++includeDirectiveCounts_[sourceFile];
+    graph_.UpdateSymbol("file:" + sourceFile, [&](Symbol& file) {
+        file.properties["native.includeDirectiveCount"] = std::to_string(sourceCount);
+    });
+
+    const auto includedByCount = ++includedByCounts_[includedFile];
+    graph_.UpdateSymbol("file:" + includedFile, [&](Symbol& file) {
+        file.properties["native.includedByCount"] = std::to_string(includedByCount);
+    });
 }
 }
