@@ -467,8 +467,15 @@ public class NativeClangExecutableRatchetTests
         AssertModuleFileInventory(graph, "mod:return-type-c", translationUnits: 1, headers: 0);
 
         Assert.NotNull(graph.GetSymbol("type:Packet"));
+        Assert.NotNull(graph.GetSymbol("field:packet_ring"));
         Assert.NotNull(graph.GetSymbol("method:current_packet()"));
         Assert.NotNull(graph.GetSymbol("method:echo_packet(Packet*)"));
+        Assert.NotNull(graph.GetSymbol("method:first_packet(Packet*[2])"));
+        AssertReferenceKind(
+            graph,
+            "field:packet_ring",
+            "type:Packet",
+            "globalType");
         AssertReferenceKind(
             graph,
             "method:current_packet()",
@@ -484,14 +491,30 @@ public class NativeClangExecutableRatchetTests
             "method:echo_packet(Packet*)",
             "type:Packet",
             "returnType");
+        AssertReferenceKind(
+            graph,
+            "method:first_packet(Packet*[2])",
+            "type:Packet",
+            "parameterType");
+        AssertReferenceKind(
+            graph,
+            "method:first_packet(Packet*[2])",
+            "type:Packet",
+            "returnType");
         AssertReturnTypeCounts(graph, "method:current_packet()", incoming: 0, outgoing: 1);
         AssertReturnTypeCounts(graph, "method:echo_packet(Packet*)", incoming: 0, outgoing: 1);
-        AssertReturnTypeCounts(graph, "type:Packet", incoming: 2, outgoing: 0);
+        AssertReturnTypeCounts(graph, "method:first_packet(Packet*[2])", incoming: 0, outgoing: 1);
+        AssertReturnTypeCounts(graph, "type:Packet", incoming: 3, outgoing: 0);
+        AssertGlobalTypeCounts(graph, "field:packet_ring", incoming: 0, outgoing: 1);
+        AssertGlobalTypeCounts(graph, "type:Packet", incoming: 1, outgoing: 0);
         AssertParameterTypeCounts(graph, "method:echo_packet(Packet*)", incoming: 0, outgoing: 1);
-        AssertParameterTypeCounts(graph, "type:Packet", incoming: 1, outgoing: 0);
+        AssertParameterTypeCounts(graph, "method:first_packet(Packet*[2])", incoming: 0, outgoing: 1);
+        AssertParameterTypeCounts(graph, "type:Packet", incoming: 2, outgoing: 0);
         AssertTypeReferenceCounts(graph, "method:current_packet()", incoming: 0, outgoing: 1);
         AssertTypeReferenceCounts(graph, "method:echo_packet(Packet*)", incoming: 0, outgoing: 2);
-        AssertTypeReferenceCounts(graph, "type:Packet", incoming: 3, outgoing: 0);
+        AssertTypeReferenceCounts(graph, "method:first_packet(Packet*[2])", incoming: 0, outgoing: 2);
+        AssertTypeReferenceCounts(graph, "field:packet_ring", incoming: 0, outgoing: 1);
+        AssertTypeReferenceCounts(graph, "type:Packet", incoming: 6, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "return-type-debug");
     }
 
