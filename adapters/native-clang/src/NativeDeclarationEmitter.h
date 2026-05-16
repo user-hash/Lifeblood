@@ -2,6 +2,8 @@
 
 #include "ClangSourceMapper.h"
 #include "NativeFileRegistry.h"
+#include "NativeFunctionEmitter.h"
+#include "NativeGlobalEmitter.h"
 #include "NativeGraphSink.h"
 #include "NativeTypeEmitter.h"
 
@@ -28,15 +30,8 @@ public:
     bool AddFunction(CXCursor cursor);
 
 private:
-    void AddParameterTypeReferences(CXCursor cursor, const std::string& functionId);
-    bool IsFileScopeCursor(CXCursor cursor) const;
-
-    std::string Signature(CXCursor cursor) const;
-
-    std::string buildProfile_;
-    NativeGraphSink& graph_;
-    const ClangSourceMapper& sourceMap_;
-    NativeFileRegistry& files_;
     NativeTypeEmitter types_;
+    NativeGlobalEmitter globals_;
+    NativeFunctionEmitter functions_;
 };
 }

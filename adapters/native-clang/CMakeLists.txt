@@ -46,8 +46,12 @@ add_executable(lifeblood-native-clang
     src/NativeDeclarationEmitter.h
     src/NativeExtractionSession.cpp
     src/NativeExtractionSession.h
+    src/NativeFunctionEmitter.cpp
+    src/NativeFunctionEmitter.h
     src/NativeFileRegistry.cpp
     src/NativeFileRegistry.h
+    src/NativeGlobalEmitter.cpp
+    src/NativeGlobalEmitter.h
     src/NativeModuleTracker.cpp
     src/NativeModuleTracker.h
     src/NativePreprocessorEmitter.cpp
