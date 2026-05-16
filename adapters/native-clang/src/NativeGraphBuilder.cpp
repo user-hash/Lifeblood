@@ -14,8 +14,7 @@ void NativeGraphBuilder::Clear()
     graph_.symbols.clear();
     graph_.edges.clear();
     edgeKeys_.clear();
-    referenceOutCounts_.clear();
-    referenceInCounts_.clear();
+    referenceMetrics_.Clear();
 }
 
 void NativeGraphBuilder::AddSymbol(Symbol symbol)
@@ -30,19 +29,7 @@ void NativeGraphBuilder::AddSymbol(Symbol symbol)
         }
     }
 
-    auto referenceOut = referenceOutCounts_.find(symbol.id);
-    if (referenceOut != referenceOutCounts_.end() &&
-        symbol.properties.find("native.referenceOutCount") == symbol.properties.end())
-    {
-        symbol.properties["native.referenceOutCount"] = std::to_string(referenceOut->second);
-    }
-
-    auto referenceIn = referenceInCounts_.find(symbol.id);
-    if (referenceIn != referenceInCounts_.end() &&
-        symbol.properties.find("native.referenceInCount") == symbol.properties.end())
-    {
-        symbol.properties["native.referenceInCount"] = std::to_string(referenceIn->second);
-    }
+    referenceMetrics_.DecorateSymbol(symbol);
 
     graph_.symbols[symbol.id] = std::move(symbol);
 }
@@ -53,7 +40,15 @@ void NativeGraphBuilder::AddEdge(Edge edge)
     if (edgeKeys_.insert(key).second)
     {
         if (edge.kind == "references")
-            RecordReferenceCounts(edge.sourceId, edge.targetId);
+        {
+            referenceMetrics_.RecordAcceptedReference(edge.sourceId, edge.targetId);
+            UpdateSymbol(edge.sourceId, [this](Symbol& symbol) {
+                referenceMetrics_.DecorateSymbol(symbol);
+            });
+            UpdateSymbol(edge.targetId, [this](Symbol& symbol) {
+                referenceMetrics_.DecorateSymbol(symbol);
+            });
+        }
 
         graph_.edges.push_back(std::move(edge));
     }
@@ -78,20 +73,5 @@ void NativeGraphBuilder::UpdateSymbol(
     if (it == graph_.symbols.end()) return;
 
     update(it->second);
-}
-
-void NativeGraphBuilder::RecordReferenceCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    const auto outCount = ++referenceOutCounts_[sourceId];
-    UpdateSymbol(sourceId, [&](Symbol& symbol) {
-        symbol.properties["native.referenceOutCount"] = std::to_string(outCount);
-    });
-
-    const auto inCount = ++referenceInCounts_[targetId];
-    UpdateSymbol(targetId, [&](Symbol& symbol) {
-        symbol.properties["native.referenceInCount"] = std::to_string(inCount);
-    });
 }
 }
