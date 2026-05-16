@@ -22,6 +22,7 @@ NativeReferenceEdgeClassification NativeEdgeClassification::Reference(const Edge
     classification.isUnderlyingType =
         NativeGraphFacts::HasReferenceKind(edge, "underlyingType");
     classification.isGlobalType = NativeGraphFacts::HasReferenceKind(edge, "globalType");
+    classification.isReturnType = NativeGraphFacts::HasReferenceKind(edge, "returnType");
     return classification;
 }
 

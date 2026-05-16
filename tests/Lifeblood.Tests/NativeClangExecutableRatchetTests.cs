@@ -452,6 +452,27 @@ public class NativeClangExecutableRatchetTests
     }
 
     [SkippableFact]
+    public void Executable_ReturnTypeFixture_EmitsTypeFlowFacts()
+    {
+        var graph = RunFixture("return-type-c", "return-type-debug").Graph;
+
+        Assert.Empty(GraphValidator.Validate(graph));
+        AssertModuleParseHealth(graph, "mod:return-type-c", total: 1, parsed: 1, failed: 0);
+        AssertModuleFileInventory(graph, "mod:return-type-c", translationUnits: 1, headers: 0);
+
+        Assert.NotNull(graph.GetSymbol("type:Packet"));
+        Assert.NotNull(graph.GetSymbol("method:current_packet()"));
+        AssertReferenceKind(
+            graph,
+            "method:current_packet()",
+            "type:Packet",
+            "returnType");
+        AssertReturnTypeCounts(graph, "method:current_packet()", incoming: 0, outgoing: 1);
+        AssertReturnTypeCounts(graph, "type:Packet", incoming: 1, outgoing: 0);
+        AssertAllNativeFactsCarryBuildProfile(graph, "return-type-debug");
+    }
+
+    [SkippableFact]
     public void Executable_CrossTranslationUnitCall_PreservesDefinitionLocation()
     {
         var graph = RunFixture("cross-tu-c", "cross-tu-debug").Graph;
@@ -1231,6 +1252,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.globalTypeOutCount", "0"));
+    }
+
+    private static void AssertReturnTypeCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.returnTypeInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.returnTypeOutCount", "0"));
     }
 
     private static void AssertCrossFileDirectCallCounts(
