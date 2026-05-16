@@ -55,15 +55,15 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
     auto sourceFileId = ownership_.OwningFileId(edge.sourceId);
     auto targetFileId = ownership_.OwningFileId(edge.targetId);
 
-    auto reference = NativeEdgeClassification::Reference(edge);
-    if (reference.isReference)
+    auto metric = NativeEdgeMetricClassifier::Classify(edge);
+    if (metric.isReference)
     {
         if (sourceFileId)
             counts_[*sourceFileId].outgoingReferenceEdgeCount++;
         if (targetFileId)
             counts_[*targetFileId].incomingReferenceEdgeCount++;
 
-        if (reference.isInclude)
+        if (metric.isInclude)
         {
             if (sourceFileId)
                 counts_[*sourceFileId].outgoingIncludeEdgeCount++;
@@ -71,7 +71,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
                 counts_[*targetFileId].incomingIncludeEdgeCount++;
         }
 
-        if (reference.isGlobalAccess)
+        if (metric.isGlobalAccess)
         {
             if (sourceFileId)
                 counts_[*sourceFileId].outgoingGlobalAccessEdgeCount++;
@@ -79,7 +79,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
                 counts_[*targetFileId].incomingGlobalAccessEdgeCount++;
         }
 
-        if (reference.isFieldAccess)
+        if (metric.isFieldAccess)
         {
             if (sourceFileId)
                 counts_[*sourceFileId].outgoingFieldAccessEdgeCount++;
@@ -87,7 +87,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
                 counts_[*targetFileId].incomingFieldAccessEdgeCount++;
         }
 
-        if (reference.isParameterType)
+        if (metric.isParameterType)
         {
             if (sourceFileId)
                 counts_[*sourceFileId].outgoingParameterTypeEdgeCount++;
@@ -95,7 +95,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
                 counts_[*targetFileId].incomingParameterTypeEdgeCount++;
         }
 
-        if (reference.isCallbackTarget)
+        if (metric.isCallbackTarget)
         {
             if (sourceFileId)
                 counts_[*sourceFileId].outgoingCallbackTargetEdgeCount++;
@@ -103,7 +103,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
                 counts_[*targetFileId].incomingCallbackTargetEdgeCount++;
         }
     }
-    else if (NativeEdgeClassification::IsCall(edge))
+    else if (metric.isCall)
     {
         if (sourceFileId)
             counts_[*sourceFileId].outgoingCallEdgeCount++;

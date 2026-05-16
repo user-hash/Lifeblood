@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GraphModel.h"
-#include "NativeEdgeClassification.h"
+#include "NativeEdgeMetricClassification.h"
 #include "NativeGraphFacts.h"
 #include "NativeGraphOwnershipIndex.h"
 #include "NativeKindInventory.h"

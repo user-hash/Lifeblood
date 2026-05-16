@@ -51,6 +51,8 @@ add_executable(lifeblood-native-clang
     src/NativeCompileCommand.h
     src/NativeEdgeClassification.cpp
     src/NativeEdgeClassification.h
+    src/NativeEdgeMetricClassification.cpp
+    src/NativeEdgeMetricClassification.h
     src/NativeEdgeRole.cpp
     src/NativeEdgeRole.h
     src/NativeDeclarationKinds.h
