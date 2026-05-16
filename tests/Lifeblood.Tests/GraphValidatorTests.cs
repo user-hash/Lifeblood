@@ -29,6 +29,79 @@ public class GraphValidatorTests
     }
 
     [Fact]
+    public void Validate_AllowsSamePairEdgesWithDistinctRoles()
+    {
+        var graph = Raw(
+            symbols: new[]
+            {
+                new Symbol { Id = "method:Echo(Packet*)", Name = "Echo" },
+                new Symbol { Id = "type:Packet", Name = "Packet" },
+            },
+            edges: new[]
+            {
+                new Edge
+                {
+                    SourceId = "method:Echo(Packet*)",
+                    TargetId = "type:Packet",
+                    Kind = EdgeKind.References,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["native.referenceKind"] = "parameterType",
+                    },
+                },
+                new Edge
+                {
+                    SourceId = "method:Echo(Packet*)",
+                    TargetId = "type:Packet",
+                    Kind = EdgeKind.References,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["native.referenceKind"] = "returnType",
+                    },
+                },
+            });
+
+        Assert.Empty(GraphValidator.Validate(graph));
+    }
+
+    [Fact]
+    public void Validate_DuplicateEdgeWithSameRole_Detected()
+    {
+        var graph = Raw(
+            symbols: new[]
+            {
+                new Symbol { Id = "method:Echo(Packet*)", Name = "Echo" },
+                new Symbol { Id = "type:Packet", Name = "Packet" },
+            },
+            edges: new[]
+            {
+                new Edge
+                {
+                    SourceId = "method:Echo(Packet*)",
+                    TargetId = "type:Packet",
+                    Kind = EdgeKind.References,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["native.referenceKind"] = "parameterType",
+                    },
+                },
+                new Edge
+                {
+                    SourceId = "method:Echo(Packet*)",
+                    TargetId = "type:Packet",
+                    Kind = EdgeKind.References,
+                    Properties = new Dictionary<string, string>
+                    {
+                        ["native.referenceKind"] = "parameterType",
+                    },
+                },
+            });
+
+        var error = Assert.Single(GraphValidator.Validate(graph));
+        Assert.Equal("DUPLICATE_EDGE", error.Code);
+    }
+
+    [Fact]
     public void Validate_EmptySymbolId_Detected()
     {
         var graph = Raw(symbols: new[] { new Symbol { Id = "", Name = "Bad" } });
