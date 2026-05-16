@@ -41,7 +41,7 @@ void NativeGraphBuilder::AddEdge(Edge edge)
     {
         if (edge.kind == "references")
         {
-            referenceMetrics_.RecordAcceptedReference(edge.sourceId, edge.targetId);
+            referenceMetrics_.RecordAcceptedReference(edge);
             UpdateSymbol(edge.sourceId, [this](Symbol& symbol) {
                 referenceMetrics_.DecorateSymbol(symbol);
             });
