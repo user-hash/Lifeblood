@@ -45,5 +45,10 @@ private:
     NativeDiagnosticSummary diagnostics_;
     std::map<std::string, std::string> commandLineDefines_;
     std::set<std::string> commandLineUndefines_;
+    std::set<std::string> sourceLanguages_;
+    std::set<std::string> languageStandards_;
+    unsigned includeSearchPathCount_ = 0;
+    unsigned systemIncludeSearchPathCount_ = 0;
+    unsigned quoteIncludeSearchPathCount_ = 0;
 };
 }

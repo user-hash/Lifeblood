@@ -33,6 +33,14 @@ void NativeModuleTracker::BeginTranslationUnit(const NativeCompileCommand& comma
     for (const auto& name : command.undefines)
         commandLineUndefines_.insert(name);
 
+    if (!command.sourceLanguage.empty())
+        sourceLanguages_.insert(command.sourceLanguage);
+    if (!command.languageStandard.empty())
+        languageStandards_.insert(command.languageStandard);
+    includeSearchPathCount_ += command.includeSearchPathCount;
+    systemIncludeSearchPathCount_ += command.systemIncludeSearchPathCount;
+    quoteIncludeSearchPathCount_ += command.quoteIncludeSearchPathCount;
+
     UpdateModuleProperties();
 }
 
@@ -100,6 +108,16 @@ void NativeModuleTracker::UpdateModuleProperties()
             module.properties["native.defines"] = JoinDefines();
         if (!commandLineUndefines_.empty())
             module.properties["native.undefines"] = Join(commandLineUndefines_);
+        if (!sourceLanguages_.empty())
+            module.properties["native.sourceLanguages"] = Join(sourceLanguages_);
+        if (!languageStandards_.empty())
+            module.properties["native.languageStandards"] = Join(languageStandards_);
+        module.properties["native.includeSearchPathCount"] =
+            std::to_string(includeSearchPathCount_);
+        module.properties["native.systemIncludeSearchPathCount"] =
+            std::to_string(systemIncludeSearchPathCount_);
+        module.properties["native.quoteIncludeSearchPathCount"] =
+            std::to_string(quoteIncludeSearchPathCount_);
     });
 }
 

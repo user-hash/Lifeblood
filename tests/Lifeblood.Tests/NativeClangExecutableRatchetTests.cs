@@ -32,6 +32,14 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
+        AssertModuleBuildFacts(
+            graph,
+            "mod:tiny-c",
+            includePaths: 1,
+            systemIncludePaths: 0,
+            quoteIncludePaths: 0,
+            sourceLanguages: "c",
+            languageStandards: "c11");
         AssertTranslationUnitBuildInputs(
             graph,
             "file:src/decode.c",
@@ -91,6 +99,20 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(audio, "mod:profile-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(video, "mod:profile-c", translationUnits: 1, headers: 1);
         AssertModuleFileInventory(audio, "mod:profile-c", translationUnits: 1, headers: 1);
+        AssertModuleBuildFacts(
+            video,
+            "mod:profile-c",
+            includePaths: 1,
+            systemIncludePaths: 1,
+            quoteIncludePaths: 1,
+            sourceLanguages: "c");
+        AssertModuleBuildFacts(
+            audio,
+            "mod:profile-c",
+            includePaths: 1,
+            systemIncludePaths: 0,
+            quoteIncludePaths: 0,
+            sourceLanguages: "c");
         AssertTranslationUnitBuildInputs(
             video,
             "file:src/codec.c",
@@ -560,6 +582,29 @@ public class NativeClangExecutableRatchetTests
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
         Assert.Equal(undefines, module!.Properties["native.undefines"]);
+    }
+
+    private static void AssertModuleBuildFacts(
+        SemanticGraph graph,
+        string moduleId,
+        int includePaths,
+        int systemIncludePaths,
+        int quoteIncludePaths,
+        string sourceLanguages,
+        string? languageStandards = null)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(includePaths.ToString(), module!.Properties["native.includeSearchPathCount"]);
+        Assert.Equal(
+            systemIncludePaths.ToString(),
+            module.Properties["native.systemIncludeSearchPathCount"]);
+        Assert.Equal(
+            quoteIncludePaths.ToString(),
+            module.Properties["native.quoteIncludeSearchPathCount"]);
+        Assert.Equal(sourceLanguages, module.Properties["native.sourceLanguages"]);
+        if (languageStandards is not null)
+            Assert.Equal(languageStandards, module.Properties["native.languageStandards"]);
     }
 
     private static void AssertIncludeCounts(
