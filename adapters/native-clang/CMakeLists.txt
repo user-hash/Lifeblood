@@ -52,6 +52,8 @@ add_executable(lifeblood-native-clang
     src/NativeReferenceEmitter.h
     src/NativeSymbolIds.cpp
     src/NativeSymbolIds.h
+    src/NativeTypeEmitter.cpp
+    src/NativeTypeEmitter.h
     src/Options.h
     src/main.cpp
 )
