@@ -33,15 +33,19 @@ bool NativeGraphBuilder::HasSymbol(const std::string& symbolId) const
     return graph_.symbols.find(symbolId) != graph_.symbols.end();
 }
 
-Symbol* NativeGraphBuilder::FindSymbol(const std::string& symbolId)
+const Symbol* NativeGraphBuilder::FindSymbol(const std::string& symbolId) const
 {
     auto it = graph_.symbols.find(symbolId);
     return it == graph_.symbols.end() ? nullptr : &it->second;
 }
 
-const Symbol* NativeGraphBuilder::FindSymbol(const std::string& symbolId) const
+void NativeGraphBuilder::UpdateSymbol(
+    const std::string& symbolId,
+    const std::function<void(Symbol&)>& update)
 {
     auto it = graph_.symbols.find(symbolId);
-    return it == graph_.symbols.end() ? nullptr : &it->second;
+    if (it == graph_.symbols.end()) return;
+
+    update(it->second);
 }
 }
