@@ -18,10 +18,6 @@ public:
     NativeCompileCommand Read(CXCompileCommand command) const;
 
 private:
-    void CollectMacros(CXCompileCommand command, NativeCompileCommand& result) const;
-    void AddDefine(const std::string& raw, NativeCompileCommand& result) const;
-    void AddUndefine(const std::string& name, NativeCompileCommand& result) const;
-
     std::filesystem::path compilationDatabaseDir_;
 };
 }
