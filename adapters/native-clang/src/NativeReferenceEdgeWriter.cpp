@@ -44,14 +44,19 @@ void NativeReferenceEdgeWriter::RecordDirectCallCounts(
     const std::string& sourceId,
     const std::string& targetId)
 {
-    const auto outCount = ++directCallOutCounts_[sourceId];
+    directCallCounts_.Record(sourceId, targetId);
     graph_.UpdateSymbol(sourceId, [&](Symbol& symbol) {
-        NativePropertyWriter::SetCount(symbol, "native.directCallOutCount", outCount);
+        directCallCounts_.Decorate(
+            symbol,
+            "native.directCallInCount",
+            "native.directCallOutCount");
     });
 
-    const auto inCount = ++directCallInCounts_[targetId];
     graph_.UpdateSymbol(targetId, [&](Symbol& symbol) {
-        NativePropertyWriter::SetCount(symbol, "native.directCallInCount", inCount);
+        directCallCounts_.Decorate(
+            symbol,
+            "native.directCallInCount",
+            "native.directCallOutCount");
     });
 }
 
