@@ -40,6 +40,8 @@ add_executable(lifeblood-native-clang
     src/NativeFileRegistry.h
     src/NativeModuleTracker.cpp
     src/NativeModuleTracker.h
+    src/NativeReferenceEmitter.cpp
+    src/NativeReferenceEmitter.h
     src/NativeSymbolIds.cpp
     src/NativeSymbolIds.h
     src/Options.h
