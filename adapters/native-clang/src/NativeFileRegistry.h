@@ -24,6 +24,7 @@ public:
     void MarkTranslationUnitFailed(const std::string& relativePath);
 
 private:
+    void UpdateModuleFileProperties();
     void UpdateTranslationUnitHealth(
         const std::string& relativePath,
         const std::string& parseStatus,
@@ -33,5 +34,7 @@ private:
     std::string moduleId_;
     std::string buildProfile_;
     NativeGraphSink& graph_;
+    unsigned translationUnitFileCount_ = 0;
+    unsigned headerFileCount_ = 0;
 };
 }
