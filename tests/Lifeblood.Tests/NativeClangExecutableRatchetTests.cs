@@ -32,6 +32,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
+        AssertModuleCallInventory(graph, "mod:tiny-c", crossFileCalls: 0);
         AssertModuleIncludeInventory(graph, "mod:tiny-c", includeEdges: 1);
         AssertModuleFunctionInventory(graph, "mod:tiny-c", definitions: 2, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:tiny-c", macros: 1);
@@ -205,6 +206,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:multi-tu-c", total: 2, parsed: 2, failed: 0);
         AssertModuleFileInventory(graph, "mod:multi-tu-c", translationUnits: 2, headers: 1);
         AssertModuleGraphInventory(graph, "mod:multi-tu-c", symbols: 10, edges: 8, references: 6, calls: 2);
+        AssertModuleCallInventory(graph, "mod:multi-tu-c", crossFileCalls: 0);
         AssertModuleIncludeInventory(graph, "mod:multi-tu-c", includeEdges: 2);
         AssertModuleFunctionInventory(graph, "mod:multi-tu-c", definitions: 4, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:multi-tu-c", macros: 1);
@@ -353,6 +355,7 @@ public class NativeClangExecutableRatchetTests
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:cross-tu-c", total: 2, parsed: 2, failed: 0);
         AssertModuleFileInventory(graph, "mod:cross-tu-c", translationUnits: 2, headers: 1);
+        AssertModuleCallInventory(graph, "mod:cross-tu-c", crossFileCalls: 1);
 
         var decodeAudio = graph.GetSymbol("method:decode_audio(Packet*)");
         Assert.NotNull(decodeAudio);
@@ -679,6 +682,16 @@ public class NativeClangExecutableRatchetTests
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
         Assert.Equal(includeEdges.ToString(), module!.Properties["native.includeEdgeCount"]);
+    }
+
+    private static void AssertModuleCallInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int crossFileCalls)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(crossFileCalls.ToString(), module!.Properties["native.crossFileCallEdgeCount"]);
     }
 
     private static void AssertModuleNativeKindInventory(

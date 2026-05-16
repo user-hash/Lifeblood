@@ -27,6 +27,7 @@ private:
         unsigned referenceEdgeCount = 0;
         unsigned includeEdgeCount = 0;
         unsigned callEdgeCount = 0;
+        unsigned crossFileCallEdgeCount = 0;
         unsigned callbackTargetEdgeCount = 0;
         unsigned functionDefinitionCount = 0;
         unsigned functionDeclarationCount = 0;
@@ -40,7 +41,7 @@ private:
     static bool HasReferenceKind(const Edge& edge, const std::string& referenceKind);
     static void AddNativeKindCounts(Counts& counts, const Symbol& symbol);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
-    static void AddEdgeCount(Counts& counts, const Edge& edge);
+    void AddEdgeCount(Counts& counts, const Edge& edge) const;
     static void WriteCounts(Symbol& module, const Counts& counts);
 
     NativeGraph& graph_;

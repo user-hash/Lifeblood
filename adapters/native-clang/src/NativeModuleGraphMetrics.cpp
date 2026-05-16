@@ -49,7 +49,7 @@ void NativeModuleGraphMetrics::Write()
     }
 }
 
-void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge)
+void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) const
 {
     counts.edgeCount++;
     if (edge.kind == "references")
@@ -61,7 +61,13 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge)
             counts.callbackTargetEdgeCount++;
     }
     else if (edge.kind == "calls")
+    {
         counts.callEdgeCount++;
+        auto sourceFile = ownership_.OwningFileId(edge.sourceId);
+        auto targetFile = ownership_.OwningFileId(edge.targetId);
+        if (sourceFile && targetFile && *sourceFile != *targetFile)
+            counts.crossFileCallEdgeCount++;
+    }
 }
 
 void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol)
@@ -116,6 +122,8 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
     module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
     module.properties["native.includeEdgeCount"] = std::to_string(counts.includeEdgeCount);
     module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
+    module.properties["native.crossFileCallEdgeCount"] =
+        std::to_string(counts.crossFileCallEdgeCount);
     module.properties["native.callbackTargetEdgeCount"] =
         std::to_string(counts.callbackTargetEdgeCount);
     module.properties["native.functionDefinitionCount"] =
