@@ -14,6 +14,7 @@ void NativeReferenceMetrics::Clear()
     underlyingTypeCounts_.Clear();
     globalTypeCounts_.Clear();
     returnTypeCounts_.Clear();
+    typeReferenceCounts_.Clear();
 }
 
 void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
@@ -39,6 +40,8 @@ void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
         RecordGlobalTypeCounts(edge.sourceId, edge.targetId);
     if (reference.isReturnType)
         RecordReturnTypeCounts(edge.sourceId, edge.targetId);
+    if (reference.IsTypeReference())
+        RecordTypeReferenceCounts(edge.sourceId, edge.targetId);
 }
 
 void NativeReferenceMetrics::RecordReferenceCounts(
@@ -111,6 +114,13 @@ void NativeReferenceMetrics::RecordReturnTypeCounts(
     returnTypeCounts_.Record(sourceId, targetId);
 }
 
+void NativeReferenceMetrics::RecordTypeReferenceCounts(
+    const std::string& sourceId,
+    const std::string& targetId)
+{
+    typeReferenceCounts_.Record(sourceId, targetId);
+}
+
 void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
 {
     referenceCounts_.Decorate(
@@ -153,5 +163,9 @@ void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
         symbol,
         "native.returnTypeInCount",
         "native.returnTypeOutCount");
+    typeReferenceCounts_.Decorate(
+        symbol,
+        "native.typeReferenceInCount",
+        "native.typeReferenceOutCount");
 }
 }

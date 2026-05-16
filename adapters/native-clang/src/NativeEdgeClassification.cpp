@@ -26,6 +26,15 @@ NativeReferenceEdgeClassification NativeEdgeClassification::Reference(const Edge
     return classification;
 }
 
+bool NativeReferenceEdgeClassification::IsTypeReference() const
+{
+    return isParameterType ||
+           isFieldType ||
+           isUnderlyingType ||
+           isGlobalType ||
+           isReturnType;
+}
+
 bool NativeEdgeClassification::IsCall(const Edge& edge)
 {
     return edge.kind == "calls";

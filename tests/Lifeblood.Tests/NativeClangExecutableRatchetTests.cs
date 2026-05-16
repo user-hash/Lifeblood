@@ -222,6 +222,10 @@ public class NativeClangExecutableRatchetTests
         AssertFieldTypeCounts(graph, "type:PacketKindAlias", incoming: 1, outgoing: 0);
         AssertUnderlyingTypeCounts(graph, "type:PacketKindAlias", incoming: 0, outgoing: 1);
         AssertUnderlyingTypeCounts(graph, "type:PacketKind", incoming: 1, outgoing: 0);
+        AssertTypeReferenceCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
+        AssertTypeReferenceCounts(graph, "field:Packet.kind", incoming: 0, outgoing: 1);
+        AssertTypeReferenceCounts(graph, "type:PacketKindAlias", incoming: 1, outgoing: 1);
+        AssertTypeReferenceCounts(graph, "type:PacketKind", incoming: 1, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "direct-refs-debug");
     }
 
@@ -287,6 +291,8 @@ public class NativeClangExecutableRatchetTests
         AssertCallbackTargetCounts(graph, "method:decode_video(Packet*)", incoming: 1, outgoing: 0);
         AssertGlobalTypeCounts(graph, "field:codec_table", incoming: 0, outgoing: 1);
         AssertGlobalTypeCounts(graph, "type:CodecRegistration", incoming: 1, outgoing: 0);
+        AssertTypeReferenceCounts(graph, "field:codec_table", incoming: 0, outgoing: 1);
+        AssertTypeReferenceCounts(graph, "type:CodecRegistration", incoming: 1, outgoing: 0);
 
         var blast = BlastRadiusAnalyzer.Analyze(graph, "method:decode_audio(Packet*)");
         Assert.Contains("field:codec_table", blast.AffectedSymbolIds);
@@ -469,6 +475,8 @@ public class NativeClangExecutableRatchetTests
             "returnType");
         AssertReturnTypeCounts(graph, "method:current_packet()", incoming: 0, outgoing: 1);
         AssertReturnTypeCounts(graph, "type:Packet", incoming: 1, outgoing: 0);
+        AssertTypeReferenceCounts(graph, "method:current_packet()", incoming: 0, outgoing: 1);
+        AssertTypeReferenceCounts(graph, "type:Packet", incoming: 1, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "return-type-debug");
     }
 
@@ -1268,6 +1276,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.returnTypeOutCount", "0"));
+    }
+
+    private static void AssertTypeReferenceCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.typeReferenceInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.typeReferenceOutCount", "0"));
     }
 
     private static void AssertCrossFileDirectCallCounts(
