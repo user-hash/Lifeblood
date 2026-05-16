@@ -2,6 +2,7 @@
 
 #include <clang-c/Index.h>
 
+#include <map>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -31,8 +32,12 @@ public:
     void MarkCallbackTable(const std::string& symbolId);
 
 private:
+    void RecordDirectCallCounts(const std::string& sourceId, const std::string& targetId);
+
     std::string buildProfile_;
     NativeGraphSink& graph_;
     const ClangSourceMapper& sourceMap_;
+    std::map<std::string, unsigned> directCallOutCounts_;
+    std::map<std::string, unsigned> directCallInCounts_;
 };
 }
