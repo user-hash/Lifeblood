@@ -9,6 +9,7 @@ void NativeReferenceMetrics::Clear()
     globalAccessCounts_.Clear();
     fieldAccessCounts_.Clear();
     parameterTypeCounts_.Clear();
+    enumMemberCounts_.Clear();
 }
 
 void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
@@ -24,6 +25,8 @@ void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
         RecordFieldAccessCounts(edge.sourceId, edge.targetId);
     if (reference.isParameterType)
         RecordParameterTypeCounts(edge.sourceId, edge.targetId);
+    if (reference.isEnumMember)
+        RecordEnumMemberCounts(edge.sourceId, edge.targetId);
 }
 
 void NativeReferenceMetrics::RecordReferenceCounts(
@@ -61,6 +64,13 @@ void NativeReferenceMetrics::RecordParameterTypeCounts(
     parameterTypeCounts_.Record(sourceId, targetId);
 }
 
+void NativeReferenceMetrics::RecordEnumMemberCounts(
+    const std::string& sourceId,
+    const std::string& targetId)
+{
+    enumMemberCounts_.Record(sourceId, targetId);
+}
+
 void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
 {
     referenceCounts_.Decorate(
@@ -83,5 +93,9 @@ void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
         symbol,
         "native.parameterTypeInCount",
         "native.parameterTypeOutCount");
+    enumMemberCounts_.Decorate(
+        symbol,
+        "native.enumMemberInCount",
+        "native.enumMemberOutCount");
 }
 }

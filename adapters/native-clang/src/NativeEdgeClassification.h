@@ -12,6 +12,7 @@ struct NativeReferenceEdgeClassification
     bool isFieldAccess = false;
     bool isParameterType = false;
     bool isCallbackTarget = false;
+    bool isEnumMember = false;
 };
 
 class NativeEdgeClassification
