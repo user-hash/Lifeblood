@@ -1,9 +1,9 @@
 #pragma once
 
 #include "GraphModel.h"
+#include "NativeGraphOwnershipIndex.h"
 
 #include <map>
-#include <optional>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -39,12 +39,6 @@ private:
         unsigned incomingCrossFileCallEdgeCount = 0;
     };
 
-    static std::optional<std::string> OwningModuleId(
-        const NativeGraph& graph,
-        const std::string& symbolId);
-    static std::optional<std::string> OwningFileId(
-        const NativeGraph& graph,
-        const std::string& symbolId);
     static void AddEdgeCount(ModuleCounts& counts, const Edge& edge);
     static void AddVisibilityCount(
         unsigned& publicCount,
@@ -54,7 +48,7 @@ private:
     static void WriteModuleCounts(Symbol& module, const ModuleCounts& counts);
     static void AddFileEdgeCount(
         std::map<std::string, FileCounts>& fileCounts,
-        const NativeGraph& graph,
+        const NativeGraphOwnershipIndex& ownership,
         const Edge& edge,
         std::map<std::string, unsigned>& crossFileCallOutCounts,
         std::map<std::string, unsigned>& crossFileCallInCounts);

@@ -1,11 +1,10 @@
 #include "NativeGraphFinalizer.h"
 
-#include <set>
-
 namespace lifeblood::native_clang
 {
 void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
 {
+    NativeGraphOwnershipIndex ownership(graph);
     std::map<std::string, ModuleCounts> moduleCounts;
     std::map<std::string, FileCounts> fileCounts;
     std::map<std::string, unsigned> crossFileCallOutCounts;
@@ -19,7 +18,7 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
             continue;
         }
 
-        auto moduleId = OwningModuleId(graph, id);
+        auto moduleId = ownership.OwningModuleId(id);
         if (moduleId)
         {
             moduleCounts[*moduleId].symbolCount++;
@@ -49,13 +48,13 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
 
     for (const auto& edge : graph.edges)
     {
-        auto moduleId = OwningModuleId(graph, edge.sourceId);
+        auto moduleId = ownership.OwningModuleId(edge.sourceId);
         if (moduleId)
             AddEdgeCount(moduleCounts[*moduleId], edge);
 
         AddFileEdgeCount(
             fileCounts,
-            graph,
+            ownership,
             edge,
             crossFileCallOutCounts,
             crossFileCallInCounts);
@@ -80,45 +79,6 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
                 WriteFileCounts(symbol, counts->second);
         }
     }
-}
-
-std::optional<std::string> NativeGraphFinalizer::OwningModuleId(
-    const NativeGraph& graph,
-    const std::string& symbolId)
-{
-    std::set<std::string> visited;
-    std::string currentId = symbolId;
-
-    while (!currentId.empty() && visited.insert(currentId).second)
-    {
-        auto current = graph.symbols.find(currentId);
-        if (current == graph.symbols.end())
-            return std::nullopt;
-
-        if (current->second.kind == "module")
-            return currentId;
-
-        currentId = current->second.parentId;
-    }
-
-    return std::nullopt;
-}
-
-std::optional<std::string> NativeGraphFinalizer::OwningFileId(
-    const NativeGraph& graph,
-    const std::string& symbolId)
-{
-    auto symbol = graph.symbols.find(symbolId);
-    if (symbol == graph.symbols.end())
-        return std::nullopt;
-
-    if (symbol->second.kind == "file")
-        return symbolId;
-
-    if (!symbol->second.filePath.empty())
-        return "file:" + symbol->second.filePath;
-
-    return std::nullopt;
 }
 
 void NativeGraphFinalizer::AddEdgeCount(ModuleCounts& counts, const Edge& edge)
@@ -157,13 +117,13 @@ void NativeGraphFinalizer::WriteModuleCounts(Symbol& module, const ModuleCounts&
 
 void NativeGraphFinalizer::AddFileEdgeCount(
     std::map<std::string, FileCounts>& fileCounts,
-    const NativeGraph& graph,
+    const NativeGraphOwnershipIndex& ownership,
     const Edge& edge,
     std::map<std::string, unsigned>& crossFileCallOutCounts,
     std::map<std::string, unsigned>& crossFileCallInCounts)
 {
-    auto sourceFileId = OwningFileId(graph, edge.sourceId);
-    auto targetFileId = OwningFileId(graph, edge.targetId);
+    auto sourceFileId = ownership.OwningFileId(edge.sourceId);
+    auto targetFileId = ownership.OwningFileId(edge.targetId);
 
     if (edge.kind == "references")
     {
