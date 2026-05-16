@@ -20,11 +20,17 @@ private:
         unsigned edgeCount = 0;
         unsigned referenceEdgeCount = 0;
         unsigned callEdgeCount = 0;
+        unsigned publicSymbolCount = 0;
+        unsigned privateSymbolCount = 0;
+        unsigned internalSymbolCount = 0;
     };
 
     struct FileCounts
     {
         unsigned declaredSymbolCount = 0;
+        unsigned publicDeclaredSymbolCount = 0;
+        unsigned privateDeclaredSymbolCount = 0;
+        unsigned internalDeclaredSymbolCount = 0;
         unsigned outgoingReferenceEdgeCount = 0;
         unsigned incomingReferenceEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;
@@ -40,6 +46,11 @@ private:
         const NativeGraph& graph,
         const std::string& symbolId);
     static void AddEdgeCount(ModuleCounts& counts, const Edge& edge);
+    static void AddVisibilityCount(
+        unsigned& publicCount,
+        unsigned& privateCount,
+        unsigned& internalCount,
+        const Symbol& symbol);
     static void WriteModuleCounts(Symbol& module, const ModuleCounts& counts);
     static void AddFileEdgeCount(
         std::map<std::string, FileCounts>& fileCounts,

@@ -21,7 +21,14 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
 
         auto moduleId = OwningModuleId(graph, id);
         if (moduleId)
+        {
             moduleCounts[*moduleId].symbolCount++;
+            AddVisibilityCount(
+                moduleCounts[*moduleId].publicSymbolCount,
+                moduleCounts[*moduleId].privateSymbolCount,
+                moduleCounts[*moduleId].internalSymbolCount,
+                symbol);
+        }
 
         if (symbol.kind == "file")
         {
@@ -30,7 +37,14 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
         }
 
         if (!symbol.filePath.empty())
+        {
             fileCounts["file:" + symbol.filePath].declaredSymbolCount++;
+            AddVisibilityCount(
+                fileCounts["file:" + symbol.filePath].publicDeclaredSymbolCount,
+                fileCounts["file:" + symbol.filePath].privateDeclaredSymbolCount,
+                fileCounts["file:" + symbol.filePath].internalDeclaredSymbolCount,
+                symbol);
+        }
     }
 
     for (const auto& edge : graph.edges)
@@ -116,12 +130,29 @@ void NativeGraphFinalizer::AddEdgeCount(ModuleCounts& counts, const Edge& edge)
         counts.callEdgeCount++;
 }
 
+void NativeGraphFinalizer::AddVisibilityCount(
+    unsigned& publicCount,
+    unsigned& privateCount,
+    unsigned& internalCount,
+    const Symbol& symbol)
+{
+    if (symbol.visibility == "public")
+        publicCount++;
+    else if (symbol.visibility == "private")
+        privateCount++;
+    else
+        internalCount++;
+}
+
 void NativeGraphFinalizer::WriteModuleCounts(Symbol& module, const ModuleCounts& counts)
 {
     module.properties["native.symbolCount"] = std::to_string(counts.symbolCount);
     module.properties["native.edgeCount"] = std::to_string(counts.edgeCount);
     module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
     module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
+    module.properties["native.publicSymbolCount"] = std::to_string(counts.publicSymbolCount);
+    module.properties["native.privateSymbolCount"] = std::to_string(counts.privateSymbolCount);
+    module.properties["native.internalSymbolCount"] = std::to_string(counts.internalSymbolCount);
 }
 
 void NativeGraphFinalizer::AddFileEdgeCount(
@@ -162,6 +193,12 @@ void NativeGraphFinalizer::WriteFileCounts(Symbol& file, const FileCounts& count
 {
     file.properties["native.declaredSymbolCount"] =
         std::to_string(counts.declaredSymbolCount);
+    file.properties["native.publicDeclaredSymbolCount"] =
+        std::to_string(counts.publicDeclaredSymbolCount);
+    file.properties["native.privateDeclaredSymbolCount"] =
+        std::to_string(counts.privateDeclaredSymbolCount);
+    file.properties["native.internalDeclaredSymbolCount"] =
+        std::to_string(counts.internalDeclaredSymbolCount);
     file.properties["native.fileOutgoingReferenceEdgeCount"] =
         std::to_string(counts.outgoingReferenceEdgeCount);
     file.properties["native.fileIncomingReferenceEdgeCount"] =
