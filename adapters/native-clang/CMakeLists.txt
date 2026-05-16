@@ -20,6 +20,8 @@ if (NOT EXISTS "${LIBCLANG_LIBRARY}")
 endif()
 
 add_executable(lifeblood-native-clang
+    src/ClangCommandLineMacroCollector.cpp
+    src/ClangCommandLineMacroCollector.h
     src/ClangCompilationDatabase.cpp
     src/ClangCompilationDatabase.h
     src/ClangCompileCommandReader.cpp
