@@ -5,6 +5,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeKindNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
@@ -51,7 +52,7 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
     symbol.parentId = "file:" + *file;
     symbol.visibility = storage == CX_SC_Static ? "private" : "public";
     symbol.isStatic = storage == CX_SC_Static;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "function";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Function;
     symbol.properties[NativeGraphPropertyKeys::DeclarationKind] =
         isDefinition ? "definition" : "declaration";
     symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";

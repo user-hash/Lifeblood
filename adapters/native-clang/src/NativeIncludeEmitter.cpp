@@ -4,6 +4,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeKindNames.h"
 
 #include <filesystem>
 #include <utility>
@@ -44,7 +45,7 @@ void NativeIncludeEmitter::AddInclude(CXCursor cursor)
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
-    edge.properties[NativeGraphPropertyKeys::NativeKind] = "include";
+    edge.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Include;
     edge.properties["native.include"] = fs::path(*includedPath).filename().string();
     edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);

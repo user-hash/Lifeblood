@@ -1,6 +1,7 @@
 #include "NativeEdgeClassification.h"
 
 #include "NativeGraphFacts.h"
+#include "NativeKindNames.h"
 #include "NativeReferenceKinds.h"
 
 namespace lifeblood::native_clang
@@ -12,7 +13,7 @@ NativeReferenceEdgeClassification NativeEdgeClassification::Reference(const Edge
     if (!classification.isReference)
         return classification;
 
-    classification.isInclude = NativeGraphFacts::HasNativeEdgeKind(edge, "include");
+    classification.isInclude = NativeGraphFacts::HasNativeEdgeKind(edge, NativeKindNames::Include);
     classification.isGlobalAccess = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::GlobalAccess);
     classification.isFieldAccess = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::FieldAccess);
     classification.isParameterType = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::ParameterType);

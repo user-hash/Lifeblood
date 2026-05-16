@@ -1,5 +1,6 @@
 #include "NativeAstVisitor.h"
 
+#include "NativeKindNames.h"
 #include "NativeSymbolIds.h"
 
 namespace lifeblood::native_clang
@@ -56,15 +57,15 @@ NativeAstVisitor::VisitState NativeAstVisitor::ProcessCursor(
             preprocessor_.AddMacroExpansion(cursor);
             break;
         case CXCursor_StructDecl:
-            if (declarations_.AddRecordType(cursor, "struct"))
+            if (declarations_.AddRecordType(cursor, NativeKindNames::Struct))
                 state.currentTypeId = TypeId(cursor);
             break;
         case CXCursor_UnionDecl:
-            if (declarations_.AddRecordType(cursor, "union"))
+            if (declarations_.AddRecordType(cursor, NativeKindNames::Union))
                 state.currentTypeId = TypeId(cursor);
             break;
         case CXCursor_EnumDecl:
-            if (declarations_.AddRecordType(cursor, "enum"))
+            if (declarations_.AddRecordType(cursor, NativeKindNames::Enum))
                 state.currentTypeId = TypeId(cursor);
             break;
         case CXCursor_EnumConstantDecl:
@@ -112,7 +113,7 @@ void NativeAstVisitor::ProcessEnumConstant(CXCursor cursor, const VisitState& st
     CXCursor parent = clang_getCursorSemanticParent(cursor);
     if (clang_Cursor_isNull(parent) || clang_getCursorKind(parent) != CXCursor_EnumDecl)
         return;
-    if (!declarations_.AddRecordType(parent, "enum")) return;
+    if (!declarations_.AddRecordType(parent, NativeKindNames::Enum)) return;
 
     declarations_.AddEnumConstant(cursor, TypeId(parent));
 }

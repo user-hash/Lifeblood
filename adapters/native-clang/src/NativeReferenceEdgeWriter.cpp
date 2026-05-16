@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeKindNames.h"
 
 #include <utility>
 
@@ -71,7 +72,8 @@ void NativeReferenceEdgeWriter::AddReference(
 void NativeReferenceEdgeWriter::MarkCallbackTable(const std::string& symbolId)
 {
     graph_.UpdateSymbol(symbolId, [](Symbol& symbol) {
-        symbol.properties[NativeGraphPropertyKeys::NativeKind] = "callbackTable";
+        symbol.properties[NativeGraphPropertyKeys::NativeKind] =
+            NativeKindNames::CallbackTable;
         symbol.properties["native.callbackTable"] = "true";
     });
 }
