@@ -36,6 +36,18 @@ void NativeModuleTracker::BeginTranslationUnit(const NativeCompileCommand& comma
     UpdateModuleProperties();
 }
 
+void NativeModuleTracker::RecordTranslationUnitParsed()
+{
+    parsedTranslationUnitCount_++;
+    UpdateModuleProperties();
+}
+
+void NativeModuleTracker::RecordTranslationUnitFailed()
+{
+    failedTranslationUnitCount_++;
+    UpdateModuleProperties();
+}
+
 void NativeModuleTracker::AddModuleSymbol()
 {
     Symbol module;
@@ -69,6 +81,12 @@ void NativeModuleTracker::UpdateModuleProperties()
 {
     graph_.UpdateSymbol(moduleId_, [this](Symbol& module) {
         module.properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
+        module.properties["native.parsedTranslationUnitCount"] =
+            std::to_string(parsedTranslationUnitCount_);
+        module.properties["native.failedTranslationUnitCount"] =
+            std::to_string(failedTranslationUnitCount_);
+        module.properties["native.parseStatus"] =
+            failedTranslationUnitCount_ == 0 ? "complete" : "partial";
         if (!commandLineDefines_.empty())
             module.properties["native.defines"] = JoinDefines();
         if (!commandLineUndefines_.empty())

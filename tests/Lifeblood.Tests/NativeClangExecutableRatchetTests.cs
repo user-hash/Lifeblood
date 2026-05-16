@@ -29,6 +29,7 @@ public class NativeClangExecutableRatchetTests
         Assert.NotNull(graph.GetSymbol("method:decode(Packet*)"));
         Assert.NotNull(graph.GetSymbol("method:clamp(int)"));
 
+        AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertEdge(graph, "file:src/decode.c", "file:src/packet.h", EdgeKind.References);
         AssertReferenceKind(graph, "method:decode(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.size", "fieldAccess");
@@ -61,6 +62,8 @@ public class NativeClangExecutableRatchetTests
         Assert.Null(audio.GetSymbol("method:decode_video(Packet*)"));
         Assert.Null(audio.GetSymbol("method:scale_video(int)"));
 
+        AssertModuleParseHealth(video, "mod:profile-c", total: 1, parsed: 1, failed: 0);
+        AssertModuleParseHealth(audio, "mod:profile-c", total: 1, parsed: 1, failed: 0);
         AssertCall(video, "method:decode_video(Packet*)", "method:scale_video(int)");
         AssertCall(audio, "method:decode_audio(Packet*)", "method:scale_audio(int)");
         AssertAllNativeFactsCarryBuildProfile(video, "video");
@@ -78,6 +81,7 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("callbackTable", table!.Properties["native.kind"]);
         Assert.Equal("true", table.Properties["native.callbackTable"]);
 
+        AssertModuleParseHealth(graph, "mod:callback-table-c", total: 1, parsed: 1, failed: 0);
         AssertReferenceKind(
             graph,
             "field:codec_table",
@@ -207,6 +211,21 @@ public class NativeClangExecutableRatchetTests
             if (edge.Properties.Keys.Any(key => key.StartsWith("native.", StringComparison.Ordinal)))
                 Assert.Equal(profile, edge.Properties["native.buildProfile"]);
         }
+    }
+
+    private static void AssertModuleParseHealth(
+        SemanticGraph graph,
+        string moduleId,
+        int total,
+        int parsed,
+        int failed)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(total.ToString(), module!.Properties["native.translationUnitCount"]);
+        Assert.Equal(parsed.ToString(), module.Properties["native.parsedTranslationUnitCount"]);
+        Assert.Equal(failed.ToString(), module.Properties["native.failedTranslationUnitCount"]);
+        Assert.Equal(failed == 0 ? "complete" : "partial", module.Properties["native.parseStatus"]);
     }
 
     private static string FindRepoRoot()
