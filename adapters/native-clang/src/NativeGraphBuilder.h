@@ -27,8 +27,6 @@ public:
         const std::function<void(Symbol&)>& update) override;
 
 private:
-    static std::string EdgeRole(const Edge& edge);
-
     NativeGraph& graph_;
     std::set<std::tuple<std::string, std::string, std::string, std::string>> edgeKeys_;
     NativeReferenceMetrics referenceMetrics_;
