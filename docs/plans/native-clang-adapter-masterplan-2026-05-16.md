@@ -1,6 +1,8 @@
 # Native Clang Adapter Masterplan
 
-**Status:** Stage 0 architectural charter. No runtime code shipped yet.
+**Status:** Stage 1 bootstrap underway. The adapter boundary is chartered, a
+tiny C fixture contract exists, and a minimal `libclang` executable now emits a
+graph for that fixture.
 
 **Owner:** Native C/C++ track. This document is the contract for adding
 Clang-backed analysis without weakening Lifeblood's existing hexagonal
@@ -10,10 +12,10 @@ boundaries.
 16,316 edges, 11 modules, 0 violations, 0 cycles. `lifeblood_invariant_check`
 reports 101 invariants, 0 duplicates, 0 parse warnings.
 
-**Local native toolchain state:** `.NET SDK 8.0.419` is installed. `clang` and
-`cmake` are not on PATH on this machine yet. Stage 0 deliberately avoids a hard
-toolchain dependency; Stage 1 starts by installing or locating LLVM/Clang and
-CMake before adding buildable adapter code.
+**Local native toolchain state:** `.NET SDK 8.0.419` is installed. LLVM 22.1.5,
+CMake 3.31.6-msvc6, Ninja 1.12.1, MSVC Build Tools, and Windows SDK `rc.exe`
+are available by absolute path. The official LLVM installer exposes `libclang`
+but not the C++ LibTooling development surface.
 
 ---
 

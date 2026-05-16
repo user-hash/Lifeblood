@@ -45,6 +45,33 @@ The tiny fixture parses successfully:
 
 Exit code: `0`.
 
+## Verified Native Adapter Build
+
+The Stage 1 executable builds when CMake is launched from the Visual Studio
+developer environment. A plain shell can find `clang++.exe` but may not have the
+MSVC and Windows SDK library paths needed for linking.
+
+Verified build shape:
+
+```powershell
+cmd /c 'call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -S adapters/native-clang -B artifacts/native-clang-build -G Ninja -DCMAKE_MAKE_PROGRAM="C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe" -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe" -DCMAKE_RC_COMPILER="C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe" && "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build artifacts/native-clang-build'
+```
+
+Verified run shape:
+
+```powershell
+artifacts/native-clang-build/lifeblood-native-clang.exe `
+  --project adapters/native-clang/test-fixtures/tiny-c `
+  --profile tiny-debug `
+  --out artifacts/native-clang-build/tiny.graph.json
+
+dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang-build/tiny.graph.json
+```
+
+The graph import reports 7 symbols, 10 edges, 1 module, and 1 type. The edge
+count includes graph-builder synthesis such as containment and derived file
+edges.
+
 ## Available Clang API Surface
 
 The official Windows LLVM installer includes the C API:
