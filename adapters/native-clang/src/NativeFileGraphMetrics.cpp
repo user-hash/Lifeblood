@@ -38,7 +38,7 @@ void NativeFileGraphMetrics::Write()
 {
     for (auto& [id, symbol] : graph_.symbols)
     {
-        WriteCrossFileCallCounts(symbol);
+        WriteSymbolCallCounts(symbol);
 
         if (symbol.kind != "file") continue;
 
@@ -118,6 +118,8 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
         else if (sourceFileId && targetFileId)
         {
             counts_[*sourceFileId].localCallEdgeCount++;
+            sameFileCallOutCounts_[edge.sourceId]++;
+            sameFileCallInCounts_[edge.targetId]++;
         }
     }
 }
@@ -184,8 +186,18 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
         std::to_string(counts.incomingCrossFileCallEdgeCount);
 }
 
-void NativeFileGraphMetrics::WriteCrossFileCallCounts(Symbol& symbol) const
+void NativeFileGraphMetrics::WriteSymbolCallCounts(Symbol& symbol) const
 {
+    auto sameFileOutgoing = sameFileCallOutCounts_.find(symbol.id);
+    if (sameFileOutgoing != sameFileCallOutCounts_.end())
+        symbol.properties["native.sameFileDirectCallOutCount"] =
+            std::to_string(sameFileOutgoing->second);
+
+    auto sameFileIncoming = sameFileCallInCounts_.find(symbol.id);
+    if (sameFileIncoming != sameFileCallInCounts_.end())
+        symbol.properties["native.sameFileDirectCallInCount"] =
+            std::to_string(sameFileIncoming->second);
+
     auto outgoing = crossFileCallOutCounts_.find(symbol.id);
     if (outgoing != crossFileCallOutCounts_.end())
         symbol.properties["native.crossFileDirectCallOutCount"] = std::to_string(outgoing->second);

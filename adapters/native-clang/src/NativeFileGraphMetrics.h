@@ -52,11 +52,13 @@ private:
     void AddFileEdgeCount(const Edge& edge);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
     static void WriteFileCounts(Symbol& file, const Counts& counts);
-    void WriteCrossFileCallCounts(Symbol& symbol) const;
+    void WriteSymbolCallCounts(Symbol& symbol) const;
 
     NativeGraph& graph_;
     const NativeGraphOwnershipIndex& ownership_;
     std::map<std::string, Counts> counts_;
+    std::map<std::string, unsigned> sameFileCallOutCounts_;
+    std::map<std::string, unsigned> sameFileCallInCounts_;
     std::map<std::string, unsigned> crossFileCallOutCounts_;
     std::map<std::string, unsigned> crossFileCallInCounts_;
 };
