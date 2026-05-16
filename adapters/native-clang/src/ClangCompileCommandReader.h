@@ -1,5 +1,7 @@
 #pragma once
 
+#include "NativeCompileCommand.h"
+
 #include <clang-c/CXCompilationDatabase.h>
 
 #include <filesystem>
@@ -8,21 +10,6 @@
 
 namespace lifeblood::native_clang
 {
-struct CommandLineDefine
-{
-    std::string name;
-    std::string value;
-};
-
-struct NativeCompileCommand
-{
-    std::filesystem::path directory;
-    std::filesystem::path sourcePath;
-    std::vector<std::string> parseArguments;
-    std::vector<CommandLineDefine> defines;
-    std::vector<std::string> undefines;
-};
-
 class ClangCompileCommandReader
 {
 public:
