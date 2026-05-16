@@ -21,6 +21,8 @@ public:
     const std::string& ModuleId() const { return moduleId_; }
 
     void BeginTranslationUnit(const NativeCompileCommand& command);
+    void RecordTranslationUnitParsed();
+    void RecordTranslationUnitFailed();
 
 private:
     void AddModuleSymbol();
@@ -37,6 +39,8 @@ private:
     std::string buildProfile_;
     NativeGraphSink& graph_;
     unsigned translationUnitCount_ = 0;
+    unsigned parsedTranslationUnitCount_ = 0;
+    unsigned failedTranslationUnitCount_ = 0;
     std::map<std::string, std::string> commandLineDefines_;
     std::set<std::string> commandLineUndefines_;
 };

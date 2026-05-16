@@ -67,8 +67,13 @@ bool NativeExtractionSession::ParseCommand(CXIndex index, CXCompileCommand comma
     module_.BeginTranslationUnit(compileCommand);
 
     auto unit = unitParser_.Parse(index, compileCommand);
-    if (!unit) return false;
+    if (!unit)
+    {
+        module_.RecordTranslationUnitFailed();
+        return false;
+    }
 
+    module_.RecordTranslationUnitParsed();
     astVisitor_.Visit(clang_getTranslationUnitCursor(unit.Get()), unit.Get());
     return true;
 }
