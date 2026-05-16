@@ -21,8 +21,6 @@ public:
 
     bool AddRecordType(CXCursor cursor, const std::string& nativeKind);
     bool AddTypedefType(CXCursor cursor);
-    bool AddEnumConstant(CXCursor cursor, const std::string& enumTypeId);
-    void AddField(CXCursor cursor, const std::string& ownerTypeId);
     void AddTypeReference(
         const std::string& sourceId,
         CXCursor evidenceCursor,

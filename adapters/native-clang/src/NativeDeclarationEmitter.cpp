@@ -9,6 +9,7 @@ NativeDeclarationEmitter::NativeDeclarationEmitter(
     const ClangSourceMapper& sourceMap,
     NativeFileRegistry& files)
     : types_(buildProfile, graph, sourceMap, files),
+      typeMembers_(buildProfile, graph, sourceMap, files, types_),
       globals_(buildProfile, graph, sourceMap, files, types_),
       functions_(std::move(buildProfile), graph, sourceMap, files, types_)
 {
@@ -26,12 +27,12 @@ bool NativeDeclarationEmitter::AddTypedefType(CXCursor cursor)
 
 bool NativeDeclarationEmitter::AddEnumConstant(CXCursor cursor, const std::string& enumTypeId)
 {
-    return types_.AddEnumConstant(cursor, enumTypeId);
+    return typeMembers_.AddEnumConstant(cursor, enumTypeId);
 }
 
 void NativeDeclarationEmitter::AddField(CXCursor cursor, const std::string& ownerTypeId)
 {
-    types_.AddField(cursor, ownerTypeId);
+    typeMembers_.AddField(cursor, ownerTypeId);
 }
 
 bool NativeDeclarationEmitter::AddGlobalVariable(CXCursor cursor)
