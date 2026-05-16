@@ -6,7 +6,8 @@ NativeModuleGraphMetrics::NativeModuleGraphMetrics(
     NativeGraph& graph,
     const NativeGraphOwnershipIndex& ownership)
     : graph_(graph),
-      ownership_(ownership)
+      ownership_(ownership),
+      declaredSurface_(graph, ownership)
 {
 }
 
@@ -28,7 +29,7 @@ void NativeModuleGraphMetrics::ObserveSymbol(
     NativeVisibilityCounter::Add(counts.visibility, symbol);
     AddFunctionDeclarationCount(counts, symbol);
     NativeKindInventory::AddSymbol(counts.nativeKinds, symbol);
-    AddFileBucketDeclaredCount(counts, symbolId, symbol);
+    declaredSurface_.AddSymbol(counts.declaredSurface, symbolId, symbol);
 }
 
 void NativeModuleGraphMetrics::ObserveEdge(const Edge& edge)
@@ -91,25 +92,6 @@ void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const
         counts.functionDefinitionCount++;
 }
 
-void NativeModuleGraphMetrics::AddFileBucketDeclaredCount(
-    Counts& counts,
-    const std::string& symbolId,
-    const Symbol& symbol) const
-{
-    if (symbol.kind == "file") return;
-
-    auto fileId = ownership_.OwningFileId(symbolId);
-    if (!fileId) return;
-
-    auto file = graph_.symbols.find(*fileId);
-    if (file == graph_.symbols.end()) return;
-
-    if (NativeGraphFacts::HasNativeKind(file->second, "header"))
-        counts.headerDeclaredSymbolCount++;
-    else if (NativeGraphFacts::HasNativeKind(file->second, "translationUnit"))
-        counts.translationUnitDeclaredSymbolCount++;
-}
-
 void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
 {
     module.properties["native.symbolCount"] = std::to_string(counts.symbolCount);
@@ -133,10 +115,7 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
         std::to_string(counts.functionDefinitionCount);
     module.properties["native.functionDeclarationCount"] =
         std::to_string(counts.functionDeclarationCount);
-    module.properties["native.headerDeclaredSymbolCount"] =
-        std::to_string(counts.headerDeclaredSymbolCount);
-    module.properties["native.translationUnitDeclaredSymbolCount"] =
-        std::to_string(counts.translationUnitDeclaredSymbolCount);
+    NativeDeclaredSurfaceInventory::WriteModuleProperties(module, counts.declaredSurface);
     NativeKindInventory::WriteModuleProperties(module, counts.nativeKinds);
     NativeVisibilityCounter::Write(
         module,
