@@ -32,6 +32,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
+        AssertModuleDeclaredSurface(graph, "mod:tiny-c", headers: 3, translationUnits: 2);
         AssertModuleCallInventory(graph, "mod:tiny-c", sameFileCalls: 1, crossFileCalls: 0);
         AssertModuleIncludeInventory(graph, "mod:tiny-c", includeEdges: 1);
         AssertModuleFunctionInventory(graph, "mod:tiny-c", definitions: 2, declarations: 0);
@@ -160,6 +161,7 @@ public class NativeClangExecutableRatchetTests
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:direct-refs-c", total: 1, parsed: 1, failed: 0);
         AssertModuleGraphInventory(graph, "mod:direct-refs-c", symbols: 13, edges: 9, references: 8, calls: 1);
+        AssertModuleDeclaredSurface(graph, "mod:direct-refs-c", headers: 8, translationUnits: 3);
         AssertModuleFunctionInventory(graph, "mod:direct-refs-c", definitions: 2, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:direct-refs-c", macros: 1, globals: 1);
         AssertModuleReferenceKindInventory(
@@ -717,6 +719,20 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(edges.ToString(), module.Properties["native.edgeCount"]);
         Assert.Equal(references.ToString(), module.Properties["native.referenceEdgeCount"]);
         Assert.Equal(calls.ToString(), module.Properties["native.callEdgeCount"]);
+    }
+
+    private static void AssertModuleDeclaredSurface(
+        SemanticGraph graph,
+        string moduleId,
+        int headers,
+        int translationUnits)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(headers.ToString(), module!.Properties["native.headerDeclaredSymbolCount"]);
+        Assert.Equal(
+            translationUnits.ToString(),
+            module.Properties["native.translationUnitDeclaredSymbolCount"]);
     }
 
     private static void AssertModuleVisibilityInventory(
