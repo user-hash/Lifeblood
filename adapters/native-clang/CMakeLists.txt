@@ -55,6 +55,7 @@ add_executable(lifeblood-native-clang
     src/NativeMacroEmitter.h
     src/NativeDeclarationEmitter.cpp
     src/NativeDeclarationEmitter.h
+    src/NativeDiagnosticSummary.h
     src/NativeExtractionSession.cpp
     src/NativeExtractionSession.h
     src/NativeFunctionEmitter.cpp

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NativeCompileCommand.h"
+#include "NativeDiagnosticSummary.h"
 #include "NativeGraphSink.h"
 
 #include <map>
@@ -21,7 +22,7 @@ public:
     const std::string& ModuleId() const { return moduleId_; }
 
     void BeginTranslationUnit(const NativeCompileCommand& command);
-    void RecordTranslationUnitParsed();
+    void RecordTranslationUnitParsed(const NativeDiagnosticSummary& diagnostics);
     void RecordTranslationUnitFailed();
 
 private:
@@ -41,6 +42,7 @@ private:
     unsigned translationUnitCount_ = 0;
     unsigned parsedTranslationUnitCount_ = 0;
     unsigned failedTranslationUnitCount_ = 0;
+    NativeDiagnosticSummary diagnostics_;
     std::map<std::string, std::string> commandLineDefines_;
     std::set<std::string> commandLineUndefines_;
 };
