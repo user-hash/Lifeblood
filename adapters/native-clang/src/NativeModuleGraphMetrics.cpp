@@ -55,9 +55,9 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) co
     if (edge.kind == "references")
     {
         counts.referenceEdgeCount++;
-        if (HasNativeEdgeKind(edge, "include"))
+        if (NativeGraphFacts::HasNativeEdgeKind(edge, "include"))
             counts.includeEdgeCount++;
-        if (HasReferenceKind(edge, "callbackTarget"))
+        if (NativeGraphFacts::HasReferenceKind(edge, "callbackTarget"))
             counts.callbackTargetEdgeCount++;
     }
     else if (edge.kind == "calls")
@@ -72,46 +72,20 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) co
 
 void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol)
 {
-    auto nativeKind = symbol.properties.find("native.kind");
-    if (nativeKind == symbol.properties.end() || nativeKind->second != "function")
+    if (!NativeGraphFacts::HasNativeKind(symbol, "function"))
         return;
 
-    auto declarationKind = symbol.properties.find("native.declarationKind");
-    if (declarationKind != symbol.properties.end() && declarationKind->second == "declaration")
+    if (NativeGraphFacts::HasDeclarationKind(symbol, "declaration"))
         counts.functionDeclarationCount++;
     else
         counts.functionDefinitionCount++;
 }
 
-bool NativeModuleGraphMetrics::HasNativeKind(
-    const Symbol& symbol,
-    const std::string& nativeKind)
-{
-    auto value = symbol.properties.find("native.kind");
-    return value != symbol.properties.end() && value->second == nativeKind;
-}
-
-bool NativeModuleGraphMetrics::HasNativeEdgeKind(
-    const Edge& edge,
-    const std::string& nativeKind)
-{
-    auto value = edge.properties.find("native.kind");
-    return value != edge.properties.end() && value->second == nativeKind;
-}
-
-bool NativeModuleGraphMetrics::HasReferenceKind(
-    const Edge& edge,
-    const std::string& referenceKind)
-{
-    auto value = edge.properties.find("native.referenceKind");
-    return value != edge.properties.end() && value->second == referenceKind;
-}
-
 void NativeModuleGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& symbol)
 {
-    if (HasNativeKind(symbol, "macro"))
+    if (NativeGraphFacts::HasNativeKind(symbol, "macro"))
         counts.macroCount++;
-    if (HasNativeKind(symbol, "callbackTable"))
+    if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
         counts.callbackTableCount++;
 }
 

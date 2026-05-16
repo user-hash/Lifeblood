@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphModel.h"
+#include "NativeGraphFacts.h"
 #include "NativeGraphOwnershipIndex.h"
 #include "NativeVisibilityCounts.h"
 
@@ -36,9 +37,6 @@ private:
         NativeVisibilityCounts visibility;
     };
 
-    static bool HasNativeKind(const Symbol& symbol, const std::string& nativeKind);
-    static bool HasNativeEdgeKind(const Edge& edge, const std::string& nativeKind);
-    static bool HasReferenceKind(const Edge& edge, const std::string& referenceKind);
     static void AddNativeKindCounts(Counts& counts, const Symbol& symbol);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
     void AddEdgeCount(Counts& counts, const Edge& edge) const;
