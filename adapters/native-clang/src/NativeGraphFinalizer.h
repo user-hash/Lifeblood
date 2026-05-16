@@ -2,6 +2,7 @@
 
 #include "GraphModel.h"
 #include "NativeGraphOwnershipIndex.h"
+#include "NativeVisibilityCounts.h"
 
 #include <map>
 #include <string>
@@ -20,17 +21,13 @@ private:
         unsigned edgeCount = 0;
         unsigned referenceEdgeCount = 0;
         unsigned callEdgeCount = 0;
-        unsigned publicSymbolCount = 0;
-        unsigned privateSymbolCount = 0;
-        unsigned internalSymbolCount = 0;
+        NativeVisibilityCounts visibility;
     };
 
     struct FileCounts
     {
         unsigned declaredSymbolCount = 0;
-        unsigned publicDeclaredSymbolCount = 0;
-        unsigned privateDeclaredSymbolCount = 0;
-        unsigned internalDeclaredSymbolCount = 0;
+        NativeVisibilityCounts declaredVisibility;
         unsigned outgoingReferenceEdgeCount = 0;
         unsigned incomingReferenceEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;
@@ -40,11 +37,6 @@ private:
     };
 
     static void AddEdgeCount(ModuleCounts& counts, const Edge& edge);
-    static void AddVisibilityCount(
-        unsigned& publicCount,
-        unsigned& privateCount,
-        unsigned& internalCount,
-        const Symbol& symbol);
     static void WriteModuleCounts(Symbol& module, const ModuleCounts& counts);
     static void AddFileEdgeCount(
         std::map<std::string, FileCounts>& fileCounts,

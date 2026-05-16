@@ -86,6 +86,8 @@ add_executable(lifeblood-native-clang
     src/NativeTypeEmitter.h
     src/NativeTypeMemberEmitter.cpp
     src/NativeTypeMemberEmitter.h
+    src/NativeVisibilityCounts.cpp
+    src/NativeVisibilityCounts.h
     src/Options.h
     src/main.cpp
 )
