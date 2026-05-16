@@ -3,9 +3,8 @@
 #include "NativeCompileCommand.h"
 #include "NativeDiagnosticSummary.h"
 #include "NativeGraphSink.h"
+#include "NativeModuleBuildSummary.h"
 
-#include <map>
-#include <set>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -30,25 +29,10 @@ private:
     void AddCommandLineMacroSymbol(const CommandLineDefine& define);
     void UpdateModuleProperties();
 
-    std::string JoinDefines() const;
-
-    template <typename T>
-    std::string Join(const T& values) const;
-
     std::string moduleName_;
     std::string moduleId_;
     std::string buildProfile_;
     NativeGraphSink& graph_;
-    unsigned translationUnitCount_ = 0;
-    unsigned parsedTranslationUnitCount_ = 0;
-    unsigned failedTranslationUnitCount_ = 0;
-    NativeDiagnosticSummary diagnostics_;
-    std::map<std::string, std::string> commandLineDefines_;
-    std::set<std::string> commandLineUndefines_;
-    std::set<std::string> sourceLanguages_;
-    std::set<std::string> languageStandards_;
-    unsigned includeSearchPathCount_ = 0;
-    unsigned systemIncludeSearchPathCount_ = 0;
-    unsigned quoteIncludeSearchPathCount_ = 0;
+    NativeModuleBuildSummary buildSummary_;
 };
 }
