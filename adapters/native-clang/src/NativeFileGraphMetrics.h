@@ -7,6 +7,7 @@
 #include "NativeKindInventory.h"
 #include "NativeVisibilityCounts.h"
 
+#include <array>
 #include <map>
 #include <optional>
 #include <string>
@@ -52,6 +53,12 @@ private:
     };
 
     using CountMember = unsigned Counts::*;
+
+    struct CountProperty
+    {
+        const char* property;
+        CountMember value;
+    };
 
     void AddFileEdgeCount(const Edge& edge);
     void AddReferenceFileEdgeCounts(

@@ -1,6 +1,7 @@
 #include "NativeFileGraphMetrics.h"
 
 #include "NativeFunctionDeclarationClassifier.h"
+#include "NativePropertyWriter.h"
 
 namespace lifeblood::native_clang
 {
@@ -154,53 +155,42 @@ void NativeFileGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const S
 
 void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
 {
-    file.properties["native.declaredSymbolCount"] =
-        std::to_string(counts.declaredSymbolCount);
+    constexpr std::array<CountProperty, 20> countProperties{{
+        { "native.declaredSymbolCount", &Counts::declaredSymbolCount },
+        { "native.fileFunctionDefinitionCount", &Counts::functionDefinitionCount },
+        { "native.fileFunctionDeclarationCount", &Counts::functionDeclarationCount },
+        { "native.fileOutgoingReferenceEdgeCount", &Counts::outgoingReferenceEdgeCount },
+        { "native.fileIncomingReferenceEdgeCount", &Counts::incomingReferenceEdgeCount },
+        { "native.fileOutgoingIncludeEdgeCount", &Counts::outgoingIncludeEdgeCount },
+        { "native.fileIncomingIncludeEdgeCount", &Counts::incomingIncludeEdgeCount },
+        { "native.fileOutgoingGlobalAccessEdgeCount", &Counts::outgoingGlobalAccessEdgeCount },
+        { "native.fileIncomingGlobalAccessEdgeCount", &Counts::incomingGlobalAccessEdgeCount },
+        { "native.fileOutgoingFieldAccessEdgeCount", &Counts::outgoingFieldAccessEdgeCount },
+        { "native.fileIncomingFieldAccessEdgeCount", &Counts::incomingFieldAccessEdgeCount },
+        { "native.fileOutgoingParameterTypeEdgeCount", &Counts::outgoingParameterTypeEdgeCount },
+        { "native.fileIncomingParameterTypeEdgeCount", &Counts::incomingParameterTypeEdgeCount },
+        { "native.fileOutgoingCallbackTargetEdgeCount", &Counts::outgoingCallbackTargetEdgeCount },
+        { "native.fileIncomingCallbackTargetEdgeCount", &Counts::incomingCallbackTargetEdgeCount },
+        { "native.fileOutgoingCallEdgeCount", &Counts::outgoingCallEdgeCount },
+        { "native.fileIncomingCallEdgeCount", &Counts::incomingCallEdgeCount },
+        { "native.fileLocalCallEdgeCount", &Counts::localCallEdgeCount },
+        { "native.fileOutgoingCrossFileCallEdgeCount", &Counts::outgoingCrossFileCallEdgeCount },
+        { "native.fileIncomingCrossFileCallEdgeCount", &Counts::incomingCrossFileCallEdgeCount },
+    }};
+
+    for (const auto& countProperty : countProperties)
+        NativePropertyWriter::SetCount(
+            file,
+            countProperty.property,
+            counts.*countProperty.value);
+
     NativeVisibilityCounter::Write(
         file,
         counts.declaredVisibility,
         "native.publicDeclaredSymbolCount",
         "native.privateDeclaredSymbolCount",
         "native.internalDeclaredSymbolCount");
-    file.properties["native.fileFunctionDefinitionCount"] =
-        std::to_string(counts.functionDefinitionCount);
-    file.properties["native.fileFunctionDeclarationCount"] =
-        std::to_string(counts.functionDeclarationCount);
     NativeKindInventory::WriteFileProperties(file, counts.nativeKinds);
-    file.properties["native.fileOutgoingReferenceEdgeCount"] =
-        std::to_string(counts.outgoingReferenceEdgeCount);
-    file.properties["native.fileIncomingReferenceEdgeCount"] =
-        std::to_string(counts.incomingReferenceEdgeCount);
-    file.properties["native.fileOutgoingIncludeEdgeCount"] =
-        std::to_string(counts.outgoingIncludeEdgeCount);
-    file.properties["native.fileIncomingIncludeEdgeCount"] =
-        std::to_string(counts.incomingIncludeEdgeCount);
-    file.properties["native.fileOutgoingGlobalAccessEdgeCount"] =
-        std::to_string(counts.outgoingGlobalAccessEdgeCount);
-    file.properties["native.fileIncomingGlobalAccessEdgeCount"] =
-        std::to_string(counts.incomingGlobalAccessEdgeCount);
-    file.properties["native.fileOutgoingFieldAccessEdgeCount"] =
-        std::to_string(counts.outgoingFieldAccessEdgeCount);
-    file.properties["native.fileIncomingFieldAccessEdgeCount"] =
-        std::to_string(counts.incomingFieldAccessEdgeCount);
-    file.properties["native.fileOutgoingParameterTypeEdgeCount"] =
-        std::to_string(counts.outgoingParameterTypeEdgeCount);
-    file.properties["native.fileIncomingParameterTypeEdgeCount"] =
-        std::to_string(counts.incomingParameterTypeEdgeCount);
-    file.properties["native.fileOutgoingCallbackTargetEdgeCount"] =
-        std::to_string(counts.outgoingCallbackTargetEdgeCount);
-    file.properties["native.fileIncomingCallbackTargetEdgeCount"] =
-        std::to_string(counts.incomingCallbackTargetEdgeCount);
-    file.properties["native.fileOutgoingCallEdgeCount"] =
-        std::to_string(counts.outgoingCallEdgeCount);
-    file.properties["native.fileIncomingCallEdgeCount"] =
-        std::to_string(counts.incomingCallEdgeCount);
-    file.properties["native.fileLocalCallEdgeCount"] =
-        std::to_string(counts.localCallEdgeCount);
-    file.properties["native.fileOutgoingCrossFileCallEdgeCount"] =
-        std::to_string(counts.outgoingCrossFileCallEdgeCount);
-    file.properties["native.fileIncomingCrossFileCallEdgeCount"] =
-        std::to_string(counts.incomingCrossFileCallEdgeCount);
 }
 
 void NativeFileGraphMetrics::WriteSymbolCallCounts(Symbol& symbol) const
