@@ -119,11 +119,13 @@ pressure metrics. Partial-parse tolerant. The extractor emits diagnostic
 health counts rather than failing closed when a translation unit has parse
 errors.
 
-Fixture coverage (under `adapters/native-clang/test-fixtures/`): `tiny-c`,
-`direct-refs-c`, `multi-tu-c`, `cross-tu-c`, `callback-table-c`, `profile-c`,
-`partial-parse-c`, `warning-c`, `return-type-c`. Each fixture has an
-`expected.graph.json` pinned by `NativeClangAdapterContractTests` and an
-executable ratchet in `NativeClangExecutableRatchetTests`.
+Fixture coverage under `adapters/native-clang/test-fixtures/` spans nine
+families. Four carry a checked-in `expected.graph.json` consumed by
+`NativeClangAdapterContractTests`: `tiny-c`, `direct-refs-c`,
+`callback-table-c`, and `profile-c` (the profile fixture carries both
+`expected.audio.graph.json` and `expected.video.graph.json`). The other five
+are executable ratchets only, pinned by `NativeClangExecutableRatchetTests`:
+`multi-tu-c`, `cross-tu-c`, `partial-parse-c`, `warning-c`, `return-type-c`.
 
 FFmpeg reconnaissance lives at `adapters/native-clang/tools/ffmpeg-scout/`
 with its workflow documented in `adapters/native-clang/FFMPEG_SCOUT.md`. The
