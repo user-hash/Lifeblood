@@ -1,7 +1,7 @@
 # Native Clang Adapter
 
-**Status:** Stage 2 direct-reference bootstrap. The `libclang` executable emits
-graphs for tiny direct-call and richer direct-reference C fixtures.
+**Status:** Stage 3 profile/preprocessor bootstrap. The `libclang` executable
+emits graphs for direct-call, direct-reference, and profile-shaped C fixtures.
 
 This adapter will translate C/C++ projects into Lifeblood's universal semantic
 graph using Clang/LLVM as the parser and semantic engine.
@@ -27,7 +27,7 @@ No LLVM or Clang dependency belongs in `Lifeblood.Domain`,
 
 ## Planned Engine
 
-Stage 1/2 uses a small native command-line tool over Clang's API. On the
+Stage 1-3 uses a small native command-line tool over Clang's API. On the
 current Windows machine, the official LLVM installer provides `libclang`
 headers/libs (`clang-c/Index.h`, `clang-c/CXCompilationDatabase.h`,
 `libclang.lib`, `libclang.dll`) but not the full C++ LibTooling development
@@ -119,6 +119,22 @@ artifacts/native-clang-build/lifeblood-native-clang.exe `
 dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang-build/direct-refs.graph.json
 ```
 
+Run the profile-shaped fixture:
+
+```powershell
+artifacts/native-clang-build/lifeblood-native-clang.exe `
+  --project adapters/native-clang/test-fixtures/profile-c `
+  --compilation-database adapters/native-clang/test-fixtures/profile-c/profiles/video `
+  --profile video `
+  --out artifacts/native-clang-build/profile-video.graph.json
+
+artifacts/native-clang-build/lifeblood-native-clang.exe `
+  --project adapters/native-clang/test-fixtures/profile-c `
+  --compilation-database adapters/native-clang/test-fixtures/profile-c/profiles/audio `
+  --profile audio `
+  --out artifacts/native-clang-build/profile-audio.graph.json
+```
+
 ## Source Layout
 
 The Stage 1 executable keeps adapter responsibilities separated:
@@ -168,6 +184,19 @@ The richer `direct-refs-c` fixture adds the next valuable native facts:
 - global variable symbols;
 - function references to globals and enum members.
 
-The generated graph currently imports as 13 symbols, 21 normalized edges,
+The generated graph currently imports as 14 symbols, 22 normalized edges,
 1 module, and 3 types after Lifeblood synthesizes containment and derived file
 edges.
+
+## Profile Fixture
+
+The `profile-c` fixture proves that build flags shape native graphs. The same
+source files are analyzed through two compilation databases:
+
+- `profiles/video` defines `ENABLE_VIDEO=1` and emits `decode_video`.
+- `profiles/audio` defines `ENABLE_AUDIO=1` and emits `decode_audio`.
+
+Command-line defines are surfaced on the module symbol through
+`native.defines`, and both command-line and source macros are represented as
+`field:macro:<name>` symbols. Macro expansions are file-level `References`
+edges with `native.referenceKind=macroExpansion`.

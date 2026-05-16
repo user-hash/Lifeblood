@@ -185,6 +185,51 @@ public class NativeClangAdapterContractTests
         Assert.Contains("method:decode(Packet*)", result.AffectedSymbolIds);
     }
 
+    [Fact]
+    public void ProfileFixtures_SurfaceCommandLineDefinesAndMacroSymbols()
+    {
+        var video = LoadProfileFixture("video").Graph;
+        var audio = LoadProfileFixture("audio").Graph;
+
+        Assert.Empty(GraphValidator.Validate(video));
+        Assert.Empty(GraphValidator.Validate(audio));
+
+        AssertModuleProfile(video, "video", "ENABLE_VIDEO=1;PROFILE_NAME=video");
+        AssertModuleProfile(audio, "audio", "ENABLE_AUDIO=1;PROFILE_NAME=audio");
+
+        AssertSymbol(video, "field:macro:ENABLE_VIDEO", SymbolKind.Field, "macro", "video");
+        AssertSymbol(video, "field:macro:PACKET_BASE", SymbolKind.Field, "macro", "video");
+        AssertSymbol(video, "field:macro:PROFILE_KIND", SymbolKind.Field, "macro", "video");
+        AssertSymbol(audio, "field:macro:ENABLE_AUDIO", SymbolKind.Field, "macro", "audio");
+        AssertSymbol(audio, "field:macro:PACKET_BASE", SymbolKind.Field, "macro", "audio");
+        AssertSymbol(audio, "field:macro:PROFILE_KIND", SymbolKind.Field, "macro", "audio");
+
+        AssertReferenceKind(video, "file:src/codec.c", "field:macro:PROFILE_KIND", "macroExpansion", EvidenceKind.Syntax);
+        AssertReferenceKind(video, "file:src/codec.c", "field:macro:PACKET_BASE", "macroExpansion", EvidenceKind.Syntax);
+        AssertReferenceKind(audio, "file:src/codec.c", "field:macro:PROFILE_KIND", "macroExpansion", EvidenceKind.Syntax);
+        AssertReferenceKind(audio, "file:src/codec.c", "field:macro:PACKET_BASE", "macroExpansion", EvidenceKind.Syntax);
+    }
+
+    [Fact]
+    public void ProfileFixtures_DifferentDefinesProduceDifferentReachableFunctions()
+    {
+        var video = LoadProfileFixture("video").Graph;
+        var audio = LoadProfileFixture("audio").Graph;
+
+        Assert.NotNull(video.GetSymbol("method:decode_video(Packet*)"));
+        Assert.NotNull(video.GetSymbol("method:scale_video(int)"));
+        Assert.Null(video.GetSymbol("method:decode_audio(Packet*)"));
+        Assert.Null(video.GetSymbol("method:scale_audio(int)"));
+
+        Assert.NotNull(audio.GetSymbol("method:decode_audio(Packet*)"));
+        Assert.NotNull(audio.GetSymbol("method:scale_audio(int)"));
+        Assert.Null(audio.GetSymbol("method:decode_video(Packet*)"));
+        Assert.Null(audio.GetSymbol("method:scale_video(int)"));
+
+        AssertEdge(video, "method:decode_video(Packet*)", "method:scale_video(int)", EdgeKind.Calls);
+        AssertEdge(audio, "method:decode_audio(Packet*)", "method:scale_audio(int)", EdgeKind.Calls);
+    }
+
     private static void AssertSymbol(
         SemanticGraph graph,
         string id,
@@ -220,12 +265,25 @@ public class NativeClangAdapterContractTests
         SemanticGraph graph,
         string sourceId,
         string targetId,
-        string referenceKind)
+        string referenceKind,
+        EvidenceKind evidenceKind = EvidenceKind.Semantic)
     {
         var edge = AssertEdge(graph, sourceId, targetId, EdgeKind.References);
-        Assert.Equal(EvidenceKind.Semantic, edge.Evidence.Kind);
+        Assert.Equal(evidenceKind, edge.Evidence.Kind);
         Assert.Equal(ConfidenceLevel.Proven, edge.Evidence.Confidence);
         Assert.Equal(referenceKind, edge.Properties["native.referenceKind"]);
+    }
+
+    private static void AssertModuleProfile(
+        SemanticGraph graph,
+        string profile,
+        string defines)
+    {
+        var module = graph.GetSymbol("mod:profile-c");
+        Assert.NotNull(module);
+        Assert.Equal(profile, module!.Properties["native.buildProfile"]);
+        Assert.Equal("1", module.Properties["native.translationUnitCount"]);
+        Assert.Equal(defines, module.Properties["native.defines"]);
     }
 
     private static void AssertCallSite(
@@ -248,7 +306,13 @@ public class NativeClangAdapterContractTests
     private static GraphDocument LoadDirectRefsFixture()
         => LoadFixture("direct-refs-c");
 
+    private static GraphDocument LoadProfileFixture(string profile)
+        => LoadFixture("profile-c", $"expected.{profile}.graph.json");
+
     private static GraphDocument LoadFixture(string fixtureName)
+        => LoadFixture(fixtureName, "expected.graph.json");
+
+    private static GraphDocument LoadFixture(string fixtureName, string graphFileName)
     {
         var path = Path.Combine(
             FindRepoRoot(),
@@ -256,7 +320,7 @@ public class NativeClangAdapterContractTests
             "native-clang",
             "test-fixtures",
             fixtureName,
-            "expected.graph.json");
+            graphFileName);
 
         using var stream = File.OpenRead(path);
         return new JsonGraphImporter().ImportDocument(stream);

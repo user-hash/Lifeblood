@@ -1,0 +1,304 @@
+{
+  "version": "1.0",
+  "language": "c",
+  "adapter": {
+    "name": "native-clang-fixture",
+    "version": "0.0.0-fixture",
+    "capabilities": {
+      "discoverSymbols": true,
+      "typeResolution": "proven",
+      "callResolution": "proven",
+      "implementationResolution": "none",
+      "crossModuleReferences": "none",
+      "overrideResolution": "none"
+    }
+  },
+  "symbols": [
+    {
+      "id": "mod:profile-c",
+      "name": "profile-c",
+      "qualifiedName": "profile-c",
+      "kind": "module",
+      "properties": {
+        "native.kind": "library",
+        "native.buildProfile": "video",
+        "native.translationUnitCount": "1",
+        "native.defines": "ENABLE_VIDEO=1;PROFILE_NAME=video"
+      }
+    },
+    {
+      "id": "file:src/codec.c",
+      "name": "codec.c",
+      "qualifiedName": "profile-c/src/codec.c",
+      "kind": "file",
+      "filePath": "src/codec.c",
+      "parentId": "mod:profile-c",
+      "properties": {
+        "native.kind": "translationUnit",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "file:src/codec.h",
+      "name": "codec.h",
+      "qualifiedName": "profile-c/src/codec.h",
+      "kind": "file",
+      "filePath": "src/codec.h",
+      "parentId": "mod:profile-c",
+      "properties": {
+        "native.kind": "header",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "field:macro:ENABLE_VIDEO",
+      "name": "ENABLE_VIDEO",
+      "qualifiedName": "ENABLE_VIDEO",
+      "kind": "field",
+      "parentId": "mod:profile-c",
+      "visibility": "internal",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "macro",
+        "native.macroSource": "commandLine",
+        "native.macroValue": "1",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "field:macro:PROFILE_NAME",
+      "name": "PROFILE_NAME",
+      "qualifiedName": "PROFILE_NAME",
+      "kind": "field",
+      "parentId": "mod:profile-c",
+      "visibility": "internal",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "macro",
+        "native.macroSource": "commandLine",
+        "native.macroValue": "video",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "field:macro:PACKET_BASE",
+      "name": "PACKET_BASE",
+      "qualifiedName": "PACKET_BASE",
+      "kind": "field",
+      "filePath": "src/codec.h",
+      "line": 4,
+      "parentId": "file:src/codec.h",
+      "visibility": "internal",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "macro",
+        "native.macroSource": "source",
+        "native.macroValue": "10",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "field:macro:PROFILE_KIND",
+      "name": "PROFILE_KIND",
+      "qualifiedName": "PROFILE_KIND",
+      "kind": "field",
+      "filePath": "src/codec.c",
+      "line": 4,
+      "parentId": "file:src/codec.c",
+      "visibility": "internal",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "macro",
+        "native.macroSource": "source",
+        "native.macroValue": "2",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "type:Packet",
+      "name": "Packet",
+      "qualifiedName": "Packet",
+      "kind": "type",
+      "filePath": "src/codec.h",
+      "line": 6,
+      "parentId": "file:src/codec.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "struct",
+        "native.linkage": "none",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "field:Packet.size",
+      "name": "size",
+      "qualifiedName": "Packet.size",
+      "kind": "field",
+      "filePath": "src/codec.h",
+      "line": 7,
+      "parentId": "type:Packet",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "structField",
+        "native.fieldType": "int",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "method:scale_video(int)",
+      "name": "scale_video",
+      "qualifiedName": "scale_video",
+      "kind": "method",
+      "filePath": "src/codec.c",
+      "line": 6,
+      "parentId": "file:src/codec.c",
+      "visibility": "private",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "internal",
+        "native.signature": "int (int)",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "id": "method:decode_video(Packet*)",
+      "name": "decode_video",
+      "qualifiedName": "decode_video",
+      "kind": "method",
+      "filePath": "src/codec.c",
+      "line": 11,
+      "parentId": "file:src/codec.c",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "external",
+        "native.signature": "int (Packet*)",
+        "native.buildProfile": "video"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "sourceId": "file:src/codec.c",
+      "targetId": "file:src/codec.h",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.c:1",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.kind": "include",
+        "native.include": "codec.h",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "sourceId": "file:src/codec.h",
+      "targetId": "field:macro:ENABLE_VIDEO",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.h:10",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "macroExpansion",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "sourceId": "file:src/codec.c",
+      "targetId": "field:macro:ENABLE_VIDEO",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.c:3",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "macroExpansion",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "sourceId": "file:src/codec.c",
+      "targetId": "field:macro:PACKET_BASE",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.c:13",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "macroExpansion",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "sourceId": "file:src/codec.c",
+      "targetId": "field:macro:PROFILE_KIND",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.c:8",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "macroExpansion",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "sourceId": "method:decode_video(Packet*)",
+      "targetId": "method:scale_video(int)",
+      "kind": "calls",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.c:13",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.callKind": "direct",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "sourceId": "method:decode_video(Packet*)",
+      "targetId": "type:Packet",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.c:11",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "parameterType",
+        "native.buildProfile": "video"
+      }
+    },
+    {
+      "sourceId": "method:decode_video(Packet*)",
+      "targetId": "field:Packet.size",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/codec.c:13",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "fieldAccess",
+        "native.buildProfile": "video"
+      }
+    }
+  ]
+}
