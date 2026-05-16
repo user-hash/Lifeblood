@@ -1,5 +1,6 @@
 #include "NativeVisibilityCounts.h"
 
+#include "NativePropertyWriter.h"
 #include "NativeVisibilityNames.h"
 
 namespace lifeblood::native_clang
@@ -21,8 +22,8 @@ void NativeVisibilityCounter::Write(
     const std::string& privateProperty,
     const std::string& internalProperty)
 {
-    symbol.properties[publicProperty] = std::to_string(counts.publicCount);
-    symbol.properties[privateProperty] = std::to_string(counts.privateCount);
-    symbol.properties[internalProperty] = std::to_string(counts.internalCount);
+    NativePropertyWriter::SetCount(symbol, publicProperty, counts.publicCount);
+    NativePropertyWriter::SetCount(symbol, privateProperty, counts.privateCount);
+    NativePropertyWriter::SetCount(symbol, internalProperty, counts.internalCount);
 }
 }

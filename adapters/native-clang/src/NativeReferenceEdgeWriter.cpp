@@ -6,6 +6,7 @@
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
+#include "NativePropertyWriter.h"
 
 #include <utility>
 
@@ -34,8 +35,8 @@ void NativeReferenceEdgeWriter::AddDirectCall(
     edge.kind = "calls";
     edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Semantic);
     edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
-    edge.properties[NativeGraphPropertyKeys::CallKind] = NativeCallKinds::Direct;
-    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::CallKind, NativeCallKinds::Direct);
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddEdge(edge);
 }
 
@@ -45,12 +46,12 @@ void NativeReferenceEdgeWriter::RecordDirectCallCounts(
 {
     const auto outCount = ++directCallOutCounts_[sourceId];
     graph_.UpdateSymbol(sourceId, [&](Symbol& symbol) {
-        symbol.properties["native.directCallOutCount"] = std::to_string(outCount);
+        NativePropertyWriter::SetCount(symbol, "native.directCallOutCount", outCount);
     });
 
     const auto inCount = ++directCallInCounts_[targetId];
     graph_.UpdateSymbol(targetId, [&](Symbol& symbol) {
-        symbol.properties["native.directCallInCount"] = std::to_string(inCount);
+        NativePropertyWriter::SetCount(symbol, "native.directCallInCount", inCount);
     });
 }
 
@@ -66,17 +67,19 @@ void NativeReferenceEdgeWriter::AddReference(
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Semantic);
     edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
-    edge.properties[NativeGraphPropertyKeys::ReferenceKind] = referenceKind;
-    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::ReferenceKind, referenceKind);
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddEdge(edge);
 }
 
 void NativeReferenceEdgeWriter::MarkCallbackTable(const std::string& symbolId)
 {
     graph_.UpdateSymbol(symbolId, [](Symbol& symbol) {
-        symbol.properties[NativeGraphPropertyKeys::NativeKind] =
-            NativeKindNames::CallbackTable;
-        symbol.properties["native.callbackTable"] = "true";
+        NativePropertyWriter::Set(
+            symbol,
+            NativeGraphPropertyKeys::NativeKind,
+            NativeKindNames::CallbackTable);
+        NativePropertyWriter::SetTrue(symbol, "native.callbackTable");
     });
 }
 }

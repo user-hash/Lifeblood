@@ -102,6 +102,8 @@ add_executable(lifeblood-native-clang
     src/NativePreprocessorEmitter.cpp
     src/NativePreprocessorEmitter.h
     src/NativeParseStatuses.h
+    src/NativePropertyWriter.cpp
+    src/NativePropertyWriter.h
     src/NativeReferenceEdgeWriter.cpp
     src/NativeReferenceEdgeWriter.h
     src/NativeReferenceEmitter.cpp
