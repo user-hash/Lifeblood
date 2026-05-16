@@ -8,6 +8,8 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
 {
     std::map<std::string, ModuleCounts> moduleCounts;
     std::map<std::string, FileCounts> fileCounts;
+    std::map<std::string, unsigned> crossFileCallOutCounts;
+    std::map<std::string, unsigned> crossFileCallInCounts;
 
     for (const auto& [id, symbol] : graph.symbols)
     {
@@ -37,11 +39,18 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
         if (moduleId)
             AddEdgeCount(moduleCounts[*moduleId], edge);
 
-        AddFileEdgeCount(fileCounts, graph, edge);
+        AddFileEdgeCount(
+            fileCounts,
+            graph,
+            edge,
+            crossFileCallOutCounts,
+            crossFileCallInCounts);
     }
 
     for (auto& [id, symbol] : graph.symbols)
     {
+        WriteCrossFileCallCounts(symbol, crossFileCallOutCounts, crossFileCallInCounts);
+
         if (symbol.kind == "module")
         {
             auto counts = moduleCounts.find(id);
@@ -118,7 +127,9 @@ void NativeGraphFinalizer::WriteModuleCounts(Symbol& module, const ModuleCounts&
 void NativeGraphFinalizer::AddFileEdgeCount(
     std::map<std::string, FileCounts>& fileCounts,
     const NativeGraph& graph,
-    const Edge& edge)
+    const Edge& edge,
+    std::map<std::string, unsigned>& crossFileCallOutCounts,
+    std::map<std::string, unsigned>& crossFileCallInCounts)
 {
     auto sourceFileId = OwningFileId(graph, edge.sourceId);
     auto targetFileId = OwningFileId(graph, edge.targetId);
@@ -136,6 +147,14 @@ void NativeGraphFinalizer::AddFileEdgeCount(
             fileCounts[*sourceFileId].outgoingCallEdgeCount++;
         if (targetFileId)
             fileCounts[*targetFileId].incomingCallEdgeCount++;
+
+        if (sourceFileId && targetFileId && *sourceFileId != *targetFileId)
+        {
+            fileCounts[*sourceFileId].outgoingCrossFileCallEdgeCount++;
+            fileCounts[*targetFileId].incomingCrossFileCallEdgeCount++;
+            crossFileCallOutCounts[edge.sourceId]++;
+            crossFileCallInCounts[edge.targetId]++;
+        }
     }
 }
 
@@ -151,5 +170,23 @@ void NativeGraphFinalizer::WriteFileCounts(Symbol& file, const FileCounts& count
         std::to_string(counts.outgoingCallEdgeCount);
     file.properties["native.fileIncomingCallEdgeCount"] =
         std::to_string(counts.incomingCallEdgeCount);
+    file.properties["native.fileOutgoingCrossFileCallEdgeCount"] =
+        std::to_string(counts.outgoingCrossFileCallEdgeCount);
+    file.properties["native.fileIncomingCrossFileCallEdgeCount"] =
+        std::to_string(counts.incomingCrossFileCallEdgeCount);
+}
+
+void NativeGraphFinalizer::WriteCrossFileCallCounts(
+    Symbol& symbol,
+    const std::map<std::string, unsigned>& crossFileCallOutCounts,
+    const std::map<std::string, unsigned>& crossFileCallInCounts)
+{
+    auto outgoing = crossFileCallOutCounts.find(symbol.id);
+    if (outgoing != crossFileCallOutCounts.end())
+        symbol.properties["native.crossFileDirectCallOutCount"] = std::to_string(outgoing->second);
+
+    auto incoming = crossFileCallInCounts.find(symbol.id);
+    if (incoming != crossFileCallInCounts.end())
+        symbol.properties["native.crossFileDirectCallInCount"] = std::to_string(incoming->second);
 }
 }

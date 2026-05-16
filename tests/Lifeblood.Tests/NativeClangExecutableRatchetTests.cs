@@ -243,6 +243,28 @@ public class NativeClangExecutableRatchetTests
         AssertCall(graph, "method:decode_video(Packet*)", "method:decode_audio(Packet*)");
         AssertDirectCallCounts(graph, "method:decode_video(Packet*)", incoming: 0, outgoing: 1);
         AssertDirectCallCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 0);
+        AssertCrossFileDirectCallCounts(graph, "method:decode_video(Packet*)", incoming: 0, outgoing: 1);
+        AssertCrossFileDirectCallCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 0);
+        AssertFilePressure(
+            graph,
+            "file:src/audio.c",
+            declaredSymbols: 1,
+            outgoingReferences: 3,
+            incomingReferences: 0,
+            outgoingCalls: 0,
+            incomingCalls: 1,
+            outgoingCrossFileCalls: 0,
+            incomingCrossFileCalls: 1);
+        AssertFilePressure(
+            graph,
+            "file:src/video.c",
+            declaredSymbols: 1,
+            outgoingReferences: 2,
+            incomingReferences: 0,
+            outgoingCalls: 1,
+            incomingCalls: 0,
+            outgoingCrossFileCalls: 1,
+            incomingCrossFileCalls: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "cross-tu-debug");
     }
 
@@ -470,7 +492,9 @@ public class NativeClangExecutableRatchetTests
         int outgoingReferences,
         int incomingReferences,
         int outgoingCalls,
-        int incomingCalls)
+        int incomingCalls,
+        int outgoingCrossFileCalls = 0,
+        int incomingCrossFileCalls = 0)
     {
         var file = graph.GetSymbol(fileId);
         Assert.NotNull(file);
@@ -483,6 +507,12 @@ public class NativeClangExecutableRatchetTests
             file.Properties["native.fileIncomingReferenceEdgeCount"]);
         Assert.Equal(outgoingCalls.ToString(), file.Properties["native.fileOutgoingCallEdgeCount"]);
         Assert.Equal(incomingCalls.ToString(), file.Properties["native.fileIncomingCallEdgeCount"]);
+        Assert.Equal(
+            outgoingCrossFileCalls.ToString(),
+            file.Properties["native.fileOutgoingCrossFileCallEdgeCount"]);
+        Assert.Equal(
+            incomingCrossFileCalls.ToString(),
+            file.Properties["native.fileIncomingCrossFileCallEdgeCount"]);
     }
 
     private static void AssertDirectCallCounts(
@@ -515,6 +545,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.referenceOutCount", "0"));
+    }
+
+    private static void AssertCrossFileDirectCallCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.crossFileDirectCallInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.crossFileDirectCallOutCount", "0"));
     }
 
     private static string FindRepoRoot()
