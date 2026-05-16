@@ -108,6 +108,8 @@ void NativeFileGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& s
 {
     if (NativeGraphFacts::HasNativeKind(symbol, "macro"))
         counts.macroCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "global"))
+        counts.globalVariableCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
         counts.callbackTableCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, "struct"))
@@ -135,6 +137,8 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
     file.properties["native.fileFunctionDeclarationCount"] =
         std::to_string(counts.functionDeclarationCount);
     file.properties["native.fileMacroCount"] = std::to_string(counts.macroCount);
+    file.properties["native.fileGlobalVariableCount"] =
+        std::to_string(counts.globalVariableCount);
     file.properties["native.fileCallbackTableCount"] =
         std::to_string(counts.callbackTableCount);
     file.properties["native.fileStructCount"] = std::to_string(counts.structCount);

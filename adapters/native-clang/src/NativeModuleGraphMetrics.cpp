@@ -85,6 +85,8 @@ void NativeModuleGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol&
 {
     if (NativeGraphFacts::HasNativeKind(symbol, "macro"))
         counts.macroCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "global"))
+        counts.globalVariableCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
         counts.callbackTableCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, "struct"))
@@ -113,6 +115,8 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
     module.properties["native.functionDeclarationCount"] =
         std::to_string(counts.functionDeclarationCount);
     module.properties["native.macroCount"] = std::to_string(counts.macroCount);
+    module.properties["native.globalVariableCount"] =
+        std::to_string(counts.globalVariableCount);
     module.properties["native.callbackTableCount"] =
         std::to_string(counts.callbackTableCount);
     module.properties["native.structCount"] = std::to_string(counts.structCount);
