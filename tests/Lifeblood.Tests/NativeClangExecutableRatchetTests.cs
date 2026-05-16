@@ -127,6 +127,9 @@ public class NativeClangExecutableRatchetTests
 
         AssertEdge(graph, "file:src/audio.c", "file:src/packet.h", EdgeKind.References);
         AssertEdge(graph, "file:src/video.c", "file:src/packet.h", EdgeKind.References);
+        AssertIncludeCounts(graph, "file:src/audio.c", includeDirectives: 1, includedBy: 0);
+        AssertIncludeCounts(graph, "file:src/video.c", includeDirectives: 1, includedBy: 0);
+        AssertIncludeCounts(graph, "file:src/packet.h", includeDirectives: 0, includedBy: 2);
         AssertCall(graph, "method:decode_audio(Packet*)", "method:audio_gain(int)");
         AssertCall(graph, "method:decode_video(Packet*)", "method:video_scale(int)");
         AssertReferenceKind(graph, "method:decode_audio(Packet*)", "type:Packet", "parameterType");
@@ -368,6 +371,22 @@ public class NativeClangExecutableRatchetTests
         Assert.NotNull(module);
         Assert.Equal(translationUnits.ToString(), module!.Properties["native.translationUnitFileCount"]);
         Assert.Equal(headers.ToString(), module.Properties["native.headerFileCount"]);
+    }
+
+    private static void AssertIncludeCounts(
+        SemanticGraph graph,
+        string fileId,
+        int includeDirectives,
+        int includedBy)
+    {
+        var file = graph.GetSymbol(fileId);
+        Assert.NotNull(file);
+        Assert.Equal(
+            includeDirectives.ToString(),
+            file!.Properties.GetValueOrDefault("native.includeDirectiveCount", "0"));
+        Assert.Equal(
+            includedBy.ToString(),
+            file.Properties.GetValueOrDefault("native.includedByCount", "0"));
     }
 
     private static string FindRepoRoot()
