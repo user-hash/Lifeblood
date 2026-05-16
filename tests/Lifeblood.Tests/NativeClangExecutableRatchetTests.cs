@@ -262,6 +262,9 @@ public class NativeClangExecutableRatchetTests
         AssertReferenceCounts(graph, "field:codec_table", incoming: 1, outgoing: 2);
         AssertReferenceCounts(graph, "method:dispatch_first(Packet*)", incoming: 0, outgoing: 3);
         AssertReferenceCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 2);
+        AssertCallbackTargetCounts(graph, "field:codec_table", incoming: 0, outgoing: 2);
+        AssertCallbackTargetCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 0);
+        AssertCallbackTargetCounts(graph, "method:decode_video(Packet*)", incoming: 1, outgoing: 0);
 
         var blast = BlastRadiusAnalyzer.Analyze(graph, "method:decode_audio(Packet*)");
         Assert.Contains("field:codec_table", blast.AffectedSymbolIds);
@@ -1078,6 +1081,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.referenceOutCount", "0"));
+    }
+
+    private static void AssertCallbackTargetCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.callbackTargetInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.callbackTargetOutCount", "0"));
     }
 
     private static void AssertCrossFileDirectCallCounts(

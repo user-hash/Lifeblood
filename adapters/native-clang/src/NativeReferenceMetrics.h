@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphModel.h"
+#include "NativeEdgeClassification.h"
 
 #include <map>
 #include <string>
@@ -11,11 +12,16 @@ class NativeReferenceMetrics
 {
 public:
     void Clear();
-    void RecordAcceptedReference(const std::string& sourceId, const std::string& targetId);
+    void RecordAcceptedReference(const Edge& edge);
     void DecorateSymbol(Symbol& symbol) const;
 
 private:
+    void RecordReferenceCounts(const std::string& sourceId, const std::string& targetId);
+    void RecordCallbackTargetCounts(const std::string& sourceId, const std::string& targetId);
+
     std::map<std::string, unsigned> referenceOutCounts_;
     std::map<std::string, unsigned> referenceInCounts_;
+    std::map<std::string, unsigned> callbackTargetOutCounts_;
+    std::map<std::string, unsigned> callbackTargetInCounts_;
 };
 }
