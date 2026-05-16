@@ -39,6 +39,7 @@ add_executable(lifeblood-native-clang
     src/LibClangExtractor.h
     src/NativeAstVisitor.cpp
     src/NativeAstVisitor.h
+    src/NativeCompileCommand.h
     src/NativeGraphBuilder.cpp
     src/NativeGraphBuilder.h
     src/NativeGraphSink.h

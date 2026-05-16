@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ClangCompileCommandReader.h"
+#include "NativeCompileCommand.h"
 #include "NativeGraphSink.h"
 
 #include <map>
