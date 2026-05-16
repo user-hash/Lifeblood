@@ -21,11 +21,13 @@ private:
     void RecordGlobalAccessCounts(const std::string& sourceId, const std::string& targetId);
     void RecordFieldAccessCounts(const std::string& sourceId, const std::string& targetId);
     void RecordParameterTypeCounts(const std::string& sourceId, const std::string& targetId);
+    void RecordEnumMemberCounts(const std::string& sourceId, const std::string& targetId);
 
     NativeDirectionalSymbolCounts referenceCounts_;
     NativeDirectionalSymbolCounts callbackTargetCounts_;
     NativeDirectionalSymbolCounts globalAccessCounts_;
     NativeDirectionalSymbolCounts fieldAccessCounts_;
     NativeDirectionalSymbolCounts parameterTypeCounts_;
+    NativeDirectionalSymbolCounts enumMemberCounts_;
 };
 }
