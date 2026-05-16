@@ -163,6 +163,8 @@ public class NativeClangExecutableRatchetTests
         AssertModuleNativeKindInventory(graph, "mod:direct-refs-c", macros: 1, globals: 1);
         AssertFileNativeKindInventory(graph, "file:src/decode.c", macros: 0, globals: 1, callbackTables: 0);
         AssertModuleTypeInventory(graph, "mod:direct-refs-c", structs: 1, unions: 0, enums: 1, typedefs: 1);
+        AssertModuleFieldInventory(graph, "mod:direct-refs-c", structFields: 2, enumMembers: 2);
+        AssertFileFieldInventory(graph, "file:src/packet.h", structFields: 2, enumMembers: 2);
 
         Assert.NotNull(graph.GetSymbol("field:decode_bias"));
         Assert.NotNull(graph.GetSymbol("field:PacketKind.PacketKind_Video"));
@@ -749,6 +751,30 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(typedefs.ToString(), module.Properties["native.typedefCount"]);
     }
 
+    private static void AssertModuleFieldInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int structFields,
+        int enumMembers)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(structFields.ToString(), module!.Properties["native.structFieldCount"]);
+        Assert.Equal(enumMembers.ToString(), module.Properties["native.enumMemberCount"]);
+    }
+
+    private static void AssertFileFieldInventory(
+        SemanticGraph graph,
+        string fileId,
+        int structFields,
+        int enumMembers)
+    {
+        var file = graph.GetSymbol(fileId);
+        Assert.NotNull(file);
+        Assert.Equal(structFields.ToString(), file!.Properties["native.fileStructFieldCount"]);
+        Assert.Equal(enumMembers.ToString(), file.Properties["native.fileEnumMemberCount"]);
+    }
+
     private static void AssertModuleReferenceKindInventory(
         SemanticGraph graph,
         string moduleId,
@@ -882,6 +908,8 @@ public class NativeClangExecutableRatchetTests
         Assert.True(file.Properties.ContainsKey("native.fileUnionCount"));
         Assert.True(file.Properties.ContainsKey("native.fileEnumCount"));
         Assert.True(file.Properties.ContainsKey("native.fileTypedefCount"));
+        Assert.True(file.Properties.ContainsKey("native.fileStructFieldCount"));
+        Assert.True(file.Properties.ContainsKey("native.fileEnumMemberCount"));
         Assert.Equal(
             outgoingReferences.ToString(),
             file.Properties["native.fileOutgoingReferenceEdgeCount"]);

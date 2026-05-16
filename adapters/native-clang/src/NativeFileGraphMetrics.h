@@ -34,6 +34,8 @@ private:
         unsigned unionCount = 0;
         unsigned enumCount = 0;
         unsigned typedefCount = 0;
+        unsigned structFieldCount = 0;
+        unsigned enumMemberCount = 0;
         unsigned outgoingReferenceEdgeCount = 0;
         unsigned incomingReferenceEdgeCount = 0;
         unsigned outgoingIncludeEdgeCount = 0;

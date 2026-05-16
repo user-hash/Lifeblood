@@ -39,6 +39,8 @@ private:
         unsigned unionCount = 0;
         unsigned enumCount = 0;
         unsigned typedefCount = 0;
+        unsigned structFieldCount = 0;
+        unsigned enumMemberCount = 0;
         NativeVisibilityCounts visibility;
     };
 
