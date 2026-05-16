@@ -8,6 +8,7 @@
 #include "NativeKindInventory.h"
 #include "NativeVisibilityCounts.h"
 
+#include <array>
 #include <map>
 
 namespace lifeblood::native_clang
@@ -42,6 +43,14 @@ private:
         NativeDeclaredSurfaceCounts declaredSurface;
         NativeKindInventoryCounts nativeKinds;
         NativeVisibilityCounts visibility;
+    };
+
+    using CountMember = unsigned Counts::*;
+
+    struct CountProperty
+    {
+        const char* property;
+        CountMember value;
     };
 
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);

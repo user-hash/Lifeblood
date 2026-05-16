@@ -1,6 +1,7 @@
 #include "NativeModuleGraphMetrics.h"
 
 #include "NativeFunctionDeclarationClassifier.h"
+#include "NativePropertyWriter.h"
 
 namespace lifeblood::native_clang
 {
@@ -102,27 +103,28 @@ void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const
 
 void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
 {
-    module.properties["native.symbolCount"] = std::to_string(counts.symbolCount);
-    module.properties["native.edgeCount"] = std::to_string(counts.edgeCount);
-    module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
-    module.properties["native.includeEdgeCount"] = std::to_string(counts.includeEdgeCount);
-    module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
-    module.properties["native.sameFileCallEdgeCount"] =
-        std::to_string(counts.sameFileCallEdgeCount);
-    module.properties["native.crossFileCallEdgeCount"] =
-        std::to_string(counts.crossFileCallEdgeCount);
-    module.properties["native.globalAccessEdgeCount"] =
-        std::to_string(counts.globalAccessEdgeCount);
-    module.properties["native.fieldAccessEdgeCount"] =
-        std::to_string(counts.fieldAccessEdgeCount);
-    module.properties["native.parameterTypeEdgeCount"] =
-        std::to_string(counts.parameterTypeEdgeCount);
-    module.properties["native.callbackTargetEdgeCount"] =
-        std::to_string(counts.callbackTargetEdgeCount);
-    module.properties["native.functionDefinitionCount"] =
-        std::to_string(counts.functionDefinitionCount);
-    module.properties["native.functionDeclarationCount"] =
-        std::to_string(counts.functionDeclarationCount);
+    constexpr std::array<CountProperty, 13> countProperties{{
+        { "native.symbolCount", &Counts::symbolCount },
+        { "native.edgeCount", &Counts::edgeCount },
+        { "native.referenceEdgeCount", &Counts::referenceEdgeCount },
+        { "native.includeEdgeCount", &Counts::includeEdgeCount },
+        { "native.callEdgeCount", &Counts::callEdgeCount },
+        { "native.sameFileCallEdgeCount", &Counts::sameFileCallEdgeCount },
+        { "native.crossFileCallEdgeCount", &Counts::crossFileCallEdgeCount },
+        { "native.globalAccessEdgeCount", &Counts::globalAccessEdgeCount },
+        { "native.fieldAccessEdgeCount", &Counts::fieldAccessEdgeCount },
+        { "native.parameterTypeEdgeCount", &Counts::parameterTypeEdgeCount },
+        { "native.callbackTargetEdgeCount", &Counts::callbackTargetEdgeCount },
+        { "native.functionDefinitionCount", &Counts::functionDefinitionCount },
+        { "native.functionDeclarationCount", &Counts::functionDeclarationCount },
+    }};
+
+    for (const auto& countProperty : countProperties)
+        NativePropertyWriter::SetCount(
+            module,
+            countProperty.property,
+            counts.*countProperty.value);
+
     NativeDeclaredSurfaceInventory::WriteModuleProperties(module, counts.declaredSurface);
     NativeKindInventory::WriteModuleProperties(module, counts.nativeKinds);
     NativeVisibilityCounter::Write(
