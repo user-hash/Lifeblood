@@ -138,6 +138,18 @@ public class NativeClangExecutableRatchetTests
     }
 
     [SkippableFact]
+    public void Executable_PartialFixture_FailsClosedWithoutAllowPartial()
+    {
+        var result = RunFixtureProcess("partial-parse-c", "partial-debug");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Failed to parse", result.StandardError);
+        Assert.True(
+            string.IsNullOrWhiteSpace(result.StandardOutput),
+            "Default partial scans must not emit a graph unless --allow-partial is explicit.");
+    }
+
+    [SkippableFact]
     public void Executable_CrossTranslationUnitCall_PreservesDefinitionLocation()
     {
         var graph = RunFixture("cross-tu-c", "cross-tu-debug").Graph;
@@ -160,6 +172,22 @@ public class NativeClangExecutableRatchetTests
     }
 
     private static GraphDocument RunFixture(
+        string fixtureName,
+        string profile,
+        string? compilationDatabase = null,
+        bool allowPartial = false)
+    {
+        var result = RunFixtureProcess(fixtureName, profile, compilationDatabase, allowPartial);
+
+        Assert.True(
+            result.ExitCode == 0,
+            $"Native Clang executable failed with exit code {result.ExitCode}:{Environment.NewLine}{result.StandardError}");
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(result.StandardOutput));
+        return new JsonGraphImporter().ImportDocument(stream);
+    }
+
+    private static NativeRunResult RunFixtureProcess(
         string fixtureName,
         string profile,
         string? compilationDatabase = null,
@@ -204,12 +232,7 @@ public class NativeClangExecutableRatchetTests
         var stderr = process.StandardError.ReadToEnd();
         process.WaitForExit();
 
-        Assert.True(
-            process.ExitCode == 0,
-            $"Native Clang executable failed with exit code {process.ExitCode}:{Environment.NewLine}{stderr}");
-
-        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(stdout));
-        return new JsonGraphImporter().ImportDocument(stream);
+        return new NativeRunResult(process.ExitCode, stdout, stderr);
     }
 
     private static string NativeExecutablePath(string repoRoot)
@@ -305,4 +328,9 @@ public class NativeClangExecutableRatchetTests
         }
         throw new DirectoryNotFoundException("Could not locate Lifeblood.sln from test base directory.");
     }
+
+    private sealed record NativeRunResult(
+        int ExitCode,
+        string StandardOutput,
+        string StandardError);
 }
