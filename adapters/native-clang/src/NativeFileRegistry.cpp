@@ -40,4 +40,36 @@ void NativeFileRegistry::EnsureFileSymbol(const std::string& relativePath)
     symbol.properties["native.buildProfile"] = buildProfile_;
     graph_.AddSymbol(symbol);
 }
+
+void NativeFileRegistry::MarkTranslationUnitPending(const std::string& relativePath)
+{
+    UpdateTranslationUnitHealth(relativePath, "pending", {});
+}
+
+void NativeFileRegistry::MarkTranslationUnitParsed(
+    const std::string& relativePath,
+    const NativeDiagnosticSummary& diagnostics)
+{
+    UpdateTranslationUnitHealth(relativePath, "parsed", diagnostics);
+}
+
+void NativeFileRegistry::MarkTranslationUnitFailed(const std::string& relativePath)
+{
+    UpdateTranslationUnitHealth(relativePath, "failed", {});
+}
+
+void NativeFileRegistry::UpdateTranslationUnitHealth(
+    const std::string& relativePath,
+    const std::string& parseStatus,
+    const NativeDiagnosticSummary& diagnostics)
+{
+    EnsureFileSymbol(relativePath);
+    graph_.UpdateSymbol("file:" + relativePath, [&](Symbol& file) {
+        file.properties["native.translationUnit"] = "true";
+        file.properties["native.parseStatus"] = parseStatus;
+        file.properties["native.warningDiagnosticCount"] = std::to_string(diagnostics.warningCount);
+        file.properties["native.errorDiagnosticCount"] = std::to_string(diagnostics.errorCount);
+        file.properties["native.fatalDiagnosticCount"] = std::to_string(diagnostics.fatalCount);
+    });
+}
 }
