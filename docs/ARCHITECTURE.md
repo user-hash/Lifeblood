@@ -7,15 +7,17 @@ LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
 Roslyn (C#)       ──┐                            ┌──  AgentContextGenerator
-JSON graph        ──┼→  Domain  →  Application  →┤──  InstructionFileGenerator
-                  ──┘       ↑                     ├──  LifebloodMcpProvider
-                      Analysis (optional)         ├──  LifebloodSymbolResolver
-                                                  ├──  LifebloodSemanticSearchProvider
+libclang (C)      ──┤                            ├──  InstructionFileGenerator
+TypeScript        ──┼→  Domain  →  Application  →┤──  LifebloodMcpProvider
+Python            ──┤       ↑                     ├──  LifebloodSymbolResolver
+JSON graph        ──┘    Analysis (optional)      ├──  LifebloodSemanticSearchProvider
                                                   ├──  LifebloodDeadCodeAnalyzer
                                                   ├──  LifebloodPartialViewBuilder
                                                   ├──  LifebloodInvariantProvider
                                                   └──  CLI / CI
 ```
+
+In-process adapters (`Roslyn`) live under `src/Lifeblood.Adapters.*` and reference `Lifeblood.Application` ports. External JSON-emitting adapters (`libclang`, `TypeScript`, `Python`) live under `adapters/` and feed Lifeblood through `JsonGraphImporter`. The boundary keeps LLVM, Clang, TypeScript, and Python toolchains out of the Lifeblood core. See [`NATIVE_CLANG.md`](NATIVE_CLANG.md) for the C capability page and [`ADAPTERS.md`](ADAPTERS.md) for the adapter-building guide.
 
 ## Three Layers of Truth
 
@@ -181,6 +183,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
-- **90 typed invariants across 52 categories under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
+- **101 typed invariants across 63 categories under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
 - DocsTests ratchets: `portCount`, `toolCount`, `testCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)

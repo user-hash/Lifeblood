@@ -1,0 +1,394 @@
+{
+  "version": "1.0",
+  "language": "c",
+  "adapter": {
+    "name": "native-clang-fixture",
+    "version": "0.0.0-fixture",
+    "capabilities": {
+      "discoverSymbols": true,
+      "typeResolution": "proven",
+      "callResolution": "proven",
+      "implementationResolution": "none",
+      "crossModuleReferences": "none",
+      "overrideResolution": "none"
+    }
+  },
+  "symbols": [
+    {
+      "id": "mod:direct-refs-c",
+      "name": "direct-refs-c",
+      "qualifiedName": "direct-refs-c",
+      "kind": "module",
+      "properties": {
+        "native.kind": "library",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "file:src/decode.c",
+      "name": "decode.c",
+      "qualifiedName": "direct-refs-c/src/decode.c",
+      "kind": "file",
+      "filePath": "src/decode.c",
+      "parentId": "mod:direct-refs-c",
+      "properties": {
+        "native.kind": "translationUnit",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "file:src/packet.h",
+      "name": "packet.h",
+      "qualifiedName": "direct-refs-c/src/packet.h",
+      "kind": "file",
+      "filePath": "src/packet.h",
+      "parentId": "mod:direct-refs-c",
+      "properties": {
+        "native.kind": "header",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "type:PacketKind",
+      "name": "PacketKind",
+      "qualifiedName": "PacketKind",
+      "kind": "type",
+      "filePath": "src/packet.h",
+      "line": 4,
+      "parentId": "file:src/packet.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "enum",
+        "native.linkage": "none",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "field:PacketKind.PacketKind_Audio",
+      "name": "PacketKind_Audio",
+      "qualifiedName": "PacketKind.PacketKind_Audio",
+      "kind": "field",
+      "filePath": "src/packet.h",
+      "line": 5,
+      "parentId": "type:PacketKind",
+      "visibility": "public",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "enumMember",
+        "native.enumValue": "1",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "field:PacketKind.PacketKind_Video",
+      "name": "PacketKind_Video",
+      "qualifiedName": "PacketKind.PacketKind_Video",
+      "kind": "field",
+      "filePath": "src/packet.h",
+      "line": 6,
+      "parentId": "type:PacketKind",
+      "visibility": "public",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "enumMember",
+        "native.enumValue": "2",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "type:PacketKindAlias",
+      "name": "PacketKindAlias",
+      "qualifiedName": "PacketKindAlias",
+      "kind": "type",
+      "filePath": "src/packet.h",
+      "line": 9,
+      "parentId": "file:src/packet.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "typedef",
+        "native.underlyingType": "PacketKind",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "type:Packet",
+      "name": "Packet",
+      "qualifiedName": "Packet",
+      "kind": "type",
+      "filePath": "src/packet.h",
+      "line": 11,
+      "parentId": "file:src/packet.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "struct",
+        "native.linkage": "none",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "field:Packet.kind",
+      "name": "kind",
+      "qualifiedName": "Packet.kind",
+      "kind": "field",
+      "filePath": "src/packet.h",
+      "line": 12,
+      "parentId": "type:Packet",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "structField",
+        "native.fieldType": "PacketKindAlias",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "field:Packet.size",
+      "name": "size",
+      "qualifiedName": "Packet.size",
+      "kind": "field",
+      "filePath": "src/packet.h",
+      "line": 13,
+      "parentId": "type:Packet",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "structField",
+        "native.fieldType": "int",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "field:decode_bias",
+      "name": "decode_bias",
+      "qualifiedName": "decode_bias",
+      "kind": "field",
+      "filePath": "src/decode.c",
+      "line": 3,
+      "parentId": "file:src/decode.c",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "global",
+        "native.linkage": "external",
+        "native.fieldType": "int",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "method:clamp(int)",
+      "name": "clamp",
+      "qualifiedName": "clamp",
+      "kind": "method",
+      "filePath": "src/decode.c",
+      "line": 5,
+      "parentId": "file:src/decode.c",
+      "visibility": "private",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "internal",
+        "native.signature": "int (int)",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "id": "method:decode(Packet*)",
+      "name": "decode",
+      "qualifiedName": "decode",
+      "kind": "method",
+      "filePath": "src/decode.c",
+      "line": 10,
+      "parentId": "file:src/decode.c",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "external",
+        "native.signature": "int (Packet*)",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "sourceId": "file:src/decode.c",
+      "targetId": "file:src/packet.h",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:1",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.kind": "include",
+        "native.include": "packet.h",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "type:PacketKindAlias",
+      "targetId": "type:PacketKind",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/packet.h:9",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/packet.h",
+        "line": 9,
+        "column": 1,
+        "endLine": 9,
+        "endColumn": 40,
+        "containingSymbolId": "type:PacketKindAlias"
+      },
+      "properties": {
+        "native.referenceKind": "underlyingType",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "field:Packet.kind",
+      "targetId": "type:PacketKindAlias",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/packet.h:12",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/packet.h",
+        "line": 12,
+        "column": 5,
+        "endLine": 12,
+        "endColumn": 25,
+        "containingSymbolId": "field:Packet.kind"
+      },
+      "properties": {
+        "native.referenceKind": "fieldType",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "type:Packet",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:10",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "parameterType",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "field:Packet.size",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:12",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 12,
+        "column": 20,
+        "endLine": 12,
+        "endColumn": 32,
+        "containingSymbolId": "method:decode(Packet*)"
+      },
+      "properties": {
+        "native.referenceKind": "fieldAccess",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "field:decode_bias",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:12",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 12,
+        "column": 35,
+        "endLine": 12,
+        "endColumn": 46,
+        "containingSymbolId": "method:decode(Packet*)"
+      },
+      "properties": {
+        "native.referenceKind": "globalAccess",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "field:Packet.kind",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:13",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 13,
+        "column": 9,
+        "endLine": 13,
+        "endColumn": 21,
+        "containingSymbolId": "method:decode(Packet*)"
+      },
+      "properties": {
+        "native.referenceKind": "fieldAccess",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "field:PacketKind.PacketKind_Video",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:13",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 13,
+        "column": 25,
+        "endLine": 13,
+        "endColumn": 41,
+        "containingSymbolId": "method:decode(Packet*)"
+      },
+      "properties": {
+        "native.referenceKind": "enumMember",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "method:clamp(int)",
+      "kind": "calls",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:17",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.callKind": "direct",
+        "native.buildProfile": "direct-refs-debug"
+      }
+    }
+  ]
+}

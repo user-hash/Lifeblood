@@ -133,15 +133,19 @@ public sealed class GraphBuilder
             .OrderBy(s => s.Id, StringComparer.Ordinal)
             .ToArray();
 
-        // Deduplicate all edges by (source, target, kind).
+        // Deduplicate all edges by semantic identity. Edges with the same
+        // source, target, and coarse EdgeKind can still carry distinct roles
+        // (for example native parameterType + returnType edges from one C
+        // function to the same struct), so edge properties participate through
+        // EdgeIdentity.
         // Partial classes cause the same edge (especially Overrides, Inherits, Implements)
         // to be emitted once per partial file — typeSymbol.GetMembers() returns all members
         // including from other partial declarations, and each file's Extract() call has
         // its own dedup set. The builder is the single source of truth for deduplication.
-        var dedupedEdges = new Dictionary<(string, string, EdgeKind), Edge>();
+        var dedupedEdges = new Dictionary<EdgeIdentityKey, Edge>();
         foreach (var edge in allEdges)
         {
-            var key = (edge.SourceId, edge.TargetId, edge.Kind);
+            var key = EdgeIdentity.KeyFor(edge);
             dedupedEdges.TryAdd(key, edge); // first-write-wins, consistent with symbol dedup
         }
 
@@ -149,7 +153,7 @@ public sealed class GraphBuilder
         // For each non-Contains edge between symbols in different files,
         // accumulate a file→file References edge with an edgeCount property.
         // Evidence: Inferred (derived truth, not primary).
-        DeriveFileEdges(dedupedEdges);
+        FileEdgeDeriver.AddDerivedFileEdges(_symbols, dedupedEdges);
 
         var sortedEdges = dedupedEdges.Values
             .OrderBy(e => e.SourceId, StringComparer.Ordinal)
@@ -160,61 +164,4 @@ public sealed class GraphBuilder
         return new SemanticGraph(sortedSymbols, sortedEdges);
     }
 
-    private void DeriveFileEdges(Dictionary<(string, string, EdgeKind), Edge> dedupedEdges)
-    {
-        // Build symbolId → fileId reverse index using Symbol.FilePath.
-        // This is more accurate than walking ParentId for partial classes,
-        // where a type's ParentId points to one file but members live in others.
-        var symbolToFile = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var symbol in _symbols.Values)
-        {
-            if (symbol.Kind == SymbolKind.File)
-            {
-                symbolToFile[symbol.Id] = symbol.Id;
-            }
-            else if (!string.IsNullOrEmpty(symbol.FilePath))
-            {
-                var fileId = "file:" + symbol.FilePath.Replace('\\', '/');
-                if (_symbols.ContainsKey(fileId))
-                    symbolToFile[symbol.Id] = fileId;
-            }
-        }
-
-        // Accumulate cross-file edge counts
-        var fileEdgeCounts = new Dictionary<(string sourceFileId, string targetFileId), int>();
-        foreach (var edge in dedupedEdges.Values)
-        {
-            if (edge.Kind == EdgeKind.Contains) continue;
-
-            if (!symbolToFile.TryGetValue(edge.SourceId, out var srcFile)) continue;
-            if (!symbolToFile.TryGetValue(edge.TargetId, out var tgtFile)) continue;
-            if (string.Equals(srcFile, tgtFile, StringComparison.Ordinal)) continue;
-
-            var key = (srcFile, tgtFile);
-            fileEdgeCounts.TryGetValue(key, out var count);
-            fileEdgeCounts[key] = count + 1;
-        }
-
-        // Emit file-level References edges
-        foreach (var ((src, tgt), count) in fileEdgeCounts)
-        {
-            var edgeKey = (src, tgt, EdgeKind.References);
-            dedupedEdges.TryAdd(edgeKey, new Edge
-            {
-                SourceId = src,
-                TargetId = tgt,
-                Kind = EdgeKind.References,
-                Evidence = new Evidence
-                {
-                    Kind = EvidenceKind.Inferred,
-                    AdapterName = "GraphBuilder",
-                    Confidence = ConfidenceLevel.Proven,
-                },
-                Properties = new Dictionary<string, string>
-                {
-                    ["edgeCount"] = count.ToString(),
-                },
-            });
-        }
-    }
 }

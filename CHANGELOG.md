@@ -7,6 +7,35 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-05-16
+
+First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based C extractor that emits `graph.json` through the same `JsonGraphImporter` boundary the TypeScript and Python adapters already use, so `Lifeblood.Domain`, `Lifeblood.Application`, `Lifeblood.Analysis`, and every connector stay free of LLVM, Clang, and CMake dependencies. Plus one graph-layer correctness fix and the `INV-CHANGELOG-001` ratchet that caught the v0.7.6 release-tag drift.
+
+### Added
+
+- **Native Clang adapter (beta)** at `adapters/native-clang/`. C extractor built on `libclang`. Reads `compile_commands.json`, emits a Lifeblood-shape `graph.json`. Surfaces translation units, functions, globals, fields, type shells, enum members, macros, includes, callback-table rows and cells, build-profile and command-line macro facts. Per-module, per-file, and per-symbol pressure metrics cover visibility, callback target, include, field access, global access, type shape, return type, parameter type, same-file direct calls, cross-file calls. Partial-parse tolerant: emits diagnostic health counts instead of failing closed. Pinned by `NativeClangAdapterContractTests` and `NativeClangExecutableRatchetTests` over nine fixture families (`tiny-c`, `direct-refs-c`, `multi-tu-c`, `cross-tu-c`, `callback-table-c`, `profile-c`, `partial-parse-c`, `warning-c`, `return-type-c`).
+
+- **FFmpeg scout workflow** at `adapters/native-clang/tools/ffmpeg-scout/`. Repeatable PowerShell harness (`Prepare-FfmpegScout.ps1` plus module scripts) that clones FFmpeg, configures a minimal LLVM-clang build, generates a focused `compile_commands.json` for a representative file slice, and runs the extractor end-to-end. First real-world result on 2026-05-16 against a 5-file slice (`libavfilter/allfilters.c`, `libavcodec/allcodecs.c`, `libavformat/allformats.c`, `libavutil/pixdesc.c`, `libswscale/utils.c`): 9264 symbols, 1067 methods, 14494 Lifeblood-imported edges, 0 architecture violations, 1 likely real cycle in libswscale context initialization. Workflow and limits documented in `adapters/native-clang/FFMPEG_SCOUT.md`. The scout is explicit reconnaissance, not whole-build coverage. Full-build paths (WSL with bear, MSYS2 with bear, project-specific compile-database generator) are named as the next maturity step.
+
+- **`docs/NATIVE_CLANG.md` dedicated capability page.** Scope, build, fixtures, scout workflow, what works today, what is deferred. Single entry point for downstream readers asking how the C support actually works.
+
+- **`docs/RELEASE.md` eternal pre-tag checklist.** Closes the operator gap that shipped v0.7.6 with three red CI workflows. `dotnet test -c Release` exit 0, every `## [X.Y.Z]` heading paired with a matching `[X.Y.Z]:` link reference, and `[Unreleased]` rebased to the new tag are non-negotiable pre-tag steps. Force-moving a published tag to recover from a missed step is explicitly refused. The recovery is always a next-patch release.
+
+### Fixed
+
+- **`INV-CHANGELOG-001` link-reference drift caught at v0.7.6.** `CHANGELOG.md` shipped a `## [0.7.6]` heading without a matching `[0.7.6]: https://.../compare/v0.7.5...v0.7.6` link reference. `DocsTests.Changelog_EveryHeadingHasLinkReference` failed at the release commit, the tag was pushed anyway, and all three tag-triggered CI workflows (`Build & Test`, `CI`, `Release Verification`) went red on origin. The v0.7.6 tag is left as-is on origin because force-moving a published tag is a destructive operation on shared history. The missing link reference is restored as part of this release. The eternal mechanism lives in `docs/RELEASE.md`. The ratchet was already in place and did its job.
+
+- **Role-distinct reference edges preserved through graph synthesis** (`c74517c`). Edges that share `(sourceId, targetId, kind)` but differ on role payload were being collapsed during graph construction. The de-dup key now incorporates the role-identity component so semantically different references survive into the imported graph. Sibling refactor (`dca0b1a`) extracts file-edge derivation from `GraphBuilder` into `Lifeblood.Domain/Graph/FileEdgeDeriver.cs` so the file-edge contract is testable in isolation.
+
+### Changed
+
+- **Test discovery refresh: 1011 tests, zero skipped.** Native-clang track adds contract and executable-ratchet coverage. Graph-layer changes add `GraphBuilderTests` and `GraphValidatorTests` for role-edge identity. `docs/STATUS.md` `<!-- testCount: 1011 -->` anchor and visible prose re-ratcheted by `DocsTests`.
+
+- **`docs/ADAPTERS.md` native-clang section** moved from "planned" to current beta scope (libclang extractor, fixtures, FFmpeg scout, external JSON boundary preserved).
+
+- **`README.md`, `docs/ARCHITECTURE.md`, `docs/architecture.html`, and `CLAUDE.md`** updated to list the native-clang adapter alongside the existing C#, TypeScript, and Python surfaces. Language coverage prose, ASCII diagrams, assembly tables, and project trees all carry the new adapter.
+
+
 ## [0.7.6] - 2026-05-15
 
 ### Fixed
@@ -1116,7 +1145,9 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.5...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...HEAD
+[0.7.7]: https://github.com/user-hash/Lifeblood/compare/v0.7.6...v0.7.7
+[0.7.6]: https://github.com/user-hash/Lifeblood/compare/v0.7.5...v0.7.6
 [0.7.5]: https://github.com/user-hash/Lifeblood/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/user-hash/Lifeblood/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/user-hash/Lifeblood/compare/v0.7.2...v0.7.3

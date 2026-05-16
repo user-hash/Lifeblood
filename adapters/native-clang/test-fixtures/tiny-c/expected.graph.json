@@ -1,0 +1,210 @@
+{
+  "version": "1.0",
+  "language": "c",
+  "adapter": {
+    "name": "native-clang-fixture",
+    "version": "0.0.0-fixture",
+    "capabilities": {
+      "discoverSymbols": true,
+      "typeResolution": "proven",
+      "callResolution": "proven",
+      "implementationResolution": "none",
+      "crossModuleReferences": "none",
+      "overrideResolution": "none"
+    }
+  },
+  "symbols": [
+    {
+      "id": "mod:tiny-c",
+      "name": "tiny-c",
+      "qualifiedName": "tiny-c",
+      "kind": "module",
+      "properties": {
+        "native.kind": "library",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "id": "file:src/decode.c",
+      "name": "decode.c",
+      "qualifiedName": "tiny-c/src/decode.c",
+      "kind": "file",
+      "filePath": "src/decode.c",
+      "parentId": "mod:tiny-c",
+      "properties": {
+        "native.kind": "translationUnit",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "id": "file:src/packet.h",
+      "name": "packet.h",
+      "qualifiedName": "tiny-c/src/packet.h",
+      "kind": "file",
+      "filePath": "src/packet.h",
+      "parentId": "mod:tiny-c",
+      "properties": {
+        "native.kind": "header",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "id": "type:Packet",
+      "name": "Packet",
+      "qualifiedName": "Packet",
+      "kind": "type",
+      "filePath": "src/packet.h",
+      "line": 4,
+      "parentId": "file:src/packet.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "struct",
+        "native.linkage": "none",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "id": "field:Packet.size",
+      "name": "size",
+      "qualifiedName": "Packet.size",
+      "kind": "field",
+      "filePath": "src/packet.h",
+      "line": 5,
+      "parentId": "type:Packet",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "structField",
+        "native.fieldType": "int",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "id": "method:clamp(int)",
+      "name": "clamp",
+      "qualifiedName": "clamp",
+      "kind": "method",
+      "filePath": "src/decode.c",
+      "line": 3,
+      "parentId": "file:src/decode.c",
+      "visibility": "private",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "internal",
+        "native.signature": "int (int)",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "id": "method:decode(Packet*)",
+      "name": "decode",
+      "qualifiedName": "decode",
+      "kind": "method",
+      "filePath": "src/decode.c",
+      "line": 8,
+      "parentId": "file:src/decode.c",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "external",
+        "native.signature": "int (struct Packet *)",
+        "native.buildProfile": "tiny-debug"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "sourceId": "file:src/decode.c",
+      "targetId": "file:src/packet.h",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:1",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 1,
+        "column": 1,
+        "endLine": 1,
+        "endColumn": 19,
+        "containingSymbolId": "file:src/decode.c"
+      },
+      "properties": {
+        "native.kind": "include",
+        "native.include": "packet.h",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "type:Packet",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:8",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 8,
+        "column": 19,
+        "endLine": 8,
+        "endColumn": 24,
+        "containingSymbolId": "method:decode(Packet*)"
+      },
+      "properties": {
+        "native.referenceKind": "parameterType",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "field:Packet.size",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:10",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 10,
+        "column": 26,
+        "endLine": 10,
+        "endColumn": 29,
+        "containingSymbolId": "method:decode(Packet*)"
+      },
+      "properties": {
+        "native.referenceKind": "fieldAccess",
+        "native.buildProfile": "tiny-debug"
+      }
+    },
+    {
+      "sourceId": "method:decode(Packet*)",
+      "targetId": "method:clamp(int)",
+      "kind": "calls",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/decode.c:10",
+        "confidence": "proven"
+      },
+      "callSite": {
+        "filePath": "src/decode.c",
+        "line": 10,
+        "column": 12,
+        "endLine": 10,
+        "endColumn": 31,
+        "containingSymbolId": "method:decode(Packet*)"
+      },
+      "properties": {
+        "native.callKind": "direct",
+        "native.buildProfile": "tiny-debug"
+      }
+    }
+  ]
+}

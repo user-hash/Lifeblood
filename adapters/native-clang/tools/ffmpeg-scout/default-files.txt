@@ -1,0 +1,5 @@
+libavfilter/allfilters.c
+libavcodec/allcodecs.c
+libavformat/allformats.c
+libavutil/pixdesc.c
+libswscale/utils.c

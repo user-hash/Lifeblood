@@ -1,0 +1,20 @@
+[
+  {
+    "directory": "../..",
+    "arguments": [
+      "clang",
+      "-DENABLE_AUDIO=1",
+      "-DPROFILE_NAME=audio",
+      "-U",
+      "LEGACY_CODEC",
+      "-I",
+      "src",
+      "-c",
+      "src/codec.c",
+      "-o",
+      "build/audio/codec.o"
+    ],
+    "file": "src/codec.c",
+    "output": "build/audio/codec.o"
+  }
+]

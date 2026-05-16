@@ -192,10 +192,10 @@
   All 26 port interfaces have concrete implementations. All hexagonal boundaries enforced by tests.
   </p>
   <div class="pills">
-  <div class="pill">11 assemblies + 2 standalone adapters</div>
-  <div class="pill">2,926 symbols, 14,502 edges</div>
-  <div class="pill">946 tests + 1 skipped / CI green</div>
-  <div class="pill">C# + TypeScript + Python</div>
+  <div class="pill">11 assemblies + 3 standalone adapters</div>
+  <div class="pill">3,278 symbols, 16,973 edges</div>
+  <div class="pill">1011 tests, zero skipped / CI green</div>
+  <div class="pill">C# + C + TypeScript + Python</div>
   <div class="pill">Cross-module: Proven</div>
   <div class="pill">26/26 ports wired</div>
   <div class="pill">Incremental re-analyze (file + csproj + asmdef)</div>
@@ -226,6 +226,7 @@
   <div class="card">
   <h3>Language Adapters <span style="font-size:9px; color:var(--accent); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
   <div class="item"><strong>Roslyn / C#</strong><small>Reference adapter. Proven type/call/cross-module resolution. Topological sort + CompilationReference. Generics, typeof, attributes.</small></div>
+  <div class="item"><strong>libclang / C</strong><small>Beta (v0.7.7). Standalone native extractor under adapters/native-clang. Reads compile_commands.json. Surfaces translation units, functions, globals, fields, type shells, enum members, macros, includes, callback-table rows and cells. Partial-parse tolerant.</small></div>
   <div class="item"><strong>TypeScript</strong><small>Standalone Node.js. ts.createProgram + TypeChecker. High-confidence. Self-analyzing.</small></div>
   <div class="item"><strong>Python</strong><small>Standalone ast-based. Zero dependencies. Classes, functions, imports, inheritance. Self-analyzing.</small></div>
   <div class="item"><strong>JSON Graph</strong><small>Universal protocol. Import + export with full metadata round-trip.</small></div>
@@ -304,7 +305,7 @@
 
   <div class="signal-card">
   <strong>Enforced invariants (tested AND queryable via lifeblood_invariant_check)</strong>
-  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. 946 tests + 1 skipped. 29 MCP tools (17R + 12W). 4 CI jobs. Golden repos for all 3 adapters. Incremental re-analyze (file + csproj + asmdef, INV-UNITY-002). Caller-owned scope policy on incremental analyze: rejects on detected drift unless allowFullFallback is opted in; wire shape carries mode + requestedMode + fallbackReason + canRetryFull + suggestedRetry (INV-ANALYZE-FALLBACK-001). File-level edges. Enum members are first-class graph symbols with constantValue (INV-EXTRACT-ENUMMEMBER-001). BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler with kind correction (INV-RESOLVER-001..006); Rule 4 short-name fallback never crosses containing types or kinds for member-kind inputs (INV-RESOLVER-007). SearchResult.MatchKind structurally reports which scoring bucket drove the rank (INV-SEARCH-MATCHKIND-001). RoslynSemanticView shared by reference (INV-VIEW-001..003). Truth envelope on every read-side response (INV-ENVELOPE-001). Unity reachability port (INV-UNITY-001) with full Editor reflection roster + type-via-child propagation. Authority report + forwarder classifier (INV-AUTHORITY-001, INV-FORWARDER-001). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). 90 typed architectural invariants across 52 categories under docs/invariants/ tree, aggregated dynamically by IInvariantProvider (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes (INV-DEADCODE-001).</span>
+  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. 1011 tests, zero skipped. 29 MCP tools (17R + 12W). 4 CI jobs. Golden repos and fixtures for all 4 adapters (C# via Roslyn golden repos, C via native-clang fixtures, TypeScript golden repo, Python golden repo). Incremental re-analyze (file + csproj + asmdef, INV-UNITY-002). Caller-owned scope policy on incremental analyze: rejects on detected drift unless allowFullFallback is opted in; wire shape carries mode + requestedMode + fallbackReason + canRetryFull + suggestedRetry (INV-ANALYZE-FALLBACK-001). File-level edges. Enum members are first-class graph symbols with constantValue (INV-EXTRACT-ENUMMEMBER-001). BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler with kind correction (INV-RESOLVER-001..006); Rule 4 short-name fallback never crosses containing types or kinds for member-kind inputs (INV-RESOLVER-007). SearchResult.MatchKind structurally reports which scoring bucket drove the rank (INV-SEARCH-MATCHKIND-001). RoslynSemanticView shared by reference (INV-VIEW-001..003). Truth envelope on every read-side response (INV-ENVELOPE-001). Unity reachability port (INV-UNITY-001) with full Editor reflection roster + type-via-child propagation. Authority report + forwarder classifier (INV-AUTHORITY-001, INV-FORWARDER-001). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). 101 typed architectural invariants across 63 categories under docs/invariants/ tree, aggregated dynamically by IInvariantProvider (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes (INV-DEADCODE-001).</span>
   </div>
   </div>
 
@@ -354,9 +355,9 @@
   </div>
 
   <div class="legend">
-  <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference with cross-module resolution. TypeScript and Python are standalone adapters. JSON graph is the universal bridge. Community adapters (Go, Rust) have contribution guides.</div>
+  <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference with cross-module resolution. libclang is the C reference (beta, v0.7.7), reading compile_commands.json and emitting Lifeblood-shape graph JSON. TypeScript and Python are standalone adapters. JSON graph is the universal bridge. Community adapters (Go, Rust) have contribution guides.</div>
   <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. 26 port interfaces. All sealed with concrete implementations. GraphDocument carries version, language, and adapter capabilities. All invariants enforced by tests AND queryable at runtime via lifeblood_invariant_check.</div>
-  <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 26 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters. Packaged as dotnet tools.</div>
+  <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with 29 interactive tools, CLI with CI exit codes. They depend inward on Application ports, never on adapters. Packaged as dotnet tools.</div>
   </div>
 
   <div class="footer">
