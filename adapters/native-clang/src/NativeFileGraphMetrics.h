@@ -29,6 +29,10 @@ private:
         unsigned functionDeclarationCount = 0;
         unsigned macroCount = 0;
         unsigned callbackTableCount = 0;
+        unsigned structCount = 0;
+        unsigned unionCount = 0;
+        unsigned enumCount = 0;
+        unsigned typedefCount = 0;
         unsigned outgoingReferenceEdgeCount = 0;
         unsigned incomingReferenceEdgeCount = 0;
         unsigned outgoingIncludeEdgeCount = 0;

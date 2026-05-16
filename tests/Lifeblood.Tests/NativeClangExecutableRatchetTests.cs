@@ -36,6 +36,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleIncludeInventory(graph, "mod:tiny-c", includeEdges: 1);
         AssertModuleFunctionInventory(graph, "mod:tiny-c", definitions: 2, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:tiny-c", macros: 1);
+        AssertModuleTypeInventory(graph, "mod:tiny-c", structs: 1, unions: 0, enums: 0, typedefs: 0);
         AssertModuleVisibilityInventory(graph, "mod:tiny-c", publicSymbols: 3, privateSymbols: 1, internalSymbols: 3);
         AssertModuleBuildFacts(
             graph,
@@ -210,6 +211,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleIncludeInventory(graph, "mod:multi-tu-c", includeEdges: 2);
         AssertModuleFunctionInventory(graph, "mod:multi-tu-c", definitions: 4, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:multi-tu-c", macros: 1);
+        AssertModuleTypeInventory(graph, "mod:multi-tu-c", structs: 1, unions: 0, enums: 0, typedefs: 0);
         AssertTranslationUnitHealth(graph, "file:src/audio.c", "parsed");
         AssertTranslationUnitHealth(graph, "file:src/video.c", "parsed");
         AssertTranslationUnitBuildInputs(graph, "file:src/audio.c", defines: 0, undefines: 0);
@@ -706,6 +708,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(callbackTables.ToString(), module.Properties["native.callbackTableCount"]);
     }
 
+    private static void AssertModuleTypeInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int structs,
+        int unions,
+        int enums,
+        int typedefs)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(structs.ToString(), module!.Properties["native.structCount"]);
+        Assert.Equal(unions.ToString(), module.Properties["native.unionCount"]);
+        Assert.Equal(enums.ToString(), module.Properties["native.enumCount"]);
+        Assert.Equal(typedefs.ToString(), module.Properties["native.typedefCount"]);
+    }
+
     private static void AssertModuleReferenceKindInventory(
         SemanticGraph graph,
         string moduleId,
@@ -832,6 +850,10 @@ public class NativeClangExecutableRatchetTests
             file.Properties["native.fileFunctionDeclarationCount"]);
         Assert.Equal(macros.ToString(), file.Properties["native.fileMacroCount"]);
         Assert.Equal("0", file.Properties["native.fileCallbackTableCount"]);
+        Assert.True(file.Properties.ContainsKey("native.fileStructCount"));
+        Assert.True(file.Properties.ContainsKey("native.fileUnionCount"));
+        Assert.True(file.Properties.ContainsKey("native.fileEnumCount"));
+        Assert.True(file.Properties.ContainsKey("native.fileTypedefCount"));
         Assert.Equal(
             outgoingReferences.ToString(),
             file.Properties["native.fileOutgoingReferenceEdgeCount"]);
