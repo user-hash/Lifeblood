@@ -152,6 +152,28 @@ public class NativeClangExecutableRatchetTests
     }
 
     [SkippableFact]
+    public void Executable_DirectRefsFixture_EmitsEnumTypedefAndGlobalFacts()
+    {
+        var graph = RunFixture("direct-refs-c", "direct-refs-debug").Graph;
+
+        Assert.Empty(GraphValidator.Validate(graph));
+        AssertModuleParseHealth(graph, "mod:direct-refs-c", total: 1, parsed: 1, failed: 0);
+        AssertModuleGraphInventory(graph, "mod:direct-refs-c", symbols: 13, edges: 9, references: 8, calls: 1);
+        AssertModuleFunctionInventory(graph, "mod:direct-refs-c", definitions: 2, declarations: 0);
+        AssertModuleNativeKindInventory(graph, "mod:direct-refs-c", macros: 1);
+        AssertModuleTypeInventory(graph, "mod:direct-refs-c", structs: 1, unions: 0, enums: 1, typedefs: 1);
+
+        Assert.NotNull(graph.GetSymbol("field:decode_bias"));
+        Assert.NotNull(graph.GetSymbol("field:PacketKind.PacketKind_Video"));
+        AssertReferenceKind(graph, "type:PacketKindAlias", "type:PacketKind", "underlyingType");
+        AssertReferenceKind(graph, "field:Packet.kind", "type:PacketKindAlias", "fieldType");
+        AssertReferenceKind(graph, "method:decode(Packet*)", "field:decode_bias", "globalAccess");
+        AssertReferenceKind(graph, "method:decode(Packet*)", "field:PacketKind.PacketKind_Video", "enumMember");
+        AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.kind", "fieldAccess");
+        AssertAllNativeFactsCarryBuildProfile(graph, "direct-refs-debug");
+    }
+
+    [SkippableFact]
     public void Executable_CallbackFixture_EmitsImprovementRelevantDispatchFacts()
     {
         var graph = RunFixture("callback-table-c", "callback-debug").Graph;
@@ -177,7 +199,7 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/registry.c",
             outgoingCallbackTargets: 2,
-            incomingCallbackTargets: 0);
+            incomingCallbackTargets: 2);
         AssertReferenceKind(
             graph,
             "field:codec_table",
