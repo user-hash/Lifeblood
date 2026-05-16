@@ -7,6 +7,7 @@
 
 #include <clang-c/Index.h>
 
+#include <optional>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -24,7 +25,8 @@ public:
     void AddDeclarationReference(
         CXCursor cursor,
         const std::string& currentFunctionId,
-        const std::string& initializerOwnerId);
+        const std::string& initializerOwnerId,
+        std::optional<unsigned> initializerRowOrdinal);
     void AddMemberReference(CXCursor cursor, const std::string& currentFunctionId);
 
 private:

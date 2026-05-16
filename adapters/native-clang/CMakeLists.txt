@@ -119,6 +119,9 @@ add_executable(lifeblood-native-clang
     src/NativeReferenceMetrics.h
     src/NativeSymbolIds.cpp
     src/NativeSymbolIds.h
+    src/NativeTableRowEmitter.cpp
+    src/NativeTableRowEmitter.h
+    src/NativeTableValueKinds.h
     src/NativeTypeEmitter.cpp
     src/NativeTypeEmitter.h
     src/NativeTypeMemberEmitter.cpp

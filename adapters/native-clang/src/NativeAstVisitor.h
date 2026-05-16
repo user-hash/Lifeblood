@@ -6,6 +6,8 @@
 
 #include <clang-c/Index.h>
 
+#include <map>
+#include <optional>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -26,6 +28,8 @@ private:
         std::string currentFunctionId;
         std::string currentTypeId;
         std::string currentInitializerOwnerId;
+        unsigned initializerListDepth = 0;
+        std::optional<unsigned> currentInitializerRowOrdinal;
     };
 
     struct ChildVisitPayload
@@ -41,10 +45,13 @@ private:
     VisitState ProcessCursor(CXCursor cursor, CXTranslationUnit unit, VisitState state);
 
     void ProcessEnumConstant(CXCursor cursor, const VisitState& state);
+    VisitState ProcessInitializerList(VisitState state);
+    std::optional<unsigned> InitializerRowOrdinalForReference(VisitState state);
     std::string ProcessVariable(CXCursor cursor, const VisitState& state);
 
     NativeDeclarationEmitter& declarations_;
     NativeReferenceEmitter& references_;
     NativePreprocessorEmitter& preprocessor_;
+    std::map<std::string, unsigned> initializerRowOrdinals_;
 };
 }

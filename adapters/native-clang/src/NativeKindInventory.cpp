@@ -11,7 +11,7 @@ namespace lifeblood::native_clang
 {
 namespace
 {
-constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> ModuleCountProperties{{
+constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 11> ModuleCountProperties{{
     { NativeGraphMetricPropertyKeys::MacroCount, &NativeKindInventoryCounts::macroCount },
     { NativeGraphMetricPropertyKeys::GlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
     { NativeGraphMetricPropertyKeys::CallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
@@ -21,9 +21,11 @@ constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> ModuleCo
     { NativeGraphMetricPropertyKeys::TypedefCount, &NativeKindInventoryCounts::typedefCount },
     { NativeGraphMetricPropertyKeys::StructFieldCount, &NativeKindInventoryCounts::structFieldCount },
     { NativeGraphMetricPropertyKeys::EnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
+    { NativeGraphMetricPropertyKeys::TableRowCount, &NativeKindInventoryCounts::tableRowCount },
+    { NativeGraphMetricPropertyKeys::TableCellCount, &NativeKindInventoryCounts::tableCellCount },
 }};
 
-constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> FileCountProperties{{
+constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 11> FileCountProperties{{
     { NativeGraphMetricPropertyKeys::FileMacroCount, &NativeKindInventoryCounts::macroCount },
     { NativeGraphMetricPropertyKeys::FileGlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
     { NativeGraphMetricPropertyKeys::FileCallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
@@ -33,6 +35,8 @@ constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> FileCoun
     { NativeGraphMetricPropertyKeys::FileTypedefCount, &NativeKindInventoryCounts::typedefCount },
     { NativeGraphMetricPropertyKeys::FileStructFieldCount, &NativeKindInventoryCounts::structFieldCount },
     { NativeGraphMetricPropertyKeys::FileEnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
+    { NativeGraphMetricPropertyKeys::FileTableRowCount, &NativeKindInventoryCounts::tableRowCount },
+    { NativeGraphMetricPropertyKeys::FileTableCellCount, &NativeKindInventoryCounts::tableCellCount },
 }};
 }
 
@@ -58,6 +62,10 @@ void NativeKindInventory::AddSymbol(
         counts.structFieldCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::EnumMember))
         counts.enumMemberCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::TableRow))
+        counts.tableRowCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::TableCell))
+        counts.tableCellCount++;
 }
 
 void NativeKindInventory::WriteModuleProperties(
