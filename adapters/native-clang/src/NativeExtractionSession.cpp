@@ -65,15 +65,22 @@ bool NativeExtractionSession::ParseCommand(CXIndex index, CXCompileCommand comma
 {
     NativeCompileCommand compileCommand = commandReader_.Read(command);
     module_.BeginTranslationUnit(compileCommand);
+    auto sourceFile = sourceMap_.RelativePath(compileCommand.sourcePath);
+    if (sourceFile)
+        files_.MarkTranslationUnitPending(*sourceFile);
 
     auto unit = unitParser_.Parse(index, compileCommand);
     if (!unit)
     {
         module_.RecordTranslationUnitFailed();
+        if (sourceFile)
+            files_.MarkTranslationUnitFailed(*sourceFile);
         return false;
     }
 
     module_.RecordTranslationUnitParsed(unit.Diagnostics());
+    if (sourceFile)
+        files_.MarkTranslationUnitParsed(*sourceFile, unit.Diagnostics());
     astVisitor_.Visit(clang_getTranslationUnitCursor(unit.Get()), unit.Get());
     return true;
 }

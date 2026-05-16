@@ -106,6 +106,8 @@ public class NativeClangExecutableRatchetTests
 
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:multi-tu-c", total: 2, parsed: 2, failed: 0);
+        AssertTranslationUnitHealth(graph, "file:src/audio.c", "parsed");
+        AssertTranslationUnitHealth(graph, "file:src/video.c", "parsed");
 
         Assert.NotNull(graph.GetSymbol("file:src/audio.c"));
         Assert.NotNull(graph.GetSymbol("file:src/video.c"));
@@ -131,6 +133,8 @@ public class NativeClangExecutableRatchetTests
 
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:partial-parse-c", total: 2, parsed: 1, failed: 1);
+        AssertTranslationUnitHealth(graph, "file:src/good.c", "parsed");
+        AssertTranslationUnitHealth(graph, "file:src/missing.c", "failed");
         Assert.NotNull(graph.GetSymbol("method:decode_good(Packet*)"));
         Assert.NotNull(graph.GetSymbol("method:normalize(int)"));
         AssertCall(graph, "method:decode_good(Packet*)", "method:normalize(int)");
@@ -315,6 +319,20 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("0", module.Properties["native.errorDiagnosticCount"]);
         Assert.Equal("0", module.Properties["native.fatalDiagnosticCount"]);
         Assert.Equal(failed == 0 ? "complete" : "partial", module.Properties["native.parseStatus"]);
+    }
+
+    private static void AssertTranslationUnitHealth(
+        SemanticGraph graph,
+        string fileId,
+        string parseStatus)
+    {
+        var file = graph.GetSymbol(fileId);
+        Assert.NotNull(file);
+        Assert.Equal("true", file!.Properties["native.translationUnit"]);
+        Assert.Equal(parseStatus, file.Properties["native.parseStatus"]);
+        Assert.Equal("0", file.Properties["native.warningDiagnosticCount"]);
+        Assert.Equal("0", file.Properties["native.errorDiagnosticCount"]);
+        Assert.Equal("0", file.Properties["native.fatalDiagnosticCount"]);
     }
 
     private static string FindRepoRoot()
