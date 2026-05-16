@@ -73,6 +73,8 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) co
         auto targetFile = ownership_.OwningFileId(edge.targetId);
         if (sourceFile && targetFile && *sourceFile != *targetFile)
             counts.crossFileCallEdgeCount++;
+        else if (sourceFile && targetFile)
+            counts.sameFileCallEdgeCount++;
     }
 }
 
@@ -116,6 +118,8 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
     module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
     module.properties["native.includeEdgeCount"] = std::to_string(counts.includeEdgeCount);
     module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
+    module.properties["native.sameFileCallEdgeCount"] =
+        std::to_string(counts.sameFileCallEdgeCount);
     module.properties["native.crossFileCallEdgeCount"] =
         std::to_string(counts.crossFileCallEdgeCount);
     module.properties["native.globalAccessEdgeCount"] =

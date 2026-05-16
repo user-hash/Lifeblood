@@ -50,6 +50,7 @@ private:
         unsigned incomingCallbackTargetEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;
         unsigned incomingCallEdgeCount = 0;
+        unsigned localCallEdgeCount = 0;
         unsigned outgoingCrossFileCallEdgeCount = 0;
         unsigned incomingCrossFileCallEdgeCount = 0;
     };

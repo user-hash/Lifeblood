@@ -32,7 +32,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
-        AssertModuleCallInventory(graph, "mod:tiny-c", crossFileCalls: 0);
+        AssertModuleCallInventory(graph, "mod:tiny-c", sameFileCalls: 1, crossFileCalls: 0);
         AssertModuleIncludeInventory(graph, "mod:tiny-c", includeEdges: 1);
         AssertModuleFunctionInventory(graph, "mod:tiny-c", definitions: 2, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:tiny-c", macros: 1);
@@ -68,7 +68,8 @@ public class NativeClangExecutableRatchetTests
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
-            incomingCalls: 1);
+            incomingCalls: 1,
+            localCalls: 1);
         AssertFilePressure(
             graph,
             "file:src/packet.h",
@@ -273,7 +274,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:multi-tu-c", total: 2, parsed: 2, failed: 0);
         AssertModuleFileInventory(graph, "mod:multi-tu-c", translationUnits: 2, headers: 1);
         AssertModuleGraphInventory(graph, "mod:multi-tu-c", symbols: 10, edges: 8, references: 6, calls: 2);
-        AssertModuleCallInventory(graph, "mod:multi-tu-c", crossFileCalls: 0);
+        AssertModuleCallInventory(graph, "mod:multi-tu-c", sameFileCalls: 2, crossFileCalls: 0);
         AssertModuleIncludeInventory(graph, "mod:multi-tu-c", includeEdges: 2);
         AssertModuleFunctionInventory(graph, "mod:multi-tu-c", definitions: 4, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:multi-tu-c", macros: 1);
@@ -311,7 +312,8 @@ public class NativeClangExecutableRatchetTests
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
-            incomingCalls: 1);
+            incomingCalls: 1,
+            localCalls: 1);
         AssertFilePressure(
             graph,
             "file:src/packet.h",
@@ -343,7 +345,8 @@ public class NativeClangExecutableRatchetTests
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
-            incomingCalls: 1);
+            incomingCalls: 1,
+            localCalls: 1);
         AssertCall(graph, "method:decode_audio(Packet*)", "method:audio_gain(int)");
         AssertCall(graph, "method:decode_video(Packet*)", "method:video_scale(int)");
         AssertDirectCallCounts(graph, "method:decode_audio(Packet*)", incoming: 0, outgoing: 1);
@@ -423,7 +426,7 @@ public class NativeClangExecutableRatchetTests
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:cross-tu-c", total: 2, parsed: 2, failed: 0);
         AssertModuleFileInventory(graph, "mod:cross-tu-c", translationUnits: 2, headers: 1);
-        AssertModuleCallInventory(graph, "mod:cross-tu-c", crossFileCalls: 1);
+        AssertModuleCallInventory(graph, "mod:cross-tu-c", sameFileCalls: 0, crossFileCalls: 1);
 
         var decodeAudio = graph.GetSymbol("method:decode_audio(Packet*)");
         Assert.NotNull(decodeAudio);
@@ -755,10 +758,12 @@ public class NativeClangExecutableRatchetTests
     private static void AssertModuleCallInventory(
         SemanticGraph graph,
         string moduleId,
+        int sameFileCalls,
         int crossFileCalls)
     {
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
+        Assert.Equal(sameFileCalls.ToString(), module!.Properties["native.sameFileCallEdgeCount"]);
         Assert.Equal(crossFileCalls.ToString(), module!.Properties["native.crossFileCallEdgeCount"]);
     }
 
@@ -963,6 +968,7 @@ public class NativeClangExecutableRatchetTests
         int incomingReferences,
         int outgoingCalls,
         int incomingCalls,
+        int localCalls = 0,
         int outgoingCrossFileCalls = 0,
         int incomingCrossFileCalls = 0)
     {
@@ -1011,6 +1017,7 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("0", file.Properties["native.fileIncomingCallbackTargetEdgeCount"]);
         Assert.Equal(outgoingCalls.ToString(), file.Properties["native.fileOutgoingCallEdgeCount"]);
         Assert.Equal(incomingCalls.ToString(), file.Properties["native.fileIncomingCallEdgeCount"]);
+        Assert.Equal(localCalls.ToString(), file.Properties["native.fileLocalCallEdgeCount"]);
         Assert.Equal(
             outgoingCrossFileCalls.ToString(),
             file.Properties["native.fileOutgoingCrossFileCallEdgeCount"]);

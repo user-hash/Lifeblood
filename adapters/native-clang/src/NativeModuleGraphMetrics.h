@@ -28,6 +28,7 @@ private:
         unsigned referenceEdgeCount = 0;
         unsigned includeEdgeCount = 0;
         unsigned callEdgeCount = 0;
+        unsigned sameFileCallEdgeCount = 0;
         unsigned crossFileCallEdgeCount = 0;
         unsigned globalAccessEdgeCount = 0;
         unsigned fieldAccessEdgeCount = 0;
