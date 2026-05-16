@@ -48,6 +48,7 @@ add_executable(lifeblood-native-clang
     src/NativeAstVisitor.cpp
     src/NativeAstVisitor.h
     src/NativeCallKinds.h
+    src/NativeCountPropertyWriter.h
     src/NativeCompileCommand.h
     src/NativeEdgeClassification.cpp
     src/NativeEdgeClassification.h
@@ -94,6 +95,7 @@ add_executable(lifeblood-native-clang
     src/NativeGraphFinalizer.h
     src/NativeGraphFacts.cpp
     src/NativeGraphFacts.h
+    src/NativeGraphMetricPropertyKeys.h
     src/NativeGraphPropertyKeys.h
     src/NativeGraphOwnershipIndex.cpp
     src/NativeGraphOwnershipIndex.h

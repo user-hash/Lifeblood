@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "ClangUtilities.h"
 #include "NativeFileRegistry.h"
+#include "NativeGraphFacts.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
@@ -45,6 +46,11 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
     const auto storage = clang_Cursor_getStorageClass(cursor);
     const std::string symbolId = GlobalVariableId(cursor);
     const Symbol* existing = graph_.FindSymbol(symbolId);
+    const bool existingIsCallbackTable = existing != nullptr &&
+        NativeGraphFacts::HasNativeKind(*existing, NativeKindNames::CallbackTable);
+    const std::string nativeKind = existingIsCallbackTable
+        ? NativeKindNames::CallbackTable
+        : NativeKindNames::Global;
 
     Symbol symbol;
     symbol.id = symbolId;
@@ -61,11 +67,7 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
     NativePropertyWriter::Set(
         symbol,
         NativeGraphPropertyKeys::NativeKind,
-        existing != nullptr &&
-        existing->properties.find(NativeGraphPropertyKeys::NativeKind) != existing->properties.end() &&
-        existing->properties.at(NativeGraphPropertyKeys::NativeKind) == NativeKindNames::CallbackTable
-            ? NativeKindNames::CallbackTable
-            : NativeKindNames::Global);
+        nativeKind);
     NativePropertyWriter::Set(
         symbol,
         NativeGraphPropertyKeys::Linkage,
@@ -75,7 +77,7 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
         NativeGraphPropertyKeys::FieldType,
         NormalizeTypeForId(ToString(clang_getTypeSpelling(clang_getCursorType(cursor)))));
     NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
-    if (symbol.properties[NativeGraphPropertyKeys::NativeKind] == NativeKindNames::CallbackTable)
+    if (nativeKind == NativeKindNames::CallbackTable)
         NativePropertyWriter::SetTrue(symbol, NativeGraphPropertyKeys::CallbackTable);
     graph_.AddSymbol(symbol);
 
