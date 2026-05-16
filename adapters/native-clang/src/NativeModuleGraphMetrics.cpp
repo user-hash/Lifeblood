@@ -53,21 +53,22 @@ void NativeModuleGraphMetrics::Write()
 void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) const
 {
     counts.edgeCount++;
-    if (edge.kind == "references")
+    auto reference = NativeEdgeClassification::Reference(edge);
+    if (reference.isReference)
     {
         counts.referenceEdgeCount++;
-        if (NativeGraphFacts::HasNativeEdgeKind(edge, "include"))
+        if (reference.isInclude)
             counts.includeEdgeCount++;
-        if (NativeGraphFacts::HasReferenceKind(edge, "globalAccess"))
+        if (reference.isGlobalAccess)
             counts.globalAccessEdgeCount++;
-        if (NativeGraphFacts::HasReferenceKind(edge, "fieldAccess"))
+        if (reference.isFieldAccess)
             counts.fieldAccessEdgeCount++;
-        if (NativeGraphFacts::HasReferenceKind(edge, "parameterType"))
+        if (reference.isParameterType)
             counts.parameterTypeEdgeCount++;
-        if (NativeGraphFacts::HasReferenceKind(edge, "callbackTarget"))
+        if (reference.isCallbackTarget)
             counts.callbackTargetEdgeCount++;
     }
-    else if (edge.kind == "calls")
+    else if (NativeEdgeClassification::IsCall(edge))
     {
         counts.callEdgeCount++;
         auto sourceFile = ownership_.OwningFileId(edge.sourceId);
