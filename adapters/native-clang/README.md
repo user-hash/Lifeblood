@@ -1,7 +1,7 @@
 # Native Clang Adapter
 
-**Status:** Planned. Stage 0 architectural charter only; no implementation code
-has shipped yet.
+**Status:** Planned. Stage 1 fixture contract exists; no extractor
+implementation code has shipped yet.
 
 This adapter will translate C/C++ projects into Lifeblood's universal semantic
 graph using Clang/LLVM as the parser and semantic engine.
@@ -83,9 +83,9 @@ Expected tools:
 - A C++ compiler compatible with the selected LLVM distribution.
 - Lifeblood CLI from this repo for graph validation.
 
-## First Fixture Goal
+## First Fixture Contract
 
-The first fixture should be tiny and boring:
+The first fixture is tiny and boring by design:
 
 ```c
 struct Packet { int size; };
@@ -96,7 +96,8 @@ int decode(struct Packet *packet) {
 }
 ```
 
-The first graph should prove:
+Its expected graph lives at `test-fixtures/tiny-c/expected.graph.json`, pinned by
+`NativeClangAdapterContractTests`. The graph proves:
 
 - file symbols exist;
 - `Packet`, `clamp`, and `decode` have stable IDs;
