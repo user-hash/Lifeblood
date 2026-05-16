@@ -97,6 +97,9 @@ public class NativeClangExecutableRatchetTests
             "field:codec_table",
             "method:decode_video(Packet*)",
             "callbackTarget");
+        AssertReferenceCounts(graph, "field:codec_table", incoming: 1, outgoing: 2);
+        AssertReferenceCounts(graph, "method:dispatch_first(Packet*)", incoming: 0, outgoing: 3);
+        AssertReferenceCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 2);
 
         var blast = BlastRadiusAnalyzer.Analyze(graph, "method:decode_audio(Packet*)");
         Assert.Contains("field:codec_table", blast.AffectedSymbolIds);
@@ -409,6 +412,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             method.Properties.GetValueOrDefault("native.directCallOutCount", "0"));
+    }
+
+    private static void AssertReferenceCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.referenceInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.referenceOutCount", "0"));
     }
 
     private static string FindRepoRoot()
