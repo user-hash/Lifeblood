@@ -58,29 +58,37 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) co
     counts.edgeCount++;
     auto metric = NativeEdgeMetricClassifier::Classify(edge);
     if (metric.isReference)
-    {
-        counts.referenceEdgeCount++;
-        if (metric.isInclude)
-            counts.includeEdgeCount++;
-        if (metric.isGlobalAccess)
-            counts.globalAccessEdgeCount++;
-        if (metric.isFieldAccess)
-            counts.fieldAccessEdgeCount++;
-        if (metric.isParameterType)
-            counts.parameterTypeEdgeCount++;
-        if (metric.isCallbackTarget)
-            counts.callbackTargetEdgeCount++;
-    }
+        AddReferenceEdgeCount(counts, metric);
     else if (metric.isCall)
-    {
-        counts.callEdgeCount++;
-        auto sourceFile = ownership_.OwningFileId(edge.sourceId);
-        auto targetFile = ownership_.OwningFileId(edge.targetId);
-        if (sourceFile && targetFile && *sourceFile != *targetFile)
-            counts.crossFileCallEdgeCount++;
-        else if (sourceFile && targetFile)
-            counts.sameFileCallEdgeCount++;
-    }
+        AddCallEdgeCount(counts, edge);
+}
+
+void NativeModuleGraphMetrics::AddReferenceEdgeCount(
+    Counts& counts,
+    const NativeEdgeMetricClassification& metric) const
+{
+    counts.referenceEdgeCount++;
+    if (metric.isInclude)
+        counts.includeEdgeCount++;
+    if (metric.isGlobalAccess)
+        counts.globalAccessEdgeCount++;
+    if (metric.isFieldAccess)
+        counts.fieldAccessEdgeCount++;
+    if (metric.isParameterType)
+        counts.parameterTypeEdgeCount++;
+    if (metric.isCallbackTarget)
+        counts.callbackTargetEdgeCount++;
+}
+
+void NativeModuleGraphMetrics::AddCallEdgeCount(Counts& counts, const Edge& edge) const
+{
+    counts.callEdgeCount++;
+    auto sourceFile = ownership_.OwningFileId(edge.sourceId);
+    auto targetFile = ownership_.OwningFileId(edge.targetId);
+    if (sourceFile && targetFile && *sourceFile != *targetFile)
+        counts.crossFileCallEdgeCount++;
+    else if (sourceFile && targetFile)
+        counts.sameFileCallEdgeCount++;
 }
 
 void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol)

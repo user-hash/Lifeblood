@@ -8,6 +8,8 @@
 #include "NativeVisibilityCounts.h"
 
 #include <map>
+#include <optional>
+#include <string>
 
 namespace lifeblood::native_clang
 {
@@ -49,7 +51,22 @@ private:
         unsigned incomingCrossFileCallEdgeCount = 0;
     };
 
+    using CountMember = unsigned Counts::*;
+
     void AddFileEdgeCount(const Edge& edge);
+    void AddReferenceFileEdgeCounts(
+        const NativeEdgeMetricClassification& metric,
+        const std::optional<std::string>& sourceFileId,
+        const std::optional<std::string>& targetFileId);
+    void AddCallFileEdgeCounts(
+        const Edge& edge,
+        const std::optional<std::string>& sourceFileId,
+        const std::optional<std::string>& targetFileId);
+    void AddDirectionalFileCount(
+        const std::optional<std::string>& sourceFileId,
+        const std::optional<std::string>& targetFileId,
+        CountMember outgoingCount,
+        CountMember incomingCount);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
     static void WriteFileCounts(Symbol& file, const Counts& counts);
     void WriteSymbolCallCounts(Symbol& symbol) const;
