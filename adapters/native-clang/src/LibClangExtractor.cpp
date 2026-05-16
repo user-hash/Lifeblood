@@ -4,6 +4,7 @@
 #include "LibClangExtractor.h"
 #include "NativeGraphBuilder.h"
 #include "NativeGraphSink.h"
+#include "NativeModuleTracker.h"
 #include "NativeSymbolIds.h"
 
 #include <clang-c/CXCompilationDatabase.h>
@@ -11,9 +12,7 @@
 
 #include <filesystem>
 #include <iostream>
-#include <map>
 #include <optional>
-#include <set>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -48,18 +47,9 @@ public:
           compilationDatabaseDir_(ResolvePath(options_.compilationDatabaseDir)),
           commandReader_(compilationDatabaseDir_),
           sourceMap_(projectRoot_),
-          moduleName_(BaseName(projectRoot_)),
-          moduleId_("mod:" + moduleName_),
-          graph_(graph)
+          graph_(graph),
+          module_(BaseName(projectRoot_), options_.profile, graph_)
     {
-        Symbol module;
-        module.id = moduleId_;
-        module.name = moduleName_;
-        module.qualifiedName = moduleName_;
-        module.kind = "module";
-        module.properties["native.kind"] = "library";
-        module.properties["native.buildProfile"] = options_.profile;
-        graph_.AddSymbol(module);
     }
 
     bool Run()
@@ -113,10 +103,8 @@ private:
 
     bool ParseCommand(CXIndex index, CXCompileCommand command)
     {
-        translationUnitCount_++;
         NativeCompileCommand compileCommand = commandReader_.Read(command);
-        ApplyCommandLineMacros(compileCommand);
-        UpdateModuleBuildProperties();
+        module_.BeginTranslationUnit(compileCommand);
 
         std::vector<const char*> cArgs;
         cArgs.reserve(compileCommand.parseArguments.size());
@@ -163,29 +151,6 @@ private:
 
         clang_disposeTranslationUnit(unit);
         return true;
-    }
-
-    void ApplyCommandLineMacros(const NativeCompileCommand& compileCommand)
-    {
-        for (const auto& define : compileCommand.defines)
-        {
-            commandLineDefines_[define.name] = define.value;
-            AddMacroSymbol(define.name, std::nullopt, 0, "commandLine", define.value);
-        }
-
-        for (const auto& name : compileCommand.undefines)
-            commandLineUndefines_.insert(name);
-    }
-
-    void UpdateModuleBuildProperties()
-    {
-        graph_.UpdateSymbol(moduleId_, [this](Symbol& module) {
-            module.properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
-            if (!commandLineDefines_.empty())
-                module.properties["native.defines"] = JoinDefines();
-            if (!commandLineUndefines_.empty())
-                module.properties["native.undefines"] = Join(commandLineUndefines_);
-        });
     }
 
     struct ChildVisitPayload
@@ -350,7 +315,7 @@ private:
         }
         else
         {
-            symbol.parentId = moduleId_;
+            symbol.parentId = module_.ModuleId();
         }
         symbol.visibility = "internal";
         symbol.isStatic = true;
@@ -806,10 +771,10 @@ private:
         Symbol symbol;
         symbol.id = id;
         symbol.name = fs::path(relativePath).filename().string();
-        symbol.qualifiedName = moduleName_ + "/" + relativePath;
+        symbol.qualifiedName = module_.ModuleName() + "/" + relativePath;
         symbol.kind = "file";
         symbol.filePath = relativePath;
-        symbol.parentId = moduleId_;
+        symbol.parentId = module_.ModuleId();
         symbol.visibility = "internal";
         symbol.properties["native.kind"] = EndsWith(relativePath, ".h") || EndsWith(relativePath, ".hpp")
             ? "header"
@@ -818,41 +783,14 @@ private:
         graph_.AddSymbol(symbol);
     }
 
-    std::string JoinDefines()
-    {
-        std::vector<std::string> values;
-        values.reserve(commandLineDefines_.size());
-        for (const auto& [name, value] : commandLineDefines_)
-            values.push_back(name + "=" + value);
-        return Join(values);
-    }
-
-    template <typename T>
-    std::string Join(const T& values)
-    {
-        std::ostringstream output;
-        bool first = true;
-        for (const auto& value : values)
-        {
-            if (!first) output << ";";
-            first = false;
-            output << value;
-        }
-        return output.str();
-    }
-
     Options options_;
     fs::path projectRoot_;
     fs::path compilationDatabaseDir_;
     ClangCompileCommandReader commandReader_;
     ClangSourceMapper sourceMap_;
-    std::string moduleName_;
-    std::string moduleId_;
     NativeGraphSink& graph_;
+    NativeModuleTracker module_;
     CXTranslationUnit currentUnit_ = nullptr;
-    unsigned translationUnitCount_ = 0;
-    std::map<std::string, std::string> commandLineDefines_;
-    std::set<std::string> commandLineUndefines_;
 };
 }
 
