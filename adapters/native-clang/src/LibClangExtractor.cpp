@@ -7,6 +7,7 @@
 #include "NativeGraphBuilder.h"
 #include "NativeGraphSink.h"
 #include "NativeModuleTracker.h"
+#include "NativeReferenceEmitter.h"
 #include "NativeSymbolIds.h"
 
 #include <clang-c/CXCompilationDatabase.h>
@@ -52,7 +53,8 @@ public:
           graph_(graph),
           module_(BaseName(projectRoot_), options_.profile, graph_),
           files_(module_.ModuleName(), module_.ModuleId(), options_.profile, graph_),
-          declarations_(options_.profile, graph_, sourceMap_, files_)
+          declarations_(options_.profile, graph_, sourceMap_, files_),
+          references_(options_.profile, graph_, sourceMap_, declarations_)
     {
     }
 
@@ -223,13 +225,16 @@ private:
                     state.currentFunctionId = FunctionId(cursor);
                 break;
             case CXCursor_CallExpr:
-                ProcessCall(cursor, state);
+                references_.AddDirectCall(cursor, state.currentFunctionId);
                 break;
             case CXCursor_DeclRefExpr:
-                ProcessDeclarationReference(cursor, state);
+                references_.AddDeclarationReference(
+                    cursor,
+                    state.currentFunctionId,
+                    state.currentInitializerOwnerId);
                 break;
             case CXCursor_MemberRefExpr:
-                ProcessMemberRef(cursor, state);
+                references_.AddMemberReference(cursor, state.currentFunctionId);
                 break;
             default:
                 break;
@@ -378,126 +383,6 @@ private:
         return GlobalVariableId(cursor);
     }
 
-    void ProcessCall(CXCursor cursor, const VisitState& state)
-    {
-        if (state.currentFunctionId.empty()) return;
-        CXCursor referenced = clang_getCursorReferenced(cursor);
-        if (clang_Cursor_isNull(referenced)) return;
-        if (clang_getCursorKind(referenced) != CXCursor_FunctionDecl) return;
-        if (!declarations_.AddFunction(referenced)) return;
-
-        Edge edge;
-        edge.sourceId = state.currentFunctionId;
-        edge.targetId = FunctionId(referenced);
-        edge.kind = "calls";
-        edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
-        edge.callSite = sourceMap_.CallSiteFor(cursor, state.currentFunctionId);
-        edge.properties["native.callKind"] = "direct";
-        edge.properties["native.buildProfile"] = options_.profile;
-        graph_.AddEdge(edge);
-    }
-
-    void ProcessDeclarationReference(CXCursor cursor, const VisitState& state)
-    {
-        CXCursor referenced = clang_getCursorReferenced(cursor);
-        if (clang_Cursor_isNull(referenced)) return;
-
-        if (!state.currentInitializerOwnerId.empty())
-        {
-            if (clang_getCursorKind(referenced) == CXCursor_FunctionDecl &&
-                declarations_.AddFunction(referenced))
-            {
-                MarkCallbackTable(state.currentInitializerOwnerId);
-                AddReferenceEdge(
-                    cursor,
-                    state.currentInitializerOwnerId,
-                    FunctionId(referenced),
-                    "callbackTarget");
-            }
-            return;
-        }
-
-        if (state.currentFunctionId.empty()) return;
-
-        switch (clang_getCursorKind(referenced))
-        {
-            case CXCursor_VarDecl:
-                if (declarations_.AddGlobalVariable(referenced))
-                    AddReferenceEdge(cursor, state.currentFunctionId, GlobalVariableId(referenced), "globalAccess");
-                break;
-            case CXCursor_EnumConstantDecl:
-            {
-                CXCursor parent = clang_getCursorSemanticParent(referenced);
-                if (clang_Cursor_isNull(parent) || !declarations_.AddRecordType(parent, "enum"))
-                    return;
-
-                std::string enumTypeId = TypeId(parent);
-                if (declarations_.AddEnumConstant(referenced, enumTypeId))
-                    AddReferenceEdge(
-                        cursor,
-                        state.currentFunctionId,
-                        EnumConstantId(referenced, enumTypeId),
-                        "enumMember");
-                break;
-            }
-            default:
-                break;
-        }
-    }
-
-    void ProcessMemberRef(CXCursor cursor, const VisitState& state)
-    {
-        if (state.currentFunctionId.empty()) return;
-        CXCursor referenced = clang_getCursorReferenced(cursor);
-        if (clang_Cursor_isNull(referenced)) return;
-        if (clang_getCursorKind(referenced) != CXCursor_FieldDecl) return;
-
-        CXCursor owner = clang_getCursorSemanticParent(referenced);
-        if (clang_Cursor_isNull(owner)) return;
-        if (!declarations_.AddRecordType(owner, "struct")) return;
-
-        declarations_.AddField(referenced, TypeId(owner));
-
-        std::string fieldName = ToString(clang_getCursorSpelling(referenced));
-        std::string ownerName = ToString(clang_getCursorSpelling(owner));
-        if (fieldName.empty() || ownerName.empty()) return;
-
-        Edge edge;
-        edge.sourceId = state.currentFunctionId;
-        edge.targetId = "field:" + ownerName + "." + fieldName;
-        edge.kind = "references";
-        edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
-        edge.callSite = sourceMap_.CallSiteFor(cursor, state.currentFunctionId);
-        edge.properties["native.referenceKind"] = "fieldAccess";
-        edge.properties["native.buildProfile"] = options_.profile;
-        graph_.AddEdge(edge);
-    }
-
-    void AddReferenceEdge(
-        CXCursor cursor,
-        const std::string& sourceId,
-        const std::string& targetId,
-        const std::string& referenceKind)
-    {
-        Edge edge;
-        edge.sourceId = sourceId;
-        edge.targetId = targetId;
-        edge.kind = "references";
-        edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
-        edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
-        edge.properties["native.referenceKind"] = referenceKind;
-        edge.properties["native.buildProfile"] = options_.profile;
-        graph_.AddEdge(edge);
-    }
-
-    void MarkCallbackTable(const std::string& symbolId)
-    {
-        graph_.UpdateSymbol(symbolId, [](Symbol& symbol) {
-            symbol.properties["native.kind"] = "callbackTable";
-            symbol.properties["native.callbackTable"] = "true";
-        });
-    }
-
     Options options_;
     fs::path projectRoot_;
     fs::path compilationDatabaseDir_;
@@ -507,6 +392,7 @@ private:
     NativeModuleTracker module_;
     NativeFileRegistry files_;
     NativeDeclarationEmitter declarations_;
+    NativeReferenceEmitter references_;
     CXTranslationUnit currentUnit_ = nullptr;
 };
 }
