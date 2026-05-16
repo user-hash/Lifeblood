@@ -57,7 +57,7 @@ Verified build shape:
 cmd /c 'call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -S adapters/native-clang -B artifacts/native-clang-build -G Ninja -DCMAKE_MAKE_PROGRAM="C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe" -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang++.exe" -DCMAKE_RC_COMPILER="C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe" && "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build artifacts/native-clang-build'
 ```
 
-Verified run shape:
+Verified tiny run shape:
 
 ```powershell
 artifacts/native-clang-build/lifeblood-native-clang.exe `
@@ -68,9 +68,10 @@ artifacts/native-clang-build/lifeblood-native-clang.exe `
 dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang-build/tiny.graph.json
 ```
 
-The graph import reports 7 symbols, 10 edges, 1 module, and 1 type. The edge
-count includes graph-builder synthesis such as containment and derived file
-edges.
+The tiny graph import reports 7 symbols, 10 edges, 1 module, and 1 type. The
+direct-reference graph import reports 13 symbols, 21 edges, 1 module, and
+3 types. The edge counts include graph-builder synthesis such as containment
+and derived file edges.
 
 ## Available Clang API Surface
 

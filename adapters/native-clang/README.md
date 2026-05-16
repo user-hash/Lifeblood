@@ -1,7 +1,7 @@
 # Native Clang Adapter
 
-**Status:** Stage 1 bootstrap. The tiny fixture contract exists and the first
-`libclang` executable can emit a Lifeblood graph for it.
+**Status:** Stage 2 direct-reference bootstrap. The `libclang` executable emits
+graphs for tiny direct-call and richer direct-reference C fixtures.
 
 This adapter will translate C/C++ projects into Lifeblood's universal semantic
 graph using Clang/LLVM as the parser and semantic engine.
@@ -27,7 +27,7 @@ No LLVM or Clang dependency belongs in `Lifeblood.Domain`,
 
 ## Planned Engine
 
-Stage 1 uses a small native command-line tool over Clang's API. On the
+Stage 1/2 uses a small native command-line tool over Clang's API. On the
 current Windows machine, the official LLVM installer provides `libclang`
 headers/libs (`clang-c/Index.h`, `clang-c/CXCompilationDatabase.h`,
 `libclang.lib`, `libclang.dll`) but not the full C++ LibTooling development
@@ -108,6 +108,17 @@ artifacts/native-clang-build/lifeblood-native-clang.exe `
 dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang-build/tiny.graph.json
 ```
 
+Run the richer direct-reference fixture:
+
+```powershell
+artifacts/native-clang-build/lifeblood-native-clang.exe `
+  --project adapters/native-clang/test-fixtures/direct-refs-c `
+  --profile direct-refs-debug `
+  --out artifacts/native-clang-build/direct-refs.graph.json
+
+dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang-build/direct-refs.graph.json
+```
+
 ## Source Layout
 
 The Stage 1 executable keeps adapter responsibilities separated:
@@ -146,3 +157,17 @@ Its expected graph lives at `test-fixtures/tiny-c/expected.graph.json`, pinned b
 - `decode -> Packet` is a `References` edge;
 - all expression-derived edges carry call-site provenance where available;
 - `lifeblood analyze --graph graph.json` validates the output.
+
+## Direct Reference Fixture
+
+The richer `direct-refs-c` fixture adds the next valuable native facts:
+
+- enum types and enum members;
+- typedef symbols and underlying-type references;
+- struct field type references;
+- global variable symbols;
+- function references to globals and enum members.
+
+The generated graph currently imports as 13 symbols, 21 normalized edges,
+1 module, and 3 types after Lifeblood synthesizes containment and derived file
+edges.

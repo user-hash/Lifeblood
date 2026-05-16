@@ -7,9 +7,9 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Stage-1 contract tests for the planned external Native Clang adapter.
-/// The fixture graph is hand-authored until extractor code exists; it pins
-/// the language-agnostic graph shape that the future Clang pipeline must emit.
+/// Contract tests for the external Native Clang adapter graph shape. The
+/// fixture graphs pin the language-agnostic output that the libclang pipeline
+/// must emit while keeping LLVM outside Lifeblood core.
 /// </summary>
 public class NativeClangAdapterContractTests
 {
@@ -141,17 +141,62 @@ public class NativeClangAdapterContractTests
             b.Kind == Lifeblood.Domain.Results.BreakKind.BindingRemoval);
     }
 
+    [Fact]
+    public void DirectRefsFixture_ModelsEnumsTypedefsGlobalsAndVariableReferences()
+    {
+        var graph = LoadDirectRefsFixture().Graph;
+
+        var validationErrors = GraphValidator.Validate(graph);
+        Assert.Empty(validationErrors);
+
+        AssertSymbol(graph, "type:PacketKind", SymbolKind.Type, "enum", "direct-refs-debug");
+        AssertSymbol(graph, "field:PacketKind.PacketKind_Video", SymbolKind.Field, "enumMember", "direct-refs-debug");
+        AssertSymbol(graph, "type:PacketKindAlias", SymbolKind.Type, "typedef", "direct-refs-debug");
+        AssertSymbol(graph, "field:Packet.kind", SymbolKind.Field, "structField", "direct-refs-debug");
+        AssertSymbol(graph, "field:decode_bias", SymbolKind.Field, "global", "direct-refs-debug");
+
+        var enumMember = graph.GetSymbol("field:PacketKind.PacketKind_Video");
+        Assert.NotNull(enumMember);
+        Assert.Equal("2", enumMember!.Properties["native.enumValue"]);
+
+        var typedef = graph.GetSymbol("type:PacketKindAlias");
+        Assert.NotNull(typedef);
+        Assert.Equal("PacketKind", typedef!.Properties["native.underlyingType"]);
+
+        var global = graph.GetSymbol("field:decode_bias");
+        Assert.NotNull(global);
+        Assert.Equal("external", global!.Properties["native.linkage"]);
+        Assert.Equal("int", global.Properties["native.fieldType"]);
+
+        AssertReferenceKind(graph, "type:PacketKindAlias", "type:PacketKind", "underlyingType");
+        AssertReferenceKind(graph, "field:Packet.kind", "type:PacketKindAlias", "fieldType");
+        AssertReferenceKind(graph, "method:decode(Packet*)", "field:decode_bias", "globalAccess");
+        AssertReferenceKind(graph, "method:decode(Packet*)", "field:PacketKind.PacketKind_Video", "enumMember");
+        AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.kind", "fieldAccess");
+    }
+
+    [Fact]
+    public void DirectRefsFixture_BlastRadiusReusesGlobalReferences()
+    {
+        var graph = LoadDirectRefsFixture().Graph;
+
+        var result = BlastRadiusAnalyzer.Analyze(graph, "field:decode_bias");
+
+        Assert.Contains("method:decode(Packet*)", result.AffectedSymbolIds);
+    }
+
     private static void AssertSymbol(
         SemanticGraph graph,
         string id,
         SymbolKind kind,
-        string nativeKind)
+        string nativeKind,
+        string buildProfile = "tiny-debug")
     {
         var symbol = graph.GetSymbol(id);
         Assert.NotNull(symbol);
         Assert.Equal(kind, symbol!.Kind);
         Assert.Equal(nativeKind, symbol.Properties["native.kind"]);
-        Assert.Equal("tiny-debug", symbol.Properties["native.buildProfile"]);
+        Assert.Equal(buildProfile, symbol.Properties["native.buildProfile"]);
     }
 
     private static void AssertContains(SemanticGraph graph, string sourceId, string targetId)
@@ -171,6 +216,18 @@ public class NativeClangAdapterContractTests
         return edge!;
     }
 
+    private static void AssertReferenceKind(
+        SemanticGraph graph,
+        string sourceId,
+        string targetId,
+        string referenceKind)
+    {
+        var edge = AssertEdge(graph, sourceId, targetId, EdgeKind.References);
+        Assert.Equal(EvidenceKind.Semantic, edge.Evidence.Kind);
+        Assert.Equal(ConfidenceLevel.Proven, edge.Evidence.Confidence);
+        Assert.Equal(referenceKind, edge.Properties["native.referenceKind"]);
+    }
+
     private static void AssertCallSite(
         Edge edge,
         string filePath,
@@ -186,13 +243,19 @@ public class NativeClangAdapterContractTests
     }
 
     private static GraphDocument LoadTinyFixture()
+        => LoadFixture("tiny-c");
+
+    private static GraphDocument LoadDirectRefsFixture()
+        => LoadFixture("direct-refs-c");
+
+    private static GraphDocument LoadFixture(string fixtureName)
     {
         var path = Path.Combine(
             FindRepoRoot(),
             "adapters",
             "native-clang",
             "test-fixtures",
-            "tiny-c",
+            fixtureName,
             "expected.graph.json");
 
         using var stream = File.OpenRead(path);
