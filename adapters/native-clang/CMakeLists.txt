@@ -34,6 +34,10 @@ add_executable(lifeblood-native-clang
     src/NativeGraphBuilder.cpp
     src/NativeGraphBuilder.h
     src/NativeGraphSink.h
+    src/NativeDeclarationEmitter.cpp
+    src/NativeDeclarationEmitter.h
+    src/NativeFileRegistry.cpp
+    src/NativeFileRegistry.h
     src/NativeModuleTracker.cpp
     src/NativeModuleTracker.h
     src/NativeSymbolIds.cpp
