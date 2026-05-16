@@ -40,9 +40,11 @@ void NativeFileRegistry::EnsureFileSymbol(const std::string& relativePath)
     symbol.parentId = moduleId_;
     symbol.visibility = NativeVisibilityNames::Internal;
     const bool isHeader = EndsWith(relativePath, ".h") || EndsWith(relativePath, ".hpp");
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] =
-        isHeader ? NativeKindNames::Header : NativeKindNames::TranslationUnit;
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::NativeKind,
+        isHeader ? NativeKindNames::Header : NativeKindNames::TranslationUnit);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(symbol);
 
     if (isHeader)
