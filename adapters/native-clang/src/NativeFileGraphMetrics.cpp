@@ -26,7 +26,7 @@ void NativeFileGraphMetrics::ObserveSymbol(
     counts.declaredSymbolCount++;
     NativeVisibilityCounter::Add(counts.declaredVisibility, symbol);
     AddFunctionDeclarationCount(counts, symbol);
-    AddNativeKindCounts(counts, symbol);
+    NativeKindInventory::AddSymbol(counts.nativeKinds, symbol);
 }
 
 void NativeFileGraphMetrics::ObserveEdge(const Edge& edge)
@@ -133,28 +133,6 @@ void NativeFileGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const S
         counts.functionDefinitionCount++;
 }
 
-void NativeFileGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& symbol)
-{
-    if (NativeGraphFacts::HasNativeKind(symbol, "macro"))
-        counts.macroCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "global"))
-        counts.globalVariableCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
-        counts.callbackTableCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "struct"))
-        counts.structCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "union"))
-        counts.unionCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "enum"))
-        counts.enumCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "typedef"))
-        counts.typedefCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "structField"))
-        counts.structFieldCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "enumMember"))
-        counts.enumMemberCount++;
-}
-
 void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
 {
     file.properties["native.declaredSymbolCount"] =
@@ -169,19 +147,7 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
         std::to_string(counts.functionDefinitionCount);
     file.properties["native.fileFunctionDeclarationCount"] =
         std::to_string(counts.functionDeclarationCount);
-    file.properties["native.fileMacroCount"] = std::to_string(counts.macroCount);
-    file.properties["native.fileGlobalVariableCount"] =
-        std::to_string(counts.globalVariableCount);
-    file.properties["native.fileCallbackTableCount"] =
-        std::to_string(counts.callbackTableCount);
-    file.properties["native.fileStructCount"] = std::to_string(counts.structCount);
-    file.properties["native.fileUnionCount"] = std::to_string(counts.unionCount);
-    file.properties["native.fileEnumCount"] = std::to_string(counts.enumCount);
-    file.properties["native.fileTypedefCount"] = std::to_string(counts.typedefCount);
-    file.properties["native.fileStructFieldCount"] =
-        std::to_string(counts.structFieldCount);
-    file.properties["native.fileEnumMemberCount"] =
-        std::to_string(counts.enumMemberCount);
+    NativeKindInventory::WriteFileProperties(file, counts.nativeKinds);
     file.properties["native.fileOutgoingReferenceEdgeCount"] =
         std::to_string(counts.outgoingReferenceEdgeCount);
     file.properties["native.fileIncomingReferenceEdgeCount"] =
