@@ -91,6 +91,8 @@ public class NativeClangExecutableRatchetTests
         AssertReferenceKind(graph, "method:decode(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.size", "fieldAccess");
         AssertCall(graph, "method:decode(Packet*)", "method:clamp(int)");
+        AssertParameterTypeCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
+        AssertParameterTypeCounts(graph, "type:Packet", incoming: 1, outgoing: 0);
         AssertSameFileDirectCallCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
         AssertSameFileDirectCallCounts(graph, "method:clamp(int)", incoming: 1, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "tiny-debug");
@@ -207,6 +209,8 @@ public class NativeClangExecutableRatchetTests
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:decode_bias", "globalAccess");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:PacketKind.PacketKind_Video", "enumMember");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.kind", "fieldAccess");
+        AssertParameterTypeCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
+        AssertParameterTypeCounts(graph, "type:Packet", incoming: 1, outgoing: 0);
         AssertGlobalAccessCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
         AssertGlobalAccessCounts(graph, "field:decode_bias", incoming: 1, outgoing: 0);
         AssertFieldAccessCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 2);
@@ -1134,6 +1138,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.fieldAccessOutCount", "0"));
+    }
+
+    private static void AssertParameterTypeCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.parameterTypeInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.parameterTypeOutCount", "0"));
     }
 
     private static void AssertCrossFileDirectCallCounts(
