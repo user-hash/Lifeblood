@@ -337,8 +337,17 @@ private:
                 if (AddRecordType(cursor, "enum"))
                     state.currentTypeId = TypeId(cursor);
                 break;
+            case CXCursor_EnumConstantDecl:
+                ProcessEnumConstant(cursor, state);
+                break;
+            case CXCursor_TypedefDecl:
+                AddTypedefType(cursor);
+                break;
             case CXCursor_FieldDecl:
                 ProcessField(cursor, state);
+                break;
+            case CXCursor_VarDecl:
+                ProcessVariable(cursor, state);
                 break;
             case CXCursor_FunctionDecl:
                 if (AddFunction(cursor))
@@ -346,6 +355,9 @@ private:
                 break;
             case CXCursor_CallExpr:
                 ProcessCall(cursor, state);
+                break;
+            case CXCursor_DeclRefExpr:
+                ProcessDeclarationReference(cursor, state);
                 break;
             case CXCursor_MemberRefExpr:
                 ProcessMemberRef(cursor, state);
@@ -407,6 +419,75 @@ private:
         return true;
     }
 
+    bool AddTypedefType(CXCursor cursor)
+    {
+        std::string name = ToString(clang_getCursorSpelling(cursor));
+        if (name.empty()) return false;
+        auto file = SourceFile(cursor);
+        if (!file) return false;
+
+        EnsureFileSymbol(*file);
+
+        Symbol symbol;
+        symbol.id = TypeId(cursor);
+        symbol.name = name;
+        symbol.qualifiedName = name;
+        symbol.kind = "type";
+        symbol.filePath = *file;
+        symbol.line = Line(cursor);
+        symbol.parentId = "file:" + *file;
+        symbol.visibility = "public";
+        symbol.properties["native.kind"] = "typedef";
+        symbol.properties["native.underlyingType"] = NormalizeTypeForId(
+            ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor))));
+        symbol.properties["native.buildProfile"] = options_.profile;
+        AddSymbol(symbol);
+
+        AddTypeReference(symbol.id, cursor, clang_getTypedefDeclUnderlyingType(cursor), "underlyingType");
+        return true;
+    }
+
+    void ProcessEnumConstant(CXCursor cursor, const VisitState& state)
+    {
+        if (state.currentTypeId.empty()) return;
+
+        CXCursor parent = clang_getCursorSemanticParent(cursor);
+        if (clang_Cursor_isNull(parent) || clang_getCursorKind(parent) != CXCursor_EnumDecl)
+            return;
+        if (!AddRecordType(parent, "enum")) return;
+
+        AddEnumConstant(cursor, TypeId(parent));
+    }
+
+    bool AddEnumConstant(CXCursor cursor, const std::string& enumTypeId)
+    {
+        auto file = SourceFile(cursor);
+        if (!file) return false;
+        std::string name = ToString(clang_getCursorSpelling(cursor));
+        if (name.empty()) return false;
+
+        const std::string prefix = "type:";
+        std::string enumName = enumTypeId.rfind(prefix, 0) == 0
+            ? enumTypeId.substr(prefix.size())
+            : enumTypeId;
+
+        Symbol symbol;
+        symbol.id = "field:" + enumName + "." + name;
+        symbol.name = name;
+        symbol.qualifiedName = enumName + "." + name;
+        symbol.kind = "field";
+        symbol.filePath = *file;
+        symbol.line = Line(cursor);
+        symbol.parentId = enumTypeId;
+        symbol.visibility = "public";
+        symbol.isStatic = true;
+        symbol.properties["native.kind"] = "enumMember";
+        symbol.properties["native.enumValue"] = std::to_string(clang_getEnumConstantDeclValue(cursor));
+        symbol.properties["native.buildProfile"] = options_.profile;
+        AddSymbol(symbol);
+        return true;
+    }
+
     void ProcessField(CXCursor cursor, const VisitState& state)
     {
         if (state.currentTypeId.empty()) return;
@@ -434,6 +515,56 @@ private:
             ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
         field.properties["native.buildProfile"] = options_.profile;
         AddSymbol(field);
+
+        AddTypeReference(field.id, cursor, clang_getCursorType(cursor), "fieldType");
+    }
+
+    void ProcessVariable(CXCursor cursor, const VisitState& state)
+    {
+        if (!state.currentFunctionId.empty() || !state.currentTypeId.empty())
+            return;
+
+        AddGlobalVariable(cursor);
+    }
+
+    bool AddGlobalVariable(CXCursor cursor)
+    {
+        if (!IsFileScopeCursor(cursor)) return false;
+
+        auto file = SourceFile(cursor);
+        if (!file) return false;
+        std::string name = ToString(clang_getCursorSpelling(cursor));
+        if (name.empty()) return false;
+
+        EnsureFileSymbol(*file);
+
+        const auto storage = clang_Cursor_getStorageClass(cursor);
+        Symbol symbol;
+        symbol.id = GlobalVariableId(cursor);
+        symbol.name = name;
+        symbol.qualifiedName = name;
+        symbol.kind = "field";
+        symbol.filePath = *file;
+        symbol.line = Line(cursor);
+        symbol.parentId = "file:" + *file;
+        symbol.visibility = storage == CX_SC_Static ? "private" : "public";
+        symbol.isStatic = storage == CX_SC_Static;
+        symbol.properties["native.kind"] = "global";
+        symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
+        symbol.properties["native.fieldType"] = NormalizeTypeForId(
+            ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
+        symbol.properties["native.buildProfile"] = options_.profile;
+        AddSymbol(symbol);
+
+        AddTypeReference(symbol.id, cursor, clang_getCursorType(cursor), "globalType");
+        return true;
+    }
+
+    bool IsFileScopeCursor(CXCursor cursor)
+    {
+        CXCursor parent = clang_getCursorSemanticParent(cursor);
+        return !clang_Cursor_isNull(parent) &&
+               clang_getCursorKind(parent) == CXCursor_TranslationUnit;
     }
 
     bool AddFunction(CXCursor cursor)
@@ -463,6 +594,7 @@ private:
         AddSymbol(symbol);
 
         AddParameterTypeReferences(cursor, symbol.id);
+        AddTypeReference(symbol.id, cursor, clang_getCursorResultType(cursor), "returnType");
         return true;
     }
 
@@ -472,20 +604,46 @@ private:
         for (int i = 0; i < count; i++)
         {
             CXCursor arg = clang_Cursor_getArgument(cursor, static_cast<unsigned>(i));
-            CXType type = StripPointers(clang_getCursorType(arg));
-            CXCursor declaration = clang_getTypeDeclaration(type);
-            if (clang_Cursor_isNull(declaration)) continue;
-            if (!AddRecordType(declaration, NativeKindForType(type))) continue;
+            AddTypeReference(functionId, arg, clang_getCursorType(arg), "parameterType");
+        }
+    }
 
-            Edge edge;
-            edge.sourceId = functionId;
-            edge.targetId = TypeId(declaration);
-            edge.kind = "references";
-            edge.evidence = EvidenceFor(arg, "semantic");
-            edge.callSite = CallSiteFor(arg, functionId);
-            edge.properties["native.referenceKind"] = "parameterType";
-            edge.properties["native.buildProfile"] = options_.profile;
-            AddEdge(edge);
+    void AddTypeReference(
+        const std::string& sourceId,
+        CXCursor evidenceCursor,
+        CXType sourceType,
+        const std::string& referenceKind)
+    {
+        CXType type = StripPointers(sourceType);
+        CXCursor declaration = clang_getTypeDeclaration(type);
+        if (clang_Cursor_isNull(declaration)) return;
+
+        if (!EnsureTypeDeclaration(declaration, type)) return;
+
+        Edge edge;
+        edge.sourceId = sourceId;
+        edge.targetId = TypeId(declaration);
+        edge.kind = "references";
+        edge.evidence = EvidenceFor(evidenceCursor, "semantic");
+        edge.callSite = CallSiteFor(evidenceCursor, sourceId);
+        edge.properties["native.referenceKind"] = referenceKind;
+        edge.properties["native.buildProfile"] = options_.profile;
+        AddEdge(edge);
+    }
+
+    bool EnsureTypeDeclaration(CXCursor declaration, CXType type)
+    {
+        switch (clang_getCursorKind(declaration))
+        {
+            case CXCursor_StructDecl:
+            case CXCursor_UnionDecl:
+                return AddRecordType(declaration, NativeKindForType(type));
+            case CXCursor_EnumDecl:
+                return AddRecordType(declaration, "enum");
+            case CXCursor_TypedefDecl:
+                return AddTypedefType(declaration);
+            default:
+                return false;
         }
     }
 
@@ -506,6 +664,39 @@ private:
         edge.properties["native.callKind"] = "direct";
         edge.properties["native.buildProfile"] = options_.profile;
         AddEdge(edge);
+    }
+
+    void ProcessDeclarationReference(CXCursor cursor, const VisitState& state)
+    {
+        if (state.currentFunctionId.empty()) return;
+
+        CXCursor referenced = clang_getCursorReferenced(cursor);
+        if (clang_Cursor_isNull(referenced)) return;
+
+        switch (clang_getCursorKind(referenced))
+        {
+            case CXCursor_VarDecl:
+                if (AddGlobalVariable(referenced))
+                    AddReferenceEdge(cursor, state.currentFunctionId, GlobalVariableId(referenced), "globalAccess");
+                break;
+            case CXCursor_EnumConstantDecl:
+            {
+                CXCursor parent = clang_getCursorSemanticParent(referenced);
+                if (clang_Cursor_isNull(parent) || !AddRecordType(parent, "enum"))
+                    return;
+
+                std::string enumTypeId = TypeId(parent);
+                if (AddEnumConstant(referenced, enumTypeId))
+                    AddReferenceEdge(
+                        cursor,
+                        state.currentFunctionId,
+                        EnumConstantId(referenced, enumTypeId),
+                        "enumMember");
+                break;
+            }
+            default:
+                break;
+        }
     }
 
     void ProcessMemberRef(CXCursor cursor, const VisitState& state)
@@ -534,6 +725,23 @@ private:
         edge.evidence = EvidenceFor(cursor, "semantic");
         edge.callSite = CallSiteFor(cursor, state.currentFunctionId);
         edge.properties["native.referenceKind"] = "fieldAccess";
+        edge.properties["native.buildProfile"] = options_.profile;
+        AddEdge(edge);
+    }
+
+    void AddReferenceEdge(
+        CXCursor cursor,
+        const std::string& sourceId,
+        const std::string& targetId,
+        const std::string& referenceKind)
+    {
+        Edge edge;
+        edge.sourceId = sourceId;
+        edge.targetId = targetId;
+        edge.kind = "references";
+        edge.evidence = EvidenceFor(cursor, "semantic");
+        edge.callSite = CallSiteFor(cursor, sourceId);
+        edge.properties["native.referenceKind"] = referenceKind;
         edge.properties["native.buildProfile"] = options_.profile;
         AddEdge(edge);
     }
@@ -577,6 +785,20 @@ private:
     std::string TypeId(CXCursor cursor)
     {
         return "type:" + ToString(clang_getCursorSpelling(cursor));
+    }
+
+    std::string GlobalVariableId(CXCursor cursor)
+    {
+        return "field:" + ToString(clang_getCursorSpelling(cursor));
+    }
+
+    std::string EnumConstantId(CXCursor cursor, const std::string& enumTypeId)
+    {
+        const std::string prefix = "type:";
+        std::string enumName = enumTypeId.rfind(prefix, 0) == 0
+            ? enumTypeId.substr(prefix.size())
+            : enumTypeId;
+        return "field:" + enumName + "." + ToString(clang_getCursorSpelling(cursor));
     }
 
     std::string Signature(CXCursor cursor)

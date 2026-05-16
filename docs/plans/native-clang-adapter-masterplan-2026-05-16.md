@@ -1,8 +1,8 @@
 # Native Clang Adapter Masterplan
 
-**Status:** Stage 1 bootstrap underway. The adapter boundary is chartered, a
-tiny C fixture contract exists, and a minimal `libclang` executable now emits a
-graph for that fixture.
+**Status:** Stage 2 direct-reference bootstrap underway. The adapter boundary is
+chartered, a minimal `libclang` executable emits graphs, and fixtures now cover
+tiny direct calls plus richer enum/typedef/global references.
 
 **Owner:** Native C/C++ track. This document is the contract for adding
 Clang-backed analysis without weakening Lifeblood's existing hexagonal
