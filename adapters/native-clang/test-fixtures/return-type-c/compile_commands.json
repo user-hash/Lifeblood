@@ -1,0 +1,15 @@
+[
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-std=c11",
+      "-c",
+      "src/api.c",
+      "-o",
+      "build/api.o"
+    ],
+    "file": "src/api.c",
+    "output": "build/api.o"
+  }
+]
