@@ -1,4 +1,5 @@
 #include "ClangUtilities.h"
+#include "ClangCompileCommandReader.h"
 #include "ClangSourceMapper.h"
 #include "LibClangExtractor.h"
 #include "NativeGraphBuilder.h"
@@ -45,6 +46,7 @@ public:
         : options_(std::move(options)),
           projectRoot_(fs::weakly_canonical(options_.projectRoot)),
           compilationDatabaseDir_(ResolvePath(options_.compilationDatabaseDir)),
+          commandReader_(compilationDatabaseDir_),
           sourceMap_(projectRoot_),
           moduleName_(BaseName(projectRoot_)),
           moduleId_("mod:" + moduleName_),
@@ -112,29 +114,20 @@ private:
     bool ParseCommand(CXIndex index, CXCompileCommand command)
     {
         translationUnitCount_++;
-        CollectCommandLineMacros(command);
+        NativeCompileCommand compileCommand = commandReader_.Read(command);
+        ApplyCommandLineMacros(compileCommand);
         UpdateModuleBuildProperties();
 
-        auto directory = fs::path(ToString(clang_CompileCommand_getDirectory(command)));
-        if (!directory.is_absolute())
-            directory = compilationDatabaseDir_ / directory;
-        directory = fs::weakly_canonical(directory);
-
-        auto file = fs::path(ToString(clang_CompileCommand_getFilename(command)));
-        fs::path sourcePath = file.is_absolute() ? file : directory / file;
-        sourcePath = fs::weakly_canonical(sourcePath);
-
-        std::vector<std::string> args = BuildParseArgs(command, sourcePath, directory);
         std::vector<const char*> cArgs;
-        cArgs.reserve(args.size());
-        for (const auto& arg : args)
+        cArgs.reserve(compileCommand.parseArguments.size());
+        for (const auto& arg : compileCommand.parseArguments)
             cArgs.push_back(arg.c_str());
 
         CXTranslationUnit unit = nullptr;
         const unsigned parseOptions = CXTranslationUnit_DetailedPreprocessingRecord;
         CXErrorCode parseResult = clang_parseTranslationUnit2(
             index,
-            sourcePath.string().c_str(),
+            compileCommand.sourcePath.string().c_str(),
             cArgs.data(),
             static_cast<int>(cArgs.size()),
             nullptr,
@@ -144,7 +137,7 @@ private:
 
         if (parseResult != CXError_Success || unit == nullptr)
         {
-            std::cerr << "Failed to parse " << sourcePath.string()
+            std::cerr << "Failed to parse " << compileCommand.sourcePath.string()
                       << " (CXErrorCode " << parseResult << ")\n";
             return false;
         }
@@ -172,94 +165,15 @@ private:
         return true;
     }
 
-    std::vector<std::string> BuildParseArgs(
-        CXCompileCommand command,
-        const fs::path& sourcePath,
-        const fs::path& commandDirectory)
+    void ApplyCommandLineMacros(const NativeCompileCommand& compileCommand)
     {
-        std::vector<std::string> args;
-        const unsigned count = clang_CompileCommand_getNumArgs(command);
-        for (unsigned i = 1; i < count; i++)
+        for (const auto& define : compileCommand.defines)
         {
-            std::string arg = ToString(clang_CompileCommand_getArg(command, i));
-            if (arg == "-c") continue;
-            if (arg == "-o")
-            {
-                i++;
-                continue;
-            }
-
-            if (arg == "-I" || arg == "-iquote" || arg == "-isystem")
-            {
-                args.push_back(arg);
-                if (i + 1 < count)
-                    args.push_back(NormalizeCommandPathArg(
-                        ToString(clang_CompileCommand_getArg(command, ++i)),
-                        commandDirectory));
-                continue;
-            }
-
-            if (arg.rfind("-I", 0) == 0 && arg.size() > 2)
-            {
-                args.push_back("-I" + NormalizeCommandPathArg(arg.substr(2), commandDirectory));
-                continue;
-            }
-
-            if (IsSourceArg(arg, sourcePath, commandDirectory))
-                continue;
-
-            args.push_back(arg);
+            commandLineDefines_[define.name] = define.value;
+            AddMacroSymbol(define.name, std::nullopt, 0, "commandLine", define.value);
         }
-        return args;
-    }
 
-    void CollectCommandLineMacros(CXCompileCommand command)
-    {
-        const unsigned count = clang_CompileCommand_getNumArgs(command);
-        for (unsigned i = 1; i < count; i++)
-        {
-            std::string arg = ToString(clang_CompileCommand_getArg(command, i));
-            if (arg == "-D")
-            {
-                if (i + 1 < count)
-                    AddCommandLineDefine(ToString(clang_CompileCommand_getArg(command, ++i)));
-                continue;
-            }
-
-            if (arg.rfind("-D", 0) == 0 && arg.size() > 2)
-            {
-                AddCommandLineDefine(arg.substr(2));
-                continue;
-            }
-
-            if (arg == "-U")
-            {
-                if (i + 1 < count)
-                    AddCommandLineUndefine(ToString(clang_CompileCommand_getArg(command, ++i)));
-                continue;
-            }
-
-            if (arg.rfind("-U", 0) == 0 && arg.size() > 2)
-                AddCommandLineUndefine(arg.substr(2));
-        }
-    }
-
-    void AddCommandLineDefine(const std::string& raw)
-    {
-        if (raw.empty()) return;
-
-        auto equal = raw.find('=');
-        std::string name = equal == std::string::npos ? raw : raw.substr(0, equal);
-        std::string value = equal == std::string::npos ? "1" : raw.substr(equal + 1);
-        if (name.empty()) return;
-
-        commandLineDefines_[name] = value;
-        AddMacroSymbol(name, std::nullopt, 0, "commandLine", value);
-    }
-
-    void AddCommandLineUndefine(const std::string& name)
-    {
-        if (!name.empty())
+        for (const auto& name : compileCommand.undefines)
             commandLineUndefines_.insert(name);
     }
 
@@ -272,34 +186,6 @@ private:
             if (!commandLineUndefines_.empty())
                 module.properties["native.undefines"] = Join(commandLineUndefines_);
         });
-    }
-
-    bool IsSourceArg(
-        const std::string& arg,
-        const fs::path& sourcePath,
-        const fs::path& commandDirectory)
-    {
-        fs::path maybePath(arg);
-        if (maybePath.extension() != sourcePath.extension())
-            return false;
-
-        if (!maybePath.is_absolute())
-            maybePath = commandDirectory / maybePath;
-
-        std::error_code ec;
-        auto canonical = fs::weakly_canonical(maybePath, ec);
-        return !ec && canonical == sourcePath;
-    }
-
-    std::string NormalizeCommandPathArg(
-        const std::string& arg,
-        const fs::path& commandDirectory)
-    {
-        fs::path path(arg);
-        if (path.is_absolute())
-            return SlashPath(path.string());
-
-        return SlashPath((commandDirectory / path).lexically_normal().string());
     }
 
     struct ChildVisitPayload
@@ -958,6 +844,7 @@ private:
     Options options_;
     fs::path projectRoot_;
     fs::path compilationDatabaseDir_;
+    ClangCompileCommandReader commandReader_;
     ClangSourceMapper sourceMap_;
     std::string moduleName_;
     std::string moduleId_;
