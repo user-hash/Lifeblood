@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "NativeFileRegistry.h"
 #include "NativeGraphSink.h"
+#include "NativeIncludeEmitter.h"
 
 #include <clang-c/Index.h>
 
@@ -40,5 +41,6 @@ private:
     NativeGraphSink& graph_;
     const ClangSourceMapper& sourceMap_;
     NativeFileRegistry& files_;
+    NativeIncludeEmitter includes_;
 };
 }
