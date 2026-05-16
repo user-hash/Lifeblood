@@ -79,7 +79,7 @@ void NativeTypeEmitter::AddTypeReference(
     CXType sourceType,
     const std::string& referenceKind)
 {
-    CXType type = StripPointers(sourceType);
+    CXType type = StripTypeShells(sourceType);
     CXCursor declaration = clang_getTypeDeclaration(type);
     if (clang_Cursor_isNull(declaration)) return;
 

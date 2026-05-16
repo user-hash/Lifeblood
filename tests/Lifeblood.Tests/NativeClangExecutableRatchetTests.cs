@@ -241,8 +241,8 @@ public class NativeClangExecutableRatchetTests
             graph,
             "mod:callback-table-c",
             symbols: 13,
-            edges: 11,
-            references: 11,
+            edges: 12,
+            references: 12,
             calls: 0);
         AssertModuleNativeKindInventory(graph, "mod:callback-table-c", macros: 1, callbackTables: 1);
         AssertModuleReferenceKindInventory(
@@ -274,12 +274,19 @@ public class NativeClangExecutableRatchetTests
             "field:codec_table",
             "method:decode_video(Packet*)",
             "callbackTarget");
-        AssertReferenceCounts(graph, "field:codec_table", incoming: 1, outgoing: 2);
+        AssertReferenceKind(
+            graph,
+            "field:codec_table",
+            "type:CodecRegistration",
+            "globalType");
+        AssertReferenceCounts(graph, "field:codec_table", incoming: 1, outgoing: 3);
         AssertReferenceCounts(graph, "method:dispatch_first(Packet*)", incoming: 0, outgoing: 3);
         AssertReferenceCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 2);
         AssertCallbackTargetCounts(graph, "field:codec_table", incoming: 0, outgoing: 2);
         AssertCallbackTargetCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 0);
         AssertCallbackTargetCounts(graph, "method:decode_video(Packet*)", incoming: 1, outgoing: 0);
+        AssertGlobalTypeCounts(graph, "field:codec_table", incoming: 0, outgoing: 1);
+        AssertGlobalTypeCounts(graph, "type:CodecRegistration", incoming: 1, outgoing: 0);
 
         var blast = BlastRadiusAnalyzer.Analyze(graph, "method:decode_audio(Packet*)");
         Assert.Contains("field:codec_table", blast.AffectedSymbolIds);
@@ -1208,6 +1215,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.underlyingTypeOutCount", "0"));
+    }
+
+    private static void AssertGlobalTypeCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.globalTypeInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.globalTypeOutCount", "0"));
     }
 
     private static void AssertCrossFileDirectCallCounts(
