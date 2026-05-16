@@ -120,6 +120,10 @@ void NativeFileGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& s
         counts.enumCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, "typedef"))
         counts.typedefCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "structField"))
+        counts.structFieldCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "enumMember"))
+        counts.enumMemberCount++;
 }
 
 void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
@@ -145,6 +149,10 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
     file.properties["native.fileUnionCount"] = std::to_string(counts.unionCount);
     file.properties["native.fileEnumCount"] = std::to_string(counts.enumCount);
     file.properties["native.fileTypedefCount"] = std::to_string(counts.typedefCount);
+    file.properties["native.fileStructFieldCount"] =
+        std::to_string(counts.structFieldCount);
+    file.properties["native.fileEnumMemberCount"] =
+        std::to_string(counts.enumMemberCount);
     file.properties["native.fileOutgoingReferenceEdgeCount"] =
         std::to_string(counts.outgoingReferenceEdgeCount);
     file.properties["native.fileIncomingReferenceEdgeCount"] =
