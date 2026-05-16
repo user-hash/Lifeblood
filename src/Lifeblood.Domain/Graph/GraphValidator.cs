@@ -116,12 +116,14 @@ public static class GraphValidator
             }
         }
 
-        // Duplicate edge detection (same source + target + kind)
-        var edgeSet = new HashSet<(string, string, EdgeKind)>();
+        // Duplicate edge detection follows the same semantic edge identity as
+        // GraphBuilder: same source/target/kind is allowed when the edge role
+        // differs, but exact duplicate roles are invalid.
+        var edgeSet = new HashSet<EdgeIdentityKey>();
         for (int i = 0; i < graph.Edges.Count; i++)
         {
             var e = graph.Edges[i];
-            if (!edgeSet.Add((e.SourceId, e.TargetId, e.Kind)))
+            if (!edgeSet.Add(EdgeIdentity.KeyFor(e)))
             {
                 errors.Add(new GraphValidationError
                 {

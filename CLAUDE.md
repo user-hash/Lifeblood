@@ -29,6 +29,16 @@ Lifeblood.CLI                   # Composition root. Wires adapters to connectors
 Lifeblood.ScriptHost            # Process-isolated child for `lifeblood_execute`.
 ```
 
+External JSON-emitting adapters live under `adapters/` and are not .NET projects:
+
+```
+adapters/typescript             # Node.js. ts.createProgram + TypeChecker. Self-analyzing.
+adapters/python                 # Standalone ast module. Zero dependencies. Self-analyzing.
+adapters/native-clang           # libclang-based C extractor (beta, v0.7.7). Reads compile_commands.json, emits graph.json. Hexagonal: LLVM stays outside core.
+```
+
+External adapters emit `graph.json` conforming to `schemas/graph.schema.json`. Lifeblood ingests through `JsonGraphImporter`. See `docs/NATIVE_CLANG.md` for the C capability page and `docs/ADAPTERS.md` for the adapter-building guide.
+
 ## Dependency Rules
 
 ```

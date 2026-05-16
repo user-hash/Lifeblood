@@ -1,0 +1,16 @@
+[
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-I",
+      "src",
+      "-c",
+      "src/registry.c",
+      "-o",
+      "build/registry.o"
+    ],
+    "file": "src/registry.c",
+    "output": "build/registry.o"
+  }
+]

@@ -1,0 +1,30 @@
+[
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-I",
+      "src",
+      "-c",
+      "src/audio.c",
+      "-o",
+      "build/audio.o"
+    ],
+    "file": "src/audio.c",
+    "output": "build/audio.o"
+  },
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-I",
+      "src",
+      "-c",
+      "src/video.c",
+      "-o",
+      "build/video.o"
+    ],
+    "file": "src/video.c",
+    "output": "build/video.o"
+  }
+]

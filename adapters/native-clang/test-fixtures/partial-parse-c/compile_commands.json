@@ -1,0 +1,30 @@
+[
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-I",
+      "src",
+      "-c",
+      "src/good.c",
+      "-o",
+      "build/good.o"
+    ],
+    "file": "src/good.c",
+    "output": "build/good.o"
+  },
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-I",
+      "src",
+      "-c",
+      "src/missing.c",
+      "-o",
+      "build/missing.o"
+    ],
+    "file": "src/missing.c",
+    "output": "build/missing.o"
+  }
+]

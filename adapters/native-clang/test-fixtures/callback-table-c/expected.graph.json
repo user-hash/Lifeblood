@@ -1,0 +1,400 @@
+{
+  "version": "1.0",
+  "language": "c",
+  "adapter": {
+    "name": "native-clang-fixture",
+    "version": "0.0.0-fixture",
+    "capabilities": {
+      "discoverSymbols": true,
+      "typeResolution": "proven",
+      "callResolution": "proven",
+      "implementationResolution": "none",
+      "crossModuleReferences": "none",
+      "overrideResolution": "none"
+    }
+  },
+  "symbols": [
+    {
+      "id": "mod:callback-table-c",
+      "name": "callback-table-c",
+      "qualifiedName": "callback-table-c",
+      "kind": "module",
+      "properties": {
+        "native.kind": "library",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "file:src/registry.c",
+      "name": "registry.c",
+      "qualifiedName": "callback-table-c/src/registry.c",
+      "kind": "file",
+      "filePath": "src/registry.c",
+      "parentId": "mod:callback-table-c",
+      "properties": {
+        "native.kind": "translationUnit",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "file:src/registry.h",
+      "name": "registry.h",
+      "qualifiedName": "callback-table-c/src/registry.h",
+      "kind": "file",
+      "filePath": "src/registry.h",
+      "parentId": "mod:callback-table-c",
+      "properties": {
+        "native.kind": "header",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "type:Packet",
+      "name": "Packet",
+      "qualifiedName": "Packet",
+      "kind": "type",
+      "filePath": "src/registry.h",
+      "line": 4,
+      "parentId": "file:src/registry.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "struct",
+        "native.linkage": "none",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:Packet.size",
+      "name": "size",
+      "qualifiedName": "Packet.size",
+      "kind": "field",
+      "filePath": "src/registry.h",
+      "line": 5,
+      "parentId": "type:Packet",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "structField",
+        "native.fieldType": "int",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "type:PacketHandler",
+      "name": "PacketHandler",
+      "qualifiedName": "PacketHandler",
+      "kind": "type",
+      "filePath": "src/registry.h",
+      "line": 8,
+      "parentId": "file:src/registry.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "typedef",
+        "native.underlyingType": "int (*)(struct Packet *)",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "type:CodecRegistration",
+      "name": "CodecRegistration",
+      "qualifiedName": "CodecRegistration",
+      "kind": "type",
+      "filePath": "src/registry.h",
+      "line": 10,
+      "parentId": "file:src/registry.h",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "struct",
+        "native.linkage": "none",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:CodecRegistration.handler",
+      "name": "handler",
+      "qualifiedName": "CodecRegistration.handler",
+      "kind": "field",
+      "filePath": "src/registry.h",
+      "line": 12,
+      "parentId": "type:CodecRegistration",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "structField",
+        "native.fieldType": "PacketHandler",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table",
+      "name": "codec_table",
+      "qualifiedName": "codec_table",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 13,
+      "parentId": "file:src/registry.c",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "callbackTable",
+        "native.callbackTable": "true",
+        "native.linkage": "external",
+        "native.fieldType": "CodecRegistration[2]",
+        "native.tableRowCount": "2",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:0",
+      "name": "codec_table[0]",
+      "qualifiedName": "codec_table[0]",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 14,
+      "parentId": "field:codec_table",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableRow",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "0",
+        "native.tableCellCount": "2",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:0:cell:0",
+      "name": "cell:0",
+      "qualifiedName": "codec_table[0].cell:0",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 14,
+      "parentId": "field:codec_table:row:0",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "0",
+        "native.tableCellOrdinal": "0",
+        "native.tableValueKind": "String",
+        "native.stringValue": "audio",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:0:cell:1",
+      "name": "cell:1",
+      "qualifiedName": "codec_table[0].cell:1",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 14,
+      "parentId": "field:codec_table:row:0",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "0",
+        "native.tableCellOrdinal": "1",
+        "native.tableValueKind": "MethodGroup",
+        "native.methodGroupId": "method:decode_audio(Packet*)",
+        "native.callbackTargetId": "method:decode_audio(Packet*)",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:1",
+      "name": "codec_table[1]",
+      "qualifiedName": "codec_table[1]",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 15,
+      "parentId": "field:codec_table",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableRow",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "1",
+        "native.tableCellCount": "2",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:1:cell:0",
+      "name": "cell:0",
+      "qualifiedName": "codec_table[1].cell:0",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 15,
+      "parentId": "field:codec_table:row:1",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "1",
+        "native.tableCellOrdinal": "0",
+        "native.tableValueKind": "String",
+        "native.stringValue": "video",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:1:cell:1",
+      "name": "cell:1",
+      "qualifiedName": "codec_table[1].cell:1",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 15,
+      "parentId": "field:codec_table:row:1",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "1",
+        "native.tableCellOrdinal": "1",
+        "native.tableValueKind": "MethodGroup",
+        "native.methodGroupId": "method:decode_video(Packet*)",
+        "native.callbackTargetId": "method:decode_video(Packet*)",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "method:decode_audio(Packet*)",
+      "name": "decode_audio",
+      "qualifiedName": "decode_audio",
+      "kind": "method",
+      "filePath": "src/registry.c",
+      "line": 3,
+      "parentId": "file:src/registry.c",
+      "visibility": "private",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "internal",
+        "native.signature": "int (Packet*)",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "method:decode_video(Packet*)",
+      "name": "decode_video",
+      "qualifiedName": "decode_video",
+      "kind": "method",
+      "filePath": "src/registry.c",
+      "line": 8,
+      "parentId": "file:src/registry.c",
+      "visibility": "private",
+      "isStatic": true,
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "internal",
+        "native.signature": "int (Packet*)",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "method:dispatch_first(Packet*)",
+      "name": "dispatch_first",
+      "qualifiedName": "dispatch_first",
+      "kind": "method",
+      "filePath": "src/registry.c",
+      "line": 18,
+      "parentId": "file:src/registry.c",
+      "visibility": "public",
+      "properties": {
+        "native.kind": "function",
+        "native.linkage": "external",
+        "native.signature": "int (Packet*)",
+        "native.buildProfile": "callback-debug"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "sourceId": "file:src/registry.c",
+      "targetId": "file:src/registry.h",
+      "kind": "references",
+      "evidence": {
+        "kind": "syntax",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/registry.c:1",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.kind": "include",
+        "native.include": "registry.h",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "sourceId": "field:CodecRegistration.handler",
+      "targetId": "type:PacketHandler",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/registry.h:12",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "fieldType",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "sourceId": "field:codec_table",
+      "targetId": "type:CodecRegistration",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/registry.c:12",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "globalType",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "sourceId": "field:codec_table",
+      "targetId": "method:decode_audio(Packet*)",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/registry.c:13",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "callbackTarget",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "sourceId": "field:codec_table",
+      "targetId": "method:decode_video(Packet*)",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/registry.c:14",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "callbackTarget",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "sourceId": "method:dispatch_first(Packet*)",
+      "targetId": "field:codec_table",
+      "kind": "references",
+      "evidence": {
+        "kind": "semantic",
+        "adapterName": "native-clang-fixture",
+        "sourceSpan": "src/registry.c:19",
+        "confidence": "proven"
+      },
+      "properties": {
+        "native.referenceKind": "globalAccess",
+        "native.buildProfile": "callback-debug"
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-I",
+      "src",
+      "-c",
+      "src/decode.c",
+      "-o",
+      "build/decode.o"
+    ],
+    "file": "src/decode.c",
+    "output": "build/decode.o"
+  }
+]
