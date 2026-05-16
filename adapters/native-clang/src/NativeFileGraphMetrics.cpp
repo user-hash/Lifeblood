@@ -114,6 +114,10 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
             crossFileCallOutCounts_[edge.sourceId]++;
             crossFileCallInCounts_[edge.targetId]++;
         }
+        else if (sourceFileId && targetFileId)
+        {
+            counts_[*sourceFileId].localCallEdgeCount++;
+        }
     }
 }
 
@@ -205,6 +209,8 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
         std::to_string(counts.outgoingCallEdgeCount);
     file.properties["native.fileIncomingCallEdgeCount"] =
         std::to_string(counts.incomingCallEdgeCount);
+    file.properties["native.fileLocalCallEdgeCount"] =
+        std::to_string(counts.localCallEdgeCount);
     file.properties["native.fileOutgoingCrossFileCallEdgeCount"] =
         std::to_string(counts.outgoingCrossFileCallEdgeCount);
     file.properties["native.fileIncomingCrossFileCallEdgeCount"] =
