@@ -1,8 +1,8 @@
 # Native Clang Adapter
 
-**Status:** Stage 4 callback-table bootstrap. The `libclang` executable emits
-graphs for direct-call, direct-reference, profile-shaped, and callback-table C
-fixtures.
+**Status:** Native scout bootstrap. The `libclang` executable emits graphs for
+direct-call, direct-reference, profile-shaped, callback-table C fixtures, and a
+controlled FFmpeg scout slice.
 
 This adapter will translate C/C++ projects into Lifeblood's universal semantic
 graph using Clang/LLVM as the parser and semantic engine.
@@ -144,6 +144,18 @@ artifacts/native-clang-build/lifeblood-native-clang.exe `
   --profile callback-debug `
   --out artifacts/native-clang-build/callback.graph.json
 ```
+
+Run a controlled FFmpeg scout slice:
+
+```powershell
+powershell -ExecutionPolicy Bypass `
+  -File adapters/native-clang/tools/ffmpeg-scout/Prepare-FfmpegScout.ps1 `
+  -SkipClone `
+  -SkipConfigure
+```
+
+See [FFMPEG_SCOUT.md](FFMPEG_SCOUT.md) for prerequisites, defaults, current
+limits, and the first local scout result.
 
 ## Source Layout
 
