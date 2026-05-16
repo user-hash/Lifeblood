@@ -29,6 +29,8 @@ private:
         unsigned incomingReferenceEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;
         unsigned incomingCallEdgeCount = 0;
+        unsigned outgoingCrossFileCallEdgeCount = 0;
+        unsigned incomingCrossFileCallEdgeCount = 0;
     };
 
     static std::optional<std::string> OwningModuleId(
@@ -42,7 +44,13 @@ private:
     static void AddFileEdgeCount(
         std::map<std::string, FileCounts>& fileCounts,
         const NativeGraph& graph,
-        const Edge& edge);
+        const Edge& edge,
+        std::map<std::string, unsigned>& crossFileCallOutCounts,
+        std::map<std::string, unsigned>& crossFileCallInCounts);
     static void WriteFileCounts(Symbol& file, const FileCounts& counts);
+    static void WriteCrossFileCallCounts(
+        Symbol& symbol,
+        const std::map<std::string, unsigned>& crossFileCallOutCounts,
+        const std::map<std::string, unsigned>& crossFileCallInCounts);
 };
 }
