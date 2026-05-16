@@ -31,6 +31,7 @@ public class NativeClangExecutableRatchetTests
 
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
+        AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
         AssertEdge(graph, "file:src/decode.c", "file:src/packet.h", EdgeKind.References);
         AssertReferenceKind(graph, "method:decode(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.size", "fieldAccess");
@@ -87,6 +88,13 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("true", table.Properties["native.callbackTable"]);
 
         AssertModuleParseHealth(graph, "mod:callback-table-c", total: 1, parsed: 1, failed: 0);
+        AssertModuleGraphInventory(
+            graph,
+            "mod:callback-table-c",
+            symbols: 13,
+            edges: 11,
+            references: 11,
+            calls: 0);
         AssertReferenceKind(
             graph,
             "field:codec_table",
@@ -115,6 +123,7 @@ public class NativeClangExecutableRatchetTests
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:multi-tu-c", total: 2, parsed: 2, failed: 0);
         AssertModuleFileInventory(graph, "mod:multi-tu-c", translationUnits: 2, headers: 1);
+        AssertModuleGraphInventory(graph, "mod:multi-tu-c", symbols: 10, edges: 8, references: 6, calls: 2);
         AssertTranslationUnitHealth(graph, "file:src/audio.c", "parsed");
         AssertTranslationUnitHealth(graph, "file:src/video.c", "parsed");
         AssertTranslationUnitBuildInputs(graph, "file:src/audio.c", defines: 0, undefines: 0);
@@ -380,6 +389,22 @@ public class NativeClangExecutableRatchetTests
         Assert.NotNull(module);
         Assert.Equal(translationUnits.ToString(), module!.Properties["native.translationUnitFileCount"]);
         Assert.Equal(headers.ToString(), module.Properties["native.headerFileCount"]);
+    }
+
+    private static void AssertModuleGraphInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int symbols,
+        int edges,
+        int references,
+        int calls)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(symbols.ToString(), module!.Properties["native.symbolCount"]);
+        Assert.Equal(edges.ToString(), module.Properties["native.edgeCount"]);
+        Assert.Equal(references.ToString(), module.Properties["native.referenceEdgeCount"]);
+        Assert.Equal(calls.ToString(), module.Properties["native.callEdgeCount"]);
     }
 
     private static void AssertIncludeCounts(
