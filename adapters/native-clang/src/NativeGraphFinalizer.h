@@ -22,10 +22,27 @@ private:
         unsigned callEdgeCount = 0;
     };
 
+    struct FileCounts
+    {
+        unsigned declaredSymbolCount = 0;
+        unsigned outgoingReferenceEdgeCount = 0;
+        unsigned incomingReferenceEdgeCount = 0;
+        unsigned outgoingCallEdgeCount = 0;
+        unsigned incomingCallEdgeCount = 0;
+    };
+
     static std::optional<std::string> OwningModuleId(
+        const NativeGraph& graph,
+        const std::string& symbolId);
+    static std::optional<std::string> OwningFileId(
         const NativeGraph& graph,
         const std::string& symbolId);
     static void AddEdgeCount(ModuleCounts& counts, const Edge& edge);
     static void WriteModuleCounts(Symbol& module, const ModuleCounts& counts);
+    static void AddFileEdgeCount(
+        std::map<std::string, FileCounts>& fileCounts,
+        const NativeGraph& graph,
+        const Edge& edge);
+    static void WriteFileCounts(Symbol& file, const FileCounts& counts);
 };
 }

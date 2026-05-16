@@ -7,6 +7,7 @@ namespace lifeblood::native_clang
 void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
 {
     std::map<std::string, ModuleCounts> moduleCounts;
+    std::map<std::string, FileCounts> fileCounts;
 
     for (const auto& [id, symbol] : graph.symbols)
     {
@@ -19,6 +20,15 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
         auto moduleId = OwningModuleId(graph, id);
         if (moduleId)
             moduleCounts[*moduleId].symbolCount++;
+
+        if (symbol.kind == "file")
+        {
+            fileCounts[id];
+            continue;
+        }
+
+        if (!symbol.filePath.empty())
+            fileCounts["file:" + symbol.filePath].declaredSymbolCount++;
     }
 
     for (const auto& edge : graph.edges)
@@ -26,15 +36,26 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
         auto moduleId = OwningModuleId(graph, edge.sourceId);
         if (moduleId)
             AddEdgeCount(moduleCounts[*moduleId], edge);
+
+        AddFileEdgeCount(fileCounts, graph, edge);
     }
 
     for (auto& [id, symbol] : graph.symbols)
     {
-        if (symbol.kind != "module") continue;
+        if (symbol.kind == "module")
+        {
+            auto counts = moduleCounts.find(id);
+            if (counts != moduleCounts.end())
+                WriteModuleCounts(symbol, counts->second);
+            continue;
+        }
 
-        auto counts = moduleCounts.find(id);
-        if (counts != moduleCounts.end())
-            WriteModuleCounts(symbol, counts->second);
+        if (symbol.kind == "file")
+        {
+            auto counts = fileCounts.find(id);
+            if (counts != fileCounts.end())
+                WriteFileCounts(symbol, counts->second);
+        }
     }
 }
 
@@ -60,6 +81,23 @@ std::optional<std::string> NativeGraphFinalizer::OwningModuleId(
     return std::nullopt;
 }
 
+std::optional<std::string> NativeGraphFinalizer::OwningFileId(
+    const NativeGraph& graph,
+    const std::string& symbolId)
+{
+    auto symbol = graph.symbols.find(symbolId);
+    if (symbol == graph.symbols.end())
+        return std::nullopt;
+
+    if (symbol->second.kind == "file")
+        return symbolId;
+
+    if (!symbol->second.filePath.empty())
+        return "file:" + symbol->second.filePath;
+
+    return std::nullopt;
+}
+
 void NativeGraphFinalizer::AddEdgeCount(ModuleCounts& counts, const Edge& edge)
 {
     counts.edgeCount++;
@@ -75,5 +113,43 @@ void NativeGraphFinalizer::WriteModuleCounts(Symbol& module, const ModuleCounts&
     module.properties["native.edgeCount"] = std::to_string(counts.edgeCount);
     module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
     module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
+}
+
+void NativeGraphFinalizer::AddFileEdgeCount(
+    std::map<std::string, FileCounts>& fileCounts,
+    const NativeGraph& graph,
+    const Edge& edge)
+{
+    auto sourceFileId = OwningFileId(graph, edge.sourceId);
+    auto targetFileId = OwningFileId(graph, edge.targetId);
+
+    if (edge.kind == "references")
+    {
+        if (sourceFileId)
+            fileCounts[*sourceFileId].outgoingReferenceEdgeCount++;
+        if (targetFileId)
+            fileCounts[*targetFileId].incomingReferenceEdgeCount++;
+    }
+    else if (edge.kind == "calls")
+    {
+        if (sourceFileId)
+            fileCounts[*sourceFileId].outgoingCallEdgeCount++;
+        if (targetFileId)
+            fileCounts[*targetFileId].incomingCallEdgeCount++;
+    }
+}
+
+void NativeGraphFinalizer::WriteFileCounts(Symbol& file, const FileCounts& counts)
+{
+    file.properties["native.declaredSymbolCount"] =
+        std::to_string(counts.declaredSymbolCount);
+    file.properties["native.fileOutgoingReferenceEdgeCount"] =
+        std::to_string(counts.outgoingReferenceEdgeCount);
+    file.properties["native.fileIncomingReferenceEdgeCount"] =
+        std::to_string(counts.incomingReferenceEdgeCount);
+    file.properties["native.fileOutgoingCallEdgeCount"] =
+        std::to_string(counts.outgoingCallEdgeCount);
+    file.properties["native.fileIncomingCallEdgeCount"] =
+        std::to_string(counts.incomingCallEdgeCount);
 }
 }

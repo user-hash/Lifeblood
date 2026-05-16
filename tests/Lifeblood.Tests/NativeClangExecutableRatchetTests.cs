@@ -32,6 +32,22 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
+        AssertFilePressure(
+            graph,
+            "file:src/decode.c",
+            declaredSymbols: 2,
+            outgoingReferences: 3,
+            incomingReferences: 0,
+            outgoingCalls: 1,
+            incomingCalls: 1);
+        AssertFilePressure(
+            graph,
+            "file:src/packet.h",
+            declaredSymbols: 3,
+            outgoingReferences: 0,
+            incomingReferences: 3,
+            outgoingCalls: 0,
+            incomingCalls: 0);
         AssertEdge(graph, "file:src/decode.c", "file:src/packet.h", EdgeKind.References);
         AssertReferenceKind(graph, "method:decode(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.size", "fieldAccess");
@@ -142,6 +158,30 @@ public class NativeClangExecutableRatchetTests
         AssertIncludeCounts(graph, "file:src/audio.c", includeDirectives: 1, includedBy: 0);
         AssertIncludeCounts(graph, "file:src/video.c", includeDirectives: 1, includedBy: 0);
         AssertIncludeCounts(graph, "file:src/packet.h", includeDirectives: 0, includedBy: 2);
+        AssertFilePressure(
+            graph,
+            "file:src/audio.c",
+            declaredSymbols: 2,
+            outgoingReferences: 3,
+            incomingReferences: 0,
+            outgoingCalls: 1,
+            incomingCalls: 1);
+        AssertFilePressure(
+            graph,
+            "file:src/packet.h",
+            declaredSymbols: 3,
+            outgoingReferences: 0,
+            incomingReferences: 6,
+            outgoingCalls: 0,
+            incomingCalls: 0);
+        AssertFilePressure(
+            graph,
+            "file:src/video.c",
+            declaredSymbols: 2,
+            outgoingReferences: 3,
+            incomingReferences: 0,
+            outgoingCalls: 1,
+            incomingCalls: 1);
         AssertCall(graph, "method:decode_audio(Packet*)", "method:audio_gain(int)");
         AssertCall(graph, "method:decode_video(Packet*)", "method:video_scale(int)");
         AssertDirectCallCounts(graph, "method:decode_audio(Packet*)", incoming: 0, outgoing: 1);
@@ -421,6 +461,28 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             includedBy.ToString(),
             file.Properties.GetValueOrDefault("native.includedByCount", "0"));
+    }
+
+    private static void AssertFilePressure(
+        SemanticGraph graph,
+        string fileId,
+        int declaredSymbols,
+        int outgoingReferences,
+        int incomingReferences,
+        int outgoingCalls,
+        int incomingCalls)
+    {
+        var file = graph.GetSymbol(fileId);
+        Assert.NotNull(file);
+        Assert.Equal(declaredSymbols.ToString(), file!.Properties["native.declaredSymbolCount"]);
+        Assert.Equal(
+            outgoingReferences.ToString(),
+            file.Properties["native.fileOutgoingReferenceEdgeCount"]);
+        Assert.Equal(
+            incomingReferences.ToString(),
+            file.Properties["native.fileIncomingReferenceEdgeCount"]);
+        Assert.Equal(outgoingCalls.ToString(), file.Properties["native.fileOutgoingCallEdgeCount"]);
+        Assert.Equal(incomingCalls.ToString(), file.Properties["native.fileIncomingCallEdgeCount"]);
     }
 
     private static void AssertDirectCallCounts(
