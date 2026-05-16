@@ -284,6 +284,45 @@ public class GraphBuilderTests
     }
 
     [Fact]
+    public void Build_FileEdges_CountsRoleDistinctReferenceEdges()
+    {
+        var fileA = new Symbol { Id = "file:A.c", Name = "A.c", Kind = SymbolKind.File, FilePath = "A.c" };
+        var fileB = new Symbol { Id = "file:B.h", Name = "B.h", Kind = SymbolKind.File, FilePath = "B.h" };
+        var method = new Symbol { Id = "method:echo_packet(Packet*)", Name = "echo_packet", Kind = SymbolKind.Method, FilePath = "A.c" };
+        var type = new Symbol { Id = "type:Packet", Name = "Packet", Kind = SymbolKind.Type, FilePath = "B.h" };
+
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { fileA, fileB, method, type })
+            .AddEdge(new Edge
+            {
+                SourceId = method.Id,
+                TargetId = type.Id,
+                Kind = EdgeKind.References,
+                Properties = new Dictionary<string, string>
+                {
+                    ["native.referenceKind"] = "parameterType",
+                },
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = method.Id,
+                TargetId = type.Id,
+                Kind = EdgeKind.References,
+                Properties = new Dictionary<string, string>
+                {
+                    ["native.referenceKind"] = "returnType",
+                },
+            })
+            .Build();
+
+        var fileEdge = Assert.Single(graph.Edges, e =>
+            e.SourceId == "file:A.c" &&
+            e.TargetId == "file:B.h" &&
+            e.Kind == EdgeKind.References);
+        Assert.Equal("2", fileEdge.Properties["edgeCount"]);
+    }
+
+    [Fact]
     public void Build_FileEdges_DoesNotDuplicateExplicitFileReference()
     {
         var fileA = new Symbol { Id = "file:A.c", Name = "A.c", Kind = SymbolKind.File, FilePath = "A.c" };
