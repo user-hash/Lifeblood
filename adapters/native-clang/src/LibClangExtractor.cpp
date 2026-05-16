@@ -1,6 +1,7 @@
 #include "ClangUtilities.h"
 #include "ClangCompileCommandReader.h"
 #include "ClangSourceMapper.h"
+#include "ClangTranslationUnitParser.h"
 #include "LibClangExtractor.h"
 #include "NativeAstVisitor.h"
 #include "NativeDeclarationEmitter.h"
@@ -17,7 +18,6 @@
 #include <filesystem>
 #include <iostream>
 #include <utility>
-#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -41,6 +41,7 @@ public:
           projectRoot_(fs::weakly_canonical(options_.projectRoot)),
           compilationDatabaseDir_(ResolvePath(options_.compilationDatabaseDir)),
           commandReader_(compilationDatabaseDir_),
+          unitParser_(),
           sourceMap_(projectRoot_),
           graph_(graph),
           module_(BaseName(projectRoot_), options_.profile, graph_),
@@ -106,47 +107,10 @@ private:
         NativeCompileCommand compileCommand = commandReader_.Read(command);
         module_.BeginTranslationUnit(compileCommand);
 
-        std::vector<const char*> cArgs;
-        cArgs.reserve(compileCommand.parseArguments.size());
-        for (const auto& arg : compileCommand.parseArguments)
-            cArgs.push_back(arg.c_str());
+        auto unit = unitParser_.Parse(index, compileCommand);
+        if (!unit) return false;
 
-        CXTranslationUnit unit = nullptr;
-        const unsigned parseOptions = CXTranslationUnit_DetailedPreprocessingRecord;
-        CXErrorCode parseResult = clang_parseTranslationUnit2(
-            index,
-            compileCommand.sourcePath.string().c_str(),
-            cArgs.data(),
-            static_cast<int>(cArgs.size()),
-            nullptr,
-            0,
-            parseOptions,
-            &unit);
-
-        if (parseResult != CXError_Success || unit == nullptr)
-        {
-            std::cerr << "Failed to parse " << compileCommand.sourcePath.string()
-                      << " (CXErrorCode " << parseResult << ")\n";
-            return false;
-        }
-
-        const unsigned diagnosticCount = clang_getNumDiagnostics(unit);
-        for (unsigned i = 0; i < diagnosticCount; i++)
-        {
-            CXDiagnostic diagnostic = clang_getDiagnostic(unit, i);
-            auto severity = clang_getDiagnosticSeverity(diagnostic);
-            if (severity >= CXDiagnostic_Error)
-            {
-                std::cerr << ToString(clang_formatDiagnostic(
-                    diagnostic,
-                    clang_defaultDiagnosticDisplayOptions())) << "\n";
-            }
-            clang_disposeDiagnostic(diagnostic);
-        }
-
-        astVisitor_.Visit(clang_getTranslationUnitCursor(unit), unit);
-
-        clang_disposeTranslationUnit(unit);
+        astVisitor_.Visit(clang_getTranslationUnitCursor(unit.Get()), unit.Get());
         return true;
     }
 
@@ -154,6 +118,7 @@ private:
     fs::path projectRoot_;
     fs::path compilationDatabaseDir_;
     ClangCompileCommandReader commandReader_;
+    ClangTranslationUnitParser unitParser_;
     ClangSourceMapper sourceMap_;
     NativeGraphSink& graph_;
     NativeModuleTracker module_;
