@@ -28,6 +28,7 @@ void NativeModuleGraphMetrics::ObserveSymbol(
     NativeVisibilityCounter::Add(counts.visibility, symbol);
     AddFunctionDeclarationCount(counts, symbol);
     AddNativeKindCounts(counts, symbol);
+    AddFileBucketDeclaredCount(counts, symbolId, symbol);
 }
 
 void NativeModuleGraphMetrics::ObserveEdge(const Edge& edge)
@@ -111,6 +112,25 @@ void NativeModuleGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol&
         counts.enumMemberCount++;
 }
 
+void NativeModuleGraphMetrics::AddFileBucketDeclaredCount(
+    Counts& counts,
+    const std::string& symbolId,
+    const Symbol& symbol) const
+{
+    if (symbol.kind == "file") return;
+
+    auto fileId = ownership_.OwningFileId(symbolId);
+    if (!fileId) return;
+
+    auto file = graph_.symbols.find(*fileId);
+    if (file == graph_.symbols.end()) return;
+
+    if (NativeGraphFacts::HasNativeKind(file->second, "header"))
+        counts.headerDeclaredSymbolCount++;
+    else if (NativeGraphFacts::HasNativeKind(file->second, "translationUnit"))
+        counts.translationUnitDeclaredSymbolCount++;
+}
+
 void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
 {
     module.properties["native.symbolCount"] = std::to_string(counts.symbolCount);
@@ -137,6 +157,10 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
     module.properties["native.macroCount"] = std::to_string(counts.macroCount);
     module.properties["native.globalVariableCount"] =
         std::to_string(counts.globalVariableCount);
+    module.properties["native.headerDeclaredSymbolCount"] =
+        std::to_string(counts.headerDeclaredSymbolCount);
+    module.properties["native.translationUnitDeclaredSymbolCount"] =
+        std::to_string(counts.translationUnitDeclaredSymbolCount);
     module.properties["native.callbackTableCount"] =
         std::to_string(counts.callbackTableCount);
     module.properties["native.structCount"] = std::to_string(counts.structCount);

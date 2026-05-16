@@ -38,6 +38,8 @@ private:
         unsigned functionDeclarationCount = 0;
         unsigned macroCount = 0;
         unsigned globalVariableCount = 0;
+        unsigned headerDeclaredSymbolCount = 0;
+        unsigned translationUnitDeclaredSymbolCount = 0;
         unsigned callbackTableCount = 0;
         unsigned structCount = 0;
         unsigned unionCount = 0;
@@ -50,6 +52,10 @@ private:
 
     static void AddNativeKindCounts(Counts& counts, const Symbol& symbol);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
+    void AddFileBucketDeclaredCount(
+        Counts& counts,
+        const std::string& symbolId,
+        const Symbol& symbol) const;
     void AddEdgeCount(Counts& counts, const Edge& edge) const;
     static void WriteCounts(Symbol& module, const Counts& counts);
 
