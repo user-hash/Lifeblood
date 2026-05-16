@@ -229,6 +229,38 @@ public class NativeClangExecutableRatchetTests
     }
 
     [SkippableFact]
+    public void Executable_WarningFixture_ReportsDiagnosticHealth()
+    {
+        var graph = RunFixture("warning-c", "warning-debug").Graph;
+
+        Assert.Empty(GraphValidator.Validate(graph));
+        AssertModuleDiagnosticHealth(
+            graph,
+            "mod:warning-c",
+            total: 1,
+            parsed: 1,
+            failed: 0,
+            warnings: 1,
+            errors: 0,
+            fatals: 0);
+        AssertTranslationUnitHealth(
+            graph,
+            "file:src/warning.c",
+            "parsed",
+            warnings: 1,
+            errors: 0,
+            fatals: 0);
+        AssertTranslationUnitBuildInputs(
+            graph,
+            "file:src/warning.c",
+            defines: 0,
+            undefines: 0,
+            includePaths: 0);
+        Assert.NotNull(graph.GetSymbol("method:warning_value(int)"));
+        AssertAllNativeFactsCarryBuildProfile(graph, "warning-debug");
+    }
+
+    [SkippableFact]
     public void Executable_CrossTranslationUnitCall_PreservesDefinitionLocation()
     {
         var graph = RunFixture("cross-tu-c", "cross-tu-debug").Graph;
@@ -409,30 +441,52 @@ public class NativeClangExecutableRatchetTests
         int total,
         int parsed,
         int failed)
+        => AssertModuleDiagnosticHealth(
+            graph,
+            moduleId,
+            total,
+            parsed,
+            failed,
+            warnings: 0,
+            errors: 0,
+            fatals: 0);
+
+    private static void AssertModuleDiagnosticHealth(
+        SemanticGraph graph,
+        string moduleId,
+        int total,
+        int parsed,
+        int failed,
+        int warnings,
+        int errors,
+        int fatals)
     {
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
         Assert.Equal(total.ToString(), module!.Properties["native.translationUnitCount"]);
         Assert.Equal(parsed.ToString(), module.Properties["native.parsedTranslationUnitCount"]);
         Assert.Equal(failed.ToString(), module.Properties["native.failedTranslationUnitCount"]);
-        Assert.Equal("0", module.Properties["native.warningDiagnosticCount"]);
-        Assert.Equal("0", module.Properties["native.errorDiagnosticCount"]);
-        Assert.Equal("0", module.Properties["native.fatalDiagnosticCount"]);
+        Assert.Equal(warnings.ToString(), module.Properties["native.warningDiagnosticCount"]);
+        Assert.Equal(errors.ToString(), module.Properties["native.errorDiagnosticCount"]);
+        Assert.Equal(fatals.ToString(), module.Properties["native.fatalDiagnosticCount"]);
         Assert.Equal(failed == 0 ? "complete" : "partial", module.Properties["native.parseStatus"]);
     }
 
     private static void AssertTranslationUnitHealth(
         SemanticGraph graph,
         string fileId,
-        string parseStatus)
+        string parseStatus,
+        int warnings = 0,
+        int errors = 0,
+        int fatals = 0)
     {
         var file = graph.GetSymbol(fileId);
         Assert.NotNull(file);
         Assert.Equal("true", file!.Properties["native.translationUnit"]);
         Assert.Equal(parseStatus, file.Properties["native.parseStatus"]);
-        Assert.Equal("0", file.Properties["native.warningDiagnosticCount"]);
-        Assert.Equal("0", file.Properties["native.errorDiagnosticCount"]);
-        Assert.Equal("0", file.Properties["native.fatalDiagnosticCount"]);
+        Assert.Equal(warnings.ToString(), file.Properties["native.warningDiagnosticCount"]);
+        Assert.Equal(errors.ToString(), file.Properties["native.errorDiagnosticCount"]);
+        Assert.Equal(fatals.ToString(), file.Properties["native.fatalDiagnosticCount"]);
     }
 
     private static void AssertTranslationUnitBuildInputs(
