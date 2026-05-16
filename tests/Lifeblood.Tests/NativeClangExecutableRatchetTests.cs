@@ -137,6 +137,28 @@ public class NativeClangExecutableRatchetTests
         AssertAllNativeFactsCarryBuildProfile(graph, "partial-debug");
     }
 
+    [SkippableFact]
+    public void Executable_CrossTranslationUnitCall_PreservesDefinitionLocation()
+    {
+        var graph = RunFixture("cross-tu-c", "cross-tu-debug").Graph;
+
+        Assert.Empty(GraphValidator.Validate(graph));
+        AssertModuleParseHealth(graph, "mod:cross-tu-c", total: 2, parsed: 2, failed: 0);
+
+        var decodeAudio = graph.GetSymbol("method:decode_audio(Packet*)");
+        Assert.NotNull(decodeAudio);
+        Assert.Equal("src/audio.c", decodeAudio!.FilePath);
+        Assert.Equal("definition", decodeAudio.Properties["native.declarationKind"]);
+
+        var decodeVideo = graph.GetSymbol("method:decode_video(Packet*)");
+        Assert.NotNull(decodeVideo);
+        Assert.Equal("src/video.c", decodeVideo!.FilePath);
+        Assert.Equal("definition", decodeVideo.Properties["native.declarationKind"]);
+
+        AssertCall(graph, "method:decode_video(Packet*)", "method:decode_audio(Packet*)");
+        AssertAllNativeFactsCarryBuildProfile(graph, "cross-tu-debug");
+    }
+
     private static GraphDocument RunFixture(
         string fixtureName,
         string profile,

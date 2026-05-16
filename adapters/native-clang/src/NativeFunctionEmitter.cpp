@@ -35,9 +35,12 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
 
     files_.EnsureFileSymbol(*file);
 
+    const bool isDefinition = clang_isCursorDefinition(cursor);
     const auto storage = clang_Cursor_getStorageClass(cursor);
     Symbol symbol;
     symbol.id = FunctionId(cursor);
+    if (ExistingDefinitionShouldWin(symbol.id, isDefinition)) return true;
+
     symbol.name = name;
     symbol.qualifiedName = name;
     symbol.kind = "method";
@@ -47,6 +50,7 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
     symbol.visibility = storage == CX_SC_Static ? "private" : "public";
     symbol.isStatic = storage == CX_SC_Static;
     symbol.properties["native.kind"] = "function";
+    symbol.properties["native.declarationKind"] = isDefinition ? "definition" : "declaration";
     symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
     symbol.properties["native.signature"] = Signature(cursor);
     symbol.properties["native.buildProfile"] = buildProfile_;
@@ -55,6 +59,19 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
     AddParameterTypeReferences(cursor, symbol.id);
     types_.AddTypeReference(symbol.id, cursor, clang_getCursorResultType(cursor), "returnType");
     return true;
+}
+
+bool NativeFunctionEmitter::ExistingDefinitionShouldWin(
+    const std::string& symbolId,
+    bool isDefinition) const
+{
+    if (isDefinition) return false;
+
+    const Symbol* existing = graph_.FindSymbol(symbolId);
+    if (existing == nullptr) return false;
+
+    auto it = existing->properties.find("native.declarationKind");
+    return it != existing->properties.end() && it->second == "definition";
 }
 
 void NativeFunctionEmitter::AddParameterTypeReferences(

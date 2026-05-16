@@ -24,6 +24,7 @@ public:
     bool AddFunction(CXCursor cursor);
 
 private:
+    bool ExistingDefinitionShouldWin(const std::string& symbolId, bool isDefinition) const;
     void AddParameterTypeReferences(CXCursor cursor, const std::string& functionId);
     std::string Signature(CXCursor cursor) const;
 
