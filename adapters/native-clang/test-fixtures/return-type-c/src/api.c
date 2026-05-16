@@ -11,3 +11,10 @@ struct Packet *echo_packet(struct Packet *packet)
 {
     return packet;
 }
+
+struct Packet *packet_ring[2];
+
+struct Packet *first_packet(struct Packet *packets[2])
+{
+    return packets[0];
+}
