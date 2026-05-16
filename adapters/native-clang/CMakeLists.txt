@@ -50,6 +50,8 @@ add_executable(lifeblood-native-clang
     src/NativeCompileCommand.h
     src/NativeEdgeClassification.cpp
     src/NativeEdgeClassification.h
+    src/NativeEdgeRole.cpp
+    src/NativeEdgeRole.h
     src/NativeGraphBuilder.cpp
     src/NativeGraphBuilder.h
     src/NativeGraphSink.h
