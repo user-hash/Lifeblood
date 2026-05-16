@@ -5,25 +5,14 @@ namespace lifeblood::native_clang
 void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
 {
     NativeGraphOwnershipIndex ownership(graph);
-    std::map<std::string, ModuleCounts> moduleCounts;
+    NativeModuleGraphMetrics moduleMetrics(graph, ownership);
     std::map<std::string, FileCounts> fileCounts;
     std::map<std::string, unsigned> crossFileCallOutCounts;
     std::map<std::string, unsigned> crossFileCallInCounts;
 
     for (const auto& [id, symbol] : graph.symbols)
     {
-        if (symbol.kind == "module")
-        {
-            moduleCounts[id];
-            continue;
-        }
-
-        auto moduleId = ownership.OwningModuleId(id);
-        if (moduleId)
-        {
-            moduleCounts[*moduleId].symbolCount++;
-            NativeVisibilityCounter::Add(moduleCounts[*moduleId].visibility, symbol);
-        }
+        moduleMetrics.ObserveSymbol(id, symbol);
 
         if (symbol.kind == "file")
         {
@@ -42,10 +31,7 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
 
     for (const auto& edge : graph.edges)
     {
-        auto moduleId = ownership.OwningModuleId(edge.sourceId);
-        if (moduleId)
-            AddEdgeCount(moduleCounts[*moduleId], edge);
-
+        moduleMetrics.ObserveEdge(edge);
         AddFileEdgeCount(
             fileCounts,
             ownership,
@@ -58,14 +44,6 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
     {
         WriteCrossFileCallCounts(symbol, crossFileCallOutCounts, crossFileCallInCounts);
 
-        if (symbol.kind == "module")
-        {
-            auto counts = moduleCounts.find(id);
-            if (counts != moduleCounts.end())
-                WriteModuleCounts(symbol, counts->second);
-            continue;
-        }
-
         if (symbol.kind == "file")
         {
             auto counts = fileCounts.find(id);
@@ -73,29 +51,8 @@ void NativeGraphFinalizer::Finalize(NativeGraph& graph) const
                 WriteFileCounts(symbol, counts->second);
         }
     }
-}
 
-void NativeGraphFinalizer::AddEdgeCount(ModuleCounts& counts, const Edge& edge)
-{
-    counts.edgeCount++;
-    if (edge.kind == "references")
-        counts.referenceEdgeCount++;
-    else if (edge.kind == "calls")
-        counts.callEdgeCount++;
-}
-
-void NativeGraphFinalizer::WriteModuleCounts(Symbol& module, const ModuleCounts& counts)
-{
-    module.properties["native.symbolCount"] = std::to_string(counts.symbolCount);
-    module.properties["native.edgeCount"] = std::to_string(counts.edgeCount);
-    module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
-    module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
-    NativeVisibilityCounter::Write(
-        module,
-        counts.visibility,
-        "native.publicSymbolCount",
-        "native.privateSymbolCount",
-        "native.internalSymbolCount");
+    moduleMetrics.Write();
 }
 
 void NativeGraphFinalizer::AddFileEdgeCount(

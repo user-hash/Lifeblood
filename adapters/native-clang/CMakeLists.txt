@@ -72,6 +72,8 @@ add_executable(lifeblood-native-clang
     src/NativeGraphOwnershipIndex.h
     src/NativeModuleTracker.cpp
     src/NativeModuleTracker.h
+    src/NativeModuleGraphMetrics.cpp
+    src/NativeModuleGraphMetrics.h
     src/NativePreprocessorEmitter.cpp
     src/NativePreprocessorEmitter.h
     src/NativeReferenceEdgeWriter.cpp
