@@ -26,6 +26,7 @@ void NativeModuleGraphMetrics::ObserveSymbol(
     Counts& counts = counts_[*moduleId];
     counts.symbolCount++;
     NativeVisibilityCounter::Add(counts.visibility, symbol);
+    AddFunctionDeclarationCount(counts, symbol);
 }
 
 void NativeModuleGraphMetrics::ObserveEdge(const Edge& edge)
@@ -56,12 +57,29 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge)
         counts.callEdgeCount++;
 }
 
+void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol)
+{
+    auto nativeKind = symbol.properties.find("native.kind");
+    if (nativeKind == symbol.properties.end() || nativeKind->second != "function")
+        return;
+
+    auto declarationKind = symbol.properties.find("native.declarationKind");
+    if (declarationKind != symbol.properties.end() && declarationKind->second == "declaration")
+        counts.functionDeclarationCount++;
+    else
+        counts.functionDefinitionCount++;
+}
+
 void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
 {
     module.properties["native.symbolCount"] = std::to_string(counts.symbolCount);
     module.properties["native.edgeCount"] = std::to_string(counts.edgeCount);
     module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
     module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
+    module.properties["native.functionDefinitionCount"] =
+        std::to_string(counts.functionDefinitionCount);
+    module.properties["native.functionDeclarationCount"] =
+        std::to_string(counts.functionDeclarationCount);
     NativeVisibilityCounter::Write(
         module,
         counts.visibility,
