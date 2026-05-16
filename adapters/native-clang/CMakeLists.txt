@@ -20,6 +20,8 @@ if (NOT EXISTS "${LIBCLANG_LIBRARY}")
 endif()
 
 add_executable(lifeblood-native-clang
+    src/ClangUtilities.cpp
+    src/ClangUtilities.h
     src/GraphModel.h
     src/JsonGraphWriter.cpp
     src/JsonGraphWriter.h

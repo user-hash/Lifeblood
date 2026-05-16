@@ -71,8 +71,9 @@ dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang
 The tiny graph import reports 8 symbols, 11 edges, 1 module, and 1 type. The
 direct-reference graph import reports 14 symbols, 22 edges, 1 module, and
 3 types. The profile fixture currently imports as 12 symbols / 19 edges for
-`video`, and 12 symbols / 17 edges for `audio`. The edge counts include
-graph-builder synthesis such as containment and derived file edges.
+`video`, 12 symbols / 17 edges for `audio`, and 14 symbols / 24 edges for the
+callback-table fixture. The edge counts include graph-builder synthesis such as
+containment and derived file edges.
 
 ## Available Clang API Surface
 

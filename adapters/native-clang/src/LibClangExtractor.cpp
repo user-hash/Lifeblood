@@ -1,10 +1,9 @@
+#include "ClangUtilities.h"
 #include "LibClangExtractor.h"
 
 #include <clang-c/CXCompilationDatabase.h>
 #include <clang-c/Index.h>
 
-#include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -24,80 +23,13 @@ struct VisitState
 {
     std::string currentFunctionId;
     std::string currentTypeId;
+    std::string currentInitializerOwnerId;
 };
-
-std::string ToString(CXString value)
-{
-    const char* c = clang_getCString(value);
-    std::string result = c == nullptr ? "" : c;
-    clang_disposeString(value);
-    return result;
-}
-
-std::string SlashPath(std::string value)
-{
-    std::replace(value.begin(), value.end(), '\\', '/');
-    return value;
-}
 
 std::string BaseName(const fs::path& path)
 {
     auto name = path.filename().string();
     return name.empty() ? "native-project" : name;
-}
-
-std::string Trim(std::string value)
-{
-    auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) {
-        return std::isspace(ch) != 0;
-    });
-    auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) {
-        return std::isspace(ch) != 0;
-    }).base();
-    if (first >= last) return "";
-    return std::string(first, last);
-}
-
-std::string NormalizeTypeForId(std::string value)
-{
-    value = Trim(value);
-    const std::string structPrefix = "struct ";
-    const std::string unionPrefix = "union ";
-    const std::string enumPrefix = "enum ";
-    if (value.rfind(structPrefix, 0) == 0) value.erase(0, structPrefix.size());
-    if (value.rfind(unionPrefix, 0) == 0) value.erase(0, unionPrefix.size());
-    if (value.rfind(enumPrefix, 0) == 0) value.erase(0, enumPrefix.size());
-
-    std::string compact;
-    compact.reserve(value.size());
-    for (size_t i = 0; i < value.size(); i++)
-    {
-        if (std::isspace(static_cast<unsigned char>(value[i])) != 0)
-        {
-            bool nextIsPointer = i + 1 < value.size() && value[i + 1] == '*';
-            bool prevIsPointer = !compact.empty() && compact.back() == '*';
-            if (!nextIsPointer && !prevIsPointer)
-                compact.push_back(' ');
-        }
-        else
-        {
-            compact.push_back(value[i]);
-        }
-    }
-    return compact;
-}
-
-CXType StripPointers(CXType type)
-{
-    while (type.kind == CXType_Pointer)
-        type = clang_getPointeeType(type);
-    return type;
-}
-
-bool EndsWith(const std::string& value, const std::string& suffix)
-{
-    return value.size() >= suffix.size() &&
-           std::equal(suffix.rbegin(), suffix.rend(), value.rbegin());
 }
 
 class ExtractionSession
@@ -423,8 +355,12 @@ private:
                 ProcessField(cursor, state);
                 break;
             case CXCursor_VarDecl:
-                ProcessVariable(cursor, state);
+            {
+                auto initializerOwnerId = ProcessVariable(cursor, state);
+                if (!initializerOwnerId.empty())
+                    state.currentInitializerOwnerId = initializerOwnerId;
                 break;
+            }
             case CXCursor_FunctionDecl:
                 if (AddFunction(cursor))
                     state.currentFunctionId = FunctionId(cursor);
@@ -688,12 +624,15 @@ private:
         AddTypeReference(field.id, cursor, clang_getCursorType(cursor), "fieldType");
     }
 
-    void ProcessVariable(CXCursor cursor, const VisitState& state)
+    std::string ProcessVariable(CXCursor cursor, const VisitState& state)
     {
         if (!state.currentFunctionId.empty() || !state.currentTypeId.empty())
-            return;
+            return "";
 
-        AddGlobalVariable(cursor);
+        if (!AddGlobalVariable(cursor))
+            return "";
+
+        return GlobalVariableId(cursor);
     }
 
     bool AddGlobalVariable(CXCursor cursor)
@@ -708,8 +647,11 @@ private:
         EnsureFileSymbol(*file);
 
         const auto storage = clang_Cursor_getStorageClass(cursor);
+        const std::string symbolId = GlobalVariableId(cursor);
+        auto existing = graph_.symbols.find(symbolId);
+
         Symbol symbol;
-        symbol.id = GlobalVariableId(cursor);
+        symbol.id = symbolId;
         symbol.name = name;
         symbol.qualifiedName = name;
         symbol.kind = "field";
@@ -718,11 +660,18 @@ private:
         symbol.parentId = "file:" + *file;
         symbol.visibility = storage == CX_SC_Static ? "private" : "public";
         symbol.isStatic = storage == CX_SC_Static;
-        symbol.properties["native.kind"] = "global";
+        symbol.properties["native.kind"] =
+            existing != graph_.symbols.end() &&
+            existing->second.properties.find("native.kind") != existing->second.properties.end() &&
+            existing->second.properties.at("native.kind") == "callbackTable"
+                ? "callbackTable"
+                : "global";
         symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
         symbol.properties["native.fieldType"] = NormalizeTypeForId(
             ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
         symbol.properties["native.buildProfile"] = options_.profile;
+        if (symbol.properties["native.kind"] == "callbackTable")
+            symbol.properties["native.callbackTable"] = "true";
         AddSymbol(symbol);
 
         AddTypeReference(symbol.id, cursor, clang_getCursorType(cursor), "globalType");
@@ -837,10 +786,25 @@ private:
 
     void ProcessDeclarationReference(CXCursor cursor, const VisitState& state)
     {
-        if (state.currentFunctionId.empty()) return;
-
         CXCursor referenced = clang_getCursorReferenced(cursor);
         if (clang_Cursor_isNull(referenced)) return;
+
+        if (!state.currentInitializerOwnerId.empty())
+        {
+            if (clang_getCursorKind(referenced) == CXCursor_FunctionDecl &&
+                AddFunction(referenced))
+            {
+                MarkCallbackTable(state.currentInitializerOwnerId);
+                AddReferenceEdge(
+                    cursor,
+                    state.currentInitializerOwnerId,
+                    FunctionId(referenced),
+                    "callbackTarget");
+            }
+            return;
+        }
+
+        if (state.currentFunctionId.empty()) return;
 
         switch (clang_getCursorKind(referenced))
         {
@@ -913,6 +877,15 @@ private:
         edge.properties["native.referenceKind"] = referenceKind;
         edge.properties["native.buildProfile"] = options_.profile;
         AddEdge(edge);
+    }
+
+    void MarkCallbackTable(const std::string& symbolId)
+    {
+        auto it = graph_.symbols.find(symbolId);
+        if (it == graph_.symbols.end()) return;
+
+        it->second.properties["native.kind"] = "callbackTable";
+        it->second.properties["native.callbackTable"] = "true";
     }
 
     std::string NativeKindForType(CXType type)

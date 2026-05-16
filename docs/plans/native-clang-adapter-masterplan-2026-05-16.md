@@ -1,9 +1,9 @@
 # Native Clang Adapter Masterplan
 
-**Status:** Stage 3 profile/preprocessor bootstrap underway. The adapter
-boundary is chartered, a minimal `libclang` executable emits graphs, and
-fixtures now cover direct calls, direct references, and profile-shaped
-preprocessor facts.
+**Status:** Stage 4 callback-table bootstrap underway. The adapter boundary is
+chartered, a minimal `libclang` executable emits graphs, and fixtures now cover
+direct calls, direct references, profile-shaped preprocessor facts, and
+table-held callback targets.
 
 **Owner:** Native C/C++ track. This document is the contract for adding
 Clang-backed analysis without weakening Lifeblood's existing hexagonal
