@@ -85,9 +85,12 @@ void NativeTypeEmitter::AddTypeReference(
 
     if (!EnsureTypeDeclaration(declaration, type)) return;
 
+    const std::string targetId = TypeId(declaration);
+    if (sourceId == targetId) return;
+
     Edge edge;
     edge.sourceId = sourceId;
-    edge.targetId = TypeId(declaration);
+    edge.targetId = targetId;
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(evidenceCursor, "semantic");
     edge.callSite = sourceMap_.CallSiteFor(evidenceCursor, sourceId);

@@ -99,6 +99,31 @@ public class NativeClangExecutableRatchetTests
         AssertAllNativeFactsCarryBuildProfile(graph, "callback-debug");
     }
 
+    [SkippableFact]
+    public void Executable_MultiTranslationUnitFixture_ReportsWholeBuildHealth()
+    {
+        var graph = RunFixture("multi-tu-c", "multi-debug").Graph;
+
+        Assert.Empty(GraphValidator.Validate(graph));
+        AssertModuleParseHealth(graph, "mod:multi-tu-c", total: 2, parsed: 2, failed: 0);
+
+        Assert.NotNull(graph.GetSymbol("file:src/audio.c"));
+        Assert.NotNull(graph.GetSymbol("file:src/video.c"));
+        Assert.NotNull(graph.GetSymbol("file:src/packet.h"));
+        Assert.NotNull(graph.GetSymbol("method:decode_audio(Packet*)"));
+        Assert.NotNull(graph.GetSymbol("method:audio_gain(int)"));
+        Assert.NotNull(graph.GetSymbol("method:decode_video(Packet*)"));
+        Assert.NotNull(graph.GetSymbol("method:video_scale(int)"));
+
+        AssertEdge(graph, "file:src/audio.c", "file:src/packet.h", EdgeKind.References);
+        AssertEdge(graph, "file:src/video.c", "file:src/packet.h", EdgeKind.References);
+        AssertCall(graph, "method:decode_audio(Packet*)", "method:audio_gain(int)");
+        AssertCall(graph, "method:decode_video(Packet*)", "method:video_scale(int)");
+        AssertReferenceKind(graph, "method:decode_audio(Packet*)", "type:Packet", "parameterType");
+        AssertReferenceKind(graph, "method:decode_video(Packet*)", "type:Packet", "parameterType");
+        AssertAllNativeFactsCarryBuildProfile(graph, "multi-debug");
+    }
+
     private static GraphDocument RunFixture(
         string fixtureName,
         string profile,
