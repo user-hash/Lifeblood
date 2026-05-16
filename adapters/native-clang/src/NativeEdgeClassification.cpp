@@ -1,6 +1,7 @@
 #include "NativeEdgeClassification.h"
 
 #include "NativeGraphFacts.h"
+#include "NativeReferenceKinds.h"
 
 namespace lifeblood::native_clang
 {
@@ -12,17 +13,17 @@ NativeReferenceEdgeClassification NativeEdgeClassification::Reference(const Edge
         return classification;
 
     classification.isInclude = NativeGraphFacts::HasNativeEdgeKind(edge, "include");
-    classification.isGlobalAccess = NativeGraphFacts::HasReferenceKind(edge, "globalAccess");
-    classification.isFieldAccess = NativeGraphFacts::HasReferenceKind(edge, "fieldAccess");
-    classification.isParameterType = NativeGraphFacts::HasReferenceKind(edge, "parameterType");
+    classification.isGlobalAccess = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::GlobalAccess);
+    classification.isFieldAccess = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::FieldAccess);
+    classification.isParameterType = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::ParameterType);
     classification.isCallbackTarget =
-        NativeGraphFacts::HasReferenceKind(edge, "callbackTarget");
-    classification.isEnumMember = NativeGraphFacts::HasReferenceKind(edge, "enumMember");
-    classification.isFieldType = NativeGraphFacts::HasReferenceKind(edge, "fieldType");
+        NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::CallbackTarget);
+    classification.isEnumMember = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::EnumMember);
+    classification.isFieldType = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::FieldType);
     classification.isUnderlyingType =
-        NativeGraphFacts::HasReferenceKind(edge, "underlyingType");
-    classification.isGlobalType = NativeGraphFacts::HasReferenceKind(edge, "globalType");
-    classification.isReturnType = NativeGraphFacts::HasReferenceKind(edge, "returnType");
+        NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::UnderlyingType);
+    classification.isGlobalType = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::GlobalType);
+    classification.isReturnType = NativeGraphFacts::HasReferenceKind(edge, NativeReferenceKinds::ReturnType);
     return classification;
 }
 

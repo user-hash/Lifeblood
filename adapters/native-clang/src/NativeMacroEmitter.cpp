@@ -5,6 +5,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 
 #include <sstream>
@@ -57,7 +58,8 @@ void NativeMacroEmitter::AddMacroExpansion(CXCursor cursor)
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
-    edge.properties[NativeGraphPropertyKeys::ReferenceKind] = "macroExpansion";
+    edge.properties[NativeGraphPropertyKeys::ReferenceKind] =
+        NativeReferenceKinds::MacroExpansion;
     edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);
 }

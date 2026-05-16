@@ -5,6 +5,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
 
@@ -59,7 +60,11 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
     graph_.AddSymbol(symbol);
 
     AddParameterTypeReferences(cursor, symbol.id);
-    types_.AddTypeReference(symbol.id, cursor, clang_getCursorResultType(cursor), "returnType");
+    types_.AddTypeReference(
+        symbol.id,
+        cursor,
+        clang_getCursorResultType(cursor),
+        NativeReferenceKinds::ReturnType);
     return true;
 }
 
@@ -84,7 +89,11 @@ void NativeFunctionEmitter::AddParameterTypeReferences(
     for (int i = 0; i < count; i++)
     {
         CXCursor arg = clang_Cursor_getArgument(cursor, static_cast<unsigned>(i));
-        types_.AddTypeReference(functionId, arg, clang_getCursorType(arg), "parameterType");
+        types_.AddTypeReference(
+            functionId,
+            arg,
+            clang_getCursorType(arg),
+            NativeReferenceKinds::ParameterType);
     }
 }
 

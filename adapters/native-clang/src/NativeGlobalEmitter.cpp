@@ -5,6 +5,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
 
@@ -65,7 +66,11 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
         symbol.properties["native.callbackTable"] = "true";
     graph_.AddSymbol(symbol);
 
-    types_.AddTypeReference(symbol.id, cursor, clang_getCursorType(cursor), "globalType");
+    types_.AddTypeReference(
+        symbol.id,
+        cursor,
+        clang_getCursorType(cursor),
+        NativeReferenceKinds::GlobalType);
     return true;
 }
 

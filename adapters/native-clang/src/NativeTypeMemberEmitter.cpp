@@ -5,6 +5,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
 
@@ -77,6 +78,10 @@ void NativeTypeMemberEmitter::AddField(CXCursor cursor, const std::string& owner
     field.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(field);
 
-    types_.AddTypeReference(field.id, cursor, clang_getCursorType(cursor), "fieldType");
+    types_.AddTypeReference(
+        field.id,
+        cursor,
+        clang_getCursorType(cursor),
+        NativeReferenceKinds::FieldType);
 }
 }
