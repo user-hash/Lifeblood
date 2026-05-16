@@ -2,6 +2,7 @@
 
 #include "NativeExtractionSession.h"
 #include "NativeGraphBuilder.h"
+#include "NativeGraphFinalizer.h"
 
 #include <utility>
 
@@ -18,6 +19,8 @@ bool LibClangExtractor::Run()
     graphBuilder.Clear();
 
     NativeExtractionSession session(options_, graphBuilder);
-    return session.Run();
+    bool complete = session.Run();
+    NativeGraphFinalizer().Finalize(graph_);
+    return complete;
 }
 }
