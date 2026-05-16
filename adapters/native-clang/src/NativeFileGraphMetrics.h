@@ -2,6 +2,7 @@
 
 #include "GraphModel.h"
 #include "NativeEdgeMetricClassification.h"
+#include "NativeFileCallSymbolMetrics.h"
 #include "NativeGraphFacts.h"
 #include "NativeGraphOwnershipIndex.h"
 #include "NativeKindInventory.h"
@@ -70,14 +71,10 @@ private:
         CountMember incomingCount);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
     static void WriteFileCounts(Symbol& file, const Counts& counts);
-    void WriteSymbolCallCounts(Symbol& symbol) const;
 
     NativeGraph& graph_;
     const NativeGraphOwnershipIndex& ownership_;
     std::map<std::string, Counts> counts_;
-    std::map<std::string, unsigned> sameFileCallOutCounts_;
-    std::map<std::string, unsigned> sameFileCallInCounts_;
-    std::map<std::string, unsigned> crossFileCallOutCounts_;
-    std::map<std::string, unsigned> crossFileCallInCounts_;
+    NativeFileCallSymbolMetrics callSymbolMetrics_;
 };
 }
