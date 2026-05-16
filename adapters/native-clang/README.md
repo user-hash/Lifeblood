@@ -27,10 +27,17 @@ No LLVM or Clang dependency belongs in `Lifeblood.Domain`,
 
 ## Planned Engine
 
-Stage 1 targets a C++ LibTooling command-line tool. It will read a
-`compile_commands.json` compilation database and run Clang over each translation
-unit with the same include paths, defines, language mode, and generated config
-headers that the real build uses.
+Stage 1 targets a small native command-line tool over Clang's API. On the
+current Windows machine, the official LLVM installer provides `libclang`
+headers/libs (`clang-c/Index.h`, `clang-c/CXCompilationDatabase.h`,
+`libclang.lib`, `libclang.dll`) but not the full C++ LibTooling development
+surface. So the bootstrap extractor should use `libclang`; C++ LibTooling stays
+available as a richer later path if we add a heavier LLVM development package
+or source-build story.
+
+The adapter will read a `compile_commands.json` compilation database and run
+Clang over each translation unit with the same include paths, defines, language
+mode, and generated config headers that the real build uses.
 
 Other native-code analysis engines can become sidecars later:
 
@@ -72,13 +79,11 @@ See the full
 
 ## Stage 1 Prerequisites
 
-This machine currently has `.NET SDK 8.0.419`, but no `clang` or `cmake` on
-PATH. Before implementation begins, Stage 1 must establish one supported local
-toolchain path and document it here.
+Toolchain details are recorded in [TOOLCHAIN.md](TOOLCHAIN.md).
 
 Expected tools:
 
-- LLVM/Clang with LibTooling headers and libraries.
+- LLVM/Clang with `libclang` headers and libraries.
 - CMake.
 - A C++ compiler compatible with the selected LLVM distribution.
 - Lifeblood CLI from this repo for graph validation.

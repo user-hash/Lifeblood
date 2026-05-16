@@ -53,9 +53,14 @@ source of truth is `compile_commands.json`, because C and C++ parsing is not
 meaningful without the real include paths, defines, language mode, and config
 headers for each translation unit.
 
-The first implementation target is a C++ LibTooling binary. Python `libclang`
-bindings, CodeQL, and Joern can be useful sidecars, but they are not the core
-v1 extraction path.
+The first implementation target is a small native executable over Clang's API.
+On the verified Windows toolchain, the official LLVM installer exposes
+`libclang` (`clang-c/Index.h`, `clang-c/CXCompilationDatabase.h`,
+`libclang.lib`, `libclang.dll`) but not C++ LibTooling headers/libs. Bootstrap
+with `libclang`; move to C++ LibTooling only if the C API proves insufficient
+and we intentionally add the heavier LLVM development package/source-build
+story. Python `libclang` bindings, CodeQL, and Joern can be useful sidecars,
+but they are not the core v1 extraction path.
 
 ### Decision 3. One graph per build profile
 
