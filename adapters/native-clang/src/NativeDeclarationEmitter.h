@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "NativeFileRegistry.h"
 #include "NativeGraphSink.h"
+#include "NativeTypeEmitter.h"
 
 #include <clang-c/Index.h>
 
@@ -28,21 +29,14 @@ public:
 
 private:
     void AddParameterTypeReferences(CXCursor cursor, const std::string& functionId);
-    void AddTypeReference(
-        const std::string& sourceId,
-        CXCursor evidenceCursor,
-        CXType sourceType,
-        const std::string& referenceKind);
-
-    bool EnsureTypeDeclaration(CXCursor declaration, CXType type);
     bool IsFileScopeCursor(CXCursor cursor) const;
 
-    std::string NativeKindForType(CXType type) const;
     std::string Signature(CXCursor cursor) const;
 
     std::string buildProfile_;
     NativeGraphSink& graph_;
     const ClangSourceMapper& sourceMap_;
     NativeFileRegistry& files_;
+    NativeTypeEmitter types_;
 };
 }
