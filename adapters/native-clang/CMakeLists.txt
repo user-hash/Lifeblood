@@ -26,6 +26,8 @@ add_executable(lifeblood-native-clang
     src/ClangCompileCommandReader.h
     src/ClangIndex.cpp
     src/ClangIndex.h
+    src/ClangParseArgumentBuilder.cpp
+    src/ClangParseArgumentBuilder.h
     src/ClangSourceMapper.cpp
     src/ClangSourceMapper.h
     src/ClangTranslationUnitParser.cpp
