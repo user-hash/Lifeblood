@@ -244,7 +244,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleGraphInventory(
             graph,
             "mod:callback-table-c",
-            symbols: 17,
+            symbols: 19,
             edges: 12,
             references: 12,
             calls: 0);
@@ -254,7 +254,7 @@ public class NativeClangExecutableRatchetTests
             macros: 1,
             callbackTables: 1,
             tableRows: 2,
-            tableCells: 2);
+            tableCells: 4);
         AssertModuleReferenceKindInventory(
             graph,
             "mod:callback-table-c",
@@ -268,7 +268,7 @@ public class NativeClangExecutableRatchetTests
             macros: 0,
             callbackTables: 1,
             tableRows: 2,
-            tableCells: 2);
+            tableCells: 4);
         AssertFileReferenceKindInventory(
             graph,
             "file:src/registry.c",
@@ -301,18 +301,18 @@ public class NativeClangExecutableRatchetTests
         AssertCallbackTargetCounts(graph, "field:codec_table", incoming: 0, outgoing: 2);
         AssertCallbackTargetCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 0);
         AssertCallbackTargetCounts(graph, "method:decode_video(Packet*)", incoming: 1, outgoing: 0);
-        AssertCallbackTableCell(
+        AssertCallbackTableRow(
             graph,
             "field:codec_table",
             rowOrdinal: 0,
-            cellOrdinal: 0,
+            stringValue: "audio",
             methodId: "method:decode_audio(Packet*)",
             buildProfile: "callback-debug");
-        AssertCallbackTableCell(
+        AssertCallbackTableRow(
             graph,
             "field:codec_table",
             rowOrdinal: 1,
-            cellOrdinal: 0,
+            stringValue: "video",
             methodId: "method:decode_video(Packet*)",
             buildProfile: "callback-debug");
         AssertGlobalTypeCounts(graph, "field:codec_table", incoming: 0, outgoing: 1);
@@ -704,11 +704,11 @@ public class NativeClangExecutableRatchetTests
         AssertUsableEvidence(edge);
     }
 
-    private static void AssertCallbackTableCell(
+    private static void AssertCallbackTableRow(
         SemanticGraph graph,
         string tableId,
         int rowOrdinal,
-        int cellOrdinal,
+        string stringValue,
         string methodId,
         string buildProfile)
     {
@@ -723,20 +723,31 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("tableRow", row.Properties["native.kind"]);
         Assert.Equal(tableId, row.Properties["native.tableOwnerId"]);
         Assert.Equal(rowOrdinal.ToString(), row.Properties["native.tableRowOrdinal"]);
-        Assert.Equal("1", row.Properties["native.tableCellCount"]);
+        Assert.Equal("2", row.Properties["native.tableCellCount"]);
         Assert.Equal(buildProfile, row.Properties["native.buildProfile"]);
 
-        var cell = graph.GetSymbol($"{rowId}:cell:{cellOrdinal}");
-        Assert.NotNull(cell);
-        Assert.Equal(rowId, cell!.ParentId);
-        Assert.Equal("tableCell", cell.Properties["native.kind"]);
-        Assert.Equal(tableId, cell.Properties["native.tableOwnerId"]);
-        Assert.Equal(rowOrdinal.ToString(), cell.Properties["native.tableRowOrdinal"]);
-        Assert.Equal(cellOrdinal.ToString(), cell.Properties["native.tableCellOrdinal"]);
-        Assert.Equal("MethodGroup", cell.Properties["native.tableValueKind"]);
-        Assert.Equal(methodId, cell.Properties["native.methodGroupId"]);
-        Assert.Equal(methodId, cell.Properties["native.callbackTargetId"]);
-        Assert.Equal(buildProfile, cell.Properties["native.buildProfile"]);
+        var labelCell = graph.GetSymbol($"{rowId}:cell:0");
+        Assert.NotNull(labelCell);
+        Assert.Equal(rowId, labelCell!.ParentId);
+        Assert.Equal("tableCell", labelCell.Properties["native.kind"]);
+        Assert.Equal(tableId, labelCell.Properties["native.tableOwnerId"]);
+        Assert.Equal(rowOrdinal.ToString(), labelCell.Properties["native.tableRowOrdinal"]);
+        Assert.Equal("0", labelCell.Properties["native.tableCellOrdinal"]);
+        Assert.Equal("String", labelCell.Properties["native.tableValueKind"]);
+        Assert.Equal(stringValue, labelCell.Properties["native.stringValue"]);
+        Assert.Equal(buildProfile, labelCell.Properties["native.buildProfile"]);
+
+        var methodCell = graph.GetSymbol($"{rowId}:cell:1");
+        Assert.NotNull(methodCell);
+        Assert.Equal(rowId, methodCell!.ParentId);
+        Assert.Equal("tableCell", methodCell.Properties["native.kind"]);
+        Assert.Equal(tableId, methodCell.Properties["native.tableOwnerId"]);
+        Assert.Equal(rowOrdinal.ToString(), methodCell.Properties["native.tableRowOrdinal"]);
+        Assert.Equal("1", methodCell.Properties["native.tableCellOrdinal"]);
+        Assert.Equal("MethodGroup", methodCell.Properties["native.tableValueKind"]);
+        Assert.Equal(methodId, methodCell.Properties["native.methodGroupId"]);
+        Assert.Equal(methodId, methodCell.Properties["native.callbackTargetId"]);
+        Assert.Equal(buildProfile, methodCell.Properties["native.buildProfile"]);
     }
 
     private static Edge AssertEdge(

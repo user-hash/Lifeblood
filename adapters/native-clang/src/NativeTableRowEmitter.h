@@ -26,16 +26,25 @@ public:
         std::optional<unsigned> rowOrdinal,
         const std::string& methodId);
 
+    void AddStringCell(
+        CXCursor cursor,
+        const std::string& tableId,
+        std::optional<unsigned> rowOrdinal);
+
 private:
     unsigned ResolveRowOrdinal(
         const std::string& tableId,
         std::optional<unsigned> rowOrdinal);
     void EnsureRow(CXCursor cursor, const std::string& tableId, unsigned rowOrdinal);
-    void AddCell(
+    void AddMethodGroupCellSymbol(
         CXCursor cursor,
         const std::string& tableId,
         unsigned rowOrdinal,
         const std::string& methodId);
+    void AddStringCellSymbol(
+        CXCursor cursor,
+        const std::string& tableId,
+        unsigned rowOrdinal);
 
     void DecorateTable(const std::string& tableId);
     void DecorateRow(const std::string& rowId);
@@ -46,6 +55,7 @@ private:
         unsigned rowOrdinal,
         unsigned cellOrdinal);
     static std::string TableName(const std::string& tableId);
+    static std::string StringLiteralValue(CXCursor cursor);
 
     std::string buildProfile_;
     NativeGraphSink& graph_;

@@ -94,9 +94,18 @@ NativeAstVisitor::VisitState NativeAstVisitor::ProcessCursor(
         case CXCursor_CallExpr:
             references_.AddDirectCall(cursor, state.currentFunctionId);
             break;
+        case CXCursor_StringLiteral:
+        {
+            auto initializerRowOrdinal = InitializerRowOrdinalForValue(state);
+            references_.AddInitializerStringLiteral(
+                cursor,
+                state.currentInitializerOwnerId,
+                initializerRowOrdinal);
+            break;
+        }
         case CXCursor_DeclRefExpr:
         {
-            auto initializerRowOrdinal = InitializerRowOrdinalForReference(state);
+            auto initializerRowOrdinal = InitializerRowOrdinalForValue(state);
             references_.AddDeclarationReference(
                 cursor,
                 state.currentFunctionId,
@@ -140,7 +149,7 @@ NativeAstVisitor::VisitState NativeAstVisitor::ProcessInitializerList(VisitState
     return state;
 }
 
-std::optional<unsigned> NativeAstVisitor::InitializerRowOrdinalForReference(VisitState state)
+std::optional<unsigned> NativeAstVisitor::InitializerRowOrdinalForValue(VisitState state)
 {
     if (state.currentInitializerOwnerId.empty())
         return std::nullopt;

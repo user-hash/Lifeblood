@@ -245,25 +245,27 @@ public class NativeClangAdapterContractTests
         AssertSymbol(graph, "field:codec_table", SymbolKind.Field, "callbackTable", "callback-debug");
         AssertSymbol(graph, "field:codec_table:row:0", SymbolKind.Field, "tableRow", "callback-debug");
         AssertSymbol(graph, "field:codec_table:row:0:cell:0", SymbolKind.Field, "tableCell", "callback-debug");
+        AssertSymbol(graph, "field:codec_table:row:0:cell:1", SymbolKind.Field, "tableCell", "callback-debug");
         AssertSymbol(graph, "field:codec_table:row:1", SymbolKind.Field, "tableRow", "callback-debug");
         AssertSymbol(graph, "field:codec_table:row:1:cell:0", SymbolKind.Field, "tableCell", "callback-debug");
+        AssertSymbol(graph, "field:codec_table:row:1:cell:1", SymbolKind.Field, "tableCell", "callback-debug");
 
         var table = graph.GetSymbol("field:codec_table");
         Assert.NotNull(table);
         Assert.Equal("true", table!.Properties["native.callbackTable"]);
         Assert.Equal("2", table.Properties["native.tableRowCount"]);
 
-        AssertCallbackTableCell(
+        AssertCallbackTableRow(
             graph,
             "field:codec_table",
             rowOrdinal: 0,
-            cellOrdinal: 0,
+            stringValue: "audio",
             methodId: "method:decode_audio(Packet*)");
-        AssertCallbackTableCell(
+        AssertCallbackTableRow(
             graph,
             "field:codec_table",
             rowOrdinal: 1,
-            cellOrdinal: 0,
+            stringValue: "video",
             methodId: "method:decode_video(Packet*)");
 
         AssertReferenceKind(
@@ -338,11 +340,11 @@ public class NativeClangAdapterContractTests
         Assert.Equal(referenceKind, edge.Properties["native.referenceKind"]);
     }
 
-    private static void AssertCallbackTableCell(
+    private static void AssertCallbackTableRow(
         SemanticGraph graph,
         string tableId,
         int rowOrdinal,
-        int cellOrdinal,
+        string stringValue,
         string methodId)
     {
         var rowId = $"{tableId}:row:{rowOrdinal}";
@@ -351,17 +353,26 @@ public class NativeClangAdapterContractTests
         Assert.Equal(tableId, row!.ParentId);
         Assert.Equal(tableId, row.Properties["native.tableOwnerId"]);
         Assert.Equal(rowOrdinal.ToString(), row.Properties["native.tableRowOrdinal"]);
-        Assert.Equal("1", row.Properties["native.tableCellCount"]);
+        Assert.Equal("2", row.Properties["native.tableCellCount"]);
 
-        var cell = graph.GetSymbol($"{rowId}:cell:{cellOrdinal}");
-        Assert.NotNull(cell);
-        Assert.Equal(rowId, cell!.ParentId);
-        Assert.Equal(tableId, cell.Properties["native.tableOwnerId"]);
-        Assert.Equal(rowOrdinal.ToString(), cell.Properties["native.tableRowOrdinal"]);
-        Assert.Equal(cellOrdinal.ToString(), cell.Properties["native.tableCellOrdinal"]);
-        Assert.Equal("MethodGroup", cell.Properties["native.tableValueKind"]);
-        Assert.Equal(methodId, cell.Properties["native.methodGroupId"]);
-        Assert.Equal(methodId, cell.Properties["native.callbackTargetId"]);
+        var labelCell = graph.GetSymbol($"{rowId}:cell:0");
+        Assert.NotNull(labelCell);
+        Assert.Equal(rowId, labelCell!.ParentId);
+        Assert.Equal(tableId, labelCell.Properties["native.tableOwnerId"]);
+        Assert.Equal(rowOrdinal.ToString(), labelCell.Properties["native.tableRowOrdinal"]);
+        Assert.Equal("0", labelCell.Properties["native.tableCellOrdinal"]);
+        Assert.Equal("String", labelCell.Properties["native.tableValueKind"]);
+        Assert.Equal(stringValue, labelCell.Properties["native.stringValue"]);
+
+        var methodCell = graph.GetSymbol($"{rowId}:cell:1");
+        Assert.NotNull(methodCell);
+        Assert.Equal(rowId, methodCell!.ParentId);
+        Assert.Equal(tableId, methodCell.Properties["native.tableOwnerId"]);
+        Assert.Equal(rowOrdinal.ToString(), methodCell.Properties["native.tableRowOrdinal"]);
+        Assert.Equal("1", methodCell.Properties["native.tableCellOrdinal"]);
+        Assert.Equal("MethodGroup", methodCell.Properties["native.tableValueKind"]);
+        Assert.Equal(methodId, methodCell.Properties["native.methodGroupId"]);
+        Assert.Equal(methodId, methodCell.Properties["native.callbackTargetId"]);
     }
 
     private static void AssertModuleProfile(

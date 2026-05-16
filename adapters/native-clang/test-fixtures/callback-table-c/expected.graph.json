@@ -129,7 +129,7 @@
       "qualifiedName": "codec_table",
       "kind": "field",
       "filePath": "src/registry.c",
-      "line": 12,
+      "line": 13,
       "parentId": "file:src/registry.c",
       "visibility": "public",
       "properties": {
@@ -147,14 +147,14 @@
       "qualifiedName": "codec_table[0]",
       "kind": "field",
       "filePath": "src/registry.c",
-      "line": 13,
+      "line": 14,
       "parentId": "field:codec_table",
       "visibility": "internal",
       "properties": {
         "native.kind": "tableRow",
         "native.tableOwnerId": "field:codec_table",
         "native.tableRowOrdinal": "0",
-        "native.tableCellCount": "1",
+        "native.tableCellCount": "2",
         "native.buildProfile": "callback-debug"
       }
     },
@@ -164,7 +164,7 @@
       "qualifiedName": "codec_table[0].cell:0",
       "kind": "field",
       "filePath": "src/registry.c",
-      "line": 13,
+      "line": 14,
       "parentId": "field:codec_table:row:0",
       "visibility": "internal",
       "properties": {
@@ -172,6 +172,25 @@
         "native.tableOwnerId": "field:codec_table",
         "native.tableRowOrdinal": "0",
         "native.tableCellOrdinal": "0",
+        "native.tableValueKind": "String",
+        "native.stringValue": "audio",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:0:cell:1",
+      "name": "cell:1",
+      "qualifiedName": "codec_table[0].cell:1",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 14,
+      "parentId": "field:codec_table:row:0",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "0",
+        "native.tableCellOrdinal": "1",
         "native.tableValueKind": "MethodGroup",
         "native.methodGroupId": "method:decode_audio(Packet*)",
         "native.callbackTargetId": "method:decode_audio(Packet*)",
@@ -184,14 +203,14 @@
       "qualifiedName": "codec_table[1]",
       "kind": "field",
       "filePath": "src/registry.c",
-      "line": 14,
+      "line": 15,
       "parentId": "field:codec_table",
       "visibility": "internal",
       "properties": {
         "native.kind": "tableRow",
         "native.tableOwnerId": "field:codec_table",
         "native.tableRowOrdinal": "1",
-        "native.tableCellCount": "1",
+        "native.tableCellCount": "2",
         "native.buildProfile": "callback-debug"
       }
     },
@@ -201,7 +220,7 @@
       "qualifiedName": "codec_table[1].cell:0",
       "kind": "field",
       "filePath": "src/registry.c",
-      "line": 14,
+      "line": 15,
       "parentId": "field:codec_table:row:1",
       "visibility": "internal",
       "properties": {
@@ -209,6 +228,25 @@
         "native.tableOwnerId": "field:codec_table",
         "native.tableRowOrdinal": "1",
         "native.tableCellOrdinal": "0",
+        "native.tableValueKind": "String",
+        "native.stringValue": "video",
+        "native.buildProfile": "callback-debug"
+      }
+    },
+    {
+      "id": "field:codec_table:row:1:cell:1",
+      "name": "cell:1",
+      "qualifiedName": "codec_table[1].cell:1",
+      "kind": "field",
+      "filePath": "src/registry.c",
+      "line": 15,
+      "parentId": "field:codec_table:row:1",
+      "visibility": "internal",
+      "properties": {
+        "native.kind": "tableCell",
+        "native.tableOwnerId": "field:codec_table",
+        "native.tableRowOrdinal": "1",
+        "native.tableCellOrdinal": "1",
         "native.tableValueKind": "MethodGroup",
         "native.methodGroupId": "method:decode_video(Packet*)",
         "native.callbackTargetId": "method:decode_video(Packet*)",
@@ -255,7 +293,7 @@
       "qualifiedName": "dispatch_first",
       "kind": "method",
       "filePath": "src/registry.c",
-      "line": 17,
+      "line": 18,
       "parentId": "file:src/registry.c",
       "visibility": "public",
       "properties": {

@@ -34,6 +34,7 @@ inline constexpr const char* ReferenceKind = "native.referenceKind";
 inline constexpr const char* Signature = "native.signature";
 inline constexpr const char* SourceLanguage = "native.sourceLanguage";
 inline constexpr const char* SourceLanguages = "native.sourceLanguages";
+inline constexpr const char* StringValue = "native.stringValue";
 inline constexpr const char* SystemIncludeSearchPathCount = "native.systemIncludeSearchPathCount";
 inline constexpr const char* MethodGroupId = "native.methodGroupId";
 inline constexpr const char* TableCellCount = "native.tableCellCount";

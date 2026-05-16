@@ -14,7 +14,8 @@ NativeReferenceEmitter::NativeReferenceEmitter(
     NativeGraphSink& graph,
     const ClangSourceMapper& sourceMap,
     NativeDeclarationEmitter& declarations)
-    : edges_(std::move(buildProfile), graph, sourceMap),
+    : edges_(buildProfile, graph, sourceMap),
+      tableRows_(std::move(buildProfile), graph, sourceMap),
       declarations_(declarations)
 {
 }
@@ -46,11 +47,17 @@ void NativeReferenceEmitter::AddDeclarationReference(
         if (clang_getCursorKind(referenced) == CXCursor_FunctionDecl &&
             declarations_.AddFunction(referenced))
         {
-            edges_.AddCallbackTarget(
+            edges_.MarkCallbackTable(initializerOwnerId);
+            tableRows_.AddMethodGroupCell(
                 cursor,
                 initializerOwnerId,
                 initializerRowOrdinal,
                 FunctionId(referenced));
+            edges_.AddReference(
+                cursor,
+                initializerOwnerId,
+                FunctionId(referenced),
+                NativeReferenceKinds::CallbackTarget);
         }
         return;
     }
@@ -86,6 +93,16 @@ void NativeReferenceEmitter::AddDeclarationReference(
         default:
             break;
     }
+}
+
+void NativeReferenceEmitter::AddInitializerStringLiteral(
+    CXCursor cursor,
+    const std::string& initializerOwnerId,
+    std::optional<unsigned> initializerRowOrdinal)
+{
+    if (initializerOwnerId.empty()) return;
+
+    tableRows_.AddStringCell(cursor, initializerOwnerId, initializerRowOrdinal);
 }
 
 void NativeReferenceEmitter::AddMemberReference(
