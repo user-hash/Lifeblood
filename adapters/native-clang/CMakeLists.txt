@@ -56,6 +56,8 @@ add_executable(lifeblood-native-clang
     src/NativeModuleTracker.h
     src/NativePreprocessorEmitter.cpp
     src/NativePreprocessorEmitter.h
+    src/NativeReferenceEdgeWriter.cpp
+    src/NativeReferenceEdgeWriter.h
     src/NativeReferenceEmitter.cpp
     src/NativeReferenceEmitter.h
     src/NativeSymbolIds.cpp

@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "NativeDeclarationEmitter.h"
 #include "NativeGraphSink.h"
+#include "NativeReferenceEdgeWriter.h"
 
 #include <clang-c/Index.h>
 
@@ -27,17 +28,7 @@ public:
     void AddMemberReference(CXCursor cursor, const std::string& currentFunctionId);
 
 private:
-    void AddReferenceEdge(
-        CXCursor cursor,
-        const std::string& sourceId,
-        const std::string& targetId,
-        const std::string& referenceKind);
-
-    void MarkCallbackTable(const std::string& symbolId);
-
-    std::string buildProfile_;
-    NativeGraphSink& graph_;
-    const ClangSourceMapper& sourceMap_;
+    NativeReferenceEdgeWriter edges_;
     NativeDeclarationEmitter& declarations_;
 };
 }
