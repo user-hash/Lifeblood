@@ -1,5 +1,6 @@
 #include "NativeModuleGraphMetrics.h"
 
+#include "NativeDeclarationKinds.h"
 #include "NativeKindNames.h"
 
 namespace lifeblood::native_clang
@@ -88,7 +89,7 @@ void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const
     if (!NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Function))
         return;
 
-    if (NativeGraphFacts::HasDeclarationKind(symbol, "declaration"))
+    if (NativeGraphFacts::HasDeclarationKind(symbol, NativeDeclarationKinds::Declaration))
         counts.functionDeclarationCount++;
     else
         counts.functionDefinitionCount++;

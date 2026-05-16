@@ -47,21 +47,26 @@ add_executable(lifeblood-native-clang
     src/LibClangExtractor.h
     src/NativeAstVisitor.cpp
     src/NativeAstVisitor.h
+    src/NativeCallKinds.h
     src/NativeCompileCommand.h
     src/NativeEdgeClassification.cpp
     src/NativeEdgeClassification.h
     src/NativeEdgeRole.cpp
     src/NativeEdgeRole.h
+    src/NativeDeclarationKinds.h
     src/NativeGraphBuilder.cpp
     src/NativeGraphBuilder.h
     src/NativeGraphSink.h
+    src/NativeEvidenceKinds.h
     src/NativeIncludeEmitter.cpp
     src/NativeIncludeEmitter.h
     src/NativeKindInventory.cpp
     src/NativeKindInventory.h
     src/NativeKindNames.h
+    src/NativeLinkageNames.h
     src/NativeMacroEmitter.cpp
     src/NativeMacroEmitter.h
+    src/NativeMacroSources.h
     src/NativeDeclarationEmitter.cpp
     src/NativeDeclarationEmitter.h
     src/NativeDiagnosticSummary.h
@@ -92,6 +97,7 @@ add_executable(lifeblood-native-clang
     src/NativeModuleGraphMetrics.h
     src/NativePreprocessorEmitter.cpp
     src/NativePreprocessorEmitter.h
+    src/NativeParseStatuses.h
     src/NativeReferenceEdgeWriter.cpp
     src/NativeReferenceEdgeWriter.h
     src/NativeReferenceEmitter.cpp
@@ -107,6 +113,7 @@ add_executable(lifeblood-native-clang
     src/NativeTypeMemberEmitter.h
     src/NativeVisibilityCounts.cpp
     src/NativeVisibilityCounts.h
+    src/NativeVisibilityNames.h
     src/Options.h
     src/main.cpp
 )

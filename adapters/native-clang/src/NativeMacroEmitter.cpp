@@ -2,12 +2,15 @@
 
 #include "ClangSourceMapper.h"
 #include "ClangUtilities.h"
+#include "NativeEvidenceKinds.h"
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
+#include "NativeMacroSources.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
+#include "NativeVisibilityNames.h"
 
 #include <sstream>
 #include <utility>
@@ -36,7 +39,12 @@ void NativeMacroEmitter::AddMacroDefinition(CXCursor cursor, CXTranslationUnit u
     std::string name = ToString(clang_getCursorSpelling(cursor));
     if (name.empty()) return;
 
-    AddMacroSymbol(name, file, sourceMap_.Line(cursor), "source", MacroReplacement(cursor, unit));
+    AddMacroSymbol(
+        name,
+        file,
+        sourceMap_.Line(cursor),
+        NativeMacroSources::Source,
+        MacroReplacement(cursor, unit));
 }
 
 void NativeMacroEmitter::AddMacroExpansion(CXCursor cursor)
@@ -49,7 +57,7 @@ void NativeMacroEmitter::AddMacroExpansion(CXCursor cursor)
 
     std::string targetId = MacroId(name);
     if (!graph_.HasSymbol(targetId))
-        AddMacroSymbol(name, std::nullopt, 0, "unknown", "");
+        AddMacroSymbol(name, std::nullopt, 0, NativeMacroSources::Unknown, "");
 
     files_.EnsureFileSymbol(*file);
 
@@ -57,7 +65,7 @@ void NativeMacroEmitter::AddMacroExpansion(CXCursor cursor)
     edge.sourceId = "file:" + *file;
     edge.targetId = targetId;
     edge.kind = "references";
-    edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
+    edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Syntax);
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
     edge.properties[NativeGraphPropertyKeys::ReferenceKind] =
         NativeReferenceKinds::MacroExpansion;
@@ -88,7 +96,7 @@ void NativeMacroEmitter::AddMacroSymbol(
     {
         symbol.parentId = moduleId_;
     }
-    symbol.visibility = "internal";
+    symbol.visibility = NativeVisibilityNames::Internal;
     symbol.isStatic = true;
     symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Macro;
     symbol.properties["native.macroSource"] = source;

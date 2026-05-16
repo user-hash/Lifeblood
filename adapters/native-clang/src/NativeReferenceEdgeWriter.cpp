@@ -1,6 +1,8 @@
 #include "NativeReferenceEdgeWriter.h"
 
 #include "ClangSourceMapper.h"
+#include "NativeCallKinds.h"
+#include "NativeEvidenceKinds.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
@@ -30,9 +32,9 @@ void NativeReferenceEdgeWriter::AddDirectCall(
     edge.sourceId = sourceId;
     edge.targetId = targetId;
     edge.kind = "calls";
-    edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
+    edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Semantic);
     edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
-    edge.properties[NativeGraphPropertyKeys::CallKind] = "direct";
+    edge.properties[NativeGraphPropertyKeys::CallKind] = NativeCallKinds::Direct;
     edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);
 }
@@ -62,7 +64,7 @@ void NativeReferenceEdgeWriter::AddReference(
     edge.sourceId = sourceId;
     edge.targetId = targetId;
     edge.kind = "references";
-    edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
+    edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Semantic);
     edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
     edge.properties[NativeGraphPropertyKeys::ReferenceKind] = referenceKind;
     edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;

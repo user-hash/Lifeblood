@@ -9,6 +9,7 @@
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
+#include "NativeVisibilityNames.h"
 
 #include <utility>
 
@@ -45,7 +46,7 @@ bool NativeTypeMemberEmitter::AddEnumConstant(CXCursor cursor, const std::string
     symbol.filePath = *file;
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = enumTypeId;
-    symbol.visibility = "public";
+    symbol.visibility = NativeVisibilityNames::Public;
     symbol.isStatic = true;
     symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::EnumMember;
     symbol.properties["native.enumValue"] = std::to_string(clang_getEnumConstantDeclValue(cursor));
@@ -72,7 +73,7 @@ void NativeTypeMemberEmitter::AddField(CXCursor cursor, const std::string& owner
     field.filePath = *file;
     field.line = sourceMap_.Line(cursor);
     field.parentId = ownerTypeId;
-    field.visibility = "public";
+    field.visibility = NativeVisibilityNames::Public;
     field.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::StructField;
     field.properties["native.fieldType"] = NormalizeTypeForId(
         ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
