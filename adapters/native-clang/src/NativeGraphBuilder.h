@@ -3,6 +3,7 @@
 #include "GraphModel.h"
 #include "NativeGraphSink.h"
 
+#include <map>
 #include <set>
 #include <string>
 #include <tuple>
@@ -26,7 +27,11 @@ public:
         const std::function<void(Symbol&)>& update) override;
 
 private:
+    void RecordReferenceCounts(const std::string& sourceId, const std::string& targetId);
+
     NativeGraph& graph_;
     std::set<std::tuple<std::string, std::string, std::string>> edgeKeys_;
+    std::map<std::string, unsigned> referenceOutCounts_;
+    std::map<std::string, unsigned> referenceInCounts_;
 };
 }
