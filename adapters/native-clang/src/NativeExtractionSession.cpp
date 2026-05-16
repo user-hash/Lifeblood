@@ -1,6 +1,5 @@
 #include "NativeExtractionSession.h"
 
-#include <iostream>
 #include <utility>
 
 namespace fs = std::filesystem;
@@ -40,15 +39,14 @@ bool NativeExtractionSession::Run()
     ClangCompilationDatabase database(compilationDatabaseDir_);
     if (!database.IsValid()) return false;
 
-    CXIndex index = clang_createIndex(/*excludeDeclarationsFromPCH*/ 0, /*displayDiagnostics*/ 0);
+    ClangIndex index;
     bool ok = true;
     for (unsigned i = 0; i < database.Count(); i++)
     {
         CXCompileCommand command = database.CommandAt(i);
-        ok = ParseCommand(index, command) && ok;
+        ok = ParseCommand(index.Get(), command) && ok;
     }
 
-    clang_disposeIndex(index);
     return ok;
 }
 
