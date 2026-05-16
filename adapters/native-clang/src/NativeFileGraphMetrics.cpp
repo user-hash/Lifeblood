@@ -60,7 +60,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
         if (targetFileId)
             counts_[*targetFileId].incomingReferenceEdgeCount++;
 
-        if (HasNativeEdgeKind(edge, "include"))
+        if (NativeGraphFacts::HasNativeEdgeKind(edge, "include"))
         {
             if (sourceFileId)
                 counts_[*sourceFileId].outgoingIncludeEdgeCount++;
@@ -68,7 +68,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
                 counts_[*targetFileId].incomingIncludeEdgeCount++;
         }
 
-        if (HasReferenceKind(edge, "callbackTarget"))
+        if (NativeGraphFacts::HasReferenceKind(edge, "callbackTarget"))
         {
             if (sourceFileId)
                 counts_[*sourceFileId].outgoingCallbackTargetEdgeCount++;
@@ -95,12 +95,10 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
 
 void NativeFileGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol)
 {
-    auto nativeKind = symbol.properties.find("native.kind");
-    if (nativeKind == symbol.properties.end() || nativeKind->second != "function")
+    if (!NativeGraphFacts::HasNativeKind(symbol, "function"))
         return;
 
-    auto declarationKind = symbol.properties.find("native.declarationKind");
-    if (declarationKind != symbol.properties.end() && declarationKind->second == "declaration")
+    if (NativeGraphFacts::HasDeclarationKind(symbol, "declaration"))
         counts.functionDeclarationCount++;
     else
         counts.functionDefinitionCount++;
@@ -108,29 +106,10 @@ void NativeFileGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const S
 
 void NativeFileGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& symbol)
 {
-    auto nativeKind = symbol.properties.find("native.kind");
-    if (nativeKind == symbol.properties.end()) return;
-
-    if (nativeKind->second == "macro")
+    if (NativeGraphFacts::HasNativeKind(symbol, "macro"))
         counts.macroCount++;
-    if (nativeKind->second == "callbackTable")
+    if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
         counts.callbackTableCount++;
-}
-
-bool NativeFileGraphMetrics::HasNativeEdgeKind(
-    const Edge& edge,
-    const std::string& nativeKind)
-{
-    auto value = edge.properties.find("native.kind");
-    return value != edge.properties.end() && value->second == nativeKind;
-}
-
-bool NativeFileGraphMetrics::HasReferenceKind(
-    const Edge& edge,
-    const std::string& referenceKind)
-{
-    auto value = edge.properties.find("native.referenceKind");
-    return value != edge.properties.end() && value->second == referenceKind;
 }
 
 void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
