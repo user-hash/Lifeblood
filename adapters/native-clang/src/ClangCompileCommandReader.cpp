@@ -1,5 +1,6 @@
 #include "ClangCompileCommandReader.h"
 
+#include "ClangParseArgumentBuilder.h"
 #include "ClangUtilities.h"
 
 #include <utility>
@@ -26,50 +27,12 @@ NativeCompileCommand ClangCompileCommandReader::Read(CXCompileCommand command) c
     result.sourcePath = file.is_absolute() ? file : result.directory / file;
     result.sourcePath = fs::weakly_canonical(result.sourcePath);
 
-    result.parseArguments = BuildParseArguments(command, result.sourcePath, result.directory);
+    result.parseArguments = ClangParseArgumentBuilder().Build(
+        command,
+        result.sourcePath,
+        result.directory);
     CollectMacros(command, result);
     return result;
-}
-
-std::vector<std::string> ClangCompileCommandReader::BuildParseArguments(
-    CXCompileCommand command,
-    const fs::path& sourcePath,
-    const fs::path& commandDirectory) const
-{
-    std::vector<std::string> args;
-    const unsigned count = clang_CompileCommand_getNumArgs(command);
-    for (unsigned i = 1; i < count; i++)
-    {
-        std::string arg = ToString(clang_CompileCommand_getArg(command, i));
-        if (arg == "-c") continue;
-        if (arg == "-o")
-        {
-            i++;
-            continue;
-        }
-
-        if (arg == "-I" || arg == "-iquote" || arg == "-isystem")
-        {
-            args.push_back(arg);
-            if (i + 1 < count)
-                args.push_back(NormalizePathArgument(
-                    ToString(clang_CompileCommand_getArg(command, ++i)),
-                    commandDirectory));
-            continue;
-        }
-
-        if (arg.rfind("-I", 0) == 0 && arg.size() > 2)
-        {
-            args.push_back("-I" + NormalizePathArgument(arg.substr(2), commandDirectory));
-            continue;
-        }
-
-        if (IsSourceArgument(arg, sourcePath, commandDirectory))
-            continue;
-
-        args.push_back(arg);
-    }
-    return args;
 }
 
 void ClangCompileCommandReader::CollectMacros(
@@ -127,31 +90,4 @@ void ClangCompileCommandReader::AddUndefine(
         result.undefines.push_back(name);
 }
 
-bool ClangCompileCommandReader::IsSourceArgument(
-    const std::string& arg,
-    const fs::path& sourcePath,
-    const fs::path& commandDirectory) const
-{
-    fs::path maybePath(arg);
-    if (maybePath.extension() != sourcePath.extension())
-        return false;
-
-    if (!maybePath.is_absolute())
-        maybePath = commandDirectory / maybePath;
-
-    std::error_code ec;
-    auto canonical = fs::weakly_canonical(maybePath, ec);
-    return !ec && canonical == sourcePath;
-}
-
-std::string ClangCompileCommandReader::NormalizePathArgument(
-    const std::string& arg,
-    const fs::path& commandDirectory) const
-{
-    fs::path path(arg);
-    if (path.is_absolute())
-        return SlashPath(path.string());
-
-    return SlashPath((commandDirectory / path).lexically_normal().string());
-}
 }
