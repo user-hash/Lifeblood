@@ -22,6 +22,7 @@ private:
     void RecordFieldAccessCounts(const std::string& sourceId, const std::string& targetId);
     void RecordParameterTypeCounts(const std::string& sourceId, const std::string& targetId);
     void RecordEnumMemberCounts(const std::string& sourceId, const std::string& targetId);
+    void RecordFieldTypeCounts(const std::string& sourceId, const std::string& targetId);
 
     NativeDirectionalSymbolCounts referenceCounts_;
     NativeDirectionalSymbolCounts callbackTargetCounts_;
@@ -29,5 +30,6 @@ private:
     NativeDirectionalSymbolCounts fieldAccessCounts_;
     NativeDirectionalSymbolCounts parameterTypeCounts_;
     NativeDirectionalSymbolCounts enumMemberCounts_;
+    NativeDirectionalSymbolCounts fieldTypeCounts_;
 };
 }

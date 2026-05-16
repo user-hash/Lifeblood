@@ -18,6 +18,7 @@ NativeReferenceEdgeClassification NativeEdgeClassification::Reference(const Edge
     classification.isCallbackTarget =
         NativeGraphFacts::HasReferenceKind(edge, "callbackTarget");
     classification.isEnumMember = NativeGraphFacts::HasReferenceKind(edge, "enumMember");
+    classification.isFieldType = NativeGraphFacts::HasReferenceKind(edge, "fieldType");
     return classification;
 }
 

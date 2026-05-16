@@ -218,6 +218,8 @@ public class NativeClangExecutableRatchetTests
         AssertFieldAccessCounts(graph, "field:Packet.size", incoming: 1, outgoing: 0);
         AssertEnumMemberCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
         AssertEnumMemberCounts(graph, "field:PacketKind.PacketKind_Video", incoming: 1, outgoing: 0);
+        AssertFieldTypeCounts(graph, "field:Packet.kind", incoming: 0, outgoing: 1);
+        AssertFieldTypeCounts(graph, "type:PacketKindAlias", incoming: 1, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "direct-refs-debug");
     }
 
@@ -1172,6 +1174,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.enumMemberOutCount", "0"));
+    }
+
+    private static void AssertFieldTypeCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.fieldTypeInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.fieldTypeOutCount", "0"));
     }
 
     private static void AssertCrossFileDirectCallCounts(
