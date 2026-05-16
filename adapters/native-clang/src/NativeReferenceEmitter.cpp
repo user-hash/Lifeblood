@@ -1,6 +1,7 @@
 #include "NativeReferenceEmitter.h"
 
 #include "ClangUtilities.h"
+#include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 
 #include <utility>
@@ -44,7 +45,11 @@ void NativeReferenceEmitter::AddDeclarationReference(
             declarations_.AddFunction(referenced))
         {
             edges_.MarkCallbackTable(initializerOwnerId);
-            edges_.AddReference(cursor, initializerOwnerId, FunctionId(referenced), "callbackTarget");
+            edges_.AddReference(
+                cursor,
+                initializerOwnerId,
+                FunctionId(referenced),
+                NativeReferenceKinds::CallbackTarget);
         }
         return;
     }
@@ -55,7 +60,11 @@ void NativeReferenceEmitter::AddDeclarationReference(
     {
         case CXCursor_VarDecl:
             if (declarations_.AddGlobalVariable(referenced))
-                edges_.AddReference(cursor, currentFunctionId, GlobalVariableId(referenced), "globalAccess");
+                edges_.AddReference(
+                    cursor,
+                    currentFunctionId,
+                    GlobalVariableId(referenced),
+                    NativeReferenceKinds::GlobalAccess);
             break;
         case CXCursor_EnumConstantDecl:
         {
@@ -69,7 +78,7 @@ void NativeReferenceEmitter::AddDeclarationReference(
                     cursor,
                     currentFunctionId,
                     EnumConstantId(referenced, enumTypeId),
-                    "enumMember");
+                    NativeReferenceKinds::EnumMember);
             break;
         }
         default:
@@ -96,6 +105,10 @@ void NativeReferenceEmitter::AddMemberReference(
     std::string ownerName = ToString(clang_getCursorSpelling(owner));
     if (fieldName.empty() || ownerName.empty()) return;
 
-    edges_.AddReference(cursor, currentFunctionId, "field:" + ownerName + "." + fieldName, "fieldAccess");
+    edges_.AddReference(
+        cursor,
+        currentFunctionId,
+        "field:" + ownerName + "." + fieldName,
+        NativeReferenceKinds::FieldAccess);
 }
 }

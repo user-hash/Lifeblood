@@ -95,6 +95,7 @@ add_executable(lifeblood-native-clang
     src/NativeReferenceEdgeWriter.h
     src/NativeReferenceEmitter.cpp
     src/NativeReferenceEmitter.h
+    src/NativeReferenceKinds.h
     src/NativeReferenceMetrics.cpp
     src/NativeReferenceMetrics.h
     src/NativeSymbolIds.cpp

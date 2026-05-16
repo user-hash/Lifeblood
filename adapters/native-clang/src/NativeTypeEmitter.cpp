@@ -2,6 +2,7 @@
 
 #include "ClangUtilities.h"
 #include "NativeGraphPropertyKeys.h"
+#include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 
 #include <utility>
@@ -70,7 +71,11 @@ bool NativeTypeEmitter::AddTypedefType(CXCursor cursor)
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
 
-    AddTypeReference(symbol.id, cursor, clang_getTypedefDeclUnderlyingType(cursor), "underlyingType");
+    AddTypeReference(
+        symbol.id,
+        cursor,
+        clang_getTypedefDeclUnderlyingType(cursor),
+        NativeReferenceKinds::UnderlyingType);
     return true;
 }
 
