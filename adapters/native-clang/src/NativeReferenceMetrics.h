@@ -26,6 +26,7 @@ private:
     void RecordUnderlyingTypeCounts(const std::string& sourceId, const std::string& targetId);
     void RecordGlobalTypeCounts(const std::string& sourceId, const std::string& targetId);
     void RecordReturnTypeCounts(const std::string& sourceId, const std::string& targetId);
+    void RecordTypeReferenceCounts(const std::string& sourceId, const std::string& targetId);
 
     NativeDirectionalSymbolCounts referenceCounts_;
     NativeDirectionalSymbolCounts callbackTargetCounts_;
@@ -37,5 +38,6 @@ private:
     NativeDirectionalSymbolCounts underlyingTypeCounts_;
     NativeDirectionalSymbolCounts globalTypeCounts_;
     NativeDirectionalSymbolCounts returnTypeCounts_;
+    NativeDirectionalSymbolCounts typeReferenceCounts_;
 };
 }

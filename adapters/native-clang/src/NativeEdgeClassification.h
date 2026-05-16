@@ -17,6 +17,8 @@ struct NativeReferenceEdgeClassification
     bool isUnderlyingType = false;
     bool isGlobalType = false;
     bool isReturnType = false;
+
+    bool IsTypeReference() const;
 };
 
 class NativeEdgeClassification
