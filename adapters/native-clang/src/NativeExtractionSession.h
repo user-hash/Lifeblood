@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ClangCompilationDatabase.h"
 #include "ClangCompileCommandReader.h"
 #include "ClangSourceMapper.h"
 #include "ClangTranslationUnitParser.h"
@@ -12,7 +13,6 @@
 #include "NativeReferenceEmitter.h"
 #include "Options.h"
 
-#include <clang-c/CXCompilationDatabase.h>
 #include <clang-c/Index.h>
 
 #include <filesystem>

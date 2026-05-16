@@ -37,38 +37,18 @@ NativeExtractionSession::NativeExtractionSession(
 
 bool NativeExtractionSession::Run()
 {
-    CXCompilationDatabase_Error error = CXCompilationDatabase_NoError;
-    CXCompilationDatabase database = clang_CompilationDatabase_fromDirectory(
-        compilationDatabaseDir_.string().c_str(),
-        &error);
-    if (error != CXCompilationDatabase_NoError || database == nullptr)
-    {
-        std::cerr << "Failed to read compile_commands.json from "
-                  << compilationDatabaseDir_.string() << "\n";
-        return false;
-    }
-
-    CXCompileCommands commands = clang_CompilationDatabase_getAllCompileCommands(database);
-    const unsigned commandCount = clang_CompileCommands_getSize(commands);
-    if (commandCount == 0)
-    {
-        std::cerr << "Compilation database contains no commands\n";
-        clang_CompileCommands_dispose(commands);
-        clang_CompilationDatabase_dispose(database);
-        return false;
-    }
+    ClangCompilationDatabase database(compilationDatabaseDir_);
+    if (!database.IsValid()) return false;
 
     CXIndex index = clang_createIndex(/*excludeDeclarationsFromPCH*/ 0, /*displayDiagnostics*/ 0);
     bool ok = true;
-    for (unsigned i = 0; i < commandCount; i++)
+    for (unsigned i = 0; i < database.Count(); i++)
     {
-        CXCompileCommand command = clang_CompileCommands_getCommand(commands, i);
+        CXCompileCommand command = database.CommandAt(i);
         ok = ParseCommand(index, command) && ok;
     }
 
     clang_disposeIndex(index);
-    clang_CompileCommands_dispose(commands);
-    clang_CompilationDatabase_dispose(database);
     return ok;
 }
 
