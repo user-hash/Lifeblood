@@ -32,6 +32,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
+        AssertModuleVisibilityInventory(graph, "mod:tiny-c", publicSymbols: 3, privateSymbols: 1, internalSymbols: 3);
         AssertModuleBuildFacts(
             graph,
             "mod:tiny-c",
@@ -51,6 +52,9 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/decode.c",
             declaredSymbols: 2,
+            publicDeclaredSymbols: 1,
+            privateDeclaredSymbols: 1,
+            internalDeclaredSymbols: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -59,6 +63,9 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/packet.h",
             declaredSymbols: 3,
+            publicDeclaredSymbols: 2,
+            privateDeclaredSymbols: 0,
+            internalDeclaredSymbols: 1,
             outgoingReferences: 0,
             incomingReferences: 3,
             outgoingCalls: 0,
@@ -199,6 +206,9 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/audio.c",
             declaredSymbols: 2,
+            publicDeclaredSymbols: 1,
+            privateDeclaredSymbols: 1,
+            internalDeclaredSymbols: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -207,6 +217,9 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/packet.h",
             declaredSymbols: 3,
+            publicDeclaredSymbols: 2,
+            privateDeclaredSymbols: 0,
+            internalDeclaredSymbols: 1,
             outgoingReferences: 0,
             incomingReferences: 6,
             outgoingCalls: 0,
@@ -215,6 +228,9 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/video.c",
             declaredSymbols: 2,
+            publicDeclaredSymbols: 1,
+            privateDeclaredSymbols: 1,
+            internalDeclaredSymbols: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -318,6 +334,9 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/audio.c",
             declaredSymbols: 1,
+            publicDeclaredSymbols: 1,
+            privateDeclaredSymbols: 0,
+            internalDeclaredSymbols: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 0,
@@ -328,6 +347,9 @@ public class NativeClangExecutableRatchetTests
             graph,
             "file:src/video.c",
             declaredSymbols: 1,
+            publicDeclaredSymbols: 1,
+            privateDeclaredSymbols: 0,
+            internalDeclaredSymbols: 0,
             outgoingReferences: 2,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -574,6 +596,20 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(calls.ToString(), module.Properties["native.callEdgeCount"]);
     }
 
+    private static void AssertModuleVisibilityInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int publicSymbols,
+        int privateSymbols,
+        int internalSymbols)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(publicSymbols.ToString(), module!.Properties["native.publicSymbolCount"]);
+        Assert.Equal(privateSymbols.ToString(), module.Properties["native.privateSymbolCount"]);
+        Assert.Equal(internalSymbols.ToString(), module.Properties["native.internalSymbolCount"]);
+    }
+
     private static void AssertModuleUndefines(
         SemanticGraph graph,
         string moduleId,
@@ -627,6 +663,9 @@ public class NativeClangExecutableRatchetTests
         SemanticGraph graph,
         string fileId,
         int declaredSymbols,
+        int publicDeclaredSymbols,
+        int privateDeclaredSymbols,
+        int internalDeclaredSymbols,
         int outgoingReferences,
         int incomingReferences,
         int outgoingCalls,
@@ -637,6 +676,15 @@ public class NativeClangExecutableRatchetTests
         var file = graph.GetSymbol(fileId);
         Assert.NotNull(file);
         Assert.Equal(declaredSymbols.ToString(), file!.Properties["native.declaredSymbolCount"]);
+        Assert.Equal(
+            publicDeclaredSymbols.ToString(),
+            file.Properties["native.publicDeclaredSymbolCount"]);
+        Assert.Equal(
+            privateDeclaredSymbols.ToString(),
+            file.Properties["native.privateDeclaredSymbolCount"]);
+        Assert.Equal(
+            internalDeclaredSymbols.ToString(),
+            file.Properties["native.internalDeclaredSymbolCount"]);
         Assert.Equal(
             outgoingReferences.ToString(),
             file.Properties["native.fileOutgoingReferenceEdgeCount"]);
