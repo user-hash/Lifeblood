@@ -3,6 +3,7 @@
     "directory": ".",
     "arguments": [
       "clang",
+      "-std=c11",
       "-I",
       "src",
       "-c",
