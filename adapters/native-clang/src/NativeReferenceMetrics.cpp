@@ -4,14 +4,10 @@ namespace lifeblood::native_clang
 {
 void NativeReferenceMetrics::Clear()
 {
-    referenceOutCounts_.clear();
-    referenceInCounts_.clear();
-    callbackTargetOutCounts_.clear();
-    callbackTargetInCounts_.clear();
-    globalAccessOutCounts_.clear();
-    globalAccessInCounts_.clear();
-    fieldAccessOutCounts_.clear();
-    fieldAccessInCounts_.clear();
+    referenceCounts_.Clear();
+    callbackTargetCounts_.Clear();
+    globalAccessCounts_.Clear();
+    fieldAccessCounts_.Clear();
 }
 
 void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
@@ -31,72 +27,47 @@ void NativeReferenceMetrics::RecordReferenceCounts(
     const std::string& sourceId,
     const std::string& targetId)
 {
-    referenceOutCounts_[sourceId]++;
-    referenceInCounts_[targetId]++;
+    referenceCounts_.Record(sourceId, targetId);
 }
 
 void NativeReferenceMetrics::RecordCallbackTargetCounts(
     const std::string& sourceId,
     const std::string& targetId)
 {
-    callbackTargetOutCounts_[sourceId]++;
-    callbackTargetInCounts_[targetId]++;
+    callbackTargetCounts_.Record(sourceId, targetId);
 }
 
 void NativeReferenceMetrics::RecordGlobalAccessCounts(
     const std::string& sourceId,
     const std::string& targetId)
 {
-    globalAccessOutCounts_[sourceId]++;
-    globalAccessInCounts_[targetId]++;
+    globalAccessCounts_.Record(sourceId, targetId);
 }
 
 void NativeReferenceMetrics::RecordFieldAccessCounts(
     const std::string& sourceId,
     const std::string& targetId)
 {
-    fieldAccessOutCounts_[sourceId]++;
-    fieldAccessInCounts_[targetId]++;
+    fieldAccessCounts_.Record(sourceId, targetId);
 }
 
 void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
 {
-    auto referenceOut = referenceOutCounts_.find(symbol.id);
-    if (referenceOut != referenceOutCounts_.end())
-        symbol.properties["native.referenceOutCount"] = std::to_string(referenceOut->second);
-
-    auto referenceIn = referenceInCounts_.find(symbol.id);
-    if (referenceIn != referenceInCounts_.end())
-        symbol.properties["native.referenceInCount"] = std::to_string(referenceIn->second);
-
-    auto callbackTargetOut = callbackTargetOutCounts_.find(symbol.id);
-    if (callbackTargetOut != callbackTargetOutCounts_.end())
-        symbol.properties["native.callbackTargetOutCount"] =
-            std::to_string(callbackTargetOut->second);
-
-    auto callbackTargetIn = callbackTargetInCounts_.find(symbol.id);
-    if (callbackTargetIn != callbackTargetInCounts_.end())
-        symbol.properties["native.callbackTargetInCount"] =
-            std::to_string(callbackTargetIn->second);
-
-    auto globalAccessOut = globalAccessOutCounts_.find(symbol.id);
-    if (globalAccessOut != globalAccessOutCounts_.end())
-        symbol.properties["native.globalAccessOutCount"] =
-            std::to_string(globalAccessOut->second);
-
-    auto globalAccessIn = globalAccessInCounts_.find(symbol.id);
-    if (globalAccessIn != globalAccessInCounts_.end())
-        symbol.properties["native.globalAccessInCount"] =
-            std::to_string(globalAccessIn->second);
-
-    auto fieldAccessOut = fieldAccessOutCounts_.find(symbol.id);
-    if (fieldAccessOut != fieldAccessOutCounts_.end())
-        symbol.properties["native.fieldAccessOutCount"] =
-            std::to_string(fieldAccessOut->second);
-
-    auto fieldAccessIn = fieldAccessInCounts_.find(symbol.id);
-    if (fieldAccessIn != fieldAccessInCounts_.end())
-        symbol.properties["native.fieldAccessInCount"] =
-            std::to_string(fieldAccessIn->second);
+    referenceCounts_.Decorate(
+        symbol,
+        "native.referenceInCount",
+        "native.referenceOutCount");
+    callbackTargetCounts_.Decorate(
+        symbol,
+        "native.callbackTargetInCount",
+        "native.callbackTargetOutCount");
+    globalAccessCounts_.Decorate(
+        symbol,
+        "native.globalAccessInCount",
+        "native.globalAccessOutCount");
+    fieldAccessCounts_.Decorate(
+        symbol,
+        "native.fieldAccessInCount",
+        "native.fieldAccessOutCount");
 }
 }
