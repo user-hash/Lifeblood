@@ -8,6 +8,7 @@
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
 #include "NativeLinkageNames.h"
+#include "NativePropertyWriter.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
@@ -57,14 +58,20 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
         ? NativeVisibilityNames::Private
         : NativeVisibilityNames::Public;
     symbol.isStatic = storage == CX_SC_Static;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Function;
-    symbol.properties[NativeGraphPropertyKeys::DeclarationKind] =
-        isDefinition ? NativeDeclarationKinds::Definition : NativeDeclarationKinds::Declaration;
-    symbol.properties["native.linkage"] = storage == CX_SC_Static
-        ? NativeLinkageNames::Internal
-        : NativeLinkageNames::External;
-    symbol.properties["native.signature"] = Signature(cursor);
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::NativeKind,
+        NativeKindNames::Function);
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::DeclarationKind,
+        isDefinition ? NativeDeclarationKinds::Definition : NativeDeclarationKinds::Declaration);
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::Linkage,
+        storage == CX_SC_Static ? NativeLinkageNames::Internal : NativeLinkageNames::External);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::Signature, Signature(cursor));
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(symbol);
 
     AddParameterTypeReferences(cursor, symbol.id);

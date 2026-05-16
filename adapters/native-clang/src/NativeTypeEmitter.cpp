@@ -5,6 +5,7 @@
 #include "NativeGraphPropertyKeys.h"
 #include "NativeKindNames.h"
 #include "NativeLinkageNames.h"
+#include "NativePropertyWriter.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeVisibilityNames.h"
@@ -44,9 +45,9 @@ bool NativeTypeEmitter::AddRecordType(CXCursor cursor, const std::string& native
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
     symbol.visibility = NativeVisibilityNames::Public;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = nativeKind;
-    symbol.properties["native.linkage"] = NativeLinkageNames::None;
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::NativeKind, nativeKind);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::Linkage, NativeLinkageNames::None);
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(symbol);
     return true;
 }
@@ -69,10 +70,12 @@ bool NativeTypeEmitter::AddTypedefType(CXCursor cursor)
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
     symbol.visibility = NativeVisibilityNames::Public;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Typedef;
-    symbol.properties["native.underlyingType"] = NormalizeTypeForId(
-        ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor))));
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::NativeKind, NativeKindNames::Typedef);
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::UnderlyingType,
+        NormalizeTypeForId(ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor)))));
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(symbol);
 
     AddTypeReference(
@@ -104,8 +107,8 @@ void NativeTypeEmitter::AddTypeReference(
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(evidenceCursor, NativeEvidenceKinds::Semantic);
     edge.callSite = sourceMap_.CallSiteFor(evidenceCursor, sourceId);
-    edge.properties[NativeGraphPropertyKeys::ReferenceKind] = referenceKind;
-    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::ReferenceKind, referenceKind);
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddEdge(edge);
 }
 

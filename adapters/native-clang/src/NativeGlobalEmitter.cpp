@@ -7,6 +7,7 @@
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
 #include "NativeLinkageNames.h"
+#include "NativePropertyWriter.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
@@ -57,20 +58,25 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
         ? NativeVisibilityNames::Private
         : NativeVisibilityNames::Public;
     symbol.isStatic = storage == CX_SC_Static;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] =
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::NativeKind,
         existing != nullptr &&
         existing->properties.find(NativeGraphPropertyKeys::NativeKind) != existing->properties.end() &&
         existing->properties.at(NativeGraphPropertyKeys::NativeKind) == NativeKindNames::CallbackTable
             ? NativeKindNames::CallbackTable
-            : NativeKindNames::Global;
-    symbol.properties["native.linkage"] = storage == CX_SC_Static
-        ? NativeLinkageNames::Internal
-        : NativeLinkageNames::External;
-    symbol.properties["native.fieldType"] = NormalizeTypeForId(
-        ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
-    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+            : NativeKindNames::Global);
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::Linkage,
+        storage == CX_SC_Static ? NativeLinkageNames::Internal : NativeLinkageNames::External);
+    NativePropertyWriter::Set(
+        symbol,
+        NativeGraphPropertyKeys::FieldType,
+        NormalizeTypeForId(ToString(clang_getTypeSpelling(clang_getCursorType(cursor)))));
+    NativePropertyWriter::Set(symbol, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     if (symbol.properties[NativeGraphPropertyKeys::NativeKind] == NativeKindNames::CallbackTable)
-        symbol.properties["native.callbackTable"] = "true";
+        NativePropertyWriter::SetTrue(symbol, NativeGraphPropertyKeys::CallbackTable);
     graph_.AddSymbol(symbol);
 
     types_.AddTypeReference(

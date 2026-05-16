@@ -4,6 +4,7 @@
 #include "NativeGraphPropertyKeys.h"
 #include "NativeKindNames.h"
 #include "NativeParseStatuses.h"
+#include "NativePropertyWriter.h"
 #include "NativeVisibilityNames.h"
 
 #include <filesystem>
@@ -57,21 +58,39 @@ void NativeFileRegistry::MarkTranslationUnitPending(
 {
     UpdateTranslationUnitHealth(relativePath, NativeParseStatuses::Pending, {});
     graph_.UpdateSymbol("file:" + relativePath, [&](Symbol& file) {
-        file.properties["native.parseArgumentCount"] =
-            std::to_string(command.parseArguments.size());
-        file.properties["native.commandLineDefineCount"] =
-            std::to_string(command.defines.size());
-        file.properties["native.commandLineUndefineCount"] =
-            std::to_string(command.undefines.size());
-        file.properties["native.includeSearchPathCount"] =
-            std::to_string(command.includeSearchPathCount);
-        file.properties["native.systemIncludeSearchPathCount"] =
-            std::to_string(command.systemIncludeSearchPathCount);
-        file.properties["native.quoteIncludeSearchPathCount"] =
-            std::to_string(command.quoteIncludeSearchPathCount);
-        file.properties["native.sourceLanguage"] = command.sourceLanguage;
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::ParseArgumentCount,
+            static_cast<unsigned>(command.parseArguments.size()));
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::CommandLineDefineCount,
+            static_cast<unsigned>(command.defines.size()));
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::CommandLineUndefineCount,
+            static_cast<unsigned>(command.undefines.size()));
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::IncludeSearchPathCount,
+            command.includeSearchPathCount);
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::SystemIncludeSearchPathCount,
+            command.systemIncludeSearchPathCount);
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::QuoteIncludeSearchPathCount,
+            command.quoteIncludeSearchPathCount);
+        NativePropertyWriter::Set(
+            file,
+            NativeGraphPropertyKeys::SourceLanguage,
+            command.sourceLanguage);
         if (!command.languageStandard.empty())
-            file.properties["native.languageStandard"] = command.languageStandard;
+            NativePropertyWriter::Set(
+                file,
+                NativeGraphPropertyKeys::LanguageStandard,
+                command.languageStandard);
     });
 }
 
@@ -94,20 +113,34 @@ void NativeFileRegistry::UpdateTranslationUnitHealth(
 {
     EnsureFileSymbol(relativePath);
     graph_.UpdateSymbol("file:" + relativePath, [&](Symbol& file) {
-        file.properties["native.translationUnit"] = "true";
-        file.properties["native.parseStatus"] = parseStatus;
-        file.properties["native.warningDiagnosticCount"] = std::to_string(diagnostics.warningCount);
-        file.properties["native.errorDiagnosticCount"] = std::to_string(diagnostics.errorCount);
-        file.properties["native.fatalDiagnosticCount"] = std::to_string(diagnostics.fatalCount);
+        NativePropertyWriter::SetTrue(file, NativeGraphPropertyKeys::TranslationUnit);
+        NativePropertyWriter::Set(file, NativeGraphPropertyKeys::ParseStatus, parseStatus);
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::WarningDiagnosticCount,
+            diagnostics.warningCount);
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::ErrorDiagnosticCount,
+            diagnostics.errorCount);
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::FatalDiagnosticCount,
+            diagnostics.fatalCount);
     });
 }
 
 void NativeFileRegistry::UpdateModuleFileProperties()
 {
     graph_.UpdateSymbol(moduleId_, [&](Symbol& module) {
-        module.properties["native.translationUnitFileCount"] =
-            std::to_string(translationUnitFileCount_);
-        module.properties["native.headerFileCount"] = std::to_string(headerFileCount_);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::TranslationUnitFileCount,
+            translationUnitFileCount_);
+        NativePropertyWriter::SetCount(
+            module,
+            NativeGraphPropertyKeys::HeaderFileCount,
+            headerFileCount_);
     });
 }
 }

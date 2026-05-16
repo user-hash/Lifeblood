@@ -6,6 +6,7 @@
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
+#include "NativePropertyWriter.h"
 
 #include <filesystem>
 #include <utility>
@@ -46,9 +47,12 @@ void NativeIncludeEmitter::AddInclude(CXCursor cursor)
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, NativeEvidenceKinds::Syntax);
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
-    edge.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Include;
-    edge.properties["native.include"] = fs::path(*includedPath).filename().string();
-    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::NativeKind, NativeKindNames::Include);
+    NativePropertyWriter::Set(
+        edge,
+        NativeGraphPropertyKeys::Include,
+        fs::path(*includedPath).filename().string());
+    NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddEdge(edge);
 }
 
@@ -58,12 +62,18 @@ void NativeIncludeEmitter::RecordIncludeCounts(
 {
     const auto sourceCount = ++includeDirectiveCounts_[sourceFile];
     graph_.UpdateSymbol("file:" + sourceFile, [&](Symbol& file) {
-        file.properties["native.includeDirectiveCount"] = std::to_string(sourceCount);
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::IncludeDirectiveCount,
+            sourceCount);
     });
 
     const auto includedByCount = ++includedByCounts_[includedFile];
     graph_.UpdateSymbol("file:" + includedFile, [&](Symbol& file) {
-        file.properties["native.includedByCount"] = std::to_string(includedByCount);
+        NativePropertyWriter::SetCount(
+            file,
+            NativeGraphPropertyKeys::IncludedByCount,
+            includedByCount);
     });
 }
 }
