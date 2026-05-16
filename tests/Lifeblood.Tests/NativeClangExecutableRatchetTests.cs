@@ -92,7 +92,8 @@ public class NativeClangExecutableRatchetTests
         AssertModuleFileInventory(video, "mod:profile-c", translationUnits: 1, headers: 1);
         AssertModuleFileInventory(audio, "mod:profile-c", translationUnits: 1, headers: 1);
         AssertTranslationUnitBuildInputs(video, "file:src/codec.c", defines: 2, undefines: 0);
-        AssertTranslationUnitBuildInputs(audio, "file:src/codec.c", defines: 2, undefines: 0);
+        AssertTranslationUnitBuildInputs(audio, "file:src/codec.c", defines: 2, undefines: 1);
+        AssertModuleUndefines(audio, "mod:profile-c", "LEGACY_CODEC");
         AssertCall(video, "method:decode_video(Packet*)", "method:scale_video(int)");
         AssertCall(audio, "method:decode_audio(Packet*)", "method:scale_audio(int)");
         AssertAllNativeFactsCarryBuildProfile(video, "video");
@@ -536,6 +537,16 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(edges.ToString(), module.Properties["native.edgeCount"]);
         Assert.Equal(references.ToString(), module.Properties["native.referenceEdgeCount"]);
         Assert.Equal(calls.ToString(), module.Properties["native.callEdgeCount"]);
+    }
+
+    private static void AssertModuleUndefines(
+        SemanticGraph graph,
+        string moduleId,
+        string undefines)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(undefines, module!.Properties["native.undefines"]);
     }
 
     private static void AssertIncludeCounts(
