@@ -45,7 +45,7 @@ Native-specific details live under `properties`, usually keyed `native.*`, so th
 
 ## Fixtures
 
-Nine fixture families pin the contract under `adapters/native-clang/test-fixtures/`. Each carries an `expected.graph.json` ratchet plus an executable ratchet that runs the real extractor and diffs the output.
+Nine fixture families pin the contract under `adapters/native-clang/test-fixtures/`. Four carry a checked-in `expected.graph.json` consumed by `NativeClangAdapterContractTests` (`tiny-c`, `direct-refs-c`, `callback-table-c`, and `profile-c` which has both `expected.audio.graph.json` and `expected.video.graph.json`). The other five are executable ratchets only, pinned by `NativeClangExecutableRatchetTests`: `multi-tu-c`, `cross-tu-c`, `partial-parse-c`, `warning-c`, `return-type-c`.
 
 | Fixture | Pins |
 |---------|------|

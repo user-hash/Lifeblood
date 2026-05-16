@@ -2,9 +2,9 @@
 
 Compiler-grade code intelligence for AI agents over MCP.
 
-Lifeblood loads a C# / Unity workspace through Roslyn or a C codebase through libclang, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
+Lifeblood loads a C# / Unity workspace through Roslyn or a C codebase through the beta libclang adapter, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
 
-Roslyn is the C# engine. libclang is the C engine. TypeScript and Python ship as standalone JSON-emitting adapters. Lifeblood is the layer around them: persistent project graph, 29 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
+Roslyn is the C# engine. libclang is the C engine (beta). TypeScript and Python ship as standalone JSON-emitting adapters. Lifeblood is the layer around them: persistent project graph, 29 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
 
 ---
 
@@ -91,7 +91,7 @@ Connect an MCP client. Load a project. The AI agent gets **29 tools**: 17 read, 
 | | Tools |
 |---|---|
 | **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Resolve Member, Search, Dead Code, Partial View, Invariant Check, Authority Report, Port Health, Cycles, Test Impact |
-| **Write** | Execute, Diagnose, Compile-check, Enum Coverage, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
+| **Write** | Execute, Diagnose, Compile-check, Enum Coverage, Static Tables, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
@@ -114,7 +114,7 @@ Python            ──┤       ↑                     ├──  CLI / CI
 JSON graph        ──┘    Analysis (optional)      └
 ```
 
-26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [90 typed invariants across 52 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [101 typed invariants across 63 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -127,7 +127,7 @@ JSON graph        ──┘    Analysis (optional)      └
 | Adapter | How it works | Confidence |
 |---------|-------------|------------|
 | **C# / Roslyn** | Compiler-grade semantic analysis. Cross-module resolution. Bidirectional: analysis plus code execution. | Proven |
-| **C / libclang** | Beta (v0.7.7). Reads `compile_commands.json`, parses each translation unit through libclang, emits Lifeblood-shape `graph.json`. Surfaces translation units, functions, globals, fields, type shells, enum members, macros, includes, callback-table rows and cells. Partial-parse tolerant. | High |
+| **C / libclang** | Beta (v0.7.7). Reads `compile_commands.json`, parses each translation unit through libclang, emits Lifeblood-shape `graph.json`. Surfaces translation units, functions, globals, fields, type shells, enum members, macros, includes, callback-table rows and cells. Partial-parse tolerant. | Beta / High on covered C fixtures |
 | **TypeScript** | Standalone Node.js. `ts.createProgram` plus `TypeChecker`. | High |
 | **Python** | Standalone `ast` module. Zero dependencies. | Structural |
 | **Any language** | Output JSON conforming to `schemas/graph.schema.json`. | Varies |
@@ -146,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-v0.7.7): 2,926 symbols, 14,502 edges, 11 modules, 328 types, 0 violations, 0 cycles. **1011 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **90 typed invariants across 52 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post-v0.7.7): 3,278 symbols, 16,973 edges, 11 modules, 350 types, 0 violations, 0 cycles. **1011 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **101 typed invariants across 63 categories**, zero duplicates, zero parse warnings.
 
 Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219,548 edges, 123 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
 
@@ -170,7 +170,7 @@ Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 26 port interfaces, invariant tree |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants tree](docs/invariants/INDEX.md) | 90 typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Invariants tree](docs/invariants/INDEX.md) | 101 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |

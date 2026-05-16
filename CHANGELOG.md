@@ -35,7 +35,6 @@ First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based
 
 - **`README.md`, `docs/ARCHITECTURE.md`, `docs/architecture.html`, and `CLAUDE.md`** updated to list the native-clang adapter alongside the existing C#, TypeScript, and Python surfaces. Language coverage prose, ASCII diagrams, assembly tables, and project trees all carry the new adapter.
 
-- **Stale `NUGET_API_KEY` repo secret removed.** No workflow file referenced it. Publishing flow is local: the maintainer generates a single-use NuGet API key per release, runs `dotnet pack` and `dotnet nuget push` from a trusted host, then revokes the key. No long-lived publish credential exists in repo settings or workflow files.
 
 ## [0.7.6] - 2026-05-15
 

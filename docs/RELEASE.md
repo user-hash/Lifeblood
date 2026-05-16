@@ -76,22 +76,9 @@ git push origin vX.Y.Z
 
 Push `main` first, tag second. The tag-triggered verification workflow re-runs the test suite against a clean CI runner. Expected outcome is green.
 
-## NuGet publish
+## Package publish
 
-Publishing happens from a trusted maintainer host, never from CI.
-
-1. Generate a single-use NuGet API key in the NuGet Gallery account.
-2. From the release commit:
-
-   ```
-   dotnet pack src/Lifeblood.CLI/Lifeblood.CLI.csproj -c Release -o ./artifacts
-   dotnet pack src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj -c Release -o ./artifacts
-   dotnet nuget push ./artifacts/*.nupkg --source https://api.nuget.org/v3/index.json --api-key <key>
-   ```
-
-3. Revoke the single-use key in the NuGet Gallery account.
-
-The repository carries no long-lived NuGet API key. Workflows do not push to NuGet. A stale `NUGET_API_KEY` repo secret was removed in v0.7.7. Future setup should not reintroduce one.
+Out of scope for this checklist. Package publish is a separate maintainer process that runs after the tag is in place. CI workflows do not publish.
 
 ## Recovery from a red release
 
@@ -108,4 +95,3 @@ The recovery is always the next patch:
 
 - Step 3 closes the drift class that shipped v0.7.6 with three red CI workflows on origin. The `Changelog_EveryHeadingHasLinkReference` ratchet caught it locally. The operator pushed the tag anyway. The eternal mechanism is this checklist plus the existing ratchet. No new automation is required, only discipline applied before the tag command runs.
 - Step 5 prevents the same operational gap from recurring through any other ratchet. A test-suite failure on the release commit is by definition a release blocker.
-- The NuGet-key handling section closes the long-lived-secret attack surface that a `NUGET_API_KEY` repo secret represents.
