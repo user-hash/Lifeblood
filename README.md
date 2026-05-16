@@ -2,9 +2,9 @@
 
 Compiler-grade code intelligence for AI agents over MCP.
 
-Lifeblood loads a C# / Unity workspace through Roslyn, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
+Lifeblood loads a C# / Unity workspace through Roslyn or a C codebase through libclang, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
 
-Roslyn is the engine. Lifeblood is the layer around it: persistent project graph, 29 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
+Roslyn is the C# engine. libclang is the C engine. TypeScript and Python ship as standalone JSON-emitting adapters. Lifeblood is the layer around them: persistent project graph, 29 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
 
 ---
 
@@ -78,11 +78,12 @@ dotnet test
 
 ```
 Roslyn (C#)    ──┐                              ┌──  Execute code against project types
-TypeScript     ──┤  ┌────────────────────────┐  ├──  Diagnose / compile-check
-JSON graph     ──┼→ │    Semantic Graph      │ →┤──  Find references / rename / format
-               ──┤  │  (symbols / edges /    │  ├──  Blast radius / file impact
-  community    ──┘  │   evidence / trust)    │  └──  Context packs / architecture rules
-  adapters          └────────────────────────┘
+libclang (C)   ──┤  ┌────────────────────────┐  ├──  Diagnose / compile-check
+TypeScript     ──┼→ │    Semantic Graph      │ →┤──  Find references / rename / format
+Python         ──┤  │  (symbols / edges /    │  ├──  Blast radius / file impact
+JSON graph     ──┤  │   evidence / trust)    │  └──  Context packs / architecture rules
+  community    ──┘  └────────────────────────┘
+  adapters
 ```
 
 Connect an MCP client. Load a project. The AI agent gets **29 tools**: 17 read, 12 write.
@@ -107,9 +108,10 @@ LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
 Roslyn (C#)       ──┐                            ┌──  MCP Server (29 tools)
-TypeScript        ──┼→  Domain  →  Application  →┤──  Context Pack Generator
-JSON graph        ──┘       ↑                     ├──  Instruction File Generator
-                      Analysis (optional)         └──  CLI / CI
+libclang (C)      ──┤                            ├──  Context Pack Generator
+TypeScript        ──┼→  Domain  →  Application  →┤──  Instruction File Generator
+Python            ──┤       ↑                     ├──  CLI / CI
+JSON graph        ──┘    Analysis (optional)      └
 ```
 
 26 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [90 typed invariants across 52 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
@@ -120,16 +122,17 @@ JSON graph        ──┘       ↑                     ├──  Instruction
 
 ---
 
-## Three Languages, One Graph
+## Four Languages, One Graph
 
 | Adapter | How it works | Confidence |
 |---------|-------------|------------|
-| **C# / Roslyn** | Compiler-grade semantic analysis. Cross-module resolution. Bidirectional: analysis + code execution. | Proven |
-| **TypeScript** | Standalone Node.js. `ts.createProgram` + `TypeChecker`. | High |
+| **C# / Roslyn** | Compiler-grade semantic analysis. Cross-module resolution. Bidirectional: analysis plus code execution. | Proven |
+| **C / libclang** | Beta (v0.7.7). Reads `compile_commands.json`, parses each translation unit through libclang, emits Lifeblood-shape `graph.json`. Surfaces translation units, functions, globals, fields, type shells, enum members, macros, includes, callback-table rows and cells. Partial-parse tolerant. | High |
+| **TypeScript** | Standalone Node.js. `ts.createProgram` plus `TypeChecker`. | High |
 | **Python** | Standalone `ast` module. Zero dependencies. | Structural |
 | **Any language** | Output JSON conforming to `schemas/graph.schema.json`. | Varies |
 
-[Adapter guide](docs/ADAPTERS.md)
+[Adapter guide](docs/ADAPTERS.md) · [Native C capability](docs/NATIVE_CLANG.md)
 
 ---
 
@@ -143,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-v0.7.4): 2,926 symbols, 14,502 edges, 11 modules, 328 types, 0 violations, 0 cycles. **946 tests + 1 skipped regression pin** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **90 typed invariants across 52 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post-v0.7.7): 2,926 symbols, 14,502 edges, 11 modules, 328 types, 0 violations, 0 cycles. **1011 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **90 typed invariants across 52 categories**, zero duplicates, zero parse warnings.
 
 Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219,548 edges, 123 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
 
@@ -151,6 +154,8 @@ Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219
 
 ## Roadmap
 
+- **Native Clang maturity**: move from focused-slice scout to whole-build coverage on FFmpeg-class C codebases (WSL + bear, MSYS2 + bear, or a project-specific compile-database generator). Tracked in [`docs/plans/native-clang-adapter-masterplan-2026-05-16.md`](docs/plans/native-clang-adapter-masterplan-2026-05-16.md).
+- **C++ over libclang**: extend the native adapter past C to C++. Same boundary, additional Clang AST coverage (templates, classes, member functions).
 - **Community adapters**: contribution guides for [Go](adapters/go/) and [Rust](adapters/rust/). Contract and checklist ready, no implementation code yet.
 - **REST / LSP bridge**: expose the graph to IDE extensions and web services.
 
@@ -168,6 +173,8 @@ Production-verified on a 90-module 400k LOC Unity workspace: 62,134 symbols, 219
 | [Invariants tree](docs/invariants/INDEX.md) | 90 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
+| [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
+| [Release checklist](docs/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet single-use-key publish flow |
 | [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 50+ bugs found by self-analysis and reviewer dogfood sessions |
 | [CHANGELOG](CHANGELOG.md) | Every release — additions, fixes, known limitations |
 

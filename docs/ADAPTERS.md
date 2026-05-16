@@ -12,9 +12,9 @@ dotnet run --project src/Lifeblood.CLI -- analyze --graph graph.json
 ```
 
 The TypeScript adapter (`adapters/typescript/`) is a working example of this approach.
-The planned Native Clang adapter (`adapters/native-clang/`) will follow the same
-external JSON boundary for C/C++ so LLVM/Clang dependencies stay outside the
-Lifeblood core.
+The Native Clang adapter (`adapters/native-clang/`) is a beta C extractor that
+follows the same external JSON boundary, so LLVM and Clang dependencies stay
+outside the Lifeblood core.
 
 ### Required JSON structure
 
@@ -105,13 +105,37 @@ input because it records the exact command line for each translation unit:
 include paths, defines, language mode, generated config headers, and target
 flags.
 
-Native adapters should start as external JSON producers. Do not add LLVM,
-Clang, CodeQL, Joern, or CMake dependencies to `Lifeblood.Domain`,
-`Lifeblood.Application`, `Lifeblood.Analysis`, or existing connectors. Keep the
-adapter under `adapters/`, emit `graph.json`, and let `JsonGraphImporter` bring
-the graph into Lifeblood.
+Native adapters are external JSON producers. LLVM, Clang, CodeQL, Joern, and
+CMake dependencies must not enter `Lifeblood.Domain`, `Lifeblood.Application`,
+`Lifeblood.Analysis`, or any connector. The adapter lives under `adapters/`,
+emits `graph.json`, and `JsonGraphImporter` brings the graph into Lifeblood.
 
-The [Native Clang stage plan](plans/native-clang-adapter-masterplan-2026-05-16.md)
+`adapters/native-clang/` is the reference C extractor and ships as beta in
+v0.7.7. It reads a `compile_commands.json`, parses each translation unit
+through `libclang`, and emits a Lifeblood-shape graph. Surfaces: translation
+units, functions, globals, fields, type shells, enum members, macros,
+includes, callback-table rows and cells, and per-module, per-file, per-symbol
+pressure metrics. Partial-parse tolerant. The extractor emits diagnostic
+health counts rather than failing closed when a translation unit has parse
+errors.
+
+Fixture coverage (under `adapters/native-clang/test-fixtures/`): `tiny-c`,
+`direct-refs-c`, `multi-tu-c`, `cross-tu-c`, `callback-table-c`, `profile-c`,
+`partial-parse-c`, `warning-c`, `return-type-c`. Each fixture has an
+`expected.graph.json` pinned by `NativeClangAdapterContractTests` and an
+executable ratchet in `NativeClangExecutableRatchetTests`.
+
+FFmpeg reconnaissance lives at `adapters/native-clang/tools/ffmpeg-scout/`
+with its workflow documented in `adapters/native-clang/FFMPEG_SCOUT.md`. The
+scout is explicit about scope. It generates a focused compile database for a
+selected file slice, not a whole-repo build. First 5-file slice produced 9264
+symbols, 1067 methods, 14494 imported edges, 0 architecture violations, 1
+likely real cycle in libswscale context initialization. Whole-build coverage
+requires one of WSL with bear, MSYS2 with bear, or a project-specific
+compile-database generator and is named as the next maturity step.
+
+See [`docs/NATIVE_CLANG.md`](NATIVE_CLANG.md) for the dedicated capability
+page. The [Native Clang stage plan](plans/native-clang-adapter-masterplan-2026-05-16.md)
 tracks the rollout.
 
 ## Adapter Checklist
