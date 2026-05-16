@@ -1,0 +1,18 @@
+[
+  {
+    "directory": "../..",
+    "arguments": [
+      "clang",
+      "-DENABLE_VIDEO=1",
+      "-DPROFILE_NAME=video",
+      "-I",
+      "src",
+      "-c",
+      "src/codec.c",
+      "-o",
+      "build/video/codec.o"
+    ],
+    "file": "src/codec.c",
+    "output": "build/video/codec.o"
+  }
+]

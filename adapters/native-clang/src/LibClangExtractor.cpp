@@ -7,7 +7,9 @@
 #include <cctype>
 #include <filesystem>
 #include <iostream>
+#include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -174,6 +176,10 @@ private:
 
     bool ParseCommand(CXIndex index, CXCompileCommand command)
     {
+        translationUnitCount_++;
+        CollectCommandLineMacros(command);
+        UpdateModuleBuildProperties();
+
         auto directory = fs::path(ToString(clang_CompileCommand_getDirectory(command)));
         if (!directory.is_absolute())
             directory = compilationDatabaseDir_ / directory;
@@ -223,7 +229,9 @@ private:
         }
 
         CXCursor root = clang_getTranslationUnitCursor(unit);
+        currentUnit_ = unit;
         Visit(root, VisitState{});
+        currentUnit_ = nullptr;
 
         clang_disposeTranslationUnit(unit);
         return true;
@@ -268,6 +276,68 @@ private:
             args.push_back(arg);
         }
         return args;
+    }
+
+    void CollectCommandLineMacros(CXCompileCommand command)
+    {
+        const unsigned count = clang_CompileCommand_getNumArgs(command);
+        for (unsigned i = 1; i < count; i++)
+        {
+            std::string arg = ToString(clang_CompileCommand_getArg(command, i));
+            if (arg == "-D")
+            {
+                if (i + 1 < count)
+                    AddCommandLineDefine(ToString(clang_CompileCommand_getArg(command, ++i)));
+                continue;
+            }
+
+            if (arg.rfind("-D", 0) == 0 && arg.size() > 2)
+            {
+                AddCommandLineDefine(arg.substr(2));
+                continue;
+            }
+
+            if (arg == "-U")
+            {
+                if (i + 1 < count)
+                    AddCommandLineUndefine(ToString(clang_CompileCommand_getArg(command, ++i)));
+                continue;
+            }
+
+            if (arg.rfind("-U", 0) == 0 && arg.size() > 2)
+                AddCommandLineUndefine(arg.substr(2));
+        }
+    }
+
+    void AddCommandLineDefine(const std::string& raw)
+    {
+        if (raw.empty()) return;
+
+        auto equal = raw.find('=');
+        std::string name = equal == std::string::npos ? raw : raw.substr(0, equal);
+        std::string value = equal == std::string::npos ? "1" : raw.substr(equal + 1);
+        if (name.empty()) return;
+
+        commandLineDefines_[name] = value;
+        AddMacroSymbol(name, std::nullopt, 0, "commandLine", value);
+    }
+
+    void AddCommandLineUndefine(const std::string& name)
+    {
+        if (!name.empty())
+            commandLineUndefines_.insert(name);
+    }
+
+    void UpdateModuleBuildProperties()
+    {
+        auto it = graph_.symbols.find(moduleId_);
+        if (it == graph_.symbols.end()) return;
+
+        it->second.properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
+        if (!commandLineDefines_.empty())
+            it->second.properties["native.defines"] = JoinDefines();
+        if (!commandLineUndefines_.empty())
+            it->second.properties["native.undefines"] = Join(commandLineUndefines_);
     }
 
     bool IsSourceArg(
@@ -324,6 +394,12 @@ private:
         {
             case CXCursor_InclusionDirective:
                 ProcessInclude(cursor);
+                break;
+            case CXCursor_MacroDefinition:
+                ProcessMacroDefinition(cursor);
+                break;
+            case CXCursor_MacroExpansion:
+                ProcessMacroExpansion(cursor);
                 break;
             case CXCursor_StructDecl:
                 if (AddRecordType(cursor, "struct"))
@@ -391,6 +467,99 @@ private:
         edge.properties["native.include"] = fs::path(*includedPath).filename().string();
         edge.properties["native.buildProfile"] = options_.profile;
         AddEdge(edge);
+    }
+
+    void ProcessMacroDefinition(CXCursor cursor)
+    {
+        auto file = SourceFile(cursor);
+        if (!file) return;
+
+        std::string name = ToString(clang_getCursorSpelling(cursor));
+        if (name.empty()) return;
+
+        AddMacroSymbol(name, file, Line(cursor), "source", MacroReplacement(cursor));
+    }
+
+    void ProcessMacroExpansion(CXCursor cursor)
+    {
+        auto file = SourceFile(cursor);
+        if (!file) return;
+
+        std::string name = ToString(clang_getCursorSpelling(cursor));
+        if (name.empty()) return;
+
+        std::string targetId = MacroId(name);
+        if (graph_.symbols.find(targetId) == graph_.symbols.end())
+            AddMacroSymbol(name, std::nullopt, 0, "unknown", "");
+
+        EnsureFileSymbol(*file);
+
+        Edge edge;
+        edge.sourceId = "file:" + *file;
+        edge.targetId = targetId;
+        edge.kind = "references";
+        edge.evidence = EvidenceFor(cursor, "syntax");
+        edge.callSite = CallSiteFor(cursor, edge.sourceId);
+        edge.properties["native.referenceKind"] = "macroExpansion";
+        edge.properties["native.buildProfile"] = options_.profile;
+        AddEdge(edge);
+    }
+
+    void AddMacroSymbol(
+        const std::string& name,
+        std::optional<std::string> file,
+        unsigned line,
+        const std::string& source,
+        const std::string& value)
+    {
+        Symbol symbol;
+        symbol.id = MacroId(name);
+        symbol.name = name;
+        symbol.qualifiedName = name;
+        symbol.kind = "field";
+        if (file)
+        {
+            EnsureFileSymbol(*file);
+            symbol.filePath = *file;
+            symbol.line = line;
+            symbol.parentId = "file:" + *file;
+        }
+        else
+        {
+            symbol.parentId = moduleId_;
+        }
+        symbol.visibility = "internal";
+        symbol.isStatic = true;
+        symbol.properties["native.kind"] = "macro";
+        symbol.properties["native.macroSource"] = source;
+        symbol.properties["native.macroValue"] = value;
+        symbol.properties["native.buildProfile"] = options_.profile;
+        AddSymbol(symbol);
+    }
+
+    std::string MacroReplacement(CXCursor cursor)
+    {
+        if (currentUnit_ == nullptr) return "";
+
+        CXToken* tokens = nullptr;
+        unsigned tokenCount = 0;
+        clang_tokenize(currentUnit_, clang_getCursorExtent(cursor), &tokens, &tokenCount);
+        if (tokens == nullptr || tokenCount <= 1)
+        {
+            if (tokens != nullptr)
+                clang_disposeTokens(currentUnit_, tokens, tokenCount);
+            return "";
+        }
+
+        std::ostringstream value;
+        for (unsigned i = 1; i < tokenCount; i++)
+        {
+            if (i > 1) value << ' ';
+            value << ToString(clang_getTokenSpelling(currentUnit_, tokens[i]));
+        }
+
+        clang_disposeTokens(currentUnit_, tokens, tokenCount);
+        return value.str();
     }
 
     bool AddRecordType(CXCursor cursor, const std::string& nativeKind)
@@ -792,6 +961,11 @@ private:
         return "field:" + ToString(clang_getCursorSpelling(cursor));
     }
 
+    std::string MacroId(const std::string& name)
+    {
+        return "field:macro:" + name;
+    }
+
     std::string EnumConstantId(CXCursor cursor, const std::string& enumTypeId)
     {
         const std::string prefix = "type:";
@@ -931,6 +1105,29 @@ private:
         return site;
     }
 
+    std::string JoinDefines()
+    {
+        std::vector<std::string> values;
+        values.reserve(commandLineDefines_.size());
+        for (const auto& [name, value] : commandLineDefines_)
+            values.push_back(name + "=" + value);
+        return Join(values);
+    }
+
+    template <typename T>
+    std::string Join(const T& values)
+    {
+        std::ostringstream output;
+        bool first = true;
+        for (const auto& value : values)
+        {
+            if (!first) output << ";";
+            first = false;
+            output << value;
+        }
+        return output.str();
+    }
+
     Options options_;
     fs::path projectRoot_;
     fs::path compilationDatabaseDir_;
@@ -938,6 +1135,10 @@ private:
     std::string moduleId_;
     NativeGraph& graph_;
     std::set<std::tuple<std::string, std::string, std::string>>& edgeKeys_;
+    CXTranslationUnit currentUnit_ = nullptr;
+    unsigned translationUnitCount_ = 0;
+    std::map<std::string, std::string> commandLineDefines_;
+    std::set<std::string> commandLineUndefines_;
 };
 }
 
