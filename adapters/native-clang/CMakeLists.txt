@@ -62,6 +62,8 @@ add_executable(lifeblood-native-clang
     src/NativeDeclarationEmitter.cpp
     src/NativeDeclarationEmitter.h
     src/NativeDiagnosticSummary.h
+    src/NativeDeclaredSurfaceInventory.cpp
+    src/NativeDeclaredSurfaceInventory.h
     src/NativeExtractionSession.cpp
     src/NativeExtractionSession.h
     src/NativeFunctionEmitter.cpp

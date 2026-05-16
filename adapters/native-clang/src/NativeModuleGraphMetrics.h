@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphModel.h"
+#include "NativeDeclaredSurfaceInventory.h"
 #include "NativeEdgeClassification.h"
 #include "NativeGraphFacts.h"
 #include "NativeGraphOwnershipIndex.h"
@@ -38,22 +39,18 @@ private:
         unsigned callbackTargetEdgeCount = 0;
         unsigned functionDefinitionCount = 0;
         unsigned functionDeclarationCount = 0;
-        unsigned headerDeclaredSymbolCount = 0;
-        unsigned translationUnitDeclaredSymbolCount = 0;
+        NativeDeclaredSurfaceCounts declaredSurface;
         NativeKindInventoryCounts nativeKinds;
         NativeVisibilityCounts visibility;
     };
 
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
-    void AddFileBucketDeclaredCount(
-        Counts& counts,
-        const std::string& symbolId,
-        const Symbol& symbol) const;
     void AddEdgeCount(Counts& counts, const Edge& edge) const;
     static void WriteCounts(Symbol& module, const Counts& counts);
 
     NativeGraph& graph_;
     const NativeGraphOwnershipIndex& ownership_;
+    NativeDeclaredSurfaceInventory declaredSurface_;
     std::map<std::string, Counts> counts_;
 };
 }
