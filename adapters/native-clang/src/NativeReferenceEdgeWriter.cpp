@@ -8,7 +8,6 @@
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
 #include "NativePropertyWriter.h"
-#include "NativeReferenceKinds.h"
 
 #include <utility>
 
@@ -20,8 +19,7 @@ NativeReferenceEdgeWriter::NativeReferenceEdgeWriter(
     const ClangSourceMapper& sourceMap)
     : buildProfile_(std::move(buildProfile)),
       graph_(graph),
-      sourceMap_(sourceMap),
-      tableRows_(buildProfile_, graph_, sourceMap_)
+      sourceMap_(sourceMap)
 {
 }
 
@@ -78,17 +76,6 @@ void NativeReferenceEdgeWriter::AddReference(
     NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::ReferenceKind, referenceKind);
     NativePropertyWriter::Set(edge, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddEdge(edge);
-}
-
-void NativeReferenceEdgeWriter::AddCallbackTarget(
-    CXCursor cursor,
-    const std::string& tableId,
-    std::optional<unsigned> rowOrdinal,
-    const std::string& targetId)
-{
-    MarkCallbackTable(tableId);
-    tableRows_.AddMethodGroupCell(cursor, tableId, rowOrdinal, targetId);
-    AddReference(cursor, tableId, targetId, NativeReferenceKinds::CallbackTarget);
 }
 
 void NativeReferenceEdgeWriter::MarkCallbackTable(const std::string& symbolId)

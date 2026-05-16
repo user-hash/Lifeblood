@@ -1,6 +1,7 @@
 #include "NativeTableRowEmitter.h"
 
 #include "ClangSourceMapper.h"
+#include "ClangUtilities.h"
 #include "GraphModel.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
@@ -30,7 +31,17 @@ void NativeTableRowEmitter::AddMethodGroupCell(
 {
     const unsigned resolvedRowOrdinal = ResolveRowOrdinal(tableId, rowOrdinal);
     EnsureRow(cursor, tableId, resolvedRowOrdinal);
-    AddCell(cursor, tableId, resolvedRowOrdinal, methodId);
+    AddMethodGroupCellSymbol(cursor, tableId, resolvedRowOrdinal, methodId);
+}
+
+void NativeTableRowEmitter::AddStringCell(
+    CXCursor cursor,
+    const std::string& tableId,
+    std::optional<unsigned> rowOrdinal)
+{
+    const unsigned resolvedRowOrdinal = ResolveRowOrdinal(tableId, rowOrdinal);
+    EnsureRow(cursor, tableId, resolvedRowOrdinal);
+    AddStringCellSymbol(cursor, tableId, resolvedRowOrdinal);
 }
 
 unsigned NativeTableRowEmitter::ResolveRowOrdinal(
@@ -74,7 +85,7 @@ void NativeTableRowEmitter::EnsureRow(
     DecorateTable(tableId);
 }
 
-void NativeTableRowEmitter::AddCell(
+void NativeTableRowEmitter::AddMethodGroupCellSymbol(
     CXCursor cursor,
     const std::string& tableId,
     unsigned rowOrdinal,
@@ -109,6 +120,48 @@ void NativeTableRowEmitter::AddCell(
         NativeTableValueKinds::MethodGroup);
     NativePropertyWriter::Set(cell, NativeGraphPropertyKeys::MethodGroupId, methodId);
     NativePropertyWriter::Set(cell, NativeGraphPropertyKeys::CallbackTargetId, methodId);
+    NativePropertyWriter::Set(cell, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
+    graph_.AddSymbol(cell);
+
+    DecorateRow(rowId);
+}
+
+void NativeTableRowEmitter::AddStringCellSymbol(
+    CXCursor cursor,
+    const std::string& tableId,
+    unsigned rowOrdinal)
+{
+    const std::string rowId = RowId(tableId, rowOrdinal);
+    const unsigned cellOrdinal = rowCellCounts_[rowId]++;
+    const std::string tableName = TableName(tableId);
+
+    Symbol cell;
+    cell.id = CellId(tableId, rowOrdinal, cellOrdinal);
+    cell.name = "cell:" + std::to_string(cellOrdinal);
+    cell.qualifiedName = tableName + "[" + std::to_string(rowOrdinal) + "]." + cell.name;
+    cell.kind = "field";
+    if (auto file = sourceMap_.SourceFile(cursor))
+        cell.filePath = *file;
+    cell.line = sourceMap_.Line(cursor);
+    cell.parentId = rowId;
+    NativePropertyWriter::Set(cell, NativeGraphPropertyKeys::NativeKind, NativeKindNames::TableCell);
+    NativePropertyWriter::Set(cell, NativeGraphPropertyKeys::TableOwnerId, tableId);
+    NativePropertyWriter::Set(
+        cell,
+        NativeGraphPropertyKeys::TableRowOrdinal,
+        std::to_string(rowOrdinal));
+    NativePropertyWriter::Set(
+        cell,
+        NativeGraphPropertyKeys::TableCellOrdinal,
+        std::to_string(cellOrdinal));
+    NativePropertyWriter::Set(
+        cell,
+        NativeGraphPropertyKeys::TableValueKind,
+        NativeTableValueKinds::String);
+    NativePropertyWriter::Set(
+        cell,
+        NativeGraphPropertyKeys::StringValue,
+        StringLiteralValue(cursor));
     NativePropertyWriter::Set(cell, NativeGraphPropertyKeys::BuildProfile, buildProfile_);
     graph_.AddSymbol(cell);
 
@@ -157,5 +210,40 @@ std::string NativeTableRowEmitter::TableName(const std::string& tableId)
     return tableId.rfind(prefixText, 0) == 0
         ? tableId.substr(prefixText.size())
         : tableId;
+}
+
+std::string NativeTableRowEmitter::StringLiteralValue(CXCursor cursor)
+{
+    CXEvalResult result = clang_Cursor_Evaluate(cursor);
+    std::string value;
+    if (result != nullptr && clang_EvalResult_getKind(result) == CXEval_StrLiteral)
+    {
+        const char* text = clang_EvalResult_getAsStr(result);
+        if (text != nullptr)
+            value = text;
+    }
+    if (result != nullptr)
+        clang_EvalResult_dispose(result);
+    if (!value.empty())
+        return value;
+
+    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(cursor);
+    CXToken* tokens = nullptr;
+    unsigned tokenCount = 0;
+    clang_tokenize(unit, clang_getCursorExtent(cursor), &tokens, &tokenCount);
+    if (tokenCount > 0)
+        value = ToString(clang_getTokenSpelling(unit, tokens[0]));
+    clang_disposeTokens(unit, tokens, tokenCount);
+
+    const auto firstQuote = value.find('"');
+    const auto lastQuote = value.find_last_of('"');
+    if (firstQuote != std::string::npos &&
+        lastQuote != std::string::npos &&
+        firstQuote < lastQuote)
+    {
+        return value.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+    }
+
+    return value;
 }
 }

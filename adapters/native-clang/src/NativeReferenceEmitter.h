@@ -4,6 +4,7 @@
 #include "NativeDeclarationEmitter.h"
 #include "NativeGraphSink.h"
 #include "NativeReferenceEdgeWriter.h"
+#include "NativeTableRowEmitter.h"
 
 #include <clang-c/Index.h>
 
@@ -27,10 +28,15 @@ public:
         const std::string& currentFunctionId,
         const std::string& initializerOwnerId,
         std::optional<unsigned> initializerRowOrdinal);
+    void AddInitializerStringLiteral(
+        CXCursor cursor,
+        const std::string& initializerOwnerId,
+        std::optional<unsigned> initializerRowOrdinal);
     void AddMemberReference(CXCursor cursor, const std::string& currentFunctionId);
 
 private:
     NativeReferenceEdgeWriter edges_;
+    NativeTableRowEmitter tableRows_;
     NativeDeclarationEmitter& declarations_;
 };
 }

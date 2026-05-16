@@ -46,7 +46,7 @@ private:
 
     void ProcessEnumConstant(CXCursor cursor, const VisitState& state);
     VisitState ProcessInitializerList(VisitState state);
-    std::optional<unsigned> InitializerRowOrdinalForReference(VisitState state);
+    std::optional<unsigned> InitializerRowOrdinalForValue(VisitState state);
     std::string ProcessVariable(CXCursor cursor, const VisitState& state);
 
     NativeDeclarationEmitter& declarations_;
