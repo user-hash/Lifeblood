@@ -3,7 +3,6 @@
 #include "NativeCountPropertyWriter.h"
 #include "NativeFunctionDeclarationClassifier.h"
 #include "NativeGraphMetricPropertyKeys.h"
-#include "NativePropertyWriter.h"
 
 namespace lifeblood::native_clang
 {
@@ -43,7 +42,7 @@ void NativeFileGraphMetrics::Write()
 {
     for (auto& [id, symbol] : graph_.symbols)
     {
-        WriteSymbolCallCounts(symbol);
+        callSymbolMetrics_.Decorate(symbol);
 
         if (symbol.kind != "file") continue;
 
@@ -123,14 +122,12 @@ void NativeFileGraphMetrics::AddCallFileEdgeCounts(
     {
         counts_[*sourceFileId].outgoingCrossFileCallEdgeCount++;
         counts_[*targetFileId].incomingCrossFileCallEdgeCount++;
-        crossFileCallOutCounts_[edge.sourceId]++;
-        crossFileCallInCounts_[edge.targetId]++;
+        callSymbolMetrics_.RecordCrossFileCall(edge.sourceId, edge.targetId);
     }
     else if (sourceFileId && targetFileId)
     {
         counts_[*sourceFileId].localCallEdgeCount++;
-        sameFileCallOutCounts_[edge.sourceId]++;
-        sameFileCallInCounts_[edge.targetId]++;
+        callSymbolMetrics_.RecordSameFileCall(edge.sourceId, edge.targetId);
     }
 }
 
@@ -189,36 +186,5 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
         NativeGraphMetricPropertyKeys::PrivateDeclaredSymbolCount,
         NativeGraphMetricPropertyKeys::InternalDeclaredSymbolCount);
     NativeKindInventory::WriteFileProperties(file, counts.nativeKinds);
-}
-
-void NativeFileGraphMetrics::WriteSymbolCallCounts(Symbol& symbol) const
-{
-    auto sameFileOutgoing = sameFileCallOutCounts_.find(symbol.id);
-    if (sameFileOutgoing != sameFileCallOutCounts_.end())
-        NativePropertyWriter::SetCount(
-            symbol,
-            NativeGraphMetricPropertyKeys::SameFileDirectCallOutCount,
-            sameFileOutgoing->second);
-
-    auto sameFileIncoming = sameFileCallInCounts_.find(symbol.id);
-    if (sameFileIncoming != sameFileCallInCounts_.end())
-        NativePropertyWriter::SetCount(
-            symbol,
-            NativeGraphMetricPropertyKeys::SameFileDirectCallInCount,
-            sameFileIncoming->second);
-
-    auto outgoing = crossFileCallOutCounts_.find(symbol.id);
-    if (outgoing != crossFileCallOutCounts_.end())
-        NativePropertyWriter::SetCount(
-            symbol,
-            NativeGraphMetricPropertyKeys::CrossFileDirectCallOutCount,
-            outgoing->second);
-
-    auto incoming = crossFileCallInCounts_.find(symbol.id);
-    if (incoming != crossFileCallInCounts_.end())
-        NativePropertyWriter::SetCount(
-            symbol,
-            NativeGraphMetricPropertyKeys::CrossFileDirectCallInCount,
-            incoming->second);
 }
 }
