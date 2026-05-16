@@ -26,6 +26,7 @@ void NativeFileGraphMetrics::ObserveSymbol(
     counts.declaredSymbolCount++;
     NativeVisibilityCounter::Add(counts.declaredVisibility, symbol);
     AddFunctionDeclarationCount(counts, symbol);
+    AddNativeKindCounts(counts, symbol);
 }
 
 void NativeFileGraphMetrics::ObserveEdge(const Edge& edge)
@@ -89,6 +90,13 @@ void NativeFileGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const S
         counts.functionDefinitionCount++;
 }
 
+void NativeFileGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& symbol)
+{
+    auto nativeKind = symbol.properties.find("native.kind");
+    if (nativeKind != symbol.properties.end() && nativeKind->second == "macro")
+        counts.macroCount++;
+}
+
 void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
 {
     file.properties["native.declaredSymbolCount"] =
@@ -103,6 +111,7 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
         std::to_string(counts.functionDefinitionCount);
     file.properties["native.fileFunctionDeclarationCount"] =
         std::to_string(counts.functionDeclarationCount);
+    file.properties["native.fileMacroCount"] = std::to_string(counts.macroCount);
     file.properties["native.fileOutgoingReferenceEdgeCount"] =
         std::to_string(counts.outgoingReferenceEdgeCount);
     file.properties["native.fileIncomingReferenceEdgeCount"] =

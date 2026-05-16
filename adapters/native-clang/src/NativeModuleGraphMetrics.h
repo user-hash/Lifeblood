@@ -28,9 +28,12 @@ private:
         unsigned callEdgeCount = 0;
         unsigned functionDefinitionCount = 0;
         unsigned functionDeclarationCount = 0;
+        unsigned macroCount = 0;
         NativeVisibilityCounts visibility;
     };
 
+    static bool HasNativeKind(const Symbol& symbol, const std::string& nativeKind);
+    static void AddNativeKindCounts(Counts& counts, const Symbol& symbol);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
     static void AddEdgeCount(Counts& counts, const Edge& edge);
     static void WriteCounts(Symbol& module, const Counts& counts);

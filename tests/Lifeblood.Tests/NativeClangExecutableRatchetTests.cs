@@ -33,6 +33,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
         AssertModuleFunctionInventory(graph, "mod:tiny-c", definitions: 2, declarations: 0);
+        AssertModuleNativeKindInventory(graph, "mod:tiny-c", macros: 1);
         AssertModuleVisibilityInventory(graph, "mod:tiny-c", publicSymbols: 3, privateSymbols: 1, internalSymbols: 3);
         AssertModuleBuildFacts(
             graph,
@@ -58,6 +59,7 @@ public class NativeClangExecutableRatchetTests
             internalDeclaredSymbols: 0,
             functionDefinitions: 2,
             functionDeclarations: 0,
+            macros: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -71,6 +73,7 @@ public class NativeClangExecutableRatchetTests
             internalDeclaredSymbols: 1,
             functionDefinitions: 0,
             functionDeclarations: 0,
+            macros: 1,
             outgoingReferences: 0,
             incomingReferences: 3,
             outgoingCalls: 0,
@@ -190,6 +193,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleFileInventory(graph, "mod:multi-tu-c", translationUnits: 2, headers: 1);
         AssertModuleGraphInventory(graph, "mod:multi-tu-c", symbols: 10, edges: 8, references: 6, calls: 2);
         AssertModuleFunctionInventory(graph, "mod:multi-tu-c", definitions: 4, declarations: 0);
+        AssertModuleNativeKindInventory(graph, "mod:multi-tu-c", macros: 1);
         AssertTranslationUnitHealth(graph, "file:src/audio.c", "parsed");
         AssertTranslationUnitHealth(graph, "file:src/video.c", "parsed");
         AssertTranslationUnitBuildInputs(graph, "file:src/audio.c", defines: 0, undefines: 0);
@@ -217,6 +221,7 @@ public class NativeClangExecutableRatchetTests
             internalDeclaredSymbols: 0,
             functionDefinitions: 2,
             functionDeclarations: 0,
+            macros: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -230,6 +235,7 @@ public class NativeClangExecutableRatchetTests
             internalDeclaredSymbols: 1,
             functionDefinitions: 0,
             functionDeclarations: 0,
+            macros: 1,
             outgoingReferences: 0,
             incomingReferences: 6,
             outgoingCalls: 0,
@@ -243,6 +249,7 @@ public class NativeClangExecutableRatchetTests
             internalDeclaredSymbols: 0,
             functionDefinitions: 2,
             functionDeclarations: 0,
+            macros: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -351,6 +358,7 @@ public class NativeClangExecutableRatchetTests
             internalDeclaredSymbols: 0,
             functionDefinitions: 1,
             functionDeclarations: 0,
+            macros: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 0,
@@ -366,6 +374,7 @@ public class NativeClangExecutableRatchetTests
             internalDeclaredSymbols: 0,
             functionDefinitions: 1,
             functionDeclarations: 0,
+            macros: 0,
             outgoingReferences: 2,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -638,6 +647,16 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(declarations.ToString(), module.Properties["native.functionDeclarationCount"]);
     }
 
+    private static void AssertModuleNativeKindInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int macros)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(macros.ToString(), module!.Properties["native.macroCount"]);
+    }
+
     private static void AssertModuleUndefines(
         SemanticGraph graph,
         string moduleId,
@@ -696,6 +715,7 @@ public class NativeClangExecutableRatchetTests
         int internalDeclaredSymbols,
         int functionDefinitions,
         int functionDeclarations,
+        int macros,
         int outgoingReferences,
         int incomingReferences,
         int outgoingCalls,
@@ -721,6 +741,7 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             functionDeclarations.ToString(),
             file.Properties["native.fileFunctionDeclarationCount"]);
+        Assert.Equal(macros.ToString(), file.Properties["native.fileMacroCount"]);
         Assert.Equal(
             outgoingReferences.ToString(),
             file.Properties["native.fileOutgoingReferenceEdgeCount"]);
