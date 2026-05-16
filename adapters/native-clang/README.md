@@ -1,11 +1,10 @@
 # Native Clang Adapter
 
-**Status:** Native scout bootstrap. The `libclang` executable emits graphs for
-direct-call, direct-reference, profile-shaped, callback-table C fixtures, and a
-controlled FFmpeg scout slice.
+**Status:** Beta in v0.7.7. The `libclang` executable emits graphs for direct-call, direct-reference, profile-shaped, callback-table, multi-translation-unit, cross-translation-unit, partial-parse-tolerant, warning, and return-type C fixtures, plus a controlled FFmpeg scout slice.
 
-This adapter will translate C/C++ projects into Lifeblood's universal semantic
-graph using Clang/LLVM as the parser and semantic engine.
+This adapter translates C projects into Lifeblood's universal semantic graph using `libclang` as the parser and semantic engine. C++ coverage is on the roadmap; the same boundary will extend with additional Clang AST handling.
+
+See [`docs/NATIVE_CLANG.md`](../../docs/NATIVE_CLANG.md) for the capability page meant for downstream readers. This file remains the deep technical reference for adapter contributors.
 
 ## Why This Exists
 

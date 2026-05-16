@@ -7,15 +7,17 @@ LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
 Roslyn (C#)       ──┐                            ┌──  AgentContextGenerator
-JSON graph        ──┼→  Domain  →  Application  →┤──  InstructionFileGenerator
-                  ──┘       ↑                     ├──  LifebloodMcpProvider
-                      Analysis (optional)         ├──  LifebloodSymbolResolver
-                                                  ├──  LifebloodSemanticSearchProvider
+libclang (C)      ──┤                            ├──  InstructionFileGenerator
+TypeScript        ──┼→  Domain  →  Application  →┤──  LifebloodMcpProvider
+Python            ──┤       ↑                     ├──  LifebloodSymbolResolver
+JSON graph        ──┘    Analysis (optional)      ├──  LifebloodSemanticSearchProvider
                                                   ├──  LifebloodDeadCodeAnalyzer
                                                   ├──  LifebloodPartialViewBuilder
                                                   ├──  LifebloodInvariantProvider
                                                   └──  CLI / CI
 ```
+
+In-process adapters (`Roslyn`) live under `src/Lifeblood.Adapters.*` and reference `Lifeblood.Application` ports. External JSON-emitting adapters (`libclang`, `TypeScript`, `Python`) live under `adapters/` and feed Lifeblood through `JsonGraphImporter`. The boundary keeps LLVM, Clang, TypeScript, and Python toolchains out of the Lifeblood core. See [`NATIVE_CLANG.md`](NATIVE_CLANG.md) for the C capability page and [`ADAPTERS.md`](ADAPTERS.md) for the adapter-building guide.
 
 ## Three Layers of Truth
 
