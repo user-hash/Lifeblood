@@ -27,6 +27,7 @@ private:
         unsigned functionDefinitionCount = 0;
         unsigned functionDeclarationCount = 0;
         unsigned macroCount = 0;
+        unsigned callbackTableCount = 0;
         unsigned outgoingReferenceEdgeCount = 0;
         unsigned incomingReferenceEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;

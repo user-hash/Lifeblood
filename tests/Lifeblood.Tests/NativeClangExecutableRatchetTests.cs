@@ -163,6 +163,8 @@ public class NativeClangExecutableRatchetTests
             edges: 11,
             references: 11,
             calls: 0);
+        AssertModuleNativeKindInventory(graph, "mod:callback-table-c", macros: 1, callbackTables: 1);
+        AssertFileNativeKindInventory(graph, "file:src/registry.c", macros: 0, callbackTables: 1);
         AssertReferenceKind(
             graph,
             "field:codec_table",
@@ -650,11 +652,25 @@ public class NativeClangExecutableRatchetTests
     private static void AssertModuleNativeKindInventory(
         SemanticGraph graph,
         string moduleId,
-        int macros)
+        int macros,
+        int callbackTables = 0)
     {
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
         Assert.Equal(macros.ToString(), module!.Properties["native.macroCount"]);
+        Assert.Equal(callbackTables.ToString(), module.Properties["native.callbackTableCount"]);
+    }
+
+    private static void AssertFileNativeKindInventory(
+        SemanticGraph graph,
+        string fileId,
+        int macros,
+        int callbackTables)
+    {
+        var file = graph.GetSymbol(fileId);
+        Assert.NotNull(file);
+        Assert.Equal(macros.ToString(), file!.Properties["native.fileMacroCount"]);
+        Assert.Equal(callbackTables.ToString(), file.Properties["native.fileCallbackTableCount"]);
     }
 
     private static void AssertModuleUndefines(
@@ -742,6 +758,7 @@ public class NativeClangExecutableRatchetTests
             functionDeclarations.ToString(),
             file.Properties["native.fileFunctionDeclarationCount"]);
         Assert.Equal(macros.ToString(), file.Properties["native.fileMacroCount"]);
+        Assert.Equal("0", file.Properties["native.fileCallbackTableCount"]);
         Assert.Equal(
             outgoingReferences.ToString(),
             file.Properties["native.fileOutgoingReferenceEdgeCount"]);
