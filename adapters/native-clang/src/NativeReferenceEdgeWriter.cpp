@@ -22,6 +22,8 @@ void NativeReferenceEdgeWriter::AddDirectCall(
     const std::string& sourceId,
     const std::string& targetId)
 {
+    RecordDirectCallCounts(sourceId, targetId);
+
     Edge edge;
     edge.sourceId = sourceId;
     edge.targetId = targetId;
@@ -31,6 +33,21 @@ void NativeReferenceEdgeWriter::AddDirectCall(
     edge.properties["native.callKind"] = "direct";
     edge.properties["native.buildProfile"] = buildProfile_;
     graph_.AddEdge(edge);
+}
+
+void NativeReferenceEdgeWriter::RecordDirectCallCounts(
+    const std::string& sourceId,
+    const std::string& targetId)
+{
+    const auto outCount = ++directCallOutCounts_[sourceId];
+    graph_.UpdateSymbol(sourceId, [&](Symbol& symbol) {
+        symbol.properties["native.directCallOutCount"] = std::to_string(outCount);
+    });
+
+    const auto inCount = ++directCallInCounts_[targetId];
+    graph_.UpdateSymbol(targetId, [&](Symbol& symbol) {
+        symbol.properties["native.directCallInCount"] = std::to_string(inCount);
+    });
 }
 
 void NativeReferenceEdgeWriter::AddReference(

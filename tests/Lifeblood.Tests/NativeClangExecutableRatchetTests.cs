@@ -132,6 +132,10 @@ public class NativeClangExecutableRatchetTests
         AssertIncludeCounts(graph, "file:src/packet.h", includeDirectives: 0, includedBy: 2);
         AssertCall(graph, "method:decode_audio(Packet*)", "method:audio_gain(int)");
         AssertCall(graph, "method:decode_video(Packet*)", "method:video_scale(int)");
+        AssertDirectCallCounts(graph, "method:decode_audio(Packet*)", incoming: 0, outgoing: 1);
+        AssertDirectCallCounts(graph, "method:audio_gain(int)", incoming: 1, outgoing: 0);
+        AssertDirectCallCounts(graph, "method:decode_video(Packet*)", incoming: 0, outgoing: 1);
+        AssertDirectCallCounts(graph, "method:video_scale(int)", incoming: 1, outgoing: 0);
         AssertReferenceKind(graph, "method:decode_audio(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode_video(Packet*)", "type:Packet", "parameterType");
         AssertAllNativeFactsCarryBuildProfile(graph, "multi-debug");
@@ -185,6 +189,8 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("definition", decodeVideo.Properties["native.declarationKind"]);
 
         AssertCall(graph, "method:decode_video(Packet*)", "method:decode_audio(Packet*)");
+        AssertDirectCallCounts(graph, "method:decode_video(Packet*)", incoming: 0, outgoing: 1);
+        AssertDirectCallCounts(graph, "method:decode_audio(Packet*)", incoming: 1, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "cross-tu-debug");
     }
 
@@ -387,6 +393,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             includedBy.ToString(),
             file.Properties.GetValueOrDefault("native.includedByCount", "0"));
+    }
+
+    private static void AssertDirectCallCounts(
+        SemanticGraph graph,
+        string methodId,
+        int incoming,
+        int outgoing)
+    {
+        var method = graph.GetSymbol(methodId);
+        Assert.NotNull(method);
+        Assert.Equal(
+            incoming.ToString(),
+            method!.Properties.GetValueOrDefault("native.directCallInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            method.Properties.GetValueOrDefault("native.directCallOutCount", "0"));
     }
 
     private static string FindRepoRoot()
