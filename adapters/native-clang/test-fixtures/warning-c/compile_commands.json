@@ -1,0 +1,15 @@
+[
+  {
+    "directory": ".",
+    "arguments": [
+      "clang",
+      "-Wall",
+      "-c",
+      "src/warning.c",
+      "-o",
+      "build/warning.o"
+    ],
+    "file": "src/warning.c",
+    "output": "build/warning.o"
+  }
+]
