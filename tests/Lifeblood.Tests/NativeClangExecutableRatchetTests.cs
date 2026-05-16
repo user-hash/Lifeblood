@@ -32,6 +32,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
+        AssertModuleIncludeInventory(graph, "mod:tiny-c", includeEdges: 1);
         AssertModuleFunctionInventory(graph, "mod:tiny-c", definitions: 2, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:tiny-c", macros: 1);
         AssertModuleVisibilityInventory(graph, "mod:tiny-c", publicSymbols: 3, privateSymbols: 1, internalSymbols: 3);
@@ -60,6 +61,8 @@ public class NativeClangExecutableRatchetTests
             functionDefinitions: 2,
             functionDeclarations: 0,
             macros: 0,
+            outgoingIncludes: 1,
+            incomingIncludes: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -74,6 +77,8 @@ public class NativeClangExecutableRatchetTests
             functionDefinitions: 0,
             functionDeclarations: 0,
             macros: 1,
+            outgoingIncludes: 0,
+            incomingIncludes: 1,
             outgoingReferences: 0,
             incomingReferences: 3,
             outgoingCalls: 0,
@@ -200,6 +205,7 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:multi-tu-c", total: 2, parsed: 2, failed: 0);
         AssertModuleFileInventory(graph, "mod:multi-tu-c", translationUnits: 2, headers: 1);
         AssertModuleGraphInventory(graph, "mod:multi-tu-c", symbols: 10, edges: 8, references: 6, calls: 2);
+        AssertModuleIncludeInventory(graph, "mod:multi-tu-c", includeEdges: 2);
         AssertModuleFunctionInventory(graph, "mod:multi-tu-c", definitions: 4, declarations: 0);
         AssertModuleNativeKindInventory(graph, "mod:multi-tu-c", macros: 1);
         AssertTranslationUnitHealth(graph, "file:src/audio.c", "parsed");
@@ -230,6 +236,8 @@ public class NativeClangExecutableRatchetTests
             functionDefinitions: 2,
             functionDeclarations: 0,
             macros: 0,
+            outgoingIncludes: 1,
+            incomingIncludes: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -244,6 +252,8 @@ public class NativeClangExecutableRatchetTests
             functionDefinitions: 0,
             functionDeclarations: 0,
             macros: 1,
+            outgoingIncludes: 0,
+            incomingIncludes: 2,
             outgoingReferences: 0,
             incomingReferences: 6,
             outgoingCalls: 0,
@@ -258,6 +268,8 @@ public class NativeClangExecutableRatchetTests
             functionDefinitions: 2,
             functionDeclarations: 0,
             macros: 0,
+            outgoingIncludes: 1,
+            incomingIncludes: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -367,6 +379,8 @@ public class NativeClangExecutableRatchetTests
             functionDefinitions: 1,
             functionDeclarations: 0,
             macros: 0,
+            outgoingIncludes: 1,
+            incomingIncludes: 0,
             outgoingReferences: 3,
             incomingReferences: 0,
             outgoingCalls: 0,
@@ -383,6 +397,8 @@ public class NativeClangExecutableRatchetTests
             functionDefinitions: 1,
             functionDeclarations: 0,
             macros: 0,
+            outgoingIncludes: 1,
+            incomingIncludes: 0,
             outgoingReferences: 2,
             incomingReferences: 0,
             outgoingCalls: 1,
@@ -655,6 +671,16 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(declarations.ToString(), module.Properties["native.functionDeclarationCount"]);
     }
 
+    private static void AssertModuleIncludeInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int includeEdges)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(includeEdges.ToString(), module!.Properties["native.includeEdgeCount"]);
+    }
+
     private static void AssertModuleNativeKindInventory(
         SemanticGraph graph,
         string moduleId,
@@ -764,6 +790,8 @@ public class NativeClangExecutableRatchetTests
         int functionDefinitions,
         int functionDeclarations,
         int macros,
+        int outgoingIncludes,
+        int incomingIncludes,
         int outgoingReferences,
         int incomingReferences,
         int outgoingCalls,
@@ -797,6 +825,8 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             incomingReferences.ToString(),
             file.Properties["native.fileIncomingReferenceEdgeCount"]);
+        Assert.Equal(outgoingIncludes.ToString(), file.Properties["native.fileOutgoingIncludeEdgeCount"]);
+        Assert.Equal(incomingIncludes.ToString(), file.Properties["native.fileIncomingIncludeEdgeCount"]);
         Assert.Equal("0", file.Properties["native.fileOutgoingCallbackTargetEdgeCount"]);
         Assert.Equal("0", file.Properties["native.fileIncomingCallbackTargetEdgeCount"]);
         Assert.Equal(outgoingCalls.ToString(), file.Properties["native.fileOutgoingCallEdgeCount"]);
