@@ -204,6 +204,11 @@ public class NativeClangAdapterContractTests
         AssertSymbol(audio, "field:macro:PACKET_BASE", SymbolKind.Field, "macro", "audio");
         AssertSymbol(audio, "field:macro:PROFILE_KIND", SymbolKind.Field, "macro", "audio");
 
+        Assert.Equal("commandLine", video.GetSymbol("field:macro:ENABLE_VIDEO")!.Properties["native.macroSource"]);
+        Assert.Equal("source", video.GetSymbol("field:macro:PACKET_BASE")!.Properties["native.macroSource"]);
+        Assert.Equal("commandLine", audio.GetSymbol("field:macro:ENABLE_AUDIO")!.Properties["native.macroSource"]);
+        Assert.Equal("source", audio.GetSymbol("field:macro:PACKET_BASE")!.Properties["native.macroSource"]);
+
         AssertReferenceKind(video, "file:src/codec.c", "field:macro:PROFILE_KIND", "macroExpansion", EvidenceKind.Syntax);
         AssertReferenceKind(video, "file:src/codec.c", "field:macro:PACKET_BASE", "macroExpansion", EvidenceKind.Syntax);
         AssertReferenceKind(audio, "file:src/codec.c", "field:macro:PROFILE_KIND", "macroExpansion", EvidenceKind.Syntax);
