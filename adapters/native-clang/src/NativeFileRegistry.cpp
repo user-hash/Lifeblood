@@ -46,9 +46,19 @@ void NativeFileRegistry::EnsureFileSymbol(const std::string& relativePath)
     UpdateModuleFileProperties();
 }
 
-void NativeFileRegistry::MarkTranslationUnitPending(const std::string& relativePath)
+void NativeFileRegistry::MarkTranslationUnitPending(
+    const std::string& relativePath,
+    const NativeCompileCommand& command)
 {
     UpdateTranslationUnitHealth(relativePath, "pending", {});
+    graph_.UpdateSymbol("file:" + relativePath, [&](Symbol& file) {
+        file.properties["native.parseArgumentCount"] =
+            std::to_string(command.parseArguments.size());
+        file.properties["native.commandLineDefineCount"] =
+            std::to_string(command.defines.size());
+        file.properties["native.commandLineUndefineCount"] =
+            std::to_string(command.undefines.size());
+    });
 }
 
 void NativeFileRegistry::MarkTranslationUnitParsed(

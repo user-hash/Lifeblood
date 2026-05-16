@@ -67,7 +67,7 @@ bool NativeExtractionSession::ParseCommand(CXIndex index, CXCompileCommand comma
     module_.BeginTranslationUnit(compileCommand);
     auto sourceFile = sourceMap_.RelativePath(compileCommand.sourcePath);
     if (sourceFile)
-        files_.MarkTranslationUnitPending(*sourceFile);
+        files_.MarkTranslationUnitPending(*sourceFile, compileCommand);
 
     auto unit = unitParser_.Parse(index, compileCommand);
     if (!unit)

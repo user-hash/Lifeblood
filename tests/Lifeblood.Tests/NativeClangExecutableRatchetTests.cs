@@ -67,6 +67,8 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(audio, "mod:profile-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(video, "mod:profile-c", translationUnits: 1, headers: 1);
         AssertModuleFileInventory(audio, "mod:profile-c", translationUnits: 1, headers: 1);
+        AssertTranslationUnitBuildInputs(video, "file:src/codec.c", defines: 2, undefines: 0);
+        AssertTranslationUnitBuildInputs(audio, "file:src/codec.c", defines: 2, undefines: 0);
         AssertCall(video, "method:decode_video(Packet*)", "method:scale_video(int)");
         AssertCall(audio, "method:decode_audio(Packet*)", "method:scale_audio(int)");
         AssertAllNativeFactsCarryBuildProfile(video, "video");
@@ -112,6 +114,8 @@ public class NativeClangExecutableRatchetTests
         AssertModuleFileInventory(graph, "mod:multi-tu-c", translationUnits: 2, headers: 1);
         AssertTranslationUnitHealth(graph, "file:src/audio.c", "parsed");
         AssertTranslationUnitHealth(graph, "file:src/video.c", "parsed");
+        AssertTranslationUnitBuildInputs(graph, "file:src/audio.c", defines: 0, undefines: 0);
+        AssertTranslationUnitBuildInputs(graph, "file:src/video.c", defines: 0, undefines: 0);
 
         Assert.NotNull(graph.GetSymbol("file:src/audio.c"));
         Assert.NotNull(graph.GetSymbol("file:src/video.c"));
@@ -339,6 +343,19 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("0", file.Properties["native.warningDiagnosticCount"]);
         Assert.Equal("0", file.Properties["native.errorDiagnosticCount"]);
         Assert.Equal("0", file.Properties["native.fatalDiagnosticCount"]);
+    }
+
+    private static void AssertTranslationUnitBuildInputs(
+        SemanticGraph graph,
+        string fileId,
+        int defines,
+        int undefines)
+    {
+        var file = graph.GetSymbol(fileId);
+        Assert.NotNull(file);
+        Assert.True(int.Parse(file!.Properties["native.parseArgumentCount"]) > 0);
+        Assert.Equal(defines.ToString(), file.Properties["native.commandLineDefineCount"]);
+        Assert.Equal(undefines.ToString(), file.Properties["native.commandLineUndefineCount"]);
     }
 
     private static void AssertModuleFileInventory(
