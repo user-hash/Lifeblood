@@ -8,8 +8,11 @@
 
 namespace lifeblood::native_clang
 {
-ParsedTranslationUnit::ParsedTranslationUnit(CXTranslationUnit unit)
-    : unit_(unit)
+ParsedTranslationUnit::ParsedTranslationUnit(
+    CXTranslationUnit unit,
+    NativeDiagnosticSummary diagnostics)
+    : unit_(unit),
+      diagnostics_(diagnostics)
 {
 }
 
@@ -62,17 +65,25 @@ ParsedTranslationUnit ClangTranslationUnitParser::Parse(
         return ParsedTranslationUnit{};
     }
 
-    ReportDiagnostics(unit);
-    return ParsedTranslationUnit(unit);
+    auto diagnostics = ReportDiagnostics(unit);
+    return ParsedTranslationUnit(unit, diagnostics);
 }
 
-void ClangTranslationUnitParser::ReportDiagnostics(CXTranslationUnit unit) const
+NativeDiagnosticSummary ClangTranslationUnitParser::ReportDiagnostics(CXTranslationUnit unit) const
 {
+    NativeDiagnosticSummary summary;
     const unsigned diagnosticCount = clang_getNumDiagnostics(unit);
     for (unsigned i = 0; i < diagnosticCount; i++)
     {
         CXDiagnostic diagnostic = clang_getDiagnostic(unit, i);
         auto severity = clang_getDiagnosticSeverity(diagnostic);
+        if (severity == CXDiagnostic_Warning)
+            summary.warningCount++;
+        else if (severity == CXDiagnostic_Error)
+            summary.errorCount++;
+        else if (severity == CXDiagnostic_Fatal)
+            summary.fatalCount++;
+
         if (severity >= CXDiagnostic_Error)
         {
             std::cerr << ToString(clang_formatDiagnostic(
@@ -81,5 +92,6 @@ void ClangTranslationUnitParser::ReportDiagnostics(CXTranslationUnit unit) const
         }
         clang_disposeDiagnostic(diagnostic);
     }
+    return summary;
 }
 }

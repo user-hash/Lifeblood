@@ -73,7 +73,7 @@ bool NativeExtractionSession::ParseCommand(CXIndex index, CXCompileCommand comma
         return false;
     }
 
-    module_.RecordTranslationUnitParsed();
+    module_.RecordTranslationUnitParsed(unit.Diagnostics());
     astVisitor_.Visit(clang_getTranslationUnitCursor(unit.Get()), unit.Get());
     return true;
 }

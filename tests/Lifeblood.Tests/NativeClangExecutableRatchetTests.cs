@@ -288,6 +288,9 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(total.ToString(), module!.Properties["native.translationUnitCount"]);
         Assert.Equal(parsed.ToString(), module.Properties["native.parsedTranslationUnitCount"]);
         Assert.Equal(failed.ToString(), module.Properties["native.failedTranslationUnitCount"]);
+        Assert.Equal("0", module.Properties["native.warningDiagnosticCount"]);
+        Assert.Equal("0", module.Properties["native.errorDiagnosticCount"]);
+        Assert.Equal("0", module.Properties["native.fatalDiagnosticCount"]);
         Assert.Equal(failed == 0 ? "complete" : "partial", module.Properties["native.parseStatus"]);
     }
 

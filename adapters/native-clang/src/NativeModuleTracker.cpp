@@ -36,9 +36,12 @@ void NativeModuleTracker::BeginTranslationUnit(const NativeCompileCommand& comma
     UpdateModuleProperties();
 }
 
-void NativeModuleTracker::RecordTranslationUnitParsed()
+void NativeModuleTracker::RecordTranslationUnitParsed(const NativeDiagnosticSummary& diagnostics)
 {
     parsedTranslationUnitCount_++;
+    diagnostics_.warningCount += diagnostics.warningCount;
+    diagnostics_.errorCount += diagnostics.errorCount;
+    diagnostics_.fatalCount += diagnostics.fatalCount;
     UpdateModuleProperties();
 }
 
@@ -85,6 +88,12 @@ void NativeModuleTracker::UpdateModuleProperties()
             std::to_string(parsedTranslationUnitCount_);
         module.properties["native.failedTranslationUnitCount"] =
             std::to_string(failedTranslationUnitCount_);
+        module.properties["native.warningDiagnosticCount"] =
+            std::to_string(diagnostics_.warningCount);
+        module.properties["native.errorDiagnosticCount"] =
+            std::to_string(diagnostics_.errorCount);
+        module.properties["native.fatalDiagnosticCount"] =
+            std::to_string(diagnostics_.fatalCount);
         module.properties["native.parseStatus"] =
             failedTranslationUnitCount_ == 0 ? "complete" : "partial";
         if (!commandLineDefines_.empty())
