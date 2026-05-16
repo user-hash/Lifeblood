@@ -78,6 +78,8 @@ add_executable(lifeblood-native-clang
     src/NativeExtractionSession.h
     src/NativeFunctionEmitter.cpp
     src/NativeFunctionEmitter.h
+    src/NativeFunctionDeclarationClassifier.cpp
+    src/NativeFunctionDeclarationClassifier.h
     src/NativeFileRegistry.cpp
     src/NativeFileRegistry.h
     src/NativeFileGraphMetrics.cpp
