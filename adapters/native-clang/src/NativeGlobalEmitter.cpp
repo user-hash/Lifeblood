@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "ClangUtilities.h"
 #include "NativeFileRegistry.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
@@ -50,17 +51,17 @@ bool NativeGlobalEmitter::AddGlobalVariable(CXCursor cursor)
     symbol.parentId = "file:" + *file;
     symbol.visibility = storage == CX_SC_Static ? "private" : "public";
     symbol.isStatic = storage == CX_SC_Static;
-    symbol.properties["native.kind"] =
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] =
         existing != nullptr &&
-        existing->properties.find("native.kind") != existing->properties.end() &&
-        existing->properties.at("native.kind") == "callbackTable"
+        existing->properties.find(NativeGraphPropertyKeys::NativeKind) != existing->properties.end() &&
+        existing->properties.at(NativeGraphPropertyKeys::NativeKind) == "callbackTable"
             ? "callbackTable"
             : "global";
     symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
     symbol.properties["native.fieldType"] = NormalizeTypeForId(
         ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
-    symbol.properties["native.buildProfile"] = buildProfile_;
-    if (symbol.properties["native.kind"] == "callbackTable")
+    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
+    if (symbol.properties[NativeGraphPropertyKeys::NativeKind] == "callbackTable")
         symbol.properties["native.callbackTable"] = "true";
     graph_.AddSymbol(symbol);
 

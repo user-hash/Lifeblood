@@ -82,6 +82,7 @@ add_executable(lifeblood-native-clang
     src/NativeGraphFinalizer.h
     src/NativeGraphFacts.cpp
     src/NativeGraphFacts.h
+    src/NativeGraphPropertyKeys.h
     src/NativeGraphOwnershipIndex.cpp
     src/NativeGraphOwnershipIndex.h
     src/NativeModuleTracker.cpp
