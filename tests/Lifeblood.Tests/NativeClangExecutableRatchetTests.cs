@@ -207,6 +207,8 @@ public class NativeClangExecutableRatchetTests
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:decode_bias", "globalAccess");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:PacketKind.PacketKind_Video", "enumMember");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.kind", "fieldAccess");
+        AssertGlobalAccessCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
+        AssertGlobalAccessCounts(graph, "field:decode_bias", incoming: 1, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "direct-refs-debug");
     }
 
@@ -1097,6 +1099,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.callbackTargetOutCount", "0"));
+    }
+
+    private static void AssertGlobalAccessCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.globalAccessInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.globalAccessOutCount", "0"));
     }
 
     private static void AssertCrossFileDirectCallCounts(
