@@ -2,6 +2,7 @@
 
 #include "ClangCompilationDatabase.h"
 #include "ClangCompileCommandReader.h"
+#include "ClangIndex.h"
 #include "ClangSourceMapper.h"
 #include "ClangTranslationUnitParser.h"
 #include "NativeAstVisitor.h"
