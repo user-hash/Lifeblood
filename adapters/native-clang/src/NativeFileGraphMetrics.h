@@ -44,6 +44,8 @@ private:
         unsigned incomingGlobalAccessEdgeCount = 0;
         unsigned outgoingFieldAccessEdgeCount = 0;
         unsigned incomingFieldAccessEdgeCount = 0;
+        unsigned outgoingParameterTypeEdgeCount = 0;
+        unsigned incomingParameterTypeEdgeCount = 0;
         unsigned outgoingCallbackTargetEdgeCount = 0;
         unsigned incomingCallbackTargetEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;
