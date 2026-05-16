@@ -53,7 +53,11 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge)
 {
     counts.edgeCount++;
     if (edge.kind == "references")
+    {
         counts.referenceEdgeCount++;
+        if (HasReferenceKind(edge, "callbackTarget"))
+            counts.callbackTargetEdgeCount++;
+    }
     else if (edge.kind == "calls")
         counts.callEdgeCount++;
 }
@@ -79,6 +83,14 @@ bool NativeModuleGraphMetrics::HasNativeKind(
     return value != symbol.properties.end() && value->second == nativeKind;
 }
 
+bool NativeModuleGraphMetrics::HasReferenceKind(
+    const Edge& edge,
+    const std::string& referenceKind)
+{
+    auto value = edge.properties.find("native.referenceKind");
+    return value != edge.properties.end() && value->second == referenceKind;
+}
+
 void NativeModuleGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& symbol)
 {
     if (HasNativeKind(symbol, "macro"))
@@ -93,6 +105,8 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
     module.properties["native.edgeCount"] = std::to_string(counts.edgeCount);
     module.properties["native.referenceEdgeCount"] = std::to_string(counts.referenceEdgeCount);
     module.properties["native.callEdgeCount"] = std::to_string(counts.callEdgeCount);
+    module.properties["native.callbackTargetEdgeCount"] =
+        std::to_string(counts.callbackTargetEdgeCount);
     module.properties["native.functionDefinitionCount"] =
         std::to_string(counts.functionDefinitionCount);
     module.properties["native.functionDeclarationCount"] =
