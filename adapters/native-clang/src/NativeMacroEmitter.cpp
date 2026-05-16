@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "ClangUtilities.h"
 #include "NativeFileRegistry.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeSymbolIds.h"
 
@@ -56,8 +57,8 @@ void NativeMacroEmitter::AddMacroExpansion(CXCursor cursor)
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
-    edge.properties["native.referenceKind"] = "macroExpansion";
-    edge.properties["native.buildProfile"] = buildProfile_;
+    edge.properties[NativeGraphPropertyKeys::ReferenceKind] = "macroExpansion";
+    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);
 }
 
@@ -86,10 +87,10 @@ void NativeMacroEmitter::AddMacroSymbol(
     }
     symbol.visibility = "internal";
     symbol.isStatic = true;
-    symbol.properties["native.kind"] = "macro";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "macro";
     symbol.properties["native.macroSource"] = source;
     symbol.properties["native.macroValue"] = value;
-    symbol.properties["native.buildProfile"] = buildProfile_;
+    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
 }
 

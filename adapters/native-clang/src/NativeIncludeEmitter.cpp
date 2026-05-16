@@ -2,6 +2,7 @@
 
 #include "ClangSourceMapper.h"
 #include "NativeFileRegistry.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 
 #include <filesystem>
@@ -43,9 +44,9 @@ void NativeIncludeEmitter::AddInclude(CXCursor cursor)
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
     edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
-    edge.properties["native.kind"] = "include";
+    edge.properties[NativeGraphPropertyKeys::NativeKind] = "include";
     edge.properties["native.include"] = fs::path(*includedPath).filename().string();
-    edge.properties["native.buildProfile"] = buildProfile_;
+    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);
 }
 

@@ -1,6 +1,7 @@
 #include "NativeTypeEmitter.h"
 
 #include "ClangUtilities.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeSymbolIds.h"
 
 #include <utility>
@@ -38,9 +39,9 @@ bool NativeTypeEmitter::AddRecordType(CXCursor cursor, const std::string& native
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
     symbol.visibility = "public";
-    symbol.properties["native.kind"] = nativeKind;
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = nativeKind;
     symbol.properties["native.linkage"] = "none";
-    symbol.properties["native.buildProfile"] = buildProfile_;
+    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
     return true;
 }
@@ -63,10 +64,10 @@ bool NativeTypeEmitter::AddTypedefType(CXCursor cursor)
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
     symbol.visibility = "public";
-    symbol.properties["native.kind"] = "typedef";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "typedef";
     symbol.properties["native.underlyingType"] = NormalizeTypeForId(
         ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor))));
-    symbol.properties["native.buildProfile"] = buildProfile_;
+    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
 
     AddTypeReference(symbol.id, cursor, clang_getTypedefDeclUnderlyingType(cursor), "underlyingType");
@@ -94,8 +95,8 @@ void NativeTypeEmitter::AddTypeReference(
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(evidenceCursor, "semantic");
     edge.callSite = sourceMap_.CallSiteFor(evidenceCursor, sourceId);
-    edge.properties["native.referenceKind"] = referenceKind;
-    edge.properties["native.buildProfile"] = buildProfile_;
+    edge.properties[NativeGraphPropertyKeys::ReferenceKind] = referenceKind;
+    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);
 }
 

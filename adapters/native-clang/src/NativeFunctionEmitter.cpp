@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "ClangUtilities.h"
 #include "NativeFileRegistry.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
@@ -49,11 +50,12 @@ bool NativeFunctionEmitter::AddFunction(CXCursor cursor)
     symbol.parentId = "file:" + *file;
     symbol.visibility = storage == CX_SC_Static ? "private" : "public";
     symbol.isStatic = storage == CX_SC_Static;
-    symbol.properties["native.kind"] = "function";
-    symbol.properties["native.declarationKind"] = isDefinition ? "definition" : "declaration";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "function";
+    symbol.properties[NativeGraphPropertyKeys::DeclarationKind] =
+        isDefinition ? "definition" : "declaration";
     symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
     symbol.properties["native.signature"] = Signature(cursor);
-    symbol.properties["native.buildProfile"] = buildProfile_;
+    symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
 
     AddParameterTypeReferences(cursor, symbol.id);
@@ -70,7 +72,7 @@ bool NativeFunctionEmitter::ExistingDefinitionShouldWin(
     const Symbol* existing = graph_.FindSymbol(symbolId);
     if (existing == nullptr) return false;
 
-    auto it = existing->properties.find("native.declarationKind");
+    auto it = existing->properties.find(NativeGraphPropertyKeys::DeclarationKind);
     return it != existing->properties.end() && it->second == "definition";
 }
 

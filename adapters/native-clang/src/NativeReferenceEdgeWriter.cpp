@@ -1,6 +1,7 @@
 #include "NativeReferenceEdgeWriter.h"
 
 #include "ClangSourceMapper.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 
 #include <utility>
@@ -30,8 +31,8 @@ void NativeReferenceEdgeWriter::AddDirectCall(
     edge.kind = "calls";
     edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
     edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
-    edge.properties["native.callKind"] = "direct";
-    edge.properties["native.buildProfile"] = buildProfile_;
+    edge.properties[NativeGraphPropertyKeys::CallKind] = "direct";
+    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);
 }
 
@@ -62,15 +63,15 @@ void NativeReferenceEdgeWriter::AddReference(
     edge.kind = "references";
     edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
     edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
-    edge.properties["native.referenceKind"] = referenceKind;
-    edge.properties["native.buildProfile"] = buildProfile_;
+    edge.properties[NativeGraphPropertyKeys::ReferenceKind] = referenceKind;
+    edge.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddEdge(edge);
 }
 
 void NativeReferenceEdgeWriter::MarkCallbackTable(const std::string& symbolId)
 {
     graph_.UpdateSymbol(symbolId, [](Symbol& symbol) {
-        symbol.properties["native.kind"] = "callbackTable";
+        symbol.properties[NativeGraphPropertyKeys::NativeKind] = "callbackTable";
         symbol.properties["native.callbackTable"] = "true";
     });
 }
