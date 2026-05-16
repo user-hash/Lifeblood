@@ -91,7 +91,14 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(audio, "mod:profile-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(video, "mod:profile-c", translationUnits: 1, headers: 1);
         AssertModuleFileInventory(audio, "mod:profile-c", translationUnits: 1, headers: 1);
-        AssertTranslationUnitBuildInputs(video, "file:src/codec.c", defines: 2, undefines: 0);
+        AssertTranslationUnitBuildInputs(
+            video,
+            "file:src/codec.c",
+            defines: 2,
+            undefines: 0,
+            includePaths: 1,
+            systemIncludePaths: 1,
+            quoteIncludePaths: 1);
         AssertTranslationUnitBuildInputs(audio, "file:src/codec.c", defines: 2, undefines: 1);
         AssertModuleUndefines(audio, "mod:profile-c", "LEGACY_CODEC");
         AssertCall(video, "method:decode_video(Packet*)", "method:scale_video(int)");
@@ -496,6 +503,8 @@ public class NativeClangExecutableRatchetTests
         int defines,
         int undefines,
         int includePaths = 1,
+        int systemIncludePaths = 0,
+        int quoteIncludePaths = 0,
         string? languageStandard = null)
     {
         var file = graph.GetSymbol(fileId);
@@ -504,8 +513,12 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(defines.ToString(), file.Properties["native.commandLineDefineCount"]);
         Assert.Equal(undefines.ToString(), file.Properties["native.commandLineUndefineCount"]);
         Assert.Equal(includePaths.ToString(), file.Properties["native.includeSearchPathCount"]);
-        Assert.Equal("0", file.Properties["native.systemIncludeSearchPathCount"]);
-        Assert.Equal("0", file.Properties["native.quoteIncludeSearchPathCount"]);
+        Assert.Equal(
+            systemIncludePaths.ToString(),
+            file.Properties["native.systemIncludeSearchPathCount"]);
+        Assert.Equal(
+            quoteIncludePaths.ToString(),
+            file.Properties["native.quoteIncludeSearchPathCount"]);
         Assert.Equal("c", file.Properties["native.sourceLanguage"]);
         if (languageStandard is not null)
             Assert.Equal(languageStandard, file.Properties["native.languageStandard"]);
