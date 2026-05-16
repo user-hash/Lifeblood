@@ -27,7 +27,7 @@ void NativeModuleGraphMetrics::ObserveSymbol(
     counts.symbolCount++;
     NativeVisibilityCounter::Add(counts.visibility, symbol);
     AddFunctionDeclarationCount(counts, symbol);
-    AddNativeKindCounts(counts, symbol);
+    NativeKindInventory::AddSymbol(counts.nativeKinds, symbol);
     AddFileBucketDeclaredCount(counts, symbolId, symbol);
 }
 
@@ -91,28 +91,6 @@ void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const
         counts.functionDefinitionCount++;
 }
 
-void NativeModuleGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& symbol)
-{
-    if (NativeGraphFacts::HasNativeKind(symbol, "macro"))
-        counts.macroCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "global"))
-        counts.globalVariableCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
-        counts.callbackTableCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "struct"))
-        counts.structCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "union"))
-        counts.unionCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "enum"))
-        counts.enumCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "typedef"))
-        counts.typedefCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "structField"))
-        counts.structFieldCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "enumMember"))
-        counts.enumMemberCount++;
-}
-
 void NativeModuleGraphMetrics::AddFileBucketDeclaredCount(
     Counts& counts,
     const std::string& symbolId,
@@ -155,21 +133,11 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
         std::to_string(counts.functionDefinitionCount);
     module.properties["native.functionDeclarationCount"] =
         std::to_string(counts.functionDeclarationCount);
-    module.properties["native.macroCount"] = std::to_string(counts.macroCount);
-    module.properties["native.globalVariableCount"] =
-        std::to_string(counts.globalVariableCount);
     module.properties["native.headerDeclaredSymbolCount"] =
         std::to_string(counts.headerDeclaredSymbolCount);
     module.properties["native.translationUnitDeclaredSymbolCount"] =
         std::to_string(counts.translationUnitDeclaredSymbolCount);
-    module.properties["native.callbackTableCount"] =
-        std::to_string(counts.callbackTableCount);
-    module.properties["native.structCount"] = std::to_string(counts.structCount);
-    module.properties["native.unionCount"] = std::to_string(counts.unionCount);
-    module.properties["native.enumCount"] = std::to_string(counts.enumCount);
-    module.properties["native.typedefCount"] = std::to_string(counts.typedefCount);
-    module.properties["native.structFieldCount"] = std::to_string(counts.structFieldCount);
-    module.properties["native.enumMemberCount"] = std::to_string(counts.enumMemberCount);
+    NativeKindInventory::WriteModuleProperties(module, counts.nativeKinds);
     NativeVisibilityCounter::Write(
         module,
         counts.visibility,

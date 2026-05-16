@@ -4,6 +4,7 @@
 #include "NativeEdgeClassification.h"
 #include "NativeGraphFacts.h"
 #include "NativeGraphOwnershipIndex.h"
+#include "NativeKindInventory.h"
 #include "NativeVisibilityCounts.h"
 
 #include <map>
@@ -37,21 +38,12 @@ private:
         unsigned callbackTargetEdgeCount = 0;
         unsigned functionDefinitionCount = 0;
         unsigned functionDeclarationCount = 0;
-        unsigned macroCount = 0;
-        unsigned globalVariableCount = 0;
         unsigned headerDeclaredSymbolCount = 0;
         unsigned translationUnitDeclaredSymbolCount = 0;
-        unsigned callbackTableCount = 0;
-        unsigned structCount = 0;
-        unsigned unionCount = 0;
-        unsigned enumCount = 0;
-        unsigned typedefCount = 0;
-        unsigned structFieldCount = 0;
-        unsigned enumMemberCount = 0;
+        NativeKindInventoryCounts nativeKinds;
         NativeVisibilityCounts visibility;
     };
 
-    static void AddNativeKindCounts(Counts& counts, const Symbol& symbol);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
     void AddFileBucketDeclaredCount(
         Counts& counts,
