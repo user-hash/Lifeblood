@@ -164,7 +164,13 @@ public class NativeClangExecutableRatchetTests
             references: 11,
             calls: 0);
         AssertModuleNativeKindInventory(graph, "mod:callback-table-c", macros: 1, callbackTables: 1);
+        AssertModuleReferenceKindInventory(graph, "mod:callback-table-c", callbackTargets: 2);
         AssertFileNativeKindInventory(graph, "file:src/registry.c", macros: 0, callbackTables: 1);
+        AssertFileReferenceKindInventory(
+            graph,
+            "file:src/registry.c",
+            outgoingCallbackTargets: 2,
+            incomingCallbackTargets: 0);
         AssertReferenceKind(
             graph,
             "field:codec_table",
@@ -661,6 +667,16 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(callbackTables.ToString(), module.Properties["native.callbackTableCount"]);
     }
 
+    private static void AssertModuleReferenceKindInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int callbackTargets)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(callbackTargets.ToString(), module!.Properties["native.callbackTargetEdgeCount"]);
+    }
+
     private static void AssertFileNativeKindInventory(
         SemanticGraph graph,
         string fileId,
@@ -671,6 +687,22 @@ public class NativeClangExecutableRatchetTests
         Assert.NotNull(file);
         Assert.Equal(macros.ToString(), file!.Properties["native.fileMacroCount"]);
         Assert.Equal(callbackTables.ToString(), file.Properties["native.fileCallbackTableCount"]);
+    }
+
+    private static void AssertFileReferenceKindInventory(
+        SemanticGraph graph,
+        string fileId,
+        int outgoingCallbackTargets,
+        int incomingCallbackTargets)
+    {
+        var file = graph.GetSymbol(fileId);
+        Assert.NotNull(file);
+        Assert.Equal(
+            outgoingCallbackTargets.ToString(),
+            file!.Properties["native.fileOutgoingCallbackTargetEdgeCount"]);
+        Assert.Equal(
+            incomingCallbackTargets.ToString(),
+            file.Properties["native.fileIncomingCallbackTargetEdgeCount"]);
     }
 
     private static void AssertModuleUndefines(
@@ -765,6 +797,8 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             incomingReferences.ToString(),
             file.Properties["native.fileIncomingReferenceEdgeCount"]);
+        Assert.Equal("0", file.Properties["native.fileOutgoingCallbackTargetEdgeCount"]);
+        Assert.Equal("0", file.Properties["native.fileIncomingCallbackTargetEdgeCount"]);
         Assert.Equal(outgoingCalls.ToString(), file.Properties["native.fileOutgoingCallEdgeCount"]);
         Assert.Equal(incomingCalls.ToString(), file.Properties["native.fileIncomingCallEdgeCount"]);
         Assert.Equal(
