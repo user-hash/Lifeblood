@@ -153,7 +153,7 @@ public sealed class GraphBuilder
         // For each non-Contains edge between symbols in different files,
         // accumulate a file→file References edge with an edgeCount property.
         // Evidence: Inferred (derived truth, not primary).
-        DeriveFileEdges(dedupedEdges);
+        FileEdgeDeriver.AddDerivedFileEdges(_symbols, dedupedEdges);
 
         var sortedEdges = dedupedEdges.Values
             .OrderBy(e => e.SourceId, StringComparer.Ordinal)
@@ -164,67 +164,4 @@ public sealed class GraphBuilder
         return new SemanticGraph(sortedSymbols, sortedEdges);
     }
 
-    private void DeriveFileEdges(Dictionary<EdgeIdentityKey, Edge> dedupedEdges)
-    {
-        // Build symbolId → fileId reverse index using Symbol.FilePath.
-        // This is more accurate than walking ParentId for partial classes,
-        // where a type's ParentId points to one file but members live in others.
-        var symbolToFile = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var symbol in _symbols.Values)
-        {
-            if (symbol.Kind == SymbolKind.File)
-            {
-                symbolToFile[symbol.Id] = symbol.Id;
-            }
-            else if (!string.IsNullOrEmpty(symbol.FilePath))
-            {
-                var fileId = "file:" + symbol.FilePath.Replace('\\', '/');
-                if (_symbols.ContainsKey(fileId))
-                    symbolToFile[symbol.Id] = fileId;
-            }
-        }
-
-        // Accumulate cross-file edge counts
-        var fileEdgeCounts = new Dictionary<(string sourceFileId, string targetFileId), int>();
-        foreach (var edge in dedupedEdges.Values)
-        {
-            if (edge.Kind == EdgeKind.Contains) continue;
-
-            if (!symbolToFile.TryGetValue(edge.SourceId, out var srcFile)) continue;
-            if (!symbolToFile.TryGetValue(edge.TargetId, out var tgtFile)) continue;
-            if (string.Equals(srcFile, tgtFile, StringComparison.Ordinal)) continue;
-
-            var key = (srcFile, tgtFile);
-            fileEdgeCounts.TryGetValue(key, out var count);
-            fileEdgeCounts[key] = count + 1;
-        }
-
-        // Emit file-level References edges
-        foreach (var ((src, tgt), count) in fileEdgeCounts)
-        {
-            if (dedupedEdges.Values.Any(e =>
-                    e.SourceId == src &&
-                    e.TargetId == tgt &&
-                    e.Kind == EdgeKind.References))
-                continue;
-
-            var fileEdge = new Edge
-            {
-                SourceId = src,
-                TargetId = tgt,
-                Kind = EdgeKind.References,
-                Evidence = new Evidence
-                {
-                    Kind = EvidenceKind.Inferred,
-                    AdapterName = "GraphBuilder",
-                    Confidence = ConfidenceLevel.Proven,
-                },
-                Properties = new Dictionary<string, string>
-                {
-                    ["edgeCount"] = count.ToString(),
-                },
-            };
-            dedupedEdges.TryAdd(EdgeIdentity.KeyFor(fileEdge), fileEdge);
-        }
-    }
 }
