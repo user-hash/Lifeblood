@@ -87,6 +87,14 @@ void NativeModuleGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol&
         counts.macroCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
         counts.callbackTableCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "struct"))
+        counts.structCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "union"))
+        counts.unionCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "enum"))
+        counts.enumCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "typedef"))
+        counts.typedefCount++;
 }
 
 void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
@@ -107,6 +115,10 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
     module.properties["native.macroCount"] = std::to_string(counts.macroCount);
     module.properties["native.callbackTableCount"] =
         std::to_string(counts.callbackTableCount);
+    module.properties["native.structCount"] = std::to_string(counts.structCount);
+    module.properties["native.unionCount"] = std::to_string(counts.unionCount);
+    module.properties["native.enumCount"] = std::to_string(counts.enumCount);
+    module.properties["native.typedefCount"] = std::to_string(counts.typedefCount);
     NativeVisibilityCounter::Write(
         module,
         counts.visibility,

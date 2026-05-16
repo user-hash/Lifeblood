@@ -110,6 +110,14 @@ void NativeFileGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& s
         counts.macroCount++;
     if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
         counts.callbackTableCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "struct"))
+        counts.structCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "union"))
+        counts.unionCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "enum"))
+        counts.enumCount++;
+    if (NativeGraphFacts::HasNativeKind(symbol, "typedef"))
+        counts.typedefCount++;
 }
 
 void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
@@ -129,6 +137,10 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
     file.properties["native.fileMacroCount"] = std::to_string(counts.macroCount);
     file.properties["native.fileCallbackTableCount"] =
         std::to_string(counts.callbackTableCount);
+    file.properties["native.fileStructCount"] = std::to_string(counts.structCount);
+    file.properties["native.fileUnionCount"] = std::to_string(counts.unionCount);
+    file.properties["native.fileEnumCount"] = std::to_string(counts.enumCount);
+    file.properties["native.fileTypedefCount"] = std::to_string(counts.typedefCount);
     file.properties["native.fileOutgoingReferenceEdgeCount"] =
         std::to_string(counts.outgoingReferenceEdgeCount);
     file.properties["native.fileIncomingReferenceEdgeCount"] =
