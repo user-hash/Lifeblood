@@ -26,9 +26,12 @@ private:
         unsigned edgeCount = 0;
         unsigned referenceEdgeCount = 0;
         unsigned callEdgeCount = 0;
+        unsigned functionDefinitionCount = 0;
+        unsigned functionDeclarationCount = 0;
         NativeVisibilityCounts visibility;
     };
 
+    static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
     static void AddEdgeCount(Counts& counts, const Edge& edge);
     static void WriteCounts(Symbol& module, const Counts& counts);
 
