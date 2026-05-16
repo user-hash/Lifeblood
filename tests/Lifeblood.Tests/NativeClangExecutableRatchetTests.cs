@@ -30,6 +30,7 @@ public class NativeClangExecutableRatchetTests
         Assert.NotNull(graph.GetSymbol("method:clamp(int)"));
 
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
+        AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertEdge(graph, "file:src/decode.c", "file:src/packet.h", EdgeKind.References);
         AssertReferenceKind(graph, "method:decode(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.size", "fieldAccess");
@@ -64,6 +65,8 @@ public class NativeClangExecutableRatchetTests
 
         AssertModuleParseHealth(video, "mod:profile-c", total: 1, parsed: 1, failed: 0);
         AssertModuleParseHealth(audio, "mod:profile-c", total: 1, parsed: 1, failed: 0);
+        AssertModuleFileInventory(video, "mod:profile-c", translationUnits: 1, headers: 1);
+        AssertModuleFileInventory(audio, "mod:profile-c", translationUnits: 1, headers: 1);
         AssertCall(video, "method:decode_video(Packet*)", "method:scale_video(int)");
         AssertCall(audio, "method:decode_audio(Packet*)", "method:scale_audio(int)");
         AssertAllNativeFactsCarryBuildProfile(video, "video");
@@ -106,6 +109,7 @@ public class NativeClangExecutableRatchetTests
 
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:multi-tu-c", total: 2, parsed: 2, failed: 0);
+        AssertModuleFileInventory(graph, "mod:multi-tu-c", translationUnits: 2, headers: 1);
         AssertTranslationUnitHealth(graph, "file:src/audio.c", "parsed");
         AssertTranslationUnitHealth(graph, "file:src/video.c", "parsed");
 
@@ -133,6 +137,7 @@ public class NativeClangExecutableRatchetTests
 
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:partial-parse-c", total: 2, parsed: 1, failed: 1);
+        AssertModuleFileInventory(graph, "mod:partial-parse-c", translationUnits: 2, headers: 1);
         AssertTranslationUnitHealth(graph, "file:src/good.c", "parsed");
         AssertTranslationUnitHealth(graph, "file:src/missing.c", "failed");
         Assert.NotNull(graph.GetSymbol("method:decode_good(Packet*)"));
@@ -160,6 +165,7 @@ public class NativeClangExecutableRatchetTests
 
         Assert.Empty(GraphValidator.Validate(graph));
         AssertModuleParseHealth(graph, "mod:cross-tu-c", total: 2, parsed: 2, failed: 0);
+        AssertModuleFileInventory(graph, "mod:cross-tu-c", translationUnits: 2, headers: 1);
 
         var decodeAudio = graph.GetSymbol("method:decode_audio(Packet*)");
         Assert.NotNull(decodeAudio);
@@ -333,6 +339,18 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("0", file.Properties["native.warningDiagnosticCount"]);
         Assert.Equal("0", file.Properties["native.errorDiagnosticCount"]);
         Assert.Equal("0", file.Properties["native.fatalDiagnosticCount"]);
+    }
+
+    private static void AssertModuleFileInventory(
+        SemanticGraph graph,
+        string moduleId,
+        int translationUnits,
+        int headers)
+    {
+        var module = graph.GetSymbol(moduleId);
+        Assert.NotNull(module);
+        Assert.Equal(translationUnits.ToString(), module!.Properties["native.translationUnitFileCount"]);
+        Assert.Equal(headers.ToString(), module.Properties["native.headerFileCount"]);
     }
 
     private static string FindRepoRoot()

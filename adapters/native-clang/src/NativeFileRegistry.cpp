@@ -34,11 +34,16 @@ void NativeFileRegistry::EnsureFileSymbol(const std::string& relativePath)
     symbol.filePath = relativePath;
     symbol.parentId = moduleId_;
     symbol.visibility = "internal";
-    symbol.properties["native.kind"] = EndsWith(relativePath, ".h") || EndsWith(relativePath, ".hpp")
-        ? "header"
-        : "translationUnit";
+    const bool isHeader = EndsWith(relativePath, ".h") || EndsWith(relativePath, ".hpp");
+    symbol.properties["native.kind"] = isHeader ? "header" : "translationUnit";
     symbol.properties["native.buildProfile"] = buildProfile_;
     graph_.AddSymbol(symbol);
+
+    if (isHeader)
+        headerFileCount_++;
+    else
+        translationUnitFileCount_++;
+    UpdateModuleFileProperties();
 }
 
 void NativeFileRegistry::MarkTranslationUnitPending(const std::string& relativePath)
@@ -70,6 +75,15 @@ void NativeFileRegistry::UpdateTranslationUnitHealth(
         file.properties["native.warningDiagnosticCount"] = std::to_string(diagnostics.warningCount);
         file.properties["native.errorDiagnosticCount"] = std::to_string(diagnostics.errorCount);
         file.properties["native.fatalDiagnosticCount"] = std::to_string(diagnostics.fatalCount);
+    });
+}
+
+void NativeFileRegistry::UpdateModuleFileProperties()
+{
+    graph_.UpdateSymbol(moduleId_, [&](Symbol& module) {
+        module.properties["native.translationUnitFileCount"] =
+            std::to_string(translationUnitFileCount_);
+        module.properties["native.headerFileCount"] = std::to_string(headerFileCount_);
     });
 }
 }
