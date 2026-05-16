@@ -1,0 +1,45 @@
+#pragma once
+
+#include "GraphModel.h"
+#include "NativeGraphOwnershipIndex.h"
+#include "NativeVisibilityCounts.h"
+
+#include <map>
+
+namespace lifeblood::native_clang
+{
+class NativeFileGraphMetrics
+{
+public:
+    NativeFileGraphMetrics(
+        NativeGraph& graph,
+        const NativeGraphOwnershipIndex& ownership);
+
+    void ObserveSymbol(const std::string& symbolId, const Symbol& symbol);
+    void ObserveEdge(const Edge& edge);
+    void Write();
+
+private:
+    struct Counts
+    {
+        unsigned declaredSymbolCount = 0;
+        NativeVisibilityCounts declaredVisibility;
+        unsigned outgoingReferenceEdgeCount = 0;
+        unsigned incomingReferenceEdgeCount = 0;
+        unsigned outgoingCallEdgeCount = 0;
+        unsigned incomingCallEdgeCount = 0;
+        unsigned outgoingCrossFileCallEdgeCount = 0;
+        unsigned incomingCrossFileCallEdgeCount = 0;
+    };
+
+    void AddFileEdgeCount(const Edge& edge);
+    static void WriteFileCounts(Symbol& file, const Counts& counts);
+    void WriteCrossFileCallCounts(Symbol& symbol) const;
+
+    NativeGraph& graph_;
+    const NativeGraphOwnershipIndex& ownership_;
+    std::map<std::string, Counts> counts_;
+    std::map<std::string, unsigned> crossFileCallOutCounts_;
+    std::map<std::string, unsigned> crossFileCallInCounts_;
+};
+}
