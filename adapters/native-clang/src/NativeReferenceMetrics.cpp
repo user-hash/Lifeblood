@@ -11,6 +11,7 @@ void NativeReferenceMetrics::Clear()
     parameterTypeCounts_.Clear();
     enumMemberCounts_.Clear();
     fieldTypeCounts_.Clear();
+    underlyingTypeCounts_.Clear();
 }
 
 void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
@@ -30,6 +31,8 @@ void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
         RecordEnumMemberCounts(edge.sourceId, edge.targetId);
     if (reference.isFieldType)
         RecordFieldTypeCounts(edge.sourceId, edge.targetId);
+    if (reference.isUnderlyingType)
+        RecordUnderlyingTypeCounts(edge.sourceId, edge.targetId);
 }
 
 void NativeReferenceMetrics::RecordReferenceCounts(
@@ -81,6 +84,13 @@ void NativeReferenceMetrics::RecordFieldTypeCounts(
     fieldTypeCounts_.Record(sourceId, targetId);
 }
 
+void NativeReferenceMetrics::RecordUnderlyingTypeCounts(
+    const std::string& sourceId,
+    const std::string& targetId)
+{
+    underlyingTypeCounts_.Record(sourceId, targetId);
+}
+
 void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
 {
     referenceCounts_.Decorate(
@@ -111,5 +121,9 @@ void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
         symbol,
         "native.fieldTypeInCount",
         "native.fieldTypeOutCount");
+    underlyingTypeCounts_.Decorate(
+        symbol,
+        "native.underlyingTypeInCount",
+        "native.underlyingTypeOutCount");
 }
 }
