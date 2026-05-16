@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphModel.h"
+#include "NativeModuleGraphMetrics.h"
 #include "NativeGraphOwnershipIndex.h"
 #include "NativeVisibilityCounts.h"
 
@@ -15,15 +16,6 @@ public:
     void Finalize(NativeGraph& graph) const;
 
 private:
-    struct ModuleCounts
-    {
-        unsigned symbolCount = 0;
-        unsigned edgeCount = 0;
-        unsigned referenceEdgeCount = 0;
-        unsigned callEdgeCount = 0;
-        NativeVisibilityCounts visibility;
-    };
-
     struct FileCounts
     {
         unsigned declaredSymbolCount = 0;
@@ -36,8 +28,6 @@ private:
         unsigned incomingCrossFileCallEdgeCount = 0;
     };
 
-    static void AddEdgeCount(ModuleCounts& counts, const Edge& edge);
-    static void WriteModuleCounts(Symbol& module, const ModuleCounts& counts);
     static void AddFileEdgeCount(
         std::map<std::string, FileCounts>& fileCounts,
         const NativeGraphOwnershipIndex& ownership,
