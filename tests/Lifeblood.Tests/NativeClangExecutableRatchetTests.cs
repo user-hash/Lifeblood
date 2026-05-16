@@ -91,6 +91,8 @@ public class NativeClangExecutableRatchetTests
         AssertReferenceKind(graph, "method:decode(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode(Packet*)", "field:Packet.size", "fieldAccess");
         AssertCall(graph, "method:decode(Packet*)", "method:clamp(int)");
+        AssertSameFileDirectCallCounts(graph, "method:decode(Packet*)", incoming: 0, outgoing: 1);
+        AssertSameFileDirectCallCounts(graph, "method:clamp(int)", incoming: 1, outgoing: 0);
         AssertAllNativeFactsCarryBuildProfile(graph, "tiny-debug");
     }
 
@@ -355,6 +357,10 @@ public class NativeClangExecutableRatchetTests
         AssertDirectCallCounts(graph, "method:audio_gain(int)", incoming: 1, outgoing: 0);
         AssertDirectCallCounts(graph, "method:decode_video(Packet*)", incoming: 0, outgoing: 1);
         AssertDirectCallCounts(graph, "method:video_scale(int)", incoming: 1, outgoing: 0);
+        AssertSameFileDirectCallCounts(graph, "method:decode_audio(Packet*)", incoming: 0, outgoing: 1);
+        AssertSameFileDirectCallCounts(graph, "method:audio_gain(int)", incoming: 1, outgoing: 0);
+        AssertSameFileDirectCallCounts(graph, "method:decode_video(Packet*)", incoming: 0, outgoing: 1);
+        AssertSameFileDirectCallCounts(graph, "method:video_scale(int)", incoming: 1, outgoing: 0);
         AssertReferenceKind(graph, "method:decode_audio(Packet*)", "type:Packet", "parameterType");
         AssertReferenceKind(graph, "method:decode_video(Packet*)", "type:Packet", "parameterType");
         AssertAllNativeFactsCarryBuildProfile(graph, "multi-debug");
@@ -1088,6 +1094,22 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             outgoing.ToString(),
             symbol.Properties.GetValueOrDefault("native.crossFileDirectCallOutCount", "0"));
+    }
+
+    private static void AssertSameFileDirectCallCounts(
+        SemanticGraph graph,
+        string symbolId,
+        int incoming,
+        int outgoing)
+    {
+        var symbol = graph.GetSymbol(symbolId);
+        Assert.NotNull(symbol);
+        Assert.Equal(
+            incoming.ToString(),
+            symbol!.Properties.GetValueOrDefault("native.sameFileDirectCallInCount", "0"));
+        Assert.Equal(
+            outgoing.ToString(),
+            symbol.Properties.GetValueOrDefault("native.sameFileDirectCallOutCount", "0"));
     }
 
     private static string FindRepoRoot()
