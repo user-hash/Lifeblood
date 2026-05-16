@@ -2,170 +2,125 @@
 
 namespace lifeblood::native_clang
 {
+NativeReferenceMetrics::NativeReferenceMetrics()
+    : metrics_{{
+        {
+            MetricKind::Reference,
+            "native.referenceInCount",
+            "native.referenceOutCount",
+        },
+        {
+            MetricKind::CallbackTarget,
+            "native.callbackTargetInCount",
+            "native.callbackTargetOutCount",
+        },
+        {
+            MetricKind::GlobalAccess,
+            "native.globalAccessInCount",
+            "native.globalAccessOutCount",
+        },
+        {
+            MetricKind::FieldAccess,
+            "native.fieldAccessInCount",
+            "native.fieldAccessOutCount",
+        },
+        {
+            MetricKind::ParameterType,
+            "native.parameterTypeInCount",
+            "native.parameterTypeOutCount",
+        },
+        {
+            MetricKind::EnumMember,
+            "native.enumMemberInCount",
+            "native.enumMemberOutCount",
+        },
+        {
+            MetricKind::FieldType,
+            "native.fieldTypeInCount",
+            "native.fieldTypeOutCount",
+        },
+        {
+            MetricKind::UnderlyingType,
+            "native.underlyingTypeInCount",
+            "native.underlyingTypeOutCount",
+        },
+        {
+            MetricKind::GlobalType,
+            "native.globalTypeInCount",
+            "native.globalTypeOutCount",
+        },
+        {
+            MetricKind::ReturnType,
+            "native.returnTypeInCount",
+            "native.returnTypeOutCount",
+        },
+        {
+            MetricKind::TypeReference,
+            "native.typeReferenceInCount",
+            "native.typeReferenceOutCount",
+        },
+    }}
+{
+}
+
 void NativeReferenceMetrics::Clear()
 {
-    referenceCounts_.Clear();
-    callbackTargetCounts_.Clear();
-    globalAccessCounts_.Clear();
-    fieldAccessCounts_.Clear();
-    parameterTypeCounts_.Clear();
-    enumMemberCounts_.Clear();
-    fieldTypeCounts_.Clear();
-    underlyingTypeCounts_.Clear();
-    globalTypeCounts_.Clear();
-    returnTypeCounts_.Clear();
-    typeReferenceCounts_.Clear();
+    for (auto& metric : metrics_)
+        metric.counts.Clear();
 }
 
 void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
 {
-    RecordReferenceCounts(edge.sourceId, edge.targetId);
-
     auto reference = NativeEdgeClassification::Reference(edge);
-    if (reference.isCallbackTarget)
-        RecordCallbackTargetCounts(edge.sourceId, edge.targetId);
-    if (reference.isGlobalAccess)
-        RecordGlobalAccessCounts(edge.sourceId, edge.targetId);
-    if (reference.isFieldAccess)
-        RecordFieldAccessCounts(edge.sourceId, edge.targetId);
-    if (reference.isParameterType)
-        RecordParameterTypeCounts(edge.sourceId, edge.targetId);
-    if (reference.isEnumMember)
-        RecordEnumMemberCounts(edge.sourceId, edge.targetId);
-    if (reference.isFieldType)
-        RecordFieldTypeCounts(edge.sourceId, edge.targetId);
-    if (reference.isUnderlyingType)
-        RecordUnderlyingTypeCounts(edge.sourceId, edge.targetId);
-    if (reference.isGlobalType)
-        RecordGlobalTypeCounts(edge.sourceId, edge.targetId);
-    if (reference.isReturnType)
-        RecordReturnTypeCounts(edge.sourceId, edge.targetId);
-    if (reference.IsTypeReference())
-        RecordTypeReferenceCounts(edge.sourceId, edge.targetId);
-}
 
-void NativeReferenceMetrics::RecordReferenceCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    referenceCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordCallbackTargetCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    callbackTargetCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordGlobalAccessCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    globalAccessCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordFieldAccessCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    fieldAccessCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordParameterTypeCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    parameterTypeCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordEnumMemberCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    enumMemberCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordFieldTypeCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    fieldTypeCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordUnderlyingTypeCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    underlyingTypeCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordGlobalTypeCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    globalTypeCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordReturnTypeCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    returnTypeCounts_.Record(sourceId, targetId);
-}
-
-void NativeReferenceMetrics::RecordTypeReferenceCounts(
-    const std::string& sourceId,
-    const std::string& targetId)
-{
-    typeReferenceCounts_.Record(sourceId, targetId);
+    for (auto& metric : metrics_)
+    {
+        if (ShouldRecord(metric.kind, reference))
+            metric.counts.Record(edge.sourceId, edge.targetId);
+    }
 }
 
 void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
 {
-    referenceCounts_.Decorate(
-        symbol,
-        "native.referenceInCount",
-        "native.referenceOutCount");
-    callbackTargetCounts_.Decorate(
-        symbol,
-        "native.callbackTargetInCount",
-        "native.callbackTargetOutCount");
-    globalAccessCounts_.Decorate(
-        symbol,
-        "native.globalAccessInCount",
-        "native.globalAccessOutCount");
-    fieldAccessCounts_.Decorate(
-        symbol,
-        "native.fieldAccessInCount",
-        "native.fieldAccessOutCount");
-    parameterTypeCounts_.Decorate(
-        symbol,
-        "native.parameterTypeInCount",
-        "native.parameterTypeOutCount");
-    enumMemberCounts_.Decorate(
-        symbol,
-        "native.enumMemberInCount",
-        "native.enumMemberOutCount");
-    fieldTypeCounts_.Decorate(
-        symbol,
-        "native.fieldTypeInCount",
-        "native.fieldTypeOutCount");
-    underlyingTypeCounts_.Decorate(
-        symbol,
-        "native.underlyingTypeInCount",
-        "native.underlyingTypeOutCount");
-    globalTypeCounts_.Decorate(
-        symbol,
-        "native.globalTypeInCount",
-        "native.globalTypeOutCount");
-    returnTypeCounts_.Decorate(
-        symbol,
-        "native.returnTypeInCount",
-        "native.returnTypeOutCount");
-    typeReferenceCounts_.Decorate(
-        symbol,
-        "native.typeReferenceInCount",
-        "native.typeReferenceOutCount");
+    for (const auto& metric : metrics_)
+    {
+        metric.counts.Decorate(
+            symbol,
+            metric.incomingProperty,
+            metric.outgoingProperty);
+    }
+}
+
+bool NativeReferenceMetrics::ShouldRecord(
+    MetricKind metric,
+    const NativeReferenceEdgeClassification& reference)
+{
+    switch (metric)
+    {
+    case MetricKind::Reference:
+        return reference.isReference;
+    case MetricKind::CallbackTarget:
+        return reference.isCallbackTarget;
+    case MetricKind::GlobalAccess:
+        return reference.isGlobalAccess;
+    case MetricKind::FieldAccess:
+        return reference.isFieldAccess;
+    case MetricKind::ParameterType:
+        return reference.isParameterType;
+    case MetricKind::EnumMember:
+        return reference.isEnumMember;
+    case MetricKind::FieldType:
+        return reference.isFieldType;
+    case MetricKind::UnderlyingType:
+        return reference.isUnderlyingType;
+    case MetricKind::GlobalType:
+        return reference.isGlobalType;
+    case MetricKind::ReturnType:
+        return reference.isReturnType;
+    case MetricKind::TypeReference:
+        return reference.IsTypeReference();
+    }
+
+    return false;
 }
 }

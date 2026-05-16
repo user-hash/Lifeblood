@@ -4,40 +4,47 @@
 #include "NativeDirectionalSymbolCounts.h"
 #include "NativeEdgeClassification.h"
 
-#include <string>
+#include <array>
 
 namespace lifeblood::native_clang
 {
 class NativeReferenceMetrics
 {
 public:
+    NativeReferenceMetrics();
+
     void Clear();
     void RecordAcceptedReference(const Edge& edge);
     void DecorateSymbol(Symbol& symbol) const;
 
 private:
-    void RecordReferenceCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordCallbackTargetCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordGlobalAccessCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordFieldAccessCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordParameterTypeCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordEnumMemberCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordFieldTypeCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordUnderlyingTypeCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordGlobalTypeCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordReturnTypeCounts(const std::string& sourceId, const std::string& targetId);
-    void RecordTypeReferenceCounts(const std::string& sourceId, const std::string& targetId);
+    enum class MetricKind
+    {
+        Reference,
+        CallbackTarget,
+        GlobalAccess,
+        FieldAccess,
+        ParameterType,
+        EnumMember,
+        FieldType,
+        UnderlyingType,
+        GlobalType,
+        ReturnType,
+        TypeReference
+    };
 
-    NativeDirectionalSymbolCounts referenceCounts_;
-    NativeDirectionalSymbolCounts callbackTargetCounts_;
-    NativeDirectionalSymbolCounts globalAccessCounts_;
-    NativeDirectionalSymbolCounts fieldAccessCounts_;
-    NativeDirectionalSymbolCounts parameterTypeCounts_;
-    NativeDirectionalSymbolCounts enumMemberCounts_;
-    NativeDirectionalSymbolCounts fieldTypeCounts_;
-    NativeDirectionalSymbolCounts underlyingTypeCounts_;
-    NativeDirectionalSymbolCounts globalTypeCounts_;
-    NativeDirectionalSymbolCounts returnTypeCounts_;
-    NativeDirectionalSymbolCounts typeReferenceCounts_;
+    struct MetricCounter
+    {
+        MetricKind kind;
+        const char* incomingProperty;
+        const char* outgoingProperty;
+        NativeDirectionalSymbolCounts counts;
+    };
+
+    static bool ShouldRecord(
+        MetricKind metric,
+        const NativeReferenceEdgeClassification& reference);
+
+    std::array<MetricCounter, 11> metrics_;
 };
 }
