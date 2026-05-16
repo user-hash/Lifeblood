@@ -28,7 +28,7 @@
   color: var(--text); padding: 24px;
   }
   .frame {
-  max-width: 1400px; margin: 0 auto;
+  max-width: 1800px; margin: 0 auto;
   border: 1px solid var(--border); border-radius: 24px;
   background: rgba(12,18,34,0.9); overflow: hidden;
   }
@@ -46,13 +46,22 @@
 
   .columns {
   display: grid;
-  grid-template-columns: 280px 1fr 280px;
+  grid-template-columns: 320px 1fr 640px;
   gap: 0;
   min-height: 800px;
   }
   .col { padding: 20px; }
   .col:first-child { border-right: 2px dashed oklch(0.72 0.12 230 / 0.2); }
   .col:last-child { border-left: 2px dashed oklch(0.68 0.18 290 / 0.2); }
+  .col-multi {
+  column-count: 2;
+  column-gap: 14px;
+  }
+  .col-multi > .card {
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  }
   .col-label {
   font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--muted); margin-bottom: 16px; text-align: center;
@@ -313,6 +322,7 @@
   <div class="col">
   <div class="col-label" style="color: var(--accent-2);">Right side. AI Connectors</div>
 
+  <div class="col-multi">
   <div class="card">
   <h3>AI Connectors <span style="font-size:9px; color:var(--accent-2); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
   <p>Right-side connectors expose semantic truth to AI agents and tools.</p>
@@ -350,6 +360,7 @@
   <div class="item"><strong>Golden repos</strong><small>C# (HexagonalApp, CycleRepo), TS (mini-app), Python (mini-app). Assert specific types + edges.</small></div>
   <div class="item"><strong>Self-dogfood</strong><small>Every push: analyze own codebase, validate rules, export graph, cross-language proof.</small></div>
   <div class="item"><strong>Architecture invariant tests</strong><small>Domain zero deps, Application→Domain only, no adapter↔adapter, no connector→adapter.</small></div>
+  </div>
   </div>
   </div>
   </div>
