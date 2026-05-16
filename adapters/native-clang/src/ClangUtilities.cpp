@@ -67,6 +67,29 @@ CXType StripPointers(CXType type)
     return type;
 }
 
+CXType StripTypeShells(CXType type)
+{
+    while (true)
+    {
+        if (type.kind == CXType_Pointer)
+        {
+            type = clang_getPointeeType(type);
+            continue;
+        }
+
+        if (type.kind == CXType_ConstantArray ||
+            type.kind == CXType_IncompleteArray ||
+            type.kind == CXType_VariableArray ||
+            type.kind == CXType_DependentSizedArray)
+        {
+            type = clang_getArrayElementType(type);
+            continue;
+        }
+
+        return type;
+    }
+}
+
 bool EndsWith(const std::string& value, const std::string& suffix)
 {
     return value.size() >= suffix.size() &&

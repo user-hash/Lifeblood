@@ -24,6 +24,7 @@ private:
     void RecordEnumMemberCounts(const std::string& sourceId, const std::string& targetId);
     void RecordFieldTypeCounts(const std::string& sourceId, const std::string& targetId);
     void RecordUnderlyingTypeCounts(const std::string& sourceId, const std::string& targetId);
+    void RecordGlobalTypeCounts(const std::string& sourceId, const std::string& targetId);
 
     NativeDirectionalSymbolCounts referenceCounts_;
     NativeDirectionalSymbolCounts callbackTargetCounts_;
@@ -33,5 +34,6 @@ private:
     NativeDirectionalSymbolCounts enumMemberCounts_;
     NativeDirectionalSymbolCounts fieldTypeCounts_;
     NativeDirectionalSymbolCounts underlyingTypeCounts_;
+    NativeDirectionalSymbolCounts globalTypeCounts_;
 };
 }
