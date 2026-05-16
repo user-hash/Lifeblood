@@ -19,5 +19,10 @@ struct NativeCompileCommand
     std::vector<std::string> parseArguments;
     std::vector<CommandLineDefine> defines;
     std::vector<std::string> undefines;
+    unsigned includeSearchPathCount = 0;
+    unsigned systemIncludeSearchPathCount = 0;
+    unsigned quoteIncludeSearchPathCount = 0;
+    std::string languageStandard;
+    std::string sourceLanguage;
 };
 }

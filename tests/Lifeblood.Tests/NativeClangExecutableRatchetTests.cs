@@ -32,6 +32,13 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:tiny-c", total: 1, parsed: 1, failed: 0);
         AssertModuleFileInventory(graph, "mod:tiny-c", translationUnits: 1, headers: 1);
         AssertModuleGraphInventory(graph, "mod:tiny-c", symbols: 7, edges: 4, references: 3, calls: 1);
+        AssertTranslationUnitBuildInputs(
+            graph,
+            "file:src/decode.c",
+            defines: 0,
+            undefines: 0,
+            includePaths: 1,
+            languageStandard: "c11");
         AssertFilePressure(
             graph,
             "file:src/decode.c",
@@ -432,13 +439,21 @@ public class NativeClangExecutableRatchetTests
         SemanticGraph graph,
         string fileId,
         int defines,
-        int undefines)
+        int undefines,
+        int includePaths = 1,
+        string? languageStandard = null)
     {
         var file = graph.GetSymbol(fileId);
         Assert.NotNull(file);
         Assert.True(int.Parse(file!.Properties["native.parseArgumentCount"]) > 0);
         Assert.Equal(defines.ToString(), file.Properties["native.commandLineDefineCount"]);
         Assert.Equal(undefines.ToString(), file.Properties["native.commandLineUndefineCount"]);
+        Assert.Equal(includePaths.ToString(), file.Properties["native.includeSearchPathCount"]);
+        Assert.Equal("0", file.Properties["native.systemIncludeSearchPathCount"]);
+        Assert.Equal("0", file.Properties["native.quoteIncludeSearchPathCount"]);
+        Assert.Equal("c", file.Properties["native.sourceLanguage"]);
+        if (languageStandard is not null)
+            Assert.Equal(languageStandard, file.Properties["native.languageStandard"]);
     }
 
     private static void AssertModuleFileInventory(

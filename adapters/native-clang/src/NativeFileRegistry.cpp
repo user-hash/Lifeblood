@@ -58,6 +58,15 @@ void NativeFileRegistry::MarkTranslationUnitPending(
             std::to_string(command.defines.size());
         file.properties["native.commandLineUndefineCount"] =
             std::to_string(command.undefines.size());
+        file.properties["native.includeSearchPathCount"] =
+            std::to_string(command.includeSearchPathCount);
+        file.properties["native.systemIncludeSearchPathCount"] =
+            std::to_string(command.systemIncludeSearchPathCount);
+        file.properties["native.quoteIncludeSearchPathCount"] =
+            std::to_string(command.quoteIncludeSearchPathCount);
+        file.properties["native.sourceLanguage"] = command.sourceLanguage;
+        if (!command.languageStandard.empty())
+            file.properties["native.languageStandard"] = command.languageStandard;
     });
 }
 

@@ -1,5 +1,6 @@
 #include "ClangCompileCommandReader.h"
 
+#include "ClangBuildArgumentFactsCollector.h"
 #include "ClangCommandLineMacroCollector.h"
 #include "ClangParseArgumentBuilder.h"
 #include "ClangUtilities.h"
@@ -33,6 +34,7 @@ NativeCompileCommand ClangCompileCommandReader::Read(CXCompileCommand command) c
         result.sourcePath,
         result.directory);
     ClangCommandLineMacroCollector().Collect(command, result);
+    ClangBuildArgumentFactsCollector().Collect(result);
     return result;
 }
 }
