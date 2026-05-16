@@ -61,6 +61,8 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) co
             counts.globalAccessEdgeCount++;
         if (NativeGraphFacts::HasReferenceKind(edge, "fieldAccess"))
             counts.fieldAccessEdgeCount++;
+        if (NativeGraphFacts::HasReferenceKind(edge, "parameterType"))
+            counts.parameterTypeEdgeCount++;
         if (NativeGraphFacts::HasReferenceKind(edge, "callbackTarget"))
             counts.callbackTargetEdgeCount++;
     }
@@ -120,6 +122,8 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
         std::to_string(counts.globalAccessEdgeCount);
     module.properties["native.fieldAccessEdgeCount"] =
         std::to_string(counts.fieldAccessEdgeCount);
+    module.properties["native.parameterTypeEdgeCount"] =
+        std::to_string(counts.parameterTypeEdgeCount);
     module.properties["native.callbackTargetEdgeCount"] =
         std::to_string(counts.callbackTargetEdgeCount);
     module.properties["native.functionDefinitionCount"] =

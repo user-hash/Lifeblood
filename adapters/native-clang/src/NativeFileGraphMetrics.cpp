@@ -84,6 +84,14 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
                 counts_[*targetFileId].incomingFieldAccessEdgeCount++;
         }
 
+        if (NativeGraphFacts::HasReferenceKind(edge, "parameterType"))
+        {
+            if (sourceFileId)
+                counts_[*sourceFileId].outgoingParameterTypeEdgeCount++;
+            if (targetFileId)
+                counts_[*targetFileId].incomingParameterTypeEdgeCount++;
+        }
+
         if (NativeGraphFacts::HasReferenceKind(edge, "callbackTarget"))
         {
             if (sourceFileId)
@@ -185,6 +193,10 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
         std::to_string(counts.outgoingFieldAccessEdgeCount);
     file.properties["native.fileIncomingFieldAccessEdgeCount"] =
         std::to_string(counts.incomingFieldAccessEdgeCount);
+    file.properties["native.fileOutgoingParameterTypeEdgeCount"] =
+        std::to_string(counts.outgoingParameterTypeEdgeCount);
+    file.properties["native.fileIncomingParameterTypeEdgeCount"] =
+        std::to_string(counts.incomingParameterTypeEdgeCount);
     file.properties["native.fileOutgoingCallbackTargetEdgeCount"] =
         std::to_string(counts.outgoingCallbackTargetEdgeCount);
     file.properties["native.fileIncomingCallbackTargetEdgeCount"] =

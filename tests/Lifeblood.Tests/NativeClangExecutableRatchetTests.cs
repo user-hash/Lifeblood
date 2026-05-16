@@ -166,7 +166,8 @@ public class NativeClangExecutableRatchetTests
             "mod:direct-refs-c",
             callbackTargets: 0,
             globalAccesses: 1,
-            fieldAccesses: 2);
+            fieldAccesses: 2,
+            parameterTypes: 1);
         AssertFileNativeKindInventory(graph, "file:src/decode.c", macros: 0, globals: 1, callbackTables: 0);
         AssertFileReferenceKindInventory(
             graph,
@@ -176,7 +177,9 @@ public class NativeClangExecutableRatchetTests
             outgoingGlobalAccesses: 1,
             incomingGlobalAccesses: 1,
             outgoingFieldAccesses: 2,
-            incomingFieldAccesses: 0);
+            incomingFieldAccesses: 0,
+            outgoingParameterTypes: 1,
+            incomingParameterTypes: 0);
         AssertFileReferenceKindInventory(
             graph,
             "file:src/packet.h",
@@ -185,7 +188,9 @@ public class NativeClangExecutableRatchetTests
             outgoingGlobalAccesses: 0,
             incomingGlobalAccesses: 0,
             outgoingFieldAccesses: 0,
-            incomingFieldAccesses: 2);
+            incomingFieldAccesses: 2,
+            outgoingParameterTypes: 0,
+            incomingParameterTypes: 1);
         AssertModuleTypeInventory(graph, "mod:direct-refs-c", structs: 1, unions: 0, enums: 1, typedefs: 1);
         AssertModuleFieldInventory(graph, "mod:direct-refs-c", structFields: 2, enumMembers: 2);
         AssertFileFieldInventory(graph, "file:src/packet.h", structFields: 2, enumMembers: 2);
@@ -225,7 +230,8 @@ public class NativeClangExecutableRatchetTests
             "mod:callback-table-c",
             callbackTargets: 2,
             globalAccesses: 1,
-            fieldAccesses: 3);
+            fieldAccesses: 3,
+            parameterTypes: 3);
         AssertFileNativeKindInventory(graph, "file:src/registry.c", macros: 0, callbackTables: 1);
         AssertFileReferenceKindInventory(
             graph,
@@ -235,7 +241,9 @@ public class NativeClangExecutableRatchetTests
             outgoingGlobalAccesses: 1,
             incomingGlobalAccesses: 1,
             outgoingFieldAccesses: 3,
-            incomingFieldAccesses: 0);
+            incomingFieldAccesses: 0,
+            outgoingParameterTypes: 3,
+            incomingParameterTypes: 0);
         AssertReferenceKind(
             graph,
             "field:codec_table",
@@ -825,13 +833,15 @@ public class NativeClangExecutableRatchetTests
         string moduleId,
         int callbackTargets,
         int globalAccesses,
-        int fieldAccesses)
+        int fieldAccesses,
+        int parameterTypes = 0)
     {
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
         Assert.Equal(callbackTargets.ToString(), module!.Properties["native.callbackTargetEdgeCount"]);
         Assert.Equal(globalAccesses.ToString(), module.Properties["native.globalAccessEdgeCount"]);
         Assert.Equal(fieldAccesses.ToString(), module.Properties["native.fieldAccessEdgeCount"]);
+        Assert.Equal(parameterTypes.ToString(), module.Properties["native.parameterTypeEdgeCount"]);
     }
 
     private static void AssertFileNativeKindInventory(
@@ -856,7 +866,9 @@ public class NativeClangExecutableRatchetTests
         int outgoingGlobalAccesses = 0,
         int incomingGlobalAccesses = 0,
         int outgoingFieldAccesses = 0,
-        int incomingFieldAccesses = 0)
+        int incomingFieldAccesses = 0,
+        int outgoingParameterTypes = 0,
+        int incomingParameterTypes = 0)
     {
         var file = graph.GetSymbol(fileId);
         Assert.NotNull(file);
@@ -878,6 +890,12 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal(
             incomingFieldAccesses.ToString(),
             file.Properties["native.fileIncomingFieldAccessEdgeCount"]);
+        Assert.Equal(
+            outgoingParameterTypes.ToString(),
+            file.Properties["native.fileOutgoingParameterTypeEdgeCount"]);
+        Assert.Equal(
+            incomingParameterTypes.ToString(),
+            file.Properties["native.fileIncomingParameterTypeEdgeCount"]);
     }
 
     private static void AssertModuleUndefines(
@@ -987,6 +1005,8 @@ public class NativeClangExecutableRatchetTests
         Assert.Equal("0", file.Properties["native.fileIncomingGlobalAccessEdgeCount"]);
         Assert.True(file.Properties.ContainsKey("native.fileOutgoingFieldAccessEdgeCount"));
         Assert.True(file.Properties.ContainsKey("native.fileIncomingFieldAccessEdgeCount"));
+        Assert.True(file.Properties.ContainsKey("native.fileOutgoingParameterTypeEdgeCount"));
+        Assert.True(file.Properties.ContainsKey("native.fileIncomingParameterTypeEdgeCount"));
         Assert.Equal("0", file.Properties["native.fileOutgoingCallbackTargetEdgeCount"]);
         Assert.Equal("0", file.Properties["native.fileIncomingCallbackTargetEdgeCount"]);
         Assert.Equal(outgoingCalls.ToString(), file.Properties["native.fileOutgoingCallEdgeCount"]);
