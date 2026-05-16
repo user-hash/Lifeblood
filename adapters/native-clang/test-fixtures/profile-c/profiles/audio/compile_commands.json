@@ -5,6 +5,8 @@
       "clang",
       "-DENABLE_AUDIO=1",
       "-DPROFILE_NAME=audio",
+      "-U",
+      "LEGACY_CODEC",
       "-I",
       "src",
       "-c",
