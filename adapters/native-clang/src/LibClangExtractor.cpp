@@ -2,6 +2,8 @@
 #include "ClangCompileCommandReader.h"
 #include "ClangSourceMapper.h"
 #include "LibClangExtractor.h"
+#include "NativeDeclarationEmitter.h"
+#include "NativeFileRegistry.h"
 #include "NativeGraphBuilder.h"
 #include "NativeGraphSink.h"
 #include "NativeModuleTracker.h"
@@ -48,7 +50,9 @@ public:
           commandReader_(compilationDatabaseDir_),
           sourceMap_(projectRoot_),
           graph_(graph),
-          module_(BaseName(projectRoot_), options_.profile, graph_)
+          module_(BaseName(projectRoot_), options_.profile, graph_),
+          files_(module_.ModuleName(), module_.ModuleId(), options_.profile, graph_),
+          declarations_(options_.profile, graph_, sourceMap_, files_)
     {
     }
 
@@ -187,25 +191,25 @@ private:
                 ProcessMacroExpansion(cursor);
                 break;
             case CXCursor_StructDecl:
-                if (AddRecordType(cursor, "struct"))
+                if (declarations_.AddRecordType(cursor, "struct"))
                     state.currentTypeId = TypeId(cursor);
                 break;
             case CXCursor_UnionDecl:
-                if (AddRecordType(cursor, "union"))
+                if (declarations_.AddRecordType(cursor, "union"))
                     state.currentTypeId = TypeId(cursor);
                 break;
             case CXCursor_EnumDecl:
-                if (AddRecordType(cursor, "enum"))
+                if (declarations_.AddRecordType(cursor, "enum"))
                     state.currentTypeId = TypeId(cursor);
                 break;
             case CXCursor_EnumConstantDecl:
                 ProcessEnumConstant(cursor, state);
                 break;
             case CXCursor_TypedefDecl:
-                AddTypedefType(cursor);
+                declarations_.AddTypedefType(cursor);
                 break;
             case CXCursor_FieldDecl:
-                ProcessField(cursor, state);
+                declarations_.AddField(cursor, state.currentTypeId);
                 break;
             case CXCursor_VarDecl:
             {
@@ -215,7 +219,7 @@ private:
                 break;
             }
             case CXCursor_FunctionDecl:
-                if (AddFunction(cursor))
+                if (declarations_.AddFunction(cursor))
                     state.currentFunctionId = FunctionId(cursor);
                 break;
             case CXCursor_CallExpr:
@@ -243,8 +247,8 @@ private:
         auto includedPath = sourceMap_.RelativePath(included);
         if (!includedPath) return;
 
-        EnsureFileSymbol(*sourceFile);
-        EnsureFileSymbol(*includedPath);
+        files_.EnsureFileSymbol(*sourceFile);
+        files_.EnsureFileSymbol(*includedPath);
 
         Edge edge;
         edge.sourceId = "file:" + *sourceFile;
@@ -281,7 +285,7 @@ private:
         if (!graph_.HasSymbol(targetId))
             AddMacroSymbol(name, std::nullopt, 0, "unknown", "");
 
-        EnsureFileSymbol(*file);
+        files_.EnsureFileSymbol(*file);
 
         Edge edge;
         edge.sourceId = "file:" + *file;
@@ -308,7 +312,7 @@ private:
         symbol.kind = "field";
         if (file)
         {
-            EnsureFileSymbol(*file);
+            files_.EnsureFileSymbol(*file);
             symbol.filePath = *file;
             symbol.line = line;
             symbol.parentId = "file:" + *file;
@@ -351,60 +355,6 @@ private:
         return value.str();
     }
 
-    bool AddRecordType(CXCursor cursor, const std::string& nativeKind)
-    {
-        if (!clang_isCursorDefinition(cursor)) return false;
-        std::string name = ToString(clang_getCursorSpelling(cursor));
-        if (name.empty()) return false;
-        auto file = sourceMap_.SourceFile(cursor);
-        if (!file) return false;
-
-        EnsureFileSymbol(*file);
-
-        Symbol symbol;
-        symbol.id = TypeId(cursor);
-        symbol.name = name;
-        symbol.qualifiedName = name;
-        symbol.kind = "type";
-        symbol.filePath = *file;
-        symbol.line = sourceMap_.Line(cursor);
-        symbol.parentId = "file:" + *file;
-        symbol.visibility = "public";
-        symbol.properties["native.kind"] = nativeKind;
-        symbol.properties["native.linkage"] = "none";
-        symbol.properties["native.buildProfile"] = options_.profile;
-        graph_.AddSymbol(symbol);
-        return true;
-    }
-
-    bool AddTypedefType(CXCursor cursor)
-    {
-        std::string name = ToString(clang_getCursorSpelling(cursor));
-        if (name.empty()) return false;
-        auto file = sourceMap_.SourceFile(cursor);
-        if (!file) return false;
-
-        EnsureFileSymbol(*file);
-
-        Symbol symbol;
-        symbol.id = TypeId(cursor);
-        symbol.name = name;
-        symbol.qualifiedName = name;
-        symbol.kind = "type";
-        symbol.filePath = *file;
-        symbol.line = sourceMap_.Line(cursor);
-        symbol.parentId = "file:" + *file;
-        symbol.visibility = "public";
-        symbol.properties["native.kind"] = "typedef";
-        symbol.properties["native.underlyingType"] = NormalizeTypeForId(
-            ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor))));
-        symbol.properties["native.buildProfile"] = options_.profile;
-        graph_.AddSymbol(symbol);
-
-        AddTypeReference(symbol.id, cursor, clang_getTypedefDeclUnderlyingType(cursor), "underlyingType");
-        return true;
-    }
-
     void ProcessEnumConstant(CXCursor cursor, const VisitState& state)
     {
         if (state.currentTypeId.empty()) return;
@@ -412,63 +362,9 @@ private:
         CXCursor parent = clang_getCursorSemanticParent(cursor);
         if (clang_Cursor_isNull(parent) || clang_getCursorKind(parent) != CXCursor_EnumDecl)
             return;
-        if (!AddRecordType(parent, "enum")) return;
+        if (!declarations_.AddRecordType(parent, "enum")) return;
 
-        AddEnumConstant(cursor, TypeId(parent));
-    }
-
-    bool AddEnumConstant(CXCursor cursor, const std::string& enumTypeId)
-    {
-        auto file = sourceMap_.SourceFile(cursor);
-        if (!file) return false;
-        std::string name = ToString(clang_getCursorSpelling(cursor));
-        if (name.empty()) return false;
-
-        std::string enumName = OwnerNameFromTypeId(enumTypeId);
-
-        Symbol symbol;
-        symbol.id = "field:" + enumName + "." + name;
-        symbol.name = name;
-        symbol.qualifiedName = enumName + "." + name;
-        symbol.kind = "field";
-        symbol.filePath = *file;
-        symbol.line = sourceMap_.Line(cursor);
-        symbol.parentId = enumTypeId;
-        symbol.visibility = "public";
-        symbol.isStatic = true;
-        symbol.properties["native.kind"] = "enumMember";
-        symbol.properties["native.enumValue"] = std::to_string(clang_getEnumConstantDeclValue(cursor));
-        symbol.properties["native.buildProfile"] = options_.profile;
-        graph_.AddSymbol(symbol);
-        return true;
-    }
-
-    void ProcessField(CXCursor cursor, const VisitState& state)
-    {
-        if (state.currentTypeId.empty()) return;
-        auto file = sourceMap_.SourceFile(cursor);
-        if (!file) return;
-        std::string name = ToString(clang_getCursorSpelling(cursor));
-        if (name.empty()) return;
-
-        std::string owner = OwnerNameFromTypeId(state.currentTypeId);
-
-        Symbol field;
-        field.id = "field:" + owner + "." + name;
-        field.name = name;
-        field.qualifiedName = owner + "." + name;
-        field.kind = "field";
-        field.filePath = *file;
-        field.line = sourceMap_.Line(cursor);
-        field.parentId = state.currentTypeId;
-        field.visibility = "public";
-        field.properties["native.kind"] = "structField";
-        field.properties["native.fieldType"] = NormalizeTypeForId(
-            ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
-        field.properties["native.buildProfile"] = options_.profile;
-        graph_.AddSymbol(field);
-
-        AddTypeReference(field.id, cursor, clang_getCursorType(cursor), "fieldType");
+        declarations_.AddEnumConstant(cursor, TypeId(parent));
     }
 
     std::string ProcessVariable(CXCursor cursor, const VisitState& state)
@@ -476,140 +372,10 @@ private:
         if (!state.currentFunctionId.empty() || !state.currentTypeId.empty())
             return "";
 
-        if (!AddGlobalVariable(cursor))
+        if (!declarations_.AddGlobalVariable(cursor))
             return "";
 
         return GlobalVariableId(cursor);
-    }
-
-    bool AddGlobalVariable(CXCursor cursor)
-    {
-        if (!IsFileScopeCursor(cursor)) return false;
-
-        auto file = sourceMap_.SourceFile(cursor);
-        if (!file) return false;
-        std::string name = ToString(clang_getCursorSpelling(cursor));
-        if (name.empty()) return false;
-
-        EnsureFileSymbol(*file);
-
-        const auto storage = clang_Cursor_getStorageClass(cursor);
-        const std::string symbolId = GlobalVariableId(cursor);
-        const Symbol* existing = graph_.FindSymbol(symbolId);
-
-        Symbol symbol;
-        symbol.id = symbolId;
-        symbol.name = name;
-        symbol.qualifiedName = name;
-        symbol.kind = "field";
-        symbol.filePath = *file;
-        symbol.line = sourceMap_.Line(cursor);
-        symbol.parentId = "file:" + *file;
-        symbol.visibility = storage == CX_SC_Static ? "private" : "public";
-        symbol.isStatic = storage == CX_SC_Static;
-        symbol.properties["native.kind"] =
-            existing != nullptr &&
-            existing->properties.find("native.kind") != existing->properties.end() &&
-            existing->properties.at("native.kind") == "callbackTable"
-                ? "callbackTable"
-                : "global";
-        symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
-        symbol.properties["native.fieldType"] = NormalizeTypeForId(
-            ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
-        symbol.properties["native.buildProfile"] = options_.profile;
-        if (symbol.properties["native.kind"] == "callbackTable")
-            symbol.properties["native.callbackTable"] = "true";
-        graph_.AddSymbol(symbol);
-
-        AddTypeReference(symbol.id, cursor, clang_getCursorType(cursor), "globalType");
-        return true;
-    }
-
-    bool IsFileScopeCursor(CXCursor cursor)
-    {
-        CXCursor parent = clang_getCursorSemanticParent(cursor);
-        return !clang_Cursor_isNull(parent) &&
-               clang_getCursorKind(parent) == CXCursor_TranslationUnit;
-    }
-
-    bool AddFunction(CXCursor cursor)
-    {
-        auto file = sourceMap_.SourceFile(cursor);
-        if (!file) return false;
-        std::string name = ToString(clang_getCursorSpelling(cursor));
-        if (name.empty()) return false;
-
-        EnsureFileSymbol(*file);
-
-        const auto storage = clang_Cursor_getStorageClass(cursor);
-        Symbol symbol;
-        symbol.id = FunctionId(cursor);
-        symbol.name = name;
-        symbol.qualifiedName = name;
-        symbol.kind = "method";
-        symbol.filePath = *file;
-        symbol.line = sourceMap_.Line(cursor);
-        symbol.parentId = "file:" + *file;
-        symbol.visibility = storage == CX_SC_Static ? "private" : "public";
-        symbol.isStatic = storage == CX_SC_Static;
-        symbol.properties["native.kind"] = "function";
-        symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
-        symbol.properties["native.signature"] = Signature(cursor);
-        symbol.properties["native.buildProfile"] = options_.profile;
-        graph_.AddSymbol(symbol);
-
-        AddParameterTypeReferences(cursor, symbol.id);
-        AddTypeReference(symbol.id, cursor, clang_getCursorResultType(cursor), "returnType");
-        return true;
-    }
-
-    void AddParameterTypeReferences(CXCursor cursor, const std::string& functionId)
-    {
-        const int count = clang_Cursor_getNumArguments(cursor);
-        for (int i = 0; i < count; i++)
-        {
-            CXCursor arg = clang_Cursor_getArgument(cursor, static_cast<unsigned>(i));
-            AddTypeReference(functionId, arg, clang_getCursorType(arg), "parameterType");
-        }
-    }
-
-    void AddTypeReference(
-        const std::string& sourceId,
-        CXCursor evidenceCursor,
-        CXType sourceType,
-        const std::string& referenceKind)
-    {
-        CXType type = StripPointers(sourceType);
-        CXCursor declaration = clang_getTypeDeclaration(type);
-        if (clang_Cursor_isNull(declaration)) return;
-
-        if (!EnsureTypeDeclaration(declaration, type)) return;
-
-        Edge edge;
-        edge.sourceId = sourceId;
-        edge.targetId = TypeId(declaration);
-        edge.kind = "references";
-        edge.evidence = sourceMap_.EvidenceFor(evidenceCursor, "semantic");
-        edge.callSite = sourceMap_.CallSiteFor(evidenceCursor, sourceId);
-        edge.properties["native.referenceKind"] = referenceKind;
-        edge.properties["native.buildProfile"] = options_.profile;
-        graph_.AddEdge(edge);
-    }
-
-    bool EnsureTypeDeclaration(CXCursor declaration, CXType type)
-    {
-        switch (clang_getCursorKind(declaration))
-        {
-            case CXCursor_StructDecl:
-            case CXCursor_UnionDecl:
-                return AddRecordType(declaration, NativeKindForType(type));
-            case CXCursor_EnumDecl:
-                return AddRecordType(declaration, "enum");
-            case CXCursor_TypedefDecl:
-                return AddTypedefType(declaration);
-            default:
-                return false;
-        }
     }
 
     void ProcessCall(CXCursor cursor, const VisitState& state)
@@ -618,7 +384,7 @@ private:
         CXCursor referenced = clang_getCursorReferenced(cursor);
         if (clang_Cursor_isNull(referenced)) return;
         if (clang_getCursorKind(referenced) != CXCursor_FunctionDecl) return;
-        if (!AddFunction(referenced)) return;
+        if (!declarations_.AddFunction(referenced)) return;
 
         Edge edge;
         edge.sourceId = state.currentFunctionId;
@@ -639,7 +405,7 @@ private:
         if (!state.currentInitializerOwnerId.empty())
         {
             if (clang_getCursorKind(referenced) == CXCursor_FunctionDecl &&
-                AddFunction(referenced))
+                declarations_.AddFunction(referenced))
             {
                 MarkCallbackTable(state.currentInitializerOwnerId);
                 AddReferenceEdge(
@@ -656,17 +422,17 @@ private:
         switch (clang_getCursorKind(referenced))
         {
             case CXCursor_VarDecl:
-                if (AddGlobalVariable(referenced))
+                if (declarations_.AddGlobalVariable(referenced))
                     AddReferenceEdge(cursor, state.currentFunctionId, GlobalVariableId(referenced), "globalAccess");
                 break;
             case CXCursor_EnumConstantDecl:
             {
                 CXCursor parent = clang_getCursorSemanticParent(referenced);
-                if (clang_Cursor_isNull(parent) || !AddRecordType(parent, "enum"))
+                if (clang_Cursor_isNull(parent) || !declarations_.AddRecordType(parent, "enum"))
                     return;
 
                 std::string enumTypeId = TypeId(parent);
-                if (AddEnumConstant(referenced, enumTypeId))
+                if (declarations_.AddEnumConstant(referenced, enumTypeId))
                     AddReferenceEdge(
                         cursor,
                         state.currentFunctionId,
@@ -688,11 +454,9 @@ private:
 
         CXCursor owner = clang_getCursorSemanticParent(referenced);
         if (clang_Cursor_isNull(owner)) return;
-        if (!AddRecordType(owner, "struct")) return;
+        if (!declarations_.AddRecordType(owner, "struct")) return;
 
-        VisitState ownerState;
-        ownerState.currentTypeId = TypeId(owner);
-        ProcessField(referenced, ownerState);
+        declarations_.AddField(referenced, TypeId(owner));
 
         std::string fieldName = ToString(clang_getCursorSpelling(referenced));
         std::string ownerName = ToString(clang_getCursorSpelling(owner));
@@ -734,55 +498,6 @@ private:
         });
     }
 
-    std::string NativeKindForType(CXType type)
-    {
-        switch (type.kind)
-        {
-            case CXType_Record:
-                return "struct";
-            case CXType_Enum:
-                return "enum";
-            default:
-                return "type";
-        }
-    }
-
-    std::string Signature(CXCursor cursor)
-    {
-        std::ostringstream signature;
-        signature << NormalizeTypeForId(ToString(clang_getTypeSpelling(clang_getCursorResultType(cursor))));
-        signature << " (";
-        const int count = clang_Cursor_getNumArguments(cursor);
-        for (int i = 0; i < count; i++)
-        {
-            if (i > 0) signature << ", ";
-            CXCursor arg = clang_Cursor_getArgument(cursor, static_cast<unsigned>(i));
-            signature << NormalizeTypeForId(ToString(clang_getTypeSpelling(clang_getCursorType(arg))));
-        }
-        signature << ")";
-        return signature.str();
-    }
-
-    void EnsureFileSymbol(const std::string& relativePath)
-    {
-        std::string id = "file:" + relativePath;
-        if (graph_.HasSymbol(id)) return;
-
-        Symbol symbol;
-        symbol.id = id;
-        symbol.name = fs::path(relativePath).filename().string();
-        symbol.qualifiedName = module_.ModuleName() + "/" + relativePath;
-        symbol.kind = "file";
-        symbol.filePath = relativePath;
-        symbol.parentId = module_.ModuleId();
-        symbol.visibility = "internal";
-        symbol.properties["native.kind"] = EndsWith(relativePath, ".h") || EndsWith(relativePath, ".hpp")
-            ? "header"
-            : "translationUnit";
-        symbol.properties["native.buildProfile"] = options_.profile;
-        graph_.AddSymbol(symbol);
-    }
-
     Options options_;
     fs::path projectRoot_;
     fs::path compilationDatabaseDir_;
@@ -790,6 +505,8 @@ private:
     ClangSourceMapper sourceMap_;
     NativeGraphSink& graph_;
     NativeModuleTracker module_;
+    NativeFileRegistry files_;
+    NativeDeclarationEmitter declarations_;
     CXTranslationUnit currentUnit_ = nullptr;
 };
 }
