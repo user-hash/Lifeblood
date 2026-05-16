@@ -1,7 +1,6 @@
 #include "NativeModuleGraphMetrics.h"
 
-#include "NativeDeclarationKinds.h"
-#include "NativeKindNames.h"
+#include "NativeFunctionDeclarationClassifier.h"
 
 namespace lifeblood::native_clang
 {
@@ -86,12 +85,10 @@ void NativeModuleGraphMetrics::AddEdgeCount(Counts& counts, const Edge& edge) co
 
 void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol)
 {
-    if (!NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Function))
-        return;
-
-    if (NativeGraphFacts::HasDeclarationKind(symbol, NativeDeclarationKinds::Declaration))
+    auto role = NativeFunctionDeclarationClassifier::Classify(symbol);
+    if (role == NativeFunctionDeclarationRole::Declaration)
         counts.functionDeclarationCount++;
-    else
+    else if (role == NativeFunctionDeclarationRole::Definition)
         counts.functionDefinitionCount++;
 }
 
