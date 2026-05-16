@@ -1,6 +1,7 @@
 #include "ClangUtilities.h"
 #include "LibClangExtractor.h"
 #include "NativeGraphBuilder.h"
+#include "NativeGraphSink.h"
 #include "NativeSymbolIds.h"
 
 #include <clang-c/CXCompilationDatabase.h>
@@ -39,7 +40,7 @@ class ExtractionSession
 public:
     ExtractionSession(
         Options options,
-        NativeGraphBuilder& graph)
+        NativeGraphSink& graph)
         : options_(std::move(options)),
           projectRoot_(fs::weakly_canonical(options_.projectRoot)),
           compilationDatabaseDir_(ResolvePath(options_.compilationDatabaseDir)),
@@ -262,14 +263,13 @@ private:
 
     void UpdateModuleBuildProperties()
     {
-        auto* module = graph_.FindSymbol(moduleId_);
-        if (module == nullptr) return;
-
-        module->properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
-        if (!commandLineDefines_.empty())
-            module->properties["native.defines"] = JoinDefines();
-        if (!commandLineUndefines_.empty())
-            module->properties["native.undefines"] = Join(commandLineUndefines_);
+        graph_.UpdateSymbol(moduleId_, [this](Symbol& module) {
+            module.properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
+            if (!commandLineDefines_.empty())
+                module.properties["native.defines"] = JoinDefines();
+            if (!commandLineUndefines_.empty())
+                module.properties["native.undefines"] = Join(commandLineUndefines_);
+        });
     }
 
     bool IsSourceArg(
@@ -875,11 +875,10 @@ private:
 
     void MarkCallbackTable(const std::string& symbolId)
     {
-        auto* symbol = graph_.FindSymbol(symbolId);
-        if (symbol == nullptr) return;
-
-        symbol->properties["native.kind"] = "callbackTable";
-        symbol->properties["native.callbackTable"] = "true";
+        graph_.UpdateSymbol(symbolId, [](Symbol& symbol) {
+            symbol.properties["native.kind"] = "callbackTable";
+            symbol.properties["native.callbackTable"] = "true";
+        });
     }
 
     std::string NativeKindForType(CXType type)
@@ -1041,7 +1040,7 @@ private:
     fs::path compilationDatabaseDir_;
     std::string moduleName_;
     std::string moduleId_;
-    NativeGraphBuilder& graph_;
+    NativeGraphSink& graph_;
     CXTranslationUnit currentUnit_ = nullptr;
     unsigned translationUnitCount_ = 0;
     std::map<std::string, std::string> commandLineDefines_;
