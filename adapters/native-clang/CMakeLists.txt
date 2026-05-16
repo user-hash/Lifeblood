@@ -48,6 +48,8 @@ add_executable(lifeblood-native-clang
     src/NativeAstVisitor.cpp
     src/NativeAstVisitor.h
     src/NativeCompileCommand.h
+    src/NativeEdgeClassification.cpp
+    src/NativeEdgeClassification.h
     src/NativeGraphBuilder.cpp
     src/NativeGraphBuilder.h
     src/NativeGraphSink.h

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphModel.h"
+#include "NativeEdgeClassification.h"
 #include "NativeGraphFacts.h"
 #include "NativeGraphOwnershipIndex.h"
 #include "NativeVisibilityCounts.h"
