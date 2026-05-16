@@ -1,7 +1,9 @@
 #include "NativeDeclaredSurfaceInventory.h"
 
 #include "NativeGraphFacts.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeKindNames.h"
+#include "NativePropertyWriter.h"
 
 namespace lifeblood::native_clang
 {
@@ -36,9 +38,13 @@ void NativeDeclaredSurfaceInventory::WriteModuleProperties(
     Symbol& module,
     const NativeDeclaredSurfaceCounts& counts)
 {
-    module.properties["native.headerDeclaredSymbolCount"] =
-        std::to_string(counts.headerDeclaredSymbolCount);
-    module.properties["native.translationUnitDeclaredSymbolCount"] =
-        std::to_string(counts.translationUnitDeclaredSymbolCount);
+    NativePropertyWriter::SetCount(
+        module,
+        NativeGraphPropertyKeys::HeaderDeclaredSymbolCount,
+        counts.headerDeclaredSymbolCount);
+    NativePropertyWriter::SetCount(
+        module,
+        NativeGraphPropertyKeys::TranslationUnitDeclaredSymbolCount,
+        counts.translationUnitDeclaredSymbolCount);
 }
 }

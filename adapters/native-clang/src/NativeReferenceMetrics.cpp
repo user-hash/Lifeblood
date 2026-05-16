@@ -1,63 +1,65 @@
 #include "NativeReferenceMetrics.h"
 
+#include "NativeGraphPropertyKeys.h"
+
 namespace lifeblood::native_clang
 {
 NativeReferenceMetrics::NativeReferenceMetrics()
     : metrics_{{
         {
             MetricKind::Reference,
-            "native.referenceInCount",
-            "native.referenceOutCount",
+            NativeGraphPropertyKeys::ReferenceInCount,
+            NativeGraphPropertyKeys::ReferenceOutCount,
         },
         {
             MetricKind::CallbackTarget,
-            "native.callbackTargetInCount",
-            "native.callbackTargetOutCount",
+            NativeGraphPropertyKeys::CallbackTargetInCount,
+            NativeGraphPropertyKeys::CallbackTargetOutCount,
         },
         {
             MetricKind::GlobalAccess,
-            "native.globalAccessInCount",
-            "native.globalAccessOutCount",
+            NativeGraphPropertyKeys::GlobalAccessInCount,
+            NativeGraphPropertyKeys::GlobalAccessOutCount,
         },
         {
             MetricKind::FieldAccess,
-            "native.fieldAccessInCount",
-            "native.fieldAccessOutCount",
+            NativeGraphPropertyKeys::FieldAccessInCount,
+            NativeGraphPropertyKeys::FieldAccessOutCount,
         },
         {
             MetricKind::ParameterType,
-            "native.parameterTypeInCount",
-            "native.parameterTypeOutCount",
+            NativeGraphPropertyKeys::ParameterTypeInCount,
+            NativeGraphPropertyKeys::ParameterTypeOutCount,
         },
         {
             MetricKind::EnumMember,
-            "native.enumMemberInCount",
-            "native.enumMemberOutCount",
+            NativeGraphPropertyKeys::EnumMemberInCount,
+            NativeGraphPropertyKeys::EnumMemberOutCount,
         },
         {
             MetricKind::FieldType,
-            "native.fieldTypeInCount",
-            "native.fieldTypeOutCount",
+            NativeGraphPropertyKeys::FieldTypeInCount,
+            NativeGraphPropertyKeys::FieldTypeOutCount,
         },
         {
             MetricKind::UnderlyingType,
-            "native.underlyingTypeInCount",
-            "native.underlyingTypeOutCount",
+            NativeGraphPropertyKeys::UnderlyingTypeInCount,
+            NativeGraphPropertyKeys::UnderlyingTypeOutCount,
         },
         {
             MetricKind::GlobalType,
-            "native.globalTypeInCount",
-            "native.globalTypeOutCount",
+            NativeGraphPropertyKeys::GlobalTypeInCount,
+            NativeGraphPropertyKeys::GlobalTypeOutCount,
         },
         {
             MetricKind::ReturnType,
-            "native.returnTypeInCount",
-            "native.returnTypeOutCount",
+            NativeGraphPropertyKeys::ReturnTypeInCount,
+            NativeGraphPropertyKeys::ReturnTypeOutCount,
         },
         {
             MetricKind::TypeReference,
-            "native.typeReferenceInCount",
-            "native.typeReferenceOutCount",
+            NativeGraphPropertyKeys::TypeReferenceInCount,
+            NativeGraphPropertyKeys::TypeReferenceOutCount,
         },
     }}
 {

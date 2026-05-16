@@ -48,15 +48,15 @@ void NativeReferenceEdgeWriter::RecordDirectCallCounts(
     graph_.UpdateSymbol(sourceId, [&](Symbol& symbol) {
         directCallCounts_.Decorate(
             symbol,
-            "native.directCallInCount",
-            "native.directCallOutCount");
+            NativeGraphPropertyKeys::DirectCallInCount,
+            NativeGraphPropertyKeys::DirectCallOutCount);
     });
 
     graph_.UpdateSymbol(targetId, [&](Symbol& symbol) {
         directCallCounts_.Decorate(
             symbol,
-            "native.directCallInCount",
-            "native.directCallOutCount");
+            NativeGraphPropertyKeys::DirectCallInCount,
+            NativeGraphPropertyKeys::DirectCallOutCount);
     });
 }
 
@@ -84,7 +84,7 @@ void NativeReferenceEdgeWriter::MarkCallbackTable(const std::string& symbolId)
             symbol,
             NativeGraphPropertyKeys::NativeKind,
             NativeKindNames::CallbackTable);
-        NativePropertyWriter::SetTrue(symbol, "native.callbackTable");
+        NativePropertyWriter::SetTrue(symbol, NativeGraphPropertyKeys::CallbackTable);
     });
 }
 }

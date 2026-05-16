@@ -1,6 +1,8 @@
 #include "NativeFileGraphMetrics.h"
 
+#include "NativeCountPropertyWriter.h"
 #include "NativeFunctionDeclarationClassifier.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativePropertyWriter.h"
 
 namespace lifeblood::native_clang
@@ -155,41 +157,37 @@ void NativeFileGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const S
 
 void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
 {
-    constexpr std::array<CountProperty, 20> countProperties{{
-        { "native.declaredSymbolCount", &Counts::declaredSymbolCount },
-        { "native.fileFunctionDefinitionCount", &Counts::functionDefinitionCount },
-        { "native.fileFunctionDeclarationCount", &Counts::functionDeclarationCount },
-        { "native.fileOutgoingReferenceEdgeCount", &Counts::outgoingReferenceEdgeCount },
-        { "native.fileIncomingReferenceEdgeCount", &Counts::incomingReferenceEdgeCount },
-        { "native.fileOutgoingIncludeEdgeCount", &Counts::outgoingIncludeEdgeCount },
-        { "native.fileIncomingIncludeEdgeCount", &Counts::incomingIncludeEdgeCount },
-        { "native.fileOutgoingGlobalAccessEdgeCount", &Counts::outgoingGlobalAccessEdgeCount },
-        { "native.fileIncomingGlobalAccessEdgeCount", &Counts::incomingGlobalAccessEdgeCount },
-        { "native.fileOutgoingFieldAccessEdgeCount", &Counts::outgoingFieldAccessEdgeCount },
-        { "native.fileIncomingFieldAccessEdgeCount", &Counts::incomingFieldAccessEdgeCount },
-        { "native.fileOutgoingParameterTypeEdgeCount", &Counts::outgoingParameterTypeEdgeCount },
-        { "native.fileIncomingParameterTypeEdgeCount", &Counts::incomingParameterTypeEdgeCount },
-        { "native.fileOutgoingCallbackTargetEdgeCount", &Counts::outgoingCallbackTargetEdgeCount },
-        { "native.fileIncomingCallbackTargetEdgeCount", &Counts::incomingCallbackTargetEdgeCount },
-        { "native.fileOutgoingCallEdgeCount", &Counts::outgoingCallEdgeCount },
-        { "native.fileIncomingCallEdgeCount", &Counts::incomingCallEdgeCount },
-        { "native.fileLocalCallEdgeCount", &Counts::localCallEdgeCount },
-        { "native.fileOutgoingCrossFileCallEdgeCount", &Counts::outgoingCrossFileCallEdgeCount },
-        { "native.fileIncomingCrossFileCallEdgeCount", &Counts::incomingCrossFileCallEdgeCount },
+    constexpr std::array<NativeCountProperty<Counts>, 20> countProperties{{
+        { NativeGraphPropertyKeys::DeclaredSymbolCount, &Counts::declaredSymbolCount },
+        { NativeGraphPropertyKeys::FileFunctionDefinitionCount, &Counts::functionDefinitionCount },
+        { NativeGraphPropertyKeys::FileFunctionDeclarationCount, &Counts::functionDeclarationCount },
+        { NativeGraphPropertyKeys::FileOutgoingReferenceEdgeCount, &Counts::outgoingReferenceEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingReferenceEdgeCount, &Counts::incomingReferenceEdgeCount },
+        { NativeGraphPropertyKeys::FileOutgoingIncludeEdgeCount, &Counts::outgoingIncludeEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingIncludeEdgeCount, &Counts::incomingIncludeEdgeCount },
+        { NativeGraphPropertyKeys::FileOutgoingGlobalAccessEdgeCount, &Counts::outgoingGlobalAccessEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingGlobalAccessEdgeCount, &Counts::incomingGlobalAccessEdgeCount },
+        { NativeGraphPropertyKeys::FileOutgoingFieldAccessEdgeCount, &Counts::outgoingFieldAccessEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingFieldAccessEdgeCount, &Counts::incomingFieldAccessEdgeCount },
+        { NativeGraphPropertyKeys::FileOutgoingParameterTypeEdgeCount, &Counts::outgoingParameterTypeEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingParameterTypeEdgeCount, &Counts::incomingParameterTypeEdgeCount },
+        { NativeGraphPropertyKeys::FileOutgoingCallbackTargetEdgeCount, &Counts::outgoingCallbackTargetEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingCallbackTargetEdgeCount, &Counts::incomingCallbackTargetEdgeCount },
+        { NativeGraphPropertyKeys::FileOutgoingCallEdgeCount, &Counts::outgoingCallEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingCallEdgeCount, &Counts::incomingCallEdgeCount },
+        { NativeGraphPropertyKeys::FileLocalCallEdgeCount, &Counts::localCallEdgeCount },
+        { NativeGraphPropertyKeys::FileOutgoingCrossFileCallEdgeCount, &Counts::outgoingCrossFileCallEdgeCount },
+        { NativeGraphPropertyKeys::FileIncomingCrossFileCallEdgeCount, &Counts::incomingCrossFileCallEdgeCount },
     }};
 
-    for (const auto& countProperty : countProperties)
-        NativePropertyWriter::SetCount(
-            file,
-            countProperty.property,
-            counts.*countProperty.value);
+    WriteNativeCountProperties(file, counts, countProperties);
 
     NativeVisibilityCounter::Write(
         file,
         counts.declaredVisibility,
-        "native.publicDeclaredSymbolCount",
-        "native.privateDeclaredSymbolCount",
-        "native.internalDeclaredSymbolCount");
+        NativeGraphPropertyKeys::PublicDeclaredSymbolCount,
+        NativeGraphPropertyKeys::PrivateDeclaredSymbolCount,
+        NativeGraphPropertyKeys::InternalDeclaredSymbolCount);
     NativeKindInventory::WriteFileProperties(file, counts.nativeKinds);
 }
 
@@ -197,20 +195,30 @@ void NativeFileGraphMetrics::WriteSymbolCallCounts(Symbol& symbol) const
 {
     auto sameFileOutgoing = sameFileCallOutCounts_.find(symbol.id);
     if (sameFileOutgoing != sameFileCallOutCounts_.end())
-        symbol.properties["native.sameFileDirectCallOutCount"] =
-            std::to_string(sameFileOutgoing->second);
+        NativePropertyWriter::SetCount(
+            symbol,
+            NativeGraphPropertyKeys::SameFileDirectCallOutCount,
+            sameFileOutgoing->second);
 
     auto sameFileIncoming = sameFileCallInCounts_.find(symbol.id);
     if (sameFileIncoming != sameFileCallInCounts_.end())
-        symbol.properties["native.sameFileDirectCallInCount"] =
-            std::to_string(sameFileIncoming->second);
+        NativePropertyWriter::SetCount(
+            symbol,
+            NativeGraphPropertyKeys::SameFileDirectCallInCount,
+            sameFileIncoming->second);
 
     auto outgoing = crossFileCallOutCounts_.find(symbol.id);
     if (outgoing != crossFileCallOutCounts_.end())
-        symbol.properties["native.crossFileDirectCallOutCount"] = std::to_string(outgoing->second);
+        NativePropertyWriter::SetCount(
+            symbol,
+            NativeGraphPropertyKeys::CrossFileDirectCallOutCount,
+            outgoing->second);
 
     auto incoming = crossFileCallInCounts_.find(symbol.id);
     if (incoming != crossFileCallInCounts_.end())
-        symbol.properties["native.crossFileDirectCallInCount"] = std::to_string(incoming->second);
+        NativePropertyWriter::SetCount(
+            symbol,
+            NativeGraphPropertyKeys::CrossFileDirectCallInCount,
+            incoming->second);
 }
 }
