@@ -2,7 +2,7 @@
 
 #include "NativeCountPropertyWriter.h"
 #include "NativeGraphFacts.h"
-#include "NativeGraphPropertyKeys.h"
+#include "NativeGraphMetricPropertyKeys.h"
 #include "NativeKindNames.h"
 
 #include <array>
@@ -12,27 +12,27 @@ namespace lifeblood::native_clang
 namespace
 {
 constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> ModuleCountProperties{{
-    { NativeGraphPropertyKeys::MacroCount, &NativeKindInventoryCounts::macroCount },
-    { NativeGraphPropertyKeys::GlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
-    { NativeGraphPropertyKeys::CallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
-    { NativeGraphPropertyKeys::StructCount, &NativeKindInventoryCounts::structCount },
-    { NativeGraphPropertyKeys::UnionCount, &NativeKindInventoryCounts::unionCount },
-    { NativeGraphPropertyKeys::EnumCount, &NativeKindInventoryCounts::enumCount },
-    { NativeGraphPropertyKeys::TypedefCount, &NativeKindInventoryCounts::typedefCount },
-    { NativeGraphPropertyKeys::StructFieldCount, &NativeKindInventoryCounts::structFieldCount },
-    { NativeGraphPropertyKeys::EnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
+    { NativeGraphMetricPropertyKeys::MacroCount, &NativeKindInventoryCounts::macroCount },
+    { NativeGraphMetricPropertyKeys::GlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
+    { NativeGraphMetricPropertyKeys::CallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
+    { NativeGraphMetricPropertyKeys::StructCount, &NativeKindInventoryCounts::structCount },
+    { NativeGraphMetricPropertyKeys::UnionCount, &NativeKindInventoryCounts::unionCount },
+    { NativeGraphMetricPropertyKeys::EnumCount, &NativeKindInventoryCounts::enumCount },
+    { NativeGraphMetricPropertyKeys::TypedefCount, &NativeKindInventoryCounts::typedefCount },
+    { NativeGraphMetricPropertyKeys::StructFieldCount, &NativeKindInventoryCounts::structFieldCount },
+    { NativeGraphMetricPropertyKeys::EnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
 }};
 
 constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> FileCountProperties{{
-    { NativeGraphPropertyKeys::FileMacroCount, &NativeKindInventoryCounts::macroCount },
-    { NativeGraphPropertyKeys::FileGlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
-    { NativeGraphPropertyKeys::FileCallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
-    { NativeGraphPropertyKeys::FileStructCount, &NativeKindInventoryCounts::structCount },
-    { NativeGraphPropertyKeys::FileUnionCount, &NativeKindInventoryCounts::unionCount },
-    { NativeGraphPropertyKeys::FileEnumCount, &NativeKindInventoryCounts::enumCount },
-    { NativeGraphPropertyKeys::FileTypedefCount, &NativeKindInventoryCounts::typedefCount },
-    { NativeGraphPropertyKeys::FileStructFieldCount, &NativeKindInventoryCounts::structFieldCount },
-    { NativeGraphPropertyKeys::FileEnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
+    { NativeGraphMetricPropertyKeys::FileMacroCount, &NativeKindInventoryCounts::macroCount },
+    { NativeGraphMetricPropertyKeys::FileGlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
+    { NativeGraphMetricPropertyKeys::FileCallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
+    { NativeGraphMetricPropertyKeys::FileStructCount, &NativeKindInventoryCounts::structCount },
+    { NativeGraphMetricPropertyKeys::FileUnionCount, &NativeKindInventoryCounts::unionCount },
+    { NativeGraphMetricPropertyKeys::FileEnumCount, &NativeKindInventoryCounts::enumCount },
+    { NativeGraphMetricPropertyKeys::FileTypedefCount, &NativeKindInventoryCounts::typedefCount },
+    { NativeGraphMetricPropertyKeys::FileStructFieldCount, &NativeKindInventoryCounts::structFieldCount },
+    { NativeGraphMetricPropertyKeys::FileEnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
 }};
 }
 

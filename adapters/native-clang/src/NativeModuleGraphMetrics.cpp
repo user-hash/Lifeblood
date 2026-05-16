@@ -2,7 +2,7 @@
 
 #include "NativeCountPropertyWriter.h"
 #include "NativeFunctionDeclarationClassifier.h"
-#include "NativeGraphPropertyKeys.h"
+#include "NativeGraphMetricPropertyKeys.h"
 
 namespace lifeblood::native_clang
 {
@@ -105,19 +105,19 @@ void NativeModuleGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const
 void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
 {
     constexpr std::array<NativeCountProperty<Counts>, 13> countProperties{{
-        { NativeGraphPropertyKeys::SymbolCount, &Counts::symbolCount },
-        { NativeGraphPropertyKeys::EdgeCount, &Counts::edgeCount },
-        { NativeGraphPropertyKeys::ReferenceEdgeCount, &Counts::referenceEdgeCount },
-        { NativeGraphPropertyKeys::IncludeEdgeCount, &Counts::includeEdgeCount },
-        { NativeGraphPropertyKeys::CallEdgeCount, &Counts::callEdgeCount },
-        { NativeGraphPropertyKeys::SameFileCallEdgeCount, &Counts::sameFileCallEdgeCount },
-        { NativeGraphPropertyKeys::CrossFileCallEdgeCount, &Counts::crossFileCallEdgeCount },
-        { NativeGraphPropertyKeys::GlobalAccessEdgeCount, &Counts::globalAccessEdgeCount },
-        { NativeGraphPropertyKeys::FieldAccessEdgeCount, &Counts::fieldAccessEdgeCount },
-        { NativeGraphPropertyKeys::ParameterTypeEdgeCount, &Counts::parameterTypeEdgeCount },
-        { NativeGraphPropertyKeys::CallbackTargetEdgeCount, &Counts::callbackTargetEdgeCount },
-        { NativeGraphPropertyKeys::FunctionDefinitionCount, &Counts::functionDefinitionCount },
-        { NativeGraphPropertyKeys::FunctionDeclarationCount, &Counts::functionDeclarationCount },
+        { NativeGraphMetricPropertyKeys::SymbolCount, &Counts::symbolCount },
+        { NativeGraphMetricPropertyKeys::EdgeCount, &Counts::edgeCount },
+        { NativeGraphMetricPropertyKeys::ReferenceEdgeCount, &Counts::referenceEdgeCount },
+        { NativeGraphMetricPropertyKeys::IncludeEdgeCount, &Counts::includeEdgeCount },
+        { NativeGraphMetricPropertyKeys::CallEdgeCount, &Counts::callEdgeCount },
+        { NativeGraphMetricPropertyKeys::SameFileCallEdgeCount, &Counts::sameFileCallEdgeCount },
+        { NativeGraphMetricPropertyKeys::CrossFileCallEdgeCount, &Counts::crossFileCallEdgeCount },
+        { NativeGraphMetricPropertyKeys::GlobalAccessEdgeCount, &Counts::globalAccessEdgeCount },
+        { NativeGraphMetricPropertyKeys::FieldAccessEdgeCount, &Counts::fieldAccessEdgeCount },
+        { NativeGraphMetricPropertyKeys::ParameterTypeEdgeCount, &Counts::parameterTypeEdgeCount },
+        { NativeGraphMetricPropertyKeys::CallbackTargetEdgeCount, &Counts::callbackTargetEdgeCount },
+        { NativeGraphMetricPropertyKeys::FunctionDefinitionCount, &Counts::functionDefinitionCount },
+        { NativeGraphMetricPropertyKeys::FunctionDeclarationCount, &Counts::functionDeclarationCount },
     }};
 
     WriteNativeCountProperties(module, counts, countProperties);
@@ -127,8 +127,8 @@ void NativeModuleGraphMetrics::WriteCounts(Symbol& module, const Counts& counts)
     NativeVisibilityCounter::Write(
         module,
         counts.visibility,
-        NativeGraphPropertyKeys::PublicSymbolCount,
-        NativeGraphPropertyKeys::PrivateSymbolCount,
-        NativeGraphPropertyKeys::InternalSymbolCount);
+        NativeGraphMetricPropertyKeys::PublicSymbolCount,
+        NativeGraphMetricPropertyKeys::PrivateSymbolCount,
+        NativeGraphMetricPropertyKeys::InternalSymbolCount);
 }
 }

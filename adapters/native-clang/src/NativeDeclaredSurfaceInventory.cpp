@@ -1,7 +1,7 @@
 #include "NativeDeclaredSurfaceInventory.h"
 
 #include "NativeGraphFacts.h"
-#include "NativeGraphPropertyKeys.h"
+#include "NativeGraphMetricPropertyKeys.h"
 #include "NativeKindNames.h"
 #include "NativePropertyWriter.h"
 
@@ -40,11 +40,11 @@ void NativeDeclaredSurfaceInventory::WriteModuleProperties(
 {
     NativePropertyWriter::SetCount(
         module,
-        NativeGraphPropertyKeys::HeaderDeclaredSymbolCount,
+        NativeGraphMetricPropertyKeys::HeaderDeclaredSymbolCount,
         counts.headerDeclaredSymbolCount);
     NativePropertyWriter::SetCount(
         module,
-        NativeGraphPropertyKeys::TranslationUnitDeclaredSymbolCount,
+        NativeGraphMetricPropertyKeys::TranslationUnitDeclaredSymbolCount,
         counts.translationUnitDeclaredSymbolCount);
 }
 }

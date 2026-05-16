@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "NativeCallKinds.h"
 #include "NativeEvidenceKinds.h"
+#include "NativeGraphMetricPropertyKeys.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
 #include "NativeKindNames.h"
@@ -48,15 +49,15 @@ void NativeReferenceEdgeWriter::RecordDirectCallCounts(
     graph_.UpdateSymbol(sourceId, [&](Symbol& symbol) {
         directCallCounts_.Decorate(
             symbol,
-            NativeGraphPropertyKeys::DirectCallInCount,
-            NativeGraphPropertyKeys::DirectCallOutCount);
+            NativeGraphMetricPropertyKeys::DirectCallInCount,
+            NativeGraphMetricPropertyKeys::DirectCallOutCount);
     });
 
     graph_.UpdateSymbol(targetId, [&](Symbol& symbol) {
         directCallCounts_.Decorate(
             symbol,
-            NativeGraphPropertyKeys::DirectCallInCount,
-            NativeGraphPropertyKeys::DirectCallOutCount);
+            NativeGraphMetricPropertyKeys::DirectCallInCount,
+            NativeGraphMetricPropertyKeys::DirectCallOutCount);
     });
 }
 
