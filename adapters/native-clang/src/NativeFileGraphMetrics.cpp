@@ -60,6 +60,14 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
         if (targetFileId)
             counts_[*targetFileId].incomingReferenceEdgeCount++;
 
+        if (HasNativeEdgeKind(edge, "include"))
+        {
+            if (sourceFileId)
+                counts_[*sourceFileId].outgoingIncludeEdgeCount++;
+            if (targetFileId)
+                counts_[*targetFileId].incomingIncludeEdgeCount++;
+        }
+
         if (HasReferenceKind(edge, "callbackTarget"))
         {
             if (sourceFileId)
@@ -109,6 +117,14 @@ void NativeFileGraphMetrics::AddNativeKindCounts(Counts& counts, const Symbol& s
         counts.callbackTableCount++;
 }
 
+bool NativeFileGraphMetrics::HasNativeEdgeKind(
+    const Edge& edge,
+    const std::string& nativeKind)
+{
+    auto value = edge.properties.find("native.kind");
+    return value != edge.properties.end() && value->second == nativeKind;
+}
+
 bool NativeFileGraphMetrics::HasReferenceKind(
     const Edge& edge,
     const std::string& referenceKind)
@@ -138,6 +154,10 @@ void NativeFileGraphMetrics::WriteFileCounts(Symbol& file, const Counts& counts)
         std::to_string(counts.outgoingReferenceEdgeCount);
     file.properties["native.fileIncomingReferenceEdgeCount"] =
         std::to_string(counts.incomingReferenceEdgeCount);
+    file.properties["native.fileOutgoingIncludeEdgeCount"] =
+        std::to_string(counts.outgoingIncludeEdgeCount);
+    file.properties["native.fileIncomingIncludeEdgeCount"] =
+        std::to_string(counts.incomingIncludeEdgeCount);
     file.properties["native.fileOutgoingCallbackTargetEdgeCount"] =
         std::to_string(counts.outgoingCallbackTargetEdgeCount);
     file.properties["native.fileIncomingCallbackTargetEdgeCount"] =

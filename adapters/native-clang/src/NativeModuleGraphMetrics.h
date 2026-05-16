@@ -25,6 +25,7 @@ private:
         unsigned symbolCount = 0;
         unsigned edgeCount = 0;
         unsigned referenceEdgeCount = 0;
+        unsigned includeEdgeCount = 0;
         unsigned callEdgeCount = 0;
         unsigned callbackTargetEdgeCount = 0;
         unsigned functionDefinitionCount = 0;
@@ -35,6 +36,7 @@ private:
     };
 
     static bool HasNativeKind(const Symbol& symbol, const std::string& nativeKind);
+    static bool HasNativeEdgeKind(const Edge& edge, const std::string& nativeKind);
     static bool HasReferenceKind(const Edge& edge, const std::string& referenceKind);
     static void AddNativeKindCounts(Counts& counts, const Symbol& symbol);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);

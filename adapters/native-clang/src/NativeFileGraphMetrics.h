@@ -30,6 +30,8 @@ private:
         unsigned callbackTableCount = 0;
         unsigned outgoingReferenceEdgeCount = 0;
         unsigned incomingReferenceEdgeCount = 0;
+        unsigned outgoingIncludeEdgeCount = 0;
+        unsigned incomingIncludeEdgeCount = 0;
         unsigned outgoingCallbackTargetEdgeCount = 0;
         unsigned incomingCallbackTargetEdgeCount = 0;
         unsigned outgoingCallEdgeCount = 0;
@@ -41,6 +43,7 @@ private:
     void AddFileEdgeCount(const Edge& edge);
     static void AddNativeKindCounts(Counts& counts, const Symbol& symbol);
     static void AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol);
+    static bool HasNativeEdgeKind(const Edge& edge, const std::string& nativeKind);
     static bool HasReferenceKind(const Edge& edge, const std::string& referenceKind);
     static void WriteFileCounts(Symbol& file, const Counts& counts);
     void WriteCrossFileCallCounts(Symbol& symbol) const;
