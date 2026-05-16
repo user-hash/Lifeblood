@@ -1,10 +1,41 @@
 #include "NativeKindInventory.h"
 
+#include "NativeCountPropertyWriter.h"
 #include "NativeGraphFacts.h"
+#include "NativeGraphPropertyKeys.h"
 #include "NativeKindNames.h"
+
+#include <array>
 
 namespace lifeblood::native_clang
 {
+namespace
+{
+constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> ModuleCountProperties{{
+    { NativeGraphPropertyKeys::MacroCount, &NativeKindInventoryCounts::macroCount },
+    { NativeGraphPropertyKeys::GlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
+    { NativeGraphPropertyKeys::CallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
+    { NativeGraphPropertyKeys::StructCount, &NativeKindInventoryCounts::structCount },
+    { NativeGraphPropertyKeys::UnionCount, &NativeKindInventoryCounts::unionCount },
+    { NativeGraphPropertyKeys::EnumCount, &NativeKindInventoryCounts::enumCount },
+    { NativeGraphPropertyKeys::TypedefCount, &NativeKindInventoryCounts::typedefCount },
+    { NativeGraphPropertyKeys::StructFieldCount, &NativeKindInventoryCounts::structFieldCount },
+    { NativeGraphPropertyKeys::EnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
+}};
+
+constexpr std::array<NativeCountProperty<NativeKindInventoryCounts>, 9> FileCountProperties{{
+    { NativeGraphPropertyKeys::FileMacroCount, &NativeKindInventoryCounts::macroCount },
+    { NativeGraphPropertyKeys::FileGlobalVariableCount, &NativeKindInventoryCounts::globalVariableCount },
+    { NativeGraphPropertyKeys::FileCallbackTableCount, &NativeKindInventoryCounts::callbackTableCount },
+    { NativeGraphPropertyKeys::FileStructCount, &NativeKindInventoryCounts::structCount },
+    { NativeGraphPropertyKeys::FileUnionCount, &NativeKindInventoryCounts::unionCount },
+    { NativeGraphPropertyKeys::FileEnumCount, &NativeKindInventoryCounts::enumCount },
+    { NativeGraphPropertyKeys::FileTypedefCount, &NativeKindInventoryCounts::typedefCount },
+    { NativeGraphPropertyKeys::FileStructFieldCount, &NativeKindInventoryCounts::structFieldCount },
+    { NativeGraphPropertyKeys::FileEnumMemberCount, &NativeKindInventoryCounts::enumMemberCount },
+}};
+}
+
 void NativeKindInventory::AddSymbol(
     NativeKindInventoryCounts& counts,
     const Symbol& symbol)
@@ -33,37 +64,13 @@ void NativeKindInventory::WriteModuleProperties(
     Symbol& module,
     const NativeKindInventoryCounts& counts)
 {
-    module.properties["native.macroCount"] = std::to_string(counts.macroCount);
-    module.properties["native.globalVariableCount"] =
-        std::to_string(counts.globalVariableCount);
-    module.properties["native.callbackTableCount"] =
-        std::to_string(counts.callbackTableCount);
-    module.properties["native.structCount"] = std::to_string(counts.structCount);
-    module.properties["native.unionCount"] = std::to_string(counts.unionCount);
-    module.properties["native.enumCount"] = std::to_string(counts.enumCount);
-    module.properties["native.typedefCount"] = std::to_string(counts.typedefCount);
-    module.properties["native.structFieldCount"] =
-        std::to_string(counts.structFieldCount);
-    module.properties["native.enumMemberCount"] =
-        std::to_string(counts.enumMemberCount);
+    WriteNativeCountProperties(module, counts, ModuleCountProperties);
 }
 
 void NativeKindInventory::WriteFileProperties(
     Symbol& file,
     const NativeKindInventoryCounts& counts)
 {
-    file.properties["native.fileMacroCount"] = std::to_string(counts.macroCount);
-    file.properties["native.fileGlobalVariableCount"] =
-        std::to_string(counts.globalVariableCount);
-    file.properties["native.fileCallbackTableCount"] =
-        std::to_string(counts.callbackTableCount);
-    file.properties["native.fileStructCount"] = std::to_string(counts.structCount);
-    file.properties["native.fileUnionCount"] = std::to_string(counts.unionCount);
-    file.properties["native.fileEnumCount"] = std::to_string(counts.enumCount);
-    file.properties["native.fileTypedefCount"] = std::to_string(counts.typedefCount);
-    file.properties["native.fileStructFieldCount"] =
-        std::to_string(counts.structFieldCount);
-    file.properties["native.fileEnumMemberCount"] =
-        std::to_string(counts.enumMemberCount);
+    WriteNativeCountProperties(file, counts, FileCountProperties);
 }
 }
