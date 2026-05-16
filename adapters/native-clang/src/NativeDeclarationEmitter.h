@@ -6,6 +6,7 @@
 #include "NativeGlobalEmitter.h"
 #include "NativeGraphSink.h"
 #include "NativeTypeEmitter.h"
+#include "NativeTypeMemberEmitter.h"
 
 #include <clang-c/Index.h>
 
@@ -31,6 +32,7 @@ public:
 
 private:
     NativeTypeEmitter types_;
+    NativeTypeMemberEmitter typeMembers_;
     NativeGlobalEmitter globals_;
     NativeFunctionEmitter functions_;
 };
