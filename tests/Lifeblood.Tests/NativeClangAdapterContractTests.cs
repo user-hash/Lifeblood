@@ -230,6 +230,47 @@ public class NativeClangAdapterContractTests
         AssertEdge(audio, "method:decode_audio(Packet*)", "method:scale_audio(int)", EdgeKind.Calls);
     }
 
+    [Fact]
+    public void CallbackTableFixture_ModelsTableHeldFunctionReferences()
+    {
+        var graph = LoadCallbackFixture().Graph;
+
+        Assert.Empty(GraphValidator.Validate(graph));
+
+        AssertSymbol(graph, "field:codec_table", SymbolKind.Field, "callbackTable", "callback-debug");
+
+        var table = graph.GetSymbol("field:codec_table");
+        Assert.NotNull(table);
+        Assert.Equal("true", table!.Properties["native.callbackTable"]);
+
+        AssertReferenceKind(
+            graph,
+            "field:codec_table",
+            "method:decode_audio(Packet*)",
+            "callbackTarget");
+        AssertReferenceKind(
+            graph,
+            "field:codec_table",
+            "method:decode_video(Packet*)",
+            "callbackTarget");
+        AssertReferenceKind(
+            graph,
+            "method:dispatch_first(Packet*)",
+            "field:codec_table",
+            "globalAccess");
+    }
+
+    [Fact]
+    public void CallbackTableFixture_BlastRadiusSeesRegisteredCallbacksAsLive()
+    {
+        var graph = LoadCallbackFixture().Graph;
+
+        var result = BlastRadiusAnalyzer.Analyze(graph, "method:decode_audio(Packet*)");
+
+        Assert.Contains("field:codec_table", result.AffectedSymbolIds);
+        Assert.Contains("method:dispatch_first(Packet*)", result.AffectedSymbolIds);
+    }
+
     private static void AssertSymbol(
         SemanticGraph graph,
         string id,
@@ -308,6 +349,9 @@ public class NativeClangAdapterContractTests
 
     private static GraphDocument LoadProfileFixture(string profile)
         => LoadFixture("profile-c", $"expected.{profile}.graph.json");
+
+    private static GraphDocument LoadCallbackFixture()
+        => LoadFixture("callback-table-c");
 
     private static GraphDocument LoadFixture(string fixtureName)
         => LoadFixture(fixtureName, "expected.graph.json");

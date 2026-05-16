@@ -1,7 +1,8 @@
 # Native Clang Adapter
 
-**Status:** Stage 3 profile/preprocessor bootstrap. The `libclang` executable
-emits graphs for direct-call, direct-reference, and profile-shaped C fixtures.
+**Status:** Stage 4 callback-table bootstrap. The `libclang` executable emits
+graphs for direct-call, direct-reference, profile-shaped, and callback-table C
+fixtures.
 
 This adapter will translate C/C++ projects into Lifeblood's universal semantic
 graph using Clang/LLVM as the parser and semantic engine.
@@ -27,7 +28,7 @@ No LLVM or Clang dependency belongs in `Lifeblood.Domain`,
 
 ## Planned Engine
 
-Stage 1-3 uses a small native command-line tool over Clang's API. On the
+Stage 1-4 uses a small native command-line tool over Clang's API. On the
 current Windows machine, the official LLVM installer provides `libclang`
 headers/libs (`clang-c/Index.h`, `clang-c/CXCompilationDatabase.h`,
 `libclang.lib`, `libclang.dll`) but not the full C++ LibTooling development
@@ -135,6 +136,15 @@ artifacts/native-clang-build/lifeblood-native-clang.exe `
   --out artifacts/native-clang-build/profile-audio.graph.json
 ```
 
+Run the callback-table fixture:
+
+```powershell
+artifacts/native-clang-build/lifeblood-native-clang.exe `
+  --project adapters/native-clang/test-fixtures/callback-table-c `
+  --profile callback-debug `
+  --out artifacts/native-clang-build/callback.graph.json
+```
+
 ## Source Layout
 
 The Stage 1 executable keeps adapter responsibilities separated:
@@ -200,3 +210,14 @@ Command-line defines are surfaced on the module symbol through
 `native.defines`, and both command-line and source macros are represented as
 `field:macro:<name>` symbols. Macro expansions are file-level `References`
 edges with `native.referenceKind=macroExpansion`.
+
+## Callback Table Fixture
+
+The `callback-table-c` fixture proves the first Stage 4 callback-registration
+shape. A global registration table initialized with function names becomes a
+`field:` symbol with `native.kind=callbackTable`, and each table-held function
+gets a proven `References` edge from the table with
+`native.referenceKind=callbackTarget`.
+
+This is intentionally narrower than arbitrary indirect-call resolution. It only
+claims function targets that appear directly in static initializer syntax.
