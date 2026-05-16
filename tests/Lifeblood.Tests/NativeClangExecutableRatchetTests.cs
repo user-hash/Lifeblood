@@ -160,7 +160,8 @@ public class NativeClangExecutableRatchetTests
         AssertModuleParseHealth(graph, "mod:direct-refs-c", total: 1, parsed: 1, failed: 0);
         AssertModuleGraphInventory(graph, "mod:direct-refs-c", symbols: 13, edges: 9, references: 8, calls: 1);
         AssertModuleFunctionInventory(graph, "mod:direct-refs-c", definitions: 2, declarations: 0);
-        AssertModuleNativeKindInventory(graph, "mod:direct-refs-c", macros: 1);
+        AssertModuleNativeKindInventory(graph, "mod:direct-refs-c", macros: 1, globals: 1);
+        AssertFileNativeKindInventory(graph, "file:src/decode.c", macros: 0, globals: 1, callbackTables: 0);
         AssertModuleTypeInventory(graph, "mod:direct-refs-c", structs: 1, unions: 0, enums: 1, typedefs: 1);
 
         Assert.NotNull(graph.GetSymbol("field:decode_bias"));
@@ -722,11 +723,13 @@ public class NativeClangExecutableRatchetTests
         SemanticGraph graph,
         string moduleId,
         int macros,
+        int globals = 0,
         int callbackTables = 0)
     {
         var module = graph.GetSymbol(moduleId);
         Assert.NotNull(module);
         Assert.Equal(macros.ToString(), module!.Properties["native.macroCount"]);
+        Assert.Equal(globals.ToString(), module.Properties["native.globalVariableCount"]);
         Assert.Equal(callbackTables.ToString(), module.Properties["native.callbackTableCount"]);
     }
 
@@ -760,11 +763,13 @@ public class NativeClangExecutableRatchetTests
         SemanticGraph graph,
         string fileId,
         int macros,
-        int callbackTables)
+        int globals = 0,
+        int callbackTables = 0)
     {
         var file = graph.GetSymbol(fileId);
         Assert.NotNull(file);
         Assert.Equal(macros.ToString(), file!.Properties["native.fileMacroCount"]);
+        Assert.Equal(globals.ToString(), file.Properties["native.fileGlobalVariableCount"]);
         Assert.Equal(callbackTables.ToString(), file.Properties["native.fileCallbackTableCount"]);
     }
 
@@ -871,6 +876,7 @@ public class NativeClangExecutableRatchetTests
             functionDeclarations.ToString(),
             file.Properties["native.fileFunctionDeclarationCount"]);
         Assert.Equal(macros.ToString(), file.Properties["native.fileMacroCount"]);
+        Assert.Equal("0", file.Properties["native.fileGlobalVariableCount"]);
         Assert.Equal("0", file.Properties["native.fileCallbackTableCount"]);
         Assert.True(file.Properties.ContainsKey("native.fileStructCount"));
         Assert.True(file.Properties.ContainsKey("native.fileUnionCount"));

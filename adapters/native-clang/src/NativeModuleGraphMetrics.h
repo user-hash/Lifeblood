@@ -33,6 +33,7 @@ private:
         unsigned functionDefinitionCount = 0;
         unsigned functionDeclarationCount = 0;
         unsigned macroCount = 0;
+        unsigned globalVariableCount = 0;
         unsigned callbackTableCount = 0;
         unsigned structCount = 0;
         unsigned unionCount = 0;
