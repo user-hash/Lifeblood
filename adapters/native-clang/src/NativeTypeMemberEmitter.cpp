@@ -5,6 +5,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeKindNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 #include "NativeTypeEmitter.h"
@@ -46,7 +47,7 @@ bool NativeTypeMemberEmitter::AddEnumConstant(CXCursor cursor, const std::string
     symbol.parentId = enumTypeId;
     symbol.visibility = "public";
     symbol.isStatic = true;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "enumMember";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::EnumMember;
     symbol.properties["native.enumValue"] = std::to_string(clang_getEnumConstantDeclValue(cursor));
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
@@ -72,7 +73,7 @@ void NativeTypeMemberEmitter::AddField(CXCursor cursor, const std::string& owner
     field.line = sourceMap_.Line(cursor);
     field.parentId = ownerTypeId;
     field.visibility = "public";
-    field.properties[NativeGraphPropertyKeys::NativeKind] = "structField";
+    field.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::StructField;
     field.properties["native.fieldType"] = NormalizeTypeForId(
         ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
     field.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;

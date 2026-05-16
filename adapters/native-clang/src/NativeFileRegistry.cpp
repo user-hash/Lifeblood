@@ -2,6 +2,7 @@
 
 #include "ClangUtilities.h"
 #include "NativeGraphPropertyKeys.h"
+#include "NativeKindNames.h"
 
 #include <filesystem>
 #include <utility>
@@ -37,7 +38,7 @@ void NativeFileRegistry::EnsureFileSymbol(const std::string& relativePath)
     symbol.visibility = "internal";
     const bool isHeader = EndsWith(relativePath, ".h") || EndsWith(relativePath, ".hpp");
     symbol.properties[NativeGraphPropertyKeys::NativeKind] =
-        isHeader ? "header" : "translationUnit";
+        isHeader ? NativeKindNames::Header : NativeKindNames::TranslationUnit;
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(symbol);
 

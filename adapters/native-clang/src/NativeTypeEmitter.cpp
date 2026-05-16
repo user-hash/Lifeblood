@@ -2,6 +2,7 @@
 
 #include "ClangUtilities.h"
 #include "NativeGraphPropertyKeys.h"
+#include "NativeKindNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 
@@ -65,7 +66,7 @@ bool NativeTypeEmitter::AddTypedefType(CXCursor cursor)
     symbol.line = sourceMap_.Line(cursor);
     symbol.parentId = "file:" + *file;
     symbol.visibility = "public";
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "typedef";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Typedef;
     symbol.properties["native.underlyingType"] = NormalizeTypeForId(
         ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor))));
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
@@ -113,7 +114,7 @@ bool NativeTypeEmitter::EnsureTypeDeclaration(CXCursor declaration, CXType type)
         case CXCursor_UnionDecl:
             return AddRecordType(declaration, NativeKindForType(type));
         case CXCursor_EnumDecl:
-            return AddRecordType(declaration, "enum");
+            return AddRecordType(declaration, NativeKindNames::Enum);
         case CXCursor_TypedefDecl:
             return AddTypedefType(declaration);
         default:
@@ -126,11 +127,11 @@ std::string NativeTypeEmitter::NativeKindForType(CXType type) const
     switch (type.kind)
     {
         case CXType_Record:
-            return "struct";
+            return NativeKindNames::Struct;
         case CXType_Enum:
-            return "enum";
+            return NativeKindNames::Enum;
         default:
-            return "type";
+            return NativeKindNames::Type;
     }
 }
 }

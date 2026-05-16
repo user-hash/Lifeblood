@@ -1,5 +1,7 @@
 #include "NativeFileGraphMetrics.h"
 
+#include "NativeKindNames.h"
+
 namespace lifeblood::native_clang
 {
 NativeFileGraphMetrics::NativeFileGraphMetrics(
@@ -126,7 +128,7 @@ void NativeFileGraphMetrics::AddFileEdgeCount(const Edge& edge)
 
 void NativeFileGraphMetrics::AddFunctionDeclarationCount(Counts& counts, const Symbol& symbol)
 {
-    if (!NativeGraphFacts::HasNativeKind(symbol, "function"))
+    if (!NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Function))
         return;
 
     if (NativeGraphFacts::HasDeclarationKind(symbol, "declaration"))

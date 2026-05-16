@@ -1,6 +1,7 @@
 #include "NativeDeclaredSurfaceInventory.h"
 
 #include "NativeGraphFacts.h"
+#include "NativeKindNames.h"
 
 namespace lifeblood::native_clang
 {
@@ -25,9 +26,9 @@ void NativeDeclaredSurfaceInventory::AddSymbol(
     auto file = graph_.symbols.find(*fileId);
     if (file == graph_.symbols.end()) return;
 
-    if (NativeGraphFacts::HasNativeKind(file->second, "header"))
+    if (NativeGraphFacts::HasNativeKind(file->second, NativeKindNames::Header))
         counts.headerDeclaredSymbolCount++;
-    else if (NativeGraphFacts::HasNativeKind(file->second, "translationUnit"))
+    else if (NativeGraphFacts::HasNativeKind(file->second, NativeKindNames::TranslationUnit))
         counts.translationUnitDeclaredSymbolCount++;
 }
 

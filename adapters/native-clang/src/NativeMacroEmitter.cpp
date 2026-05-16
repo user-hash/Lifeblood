@@ -5,6 +5,7 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphPropertyKeys.h"
 #include "NativeGraphSink.h"
+#include "NativeKindNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 
@@ -89,7 +90,7 @@ void NativeMacroEmitter::AddMacroSymbol(
     }
     symbol.visibility = "internal";
     symbol.isStatic = true;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "macro";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Macro;
     symbol.properties["native.macroSource"] = source;
     symbol.properties["native.macroValue"] = value;
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;

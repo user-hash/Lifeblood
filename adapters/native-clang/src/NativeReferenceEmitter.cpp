@@ -1,6 +1,7 @@
 #include "NativeReferenceEmitter.h"
 
 #include "ClangUtilities.h"
+#include "NativeKindNames.h"
 #include "NativeReferenceKinds.h"
 #include "NativeSymbolIds.h"
 
@@ -69,7 +70,8 @@ void NativeReferenceEmitter::AddDeclarationReference(
         case CXCursor_EnumConstantDecl:
         {
             CXCursor parent = clang_getCursorSemanticParent(referenced);
-            if (clang_Cursor_isNull(parent) || !declarations_.AddRecordType(parent, "enum"))
+            if (clang_Cursor_isNull(parent) ||
+                !declarations_.AddRecordType(parent, NativeKindNames::Enum))
                 return;
 
             std::string enumTypeId = TypeId(parent);
@@ -97,7 +99,7 @@ void NativeReferenceEmitter::AddMemberReference(
 
     CXCursor owner = clang_getCursorSemanticParent(referenced);
     if (clang_Cursor_isNull(owner)) return;
-    if (!declarations_.AddRecordType(owner, "struct")) return;
+    if (!declarations_.AddRecordType(owner, NativeKindNames::Struct)) return;
 
     declarations_.AddField(referenced, TypeId(owner));
 

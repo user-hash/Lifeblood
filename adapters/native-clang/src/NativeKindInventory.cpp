@@ -1,6 +1,7 @@
 #include "NativeKindInventory.h"
 
 #include "NativeGraphFacts.h"
+#include "NativeKindNames.h"
 
 namespace lifeblood::native_clang
 {
@@ -8,23 +9,23 @@ void NativeKindInventory::AddSymbol(
     NativeKindInventoryCounts& counts,
     const Symbol& symbol)
 {
-    if (NativeGraphFacts::HasNativeKind(symbol, "macro"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Macro))
         counts.macroCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "global"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Global))
         counts.globalVariableCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "callbackTable"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::CallbackTable))
         counts.callbackTableCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "struct"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Struct))
         counts.structCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "union"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Union))
         counts.unionCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "enum"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Enum))
         counts.enumCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "typedef"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::Typedef))
         counts.typedefCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "structField"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::StructField))
         counts.structFieldCount++;
-    if (NativeGraphFacts::HasNativeKind(symbol, "enumMember"))
+    if (NativeGraphFacts::HasNativeKind(symbol, NativeKindNames::EnumMember))
         counts.enumMemberCount++;
 }
 

@@ -1,6 +1,7 @@
 #include "NativeModuleTracker.h"
 
 #include "NativeGraphPropertyKeys.h"
+#include "NativeKindNames.h"
 #include "NativeSymbolIds.h"
 
 #include <sstream>
@@ -67,7 +68,7 @@ void NativeModuleTracker::AddModuleSymbol()
     module.name = moduleName_;
     module.qualifiedName = moduleName_;
     module.kind = "module";
-    module.properties[NativeGraphPropertyKeys::NativeKind] = "library";
+    module.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Library;
     module.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
     graph_.AddSymbol(module);
 }
@@ -82,7 +83,7 @@ void NativeModuleTracker::AddCommandLineMacroSymbol(const CommandLineDefine& def
     symbol.parentId = moduleId_;
     symbol.visibility = "internal";
     symbol.isStatic = true;
-    symbol.properties[NativeGraphPropertyKeys::NativeKind] = "macro";
+    symbol.properties[NativeGraphPropertyKeys::NativeKind] = NativeKindNames::Macro;
     symbol.properties["native.macroSource"] = "commandLine";
     symbol.properties["native.macroValue"] = define.value;
     symbol.properties[NativeGraphPropertyKeys::BuildProfile] = buildProfile_;
