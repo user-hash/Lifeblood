@@ -30,6 +30,7 @@ private:
         unsigned callEdgeCount = 0;
         unsigned crossFileCallEdgeCount = 0;
         unsigned globalAccessEdgeCount = 0;
+        unsigned fieldAccessEdgeCount = 0;
         unsigned callbackTargetEdgeCount = 0;
         unsigned functionDefinitionCount = 0;
         unsigned functionDeclarationCount = 0;
