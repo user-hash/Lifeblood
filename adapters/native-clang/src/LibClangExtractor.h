@@ -3,10 +3,6 @@
 #include "GraphModel.h"
 #include "Options.h"
 
-#include <set>
-#include <string>
-#include <tuple>
-
 namespace lifeblood::native_clang
 {
 class LibClangExtractor
@@ -21,6 +17,5 @@ public:
 private:
     Options options_;
     NativeGraph graph_;
-    std::set<std::tuple<std::string, std::string, std::string>> edgeKeys_;
 };
 }

@@ -1,5 +1,7 @@
 #include "ClangUtilities.h"
 #include "LibClangExtractor.h"
+#include "NativeGraphBuilder.h"
+#include "NativeSymbolIds.h"
 
 #include <clang-c/CXCompilationDatabase.h>
 #include <clang-c/Index.h>
@@ -37,15 +39,13 @@ class ExtractionSession
 public:
     ExtractionSession(
         Options options,
-        NativeGraph& graph,
-        std::set<std::tuple<std::string, std::string, std::string>>& edgeKeys)
+        NativeGraphBuilder& graph)
         : options_(std::move(options)),
           projectRoot_(fs::weakly_canonical(options_.projectRoot)),
           compilationDatabaseDir_(ResolvePath(options_.compilationDatabaseDir)),
           moduleName_(BaseName(projectRoot_)),
           moduleId_("mod:" + moduleName_),
-          graph_(graph),
-          edgeKeys_(edgeKeys)
+          graph_(graph)
     {
         Symbol module;
         module.id = moduleId_;
@@ -54,7 +54,7 @@ public:
         module.kind = "module";
         module.properties["native.kind"] = "library";
         module.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(module);
+        graph_.AddSymbol(module);
     }
 
     bool Run()
@@ -262,14 +262,14 @@ private:
 
     void UpdateModuleBuildProperties()
     {
-        auto it = graph_.symbols.find(moduleId_);
-        if (it == graph_.symbols.end()) return;
+        auto* module = graph_.FindSymbol(moduleId_);
+        if (module == nullptr) return;
 
-        it->second.properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
+        module->properties["native.translationUnitCount"] = std::to_string(translationUnitCount_);
         if (!commandLineDefines_.empty())
-            it->second.properties["native.defines"] = JoinDefines();
+            module->properties["native.defines"] = JoinDefines();
         if (!commandLineUndefines_.empty())
-            it->second.properties["native.undefines"] = Join(commandLineUndefines_);
+            module->properties["native.undefines"] = Join(commandLineUndefines_);
     }
 
     bool IsSourceArg(
@@ -402,7 +402,7 @@ private:
         edge.properties["native.kind"] = "include";
         edge.properties["native.include"] = fs::path(*includedPath).filename().string();
         edge.properties["native.buildProfile"] = options_.profile;
-        AddEdge(edge);
+        graph_.AddEdge(edge);
     }
 
     void ProcessMacroDefinition(CXCursor cursor)
@@ -425,7 +425,7 @@ private:
         if (name.empty()) return;
 
         std::string targetId = MacroId(name);
-        if (graph_.symbols.find(targetId) == graph_.symbols.end())
+        if (!graph_.HasSymbol(targetId))
             AddMacroSymbol(name, std::nullopt, 0, "unknown", "");
 
         EnsureFileSymbol(*file);
@@ -438,7 +438,7 @@ private:
         edge.callSite = CallSiteFor(cursor, edge.sourceId);
         edge.properties["native.referenceKind"] = "macroExpansion";
         edge.properties["native.buildProfile"] = options_.profile;
-        AddEdge(edge);
+        graph_.AddEdge(edge);
     }
 
     void AddMacroSymbol(
@@ -470,7 +470,7 @@ private:
         symbol.properties["native.macroSource"] = source;
         symbol.properties["native.macroValue"] = value;
         symbol.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(symbol);
+        graph_.AddSymbol(symbol);
     }
 
     std::string MacroReplacement(CXCursor cursor)
@@ -520,7 +520,7 @@ private:
         symbol.properties["native.kind"] = nativeKind;
         symbol.properties["native.linkage"] = "none";
         symbol.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(symbol);
+        graph_.AddSymbol(symbol);
         return true;
     }
 
@@ -546,7 +546,7 @@ private:
         symbol.properties["native.underlyingType"] = NormalizeTypeForId(
             ToString(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor))));
         symbol.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(symbol);
+        graph_.AddSymbol(symbol);
 
         AddTypeReference(symbol.id, cursor, clang_getTypedefDeclUnderlyingType(cursor), "underlyingType");
         return true;
@@ -571,10 +571,7 @@ private:
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return false;
 
-        const std::string prefix = "type:";
-        std::string enumName = enumTypeId.rfind(prefix, 0) == 0
-            ? enumTypeId.substr(prefix.size())
-            : enumTypeId;
+        std::string enumName = OwnerNameFromTypeId(enumTypeId);
 
         Symbol symbol;
         symbol.id = "field:" + enumName + "." + name;
@@ -589,7 +586,7 @@ private:
         symbol.properties["native.kind"] = "enumMember";
         symbol.properties["native.enumValue"] = std::to_string(clang_getEnumConstantDeclValue(cursor));
         symbol.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(symbol);
+        graph_.AddSymbol(symbol);
         return true;
     }
 
@@ -601,10 +598,7 @@ private:
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return;
 
-        const std::string prefix = "type:";
-        std::string owner = state.currentTypeId.rfind(prefix, 0) == 0
-            ? state.currentTypeId.substr(prefix.size())
-            : state.currentTypeId;
+        std::string owner = OwnerNameFromTypeId(state.currentTypeId);
 
         Symbol field;
         field.id = "field:" + owner + "." + name;
@@ -619,7 +613,7 @@ private:
         field.properties["native.fieldType"] = NormalizeTypeForId(
             ToString(clang_getTypeSpelling(clang_getCursorType(cursor))));
         field.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(field);
+        graph_.AddSymbol(field);
 
         AddTypeReference(field.id, cursor, clang_getCursorType(cursor), "fieldType");
     }
@@ -648,7 +642,7 @@ private:
 
         const auto storage = clang_Cursor_getStorageClass(cursor);
         const std::string symbolId = GlobalVariableId(cursor);
-        auto existing = graph_.symbols.find(symbolId);
+        const Symbol* existing = graph_.FindSymbol(symbolId);
 
         Symbol symbol;
         symbol.id = symbolId;
@@ -661,9 +655,9 @@ private:
         symbol.visibility = storage == CX_SC_Static ? "private" : "public";
         symbol.isStatic = storage == CX_SC_Static;
         symbol.properties["native.kind"] =
-            existing != graph_.symbols.end() &&
-            existing->second.properties.find("native.kind") != existing->second.properties.end() &&
-            existing->second.properties.at("native.kind") == "callbackTable"
+            existing != nullptr &&
+            existing->properties.find("native.kind") != existing->properties.end() &&
+            existing->properties.at("native.kind") == "callbackTable"
                 ? "callbackTable"
                 : "global";
         symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
@@ -672,7 +666,7 @@ private:
         symbol.properties["native.buildProfile"] = options_.profile;
         if (symbol.properties["native.kind"] == "callbackTable")
             symbol.properties["native.callbackTable"] = "true";
-        AddSymbol(symbol);
+        graph_.AddSymbol(symbol);
 
         AddTypeReference(symbol.id, cursor, clang_getCursorType(cursor), "globalType");
         return true;
@@ -709,7 +703,7 @@ private:
         symbol.properties["native.linkage"] = storage == CX_SC_Static ? "internal" : "external";
         symbol.properties["native.signature"] = Signature(cursor);
         symbol.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(symbol);
+        graph_.AddSymbol(symbol);
 
         AddParameterTypeReferences(cursor, symbol.id);
         AddTypeReference(symbol.id, cursor, clang_getCursorResultType(cursor), "returnType");
@@ -746,7 +740,7 @@ private:
         edge.callSite = CallSiteFor(evidenceCursor, sourceId);
         edge.properties["native.referenceKind"] = referenceKind;
         edge.properties["native.buildProfile"] = options_.profile;
-        AddEdge(edge);
+        graph_.AddEdge(edge);
     }
 
     bool EnsureTypeDeclaration(CXCursor declaration, CXType type)
@@ -781,7 +775,7 @@ private:
         edge.callSite = CallSiteFor(cursor, state.currentFunctionId);
         edge.properties["native.callKind"] = "direct";
         edge.properties["native.buildProfile"] = options_.profile;
-        AddEdge(edge);
+        graph_.AddEdge(edge);
     }
 
     void ProcessDeclarationReference(CXCursor cursor, const VisitState& state)
@@ -859,7 +853,7 @@ private:
         edge.callSite = CallSiteFor(cursor, state.currentFunctionId);
         edge.properties["native.referenceKind"] = "fieldAccess";
         edge.properties["native.buildProfile"] = options_.profile;
-        AddEdge(edge);
+        graph_.AddEdge(edge);
     }
 
     void AddReferenceEdge(
@@ -876,16 +870,16 @@ private:
         edge.callSite = CallSiteFor(cursor, sourceId);
         edge.properties["native.referenceKind"] = referenceKind;
         edge.properties["native.buildProfile"] = options_.profile;
-        AddEdge(edge);
+        graph_.AddEdge(edge);
     }
 
     void MarkCallbackTable(const std::string& symbolId)
     {
-        auto it = graph_.symbols.find(symbolId);
-        if (it == graph_.symbols.end()) return;
+        auto* symbol = graph_.FindSymbol(symbolId);
+        if (symbol == nullptr) return;
 
-        it->second.properties["native.kind"] = "callbackTable";
-        it->second.properties["native.callbackTable"] = "true";
+        symbol->properties["native.kind"] = "callbackTable";
+        symbol->properties["native.callbackTable"] = "true";
     }
 
     std::string NativeKindForType(CXType type)
@@ -899,53 +893,6 @@ private:
             default:
                 return "type";
         }
-    }
-
-    std::string FunctionId(CXCursor cursor)
-    {
-        std::string name = ToString(clang_getCursorSpelling(cursor));
-        std::vector<std::string> parameters;
-        const int count = clang_Cursor_getNumArguments(cursor);
-        for (int i = 0; i < count; i++)
-        {
-            CXCursor arg = clang_Cursor_getArgument(cursor, static_cast<unsigned>(i));
-            parameters.push_back(NormalizeTypeForId(
-                ToString(clang_getTypeSpelling(clang_getCursorType(arg)))));
-        }
-
-        std::ostringstream id;
-        id << "method:" << name << "(";
-        for (size_t i = 0; i < parameters.size(); i++)
-        {
-            if (i > 0) id << ",";
-            id << parameters[i];
-        }
-        id << ")";
-        return id.str();
-    }
-
-    std::string TypeId(CXCursor cursor)
-    {
-        return "type:" + ToString(clang_getCursorSpelling(cursor));
-    }
-
-    std::string GlobalVariableId(CXCursor cursor)
-    {
-        return "field:" + ToString(clang_getCursorSpelling(cursor));
-    }
-
-    std::string MacroId(const std::string& name)
-    {
-        return "field:macro:" + name;
-    }
-
-    std::string EnumConstantId(CXCursor cursor, const std::string& enumTypeId)
-    {
-        const std::string prefix = "type:";
-        std::string enumName = enumTypeId.rfind(prefix, 0) == 0
-            ? enumTypeId.substr(prefix.size())
-            : enumTypeId;
-        return "field:" + enumName + "." + ToString(clang_getCursorSpelling(cursor));
     }
 
     std::string Signature(CXCursor cursor)
@@ -964,22 +911,10 @@ private:
         return signature.str();
     }
 
-    void AddSymbol(Symbol symbol)
-    {
-        graph_.symbols[symbol.id] = std::move(symbol);
-    }
-
-    void AddEdge(Edge edge)
-    {
-        auto key = std::make_tuple(edge.sourceId, edge.targetId, edge.kind);
-        if (edgeKeys_.insert(key).second)
-            graph_.edges.push_back(std::move(edge));
-    }
-
     void EnsureFileSymbol(const std::string& relativePath)
     {
         std::string id = "file:" + relativePath;
-        if (graph_.symbols.find(id) != graph_.symbols.end()) return;
+        if (graph_.HasSymbol(id)) return;
 
         Symbol symbol;
         symbol.id = id;
@@ -993,7 +928,7 @@ private:
             ? "header"
             : "translationUnit";
         symbol.properties["native.buildProfile"] = options_.profile;
-        AddSymbol(symbol);
+        graph_.AddSymbol(symbol);
     }
 
     std::optional<std::string> SourceFile(CXCursor cursor)
@@ -1106,8 +1041,7 @@ private:
     fs::path compilationDatabaseDir_;
     std::string moduleName_;
     std::string moduleId_;
-    NativeGraph& graph_;
-    std::set<std::tuple<std::string, std::string, std::string>>& edgeKeys_;
+    NativeGraphBuilder& graph_;
     CXTranslationUnit currentUnit_ = nullptr;
     unsigned translationUnitCount_ = 0;
     std::map<std::string, std::string> commandLineDefines_;
@@ -1122,11 +1056,10 @@ LibClangExtractor::LibClangExtractor(Options options)
 
 bool LibClangExtractor::Run()
 {
-    graph_.symbols.clear();
-    graph_.edges.clear();
-    edgeKeys_.clear();
+    NativeGraphBuilder graphBuilder(graph_);
+    graphBuilder.Clear();
 
-    ExtractionSession session(options_, graph_, edgeKeys_);
+    ExtractionSession session(options_, graphBuilder);
     return session.Run();
 }
 }
