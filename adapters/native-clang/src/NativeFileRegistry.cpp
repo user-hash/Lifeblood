@@ -5,6 +5,7 @@
 #include "NativeKindNames.h"
 #include "NativeParseStatuses.h"
 #include "NativePropertyWriter.h"
+#include "NativeTranslationUnitFileProperties.h"
 #include "NativeVisibilityNames.h"
 
 #include <filesystem>
@@ -60,39 +61,7 @@ void NativeFileRegistry::MarkTranslationUnitPending(
 {
     UpdateTranslationUnitHealth(relativePath, NativeParseStatuses::Pending, {});
     graph_.UpdateSymbol("file:" + relativePath, [&](Symbol& file) {
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::ParseArgumentCount,
-            static_cast<unsigned>(command.parseArguments.size()));
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::CommandLineDefineCount,
-            static_cast<unsigned>(command.defines.size()));
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::CommandLineUndefineCount,
-            static_cast<unsigned>(command.undefines.size()));
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::IncludeSearchPathCount,
-            command.includeSearchPathCount);
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::SystemIncludeSearchPathCount,
-            command.systemIncludeSearchPathCount);
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::QuoteIncludeSearchPathCount,
-            command.quoteIncludeSearchPathCount);
-        NativePropertyWriter::Set(
-            file,
-            NativeGraphPropertyKeys::SourceLanguage,
-            command.sourceLanguage);
-        if (!command.languageStandard.empty())
-            NativePropertyWriter::Set(
-                file,
-                NativeGraphPropertyKeys::LanguageStandard,
-                command.languageStandard);
+        NativeTranslationUnitFileProperties::WriteCompileCommand(file, command);
     });
 }
 
@@ -115,20 +84,10 @@ void NativeFileRegistry::UpdateTranslationUnitHealth(
 {
     EnsureFileSymbol(relativePath);
     graph_.UpdateSymbol("file:" + relativePath, [&](Symbol& file) {
-        NativePropertyWriter::SetTrue(file, NativeGraphPropertyKeys::TranslationUnit);
-        NativePropertyWriter::Set(file, NativeGraphPropertyKeys::ParseStatus, parseStatus);
-        NativePropertyWriter::SetCount(
+        NativeTranslationUnitFileProperties::WriteParseHealth(
             file,
-            NativeGraphPropertyKeys::WarningDiagnosticCount,
-            diagnostics.warningCount);
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::ErrorDiagnosticCount,
-            diagnostics.errorCount);
-        NativePropertyWriter::SetCount(
-            file,
-            NativeGraphPropertyKeys::FatalDiagnosticCount,
-            diagnostics.fatalCount);
+            parseStatus,
+            diagnostics);
     });
 }
 
