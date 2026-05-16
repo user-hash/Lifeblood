@@ -1,4 +1,5 @@
 #include "ClangUtilities.h"
+#include "ClangSourceMapper.h"
 #include "LibClangExtractor.h"
 #include "NativeGraphBuilder.h"
 #include "NativeGraphSink.h"
@@ -44,6 +45,7 @@ public:
         : options_(std::move(options)),
           projectRoot_(fs::weakly_canonical(options_.projectRoot)),
           compilationDatabaseDir_(ResolvePath(options_.compilationDatabaseDir)),
+          sourceMap_(projectRoot_),
           moduleName_(BaseName(projectRoot_)),
           moduleId_("mod:" + moduleName_),
           graph_(graph)
@@ -382,12 +384,12 @@ private:
 
     void ProcessInclude(CXCursor cursor)
     {
-        auto sourceFile = SourceFile(cursor);
+        auto sourceFile = sourceMap_.SourceFile(cursor);
         if (!sourceFile) return;
 
         CXFile included = clang_getIncludedFile(cursor);
         if (included == nullptr) return;
-        auto includedPath = RelPath(included);
+        auto includedPath = sourceMap_.RelativePath(included);
         if (!includedPath) return;
 
         EnsureFileSymbol(*sourceFile);
@@ -397,8 +399,8 @@ private:
         edge.sourceId = "file:" + *sourceFile;
         edge.targetId = "file:" + *includedPath;
         edge.kind = "references";
-        edge.evidence = EvidenceFor(cursor, "syntax");
-        edge.callSite = CallSiteFor(cursor, edge.sourceId);
+        edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
+        edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
         edge.properties["native.kind"] = "include";
         edge.properties["native.include"] = fs::path(*includedPath).filename().string();
         edge.properties["native.buildProfile"] = options_.profile;
@@ -407,18 +409,18 @@ private:
 
     void ProcessMacroDefinition(CXCursor cursor)
     {
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return;
 
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return;
 
-        AddMacroSymbol(name, file, Line(cursor), "source", MacroReplacement(cursor));
+        AddMacroSymbol(name, file, sourceMap_.Line(cursor), "source", MacroReplacement(cursor));
     }
 
     void ProcessMacroExpansion(CXCursor cursor)
     {
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return;
 
         std::string name = ToString(clang_getCursorSpelling(cursor));
@@ -434,8 +436,8 @@ private:
         edge.sourceId = "file:" + *file;
         edge.targetId = targetId;
         edge.kind = "references";
-        edge.evidence = EvidenceFor(cursor, "syntax");
-        edge.callSite = CallSiteFor(cursor, edge.sourceId);
+        edge.evidence = sourceMap_.EvidenceFor(cursor, "syntax");
+        edge.callSite = sourceMap_.CallSiteFor(cursor, edge.sourceId);
         edge.properties["native.referenceKind"] = "macroExpansion";
         edge.properties["native.buildProfile"] = options_.profile;
         graph_.AddEdge(edge);
@@ -503,7 +505,7 @@ private:
         if (!clang_isCursorDefinition(cursor)) return false;
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return false;
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return false;
 
         EnsureFileSymbol(*file);
@@ -514,7 +516,7 @@ private:
         symbol.qualifiedName = name;
         symbol.kind = "type";
         symbol.filePath = *file;
-        symbol.line = Line(cursor);
+        symbol.line = sourceMap_.Line(cursor);
         symbol.parentId = "file:" + *file;
         symbol.visibility = "public";
         symbol.properties["native.kind"] = nativeKind;
@@ -528,7 +530,7 @@ private:
     {
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return false;
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return false;
 
         EnsureFileSymbol(*file);
@@ -539,7 +541,7 @@ private:
         symbol.qualifiedName = name;
         symbol.kind = "type";
         symbol.filePath = *file;
-        symbol.line = Line(cursor);
+        symbol.line = sourceMap_.Line(cursor);
         symbol.parentId = "file:" + *file;
         symbol.visibility = "public";
         symbol.properties["native.kind"] = "typedef";
@@ -566,7 +568,7 @@ private:
 
     bool AddEnumConstant(CXCursor cursor, const std::string& enumTypeId)
     {
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return false;
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return false;
@@ -579,7 +581,7 @@ private:
         symbol.qualifiedName = enumName + "." + name;
         symbol.kind = "field";
         symbol.filePath = *file;
-        symbol.line = Line(cursor);
+        symbol.line = sourceMap_.Line(cursor);
         symbol.parentId = enumTypeId;
         symbol.visibility = "public";
         symbol.isStatic = true;
@@ -593,7 +595,7 @@ private:
     void ProcessField(CXCursor cursor, const VisitState& state)
     {
         if (state.currentTypeId.empty()) return;
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return;
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return;
@@ -606,7 +608,7 @@ private:
         field.qualifiedName = owner + "." + name;
         field.kind = "field";
         field.filePath = *file;
-        field.line = Line(cursor);
+        field.line = sourceMap_.Line(cursor);
         field.parentId = state.currentTypeId;
         field.visibility = "public";
         field.properties["native.kind"] = "structField";
@@ -633,7 +635,7 @@ private:
     {
         if (!IsFileScopeCursor(cursor)) return false;
 
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return false;
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return false;
@@ -650,7 +652,7 @@ private:
         symbol.qualifiedName = name;
         symbol.kind = "field";
         symbol.filePath = *file;
-        symbol.line = Line(cursor);
+        symbol.line = sourceMap_.Line(cursor);
         symbol.parentId = "file:" + *file;
         symbol.visibility = storage == CX_SC_Static ? "private" : "public";
         symbol.isStatic = storage == CX_SC_Static;
@@ -681,7 +683,7 @@ private:
 
     bool AddFunction(CXCursor cursor)
     {
-        auto file = SourceFile(cursor);
+        auto file = sourceMap_.SourceFile(cursor);
         if (!file) return false;
         std::string name = ToString(clang_getCursorSpelling(cursor));
         if (name.empty()) return false;
@@ -695,7 +697,7 @@ private:
         symbol.qualifiedName = name;
         symbol.kind = "method";
         symbol.filePath = *file;
-        symbol.line = Line(cursor);
+        symbol.line = sourceMap_.Line(cursor);
         symbol.parentId = "file:" + *file;
         symbol.visibility = storage == CX_SC_Static ? "private" : "public";
         symbol.isStatic = storage == CX_SC_Static;
@@ -736,8 +738,8 @@ private:
         edge.sourceId = sourceId;
         edge.targetId = TypeId(declaration);
         edge.kind = "references";
-        edge.evidence = EvidenceFor(evidenceCursor, "semantic");
-        edge.callSite = CallSiteFor(evidenceCursor, sourceId);
+        edge.evidence = sourceMap_.EvidenceFor(evidenceCursor, "semantic");
+        edge.callSite = sourceMap_.CallSiteFor(evidenceCursor, sourceId);
         edge.properties["native.referenceKind"] = referenceKind;
         edge.properties["native.buildProfile"] = options_.profile;
         graph_.AddEdge(edge);
@@ -771,8 +773,8 @@ private:
         edge.sourceId = state.currentFunctionId;
         edge.targetId = FunctionId(referenced);
         edge.kind = "calls";
-        edge.evidence = EvidenceFor(cursor, "semantic");
-        edge.callSite = CallSiteFor(cursor, state.currentFunctionId);
+        edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
+        edge.callSite = sourceMap_.CallSiteFor(cursor, state.currentFunctionId);
         edge.properties["native.callKind"] = "direct";
         edge.properties["native.buildProfile"] = options_.profile;
         graph_.AddEdge(edge);
@@ -849,8 +851,8 @@ private:
         edge.sourceId = state.currentFunctionId;
         edge.targetId = "field:" + ownerName + "." + fieldName;
         edge.kind = "references";
-        edge.evidence = EvidenceFor(cursor, "semantic");
-        edge.callSite = CallSiteFor(cursor, state.currentFunctionId);
+        edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
+        edge.callSite = sourceMap_.CallSiteFor(cursor, state.currentFunctionId);
         edge.properties["native.referenceKind"] = "fieldAccess";
         edge.properties["native.buildProfile"] = options_.profile;
         graph_.AddEdge(edge);
@@ -866,8 +868,8 @@ private:
         edge.sourceId = sourceId;
         edge.targetId = targetId;
         edge.kind = "references";
-        edge.evidence = EvidenceFor(cursor, "semantic");
-        edge.callSite = CallSiteFor(cursor, sourceId);
+        edge.evidence = sourceMap_.EvidenceFor(cursor, "semantic");
+        edge.callSite = sourceMap_.CallSiteFor(cursor, sourceId);
         edge.properties["native.referenceKind"] = referenceKind;
         edge.properties["native.buildProfile"] = options_.profile;
         graph_.AddEdge(edge);
@@ -930,88 +932,6 @@ private:
         graph_.AddSymbol(symbol);
     }
 
-    std::optional<std::string> SourceFile(CXCursor cursor)
-    {
-        CXSourceLocation location = clang_getCursorLocation(cursor);
-        CXFile file = nullptr;
-        unsigned line = 0, column = 0, offset = 0;
-        clang_getSpellingLocation(location, &file, &line, &column, &offset);
-        if (file == nullptr) return std::nullopt;
-        return RelPath(file);
-    }
-
-    std::optional<std::string> RelPath(CXFile file)
-    {
-        fs::path path = ToString(clang_getFileName(file));
-        if (path.empty()) return std::nullopt;
-        return RelPath(path);
-    }
-
-    std::optional<std::string> RelPath(const fs::path& input)
-    {
-        fs::path path = input;
-        if (!path.is_absolute())
-            path = projectRoot_ / path;
-
-        std::error_code ec;
-        fs::path canonical = fs::weakly_canonical(path, ec);
-        if (ec) canonical = fs::absolute(path, ec);
-        if (ec) return std::nullopt;
-
-        auto rel = fs::relative(canonical, projectRoot_, ec);
-        if (ec || rel.empty()) return std::nullopt;
-        auto text = SlashPath(rel.generic_string());
-        if (text.rfind("..", 0) == 0) return std::nullopt;
-        return text;
-    }
-
-    unsigned Line(CXCursor cursor)
-    {
-        CXSourceLocation location = clang_getCursorLocation(cursor);
-        CXFile file = nullptr;
-        unsigned line = 0, column = 0, offset = 0;
-        clang_getSpellingLocation(location, &file, &line, &column, &offset);
-        return line;
-    }
-
-    Evidence EvidenceFor(CXCursor cursor, const std::string& kind)
-    {
-        Evidence evidence;
-        evidence.kind = kind;
-        auto file = SourceFile(cursor);
-        if (file)
-            evidence.sourceSpan = *file + ":" + std::to_string(Line(cursor));
-        return evidence;
-    }
-
-    std::optional<CallSite> CallSiteFor(CXCursor cursor, const std::string& containingSymbolId)
-    {
-        CXSourceRange range = clang_getCursorExtent(cursor);
-        CXSourceLocation start = clang_getRangeStart(range);
-        CXSourceLocation end = clang_getRangeEnd(range);
-
-        CXFile startFile = nullptr;
-        unsigned startLine = 0, startColumn = 0, startOffset = 0;
-        clang_getSpellingLocation(start, &startFile, &startLine, &startColumn, &startOffset);
-        if (startFile == nullptr) return std::nullopt;
-
-        auto rel = RelPath(startFile);
-        if (!rel) return std::nullopt;
-
-        CXFile endFile = nullptr;
-        unsigned endLine = 0, endColumn = 0, endOffset = 0;
-        clang_getSpellingLocation(end, &endFile, &endLine, &endColumn, &endOffset);
-
-        CallSite site;
-        site.filePath = *rel;
-        site.line = startLine;
-        site.column = startColumn;
-        site.endLine = endLine;
-        site.endColumn = endColumn;
-        site.containingSymbolId = containingSymbolId;
-        return site;
-    }
-
     std::string JoinDefines()
     {
         std::vector<std::string> values;
@@ -1038,6 +958,7 @@ private:
     Options options_;
     fs::path projectRoot_;
     fs::path compilationDatabaseDir_;
+    ClangSourceMapper sourceMap_;
     std::string moduleName_;
     std::string moduleId_;
     NativeGraphSink& graph_;

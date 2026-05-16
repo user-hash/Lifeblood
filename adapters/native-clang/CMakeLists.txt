@@ -20,6 +20,8 @@ if (NOT EXISTS "${LIBCLANG_LIBRARY}")
 endif()
 
 add_executable(lifeblood-native-clang
+    src/ClangSourceMapper.cpp
+    src/ClangSourceMapper.h
     src/ClangUtilities.cpp
     src/ClangUtilities.h
     src/GraphModel.h
