@@ -4,10 +4,10 @@
 #include "NativeFileRegistry.h"
 #include "NativeGraphSink.h"
 #include "NativeIncludeEmitter.h"
+#include "NativeMacroEmitter.h"
 
 #include <clang-c/Index.h>
 
-#include <optional>
 #include <string>
 
 namespace lifeblood::native_clang
@@ -27,20 +27,7 @@ public:
     void AddMacroExpansion(CXCursor cursor);
 
 private:
-    void AddMacroSymbol(
-        const std::string& name,
-        const std::optional<std::string>& file,
-        unsigned line,
-        const std::string& source,
-        const std::string& value);
-
-    std::string MacroReplacement(CXCursor cursor, CXTranslationUnit unit) const;
-
-    std::string moduleId_;
-    std::string buildProfile_;
-    NativeGraphSink& graph_;
-    const ClangSourceMapper& sourceMap_;
-    NativeFileRegistry& files_;
     NativeIncludeEmitter includes_;
+    NativeMacroEmitter macros_;
 };
 }
