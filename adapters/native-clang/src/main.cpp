@@ -17,7 +17,8 @@ namespace
 void PrintUsage()
 {
     std::cerr << "Usage: lifeblood-native-clang --project <path> "
-              << "[--compilation-database <dir>] [--profile <name>] [--out <graph.json>]\n";
+              << "[--compilation-database <dir>] [--profile <name>] "
+              << "[--allow-partial] [--out <graph.json>]\n";
 }
 
 std::optional<Options> ParseArgs(int argc, char** argv)
@@ -59,6 +60,10 @@ std::optional<Options> ParseArgs(int argc, char** argv)
             if (!value) return std::nullopt;
             options.outputPath = *value;
         }
+        else if (arg == "--allow-partial")
+        {
+            options.allowPartial = true;
+        }
         else if (arg == "--help" || arg == "-h")
         {
             PrintUsage();
@@ -93,7 +98,8 @@ int Run(int argc, char** argv)
     if (!options) return 1;
 
     LibClangExtractor extractor(*options);
-    if (!extractor.Run()) return 1;
+    bool complete = extractor.Run();
+    if (!complete && !options->allowPartial) return 1;
 
     if (!options->outputPath.empty())
     {
@@ -110,7 +116,7 @@ int Run(int argc, char** argv)
         WriteJsonGraph(std::cout, extractor.Graph());
     }
 
-    return 0;
+    return complete || options->allowPartial ? 0 : 1;
 }
 }
 }
