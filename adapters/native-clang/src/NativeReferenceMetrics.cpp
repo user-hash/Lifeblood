@@ -10,6 +10,8 @@ void NativeReferenceMetrics::Clear()
     callbackTargetInCounts_.clear();
     globalAccessOutCounts_.clear();
     globalAccessInCounts_.clear();
+    fieldAccessOutCounts_.clear();
+    fieldAccessInCounts_.clear();
 }
 
 void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
@@ -21,6 +23,8 @@ void NativeReferenceMetrics::RecordAcceptedReference(const Edge& edge)
         RecordCallbackTargetCounts(edge.sourceId, edge.targetId);
     if (reference.isGlobalAccess)
         RecordGlobalAccessCounts(edge.sourceId, edge.targetId);
+    if (reference.isFieldAccess)
+        RecordFieldAccessCounts(edge.sourceId, edge.targetId);
 }
 
 void NativeReferenceMetrics::RecordReferenceCounts(
@@ -45,6 +49,14 @@ void NativeReferenceMetrics::RecordGlobalAccessCounts(
 {
     globalAccessOutCounts_[sourceId]++;
     globalAccessInCounts_[targetId]++;
+}
+
+void NativeReferenceMetrics::RecordFieldAccessCounts(
+    const std::string& sourceId,
+    const std::string& targetId)
+{
+    fieldAccessOutCounts_[sourceId]++;
+    fieldAccessInCounts_[targetId]++;
 }
 
 void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
@@ -76,5 +88,15 @@ void NativeReferenceMetrics::DecorateSymbol(Symbol& symbol) const
     if (globalAccessIn != globalAccessInCounts_.end())
         symbol.properties["native.globalAccessInCount"] =
             std::to_string(globalAccessIn->second);
+
+    auto fieldAccessOut = fieldAccessOutCounts_.find(symbol.id);
+    if (fieldAccessOut != fieldAccessOutCounts_.end())
+        symbol.properties["native.fieldAccessOutCount"] =
+            std::to_string(fieldAccessOut->second);
+
+    auto fieldAccessIn = fieldAccessInCounts_.find(symbol.id);
+    if (fieldAccessIn != fieldAccessInCounts_.end())
+        symbol.properties["native.fieldAccessInCount"] =
+            std::to_string(fieldAccessIn->second);
 }
 }
