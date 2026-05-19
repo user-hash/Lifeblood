@@ -1,5 +1,7 @@
 # Improvement Inbox
 
+Active plan: **`D:/Projekti/lifeblood_plan.txt`** (2026-05-18) supersedes the earlier [`docs/plans/lifeblood-correctness-masterplan-2026-05-15.md`](plans/lifeblood-correctness-masterplan-2026-05-15.md). The newer plan covers two phases: Phase 1 functionality / trust hardening (F0..F6) and Phase 2 hexagonal architecture refactor to match the native-Clang adapter's per-concern file discipline (A0..A6). Canonical ledger of open atoms lives in [`devmemory/lifeblood-tracking.md`](../devmemory/lifeblood-tracking.md). DAWG remains a dogfood/repro workspace; fixes in this plan must be generic and ratchet-tested in Lifeblood.
+
 State of Lifeblood going forward. Four things:
 
 1. A current-state verdict compiled from the external reviews we run against the repo.
