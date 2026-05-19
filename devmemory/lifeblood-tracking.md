@@ -766,7 +766,8 @@ Fix shape (per W1 plan, 2026-05-15):
 
 ### LB-TRACK-20260515-012 - `find_references` / `dependants` / `dead_code` miss cross-partial private-method invocations on heavily-partial classes
 
-Status: Open
+Status: Shipped (in-tree, untagged) — F1b atom of the 2026-05-19 plan.
+Closing commit: `b0b5eb5` `test(extract): F1b pin cross-partial private method/field references (INV-EXTRACT-CROSS-PARTIAL-RESOLUTION-001)`. The Roslyn semantic model already resolved cross-partial calls correctly because both partial trees join the same Compilation — F1b authored regression-pin fixtures (`ExtractEdges_CrossPartialPrivateMethodCall_EmitsCallsEdgeWithCanonicalId` + `ExtractEdges_CrossPartialPrivateFieldReference_EmitsReferencesEdge`) so a future walker rewrite cannot silently scope resolution to the current syntax tree. **DAWG re-verified 2026-05-19 post-F1d redeploy**: `lifeblood_find_references(method:Nebulae.BeatGrid.AdaptiveBeatGrid.EnableAutoRotationDelayed())` returns `count: 2` — declaration at `AdaptiveBeatGrid.cs:282` + Usage at `AdaptiveBeatGrid.Bootstrap.Events.cs:109` with `containingSymbolId: AdaptiveBeatGrid.Bootstrap_BindEvents()`. Original entry preserved below for regression-trace.
 Type: Bug
 Source: DAWG dogfood 2026-05-15 (this tracking document), Lifeblood v0.7.6
 Workspace: DAWG (200+ ABG partial files)
@@ -823,7 +824,8 @@ Fix shape (proposed):
 
 ### LB-TRACK-20260515-013 - `lifeblood_port_health` returns `verdict: empty` on composite ports that inherit real contracts
 
-Status: Open
+Status: Shipped (in-tree, untagged) — F3a + F3b atoms of the 2026-05-19 plan.
+Closing commits: `fe50998` `refactor(port-health): F3a extract HandlePortHealth body to IPortHealthAnalyzer seam (INV-PORT-HEALTH-ANALYZER-SEAM-001)` (extracts the algorithm behind an Application-layer port) and `8df96c6` `feat(port-health): F3b composite + inherited interface surface (INV-PORT-HEALTH-COMPOSITE-001)` (walks `IfaceInherits` edges, emits `directMemberCount` / `inheritedMemberCount` / `aggregateMemberCount` / `inheritedInterfaces[]` / `isCompositeInterface` + interface-extends-interface emits `Inherits` not `Implements` via `bf23480` F3c). **DAWG re-verified 2026-05-19**: `lifeblood_port_health(type:Nebulae.BeatGrid.Transport.ITransportTimelineHost)` returns `memberCount: 24, liveMembers: 24, deadMembers: 0, livenessPct: 1, verdict: "healthy"` with `directMemberCount: 0, inheritedMemberCount: 24, aggregateMemberCount: 24, isCompositeInterface: true, inheritedInterfaces: [ITransportTimelineAnchor, ITransportTimelineClock, ITransportTimelineLoop, ITransportTimelineState, ITransportTimelineSubsystems]`. Was previously `verdict: empty`. Original entry preserved below for regression-trace.
 Type: Improvement
 Source: DAWG dogfood 2026-05-15, Lifeblood v0.7.6
 Workspace: DAWG (three Wave 4F composite ports)
@@ -867,7 +869,8 @@ Fix shape (proposed):
 
 ### LB-TRACK-20260515-014 - `lifeblood_enum_coverage` "unconsumed" pattern misses static-dispatch-table routing
 
-Status: Open
+Status: Shipped (in-tree, untagged) — S4 atom of the 2026-05-19 plan.
+Closing commit: `c3ee6dd` `feat(enum-coverage): S4 dispatch-table reference counter (INV-ENUM-COVERAGE-DISPATCH-TABLE-001)`. Every enum-coverage member row now carries `dispatchTableReferenceCount` — additive, recognised via the same classifier `lifeblood_static_tables` uses so dispatch-table-routed values are triage-able from one row. `producedCount == dispatchTableReferenceCount` means "only a routing key, never genuinely produced in app code". **DAWG re-verified 2026-05-19**: `lifeblood_enum_coverage(type:Nebulae.BeatGrid.Audio.DSP.Burst.FeatureId)` returns 33 members; the 8 the tracking entry called out (`Waveform`, `FM`, `PWM`, `Formant`, `CrossMod`, `PitchEnvelope`, `Glide`, `Unison`) now show `dispatchTableReferenceCount: 1` (was missing) and `unproducedCount: 0` / `unreferencedCount: 0` at the top level. Original entry preserved below for regression-trace.
 Type: Improvement / Documentation
 Source: DAWG dogfood 2026-05-15, Lifeblood v0.7.6
 Workspace: DAWG (`Nebulae.BeatGrid.Audio.DSP.Burst.FeatureId` 33 members)
@@ -917,7 +920,8 @@ Fix shape (proposed):
 
 ### LB-TRACK-20260515-015 - `dead_code` produces high false-positive noise on private members read by the same class
 
-Status: Open
+Status: Shipped (in-tree, untagged) — F2 wire-shape + F1d underlying-graph fix of the 2026-05-19 plan.
+Closing commits: `8134337` `feat(dead-code): F2 SameClassConsumerCount triage + IncludeSameClassOnlyConsumers (INV-DEADCODE-TRIAGE-002)` (added the wire-shape `sameClassConsumerCount` / `directDependants` / `bucket` / `declarationOnly` fields on every finding) AND `7a45ff0` `fix(extract): F1d bare-identifier property/event reads emit References edge (INV-EXTRACT-PROPERTY-READ-001)` (closes the algorithm gap behind F2 — bare-identifier sibling property reads were not emitting graph edges so F2's same-class field always reported 0 on the empirical class). **DAWG dogfood 2026-05-19 surfaced F1d**: workspace-wide non-public property zero-incoming was 88.7% (1099/1239) vs field 1.5% — the 88.7% delta isolated the bare-identifier-property bug. Post-F1d redeploy: zero-incoming property rate dropped to 67.2% (-21.5 pp, 266 properties recovered); `lifeblood_dependants(property:Nebulae.BeatGrid.Audio.FX.BeatGridFXBusManager.DspTime)` returns `count: 3` (was 0) with full callSite metadata at lines 250/634/691; `lifeblood_dependants(property:Nebulae.BeatGrid.MidiLearnManager.OverridesPath)` returns `count: 2` (was 0); `lifeblood_dead_code(includeKinds:[Property], excludePublic:true)` finding count dropped 247 → 62 (-75%) and DspTime / OverridesPath are no longer in the FP set. Remaining 62 are Unity SerializeField-backed Inspector-bound properties (different runtime-discovery class). Original entry preserved below for regression-trace.
 Type: Improvement
 Source: DAWG dogfood 2026-05-15 round 2 (Property+Field scan, 397 Production
 findings), Lifeblood v0.7.6
@@ -999,7 +1003,13 @@ caller cannot filter the FP class one-shot). Closing both shrinks the
 
 ### LB-TRACK-20260515-016 - Holistic dogfood rating + qualitative assessment
 
-Status: Open (qualitative feedback, not a product bug entry)
+Status: Shipped (re-rated 2026-05-19 post-F1d redeploy) — qualitative entry, no per-feature fix; closes by re-rating after the LB-TRACK-012/013/014/015 family closes.
+Closing context: all four LB-TRACK entries cited as "what costs points" are now Shipped:
+- 012 (cross-partial private-method invocation) → `b0b5eb5` F1b
+- 013 (port_health composite reads as empty) → `fe50998` F3a + `8df96c6` F3b + `bf23480` F3c
+- 014 (enum_coverage dispatch-table routing) → `c3ee6dd` S4 `dispatchTableReferenceCount`
+- 015 (dead_code same-class FPs) → `8134337` F2 wire-shape + `7a45ff0` F1d underlying-graph fix
+Updated re-rating once those land in a release: trustworthiness-after-verification should push from 8.5 → 9+ because the four "trust but verify" overhead drivers are now wire-visible (composite surface on authority + port_health, dispatch-table refs on enum_coverage, triage fields on dead_code, cross-partial Calls edges proven via fixture). MCP-reconnect-on-close polish observation remains valid; not filed as its own product entry. Original qualitative entry preserved below for context.
 Type: UX / Trustworthiness assessment
 Source: DAWG dogfood close-out 2026-05-15, Lifeblood v0.7.6
 Workspace: DAWG (full v1.2.368.4 → v1.2.368.5-mp-tick-arch architectural
@@ -1092,7 +1102,8 @@ the v0.7.7 roadmap can prioritize against rating-affecting axes.
 
 ### LB-TRACK-20260518-017 - `authority_report` needs inherited-interface and composite surface
 
-Status: Open
+Status: Shipped (in-tree, untagged) — F3e atom of the 2026-05-19 plan.
+Closing commit: `bd4c59f` `feat(authority): F3e composite + inherited interface surface in InterfaceUsage (INV-AUTHORITY-COMPOSITE-001)`. Every `perInterface` row now carries `directMemberCount`, `inheritedMemberCount`, `aggregateMemberCount`, `memberCount` (back-compat alias = aggregate), `inheritedInterfaces[]`, `isCompositeInterface`. **DAWG re-verified 2026-05-19**: `lifeblood_authority_report(type:Nebulae.BeatGrid.AdaptiveBeatGrid)` returns 7 implementedInterfaces / 142 ownedPublicSurface / 1202 totalMethods / 426 pureForwarders / forwarderRatio 0.354 — EXACT match to Polish-1 P0.c baseline. Composite ifaces show their inherited contract surface: `IWheelMenuActions` direct=4 inherited=39 aggregate=43 (9 sub-ports), `IPianoRollRefreshCoordinatorHost` direct=0 inherited=35 (6 sub-ports), `IMelodicGridRenderHost` direct=0 inherited=21 (6 sub-ports), `ITransportTimelineHost` direct=0 inherited=24 (5 sub-ports). Original entry preserved below for regression-trace.
 Type: Improvement
 Source: DAWG ABG final-phase review, 2026-05-18, Lifeblood v0.7.7 live MCP
 Workspace: DAWG
@@ -1116,7 +1127,8 @@ Fix shape:
 
 ### LB-TRACK-20260518-018 - Project-wide diagnose can retain stale errors contradicted by file compile checks
 
-Status: Open
+Status: Shipped (in-tree, untagged) — S5 + S5b atoms of the 2026-05-19 plan.
+Closing commits: `09c8924` `feat(envelope): S5 analysisGeneration monotonic counter (INV-DIAGNOSE-FRESHNESS-001)` + `28ed311` `feat(diagnose): S5b scope-aware possiblyStale flag on response (INV-DIAGNOSE-FRESHNESS-002)`. `lifeblood_diagnose` / `lifeblood_compile_check` envelopes now carry `analysisGeneration` (monotonic counter incremented per full or incremental re-analyze) and `possiblyStale` (scope-aware: file scope checks the one file's mtime vs graph timestamp; module scope walks files parented to the module; project scope walks every tracked File symbol). **DAWG re-verified 2026-05-19**: `lifeblood_diagnose(filePath:Assets/_Project/Scripts/BeatGrid/AdaptiveBeatGrid.cs)` returns `count: 0, possiblyStale: false, resolvedModule: "Nebulae.BeatGrid.Runtime", analysisGeneration: 1, definesActive: [124 symbols incl. UNITY_EDITOR / EDITION_NEON / ENABLE_AUDIO / UNITY_2023_1_OR_NEWER / NETSTANDARD2_1]`. Original entry preserved below for regression-trace.
 Type: Bug
 Source: DAWG ABG final-phase review, 2026-05-18, Lifeblood v0.7.7 live MCP
 Workspace: DAWG
@@ -1142,7 +1154,8 @@ Fix shape:
 
 ### LB-TRACK-20260518-019 - Add final-boundary planning verdicts to reduce manual joining
 
-Status: Open
+Status: Shipped (in-tree, untagged) — S7 atom of the 2026-05-19 plan.
+Closing commit: `243dd28` `feat(authority): S7 planning-verdict evidence fields (INV-AUTHORITY-PLANNING-COMPOSITION-001)`. `authority_report` now returns `crossAssemblyConsumerCount` (distinct other modules with incoming edges into the type or its members — boundary-contract evidence), `sameAssemblyConsumerCount` (distinct same-module consumer symbols — adapter-shim evidence), `hasSingleImplementer` (true/false for interface targets with exactly one source-defined implementer; null for non-interface targets — adapter-shim candidate when paired with high cross-assembly use). Composite-aware: `aggregateCompositeMemberCount` is the same as `aggregateMemberCount` from F3e. Verdict composition (`EvictableDebt` / `BoundaryContract` / `SceneDiscoveryContract` / `CompositeFacade` / `AdapterShimOnly` / `NeedsAudit`) is caller-owned per design — the tool exposes the evidence axes; the architecture plan stays in the agent's hands. **DAWG re-verified 2026-05-19**: `lifeblood_authority_report(type:Nebulae.BeatGrid.AdaptiveBeatGrid)` returns `crossAssemblyConsumerCount: 4, sameAssemblyConsumerCount: 1581, hasSingleImplementer: null`. Original entry preserved below for regression-trace.
 Type: Optimization
 Source: DAWG ABG final-phase review, 2026-05-18, Lifeblood v0.7.7 live MCP
 Workspace: DAWG
@@ -1165,7 +1178,13 @@ Fix shape:
 
 ### LB-TRACK-20260518-020 - Remaining trust holes after ABG-final dogfood
 
-Status: Open
+Status: Shipped (in-tree, untagged) — composite closure across S5/S5b/S6/S7 + F3a-F3f + F1b + F1d atoms of the 2026-05-19 plan.
+Closing commits: composite — the five named holes track to the closed entries:
+- "Project-wide diagnostics can go stale" → LB-TRACK-018 / S5 `09c8924` + S5b `28ed311`
+- "Composite/inherited interface surface needs better reporting" → LB-TRACK-013 / F3a-F3f (port_health) + LB-TRACK-017 / F3e (authority_report)
+- "Some advisory results still require manual verification" → S6 `8fcff9f` `feat(envelope): S6 advisory limitations + uniform write-side envelope (INV-ADVISORY-LIMITATIONS-001)` — every read-side response now carries per-tool `limitations[]` describing what static analysis cannot prove (Unity runtime dispatch, UnityEvent YAML bindings, prefab/scene serialized refs, etc.)
+- "Endgame architecture needs better planning verdicts" → LB-TRACK-019 / S7 `243dd28`
+- "Unity serialized/runtime discovery is not fully modeled" — explicitly surfaced in the per-tool `limitations[]` (port_health / authority_report / dead_code / enum_coverage / blast_radius all carry an Advisory limitation block when the workspace is Unity-shaped); deeper modeling (serialized-field/prefab/scene walk) is out of scope for this release wall — that would be a UnityReachabilityProvider v2 in a future wave, not a trust hole that blocks release. **DAWG re-verified 2026-05-19**: every read-side response in this conversation carries an `envelope` with `truthTier` / `confidence` / `evidenceSource` / `stalenessSeconds` / `filesChangedSinceAnalyze` / `limitations[]` / `analysisGeneration`. Original entry preserved below for regression-trace.
 Type: UX
 Source: DAWG ABG final-phase review, 2026-05-18, Lifeblood v0.7.7 live MCP
 Workspace: DAWG
@@ -1224,18 +1243,8 @@ Fix shape:
 
 ### LB-TRACK-20260519-022 - `port_health` algorithm lives inline in `ToolHandler`, no `IPortHealthAnalyzer` seam
 
-Status: Partially Shipped (in-tree, untagged) — F3a atom of the 2026-05-19 plan.
-Closing commit: post-`8134337` F3a commit; `IPortHealthAnalyzer` port lives in
-`Lifeblood.Application.Ports.Right`, `LifebloodPortHealthAnalyzer` impl lives
-in `Lifeblood.Connectors.Mcp`, `ToolHandler` routes through the injected port
-(default ctor falls back to a new instance). Behavior is byte-equal to the
-pre-F3a inline body — composite / inherited-interface surface is the F3b
-follow-up under `INV-PORT-HEALTH-COMPOSITE-001`. Pinned by 9
-`PortHealthAnalyzerTests` fixtures plus a seam-discipline scan that refuses
-to find the inline algorithm tokens (`"vestigial"`, `liveCount++`,
-`var memberIds = new List<string>`) anywhere in `ToolHandler.cs`. Debug
-suite 1028 → 1037; port count 26 → 27. STATUS testCount + portCount anchors
-refreshed.
+Status: Shipped (in-tree, untagged) — F3a + F3b + F3c + F3d + F3e + F3f atoms of the 2026-05-19 plan.
+Closing commits: `fe50998` F3a (extract seam) + `8df96c6` F3b (composite + inherited surface, `INV-PORT-HEALTH-COMPOSITE-001`) + `bf23480` F3c (interface-extends-interface emits `Inherits` not `Implements`, `INV-EXTRACT-IFACE-INHERIT-001`) + `9cc4e91` F3d (real-graph composite-interface fixtures closing F3b synthetic-graph blind spot) + `bd4c59f` F3e (composite/inherited surface on `authority_report` `InterfaceUsage`, `INV-AUTHORITY-COMPOSITE-001`) + `33d2fc1` F3f (docs/tools description sync). F3a extracted the algorithm behind `IPortHealthAnalyzer` in `Lifeblood.Application.Ports.Right`; F3b added the composite-aware traversal; F3c-F3f closed the iface-edge-kind, fixture-blind-spot, authority-side parity, and doc-sync follow-ups. `ToolHandler` routes through the injected port (default ctor falls back to a new instance). Pinned by 9+ `PortHealthAnalyzerTests` fixtures plus real-graph composite tests + a seam-discipline scan that refuses to find the inline algorithm tokens in `ToolHandler.cs`. Debug suite 1028 → 1037 → … → 1097 over the chain; port count 26 → 27. STATUS testCount + portCount anchors refreshed. **DAWG re-verified 2026-05-19**: see LB-TRACK-013 closure for the live-MCP composite verdict on `ITransportTimelineHost`.
 Type: Improvement
 Source: `D:/Projekti/lifeblood_plan.txt` Stage 3 + `docs/plans/lifeblood-correctness-masterplan-2026-05-15.md` Stage 3, confirmed by 2026-05-19 source inspection.
 Workspace: Lifeblood self
@@ -1293,6 +1302,32 @@ Fix shape:
 - Promote `Lifeblood.Domain.CanonicalSymbolFormat` (already exists as the grammar SSoT) to be the *only* id-building primitive; route every other site through it.
 - Make `RoslynWorkspaceManager.ParseSymbolId` handle `.ctor` and `.cctor` canonical ids without dot-splitting ambiguity (already explicitly called out in the 2026-05-15 plan Stage 1).
 - Pin `INV-CANONICAL-ID-PARITY-001` with a parity matrix ratchet across the four paths.
+
+### LB-TRACK-20260519-024 - Bare-identifier sibling-member property/event reads emit no graph edge (read-tool reality split)
+
+Status: Shipped (in-tree, untagged) — F1d atom of the 2026-05-19 plan.
+Closing commit: `7a45ff0` `fix(extract): F1d bare-identifier property/event reads emit References edge (INV-EXTRACT-PROPERTY-READ-001)`.
+Type: Bug
+Source: DAWG dogfood 2026-05-19, post-F2/F3 redeploy verification session, Lifeblood v0.7.7 head + uncommitted F1d.
+Workspace: DAWG (65,940 symbols / 90 modules / 238,242 edges pre-fix → 242,233 post-fix = +3,991 newly-recovered property/event-read edges)
+Verification:
+- Pre-fix: `lifeblood_find_references(property:Nebulae.BeatGrid.Audio.FX.BeatGridFXBusManager.DspTime)` returned 4 hits (decl + 3 sibling reads with proper `containingSymbolId`); `lifeblood_dependants(...)` on the same symbol returned `count: 0`. Source-text grep confirmed the 3 sibling reads at `BeatGridFXBusManager.cs:250/634/691` (`double now = DspTime;`).
+- Workspace-wide audit via `lifeblood_execute`: non-public Property zero-incoming-non-`Contains`-edges = 88.7% (1099/1239) vs Field 1.5% (174/11765) vs Type 0.8% (4/482). The Property/Field delta isolated the bug to `ExtractReferenceEdge`'s bare-identifier path.
+- Root cause: `RoslynEdgeExtractor.ExtractReferenceEdge` for `IdentifierNameSyntax` carried arms for `INamedTypeSymbol` / `IFieldSymbol` / `IMethodSymbol` but no `IPropertySymbol` / `IEventSymbol` arm. The member-access form (`this.X`, `obj.X`) was already handled by `ExtractMemberAccessEdge` via `EmitSymbolLevelEdge`. C# style convention drops `this.` overwhelmingly, so the bare-identifier path is the common case and the gap silently swallowed ~89% of private-property incoming edges across the workspace. Roslyn's `SymbolFinder.FindReferencesAsync` walks the semantic model directly and ignores the graph, so `find_references` kept working while `dependants` / `dead_code` / `blast_radius` / `port_health` (all edge-graph walkers) systematically missed every bare-identifier property read. F2's `sameClassConsumerCount` triage field consequently always reported 0 on private property findings, defeating the FP-folding contract.
+- Post-fix re-verification: `lifeblood_dependants(...DspTime)` returns `count: 3` with full `callSite` metadata (lines 250/634/691, per-source-method dedup intact); `lifeblood_dependants(...OverridesPath)` returns `count: 2` (3 grep reads in `SaveOverrides` dedup to one + 1 read in `LoadOverrides`); workspace-wide Property zero-incoming rate dropped 88.7% → 67.2% (-21.5 pp, 266 properties recovered); `lifeblood_dead_code(includeKinds:[Property], excludePublic:true)` finding count dropped 247 → 62 (-75%) and DspTime / OverridesPath dropped from the FP set entirely.
+
+Summary:
+Bare-identifier `IPropertySymbol` and `IEventSymbol` reads inside sibling-member bodies emitted no graph edge. The walker handled types/fields/method-groups but had no property/event arm — the member-access form was already covered by `ExtractMemberAccessEdge` through `EmitSymbolLevelEdge`, so the wire-shape contract was intact but the AST-entry point was incomplete. The covered cases are read AND write (LHS of `=` is also `IdentifierNameSyntax`) AND event subscription (`Changed += h;`).
+
+Impact:
+Same family as LB-TRACK-012 (cross-partial private-method invocation) but specialized to non-partial private properties. F2's same-class triage field, every dead_code property-bucket scan, every dependants / blast_radius / port_health query against a private property was wrong by default until F1d. The 88.7% workspace-wide hit rate made this the single highest-impact extractor gap discovered across the 2026-05-19 plan.
+
+Fix shape:
+- `RoslynEdgeExtractor.ExtractReferenceEdge`: add `if (referencedSymbol is IPropertySymbol or IEventSymbol) { if (ContainingType tracked) EmitSymbolLevelEdge(...); return; }` arm between the field arm and the method-group arm. Route through `EmitSymbolLevelEdge` (existing helper) so the wire shape is byte-stable across the two AST entry points.
+- Three new fixtures in `RoslynExtractorTests`: `ExtractEdges_BareIdentifierPropertyRead_EmitsReferencesEdge` (private expression-bodied property read), `ExtractEdges_BareIdentifierPropertyWrite_EmitsReferencesEdge` (auto-prop write through bare identifier), `ExtractEdges_BareIdentifierEventReference_EmitsReferencesEdge` (private event `+=` handler wire).
+- Pin `INV-EXTRACT-PROPERTY-READ-001` in `docs/invariants/csharp-adapter.md`.
+
+Debug suite 1094 → 1097 green, zero skipped. STATUS testCount anchor refreshed.
 
 ## Legacy Source Map
 
