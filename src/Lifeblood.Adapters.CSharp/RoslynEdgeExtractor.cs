@@ -332,6 +332,23 @@ public sealed class RoslynEdgeExtractor
             return;
         }
 
+        // INV-EXTRACT-PROPERTY-READ-001: bare-identifier property/event reads from sibling
+        // members (read OR write — LHS of an assignment is also IdentifierNameSyntax) emit
+        // a symbol-level References edge. Without this arm, C#'s common style convention of
+        // dropping the `this.` prefix silently dropped ~89% of private-property incoming edges
+        // workspace-wide; `find_references` resolved them via Roslyn's semantic walk, but
+        // `dependants` / `dead_code` / `blast_radius` walk the edge graph and missed them.
+        // Member-access form (`this.X`, `obj.X`) is handled by ExtractMemberAccessEdge.
+        if (referencedSymbol is IPropertySymbol or IEventSymbol)
+        {
+            if (referencedSymbol.ContainingType != null
+                && IsTracked(referencedSymbol.ContainingType))
+            {
+                EmitSymbolLevelEdge(model, identifier, referencedSymbol, edges, seen);
+            }
+            return;
+        }
+
         // Method-group references (new Lazy<T>(Load), event += Handler, Where(predicate))
         if (referencedSymbol is IMethodSymbol methodSymbol
             && methodSymbol.MethodKind != MethodKind.Constructor
