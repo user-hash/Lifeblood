@@ -1,3 +1,4 @@
+using System.Linq;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Right;
@@ -98,6 +99,132 @@ public class AnalysisToolsTests
         var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph, new DeadCodeOptions());
 
         Assert.DoesNotContain(findings, f => f.CanonicalId == "method:N.Foo.Alive()");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // F2 — SameClassConsumerCount triage (INV-DEADCODE-TRIAGE-002 /
+    // LB-TRACK-20260515-015). A private field/property/method whose only
+    // consumers live in the same containing type is semantically alive,
+    // but typically a candidate for inlining or removal during class-level
+    // cleanup. Default mode keeps the existing strict liveness filter —
+    // the relaxation is opt-in via IncludeSameClassOnlyConsumers.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DeadCode_DefaultMode_PrivateFieldWithSameClassConsumer_IsNotFlagged()
+    {
+        // Pre-F2 (and default-mode post-F2): same-class consumers count as
+        // incoming references and filter the symbol out entirely.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Store", Name = "Store", Kind = SymbolKind.Type, FilePath = "Store.cs" })
+            .AddSymbol(new Symbol
+            {
+                Id = "field:N.Store._state", Name = "_state", Kind = SymbolKind.Field,
+                FilePath = "Store.cs", ParentId = "type:N.Store", Visibility = Visibility.Internal,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Store.Snapshot()", Name = "Snapshot", Kind = SymbolKind.Method,
+                FilePath = "Store.cs", ParentId = "type:N.Store", Visibility = Visibility.Public,
+            })
+            .AddEdge(new Edge { SourceId = "type:N.Store", TargetId = "field:N.Store._state", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.Store", TargetId = "method:N.Store.Snapshot()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Store.Snapshot()", TargetId = "field:N.Store._state", Kind = EdgeKind.References, Evidence = Evidence })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph, new DeadCodeOptions());
+
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "field:N.Store._state");
+    }
+
+    [Fact]
+    public void DeadCode_RelaxedMode_PrivateFieldWithSameClassConsumer_IsFlaggedWithCount()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Store", Name = "Store", Kind = SymbolKind.Type, FilePath = "Store.cs" })
+            .AddSymbol(new Symbol
+            {
+                Id = "field:N.Store._state", Name = "_state", Kind = SymbolKind.Field,
+                FilePath = "Store.cs", ParentId = "type:N.Store", Visibility = Visibility.Internal,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Store.Snapshot()", Name = "Snapshot", Kind = SymbolKind.Method,
+                FilePath = "Store.cs", ParentId = "type:N.Store", Visibility = Visibility.Public,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Store.Mutate()", Name = "Mutate", Kind = SymbolKind.Method,
+                FilePath = "Store.cs", ParentId = "type:N.Store", Visibility = Visibility.Public,
+            })
+            .AddEdge(new Edge { SourceId = "type:N.Store", TargetId = "field:N.Store._state", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.Store", TargetId = "method:N.Store.Snapshot()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.Store", TargetId = "method:N.Store.Mutate()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Store.Snapshot()", TargetId = "field:N.Store._state", Kind = EdgeKind.References, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Store.Mutate()", TargetId = "field:N.Store._state", Kind = EdgeKind.References, Evidence = Evidence })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(
+            graph, new DeadCodeOptions(IncludeSameClassOnlyConsumers: true));
+
+        var fieldFinding = findings.FirstOrDefault(f => f.CanonicalId == "field:N.Store._state");
+        Assert.NotNull(fieldFinding);
+        Assert.Equal(2, fieldFinding!.SameClassConsumerCount);
+        Assert.Equal(2, fieldFinding.DirectDependants);
+        Assert.Contains("same-class", fieldFinding.Reason);
+    }
+
+    [Fact]
+    public void DeadCode_RelaxedMode_PrivateFieldWithCrossClassConsumer_IsNotFlagged()
+    {
+        // Even with the relaxation enabled, a cross-class consumer prevents
+        // the symbol from being surfaced — it's genuinely consumed outside
+        // its declaring class and not a class-internal cleanup candidate.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Store", Name = "Store", Kind = SymbolKind.Type, FilePath = "Store.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.Caller", Name = "Caller", Kind = SymbolKind.Type, FilePath = "Caller.cs" })
+            .AddSymbol(new Symbol
+            {
+                Id = "field:N.Store.State", Name = "State", Kind = SymbolKind.Field,
+                FilePath = "Store.cs", ParentId = "type:N.Store", Visibility = Visibility.Internal,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:N.Caller.Read()", Name = "Read", Kind = SymbolKind.Method,
+                FilePath = "Caller.cs", ParentId = "type:N.Caller", Visibility = Visibility.Public,
+            })
+            .AddEdge(new Edge { SourceId = "type:N.Store", TargetId = "field:N.Store.State", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.Caller", TargetId = "method:N.Caller.Read()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.Read()", TargetId = "field:N.Store.State", Kind = EdgeKind.References, Evidence = Evidence })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(
+            graph, new DeadCodeOptions(IncludeSameClassOnlyConsumers: true));
+
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "field:N.Store.State");
+    }
+
+    [Fact]
+    public void DeadCode_TrulyUnusedPrivateField_ReportsZeroSameClassConsumers()
+    {
+        // Classic finding: no incoming refs at all. Default mode flags it
+        // with SameClassConsumerCount == 0.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Store", Name = "Store", Kind = SymbolKind.Type, FilePath = "Store.cs" })
+            .AddSymbol(new Symbol
+            {
+                Id = "field:N.Store._unused", Name = "_unused", Kind = SymbolKind.Field,
+                FilePath = "Store.cs", ParentId = "type:N.Store", Visibility = Visibility.Internal,
+            })
+            .AddEdge(new Edge { SourceId = "type:N.Store", TargetId = "field:N.Store._unused", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph, new DeadCodeOptions());
+
+        var finding = findings.FirstOrDefault(f => f.CanonicalId == "field:N.Store._unused");
+        Assert.NotNull(finding);
+        Assert.Equal(0, finding!.SameClassConsumerCount);
+        Assert.Equal(0, finding.DirectDependants);
     }
 
     [Fact]

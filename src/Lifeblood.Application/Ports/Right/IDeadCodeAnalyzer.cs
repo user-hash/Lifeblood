@@ -37,7 +37,16 @@ public interface IDeadCodeAnalyzer
 public sealed record DeadCodeOptions(
     SymbolKind[]? IncludeKinds = null,
     bool ExcludePublic = true,
-    bool ExcludeTests = true);
+    bool ExcludeTests = true,
+    bool IncludeSameClassOnlyConsumers = false);
+// IncludeSameClassOnlyConsumers (default false): when true, surfaces symbols
+// whose ONLY incoming non-Contains references come from members of the same
+// containing type. Useful for triage of private fields/methods whose
+// only consumers live in the same class — semantically alive, but candidates
+// for inlining or removal during a class-level cleanup pass. Findings in
+// this mode carry SameClassConsumerCount > 0 so the caller can sort/filter
+// by triage value. INV-DEADCODE-TRIAGE-002 / LB-TRACK-20260515-015 /
+// F2 atom of the 2026-05-19 plan.
 
 /// <summary>
 /// Path-bucket classification for a dead-code finding. Derived from
@@ -145,4 +154,14 @@ public sealed record DeadCodeResult(
     /// routine dead-code cleanup.
     /// </summary>
     public bool DeclarationOnly { get; init; }
+
+    /// <summary>
+    /// Count of incoming non-Contains references whose source symbol
+    /// shares the same containing type as this finding. Always 0 for
+    /// classic findings (the default filter drops any symbol with
+    /// incoming refs); non-zero values appear only when
+    /// <see cref="DeadCodeOptions.IncludeSameClassOnlyConsumers"/> is
+    /// true. INV-DEADCODE-TRIAGE-002 / F2.
+    /// </summary>
+    public int SameClassConsumerCount { get; init; }
 }
