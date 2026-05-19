@@ -31,6 +31,9 @@ boundaries, and a more repeatable FFmpeg scout.
 - N2b moved function symbol emission behind `NativeFunctionDeclarationFacts`.
   `NativeFunctionEmitter.*` is now graph-side only; raw libclang reads live in
   `NativeFunctionFactsCollector.cpp`, shrinking the explicit leak budget again.
+- N2c moved global symbol emission behind `NativeGlobalDeclarationFacts`.
+  `NativeGlobalEmitter.*` preserves graph-side callback-table semantics without
+  touching raw libclang cursors.
 - Open architecture work: many inner native emitters still consume raw
   `CXCursor` rather than adapter-edge fact DTOs.
 
