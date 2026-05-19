@@ -18,6 +18,17 @@ public sealed class WorkspaceSession
     public WorkspaceCapability WorkspaceOps { get; private set; } = WorkspaceCapability.None;
     public string? Language { get; private set; }
 
+    /// <summary>
+    /// Monotonic counter incremented every time <see cref="Load"/> is
+    /// called — covers full analyze, incremental analyze, and
+    /// auto-refresh. Survives <see cref="Clear"/> so two reads taken
+    /// either side of a Clear/Load pair see distinct generation values.
+    /// Zero before the first Load. Surfaced through
+    /// <see cref="Lifeblood.Application.Ports.Right.EnvelopeContext.AnalysisGeneration"/>
+    /// onto every read-side response. INV-DIAGNOSE-FRESHNESS-001.
+    /// </summary>
+    public long AnalysisGeneration { get; private set; }
+
     public bool IsLoaded => Graph != null;
 
     /// <summary>Write-side ports. Null when loaded from JSON graph (no compilation state).</summary>
@@ -37,6 +48,7 @@ public sealed class WorkspaceSession
         Analysis = analysis;
         Capability = capability;
         Language = language;
+        AnalysisGeneration++;
     }
 
     /// <summary>

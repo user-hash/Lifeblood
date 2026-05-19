@@ -59,6 +59,21 @@ public sealed class ResponseEnvelope
     /// Empty when the tool ran in its full-precision happy path.
     /// </summary>
     public string[] Limitations { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// Monotonic counter that increments every time the workspace state
+    /// is (re)loaded — full analyze, incremental analyze, or auto-refresh
+    /// triggered by <c>compile_check</c>. Two responses carrying the same
+    /// <c>AnalysisGeneration</c> came from byte-identical workspace
+    /// state, so any cross-tool join (e.g. pairing a
+    /// <c>find_references</c> hit list with a <c>compile_check</c>
+    /// diagnostic) is provably coherent. A change in this counter
+    /// between two reads on otherwise-static data signals that an
+    /// auto-refresh happened in between and any cached caller-side
+    /// derivation should be invalidated. Zero when no workspace is
+    /// loaded. INV-DIAGNOSE-FRESHNESS-001.
+    /// </summary>
+    public long AnalysisGeneration { get; init; }
 }
 
 /// <summary>

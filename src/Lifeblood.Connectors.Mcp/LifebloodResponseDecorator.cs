@@ -83,6 +83,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 StalenessSeconds = stalenessSeconds,
                 FilesChangedSinceAnalyze = filesChanged,
                 Limitations = unregisteredLimits,
+                AnalysisGeneration = context.AnalysisGeneration,
             };
         }
 
@@ -94,6 +95,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             StalenessSeconds = stalenessSeconds,
             FilesChangedSinceAnalyze = filesChanged,
             Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged),
+            AnalysisGeneration = context.AnalysisGeneration,
         };
     }
 

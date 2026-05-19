@@ -76,6 +76,14 @@ public sealed class GraphSession : IDisposable
     public IWorkspaceRefactoring? Refactoring => _session.Refactoring;
     public bool HasCompilationState => _session.HasCompilationState;
 
+    /// <summary>
+    /// Monotonic workspace generation. Bumped on every Load / incremental
+    /// refresh / auto-refresh. Read by the envelope decorator so every
+    /// read-side response carries the generation that produced it.
+    /// INV-DIAGNOSE-FRESHNESS-001.
+    /// </summary>
+    public long AnalysisGeneration => _session.AnalysisGeneration;
+
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
     public bool CanIncremental => _roslynAdapter?.HasSnapshot == true;
 
