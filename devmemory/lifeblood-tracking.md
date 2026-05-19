@@ -1248,7 +1248,20 @@ Fix shape:
 
 ### LB-TRACK-20260519-023 - Multiple symbol-id generation paths can drift
 
-Status: Open
+Status: Partially Shipped (in-tree, untagged) — F1c atom of the 2026-05-19 plan.
+Closing commit: post-`b0b5eb5` F1c commit; `ParseSymbolId` now preserves the literal
+`.ctor` / `.cctor` IL names, and `FindInCompilation` looks up constructors via
+`INamedTypeSymbol.Constructors` / `.StaticConstructors`. Pinned by
+`INV-CANONICAL-ID-PARITY-001` and `SymbolIdCanonicalParityTests` (7 fixtures —
+4 invocation-site, 3 parser-white-box). Debug suite 1017 → 1024. STATUS test-count
+anchor refreshed. Remaining scope (deferred to a follow-up atom under the same
+LB-TRACK-023): explicit consolidation of `BuildSymbolId` and `GetMethodId` into
+a single SSoT routed through `CanonicalSymbolFormat` — they already share
+`CanonicalSymbolFormat.BuildParamSignature` and now both honor `ReducedFrom`
+(F1a) + `OriginalDefinition`, but the two `IMethodSymbol → method:...()` paths
+remain distinct call sites; a parity-matrix ratchet across all four paths
+(extractor declaration, extractor edge, compilation-host BuildSymbolId,
+workspace-manager ParseSymbolId round-trip) is the next-best follow-up.
 Type: Bug
 Source: `docs/plans/lifeblood-correctness-masterplan-2026-05-15.md` Stage 1 observed-risk note ("Lifeblood has multiple symbol-id paths with subtly different behavior"); re-surfaced as F1c in the 2026-05-19 plan.
 Workspace: Lifeblood self
