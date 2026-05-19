@@ -146,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-v0.7.7 + 2026-05-19 plan close): 3,366 symbols, 17,048 edges, 11 modules, 363 types, 0 violations, 0 cycles. **1,097 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **122 typed invariants across 83 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post-v0.7.7 + 2026-05-19 plan close): 3,499 symbols, 21,121 edges, 11 modules, 363 types, 0 violations, 0 cycles. **1,097 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **122 typed invariants across 83 categories**, zero duplicates, zero parse warnings.
 
 Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242,233 edges, 91 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
 
