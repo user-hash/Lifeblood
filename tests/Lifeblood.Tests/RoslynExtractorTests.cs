@@ -1902,6 +1902,77 @@ public partial class Store
             && e.TargetId == "field:App.Store._state");
     }
 
+    // F1d / INV-EXTRACT-PROPERTY-READ-001 — bare-identifier sibling-method
+    // property reads (no `this.` prefix). DAWG dogfood 2026-05-19 showed
+    // ~88.7% of non-public properties had zero incoming non-Contains edges
+    // because IdentifierNameSyntax handled Type/Field/Method but not
+    // IPropertySymbol. `find_references` resolved them via Roslyn semantic
+    // walk; `dependants` / `dead_code` / `blast_radius` walk the edge graph
+    // and missed them. Member-access form (`this.X`, `obj.X`) was already
+    // handled by ExtractMemberAccessEdge. Fix mirrors the field arm via
+    // EmitSymbolLevelEdge.
+    [Fact]
+    public void ExtractEdges_BareIdentifierPropertyRead_EmitsReferencesEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Clock
+{
+    private double Now => 1.0;
+    public double GetEnd(double dur)
+    {
+        double n = Now;
+        return n + dur;
+    }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "method:App.Clock.GetEnd(double)"
+            && e.TargetId == "property:App.Clock.Now");
+    }
+
+    [Fact]
+    public void ExtractEdges_BareIdentifierPropertyWrite_EmitsReferencesEdge()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class State
+{
+    private int Counter { get; set; }
+    public void Bump() { Counter = Counter + 1; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "method:App.State.Bump()"
+            && e.TargetId == "property:App.State.Counter");
+    }
+
+    [Fact]
+    public void ExtractEdges_BareIdentifierEventReference_EmitsReferencesEdge()
+    {
+        var (model, root) = Compile(@"
+using System;
+namespace App;
+public class Pub
+{
+    private event Action Changed;
+    public void Raise() { Changed?.Invoke(); }
+    public void Wire(Action h) { Changed += h; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Bare-identifier `Changed` in `Changed += h;` resolves to IEventSymbol.
+        // Roslyn stores events as Property-kind in Lifeblood's symbol graph.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "method:App.Pub.Wire(System.Action)"
+            && e.TargetId == "property:App.Pub.Changed");
+    }
+
     [Fact]
     public void ExtractEdges_InvocationOnArrayElement_EmitsCallsEdge()
     {
