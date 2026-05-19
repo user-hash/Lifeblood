@@ -28,6 +28,9 @@ boundaries, and a more repeatable FFmpeg scout.
   longer expose raw `CXCursor`; callers pass the transitional
   `NativeCursorHandle` instead. The leak budget moved from 46 to 45 source
   files while preserving tiny-fixture output byte stability.
+- N2b moved function symbol emission behind `NativeFunctionDeclarationFacts`.
+  `NativeFunctionEmitter.*` is now graph-side only; raw libclang reads live in
+  `NativeFunctionFactsCollector.cpp`, shrinking the explicit leak budget again.
 - Open architecture work: many inner native emitters still consume raw
   `CXCursor` rather than adapter-edge fact DTOs.
 

@@ -11,7 +11,8 @@ NativeDeclarationEmitter::NativeDeclarationEmitter(
     : types_(buildProfile, graph, sourceMap, files),
       typeMembers_(buildProfile, graph, sourceMap, files, types_),
       globals_(buildProfile, graph, sourceMap, files, types_),
-      functions_(std::move(buildProfile), graph, sourceMap, files, types_)
+      functionFacts_(sourceMap),
+      functions_(std::move(buildProfile), graph, files)
 {
 }
 
@@ -42,6 +43,15 @@ bool NativeDeclarationEmitter::AddGlobalVariable(NativeCursorHandle cursor)
 
 bool NativeDeclarationEmitter::AddFunction(NativeCursorHandle cursor)
 {
-    return functions_.AddFunction(cursor.cursor);
+    auto facts = functionFacts_.Collect(cursor);
+    if (!facts) return false;
+
+    auto status = functions_.AddFunction(*facts);
+    if (status == NativeFunctionEmissionStatus::Rejected)
+        return false;
+    if (status == NativeFunctionEmissionStatus::Emitted)
+        functionFacts_.AddTypeReferences(cursor, facts->symbolId, types_);
+
+    return true;
 }
 }

@@ -80,8 +80,11 @@ add_executable(lifeblood-native-clang
     src/NativeDirectionalSymbolCounts.h
     src/NativeExtractionSession.cpp
     src/NativeExtractionSession.h
+    src/NativeFunctionDeclarationFacts.h
     src/NativeFunctionEmitter.cpp
     src/NativeFunctionEmitter.h
+    src/NativeFunctionFactsCollector.cpp
+    src/NativeFunctionFactsCollector.h
     src/NativeFunctionDeclarationClassifier.cpp
     src/NativeFunctionDeclarationClassifier.h
     src/NativeFileRegistry.cpp
