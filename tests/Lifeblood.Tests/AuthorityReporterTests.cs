@@ -214,4 +214,160 @@ public abstract class Foo {
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         return (compilation.GetSemanticModel(tree), tree.GetRoot());
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // F3e: per-interface composite / inherited surface in InterfaceUsage.
+    // ABG-style composite-facade ports (an interface that aggregates 3+
+    // sub-interfaces with little or no surface of its own) used to report
+    // MemberCount: 0 even when the inherited contract carried the real
+    // load-bearing surface. F3e adds DirectMemberCount /
+    // InheritedMemberCount / AggregateMemberCount /
+    // InheritedInterfaces[] / IsCompositeInterface to InterfaceUsage,
+    // sharing the transitive walker with port_health's F3b.
+    // INV-AUTHORITY-COMPOSITE-001.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AuthorityReport_CompositeInterfaceFacade_AggregatesInheritedSurface()
+    {
+        // Host implements one composite facade IComposite that itself
+        // inherits two sub-interfaces with 1 + 1 = 2 member surface.
+        // Pre-F3e perInterface[0].MemberCount was 0; post-F3e the
+        // aggregate is 2 with inheritedInterfaces populated.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.ISubA", Name = "ISubA", QualifiedName = "N.ISubA", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:N.ISubB", Name = "ISubB", QualifiedName = "N.ISubB", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:N.IComposite", Name = "IComposite", QualifiedName = "N.IComposite", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:N.Host", Name = "Host", QualifiedName = "N.Host", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "method:N.ISubA.Run()", Name = "Run", Kind = DomainSymbolKind.Method, ParentId = "type:N.ISubA" })
+            .AddSymbol(new Symbol { Id = "method:N.ISubB.Tick()", Name = "Tick", Kind = DomainSymbolKind.Method, ParentId = "type:N.ISubB" })
+            .AddEdge(new Edge { SourceId = "type:N.Host", TargetId = "type:N.IComposite", Kind = EdgeKind.Implements, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.ISubA", Kind = EdgeKind.Inherits, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.ISubB", Kind = EdgeKind.Inherits, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.ISubA", TargetId = "method:N.ISubA.Run()", Kind = EdgeKind.Contains, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.ISubB", TargetId = "method:N.ISubB.Tick()", Kind = EdgeKind.Contains, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Host");
+
+        Assert.Equal(1, report.ImplementedInterfaceCount);
+        Assert.Single(report.PerInterface);
+        var row = report.PerInterface[0];
+        Assert.Equal("type:N.IComposite", row.InterfaceId);
+        Assert.True(row.IsCompositeInterface,
+            "Composite facade with 0 direct + 2 inherited members must be flagged composite.");
+        Assert.Equal(0, row.DirectMemberCount);
+        Assert.Equal(2, row.InheritedMemberCount);
+        Assert.Equal(2, row.AggregateMemberCount);
+        Assert.Equal(2, row.MemberCount); // backwards-compatible alias
+        Assert.Equal(new[] { "type:N.ISubA", "type:N.ISubB" }, row.InheritedInterfaces);
+    }
+
+    [Fact]
+    public void AuthorityReport_NonCompositeInterface_ReportsZeroInheritedSurface()
+    {
+        // Backward-compat: pre-F3e shape for a flat interface.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IFlat", Name = "IFlat", QualifiedName = "N.IFlat", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:N.Host", Name = "Host", QualifiedName = "N.Host", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "method:N.IFlat.M()", Name = "M", Kind = DomainSymbolKind.Method, ParentId = "type:N.IFlat" })
+            .AddEdge(new Edge { SourceId = "type:N.Host", TargetId = "type:N.IFlat", Kind = EdgeKind.Implements, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.IFlat", TargetId = "method:N.IFlat.M()", Kind = EdgeKind.Contains, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Host");
+
+        var row = Assert.Single(report.PerInterface);
+        Assert.False(row.IsCompositeInterface);
+        Assert.Equal(1, row.DirectMemberCount);
+        Assert.Equal(0, row.InheritedMemberCount);
+        Assert.Equal(1, row.AggregateMemberCount);
+        Assert.Equal(1, row.MemberCount);
+        Assert.Empty(row.InheritedInterfaces);
+    }
+
+    [Fact]
+    public void AuthorityReport_CompositeInterfaceConsumers_CountAcrossAggregate()
+    {
+        // A caller of an inherited member counts as a consumer of the
+        // composite facade — the caller is reaching the contract.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.ISub", Name = "ISub", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:N.IComposite", Name = "IComposite", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:N.Host", Name = "Host", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "method:N.ISub.Run()", Name = "Run", Kind = DomainSymbolKind.Method, ParentId = "type:N.ISub" })
+            .AddSymbol(new Symbol { Id = "method:N.Caller.X()", Name = "X", Kind = DomainSymbolKind.Method })
+            .AddEdge(new Edge { SourceId = "type:N.Host", TargetId = "type:N.IComposite", Kind = EdgeKind.Implements, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.ISub", Kind = EdgeKind.Inherits, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.ISub", TargetId = "method:N.ISub.Run()", Kind = EdgeKind.Contains, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.ISub.Run()", Kind = EdgeKind.Calls, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Host");
+        var row = Assert.Single(report.PerInterface);
+
+        Assert.Equal(1, row.ConsumerCount); // pre-F3e: 0 (didn't walk inherited members)
+        Assert.True(row.IsCompositeInterface);
+    }
+
+    [Fact]
+    public void AuthorityReport_InterfaceTypeAsHost_FindsParentInterfacesPostF3c()
+    {
+        // Regression pin for F3c: when the type under analysis is itself
+        // an interface (extracted with typeKind="interface"), the
+        // implemented-interface collection must walk Inherits, not
+        // Implements. Pre-F3c the reporter only walked Implements,
+        // post-F3c it branches on source typeKind.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IBase", Name = "IBase", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.IChild", Name = "IChild", Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string> { ["typeKind"] = "interface" },
+            })
+            .AddEdge(new Edge { SourceId = "type:N.IChild", TargetId = "type:N.IBase", Kind = EdgeKind.Inherits, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.IChild");
+
+        Assert.Equal(1, report.ImplementedInterfaceCount);
+        Assert.Equal("type:N.IBase", report.PerInterface[0].InterfaceId);
+    }
+
+    [Fact]
+    public void AuthorityReport_RealGraph_CompositeHost_AggregatesInheritedMembers()
+    {
+        // End-to-end: compile real C# source, extract through the
+        // production pipeline, run authority_report. ABG-style facade.
+        var (model, root) = Compile(@"
+namespace App;
+public interface IPartA { void RunA(); }
+public interface IPartB { void RunB(); }
+public interface IFacade : IPartA, IPartB { }
+public class Host : IFacade {
+    public void RunA() { }
+    public void RunB() { }
+}");
+        var symbols = new RoslynSymbolExtractor()
+            .Extract(model, root, "Facade.cs", "file:Facade.cs")
+            .ToList();
+        var edges = new RoslynEdgeExtractor().Extract(model, root).ToList();
+        var builder = new GraphBuilder();
+        foreach (var s in symbols) builder.AddSymbol(s);
+        foreach (var e in edges) builder.AddEdge(e);
+        var graph = builder.Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:App.Host");
+
+        Assert.Equal(1, report.ImplementedInterfaceCount);
+        var row = report.PerInterface[0];
+        Assert.Equal("type:App.IFacade", row.InterfaceId);
+        Assert.True(row.IsCompositeInterface,
+            "Real C# graph: IFacade : IPartA, IPartB MUST be reported composite. " +
+            "Pre-F3c+F3e the inherited surface was invisible.");
+        Assert.Equal(2, row.InheritedInterfaces.Length);
+        Assert.Equal(0, row.DirectMemberCount);
+        Assert.Equal(2, row.InheritedMemberCount);
+        Assert.Equal(2, row.AggregateMemberCount);
+    }
 }

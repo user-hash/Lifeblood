@@ -32,9 +32,12 @@ public sealed class AuthorityReport
     public required string TypeId { get; init; }
 
     /// <summary>
-    /// Number of distinct interfaces this type implements (transitive,
-    /// distinct by canonical id). Read from outgoing
-    /// <see cref="EdgeKind.Implements"/> edges on the type itself.
+    /// Number of distinct interfaces this type directly satisfies.
+    /// For class/struct sources, read from outgoing
+    /// <see cref="EdgeKind.Implements"/> edges. For interface sources
+    /// (interface extending interfaces), read from outgoing
+    /// <see cref="EdgeKind.Inherits"/> edges (post-F3c extractor wire
+    /// shape, see INV-EXTRACT-IFACE-INHERIT-001).
     /// </summary>
     public int ImplementedInterfaceCount { get; init; }
 
@@ -80,11 +83,66 @@ public sealed class AuthorityReport
 
 /// <summary>
 /// One implemented-interface entry on an <see cref="AuthorityReport"/>.
+///
+/// F3e extends the per-interface row with composite / inherited surface
+/// (<see cref="DirectMemberCount"/>, <see cref="InheritedMemberCount"/>,
+/// <see cref="AggregateMemberCount"/>, <see cref="InheritedInterfaces"/>,
+/// <see cref="IsCompositeInterface"/>). When the satisfied interface is
+/// itself composite (extends one or more sub-interfaces, e.g. ABG-style
+/// concern-composite facades), the aggregate fields surface the
+/// inherited contract's real load-bearing member count alongside the
+/// pre-F3e direct count. INV-AUTHORITY-COMPOSITE-001.
 /// </summary>
 public sealed class InterfaceUsage
 {
     public required string InterfaceId { get; init; }
     public string InterfaceName { get; init; } = "";
+
+    /// <summary>
+    /// Members the satisfied interface declares directly (pre-F3e
+    /// member count). Equals <see cref="AggregateMemberCount"/> for
+    /// non-composite interfaces. Backwards-compatible alias for callers
+    /// that pre-date F3e is exposed as <see cref="MemberCount"/>.
+    /// </summary>
+    public int DirectMemberCount { get; init; }
+
+    /// <summary>
+    /// Members reached by transitively walking the satisfied interface's
+    /// outgoing <see cref="EdgeKind.Inherits"/> edges and summing the
+    /// direct member count of each inherited sub-interface. Distinct by
+    /// canonical id across the closure.
+    /// </summary>
+    public int InheritedMemberCount { get; init; }
+
+    /// <summary>
+    /// <see cref="DirectMemberCount"/> + <see cref="InheritedMemberCount"/>.
+    /// </summary>
+    public int AggregateMemberCount { get; init; }
+
+    /// <summary>
+    /// Total members the host carries that satisfy the interface
+    /// contract. Equals <see cref="AggregateMemberCount"/>. Retains its
+    /// pre-F3e name as a backwards-compatible alias.
+    /// </summary>
     public int MemberCount { get; init; }
+
+    /// <summary>
+    /// Canonical ids of every sub-interface this interface inherits
+    /// from, transitively. Empty for non-composite interfaces. Sorted
+    /// ordinal so the wire shape is deterministic.
+    /// </summary>
+    public string[] InheritedInterfaces { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// True iff <see cref="InheritedMemberCount"/> &gt; 0.
+    /// </summary>
+    public bool IsCompositeInterface { get; init; }
+
+    /// <summary>
+    /// Distinct callers reaching the interface or any of its members
+    /// (across the aggregate set when composite) via
+    /// <see cref="EdgeKind.Calls"/> / <see cref="EdgeKind.References"/>
+    /// edges.
+    /// </summary>
     public int ConsumerCount { get; init; }
 }
