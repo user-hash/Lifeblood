@@ -10,7 +10,8 @@ NativeDeclarationEmitter::NativeDeclarationEmitter(
     NativeFileRegistry& files)
     : types_(buildProfile, graph, sourceMap, files),
       typeMembers_(buildProfile, graph, sourceMap, files, types_),
-      globals_(buildProfile, graph, sourceMap, files, types_),
+      globalFacts_(sourceMap),
+      globals_(buildProfile, graph, files),
       functionFacts_(sourceMap),
       functions_(std::move(buildProfile), graph, files)
 {
@@ -38,7 +39,12 @@ void NativeDeclarationEmitter::AddField(NativeCursorHandle cursor, const std::st
 
 bool NativeDeclarationEmitter::AddGlobalVariable(NativeCursorHandle cursor)
 {
-    return globals_.AddGlobalVariable(cursor.cursor);
+    auto facts = globalFacts_.Collect(cursor);
+    if (!facts) return false;
+    if (!globals_.AddGlobalVariable(*facts)) return false;
+
+    globalFacts_.AddTypeReference(cursor, facts->symbolId, types_);
+    return true;
 }
 
 bool NativeDeclarationEmitter::AddFunction(NativeCursorHandle cursor)

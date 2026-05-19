@@ -5,6 +5,7 @@
 #include "NativeFunctionEmitter.h"
 #include "NativeFunctionFactsCollector.h"
 #include "NativeGlobalEmitter.h"
+#include "NativeGlobalFactsCollector.h"
 #include "NativeGraphSink.h"
 #include "NativeTypeEmitter.h"
 #include "NativeTypeMemberEmitter.h"
@@ -33,6 +34,7 @@ public:
 private:
     NativeTypeEmitter types_;
     NativeTypeMemberEmitter typeMembers_;
+    NativeGlobalFactsCollector globalFacts_;
     NativeGlobalEmitter globals_;
     NativeFunctionFactsCollector functionFacts_;
     NativeFunctionEmitter functions_;

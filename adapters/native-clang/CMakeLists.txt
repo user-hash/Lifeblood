@@ -95,6 +95,9 @@ add_executable(lifeblood-native-clang
     src/NativeFileGraphMetrics.h
     src/NativeGlobalEmitter.cpp
     src/NativeGlobalEmitter.h
+    src/NativeGlobalDeclarationFacts.h
+    src/NativeGlobalFactsCollector.cpp
+    src/NativeGlobalFactsCollector.h
     src/NativeGraphFinalizer.cpp
     src/NativeGraphFinalizer.h
     src/NativeGraphFacts.cpp
