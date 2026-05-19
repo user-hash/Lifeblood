@@ -7,7 +7,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The 2026-05-19 two-phase hardening plan (`D:/Projekti/lifeblood_plan.txt`) lands its Phase-1 trust-hardening atoms (F0..F3f + S4..S8a), four native-clang adapter refactors, three execute-robustness fixes surfaced by Unity IL2CPP dogfood, and one dogfood-derived extractor fix (F1d) that closed an 88.7%-workspace-wide property-edge gap. Twelve new typed invariants land in `docs/invariants/csharp-adapter.md` + `docs/invariants/tools.md`; the canonical-symbol-identity chain (F1a/b/c), the composite-port intelligence chain (F3a..f), the diagnose-freshness envelope (S5/S5b), the advisory-limitations envelope (S6), the planning-verdict evidence (S7), and the adapter-thinning seam (S8a) all ship together. Lifeblood self-analysis: **3,507 symbols, 21,115 edges, 11 modules, 363 types, 0 violations, 0 cycles. 1,098 tests, zero skipped. 122 typed invariants across 83 categories.**
+## [0.7.8] - 2026-05-19
+
+The 2026-05-19 two-phase hardening plan (`D:/Projekti/lifeblood_plan.txt`) lands its Phase-1 trust-hardening atoms (F0..F3f + S4..S8a), four native-clang adapter refactors, three execute-robustness fixes surfaced by Unity IL2CPP dogfood, and one dogfood-derived extractor fix (F1d) that closed an 88.7%-workspace-wide property-edge gap. Twelve new typed invariants land in `docs/invariants/csharp-adapter.md` + `docs/invariants/tools.md`; the canonical-symbol-identity chain (F1a/b/c), the composite-port intelligence chain (F3a..f), the diagnose-freshness envelope (S5/S5b), the advisory-limitations envelope (S6), the planning-verdict evidence (S7), and the adapter-thinning seam (S8a) all ship together. Lifeblood self-analysis: **3,506 symbols, 21,113 edges, 11 modules, 363 types, 0 violations, 0 cycles. 1,098 tests, zero skipped. 122 typed invariants across 83 categories.**
 
 ### Fixed
 
@@ -1195,7 +1197,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...HEAD
+[0.7.8]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...v0.7.8
 [0.7.7]: https://github.com/user-hash/Lifeblood/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/user-hash/Lifeblood/compare/v0.7.5...v0.7.6
 [0.7.5]: https://github.com/user-hash/Lifeblood/compare/v0.7.4...v0.7.5

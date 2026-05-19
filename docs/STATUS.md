@@ -42,8 +42,8 @@ Built-in architecture rule packs:
 
 ```
 $ lifeblood analyze --project .
-Symbols: 3,507
-Edges:   21,115
+Symbols: 3,506
+Edges:   21,113
 Modules: 11
 Types:   363
 
