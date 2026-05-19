@@ -61,9 +61,9 @@ public sealed class RoslynSymbolExtractor
         var typeSymbol = model.GetDeclaredSymbol(typeDecl) as INamedTypeSymbol;
         if (typeSymbol == null) return;
 
-        var typeId = SymbolIds.Type(GetFullName(typeSymbol));
+        var typeId = CanonicalSymbolFormat.BuildTypeId(typeSymbol);
         var containerId = typeSymbol.ContainingType != null
-            ? SymbolIds.Type(GetFullName(typeSymbol.ContainingType))
+            ? CanonicalSymbolFormat.BuildTypeId(typeSymbol.ContainingType)
             : parentId;
 
         var typeProps = new Dictionary<string, string>
@@ -77,7 +77,7 @@ public sealed class RoslynSymbolExtractor
         {
             Id = typeId,
             Name = typeSymbol.Name,
-            QualifiedName = GetFullName(typeSymbol),
+            QualifiedName = CanonicalSymbolFormat.GetFullName(typeSymbol),
             Kind = DomainSymbolKind.Type,
             FilePath = filePath,
             Line = typeDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
@@ -169,8 +169,8 @@ public sealed class RoslynSymbolExtractor
         var enumSymbol = model.GetDeclaredSymbol(enumDecl) as INamedTypeSymbol;
         if (enumSymbol == null) return;
 
-        var enumFqn = GetFullName(enumSymbol);
-        var enumId = SymbolIds.Type(enumFqn);
+        var enumFqn = CanonicalSymbolFormat.GetFullName(enumSymbol);
+        var enumId = CanonicalSymbolFormat.BuildTypeId(enumSymbol);
 
         symbols.Add(new Symbol
         {
@@ -217,7 +217,7 @@ public sealed class RoslynSymbolExtractor
 
             symbols.Add(new Symbol
             {
-                Id = SymbolIds.Field(enumFqn, memberSym.Name),
+                Id = CanonicalSymbolFormat.BuildFieldId(memberSym),
                 Name = memberSym.Name,
                 QualifiedName = $"{enumFqn}.{memberSym.Name}",
                 Kind = DomainSymbolKind.Field,
@@ -240,9 +240,9 @@ public sealed class RoslynSymbolExtractor
 
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Type(GetFullName(sym)),
+            Id = CanonicalSymbolFormat.BuildTypeId(sym),
             Name = sym.Name,
-            QualifiedName = GetFullName(sym),
+            QualifiedName = CanonicalSymbolFormat.GetFullName(sym),
             Kind = DomainSymbolKind.Type,
             FilePath = filePath,
             Line = delegateDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
@@ -331,7 +331,7 @@ public sealed class RoslynSymbolExtractor
         var name = isStatic ? ".cctor" : ".ctor";
         return new Symbol
         {
-            Id = SymbolIds.Method(typeName, name, paramSignature: string.Empty),
+            Id = CanonicalSymbolFormat.BuildMethodId(ctor),
             Name = name,
             QualifiedName = $"{typeName}.{name}",
             Kind = DomainSymbolKind.Method,
@@ -356,7 +356,6 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         var methodProps = new Dictionary<string, string>
         {
             ["returnType"] = sym.ReturnType.ToDisplayString(),
@@ -367,7 +366,7 @@ public sealed class RoslynSymbolExtractor
         AttachXmlDocSummary(methodProps, sym);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(typeName, sym.Name, paramSig),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -389,11 +388,10 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         var name = sym.IsStatic ? ".cctor" : ".ctor";
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(typeName, name, paramSig),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym),
             Name = name,
             QualifiedName = $"{typeName}.{name}",
             Kind = DomainSymbolKind.Method,
@@ -426,7 +424,7 @@ public sealed class RoslynSymbolExtractor
             AttachXmlDocSummary(fieldProps, sym);
             symbols.Add(new Symbol
             {
-                Id = SymbolIds.Field(typeName, sym.Name),
+                Id = CanonicalSymbolFormat.BuildFieldId(sym),
                 Name = sym.Name,
                 QualifiedName = $"{typeName}.{sym.Name}",
                 Kind = DomainSymbolKind.Field,
@@ -456,7 +454,7 @@ public sealed class RoslynSymbolExtractor
         AttachXmlDocSummary(propProps, sym);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Property(typeName, sym.Name),
+            Id = CanonicalSymbolFormat.BuildPropertyId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Property,
@@ -478,10 +476,9 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = CanonicalSymbolFormat.BuildIndexerParamSignature(sym);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Property(typeName, $"this[{paramSig}]"),
+            Id = CanonicalSymbolFormat.BuildPropertyId(sym),
             Name = "this[]",
             QualifiedName = $"{typeName}.this[]",
             Kind = DomainSymbolKind.Property,
@@ -506,10 +503,9 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(typeName, sym.Name, paramSig),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -534,10 +530,9 @@ public sealed class RoslynSymbolExtractor
         if (sym == null) return;
 
         var typeName = ExtractTypeFromId(containingTypeId);
-        var paramSig = CanonicalSymbolFormat.BuildParamSignature(sym);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(typeName, sym.Name, paramSig),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -564,7 +559,7 @@ public sealed class RoslynSymbolExtractor
         var typeName = ExtractTypeFromId(containingTypeId);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Method(typeName, "Finalize", ""),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym),
             Name = "Finalize",
             QualifiedName = $"{typeName}.Finalize",
             Kind = DomainSymbolKind.Method,
@@ -616,7 +611,7 @@ public sealed class RoslynSymbolExtractor
         var typeName = ExtractTypeFromId(containingTypeId);
         symbols.Add(new Symbol
         {
-            Id = SymbolIds.Property(typeName, sym.Name),
+            Id = CanonicalSymbolFormat.BuildEventId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Property,
@@ -791,21 +786,7 @@ public sealed class RoslynSymbolExtractor
     }
 
     internal static string GetFullName(ISymbol symbol)
-    {
-        var parts = new List<string>();
-        var current = symbol;
-        while (current != null && current is not INamespaceSymbol { IsGlobalNamespace: true })
-        {
-            if (current is INamespaceSymbol ns && !string.IsNullOrEmpty(ns.Name))
-                parts.Add(ns.Name);
-            else if (current is INamedTypeSymbol or IMethodSymbol or IFieldSymbol or IPropertySymbol or IEventSymbol)
-                parts.Add(current.Name);
-
-            current = current.ContainingSymbol;
-        }
-        parts.Reverse();
-        return string.Join(".", parts);
-    }
+        => CanonicalSymbolFormat.GetFullName(symbol);
 
     private static string ExtractTypeFromId(string typeId)
         => typeId.StartsWith("type:") ? typeId.Substring(5) : typeId;
