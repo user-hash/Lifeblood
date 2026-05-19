@@ -1,3 +1,4 @@
+using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -26,14 +27,14 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 internal sealed class RoslynEnumCoverageService
 {
-    private readonly RoslynCompilationHost _host;
+    private readonly IRoslynLookup _lookup;
 
-    internal RoslynEnumCoverageService(RoslynCompilationHost host) => _host = host;
+    internal RoslynEnumCoverageService(IRoslynLookup lookup) => _lookup = lookup;
 
     internal EnumCoverageReport? GetEnumCoverage(string enumTypeId)
     {
         if (string.IsNullOrEmpty(enumTypeId)) return null;
-        var resolved = _host.ResolveFromSource(enumTypeId);
+        var resolved = _lookup.ResolveFromSource(enumTypeId);
         if (resolved is not INamedTypeSymbol enumSymbol) return null;
         if (enumSymbol.TypeKind != TypeKind.Enum) return null;
 
@@ -46,7 +47,7 @@ internal sealed class RoslynEnumCoverageService
         foreach (var member in enumSymbol.GetMembers().OfType<IFieldSymbol>())
         {
             if (!member.IsConst) continue;
-            var id = RoslynCompilationHost.BuildSymbolId(member);
+            var id = _lookup.BuildSymbolId(member);
             if (counters.ContainsKey(id)) continue;
             counters[id] = new EnumMemberCounter();
             orderedMembers.Add((id, member.Name));
@@ -66,7 +67,7 @@ internal sealed class RoslynEnumCoverageService
         // the canonical id matches one of our enum members, classify by
         // parent syntax. Cheaper than calling FindReferences per-member
         // (N members × full-tree walk each) on big enums.
-        foreach (var compilation in _host.Compilations.Values)
+        foreach (var compilation in _lookup.Compilations.Values)
         {
             foreach (var tree in compilation.SyntaxTrees)
             {
@@ -93,10 +94,10 @@ internal sealed class RoslynEnumCoverageService
                     var sym = model.GetSymbolInfo(node).Symbol;
                     if (sym is null || sym.Kind != Microsoft.CodeAnalysis.SymbolKind.Field) continue;
 
-                    var canonical = RoslynCompilationHost.BuildSymbolId(sym);
+                    var canonical = _lookup.BuildSymbolId(sym);
                     if (!counters.TryGetValue(canonical, out var counter))
                     {
-                        var originalDefId = RoslynCompilationHost.BuildSymbolId(sym.OriginalDefinition);
+                        var originalDefId = _lookup.BuildSymbolId(sym.OriginalDefinition);
                         if (!counters.TryGetValue(originalDefId, out counter)) continue;
                     }
 

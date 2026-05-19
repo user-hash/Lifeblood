@@ -13,7 +13,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// Roslyn-backed compilation host. Provides diagnostics, compile-checking, and reference finding.
 /// Built from retained compilations after workspace analysis.
 /// </summary>
-public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
+public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLookup, IDisposable
 {
   private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
   private readonly Lazy<RoslynWorkspaceManager> _manager;
@@ -30,13 +30,29 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   public bool IsAvailable => _compilations.Count > 0;
 
   /// <summary>
-  /// S8a: in-assembly accessor so extracted services
-  /// (<see cref="RoslynEnumCoverageService"/> and future siblings) can
-  /// walk the same compilation set the host owns without re-importing
-  /// the dictionary by reference. Keeps the public API surface
-  /// unchanged; opens an internal seam for adapter thinning.
+  /// S8a: <see cref="Internal.IRoslynLookup"/> implementation so
+  /// extracted services depend on the interface, not the concrete
+  /// host type. Eliminates the type-cycle the direct-host-reference
+  /// design created — INV-ADAPTER-THIN-001 / INV-ADAPTER-LOOKUP-SEAM-001.
   /// </summary>
-  internal IReadOnlyDictionary<string, CSharpCompilation> Compilations => _compilations;
+  IReadOnlyDictionary<string, CSharpCompilation> Internal.IRoslynLookup.Compilations => _compilations;
+
+  /// <summary>
+  /// Instance forwarder for the static <see cref="BuildSymbolId"/>
+  /// helper. Required so <see cref="Internal.IRoslynLookup"/> can
+  /// expose the canonical-id builder as a mockable instance member
+  /// without changing the static call sites scattered through the
+  /// host.
+  /// </summary>
+  string Internal.IRoslynLookup.BuildSymbolId(ISymbol symbol) => BuildSymbolId(symbol);
+
+  /// <summary>
+  /// Instance forwarder for <see cref="ResolveFromSource"/> exposed
+  /// through <see cref="Internal.IRoslynLookup"/>. Explicit interface
+  /// implementation so the host's direct callers (within this file)
+  /// still use the simpler non-interface entry point.
+  /// </summary>
+  ISymbol? Internal.IRoslynLookup.ResolveFromSource(string symbolId) => ResolveFromSource(symbolId);
 
   public DiagnosticInfo[] GetDiagnostics(string? moduleName = null) =>
   GetDiagnostics(new DiagnosticsRequest { ModuleName = moduleName });
@@ -697,7 +713,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   /// resolve or is not an enum.
   /// </summary>
   public EnumCoverageReport? GetEnumCoverage(string enumTypeId)
-      => new RoslynEnumCoverageService(this).GetEnumCoverage(enumTypeId);
+      => new RoslynEnumCoverageService((Internal.IRoslynLookup)this).GetEnumCoverage(enumTypeId);
 
   /// <summary>
   /// Generic static-initializer table extraction. Routes through
