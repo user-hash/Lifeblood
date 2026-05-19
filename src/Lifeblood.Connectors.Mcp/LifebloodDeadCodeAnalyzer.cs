@@ -58,7 +58,22 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             if (options.ExcludePublic && sym.Visibility == Visibility.Public) continue;
             if (options.ExcludeTests && PathBucketClassifier.IsTest(sym.FilePath)) continue;
 
-            if (HasIncomingReference(graph, sym.Id)) continue;
+            // Liveness check. A method/property implementing an interface
+            // member is reachable by definition — that branch ALWAYS short-
+            // circuits regardless of incoming refs or the same-class option.
+            if (IsLiveByOutgoingImplements(graph, sym.Id)) continue;
+
+            // Incoming-reference filter. Default mode drops any symbol with
+            // a non-Contains incoming edge. F2: when
+            // IncludeSameClassOnlyConsumers=true, also surface symbols whose
+            // ONLY incoming refs come from same-class members — useful for
+            // private-field cleanup triage. INV-DEADCODE-TRIAGE-002.
+            bool hasAnyIncoming = HasAnyIncomingNonContainsEdge(graph, sym.Id);
+            if (hasAnyIncoming)
+            {
+                if (!options.IncludeSameClassOnlyConsumers) continue;
+                if (!HasOnlySameClassReferences(graph, sym)) continue;
+            }
 
             // Static constructors are runtime entry points: explicit and
             // synthesized .cctor methods are invoked by the CLR on type init.
@@ -82,17 +97,19 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
                 && _runtimeReachability.IsRuntimeReachable(graph, sym, out _))
                 continue;
 
+            int sameClassConsumers = CountSameClassConsumers(graph, sym);
             results.Add(new DeadCodeResult(
                 CanonicalId: sym.Id,
                 Kind: sym.Kind,
                 Name: sym.Name,
                 FilePath: sym.FilePath,
                 Line: sym.Line,
-                Reason: BuildReason(sym, options))
+                Reason: BuildReason(sym, options, sameClassConsumers))
             {
                 DirectDependants = CountDirectDependants(graph, sym.Id),
                 Bucket = (DeadCodeBucket)PathBucketClassifier.Classify(sym.FilePath),
                 DeclarationOnly = sym.IsAbstract,
+                SameClassConsumerCount = sameClassConsumers,
             });
         }
         return results
@@ -103,41 +120,72 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
     }
 
     /// <summary>
-    /// A symbol is "dead" if no other symbol references it via a
-    /// non-Contains edge. Contains is the type→member parent link,
-    /// not a usage, so it's not counted.
+    /// True if the symbol has at least one incoming non-Contains edge.
+    /// Contains is the type→member parent link, not a usage.
     /// </summary>
-    private static bool HasIncomingReference(SemanticGraph graph, string symbolId)
+    private static bool HasAnyIncomingNonContainsEdge(SemanticGraph graph, string symbolId)
     {
         foreach (int idx in graph.GetIncomingEdgeIndexes(symbolId))
         {
-            var edge = graph.Edges[idx];
-            if (edge.Kind == EdgeKind.Contains) continue;
+            if (graph.Edges[idx].Kind == EdgeKind.Contains) continue;
             return true;
-        }
-        // A method/property implementing an interface member is reachable by definition:
-        // callers invoke through the interface, which carries the Calls edges.
-        // The implementing symbol has an OUTGOING Implements edge to the interface member.
-        foreach (int idx in graph.GetOutgoingEdgeIndexes(symbolId))
-        {
-            var edge = graph.Edges[idx];
-            if (edge.Kind == EdgeKind.Implements) return true;
         }
         return false;
     }
 
-    private static string BuildReason(Symbol sym, DeadCodeOptions options)
+    /// <summary>
+    /// True if the symbol has an OUTGOING Implements edge — it implements an
+    /// interface member and is reachable by callers invoking through the
+    /// interface. Separated from incoming-ref logic so the F2 same-class
+    /// relaxation can't accidentally surface interface implementers.
+    /// </summary>
+    private static bool IsLiveByOutgoingImplements(SemanticGraph graph, string symbolId)
+    {
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(symbolId))
+        {
+            if (graph.Edges[idx].Kind == EdgeKind.Implements) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True iff every incoming non-Contains reference comes from a symbol
+    /// whose ParentId matches the candidate's ParentId (same containing
+    /// type) AND at least one such reference exists. Used by F2's
+    /// IncludeSameClassOnlyConsumers relaxation — the symbol is only
+    /// surfaced when all of its consumers are class-internal.
+    /// </summary>
+    private static bool HasOnlySameClassReferences(SemanticGraph graph, Symbol sym)
+    {
+        if (string.IsNullOrEmpty(sym.ParentId)) return false;
+        bool anyRef = false;
+        foreach (int idx in graph.GetIncomingEdgeIndexes(sym.Id))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind == EdgeKind.Contains) continue;
+            anyRef = true;
+            var sourceSym = graph.GetSymbol(edge.SourceId);
+            if (sourceSym == null) return false; // unknown source — refuse the relaxation
+            if (sourceSym.ParentId != sym.ParentId) return false;
+        }
+        return anyRef;
+    }
+
+    private static string BuildReason(Symbol sym, DeadCodeOptions options, int sameClassConsumers)
     {
         var scope = options.ExcludePublic ? "non-public " : "";
-        return $"{scope}{sym.Kind.ToString().ToLowerInvariant()} with no incoming semantic references";
+        var kindStr = sym.Kind.ToString().ToLowerInvariant();
+        return sameClassConsumers > 0
+            ? $"{scope}{kindStr} with only same-class consumers ({sameClassConsumers})"
+            : $"{scope}{kindStr} with no incoming semantic references";
     }
 
     /// <summary>
     /// Count incoming non-Contains edges. Classic findings always carry 0
-    /// (the analyzer drops any symbol with such edges via
-    /// <see cref="HasIncomingReference"/>); the field is on the wire as
-    /// forward-compatible signal for future relaxed criteria where it
-    /// would surface the "barely reachable" class. INV-DEADCODE-TRIAGE-001.
+    /// (the analyzer drops any symbol with such edges in default mode);
+    /// non-zero values appear only under F2's IncludeSameClassOnlyConsumers
+    /// relaxation where the field surfaces the "barely reachable" class.
+    /// INV-DEADCODE-TRIAGE-001.
     /// </summary>
     private static int CountDirectDependants(SemanticGraph graph, string symbolId)
     {
@@ -150,4 +198,23 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
         return count;
     }
 
+    /// <summary>
+    /// Count incoming non-Contains edges whose source symbol shares the
+    /// candidate's ParentId (same containing type). Always 0 when the
+    /// candidate has no ParentId or no such edges. INV-DEADCODE-TRIAGE-002.
+    /// </summary>
+    private static int CountSameClassConsumers(SemanticGraph graph, Symbol sym)
+    {
+        if (string.IsNullOrEmpty(sym.ParentId)) return 0;
+        int count = 0;
+        foreach (int idx in graph.GetIncomingEdgeIndexes(sym.Id))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind == EdgeKind.Contains) continue;
+            var sourceSym = graph.GetSymbol(edge.SourceId);
+            if (sourceSym == null) continue;
+            if (sourceSym.ParentId == sym.ParentId) count++;
+        }
+        return count;
+    }
 }
