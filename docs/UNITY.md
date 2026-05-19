@@ -122,7 +122,7 @@ Editing an asmdef without forcing Unity to regenerate the on-disk csproj used to
 
 ## Execute Robustness on Unity (`INV-EXECUTE-001`)
 
-`lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch UnityEngine types without Unity being open. Empty `Library/` surfaces a `runtimeAssemblyWarnings` entry telling the caller to run a Unity build first. Optional `targetProfile` (host / net-standard-2.1 / net-6.0) selects the BCL ref-pack; missing packs fall back to host with `targetRuntimeWarnings`.
+`lifeblood_execute` auto-injects DLLs from `Library/ScriptAssemblies/`, `Library/Bee/artifacts/`, and `Library/PackageCache/` so scripts can touch UnityEngine types without Unity being open. Empty `Library/` surfaces a `runtimeAssemblyWarnings` entry telling the caller to run a Unity build first. The execute reference builder filters non-managed PEs, runtime BCL/contract assemblies such as stripped player `mscorlib.dll`, duplicate assembly identities, and assemblies already represented by retained workspace compilations before handing the set to Roslyn. `host` is the execution profile; non-host `targetProfile` values are accepted as compatibility hints, still run against the host scripting BCL, and surface the limitation on `targetRuntimeWarnings`.
 
 ## File-mode `compile_check` for Unity files (`LB-BUG-019`)
 

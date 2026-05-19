@@ -139,12 +139,10 @@ public sealed class CodeExecutionResult
     public string[] RuntimeAssemblyWarnings { get; init; } = Array.Empty<string>();
 
     /// <summary>
-    /// Non-fatal diagnostics from the target-runtime pre-flight.
-    /// Each entry is a single API the script touches that isn't available
-    /// in the requested target profile (e.g. <c>MathF.Log2</c> doesn't
-    /// exist in <c>net-standard-2.1</c>). Empty when the script's API
-    /// surface fits cleanly in the target profile, or when no profile
-    /// was requested.
+    /// Non-fatal diagnostics about target runtime semantics. Today
+    /// <c>lifeblood_execute</c> runs against the host scripting BCL only;
+    /// non-host target profile hints are accepted for compatibility and
+    /// reported here as an explicit limitation.
     /// </summary>
     public string[] TargetRuntimeWarnings { get; init; } = Array.Empty<string>();
 }
