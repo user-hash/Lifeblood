@@ -110,32 +110,12 @@ public sealed class LifebloodPortHealthAnalyzer : IPortHealthAnalyzer
     }
 
     /// <summary>
-    /// Transitive outgoing <see cref="EdgeKind.Inherits"/> walk. Returns the
-    /// distinct set of inherited type canonical ids, sorted ordinal so the
-    /// wire shape is deterministic across runs. INV-PORT-HEALTH-COMPOSITE-001.
+    /// Transitive interface-inheritance walk, delegated to the shared
+    /// Domain helper. INV-PORT-HEALTH-COMPOSITE-001 (read-side) +
+    /// INV-EXTRACT-IFACE-INHERIT-001 (extractor wire shape).
     /// </summary>
     private static string[] CollectInheritedInterfaces(SemanticGraph graph, string typeId)
-    {
-        var seen = new HashSet<string>(System.StringComparer.Ordinal);
-        var queue = new Queue<string>();
-        queue.Enqueue(typeId);
-        while (queue.Count > 0)
-        {
-            var current = queue.Dequeue();
-            foreach (int idx in graph.GetOutgoingEdgeIndexes(current))
-            {
-                var edge = graph.Edges[idx];
-                if (edge.Kind != EdgeKind.Inherits) continue;
-                if (!seen.Add(edge.TargetId)) continue;
-                queue.Enqueue(edge.TargetId);
-            }
-        }
-        var arr = new string[seen.Count];
-        int i = 0;
-        foreach (var id in seen) arr[i++] = id;
-        System.Array.Sort(arr, System.StringComparer.Ordinal);
-        return arr;
-    }
+        => InterfaceInheritanceWalker.CollectTransitiveInherited(graph, typeId);
 
     /// <summary>
     /// Liveness rule mirrors the dead-code analyzer: a non-Contains

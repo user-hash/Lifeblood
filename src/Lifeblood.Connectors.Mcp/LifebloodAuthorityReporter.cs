@@ -25,19 +25,14 @@ public sealed class LifebloodAuthorityReporter : IAuthorityReporter
             };
         }
 
-        // 1. Implemented interfaces — outgoing Implements edges on the
-        //    type itself (NOT method-level Implements edges).
-        var interfaceIds = new System.Collections.Generic.List<string>();
-        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
-        {
-            var edge = graph.Edges[idx];
-            if (edge.Kind != EdgeKind.Implements) continue;
-            interfaceIds.Add(edge.TargetId);
-        }
-        // Distinct by id, stable order for deterministic output.
-        var distinctIfaces = interfaceIds.Distinct(System.StringComparer.Ordinal)
-            .OrderBy(id => id, System.StringComparer.Ordinal)
-            .ToArray();
+        // 1. Implemented interfaces — outgoing edges from the type itself
+        //    to interface-typed targets. Walks Implements (class/struct →
+        //    interface) AND Inherits (interface extending interface, post-F3c)
+        //    and filters by target typeKind so the metric semantic is
+        //    "interfaces this type directly satisfies" regardless of source
+        //    kind. NOT method-level Implements edges.
+        var distinctIfaces = InterfaceInheritanceWalker
+            .CollectDirectInterfaceContracts(graph, typeId);
 
         // 2. Owned public surface — Contains edges from the type to
         //    public-visibility members (Method/Property/Field/Event,

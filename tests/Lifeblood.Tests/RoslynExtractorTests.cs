@@ -265,6 +265,74 @@ public class SqlRepo : IRepo { public void Save() { } }");
             && e.TargetId.Contains("IRepo"));
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // F3c: interface-extends-interface emits Inherits, not Implements.
+    // INV-EXTRACT-IFACE-INHERIT-001. Pre-F3c the extractor emitted
+    // Implements for every entry of typeSymbol.Interfaces regardless of
+    // source TypeKind, making composite-interface traversal invisible to
+    // port_health / authority_report (they walk Inherits semantics).
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_InterfaceExtendsInterface_EmitsInherits()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface IBase { void M(); }
+public interface IChild : IBase { void N(); }");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        // Post-F3c: interface→interface is Inherits.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Inherits
+            && e.SourceId == "type:App.IChild"
+            && e.TargetId == "type:App.IBase");
+
+        // Negative pin: must NOT be Implements (the pre-F3c bug).
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId == "type:App.IChild"
+            && e.TargetId == "type:App.IBase");
+    }
+
+    [Fact]
+    public void ExtractEdges_ClassImplementsInterface_StillEmitsImplements_PostF3c()
+    {
+        // Backward-compat pin: class→interface stays Implements after F3c.
+        var (model, root) = Compile(@"
+namespace App;
+public interface IRunnable { void Run(); }
+public class Worker : IRunnable { public void Run() { } }");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId == "type:App.Worker"
+            && e.TargetId == "type:App.IRunnable");
+
+        // Negative pin: class→interface must NOT slip into Inherits.
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Inherits
+            && e.SourceId == "type:App.Worker"
+            && e.TargetId == "type:App.IRunnable");
+    }
+
+    [Fact]
+    public void ExtractEdges_StructImplementsInterface_StillEmitsImplements_PostF3c()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface ICopyable { void Copy(); }
+public struct Token : ICopyable { public void Copy() { } }");
+
+        var extractor = new RoslynEdgeExtractor();
+        var edges = extractor.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Implements
+            && e.SourceId == "type:App.Token"
+            && e.TargetId == "type:App.ICopyable");
+    }
+
     [Fact]
     public void ExtractEdges_MethodCall()
     {
