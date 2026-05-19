@@ -1,7 +1,6 @@
 using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Results;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
@@ -83,13 +82,6 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
     };
 
     /// <summary>
-    /// Host BCL assemblies, resolved once from the running .NET runtime directory.
-    /// ScriptOptions.Default only has "Unresolved" assembly names — these are the
-    /// real, file-backed references the script compiler actually needs.
-    /// </summary>
-    private static readonly Lazy<MetadataReference[]> HostBclReferences = new(LoadHostBclReferences);
-
-    /// <summary>
     /// Construct an executor over a typed read-only view of the loaded
     /// semantic state. Plan v4 Seam #3 — the script-host globals object IS
     /// the same <see cref="RoslynSemanticView"/> instance, passed via
@@ -148,11 +140,10 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
         var timeoutMs = request.TimeoutMs;
         var startTime = DateTime.UtcNow;
 
-        // Resolver diagnostics computed up-front so they're surfaced on
-        // every result path (success, compilation error, blocked pattern,
-        // exception) — even when the script never actually runs.
-        var runtimeAssemblyDiagnostics = _runtimeAssemblies?.GetDiagnostics() ?? Array.Empty<string>();
-        var (bclRefs, targetWarnings) = ResolveTargetProfileBcl(request.TargetProfile);
+        // Build the reference set once through the adapter-owned seam so
+        // every result path reports the same non-fatal diagnostics.
+        var referenceSet = new ScriptReferenceSetBuilder(_compilations, _runtimeAssemblies)
+            .Build(request.TargetProfile);
 
         // Layer 1: String-based blocklist (fast, catches obvious patterns).
         // Normalize whitespace around dots to prevent bypass via "Process . Start".
@@ -166,8 +157,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                     Success = false,
                     Error = $"Blocked pattern detected: {pattern}",
                     ElapsedMs = 0,
-                    RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
-                    TargetRuntimeWarnings = targetWarnings,
+                    RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                    TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
                 };
         }
 
@@ -179,100 +170,15 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Success = false,
                 Error = astBlock,
                 ElapsedMs = 0,
+                RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
             };
 
         try
         {
-            // Build references from two sources:
-            //  1. Host BCL — the running .NET runtime's actual assemblies (System.Runtime,
-            //     System.Linq, etc.). NOT the target project's BCL, which may be a different
-            //     runtime (e.g., Unity's netstandard stubs) and causes CS0518 conflicts.
-            //  2. CompilationReferences — give the script access to project types.
-            //     NOT compilation.References (transitive deps), which would inject the
-            //     target project's BCL assemblies and conflict with the host BCL.
-            //
             // We use WithReferences (replace) instead of AddReferences (append) because
             // ScriptOptions.Default contains 25 "Unresolved" named references that can't
             // be resolved without TRUSTED_PLATFORM_ASSEMBLIES — they just add noise.
-            var allReferences = new List<MetadataReference>(bclRefs.Length + _compilations.Count);
-            allReferences.AddRange(bclRefs);
-            foreach (var compilation in _compilations.Values)
-                allReferences.Add(compilation.ToMetadataReference());
-
-            // Runtime assemblies the analyzed source doesn't carry
-            // (UnityEngine.dll, UnityEditor.dll, ASP.NET runtime pack, etc.).
-            // The resolver returns absolute paths; we filter to existing files
-            // and skip duplicates by file name to avoid Roslyn's
-            // "duplicate assembly identity" warning when multiple build
-            // outputs ship the same UnityEngine.CoreModule.dll.
-            if (_runtimeAssemblies != null)
-            {
-                var seenAssemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var skippedNativeNames = new List<string>();
-                foreach (var p in _runtimeAssemblies.GetAssemblyProbePaths())
-                {
-                    if (string.IsNullOrEmpty(p)) continue;
-                    if (!File.Exists(p)) continue;
-                    var key = Path.GetFileName(p);
-                    if (!seenAssemblyNames.Add(key)) continue;
-
-                    // Managed-PE gate (INV-EXECUTE-001). AssemblyName.GetAssemblyName
-                    // is the canonical .NET probe — throws BadImageFormatException on
-                    // native PEs (Unity IL2CPP GameAssembly.dll, C++/CLI without managed
-                    // surface, etc.). Filtering at the reference-graph boundary keeps
-                    // Roslyn from surfacing CS0009 at compile time on every script run.
-                    try
-                    {
-                        System.Reflection.AssemblyName.GetAssemblyName(p);
-                    }
-                    catch (BadImageFormatException)
-                    {
-                        skippedNativeNames.Add(key);
-                        continue;
-                    }
-                    catch
-                    {
-                        // FileLoadException, IOException, etc. — inaccessible; skip
-                        // silently per the pre-existing best-effort posture of this seam.
-                        continue;
-                    }
-
-                    try
-                    {
-                        allReferences.Add(MetadataReference.CreateFromFile(p));
-                    }
-                    catch
-                    {
-                        // Defense-in-depth: AssemblyName already filtered native PEs,
-                        // but Roslyn metadata validation can still throw on edge cases.
-                    }
-                }
-
-                if (skippedNativeNames.Count > 0)
-                {
-                    var preview = string.Join(", ", skippedNativeNames.Take(3));
-                    var suffix = skippedNativeNames.Count > 3
-                        ? $" (+{skippedNativeNames.Count - 3} more)"
-                        : "";
-                    var filterDiag = $"Skipped {skippedNativeNames.Count} non-managed PE(s) from runtime probe: {preview}{suffix}.";
-                    var combined = new string[runtimeAssemblyDiagnostics.Length + 1];
-                    Array.Copy(runtimeAssemblyDiagnostics, combined, runtimeAssemblyDiagnostics.Length);
-                    combined[runtimeAssemblyDiagnostics.Length] = filterDiag;
-                    runtimeAssemblyDiagnostics = combined;
-                }
-            }
-
-            // Plan v4 Seam #3: include the assemblies that define the script-
-            // globals types (RoslynSemanticView and its property types) so the
-            // script compiler can resolve `Graph`, `Compilations`, and
-            // `ModuleDependencies` at top level. Without these, scripts that
-            // reference globals get CS0246 even though the globals object is
-            // actually present at runtime.
-            allReferences.Add(MetadataReference.CreateFromFile(typeof(RoslynSemanticView).Assembly.Location));
-            allReferences.Add(MetadataReference.CreateFromFile(typeof(Lifeblood.Domain.Graph.SemanticGraph).Assembly.Location));
-            allReferences.Add(MetadataReference.CreateFromFile(typeof(CSharpCompilation).Assembly.Location));
-            allReferences.Add(MetadataReference.CreateFromFile(typeof(Microsoft.CodeAnalysis.Compilation).Assembly.Location));
-
             var allImports = DefaultImports
                 .Concat(new[]
                 {
@@ -286,7 +192,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 .ToArray();
 
             var options = ScriptOptions.Default
-                .WithReferences(allReferences)
+                .WithReferences(referenceSet.References)
                 .WithImports(allImports);
 
             // Redirect Console output.
@@ -339,8 +245,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                     Error = stderr.ToString(),
                     ReturnValue = returnValue?.ToString(),
                     ElapsedMs = Math.Round(elapsed, 1),
-                    RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
-                    TargetRuntimeWarnings = targetWarnings,
+                    RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                    TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
                 };
             }
             finally
@@ -357,8 +263,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Success = false,
                 Error = string.Join("\n", ex.Diagnostics.Select(d => d.ToString())),
                 ElapsedMs = Math.Round(elapsed, 1),
-                RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
-                TargetRuntimeWarnings = targetWarnings,
+                RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
             };
         }
         catch (OperationCanceledException)
@@ -368,8 +274,8 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Success = false,
                 Error = $"Execution timed out after {timeoutMs}ms",
                 ElapsedMs = timeoutMs,
-                RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
-                TargetRuntimeWarnings = targetWarnings,
+                RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
             };
         }
         catch (Exception ex)
@@ -380,154 +286,10 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 Success = false,
                 Error = ex.InnerException?.Message ?? ex.Message,
                 ElapsedMs = Math.Round(elapsed, 1),
-                RuntimeAssemblyWarnings = runtimeAssemblyDiagnostics,
-                TargetRuntimeWarnings = targetWarnings,
+                RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
             };
         }
-    }
-
-    /// <summary>
-    /// Pick the BCL reference set for the requested target profile.
-    /// Returns the references plus any non-fatal diagnostics
-    /// (unknown profile, ref-pack not installed locally, etc.). Falls
-    /// back to the host BCL on any miss so the script still has SOME
-    /// reference set. See `INV-EXECUTE-001`.
-    /// </summary>
-    private static (MetadataReference[] refs, string[] warnings) ResolveTargetProfileBcl(string profile)
-    {
-        if (string.IsNullOrEmpty(profile) || string.Equals(profile, "host", StringComparison.OrdinalIgnoreCase))
-            return (HostBclReferences.Value, Array.Empty<string>());
-
-        var packPaths = TargetProfilePackCandidates(profile);
-        if (packPaths.Count == 0)
-        {
-            return (HostBclReferences.Value, new[]
-            {
-                $"Unknown targetProfile '{profile}'. Falling back to host runtime BCL. " +
-                "Supported values: 'host' (default), 'net-standard-2.1', 'net-6.0'.",
-            });
-        }
-
-        foreach (var dir in packPaths)
-        {
-            if (!Directory.Exists(dir)) continue;
-            var dlls = Directory.GetFiles(dir, "*.dll", SearchOption.TopDirectoryOnly);
-            if (dlls.Length == 0) continue;
-            var refs = new List<MetadataReference>(dlls.Length);
-            foreach (var d in dlls)
-            {
-                try { refs.Add(MetadataReference.CreateFromFile(d)); } catch { }
-            }
-            if (refs.Count > 0)
-            {
-                return (refs.ToArray(), new[] { $"Target profile '{profile}' resolved from {dir} ({refs.Count} assemblies)." });
-            }
-        }
-
-        // Pack directory candidates exist on this OS but none were found
-        // installed. Fall back to host BCL with a clear diagnostic.
-        return (HostBclReferences.Value, new[]
-        {
-            $"Target profile '{profile}' selected but no matching reference pack was found on this machine. " +
-            $"Searched: {string.Join(", ", packPaths)}. Falling back to host runtime BCL — " +
-            "scripts may compile against APIs that are not present at the requested target.",
-        });
-    }
-
-    /// <summary>
-    /// Candidate directories where the requested target profile's
-    /// reference pack might be installed. Order matters: the first
-    /// directory that actually exists and contains DLLs wins.
-    /// </summary>
-    private static List<string> TargetProfilePackCandidates(string profile)
-    {
-        var p = profile.ToLowerInvariant();
-        var pf = Environment.GetEnvironmentVariable("ProgramFiles") ?? @"C:\Program Files";
-        var home = Environment.GetEnvironmentVariable("USERPROFILE") ?? "";
-        var list = new List<string>();
-        switch (p)
-        {
-            case "net-standard-2.1":
-            case "netstandard2.1":
-                // SDK installs ship the netstandard ref-pack
-                foreach (var sdk in EnumerateSdkPacks(pf, home))
-                {
-                    list.Add(Path.Combine(sdk, "NETStandard.Library.Ref", "2.1.0", "ref", "netstandard2.1"));
-                }
-                break;
-            case "net-6.0":
-            case "net6.0":
-                foreach (var sdk in EnumerateSdkPacks(pf, home))
-                {
-                    var packBase = Path.Combine(sdk, "Microsoft.NETCore.App.Ref");
-                    if (Directory.Exists(packBase))
-                    {
-                        // Pick the highest installed 6.x patch.
-                        foreach (var v in Directory.GetDirectories(packBase, "6.*").OrderByDescending(d => d))
-                            list.Add(Path.Combine(v, "ref", "net6.0"));
-                    }
-                }
-                break;
-        }
-        return list;
-    }
-
-    private static IEnumerable<string> EnumerateSdkPacks(string programFiles, string userHome)
-    {
-        // Standard locations the dotnet SDK uses for shared / per-user packs.
-        yield return Path.Combine(programFiles, "dotnet", "packs");
-        if (!string.IsNullOrEmpty(userHome))
-            yield return Path.Combine(userHome, ".dotnet", "packs");
-    }
-
-    /// <summary>
-    /// Load the host .NET runtime's BCL assemblies from the runtime directory.
-    /// This gives script code access to System.Object, System.Linq, System.Console, etc.
-    /// without depending on ScriptOptions.Default's "Unresolved" named references.
-    /// </summary>
-    private static MetadataReference[] LoadHostBclReferences()
-    {
-        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
-        if (runtimeDir == null)
-            return new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) };
-
-        var refs = new List<MetadataReference>();
-        // Core BCL assemblies needed for script execution.
-        // Intentionally explicit rather than globbing *.dll — avoids pulling in
-        // ASP.NET, WPF, etc. assemblies that slow compilation and enlarge the type space.
-        var coreAssemblies = new[]
-        {
-            "System.Runtime.dll",
-            "System.Console.dll",
-            "System.Collections.dll",
-            "System.Collections.Concurrent.dll",
-            "System.Linq.dll",
-            "System.Linq.Expressions.dll",
-            "System.Threading.dll",
-            "System.Threading.Tasks.dll",
-            "System.Text.RegularExpressions.dll",
-            "System.Memory.dll",
-            "System.IO.dll",
-            "System.IO.FileSystem.dll",
-            "System.Diagnostics.Debug.dll",
-            "System.Runtime.Extensions.dll",
-            "System.Runtime.InteropServices.dll",
-            "System.ComponentModel.dll",
-            "System.ObjectModel.dll",
-            "netstandard.dll",
-        };
-
-        foreach (var dll in coreAssemblies)
-        {
-            var path = Path.Combine(runtimeDir, dll);
-            if (File.Exists(path))
-                refs.Add(MetadataReference.CreateFromFile(path));
-        }
-
-        // Always include the core lib (contains System.Object, System.Int32, etc.)
-        refs.Add(MetadataReference.CreateFromFile(typeof(object).Assembly.Location));
-
-        return refs.ToArray();
     }
 
     /// <summary>
