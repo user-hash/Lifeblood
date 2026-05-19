@@ -842,6 +842,12 @@ public sealed class ToolHandler
             verdict = report.Verdict,
             live = report.Live,
             dead = report.Dead,
+            // F3b composite-surface fields. INV-PORT-HEALTH-COMPOSITE-001.
+            directMemberCount = report.DirectMemberCount,
+            inheritedMemberCount = report.InheritedMemberCount,
+            aggregateMemberCount = report.AggregateMemberCount,
+            inheritedInterfaces = report.InheritedInterfaces,
+            isCompositeInterface = report.IsCompositeInterface,
         }));
     }
 
