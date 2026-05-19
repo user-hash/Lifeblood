@@ -70,6 +70,7 @@ public sealed class GraphSession : IDisposable
     // Delegate all state queries to the unified session
     public SemanticGraph? Graph => _session.Graph;
     public AnalysisResult? Analysis => _session.Analysis;
+    public Domain.Capabilities.AdapterCapability? AdapterCapability => _session.Capability;
     public bool IsLoaded => _session.IsLoaded;
     public ICompilationHost? CompilationHost => _session.CompilationHost;
     public ICodeExecutor? CodeExecutor => _session.CodeExecutor;
@@ -228,8 +229,8 @@ public sealed class GraphSession : IDisposable
             using var stream = _fs.OpenRead(graphPath);
             var doc = new JsonGraphImporter().ImportDocument(stream);
             graph = doc.Graph;
-            capability = doc.Adapter;
             language = doc.Language;
+            capability = doc.Adapter ?? UnknownImportedGraphCapability(language);
 
             // Validate — JSON graphs don't go through AnalyzeWorkspaceUseCase
             var errors = GraphValidator.Validate(graph);
@@ -559,6 +560,20 @@ public sealed class GraphSession : IDisposable
             rules = Lifeblood.Analysis.RulePacks.ParseJson(_fs.ReadAllText(rulesPath));
         return rules;
     }
+
+    private static Domain.Capabilities.AdapterCapability UnknownImportedGraphCapability(string? language)
+        => new()
+        {
+            Language = string.IsNullOrWhiteSpace(language) ? "unknown" : language,
+            AdapterName = "unknown-json-graph",
+            AdapterVersion = "unknown",
+            CanDiscoverSymbols = false,
+            TypeResolution = Domain.Capabilities.ConfidenceLevel.None,
+            CallResolution = Domain.Capabilities.ConfidenceLevel.None,
+            ImplementationResolution = Domain.Capabilities.ConfidenceLevel.None,
+            CrossModuleReferences = Domain.Capabilities.ConfidenceLevel.None,
+            OverrideResolution = Domain.Capabilities.ConfidenceLevel.None,
+        };
 
     public void Dispose() => _session.Clear();
 

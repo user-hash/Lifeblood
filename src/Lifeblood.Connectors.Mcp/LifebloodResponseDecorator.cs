@@ -1,4 +1,5 @@
 using Lifeblood.Application.Ports.Right;
+using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Connectors.Mcp;
@@ -75,7 +76,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 },
                 stalenessSeconds,
                 filesChanged);
-            return new ResponseEnvelope
+            return ApplyAdapterCapability(new ResponseEnvelope
             {
                 TruthTier = TruthTier.Heuristic,
                 Confidence = ConfidenceBand.Speculative,
@@ -84,10 +85,10 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 FilesChangedSinceAnalyze = filesChanged,
                 Limitations = unregisteredLimits,
                 AnalysisGeneration = context.AnalysisGeneration,
-            };
+            }, context.AdapterCapability);
         }
 
-        return new ResponseEnvelope
+        return ApplyAdapterCapability(new ResponseEnvelope
         {
             TruthTier = cls.TruthTier,
             Confidence = cls.Confidence,
@@ -96,7 +97,69 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             FilesChangedSinceAnalyze = filesChanged,
             Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged),
             AnalysisGeneration = context.AnalysisGeneration,
+        }, context.AdapterCapability);
+    }
+
+    /// <summary>
+    /// Apply loaded-adapter capability to the per-tool classification.
+    /// Roslyn's fully-proven capability leaves envelopes unchanged. Other
+    /// adapters keep the tool's base tier but carry adapter identity and
+    /// declared limits on the wire, and best-effort symbol/call extraction
+    /// downgrades Proven confidence to Advisory.
+    /// INV-NATIVE-CLANG-ENVELOPE-001.
+    /// </summary>
+    private static ResponseEnvelope ApplyAdapterCapability(
+        ResponseEnvelope envelope,
+        AdapterCapability? capability)
+    {
+        if (capability == null || IsFullyProvenRoslyn(capability))
+            return envelope;
+
+        var limitations = new System.Collections.Generic.List<string>(envelope.Limitations);
+        limitations.Add(AdapterCapabilityLimitation(capability));
+
+        var confidence = envelope.Confidence;
+        if (confidence == ConfidenceBand.Proven && HasBestEffortCoreFacts(capability))
+            confidence = ConfidenceBand.Advisory;
+
+        return new ResponseEnvelope
+        {
+            TruthTier = envelope.TruthTier,
+            Confidence = confidence,
+            EvidenceSource = envelope.EvidenceSource,
+            StalenessSeconds = envelope.StalenessSeconds,
+            FilesChangedSinceAnalyze = envelope.FilesChangedSinceAnalyze,
+            Limitations = limitations.ToArray(),
+            AnalysisGeneration = envelope.AnalysisGeneration,
         };
+    }
+
+    private static bool IsFullyProvenRoslyn(AdapterCapability capability)
+        => string.Equals(capability.AdapterName, "Roslyn", System.StringComparison.OrdinalIgnoreCase)
+           && string.Equals(capability.Language, "csharp", System.StringComparison.OrdinalIgnoreCase)
+           && capability.CanDiscoverSymbols
+           && capability.TypeResolution == ConfidenceLevel.Proven
+           && capability.CallResolution == ConfidenceLevel.Proven
+           && capability.ImplementationResolution == ConfidenceLevel.Proven
+           && capability.CrossModuleReferences == ConfidenceLevel.Proven
+           && capability.OverrideResolution == ConfidenceLevel.Proven;
+
+    private static bool HasBestEffortCoreFacts(AdapterCapability capability)
+        => !capability.CanDiscoverSymbols
+           || capability.TypeResolution != ConfidenceLevel.Proven
+           || capability.CallResolution != ConfidenceLevel.Proven;
+
+    private static string AdapterCapabilityLimitation(AdapterCapability capability)
+    {
+        var adapter = string.IsNullOrWhiteSpace(capability.AdapterName)
+            ? "unknown adapter"
+            : capability.AdapterName;
+        var language = string.IsNullOrWhiteSpace(capability.Language)
+            ? "unknown"
+            : capability.Language;
+
+        return
+            $"Loaded graph was produced by {adapter} for language '{language}' (version '{capability.AdapterVersion}'). Adapter capability bounds this response: discoverSymbols={capability.CanDiscoverSymbols}, typeResolution={capability.TypeResolution}, callResolution={capability.CallResolution}, implementationResolution={capability.ImplementationResolution}, crossModuleReferences={capability.CrossModuleReferences}, overrideResolution={capability.OverrideResolution}. Treat results as proven only within the emitted graph's build profile and extraction scope.";
     }
 
     /// <summary>

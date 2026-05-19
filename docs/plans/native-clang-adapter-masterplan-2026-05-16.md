@@ -1,9 +1,35 @@
 # Native Clang Adapter Masterplan
 
-**Status:** Stage 4 callback-table bootstrap underway. The adapter boundary is
-chartered, a minimal `libclang` executable emits graphs, and fixtures now cover
-direct calls, direct references, profile-shaped preprocessor facts, and
-table-held callback targets.
+**Status:** Beta hardening / reference-architecture track underway. The adapter
+boundary is chartered, the `libclang` executable emits graphs for nine C
+fixture families, and native-focused Debug/Release tests pass with zero skips
+when the local executable is built. Current work is now about making native
+clang the best example of Lifeblood's hexagonal adapter style: stricter
+guardrails, capability-aware imported-graph envelopes, thinner libclang
+boundaries, and a more repeatable FFmpeg scout.
+
+**Current truth snapshot (2026-05-19):**
+
+- Native toolchain verified locally: LLVM 22.1.5, CMake 3.31.6-msvc6, Ninja
+  1.12.1, MSVC Build Tools, Windows SDK `rc.exe`.
+- Fresh rebuild of `artifacts/native-clang-build/lifeblood-native-clang.exe`
+  succeeds through the VS 2022 BuildTools developer environment.
+- `dotnet test tests/Lifeblood.Tests/Lifeblood.Tests.csproj -c Debug
+  --filter "FullyQualifiedName~NativeClang" --no-restore` passes 27/27, 0
+  skipped.
+- `dotnet test tests/Lifeblood.Tests/Lifeblood.Tests.csproj -c Release
+  --filter "FullyQualifiedName~NativeClang" --no-restore` passes 27/27, 0
+  skipped.
+- Lifeblood self-analysis after native hardening work: 3475 symbols, 18382 edges, 11
+  modules, 0 violations, 0 cycles.
+- Imported-graph envelopes are now adapter-capability-aware in source, in a
+  standalone Release MCP smoke, and in the live MCP connection after reconnect.
+- N2a started the libclang-boundary shrink: `NativeDeclarationEmitter.*` no
+  longer expose raw `CXCursor`; callers pass the transitional
+  `NativeCursorHandle` instead. The leak budget moved from 46 to 45 source
+  files while preserving tiny-fixture output byte stability.
+- Open architecture work: many inner native emitters still consume raw
+  `CXCursor` rather than adapter-edge fact DTOs.
 
 **Owner:** Native C/C++ track. This document is the contract for adding
 Clang-backed analysis without weakening Lifeblood's existing hexagonal
@@ -169,6 +195,21 @@ locally. Until then, indirect calls are represented as explicit advisory
 properties, not fake `Calls` edges.
 
 ## 6. Stage Plan
+
+### Current Stage Status
+
+| Stage | Status | Current truth |
+| --- | --- | --- |
+| Stage 0. Charter and boundary | Done | External JSON adapter boundary is documented. |
+| Stage 1. Tiny C graph producer | Done | Tiny fixture emits/imports/validates. |
+| Stage 2. Direct semantic completeness | Done for current C scope | Direct calls, references, call-site evidence, type/global/member refs pinned. |
+| Stage 3. Build profile and preprocessor scope | Done for fixture scope | Profile-shaped compile databases and macro facts pinned. |
+| Stage 4. Dispatch tables and function pointers | Partial | Static callback table targets are proven; unresolved indirect call advisory facts remain open. |
+| Stage 5. Native read-model polish | Done for current scope | Generic read tools work on imported native graphs, and adapter-capability-aware envelopes prevent native / external graphs from inheriting Roslyn-shaped confidence. Native-specific tools remain optional and evidence-driven. |
+| Stage 6. FFmpeg pilot | Scout only | Focused 5-file scout exists; whole-build compile database and CLI-to-code proof remain open. |
+| Stage 7. ASM/SIMD variant mapping | Deferred | No atom shipped. |
+| Stage 8. Optional CodeQL/Joern overlays | Deferred | No atom shipped. |
+| Stage 9. Public proof | Deferred | Needs Stage 5/6 honesty first. |
 
 ### Stage 0. Charter and boundary
 

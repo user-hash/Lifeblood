@@ -1,4 +1,5 @@
 using Lifeblood.Application.Ports.Infrastructure;
+using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Application.Ports.Right;
@@ -68,6 +69,18 @@ public sealed class EnvelopeContext
     /// <see cref="ResponseEnvelope.AnalysisGeneration"/>. INV-DIAGNOSE-FRESHNESS-001.
     /// </summary>
     public long AnalysisGeneration { get; init; }
+
+    /// <summary>
+    /// Capability declared by the adapter that produced the loaded graph.
+    /// Null before a graph is loaded. Imported JSON graphs that omit
+    /// adapter metadata are normalized by the MCP session to an explicit
+    /// unknown capability so the decorator can prevent external graphs
+    /// from inheriting Roslyn-shaped confidence by accident: per-tool
+    /// classification remains the starting point, but adapter capability
+    /// can add limitations or downgrade confidence.
+    /// INV-NATIVE-CLANG-ENVELOPE-001.
+    /// </summary>
+    public AdapterCapability? AdapterCapability { get; init; }
 
     /// <summary>
     /// Hard cap on how many tracked files the decorator will mtime-stat

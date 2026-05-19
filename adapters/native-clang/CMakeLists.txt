@@ -50,6 +50,7 @@ add_executable(lifeblood-native-clang
     src/NativeCallKinds.h
     src/NativeCountPropertyWriter.h
     src/NativeCompileCommand.h
+    src/NativeCursorHandle.h
     src/NativeEdgeClassification.cpp
     src/NativeEdgeClassification.h
     src/NativeEdgeMetricClassification.cpp

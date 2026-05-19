@@ -108,6 +108,21 @@ artifacts/native-clang-build/lifeblood-native-clang.exe `
 dotnet run --project src/Lifeblood.CLI -- analyze --graph artifacts/native-clang-build/tiny.graph.json
 ```
 
+Run the native validation lane with fail-hard executable coverage:
+
+```powershell
+$env:LIFEBLOOD_REQUIRE_NATIVE_CLANG='1'
+dotnet test tests/Lifeblood.Tests/Lifeblood.Tests.csproj `
+  -c Debug --no-restore --filter "FullyQualifiedName~NativeClang"
+dotnet test tests/Lifeblood.Tests/Lifeblood.Tests.csproj `
+  -c Release --no-restore --filter "FullyQualifiedName~NativeClang"
+Remove-Item Env:\LIFEBLOOD_REQUIRE_NATIVE_CLANG
+```
+
+Without `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`, executable ratchets use explicit
+xUnit skip semantics when the native binary is absent. Release validation should
+set the variable so missing native coverage is a hard failure.
+
 Run the richer direct-reference fixture:
 
 ```powershell

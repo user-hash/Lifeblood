@@ -1019,6 +1019,7 @@ public sealed class ToolHandler
             {
                 FileSystem = _session.FileSystem,
                 AnalysisGeneration = _session.AnalysisGeneration,
+                AdapterCapability = _session.AdapterCapability,
             };
         }
 
@@ -1040,6 +1041,7 @@ public sealed class ToolHandler
             FileSystem = _session.FileSystem,
             FileScanLimit = EnvelopeFileScanLimit,
             AnalysisGeneration = _session.AnalysisGeneration,
+            AdapterCapability = _session.AdapterCapability,
         };
     }
 

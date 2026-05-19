@@ -28,7 +28,7 @@ void NativeReferenceEmitter::AddDirectCall(
     CXCursor referenced = clang_getCursorReferenced(cursor);
     if (clang_Cursor_isNull(referenced)) return;
     if (clang_getCursorKind(referenced) != CXCursor_FunctionDecl) return;
-    if (!declarations_.AddFunction(referenced)) return;
+    if (!declarations_.AddFunction({ referenced })) return;
 
     edges_.AddDirectCall(cursor, currentFunctionId, FunctionId(referenced));
 }
@@ -45,7 +45,7 @@ void NativeReferenceEmitter::AddDeclarationReference(
     if (!initializerOwnerId.empty())
     {
         if (clang_getCursorKind(referenced) == CXCursor_FunctionDecl &&
-            declarations_.AddFunction(referenced))
+            declarations_.AddFunction({ referenced }))
         {
             edges_.MarkCallbackTable(initializerOwnerId);
             tableRows_.AddMethodGroupCell(
@@ -67,7 +67,7 @@ void NativeReferenceEmitter::AddDeclarationReference(
     switch (clang_getCursorKind(referenced))
     {
         case CXCursor_VarDecl:
-            if (declarations_.AddGlobalVariable(referenced))
+            if (declarations_.AddGlobalVariable({ referenced }))
                 edges_.AddReference(
                     cursor,
                     currentFunctionId,
@@ -78,11 +78,11 @@ void NativeReferenceEmitter::AddDeclarationReference(
         {
             CXCursor parent = clang_getCursorSemanticParent(referenced);
             if (clang_Cursor_isNull(parent) ||
-                !declarations_.AddRecordType(parent, NativeKindNames::Enum))
+                !declarations_.AddRecordType({ parent }, NativeKindNames::Enum))
                 return;
 
             std::string enumTypeId = TypeId(parent);
-            if (declarations_.AddEnumConstant(referenced, enumTypeId))
+            if (declarations_.AddEnumConstant({ referenced }, enumTypeId))
                 edges_.AddReference(
                     cursor,
                     currentFunctionId,
@@ -116,9 +116,9 @@ void NativeReferenceEmitter::AddMemberReference(
 
     CXCursor owner = clang_getCursorSemanticParent(referenced);
     if (clang_Cursor_isNull(owner)) return;
-    if (!declarations_.AddRecordType(owner, NativeKindNames::Struct)) return;
+    if (!declarations_.AddRecordType({ owner }, NativeKindNames::Struct)) return;
 
-    declarations_.AddField(referenced, TypeId(owner));
+    declarations_.AddField({ referenced }, TypeId(owner));
 
     std::string fieldName = ToString(clang_getCursorSpelling(referenced));
     std::string ownerName = ToString(clang_getCursorSpelling(owner));

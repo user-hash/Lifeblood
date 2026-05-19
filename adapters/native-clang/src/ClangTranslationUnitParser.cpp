@@ -23,7 +23,8 @@ ParsedTranslationUnit::~ParsedTranslationUnit()
 }
 
 ParsedTranslationUnit::ParsedTranslationUnit(ParsedTranslationUnit&& other) noexcept
-    : unit_(std::exchange(other.unit_, nullptr))
+    : unit_(std::exchange(other.unit_, nullptr)),
+      diagnostics_(std::exchange(other.diagnostics_, {}))
 {
 }
 
@@ -34,6 +35,7 @@ ParsedTranslationUnit& ParsedTranslationUnit::operator=(ParsedTranslationUnit&& 
     if (unit_ != nullptr)
         clang_disposeTranslationUnit(unit_);
     unit_ = std::exchange(other.unit_, nullptr);
+    diagnostics_ = std::exchange(other.diagnostics_, {});
     return *this;
 }
 
