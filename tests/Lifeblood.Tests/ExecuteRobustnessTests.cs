@@ -146,6 +146,37 @@ public class ExecuteRobustnessTests
         Assert.Single(result.RuntimeAssemblyWarnings);
     }
 
+    [Fact]
+    public void Executor_RuntimeAssemblyProbe_SkipsNativePE_AndSurfacesDiagnostic()
+    {
+        // 2-byte MZ stub is a valid DOS magic but NOT a managed assembly.
+        // AssemblyName.GetAssemblyName throws BadImageFormatException, which
+        // the executor must catch and skip — without surfacing CS0009 at
+        // compile time. Mirrors the IL2CPP GameAssembly.dll case observed on
+        // a Unity workspace (2026-05-19): native PE wrongly injected as
+        // managed ref, broke every script run. INV-EXECUTE-001 managed-PE gate.
+        var temp = Path.Combine(Path.GetTempPath(), $"lb-nativePE-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(temp);
+        var nativeStub = Path.Combine(temp, "GameAssembly.dll");
+        File.WriteAllBytes(nativeStub, new byte[] { 0x4D, 0x5A });
+        try
+        {
+            var view = MakeMinimalView();
+            var stubResolver = new StubResolver(
+                paths: new[] { nativeStub },
+                diags: System.Array.Empty<string>());
+            var exec = new RoslynCodeExecutor(view, stubResolver);
+            var result = exec.Execute(new CodeExecutionRequest { Code = "1 + 1" });
+
+            Assert.True(result.Success,
+                "Execute must succeed when native-PE candidates are filtered: " + result.Error);
+            Assert.Equal("2", result.ReturnValue);
+            Assert.Contains(result.RuntimeAssemblyWarnings, w => w.Contains("non-managed PE"));
+            Assert.Contains(result.RuntimeAssemblyWarnings, w => w.Contains("GameAssembly.dll"));
+        }
+        finally { Directory.Delete(temp, true); }
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // 3. RoslynSemanticView sandbox helpers (Help / EdgesOfKind / SymbolsOfKind)
     // ──────────────────────────────────────────────────────────────────

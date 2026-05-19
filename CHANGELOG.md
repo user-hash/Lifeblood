@@ -7,6 +7,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`lifeblood_execute` managed-PE gate on runtime-assembly probe.** When the executor is wired with an `IRuntimeAssemblyResolver` (Unity workspaces), each candidate path is now validated via `System.Reflection.AssemblyName.GetAssemblyName(path)` before becoming a `MetadataReference`. Native PEs — Unity IL2CPP `GameAssembly.dll`, C++/CLI without managed surface, and other DOS-magic-but-not-managed binaries — throw `BadImageFormatException` and are filtered at the reference-graph boundary instead of surfacing `CS0009 PE image doesn't contain managed metadata` at compile time on every subsequent script run. Skipped count + first three filenames surface on `runtimeAssemblyWarnings`. First-observed in a Unity IL2CPP workspace (2026-05-19): `GameAssembly.dll` was wrongly injected as a managed ref and broke every `execute` call against the workspace. Pinned by `Executor_RuntimeAssemblyProbe_SkipsNativePE_AndSurfacesDiagnostic`; `INV-EXECUTE-001` upgraded to document the gate.
+
 ## [0.7.7] - 2026-05-16
 
 First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based C extractor that emits `graph.json` through the same `JsonGraphImporter` boundary the TypeScript and Python adapters already use, so `Lifeblood.Domain`, `Lifeblood.Application`, `Lifeblood.Analysis`, and every connector stay free of LLVM, Clang, and CMake dependencies. Plus one graph-layer correctness fix and the `INV-CHANGELOG-001` ratchet that caught the v0.7.6 release-tag drift.

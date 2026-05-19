@@ -208,20 +208,57 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
             if (_runtimeAssemblies != null)
             {
                 var seenAssemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var skippedNativeNames = new List<string>();
                 foreach (var p in _runtimeAssemblies.GetAssemblyProbePaths())
                 {
                     if (string.IsNullOrEmpty(p)) continue;
                     if (!File.Exists(p)) continue;
                     var key = Path.GetFileName(p);
                     if (!seenAssemblyNames.Add(key)) continue;
+
+                    // Managed-PE gate (INV-EXECUTE-001). AssemblyName.GetAssemblyName
+                    // is the canonical .NET probe — throws BadImageFormatException on
+                    // native PEs (Unity IL2CPP GameAssembly.dll, C++/CLI without managed
+                    // surface, etc.). Filtering at the reference-graph boundary keeps
+                    // Roslyn from surfacing CS0009 at compile time on every script run.
+                    try
+                    {
+                        System.Reflection.AssemblyName.GetAssemblyName(p);
+                    }
+                    catch (BadImageFormatException)
+                    {
+                        skippedNativeNames.Add(key);
+                        continue;
+                    }
+                    catch
+                    {
+                        // FileLoadException, IOException, etc. — inaccessible; skip
+                        // silently per the pre-existing best-effort posture of this seam.
+                        continue;
+                    }
+
                     try
                     {
                         allReferences.Add(MetadataReference.CreateFromFile(p));
                     }
                     catch
                     {
-                        // Bad image / locked file — skip silently.
+                        // Defense-in-depth: AssemblyName already filtered native PEs,
+                        // but Roslyn metadata validation can still throw on edge cases.
                     }
+                }
+
+                if (skippedNativeNames.Count > 0)
+                {
+                    var preview = string.Join(", ", skippedNativeNames.Take(3));
+                    var suffix = skippedNativeNames.Count > 3
+                        ? $" (+{skippedNativeNames.Count - 3} more)"
+                        : "";
+                    var filterDiag = $"Skipped {skippedNativeNames.Count} non-managed PE(s) from runtime probe: {preview}{suffix}.";
+                    var combined = new string[runtimeAssemblyDiagnostics.Length + 1];
+                    Array.Copy(runtimeAssemblyDiagnostics, combined, runtimeAssemblyDiagnostics.Length);
+                    combined[runtimeAssemblyDiagnostics.Length] = filterDiag;
+                    runtimeAssemblyDiagnostics = combined;
                 }
             }
 
