@@ -15,6 +15,8 @@ namespace Lifeblood.Tests;
 /// </summary>
 public class NativeClangExecutableRatchetTests
 {
+    private const string RequireNativeClangExecutableEnvVar = "LIFEBLOOD_REQUIRE_NATIVE_CLANG";
+
     [SkippableFact]
     public void Executable_TinyFixture_EmitsValidMappingGraph()
     {
@@ -608,6 +610,21 @@ public class NativeClangExecutableRatchetTests
         AssertAllNativeFactsCarryBuildProfile(graph, "cross-tu-debug");
     }
 
+    [SkippableFact]
+    public void Executable_TinyFixture_OutputIsByteStableAcrossRuns()
+    {
+        var first = RunFixtureProcess("tiny-c", "tiny-debug");
+        var second = RunFixtureProcess("tiny-c", "tiny-debug");
+
+        Assert.True(
+            first.ExitCode == 0,
+            $"First native Clang run failed with exit code {first.ExitCode}:{Environment.NewLine}{first.StandardError}");
+        Assert.True(
+            second.ExitCode == 0,
+            $"Second native Clang run failed with exit code {second.ExitCode}:{Environment.NewLine}{second.StandardError}");
+        Assert.Equal(first.StandardOutput, second.StandardOutput);
+    }
+
     private static GraphDocument RunFixture(
         string fixtureName,
         string profile,
@@ -632,9 +649,16 @@ public class NativeClangExecutableRatchetTests
     {
         var repoRoot = FindRepoRoot();
         var executable = NativeExecutablePath(repoRoot);
-        Skip.IfNot(
-            File.Exists(executable),
-            $"Native Clang executable not found at {executable}. Build adapters/native-clang first.");
+        if (!File.Exists(executable))
+        {
+            var message =
+                $"Native Clang executable not found at {executable}. Build adapters/native-clang first.";
+            if (RequireNativeClangExecutable())
+            {
+                Assert.Fail($"{message} {RequireNativeClangExecutableEnvVar}=1 makes this a hard failure.");
+            }
+            Skip.If(true, message);
+        }
 
         var fixtureRoot = Path.Combine(
             repoRoot,
@@ -680,6 +704,13 @@ public class NativeClangExecutableRatchetTests
             "native-clang-build",
             "lifeblood-native-clang");
         return OperatingSystem.IsWindows() ? basePath + ".exe" : basePath;
+    }
+
+    private static bool RequireNativeClangExecutable()
+    {
+        var value = Environment.GetEnvironmentVariable(RequireNativeClangExecutableEnvVar);
+        return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AssertCall(SemanticGraph graph, string sourceId, string targetId)

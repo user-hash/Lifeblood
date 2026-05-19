@@ -15,33 +15,33 @@ NativeDeclarationEmitter::NativeDeclarationEmitter(
 {
 }
 
-bool NativeDeclarationEmitter::AddRecordType(CXCursor cursor, const std::string& nativeKind)
+bool NativeDeclarationEmitter::AddRecordType(NativeCursorHandle cursor, const std::string& nativeKind)
 {
-    return types_.AddRecordType(cursor, nativeKind);
+    return types_.AddRecordType(cursor.cursor, nativeKind);
 }
 
-bool NativeDeclarationEmitter::AddTypedefType(CXCursor cursor)
+bool NativeDeclarationEmitter::AddTypedefType(NativeCursorHandle cursor)
 {
-    return types_.AddTypedefType(cursor);
+    return types_.AddTypedefType(cursor.cursor);
 }
 
-bool NativeDeclarationEmitter::AddEnumConstant(CXCursor cursor, const std::string& enumTypeId)
+bool NativeDeclarationEmitter::AddEnumConstant(NativeCursorHandle cursor, const std::string& enumTypeId)
 {
-    return typeMembers_.AddEnumConstant(cursor, enumTypeId);
+    return typeMembers_.AddEnumConstant(cursor.cursor, enumTypeId);
 }
 
-void NativeDeclarationEmitter::AddField(CXCursor cursor, const std::string& ownerTypeId)
+void NativeDeclarationEmitter::AddField(NativeCursorHandle cursor, const std::string& ownerTypeId)
 {
-    typeMembers_.AddField(cursor, ownerTypeId);
+    typeMembers_.AddField(cursor.cursor, ownerTypeId);
 }
 
-bool NativeDeclarationEmitter::AddGlobalVariable(CXCursor cursor)
+bool NativeDeclarationEmitter::AddGlobalVariable(NativeCursorHandle cursor)
 {
-    return globals_.AddGlobalVariable(cursor);
+    return globals_.AddGlobalVariable(cursor.cursor);
 }
 
-bool NativeDeclarationEmitter::AddFunction(CXCursor cursor)
+bool NativeDeclarationEmitter::AddFunction(NativeCursorHandle cursor)
 {
-    return functions_.AddFunction(cursor);
+    return functions_.AddFunction(cursor.cursor);
 }
 }

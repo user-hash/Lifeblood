@@ -1,6 +1,9 @@
 using System.Text.Json;
+using Lifeblood.Adapters.CSharp;
+using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Right;
+using Lifeblood.Connectors.ContextPack;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
@@ -70,6 +73,133 @@ public class ResponseEnvelopeTests
         Assert.Equal(ConfidenceBand.Speculative, env.Confidence);
         Assert.NotEmpty(env.Limitations);
         Assert.Contains("Unregistered tool", env.Limitations[0]);
+    }
+
+    [Fact]
+    public void Decorator_RoslynFullCapability_LeavesRegistryEnvelopeUnchanged()
+    {
+        var d = BuildRegistryDecorator();
+        var env = d.Decorate("lifeblood_lookup", new EnvelopeContext
+        {
+            AdapterCapability = RoslynCapabilityDescriptor.Capability,
+        });
+
+        Assert.Equal(TruthTier.Semantic, env.TruthTier);
+        Assert.Equal(ConfidenceBand.Proven, env.Confidence);
+        Assert.Equal("Semantic", env.EvidenceSource);
+        Assert.Empty(env.Limitations);
+    }
+
+    [Fact]
+    public void Decorator_NativeClangCapability_AddsAdapterLimitsWithoutDowngradingProvenDirectFacts()
+    {
+        var d = BuildRegistryDecorator();
+        var env = d.Decorate("lifeblood_lookup", new EnvelopeContext
+        {
+            AdapterCapability = new AdapterCapability
+            {
+                Language = "c",
+                AdapterName = "native-clang",
+                AdapterVersion = "0.1.0-dev",
+                CanDiscoverSymbols = true,
+                TypeResolution = ConfidenceLevel.Proven,
+                CallResolution = ConfidenceLevel.Proven,
+                ImplementationResolution = ConfidenceLevel.None,
+                CrossModuleReferences = ConfidenceLevel.None,
+                OverrideResolution = ConfidenceLevel.None,
+            },
+        });
+
+        Assert.Equal(ConfidenceBand.Proven, env.Confidence);
+        Assert.Equal("Semantic", env.EvidenceSource);
+        Assert.Contains(env.Limitations, l =>
+            l.Contains("native-clang", StringComparison.Ordinal) &&
+            l.Contains("implementationResolution=None", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Decorator_BestEffortAdapter_DowngradesProvenToolClassificationToAdvisory()
+    {
+        var d = BuildRegistryDecorator();
+        var env = d.Decorate("lifeblood_lookup", new EnvelopeContext
+        {
+            AdapterCapability = new AdapterCapability
+            {
+                Language = "python",
+                AdapterName = "python-ast",
+                AdapterVersion = "0.1.0",
+                CanDiscoverSymbols = true,
+                TypeResolution = ConfidenceLevel.BestEffort,
+                CallResolution = ConfidenceLevel.BestEffort,
+                ImplementationResolution = ConfidenceLevel.None,
+                CrossModuleReferences = ConfidenceLevel.None,
+                OverrideResolution = ConfidenceLevel.None,
+            },
+        });
+
+        Assert.Equal(ConfidenceBand.Advisory, env.Confidence);
+        Assert.Equal("Semantic", env.EvidenceSource);
+        Assert.Contains(env.Limitations, l =>
+            l.Contains("typeResolution=BestEffort", StringComparison.Ordinal) &&
+            l.Contains("callResolution=BestEffort", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ToolHandler_ImportedNativeGraph_EnvelopeCarriesAdapterCapability()
+    {
+        var fs = new PhysicalFileSystem();
+        var handler = CreateHandler(fs);
+        var graphPath = Path.Combine(
+            FindRepoRoot(),
+            "adapters",
+            "native-clang",
+            "test-fixtures",
+            "tiny-c",
+            "expected.graph.json");
+
+        var analyze = handler.Handle("lifeblood_analyze", JsonArgs(new { graphPath }));
+        Assert.NotEqual(true, analyze.IsError);
+        using var analyzeDoc = JsonDocument.Parse(ExtractText(analyze));
+        Assert.Equal(
+            "Semantic",
+            analyzeDoc.RootElement.GetProperty("envelope").GetProperty("evidenceSource").GetString());
+        Assert.Contains(analyzeDoc.RootElement.GetProperty("envelope").GetProperty("limitations").EnumerateArray(), item =>
+            item.GetString()!.Contains("native-clang-fixture", StringComparison.Ordinal));
+
+        var lookup = handler.Handle("lifeblood_lookup", JsonArgs(new { symbolId = "method:decode(Packet*)" }));
+        Assert.NotEqual(true, lookup.IsError);
+
+        using var doc = JsonDocument.Parse(ExtractText(lookup));
+        var envelope = doc.RootElement.GetProperty("envelope");
+        Assert.Equal("Semantic", envelope.GetProperty("evidenceSource").GetString());
+        Assert.Contains(envelope.GetProperty("limitations").EnumerateArray(), item =>
+            item.GetString()!.Contains("native-clang-fixture", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ToolHandler_ImportedGraphWithoutAdapterMetadata_GetsUnknownAdapterCapability()
+    {
+        var fs = new PhysicalFileSystem();
+        var handler = CreateHandler(fs);
+        var graphPath = WriteLegacyGraphWithoutAdapterMetadata();
+
+        try
+        {
+            var analyze = handler.Handle("lifeblood_analyze", JsonArgs(new { graphPath }));
+            Assert.NotEqual(true, analyze.IsError);
+
+            using var doc = JsonDocument.Parse(ExtractText(analyze));
+            var envelope = doc.RootElement.GetProperty("envelope");
+            Assert.Equal("Advisory", envelope.GetProperty("confidence").GetString());
+            Assert.Contains(envelope.GetProperty("limitations").EnumerateArray(), item =>
+                item.GetString()!.Contains("unknown-json-graph", StringComparison.Ordinal) &&
+                item.GetString()!.Contains("discoverSymbols=False", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (File.Exists(graphPath))
+                File.Delete(graphPath);
+        }
     }
 
     /// <summary>
@@ -388,6 +518,70 @@ public class ResponseEnvelopeTests
         var d = new LifebloodResponseDecorator();
         var env = d.Decorate("any_tool", new EnvelopeContext());
         Assert.Equal(0L, env.AnalysisGeneration);
+    }
+
+    private static ToolHandler CreateHandler(PhysicalFileSystem fs)
+    {
+        IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
+        ISymbolResolver resolver = new LifebloodSymbolResolver();
+        ISemanticSearchProvider search = new LifebloodSemanticSearchProvider();
+        IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer();
+        IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(fs);
+        Lifeblood.Application.Ports.Right.Invariants.IInvariantProvider invariants
+            = new LifebloodInvariantProvider(fs);
+        var classifications = ToolRegistry.GetDefinitions()
+            .Where(d => d.EnvelopeClassification != null)
+            .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
+        IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
+        return new ToolHandler(new GraphSession(fs), provider, resolver, search, deadCode, partialView, invariants, decorator);
+    }
+
+    private sealed class TestBlastRadiusProvider : IBlastRadiusProvider
+    {
+        public BlastRadiusResult Analyze(Lifeblood.Domain.Graph.SemanticGraph graph, string targetSymbolId, int maxDepth = 10)
+            => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
+    }
+
+    private static JsonElement? JsonArgs(object obj)
+    {
+        var json = JsonSerializer.Serialize(obj);
+        return JsonSerializer.Deserialize<JsonElement>(json);
+    }
+
+    private static string ExtractText(McpToolResult result)
+    {
+        var doc = JsonDocument.Parse(JsonSerializer.Serialize(result.Content));
+        var text = doc.RootElement[0].GetProperty("text").GetString();
+        Assert.NotNull(text);
+        return text!;
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = AppDomain.CurrentDomain.BaseDirectory;
+        while (dir != null)
+        {
+            if (File.Exists(Path.Combine(dir, "Lifeblood.sln")))
+                return dir;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new DirectoryNotFoundException("Could not locate Lifeblood.sln from test base directory.");
+    }
+
+    private static string WriteLegacyGraphWithoutAdapterMetadata()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"lifeblood-legacy-graph-{System.Guid.NewGuid():N}.json");
+        File.WriteAllText(path, """
+{
+  "version": "1.0",
+  "language": "c",
+  "symbols": [
+    { "id": "mod:legacy", "name": "legacy", "kind": "module" }
+  ],
+  "edges": []
+}
+""");
+        return path;
     }
 
     private sealed class StubFileSystem : Lifeblood.Application.Ports.Infrastructure.IFileSystem

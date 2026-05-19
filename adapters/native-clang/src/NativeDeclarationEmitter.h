@@ -7,8 +7,7 @@
 #include "NativeGraphSink.h"
 #include "NativeTypeEmitter.h"
 #include "NativeTypeMemberEmitter.h"
-
-#include <clang-c/Index.h>
+#include "NativeCursorHandle.h"
 
 #include <string>
 
@@ -23,12 +22,12 @@ public:
         const ClangSourceMapper& sourceMap,
         NativeFileRegistry& files);
 
-    bool AddRecordType(CXCursor cursor, const std::string& nativeKind);
-    bool AddTypedefType(CXCursor cursor);
-    bool AddEnumConstant(CXCursor cursor, const std::string& enumTypeId);
-    void AddField(CXCursor cursor, const std::string& ownerTypeId);
-    bool AddGlobalVariable(CXCursor cursor);
-    bool AddFunction(CXCursor cursor);
+    bool AddRecordType(NativeCursorHandle cursor, const std::string& nativeKind);
+    bool AddTypedefType(NativeCursorHandle cursor);
+    bool AddEnumConstant(NativeCursorHandle cursor, const std::string& enumTypeId);
+    void AddField(NativeCursorHandle cursor, const std::string& ownerTypeId);
+    bool AddGlobalVariable(NativeCursorHandle cursor);
+    bool AddFunction(NativeCursorHandle cursor);
 
 private:
     NativeTypeEmitter types_;

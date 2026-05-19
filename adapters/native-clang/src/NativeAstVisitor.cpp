@@ -57,25 +57,25 @@ NativeAstVisitor::VisitState NativeAstVisitor::ProcessCursor(
             preprocessor_.AddMacroExpansion(cursor);
             break;
         case CXCursor_StructDecl:
-            if (declarations_.AddRecordType(cursor, NativeKindNames::Struct))
+            if (declarations_.AddRecordType({ cursor }, NativeKindNames::Struct))
                 state.currentTypeId = TypeId(cursor);
             break;
         case CXCursor_UnionDecl:
-            if (declarations_.AddRecordType(cursor, NativeKindNames::Union))
+            if (declarations_.AddRecordType({ cursor }, NativeKindNames::Union))
                 state.currentTypeId = TypeId(cursor);
             break;
         case CXCursor_EnumDecl:
-            if (declarations_.AddRecordType(cursor, NativeKindNames::Enum))
+            if (declarations_.AddRecordType({ cursor }, NativeKindNames::Enum))
                 state.currentTypeId = TypeId(cursor);
             break;
         case CXCursor_EnumConstantDecl:
             ProcessEnumConstant(cursor, state);
             break;
         case CXCursor_TypedefDecl:
-            declarations_.AddTypedefType(cursor);
+            declarations_.AddTypedefType({ cursor });
             break;
         case CXCursor_FieldDecl:
-            declarations_.AddField(cursor, state.currentTypeId);
+            declarations_.AddField({ cursor }, state.currentTypeId);
             break;
         case CXCursor_VarDecl:
         {
@@ -88,7 +88,7 @@ NativeAstVisitor::VisitState NativeAstVisitor::ProcessCursor(
             state = ProcessInitializerList(state);
             break;
         case CXCursor_FunctionDecl:
-            if (declarations_.AddFunction(cursor))
+            if (declarations_.AddFunction({ cursor }))
                 state.currentFunctionId = FunctionId(cursor);
             break;
         case CXCursor_CallExpr:
@@ -129,9 +129,9 @@ void NativeAstVisitor::ProcessEnumConstant(CXCursor cursor, const VisitState& st
     CXCursor parent = clang_getCursorSemanticParent(cursor);
     if (clang_Cursor_isNull(parent) || clang_getCursorKind(parent) != CXCursor_EnumDecl)
         return;
-    if (!declarations_.AddRecordType(parent, NativeKindNames::Enum)) return;
+    if (!declarations_.AddRecordType({ parent }, NativeKindNames::Enum)) return;
 
-    declarations_.AddEnumConstant(cursor, TypeId(parent));
+    declarations_.AddEnumConstant({ cursor }, TypeId(parent));
 }
 
 NativeAstVisitor::VisitState NativeAstVisitor::ProcessInitializerList(VisitState state)
@@ -165,7 +165,7 @@ std::string NativeAstVisitor::ProcessVariable(CXCursor cursor, const VisitState&
     if (!state.currentFunctionId.empty() || !state.currentTypeId.empty())
         return "";
 
-    if (!declarations_.AddGlobalVariable(cursor))
+    if (!declarations_.AddGlobalVariable({ cursor }))
         return "";
 
     return GlobalVariableId(cursor);
