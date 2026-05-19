@@ -8,22 +8,18 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// F1c — canonical symbol-id parity across the four id paths.
+/// Canonical symbol-id parity across declaration, edge, and lookup paths.
 ///
-/// Lifeblood reproduces method-id construction in at least four sites:
-///   1. <c>RoslynSymbolExtractor</c> — declaration emitter (graph-side).
-///   2. <c>RoslynEdgeExtractor.GetMethodId</c> — edge emitter (graph-side).
-///   3. <c>RoslynCompilationHost.BuildSymbolId</c> — find_references / rename
-///      consumer side.
-///   4. <c>RoslynWorkspaceManager.ParseSymbolId</c> — string → walker input
-///      for the consumer-side lookup.
+/// All Roslyn-symbol-to-Lifeblood-ID construction routes through
+/// <c>CanonicalSymbolFormat</c>. These tests pin the behavioral parity
+/// class that originally exposed the drift: constructors/static constructors
+/// round-tripping from string IDs back into Roslyn lookup.
 ///
 /// Drift between these paths surfaces as "find_references finds the symbol
-/// but dependants returns 0" or vice versa. The 2026-05-15 correctness
-/// masterplan Stage 1 named <c>.ctor</c> / <c>.cctor</c> as the specific
-/// failure mode: <c>ParseSymbolId.Split('.')</c> on <c>method:NS.T..ctor()</c>
-/// produces <c>["NS", "T", "", "ctor"]</c> — an empty middle part — so the
-/// walker fails at <c>GetMembers("")</c>. <c>.cctor</c> has the same shape.
+/// but dependants returns 0" or vice versa. The original failure mode was
+/// <c>ParseSymbolId.Split('.')</c> on <c>method:NS.T..ctor()</c> producing
+/// <c>["NS", "T", "", "ctor"]</c>, so the walker failed at
+/// <c>GetMembers("")</c>. <c>.cctor</c> has the same shape.
 ///
 /// LB-TRACK-20260519-023 / INV-CANONICAL-ID-PARITY-001.
 /// </summary>
@@ -66,7 +62,7 @@ public class SymbolIdCanonicalParityTests
     {
         // Instance constructor canonical id: `method:App.Service..ctor()`.
         // Pre-fix, ParseSymbolId.Split('.') on the qualified name
-        // "App.Service..ctor" produces ["App", "Service", "", "ctor"] —
+        // "App.Service..ctor" produces ["App", "Service", "", "ctor"] -
         // the empty middle segment makes the namespace/type walk fail at
         // GetMembers(""), so find_references returns zero refs.
         var src = @"
@@ -118,7 +114,7 @@ public class Caller
     [Fact]
     public void ParseSymbolId_NestedTypeCtor_PreservesContainerPathPlusLiteralCtor()
     {
-        // Nested-type containment plus .ctor — the parser must keep both
+        // Nested-type containment plus .ctor - the parser must keep both
         // the multi-dot container path AND the literal trailing .ctor.
         var parsed = RoslynWorkspaceManager.ParseSymbolId("method:App.Outer.Inner..ctor()");
 
@@ -131,7 +127,7 @@ public class Caller
         // End-to-end ratchet: ParseSymbolId + FindInCompilation must agree
         // for .cctor lookup. The static constructor has no explicit source
         // invocation site (the CLR triggers it), so find_references against
-        // it returns zero use-site refs — but symbol resolution itself must
+        // it returns zero use-site refs - but symbol resolution itself must
         // succeed, which is the load-bearing path for tools that consume
         // the resolved IMethodSymbol directly (rename, dependants on the
         // graph side, etc.).

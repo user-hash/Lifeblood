@@ -46,24 +46,30 @@ Fix shape:
 
 ## Current Snapshot
 
-Latest shipped Lifeblood tag: **`v0.7.7`** (2026-05-16). v0.7.6 and v0.7.7
-both shipped after the snapshot block was last refreshed. LB-TRACK-009 /
-LB-TRACK-010 / LB-TRACK-011 closed in v0.7.6; v0.7.7 added the native-Clang
-adapter beta plus the `INV-CHANGELOG-001` link-reference ratchet that caught
-the v0.7.6 release-tag drift. The next planned tag will be cut after the
-**2026-05-19 two-phase hardening plan** (`D:/Projekti/lifeblood_plan.txt`)
-lands its Phase-1 functionality atoms F0..F6 + Phase-2 hexagonal architecture
-atoms A0..A6 — no tag, no push, no release until those land green end-to-end
-through a fresh MCP redeploy against DAWG.
+Latest shipped Lifeblood tag: **`v0.7.7`** (2026-05-16). The current
+`main` branch is an **[Unreleased]** pre-tag wall for the 2026-05-19
+two-phase hardening plan (`D:/Projekti/lifeblood_plan.txt`). The landed slice
+covers F0..F3f, S4..S8a, four native-clang adapter refactors, three
+execute-robustness fixes surfaced by Unity IL2CPP dogfood, and the F1d
+bare-identifier property/event edge fix. No release tag is cut by this tracker
+update; tag cadence remains a separate maintainer call. LB-TRACK-20260519-023
+is now **Shipped** in-tree: F1c fixed `.ctor` / `.cctor` parsing, and the final
+polish atom consolidates Roslyn symbol-id construction behind
+`CanonicalSymbolFormat` with an architecture ratchet. Every open LB-TRACK entry
+through LB-TRACK-20260519-024 is Shipped or an explicitly qualitative close-out.
 
-Verification baseline at plan start (2026-05-19):
-- Debug test suite: **1011/1011 green**, 0 skipped.
-- Lifeblood self-analysis (per `docs/STATUS.md`): 3,278 symbols, 16,973 edges,
-  11 modules, 350 types, 0 violations, 0 cycles.
-- Invariant audit: 101 typed invariants across 63 categories.
-- Native Clang fixture smoke checks green via CLI JSON import path.
+Current verification anchors (2026-05-19 prerelease check):
+- Debug test suite: **1098/1098 green**, 0 skipped.
+- Lifeblood self-analysis: **3,507 symbols, 21,115 edges, 11 modules,
+  363 types, 0 violations, 0 cycles**.
+- Invariant audit: **122 typed invariants across 83 categories**, zero
+  duplicates, zero parse warnings.
+- Native Clang required lane: **27/27 green** when
+  `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`.
+- DAWG live-MCP smoke: **P4 DOGFOOD: ALL GREEN** after the execute
+  reference-set fixes.
 
-Gravity-well measurement at plan start (Phase-2 targets):
+Gravity-well measurement at plan start (historical Phase-2 targets):
 - `src/Lifeblood.Adapters.CSharp/RoslynCompilationHost.cs`: 1,139 LOC.
 - `src/Lifeblood.Server.Mcp/ToolHandler.cs`: 1,125 LOC.
 - `src/Lifeblood.Connectors.Mcp/LifebloodSymbolResolver.cs`: 1,111 LOC.
@@ -225,7 +231,7 @@ Fix shape (shipped on `main`):
 
 ### LB-TRACK-20260514-003 - Enum-member reference coverage is inconclusive
 
-Status: Shipped v0.7.4 - **DAWG verification deferred to v0.7.6 redeploy wave**
+Status: Shipped v0.7.4 - **DAWG shape reverified 2026-05-19 prerelease check**
 Type: Improvement
 Source: `D:/Projekti/Lifeblood/docs/IMPROVEMENT_INBOX.md` (`LB-INBOX-009`)
 Workspace: DAWG, Lifeblood self
@@ -233,8 +239,11 @@ Verification: Lifeblood `f288b7c` (`feat(enum_coverage): per-member
 reference coverage tool (LB-TRACK-003)`), shipped in v0.7.4 and
 carried into v0.7.5; 821 / 821 green (+8 over the post-LB-TRACK-008
 baseline of 813); `lifeblood verify --incremental` self-passes
-(2686 / 13356 after the wave, identical full vs incremental); DAWG
-roundtrip verification deferred to the v0.7.6 fresh MCP redeploy.
+(2686 / 13356 after the wave, identical full vs incremental). DAWG
+shape reverified 2026-05-19 against `FeatureId`: 33 members,
+`unproducedCount: 0`, `unreferencedCount: 0`, and the later
+`dispatchTableReferenceCount` S4 field correctly distinguishes static-table
+routing for the formerly confusing members.
 
 Summary:
 - Enum members are first-class symbols after earlier fixes, but
@@ -281,15 +290,18 @@ Fix shape (shipped on `main`):
 
 ### LB-TRACK-20260514-004 - `dead_code` findings need first-response triage fields
 
-Status: Shipped v0.7.4 - **DAWG verification deferred to v0.7.6 redeploy wave**
+Status: Shipped v0.7.4 - **DAWG shape reverified 2026-05-19 prerelease check**
 Type: Improvement
 Source: `docs/invariants/eternal-arch-audit-2026-05-12.md`
 Workspace: DAWG, Lifeblood self
 Verification: Lifeblood `68fd4a2` (`feat(dead_code): triage fields —
 directDependants/bucket/declarationOnly (LB-TRACK-004)`), shipped in
 v0.7.4 and carried into v0.7.5; 798 / 798 green (+16 over the v0.7.3
-baseline of 776 + 6 already-landed inter-stage tests); DAWG roundtrip
-verification deferred to the v0.7.6 fresh MCP redeploy.
+baseline of 776 + 6 already-landed inter-stage tests). DAWG shape
+reverified 2026-05-19: property-only `dead_code` summary carries
+`directDependants`, `bucket`, `declarationOnly`, and
+`sameClassConsumerCount`; `bucketBreakdown` sums to 62 Production findings
+after F1d closes the property-read graph gap.
 
 Summary:
 - `lifeblood_dead_code` is useful, but the first response did not carry enough
@@ -441,7 +453,7 @@ Fix shape (shipped on `main`):
 
 ### LB-TRACK-20260514-007 - Test impact suggestions
 
-Status: Shipped v0.7.4 - **DAWG verification deferred to v0.7.6 redeploy wave**
+Status: Shipped v0.7.4 - **Lifeblood self ratcheted; DAWG recall heuristic intentionally unshipped**
 Type: Improvement
 Source: `.claude/devmemory/lifeblood-field-report-2026-05-11.md`
 Workspace: DAWG, Lifeblood self
@@ -449,11 +461,11 @@ Verification: Lifeblood `f204032` (`feat(test_impact): which tests
 transitively depend on a target (LB-TRACK-007)`), shipped in v0.7.4
 and carried into v0.7.5; 830 / 830 green (+9 over the post-LB-TRACK-003
 baseline of 821); `lifeblood verify --incremental` self-passes
-(2686 / 13356, identical full vs incremental); DAWG roundtrip
-verification deferred to the v0.7.6 fresh MCP redeploy. Re-measurement
-of recall against DAWG ratchets is the W2-F gate of the v0.7.6 plan —
-if recall < 95% after LB-INBOX-011 graph edges synthesize (LB-TRACK-010),
-an Advisory heuristic layer ships as a separate INV.
+(2686 / 13356, identical full vs incremental). Lifeblood self recall
+ratchet landed in `4ff06bd` (`TestImpactRecallAnchorTests`) after the
+LB-TRACK-009/010 graph-edge fixes. The DAWG-side Advisory heuristic layer
+was intentionally not shipped per the 2026-05-15 decision: measurement first,
+design only if recall drops below 95% after redeploy.
 
 Summary:
 - Lifeblood could identify affected symbols via `blast_radius` but
@@ -512,7 +524,7 @@ Fix shape (shipped on `main`):
 
 ### LB-TRACK-20260514-008 - Dependency cycle taxonomy for large Unity workspaces
 
-Status: Shipped v0.7.4 - **DAWG verification deferred to v0.7.6 redeploy wave**
+Status: Shipped v0.7.4 - **DAWG reverified 2026-05-19 prerelease check**
 Type: UX
 Source: `docs/invariants/eternal-arch-audit-2026-05-12.md`
 Workspace: DAWG, Lifeblood self
@@ -520,8 +532,10 @@ Verification: Lifeblood `d5482a3` (`feat(cycles): taxonomy buckets on
 lifeblood_cycles (LB-TRACK-008)`), shipped in v0.7.4 and carried into
 v0.7.5; 813 / 813 green (+8 over the post-LB-TRACK-002 baseline of
 805); `lifeblood verify --incremental` self-passes (2686 / 13356
-across the wave); DAWG roundtrip verification deferred to the v0.7.6
-fresh MCP redeploy.
+across the wave). DAWG reverified 2026-05-19: `lifeblood_cycles`
+returns classified `descriptors[]`, `previewClassified[]`, and
+`bucketBreakdown` (`PartialClassCluster: 65`, `LikelyRealLoop: 26` on the
+current 91-cycle graph).
 
 Summary:
 - Pre-fix `lifeblood_cycles` returned a flat `string[][]` of every
@@ -579,8 +593,7 @@ Fix shape (shipped on `main`):
 
 ### LB-TRACK-20260515-009 - `dead_code` / `dependants` miss method-group refs through target-typed `new(...)` and generic-method calls
 
-Status: Shipped on Lifeblood `main` (not tagged) — DAWG roundtrip
-deferred to v0.7.6 fresh-MCP redeploy
+Status: Shipped v0.7.6 — Lifeblood self recall ratcheted; DAWG heuristic intentionally unshipped
 Type: Bug
 Source: `D:/Projekti/Lifeblood/docs/IMPROVEMENT_INBOX.md` (`LB-INBOX-010`)
 Workspace: Lifeblood self, then DAWG verify
@@ -593,8 +606,10 @@ LB-INBOX-010 regression pin is now a live ratchet
 (`ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor`),
 and the second fixture
 (`ExtractEdges_TargetTypedNewMethodGroup_OverloadedMethod_PicksFirstCandidate`)
-pins overload disambiguation. DAWG roundtrip verification deferred to
-the v0.7.6 fresh MCP redeploy.
+pins overload disambiguation. `4ff06bd` adds the W2-F recall anchor for
+`test_impact` across the LB-TRACK-009/010 graph-edge fixes; the Advisory
+heuristic layer remains intentionally unshipped unless a future DAWG recall
+measurement proves it necessary.
 
 Summary:
 - Three real graph-level false positives observed in Lifeblood self-dogfood
@@ -624,8 +639,7 @@ Fix shape:
 
 ### LB-TRACK-20260515-010 - Static-table facts do not feed graph liveness; implicit array tables can be missed
 
-Status: Shipped on Lifeblood `main` (not tagged) — DAWG roundtrip
-deferred to v0.7.6 fresh-MCP redeploy
+Status: Shipped v0.7.6 — DAWG roundtrip closed by explicit static-ctor follow-up
 Type: Bug + Improvement (compound)
 Source: `D:/Projekti/Lifeblood/docs/IMPROVEMENT_INBOX.md` (`LB-INBOX-011`)
 Workspace: Lifeblood self, then DAWG verify (90-module Unity workspace)
@@ -642,8 +656,10 @@ W2-D's initial "no new code" claim by surfacing the synthesized ctors
 so GraphBuilder's dangling-edge filter no longer drops the
 initializer-derived edges. Pinned end-to-end by
 `DispatchTableLivenessRatchetTests.DispatchTableDelegateTargets_AreLiveAcrossGraphWalkSurfaces`
-(graph dependants + dead_code axes). DAWG roundtrip verification
-deferred to the v0.7.6 fresh MCP redeploy.
+(graph dependants + dead_code axes). `b950fc5` closed the DAWG roundtrip's
+explicit static-constructor half: explicit `.cctor` declarations surface with
+`.cctor` ids, initializer-owned fields/properties carry declarative
+`References` edges, and `.cctor` methods are excluded from dead-code findings.
 
 Summary:
 - `lifeblood_static_tables` extracts dispatch-table rows with
@@ -684,9 +700,7 @@ test_impact recall is expected to climb above 95% without a heuristic.
 
 ### LB-TRACK-20260515-011 - `lifeblood_diagnose` produces 7,772 spurious diagnostics on Lifeblood.Tests vs MSBuild's 0 errors / 0 warnings
 
-Status: Shipped on Lifeblood `main` (not tagged) — **MCP redeploy gate
-holds the tag** (the dist `Lifeblood.Server.Mcp.dll` is still the
-v0.7.5-alpha binary even though source HEAD = `198af1e`)
+Status: Shipped v0.7.6 — release gate cleared before tag
 Type: Bug (product-truth mismatch)
 Source: 2026-05-15 dogfood session against Lifeblood `main` post-v0.7.5
 Workspace: Lifeblood self (Lifeblood.Tests module)
@@ -704,13 +718,8 @@ producer PEs carry the friend-assembly attribute). `7baee98`
 emits zero diagnostics in the canonical parity class
 {CS0122, CS0117, CS0234, CS1503, CS1701, CS1702, CS1705, CS1729}.
 Empirical: 7,772 spurious findings pre-wave → 0 post-wave on source.
-
-**DAWG-side / MCP roundtrip verification gate:** the active MCP binary
-is still `v0.7.5-alpha` per the 2026-05-15 audit; rebuild the
-`Lifeblood.Server.Mcp` Release dist and restart the MCP server before
-running `lifeblood_diagnose` against DAWG to confirm parity-class
-diagnostics drop to 0 through the deployed surface. Until that
-roundtrip succeeds, the v0.7.6 tag is NOT cut.
+The v0.7.6 release commit `76389e1` was cut after the redeploy/tag gate
+cleared; the earlier MCP-binary warning is superseded by that tag.
 
 Summary:
 - `lifeblood_diagnose moduleName=Lifeblood.Tests` returns 7,772
@@ -1216,7 +1225,7 @@ Fix shape:
 ### LB-TRACK-20260519-021 - Extension-method calls canonicalize without `ReducedFrom`, live methods may appear dead
 
 Status: Shipped (in-tree, untagged) — F1a atom of the 2026-05-19 plan.
-Closing commit: post-`881b39f` F1a commit; both `RoslynEdgeExtractor.GetMethodId`
+Closing commit: `d4ccfa5` `fix(extract): F1a route extension-method ids through ReducedFrom (INV-EXTRACT-EXTENSION-REDUCED-001)`; both `RoslynEdgeExtractor.GetMethodId`
 and `RoslynCompilationHost.BuildSymbolId` normalize via `ReducedFrom` before
 `OriginalDefinition`. Pinned by `INV-EXTRACT-EXTENSION-REDUCED-001` and four
 fixtures in `RoslynExtractorTests` (instance-style, static-style, generic-
@@ -1268,28 +1277,16 @@ Fix shape:
 
 ### LB-TRACK-20260519-023 - Multiple symbol-id generation paths can drift
 
-Status: Partially Shipped (in-tree, untagged) — F1c atom of the 2026-05-19 plan.
-Closing commit: post-`b0b5eb5` F1c commit; `ParseSymbolId` now preserves the literal
-`.ctor` / `.cctor` IL names, and `FindInCompilation` looks up constructors via
-`INamedTypeSymbol.Constructors` / `.StaticConstructors`. Pinned by
-`INV-CANONICAL-ID-PARITY-001` and `SymbolIdCanonicalParityTests` (7 fixtures —
-4 invocation-site, 3 parser-white-box). Debug suite 1017 → 1024. STATUS test-count
-anchor refreshed. Remaining scope (deferred to a follow-up atom under the same
-LB-TRACK-023): explicit consolidation of `BuildSymbolId` and `GetMethodId` into
-a single SSoT routed through `CanonicalSymbolFormat` — they already share
-`CanonicalSymbolFormat.BuildParamSignature` and now both honor `ReducedFrom`
-(F1a) + `OriginalDefinition`, but the two `IMethodSymbol → method:...()` paths
-remain distinct call sites; a parity-matrix ratchet across all four paths
-(extractor declaration, extractor edge, compilation-host BuildSymbolId,
-workspace-manager ParseSymbolId round-trip) is the next-best follow-up.
+Status: Shipped (in-tree, untagged) — F1c plus final canonical-id SSoT polish of the 2026-05-19 plan.
+Closing commits: `f7c66ad` `fix(symbol-id): F1c .ctor/.cctor parser ambiguity + INamedTypeSymbol.Constructors lookup (INV-CANONICAL-ID-PARITY-001)` plus the final polish commit. `ParseSymbolId` now preserves the literal `.ctor` / `.cctor` IL names, and `FindInCompilation` looks up constructors via `INamedTypeSymbol.Constructors` / `.StaticConstructors`. `CanonicalSymbolFormat` now owns Roslyn symbol-id construction for type / method / field / property / event symbols; `RoslynSymbolExtractor`, `RoslynEdgeExtractor`, and `RoslynCompilationHost.BuildSymbolId` route through it. `ArchitectureInvariantTests.CSharpAdapter_RoslynSymbolIds_HaveSingleSourceOfTruth` refuses direct `SymbolIds.Type` / `Method` / `Field` / `Property` calls outside `CanonicalSymbolFormat`, so future extractor or lookup work cannot quietly fork the grammar again. Pinned by `INV-CANONICAL-ID-PARITY-001`, `SymbolIdCanonicalParityTests`, and the C# adapter SSoT architecture ratchet. Debug suite anchor is 1098/1098 for the prerelease wall.
 Type: Bug
 Source: `docs/plans/lifeblood-correctness-masterplan-2026-05-15.md` Stage 1 observed-risk note ("Lifeblood has multiple symbol-id paths with subtly different behavior"); re-surfaced as F1c in the 2026-05-19 plan.
 Workspace: Lifeblood self
 Verification:
-- `RoslynEdgeExtractor.GetMethodId` (line 709) routes through `OriginalDefinition` and handles `AssociatedSymbol` (property/event accessor rewrite).
-- `RoslynCompilationHost.BuildSymbolId` and `RoslynWorkspaceManager.ParseSymbolId` are referenced in the older masterplan as having different behavior.
-- `LifebloodSymbolResolver` has its own resolution rules (canonical, truncated, kind-correction, short-name, qualified-input, type-aware Rule 4).
-- No parity test fixture covers a single method id flowing through all four paths.
+- `rg "SymbolIds\.(Type|Method|Field|Property)\(" src/Lifeblood.Adapters.CSharp` reports only `Internal/CanonicalSymbolFormat.cs`.
+- Focused SSoT lane: `SymbolIdCanonicalParity`, `ArchitectureInvariant`, `RoslynExtractor`, and `CanonicalSymbolFormat` filters pass 104/104.
+- Full prerelease wall target: 1098/1098 tests, 0 skipped.
+- `RoslynWorkspaceManager.ParseSymbolId` remains the parser side of the contract; it preserves `.ctor` / `.cctor` and round-trips through lookup.
 
 Summary:
 Symbol-id generation is reproduced in at least four places. Each path has its own subtle handling for constructors, static constructors, accessors, generic methods, and (post LB-TRACK-021) extension methods. Drift between them surfaces as "find_references finds the symbol but dependants returns 0" or vice versa.
@@ -1299,9 +1296,9 @@ Reference-side correctness depends on every read tool answering against the same
 
 Fix shape:
 - Audit the four paths against a single fixture (method, ctor, cctor, property/event accessor, generic method, extension method).
-- Promote `Lifeblood.Domain.CanonicalSymbolFormat` (already exists as the grammar SSoT) to be the *only* id-building primitive; route every other site through it.
-- Make `RoslynWorkspaceManager.ParseSymbolId` handle `.ctor` and `.cctor` canonical ids without dot-splitting ambiguity (already explicitly called out in the 2026-05-15 plan Stage 1).
-- Pin `INV-CANONICAL-ID-PARITY-001` with a parity matrix ratchet across the four paths.
+- Promote `CanonicalSymbolFormat` to be the only Roslyn-symbol id-building primitive in the C# adapter; route every declaration, edge, and lookup construction path through it.
+- Keep `RoslynWorkspaceManager.ParseSymbolId` as the parser side of the contract, including `.ctor` and `.cctor` canonical ids without dot-splitting ambiguity.
+- Pin `INV-CANONICAL-ID-PARITY-001` with parity fixtures plus the architecture ratchet that refuses duplicate builders.
 
 ### LB-TRACK-20260519-024 - Bare-identifier sibling-member property/event reads emit no graph edge (read-tool reality split)
 
@@ -1357,11 +1354,11 @@ File: `docs/invariants/eternal-arch-audit-2026-05-12.md`
 Useful Lifeblood-only follow-ups:
 
 - `System.Math` diagnostic collision: closed via `LB-TRACK-20260514-001`
-  (committed to Lifeblood `main` `fc8ff96`, DAWG-verified 2026-05-14).
+  (committed to Lifeblood `main` `e1acbe3`, DAWG-verified 2026-05-14).
 - `dead_code` triage fields: closed via `LB-TRACK-20260514-004`
-  (committed to Lifeblood `main` `ca1fae0`, DAWG-verified 2026-05-14).
+  (committed to Lifeblood `main` `68fd4a2`, DAWG-verified 2026-05-14).
 - Dependency cycle taxonomy: closed via `LB-TRACK-20260514-008`
-  (committed to Lifeblood `main` `001be0d`, DAWG-verified 2026-05-14).
+  (committed to Lifeblood `main` `d5482a3`, DAWG-verified 2026-05-14).
 
 DAWG-only architecture numbers from that report are intentionally not repeated
 here unless they expose a Lifeblood product issue.

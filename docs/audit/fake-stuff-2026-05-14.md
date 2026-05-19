@@ -100,7 +100,8 @@ text is read for module discovery + reference closure but
 `<DefineConstants>` is never extracted, parsed, or threaded into the
 parse options.
 
-**Wave-level regression.** LB-TRACK-002 (a8b7925) added
+**Wave-level regression.** LB-TRACK-002 (`b520df8`, replacing the
+pre-rebase audit hash `a8b7925`) added
 `definesActive[]` to the diagnostic envelope so callers could
 distinguish Editor-only findings from release-build risk. The envelope
 fires on every response. But because PreprocessorSymbols is empty
@@ -158,9 +159,9 @@ shape.
 
 | Track | Status | Note |
 |-------|--------|------|
-| LB-TRACK-001 fc8ff96 csproj closure | ✅ PASS | 283 project diagnostics, zero CS0104 (no BCL bleed); only Unity-legit CS0282 / CS1701 / CS0618. Zero DAWG types collide with BCL short names. |
-| LB-TRACK-003 bcb61aa enum_coverage | ✅ PASS | 109 `TuningParamId` members classified consistently. Single-reference members (`VocoderCarrierMix`, `RobotRingModFreq`) correctly recognized as `producedCount=1` because their only reference is the `UnwiredParamIds` array initializer (RHS of var initializer = produced per contract). |
-| LB-TRACK-004 ca1fae0 dead_code triage | ✅ PASS | All four added fields (`bucket`, `directDependants`, `declarationOnly`, `bucketBreakdown`) populated on every finding. `bucketBreakdown` sums correctly (Editor:13 + Production:771 = 784). `declarationOnly:true` not observed but plausibly correct — abstract/interface members have inbound edges from impls and don't appear in dead-code findings. |
+| LB-TRACK-001 `e1acbe3` csproj closure | ✅ PASS | 283 project diagnostics, zero CS0104 (no BCL bleed); only Unity-legit CS0282 / CS1701 / CS0618. Zero DAWG types collide with BCL short names. |
+| LB-TRACK-003 `f288b7c` enum_coverage | ✅ PASS | 109 `TuningParamId` members classified consistently. Single-reference members (`VocoderCarrierMix`, `RobotRingModFreq`) correctly recognized as `producedCount=1` because their only reference is the `UnwiredParamIds` array initializer (RHS of var initializer = produced per contract). |
+| LB-TRACK-004 `68fd4a2` dead_code triage | ✅ PASS | All four added fields (`bucket`, `directDependants`, `declarationOnly`, `bucketBreakdown`) populated on every finding. `bucketBreakdown` sums correctly (Editor:13 + Production:771 = 784). `declarationOnly:true` not observed but plausibly correct — abstract/interface members have inbound edges from impls and don't appear in dead-code findings. |
 
 ### BUG-4 — TierClassifier reads a Properties key the extractor never writes (Pattern A)
 

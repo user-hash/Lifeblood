@@ -136,10 +136,13 @@ property:Fully.Qualified.TypeName.this[Param1Type,Param2Type]   // indexer
 **Method parameter signature is FULLY-QUALIFIED.** A method that takes one `MyApp.Item` parameter
 appears as `method:MyApp.Service.Process(MyApp.Item)`. Never `method:MyApp.Service.Process(Item)`.
 
-The exact format is pinned by `Internal.CanonicalSymbolFormat.ParamType`. Every method-ID builder
-in the adapter routes through `CanonicalSymbolFormat.BuildParamSignature` so source and metadata
-symbols ALWAYS produce the same ID. Do not call `ITypeSymbol.ToDisplayString()` from a method-ID
-builder. Always use the canonical formatter.
+The exact format is pinned by `Internal.CanonicalSymbolFormat`. Every Roslyn-symbol ID builder
+in the C# adapter routes through `CanonicalSymbolFormat.BuildSymbolId` or the specific
+`BuildTypeId` / `BuildMethodId` / `BuildFieldId` / `BuildPropertyId` / `BuildEventId`
+helper so source, metadata, declaration, and call-site-bound symbols ALWAYS produce the same ID.
+Do not call `SymbolIds.Type` / `SymbolIds.Method` / `SymbolIds.Field` / `SymbolIds.Property`
+outside `CanonicalSymbolFormat`; `ArchitectureInvariantTests.CSharpAdapter_RoslynSymbolIds_HaveSingleSourceOfTruth`
+pins that seam.
 
 **Constructors:** name part is `.ctor`. Example: `method:MyApp.Service..ctor(string,int)`.
 

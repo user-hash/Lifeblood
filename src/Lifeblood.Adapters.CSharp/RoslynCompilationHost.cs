@@ -572,7 +572,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   {
   if (BuildSymbolId(iface.OriginalDefinition) == targetId)
   {
-  results.Add(Internal.SymbolIds.Type(RoslynSymbolExtractor.GetFullName(type)));
+  results.Add(Internal.CanonicalSymbolFormat.BuildTypeId(type));
   break;
   }
   }
@@ -585,7 +585,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   {
   if (BuildSymbolId(baseType.OriginalDefinition) == targetId)
   {
-  results.Add(Internal.SymbolIds.Type(RoslynSymbolExtractor.GetFullName(type)));
+  results.Add(Internal.CanonicalSymbolFormat.BuildTypeId(type));
   break;
   }
   baseType = baseType.BaseType;
@@ -705,38 +705,11 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
 
   /// <summary>
   /// Build the canonical Lifeblood symbol ID for a Roslyn symbol.
-  /// Routes ALL parameter formatting through <see cref="Internal.CanonicalSymbolFormat"/>
-  /// so the same C# symbol produces the same ID regardless of source/metadata origin.
-  /// Indexers use the same <c>this[paramSig]</c> form as <see cref="RoslynSymbolExtractor"/>.
+  /// Routes through <see cref="Internal.CanonicalSymbolFormat"/> so declaration
+  /// extraction, edge extraction, and compilation-host lookup share one grammar.
   /// </summary>
   internal static string BuildSymbolId(ISymbol symbol)
-  {
-  // Extension-method symbols arriving in reduced form (`x.Foo()` invocation
-  // shape) carry a parameter list that drops the explicit `this` receiver.
-  // The declaration path emits the unreduced form, so the consumer side must
-  // normalize first or the canonical ids drift. Mirrors the same discipline
-  // applied in RoslynEdgeExtractor.GetMethodId. INV-EXTRACT-EXTENSION-REDUCED-001.
-  if (symbol is IMethodSymbol m && m.ReducedFrom != null) symbol = m.ReducedFrom;
-  return symbol switch
-  {
-  INamedTypeSymbol type => Internal.SymbolIds.Type(RoslynSymbolExtractor.GetFullName(type)),
-  IMethodSymbol method => Internal.SymbolIds.Method(
-  RoslynSymbolExtractor.GetFullName(method.ContainingType),
-  method.Name,
-  Internal.CanonicalSymbolFormat.BuildParamSignature(method)),
-  IFieldSymbol field => Internal.SymbolIds.Field(
-  RoslynSymbolExtractor.GetFullName(field.ContainingType), field.Name),
-  IPropertySymbol prop when prop.IsIndexer => Internal.SymbolIds.Property(
-  RoslynSymbolExtractor.GetFullName(prop.ContainingType),
-  $"this[{Internal.CanonicalSymbolFormat.BuildIndexerParamSignature(prop)}]"),
-  IPropertySymbol prop => Internal.SymbolIds.Property(
-  RoslynSymbolExtractor.GetFullName(prop.ContainingType), prop.Name),
-  IEventSymbol evt => Internal.SymbolIds.Property(
-  RoslynSymbolExtractor.GetFullName(evt.ContainingType), evt.Name),
-  INamespaceSymbol ns => Internal.SymbolIds.Namespace(ns.ToDisplayString()),
-  _ => $"unknown:{symbol.ToDisplayString()}",
-  };
-  }
+      => Internal.CanonicalSymbolFormat.BuildSymbolId(symbol);
 
   /// <summary>
   /// Single seam returning both the resolved module name AND its

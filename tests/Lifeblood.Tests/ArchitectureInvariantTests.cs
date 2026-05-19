@@ -194,6 +194,28 @@ public class ArchitectureInvariantTests
   Path.Combine(SrcRoot, "Lifeblood.Server.Mcp", "Lifeblood.Server.Mcp.csproj"));
   }
 
+  [Fact]
+  public void CSharpAdapter_RoslynSymbolIds_HaveSingleSourceOfTruth()
+  {
+  var adapterRoot = Path.Combine(SrcRoot, "Lifeblood.Adapters.CSharp");
+  var allowedFile = Path.GetFullPath(Path.Combine(adapterRoot, "Internal", "CanonicalSymbolFormat.cs"));
+
+  var offenders = Directory.EnumerateFiles(adapterRoot, "*.cs", SearchOption.AllDirectories)
+  .Where(path => !string.Equals(Path.GetFullPath(path), allowedFile, StringComparison.Ordinal))
+  .Where(path =>
+  {
+  var text = File.ReadAllText(path);
+  return text.Contains("SymbolIds.Type(", StringComparison.Ordinal)
+  || text.Contains("SymbolIds.Method(", StringComparison.Ordinal)
+  || text.Contains("SymbolIds.Field(", StringComparison.Ordinal)
+  || text.Contains("SymbolIds.Property(", StringComparison.Ordinal);
+  })
+  .Select(path => Path.GetRelativePath(adapterRoot, path).Replace('\\', '/'))
+  .ToArray();
+
+  Assert.Empty(offenders);
+  }
+
   private static void AssertCompositionRootAllowlist(string rootName, string csprojPath)
   {
   Assert.True(File.Exists(csprojPath), $"{rootName} csproj not found: {csprojPath}");
