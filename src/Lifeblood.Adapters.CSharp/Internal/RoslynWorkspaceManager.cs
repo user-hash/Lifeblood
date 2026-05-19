@@ -117,7 +117,19 @@ internal sealed class RoslynWorkspaceManager : IDisposable
 
             case "method":
                 {
-                    var methods = current.GetMembers(lastName).OfType<IMethodSymbol>().ToArray();
+                    // .ctor / .cctor canonical ids point at instance / static
+                    // constructors. Roslyn exposes them on the dedicated
+                    // INamedTypeSymbol.Constructors / .StaticConstructors
+                    // collections; GetMembers(".ctor") happens to work on
+                    // modern Roslyn but the explicit collections are the
+                    // documented surface. INV-CANONICAL-ID-PARITY-001.
+                    IMethodSymbol[] methods;
+                    if (lastName == ".ctor" && current is INamedTypeSymbol ctorOwner)
+                        methods = ctorOwner.Constructors.ToArray();
+                    else if (lastName == ".cctor" && current is INamedTypeSymbol cctorOwner)
+                        methods = cctorOwner.StaticConstructors.ToArray();
+                    else
+                        methods = current.GetMembers(lastName).OfType<IMethodSymbol>().ToArray();
                     if (methods.Length == 0) return null;
 
                     // No signature requested → return first overload (caller is intentionally fuzzy).
@@ -162,6 +174,15 @@ internal sealed class RoslynWorkspaceManager : IDisposable
     /// <summary>
     /// Parse a symbol ID into kind, namespace parts, and optional parameter signature.
     /// Format: "kind:Ns.Type.Member(param1, param2)"
+    ///
+    /// Special handling for IL-style constructor names: instance constructors carry the
+    /// literal name <c>.ctor</c> and static constructors <c>.cctor</c> (leading dot baked
+    /// into <c>IMethodSymbol.Name</c>). A naive <c>Split('.')</c> on
+    /// <c>App.Service..ctor</c> produces <c>["App", "Service", "", "ctor"]</c> — the
+    /// empty middle segment makes the namespace/type walker fail at
+    /// <c>GetMembers("")</c>. Detect the <c>..ctor</c> / <c>..cctor</c> suffix and
+    /// preserve the literal member name as a single trailing part. INV-CANONICAL-ID-
+    /// PARITY-001 / LB-TRACK-20260519-023.
     /// </summary>
     internal static ParsedSymbolId ParseSymbolId(string symbolId)
     {
@@ -186,7 +207,38 @@ internal sealed class RoslynWorkspaceManager : IDisposable
             nameOnly = qualifiedName;
         }
 
-        return new ParsedSymbolId(kind, nameOnly.Split('.'), paramSignature);
+        return new ParsedSymbolId(kind, SplitPreservingCtorNames(nameOnly), paramSignature);
+    }
+
+    private static string[] SplitPreservingCtorNames(string nameOnly)
+    {
+        // Order matters: ".cctor" check must come before ".ctor" because the
+        // ".cctor" suffix also ends in ".ctor". An EndsWith(".ctor") check
+        // would steal the ".cctor" case.
+        const string CctorSuffix = "..cctor";
+        const string CtorSuffix = "..ctor";
+
+        if (nameOnly.EndsWith(CctorSuffix, System.StringComparison.Ordinal))
+            return SplitWithLiteralLast(nameOnly, CctorSuffix, ".cctor");
+        if (nameOnly.EndsWith(CtorSuffix, System.StringComparison.Ordinal))
+            return SplitWithLiteralLast(nameOnly, CtorSuffix, ".ctor");
+        return nameOnly.Split('.');
+    }
+
+    private static string[] SplitWithLiteralLast(string nameOnly, string suffix, string literalLast)
+    {
+        // suffix is "..ctor" / "..cctor" — strip the WHOLE suffix (including the
+        // separator dot) so the remaining prefix is the dotted container path.
+        // For "App.Service..ctor" with suffix "..ctor" (length 6), prefix becomes
+        // "App.Service" (length 11). Empty prefix means the id named a constructor
+        // with no containing path — defensive, not a valid C# shape.
+        var prefix = nameOnly.Substring(0, nameOnly.Length - suffix.Length);
+        if (prefix.Length == 0) return new[] { literalLast };
+        var parts = prefix.Split('.');
+        var result = new string[parts.Length + 1];
+        System.Array.Copy(parts, result, parts.Length);
+        result[parts.Length] = literalLast;
+        return result;
     }
 
     internal readonly record struct ParsedSymbolId(string? Kind, string[]? Parts, string? ParamSignature);
