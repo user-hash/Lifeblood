@@ -1,9 +1,14 @@
 using System.IO;
+using System.Linq;
+using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
+using SymbolKind = Lifeblood.Domain.Graph.SymbolKind;
 
 namespace Lifeblood.Tests;
 
@@ -382,5 +387,127 @@ public class PortHealthAnalyzerTests
             dir = dir.Parent;
         Assert.NotNull(dir);
         return Path.Combine(dir!.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // F3d: real-graph fixtures. Pre-F3d, F3b's composite-walk tests
+    // hand-built EdgeKind.Inherits edges that the pre-F3c extractor never
+    // emitted for interface→interface — so the F3b ratchet passed against
+    // synthetic graphs while real C# graphs still reported composite
+    // interfaces as `empty`. These fixtures compile actual C# source,
+    // extract symbols + edges through the real Roslyn extractors, build a
+    // SemanticGraph, run the analyzer, and assert composite-surface fields
+    // come out non-zero. Closes the F3b synthetic-graph blind spot.
+    // INV-EXTRACT-IFACE-INHERIT-001 + INV-PORT-HEALTH-COMPOSITE-001.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RealGraph_CompositeInterface_ReportsInheritedSurface()
+    {
+        var graph = ExtractRealGraph(@"
+namespace App;
+public interface IPart { void Run(); }
+public interface IComposite : IPart { }
+public class Worker : IComposite { public void Run() { } }");
+
+        var report = Analyzer().Analyze(graph, "type:App.IComposite");
+
+        Assert.NotNull(report);
+        Assert.True(report!.IsCompositeInterface,
+            "Real C# graph: interface IComposite : IPart MUST report composite, " +
+            "not the pre-F3c `empty` verdict the extractor's Implements-only emission caused.");
+        Assert.Contains("type:App.IPart", report.InheritedInterfaces);
+        Assert.Equal(0, report.DirectMemberCount);
+        Assert.Equal(1, report.InheritedMemberCount);
+        Assert.Equal(1, report.AggregateMemberCount);
+    }
+
+    [Fact]
+    public void RealGraph_NonCompositeInterface_ReportsZeroInherited()
+    {
+        var graph = ExtractRealGraph(@"
+namespace App;
+public interface IStandalone { void Tick(); }");
+
+        var report = Analyzer().Analyze(graph, "type:App.IStandalone");
+
+        Assert.NotNull(report);
+        Assert.False(report!.IsCompositeInterface);
+        Assert.Empty(report.InheritedInterfaces);
+        Assert.Equal(1, report.DirectMemberCount);
+        Assert.Equal(0, report.InheritedMemberCount);
+        Assert.Equal(1, report.AggregateMemberCount);
+    }
+
+    [Fact]
+    public void RealGraph_ClassImplementingInterface_NotMarkedComposite()
+    {
+        // Backward-compat pin: a CLASS implementing an interface emits
+        // Implements (not Inherits), so the class's port-health report
+        // must not pick up the interface's surface as "inherited". This
+        // confirms F3c's source-kind branching at the extractor stays
+        // honest for the class-source case.
+        var graph = ExtractRealGraph(@"
+namespace App;
+public interface IRunnable { void Run(); }
+public class Runner : IRunnable { public void Run() { } }");
+
+        var report = Analyzer().Analyze(graph, "type:App.Runner");
+
+        Assert.NotNull(report);
+        Assert.False(report!.IsCompositeInterface,
+            "A class implementing an interface must NOT be treated as a composite — " +
+            "Implements edge kind is the discriminator post-F3c.");
+        Assert.Empty(report.InheritedInterfaces);
+    }
+
+    [Fact]
+    public void RealGraph_TransitiveInterfaceInheritance_WalksFullClosure()
+    {
+        var graph = ExtractRealGraph(@"
+namespace App;
+public interface IRoot { void Root(); }
+public interface IMid : IRoot { void Mid(); }
+public interface ILeaf : IMid { void Leaf(); }");
+
+        var report = Analyzer().Analyze(graph, "type:App.ILeaf");
+
+        Assert.NotNull(report);
+        Assert.True(report!.IsCompositeInterface);
+        Assert.Contains("type:App.IMid", report.InheritedInterfaces);
+        Assert.Contains("type:App.IRoot", report.InheritedInterfaces);
+        Assert.Equal(2, report.InheritedInterfaces.Length);
+        // Direct: Leaf(). Inherited: Mid() + Root() = 2.
+        Assert.Equal(1, report.DirectMemberCount);
+        Assert.Equal(2, report.InheritedMemberCount);
+        Assert.Equal(3, report.AggregateMemberCount);
+    }
+
+    /// <summary>
+    /// Compile <paramref name="source"/> with the real Roslyn extractors
+    /// and build a <see cref="SemanticGraph"/>. Drives the end-to-end
+    /// extractor wire shape — any extractor regression that re-conflates
+    /// interface inheritance with implementation lands here, not just on
+    /// the F3b synthetic fixtures.
+    /// </summary>
+    private static SemanticGraph ExtractRealGraph(string source)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var refs = new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) };
+        var compilation = CSharpCompilation.Create("TestAssembly",
+            new[] { tree }, refs,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var model = compilation.GetSemanticModel(tree);
+        var root = tree.GetRoot();
+
+        var symbols = new RoslynSymbolExtractor()
+            .Extract(model, root, "Test.cs", "file:Test.cs")
+            .ToList();
+        var edges = new RoslynEdgeExtractor().Extract(model, root).ToList();
+
+        var builder = new GraphBuilder();
+        foreach (var s in symbols) builder.AddSymbol(s);
+        foreach (var e in edges) builder.AddEdge(e);
+        return builder.Build();
     }
 }
