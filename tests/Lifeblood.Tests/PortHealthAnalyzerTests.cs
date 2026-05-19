@@ -150,6 +150,186 @@ public class PortHealthAnalyzerTests
         Assert.Equal(1, report!.MemberCount); // nested Inner type excluded
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // F3b — composite / inherited-interface surface
+    // (INV-PORT-HEALTH-COMPOSITE-001 / LB-TRACK-20260518-017).
+    // Composite host ports commonly carry 0 direct members and reach all
+    // their surface through inherited sub-ports; the analyzer must walk
+    // outgoing Inherits edges, sum the aggregate surface, and compute the
+    // verdict against the aggregate so composites no longer mislabel as
+    // vestigial.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Analyze_NonCompositeInterface_ReportsZeroInheritedMembers()
+    {
+        // Backwards-compat: a type with no outgoing Inherits edges reports
+        // DirectMemberCount == AggregateMemberCount == MemberCount, with
+        // InheritedMemberCount == 0 and IsCompositeInterface == false.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Port", Name = "Port", Kind = SymbolKind.Type, FilePath = "Port.cs" })
+            .AddSymbol(new Symbol { Id = "method:N.Port.A()", Name = "A", Kind = SymbolKind.Method, FilePath = "Port.cs", ParentId = "type:N.Port" })
+            .AddEdge(new Edge { SourceId = "type:N.Port", TargetId = "method:N.Port.A()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .Build();
+
+        var report = Analyzer().Analyze(graph, "type:N.Port");
+
+        Assert.NotNull(report);
+        Assert.False(report!.IsCompositeInterface);
+        Assert.Empty(report.InheritedInterfaces);
+        Assert.Equal(0, report.InheritedMemberCount);
+        Assert.Equal(1, report.DirectMemberCount);
+        Assert.Equal(1, report.AggregateMemberCount);
+        Assert.Equal(1, report.MemberCount); // back-compat alias
+    }
+
+    [Fact]
+    public void Analyze_CompositeInterfaceWithLiveInheritedMembers_ReportsHealthy()
+    {
+        // Composite host port with 0 direct, 2 inherited members both live.
+        // Pre-F3b the verdict was "empty" because MemberCount was 0;
+        // post-F3b the verdict is "healthy" against the aggregate surface.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IComposite", Name = "IComposite", Kind = SymbolKind.Type, FilePath = "IComposite.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.ISubA", Name = "ISubA", Kind = SymbolKind.Type, FilePath = "ISubA.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.ISubB", Name = "ISubB", Kind = SymbolKind.Type, FilePath = "ISubB.cs" })
+            .AddSymbol(new Symbol { Id = "method:N.ISubA.Run()", Name = "Run", Kind = SymbolKind.Method, FilePath = "ISubA.cs", ParentId = "type:N.ISubA" })
+            .AddSymbol(new Symbol { Id = "method:N.ISubB.Tick()", Name = "Tick", Kind = SymbolKind.Method, FilePath = "ISubB.cs", ParentId = "type:N.ISubB" })
+            .AddSymbol(new Symbol { Id = "method:N.Caller.X()", Name = "X", Kind = SymbolKind.Method, FilePath = "Caller.cs" })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.ISubA", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.ISubB", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.ISubA", TargetId = "method:N.ISubA.Run()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.ISubB", TargetId = "method:N.ISubB.Tick()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.ISubA.Run()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.ISubB.Tick()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .Build();
+
+        var report = Analyzer().Analyze(graph, "type:N.IComposite");
+
+        Assert.NotNull(report);
+        Assert.True(report!.IsCompositeInterface);
+        Assert.Equal(new[] { "type:N.ISubA", "type:N.ISubB" }, report.InheritedInterfaces);
+        Assert.Equal(0, report.DirectMemberCount);
+        Assert.Equal(2, report.InheritedMemberCount);
+        Assert.Equal(2, report.AggregateMemberCount);
+        Assert.Equal(2, report.LiveMembers);
+        Assert.Equal("healthy", report.Verdict);
+    }
+
+    [Fact]
+    public void Analyze_CompositeInterfaceWithMixedInheritedMembers_ReportsMixed()
+    {
+        // 0 direct + 3 inherited (1 live, 2 dead) → 33% liveness → "mixed".
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IComposite", Name = "IComposite", Kind = SymbolKind.Type, FilePath = "IComposite.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.ISubA", Name = "ISubA", Kind = SymbolKind.Type, FilePath = "ISubA.cs" })
+            .AddSymbol(new Symbol { Id = "method:N.ISubA.A()", Name = "A", Kind = SymbolKind.Method, FilePath = "ISubA.cs", ParentId = "type:N.ISubA" })
+            .AddSymbol(new Symbol { Id = "method:N.ISubA.B()", Name = "B", Kind = SymbolKind.Method, FilePath = "ISubA.cs", ParentId = "type:N.ISubA" })
+            .AddSymbol(new Symbol { Id = "method:N.ISubA.C()", Name = "C", Kind = SymbolKind.Method, FilePath = "ISubA.cs", ParentId = "type:N.ISubA" })
+            .AddSymbol(new Symbol { Id = "method:N.Caller.X()", Name = "X", Kind = SymbolKind.Method, FilePath = "Caller.cs" })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.ISubA", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.ISubA", TargetId = "method:N.ISubA.A()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.ISubA", TargetId = "method:N.ISubA.B()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.ISubA", TargetId = "method:N.ISubA.C()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.ISubA.A()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .Build();
+
+        var report = Analyzer().Analyze(graph, "type:N.IComposite");
+
+        Assert.NotNull(report);
+        Assert.Equal(3, report!.AggregateMemberCount);
+        Assert.Equal(1, report.LiveMembers);
+        Assert.Equal(2, report.DeadMembers);
+        Assert.Equal("mixed", report.Verdict);
+    }
+
+    [Fact]
+    public void Analyze_TransitiveInheritance_WalksDistinctAcrossClosure()
+    {
+        // IComposite → IMiddle → IBase; all members from IBase + IMiddle count.
+        // Diamond inheritance (two paths reach the same base) must not
+        // double-count either the interface or its members.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IComposite", Name = "IComposite", Kind = SymbolKind.Type, FilePath = "IComposite.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.IMiddleA", Name = "IMiddleA", Kind = SymbolKind.Type, FilePath = "IMiddleA.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.IMiddleB", Name = "IMiddleB", Kind = SymbolKind.Type, FilePath = "IMiddleB.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.IBase", Name = "IBase", Kind = SymbolKind.Type, FilePath = "IBase.cs" })
+            .AddSymbol(new Symbol { Id = "method:N.IMiddleA.MidA()", Name = "MidA", Kind = SymbolKind.Method, FilePath = "IMiddleA.cs", ParentId = "type:N.IMiddleA" })
+            .AddSymbol(new Symbol { Id = "method:N.IMiddleB.MidB()", Name = "MidB", Kind = SymbolKind.Method, FilePath = "IMiddleB.cs", ParentId = "type:N.IMiddleB" })
+            .AddSymbol(new Symbol { Id = "method:N.IBase.Base()", Name = "Base", Kind = SymbolKind.Method, FilePath = "IBase.cs", ParentId = "type:N.IBase" })
+            .AddSymbol(new Symbol { Id = "method:N.Caller.X()", Name = "X", Kind = SymbolKind.Method, FilePath = "Caller.cs" })
+            // IComposite : IMiddleA, IMiddleB
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.IMiddleA", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.IMiddleB", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            // Both middles inherit from IBase — diamond.
+            .AddEdge(new Edge { SourceId = "type:N.IMiddleA", TargetId = "type:N.IBase", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.IMiddleB", TargetId = "type:N.IBase", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            // Contains
+            .AddEdge(new Edge { SourceId = "type:N.IMiddleA", TargetId = "method:N.IMiddleA.MidA()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.IMiddleB", TargetId = "method:N.IMiddleB.MidB()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.IBase", TargetId = "method:N.IBase.Base()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            // Live edges into every member.
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.IMiddleA.MidA()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.IMiddleB.MidB()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.IBase.Base()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .Build();
+
+        var report = Analyzer().Analyze(graph, "type:N.IComposite");
+
+        Assert.NotNull(report);
+        Assert.Equal(3, report!.InheritedInterfaces.Length); // distinct: IMiddleA, IMiddleB, IBase
+        Assert.Contains("type:N.IBase", report.InheritedInterfaces);
+        Assert.Equal(3, report.InheritedMemberCount); // MidA + MidB + Base (Base counted once across diamond)
+        Assert.Equal("healthy", report.Verdict);
+    }
+
+    [Fact]
+    public void Analyze_EmptyCompositeInterface_ReportsEmpty()
+    {
+        // Composite with inherited-interface declaration but no members
+        // anywhere. Should still report empty — not mixed/vestigial.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IComposite", Name = "IComposite", Kind = SymbolKind.Type, FilePath = "IComposite.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.IMarker", Name = "IMarker", Kind = SymbolKind.Type, FilePath = "IMarker.cs" })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.IMarker", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            .Build();
+
+        var report = Analyzer().Analyze(graph, "type:N.IComposite");
+
+        Assert.NotNull(report);
+        Assert.True(report!.IsCompositeInterface);
+        Assert.Equal(0, report.AggregateMemberCount);
+        Assert.Equal("empty", report.Verdict);
+    }
+
+    [Fact]
+    public void Analyze_CompositeAndDirect_AggregatesBothSurfaces()
+    {
+        // Type with both direct members AND inherited members — verdict
+        // should account for the union; live counts across both subsets.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.IComposite", Name = "IComposite", Kind = SymbolKind.Type, FilePath = "IComposite.cs" })
+            .AddSymbol(new Symbol { Id = "type:N.ISub", Name = "ISub", Kind = SymbolKind.Type, FilePath = "ISub.cs" })
+            .AddSymbol(new Symbol { Id = "method:N.IComposite.Own()", Name = "Own", Kind = SymbolKind.Method, FilePath = "IComposite.cs", ParentId = "type:N.IComposite" })
+            .AddSymbol(new Symbol { Id = "method:N.ISub.Sub()", Name = "Sub", Kind = SymbolKind.Method, FilePath = "ISub.cs", ParentId = "type:N.ISub" })
+            .AddSymbol(new Symbol { Id = "method:N.Caller.X()", Name = "X", Kind = SymbolKind.Method, FilePath = "Caller.cs" })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "type:N.ISub", Kind = EdgeKind.Inherits, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.IComposite", TargetId = "method:N.IComposite.Own()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "type:N.ISub", TargetId = "method:N.ISub.Sub()", Kind = EdgeKind.Contains, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.IComposite.Own()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .AddEdge(new Edge { SourceId = "method:N.Caller.X()", TargetId = "method:N.ISub.Sub()", Kind = EdgeKind.Calls, Evidence = Evidence })
+            .Build();
+
+        var report = Analyzer().Analyze(graph, "type:N.IComposite");
+
+        Assert.NotNull(report);
+        Assert.Equal(1, report!.DirectMemberCount);
+        Assert.Equal(1, report.InheritedMemberCount);
+        Assert.Equal(2, report.AggregateMemberCount);
+        Assert.Equal(2, report.LiveMembers);
+        Assert.Equal("healthy", report.Verdict);
+    }
+
     [Fact]
     public void Analyze_NonExistentSymbol_ReturnsNull()
     {
