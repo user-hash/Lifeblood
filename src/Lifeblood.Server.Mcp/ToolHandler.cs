@@ -28,6 +28,7 @@ public sealed class ToolHandler
     private readonly IInvariantProvider _invariants;
     private readonly IResponseDecorator _decorator;
     private readonly IAuthorityReporter _authority;
+    private readonly IPortHealthAnalyzer _portHealth;
     private readonly WriteToolHandler _write;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -50,7 +51,8 @@ public sealed class ToolHandler
         IPartialViewBuilder partialView,
         IInvariantProvider invariants,
         IResponseDecorator decorator,
-        IAuthorityReporter? authority = null)
+        IAuthorityReporter? authority = null,
+        IPortHealthAnalyzer? portHealth = null)
     {
         _session = session;
         _provider = provider;
@@ -61,6 +63,7 @@ public sealed class ToolHandler
         _invariants = invariants;
         _decorator = decorator;
         _authority = authority ?? new Lifeblood.Connectors.Mcp.LifebloodAuthorityReporter();
+        _portHealth = portHealth ?? new Lifeblood.Connectors.Mcp.LifebloodPortHealthAnalyzer();
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -822,66 +825,23 @@ public sealed class ToolHandler
         if (resolved.CanonicalId == null)
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
-        var graph = _session.Graph!;
-        var typeId = resolved.CanonicalId;
-        var sym = graph.GetSymbol(typeId);
-        if (sym == null || sym.Kind != SymbolKind.Type)
-            return ErrorResult($"port_health requires a Type symbol; got Kind={sym?.Kind} for {typeId}");
-
-        var memberIds = new List<string>();
-        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
+        var report = _portHealth.Analyze(_session.Graph!, resolved.CanonicalId);
+        if (report == null)
         {
-            var edge = graph.Edges[idx];
-            if (edge.Kind != EdgeKind.Contains) continue;
-            var member = graph.GetSymbol(edge.TargetId);
-            if (member == null) continue;
-            if (member.Kind == SymbolKind.Type) continue; // exclude nested types
-            memberIds.Add(member.Id);
+            var sym = _session.Graph!.GetSymbol(resolved.CanonicalId);
+            return ErrorResult($"port_health requires a Type symbol; got Kind={sym?.Kind} for {resolved.CanonicalId}");
         }
-
-        int liveCount = 0;
-        var live = new List<string>();
-        var dead = new List<string>();
-        foreach (var id in memberIds)
-        {
-            bool hasIncoming = false;
-            foreach (int idx in graph.GetIncomingEdgeIndexes(id))
-            {
-                var e = graph.Edges[idx];
-                if (e.Kind == EdgeKind.Contains) continue;
-                hasIncoming = true; break;
-            }
-            // Methods that implement an interface member are reachable
-            // through the interface — same liveness rule the dead-code
-            // analyzer uses (Implements outgoing = alive by definition).
-            if (!hasIncoming)
-            {
-                foreach (int idx in graph.GetOutgoingEdgeIndexes(id))
-                {
-                    if (graph.Edges[idx].Kind == EdgeKind.Implements) { hasIncoming = true; break; }
-                }
-            }
-            if (hasIncoming) { liveCount++; live.Add(id); }
-            else dead.Add(id);
-        }
-
-        double pct = memberIds.Count == 0 ? 0.0 : (double)liveCount / memberIds.Count;
-        string verdict = memberIds.Count == 0
-            ? "empty"
-            : pct >= 0.75 ? "healthy"
-            : pct >= 0.25 ? "mixed"
-            : "vestigial";
 
         return TextResult(WithEnvelope("lifeblood_port_health", new
         {
-            symbolId = typeId,
-            memberCount = memberIds.Count,
-            liveMembers = liveCount,
-            deadMembers = dead.Count,
-            livenessPct = System.Math.Round(pct, 3),
-            verdict,
-            live = live.ToArray(),
-            dead = dead.ToArray(),
+            symbolId = report.TypeId,
+            memberCount = report.MemberCount,
+            liveMembers = report.LiveMembers,
+            deadMembers = report.DeadMembers,
+            livenessPct = report.LivenessPct,
+            verdict = report.Verdict,
+            live = report.Live,
+            dead = report.Dead,
         }));
     }
 

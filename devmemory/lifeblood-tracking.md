@@ -1224,7 +1224,18 @@ Fix shape:
 
 ### LB-TRACK-20260519-022 - `port_health` algorithm lives inline in `ToolHandler`, no `IPortHealthAnalyzer` seam
 
-Status: Open
+Status: Partially Shipped (in-tree, untagged) — F3a atom of the 2026-05-19 plan.
+Closing commit: post-`8134337` F3a commit; `IPortHealthAnalyzer` port lives in
+`Lifeblood.Application.Ports.Right`, `LifebloodPortHealthAnalyzer` impl lives
+in `Lifeblood.Connectors.Mcp`, `ToolHandler` routes through the injected port
+(default ctor falls back to a new instance). Behavior is byte-equal to the
+pre-F3a inline body — composite / inherited-interface surface is the F3b
+follow-up under `INV-PORT-HEALTH-COMPOSITE-001`. Pinned by 9
+`PortHealthAnalyzerTests` fixtures plus a seam-discipline scan that refuses
+to find the inline algorithm tokens (`"vestigial"`, `liveCount++`,
+`var memberIds = new List<string>`) anywhere in `ToolHandler.cs`. Debug
+suite 1028 → 1037; port count 26 → 27. STATUS testCount + portCount anchors
+refreshed.
 Type: Improvement
 Source: `D:/Projekti/lifeblood_plan.txt` Stage 3 + `docs/plans/lifeblood-correctness-masterplan-2026-05-15.md` Stage 3, confirmed by 2026-05-19 source inspection.
 Workspace: Lifeblood self
