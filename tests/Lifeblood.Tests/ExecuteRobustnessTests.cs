@@ -15,7 +15,7 @@ namespace Lifeblood.Tests;
 /// Coverage for the v0.6.7 P4 execute-robustness work:
 ///
 /// 1. UnityAssemblyResolver — probe-path discovery + diagnostics.
-/// 2. RoslynCodeExecutor target-profile selection + warnings.
+/// 2. RoslynCodeExecutor host-profile execution + warning surfaces.
 /// 3. RoslynSemanticView Help / EdgesOfKind / SymbolsOfKind sandbox helpers.
 /// </summary>
 [Collection("ScriptExecutorSerial")]
@@ -77,7 +77,7 @@ public class ExecuteRobustnessTests
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // 2. RoslynCodeExecutor target-profile selection
+    // 2. RoslynCodeExecutor host-profile execution + warning surfaces
     // ──────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -95,7 +95,24 @@ public class ExecuteRobustnessTests
     }
 
     [Fact]
-    public void Executor_UnknownTargetProfile_FallsBackToHost_WithWarning()
+    public void Executor_NonHostTargetProfile_RunsHostBcl_WithExplicitWarning()
+    {
+        var view = MakeMinimalView();
+        var exec = new RoslynCodeExecutor(view);
+        var result = exec.Execute(new CodeExecutionRequest
+        {
+            Code = "1 + 1",
+            TargetProfile = "net-standard-2.1",
+        });
+        Assert.True(result.Success, "Host-BCL execute must still run when a non-host profile is requested: " + result.Error);
+        Assert.NotEmpty(result.TargetRuntimeWarnings);
+        Assert.Contains("informational", result.TargetRuntimeWarnings[0]);
+        Assert.Contains("host scripting BCL", result.TargetRuntimeWarnings[0]);
+        Assert.Contains("not implemented", result.TargetRuntimeWarnings[0]);
+    }
+
+    [Fact]
+    public void Executor_UnknownTargetProfile_RunsHostBcl_WithExplicitWarning()
     {
         var view = MakeMinimalView();
         var exec = new RoslynCodeExecutor(view);
@@ -104,9 +121,10 @@ public class ExecuteRobustnessTests
             Code = "1 + 1",
             TargetProfile = "made-up-profile",
         });
-        Assert.True(result.Success, "Fallback to host BCL must still execute: " + result.Error);
+        Assert.True(result.Success, "Host-BCL execute must still run for unknown legacy profiles: " + result.Error);
         Assert.NotEmpty(result.TargetRuntimeWarnings);
-        Assert.Contains("Unknown targetProfile", result.TargetRuntimeWarnings[0]);
+        Assert.Contains("made-up-profile", result.TargetRuntimeWarnings[0]);
+        Assert.Contains("host scripting BCL", result.TargetRuntimeWarnings[0]);
     }
 
     [Fact]

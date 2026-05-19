@@ -46,7 +46,7 @@ robustness, Unity reachability, find-implementations.
 
 ## Execute Robustness (v0.6.7 P4)
 
-- **INV-EXECUTE-001. `lifeblood_execute` references three reference sets, in this order, every call.**
+- **INV-EXECUTE-001. `lifeblood_execute` has one reference-admission seam: `Internal.ScriptReferenceSetBuilder`.**
 
 ## Unity Reachability (v0.6.7 P3)
 

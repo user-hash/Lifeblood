@@ -22,7 +22,7 @@ public interface ICodeExecutor
 /// <summary>
 /// Typed request for <see cref="ICodeExecutor.Execute(CodeExecutionRequest)"/>.
 /// Reserved as a separate record so future per-call policy
-/// (target-profile selection, allow-host-network, deterministic seed,
+/// (target-profile hinting, allow-host-network, deterministic seed,
 /// etc.) can be added without further signature churn — same pattern
 /// as <see cref="FindReferencesOptions"/> and <see cref="DiagnosticsRequest"/>.
 /// </summary>
@@ -33,13 +33,12 @@ public sealed class CodeExecutionRequest
     public int TimeoutMs { get; init; } = 5000;
 
     /// <summary>
-    /// Target runtime profile. <c>"host"</c> (default) uses the running
-    /// .NET runtime's BCL — the existing pre-P4 behavior.
-    /// <c>"net-standard-2.1"</c> swaps in NETStandard.Library.Ref.
-    /// <c>"net-6.0"</c> swaps in Microsoft.NETCore.App.Ref 6.x. Unknown
-    /// values fall back to <c>"host"</c> with a warning. When the
-    /// requested ref-pack isn't installed locally the executor falls
-    /// back to <c>"host"</c> and surfaces a diagnostic on
+    /// Target runtime profile hint. <c>"host"</c> (default) is the only
+    /// execution profile: scripts run in-process against the running .NET
+    /// runtime's BCL so they can share the retained Roslyn workspace state.
+    /// Non-host values are accepted for backward compatibility but do not
+    /// swap reference packs; the executor still runs against <c>"host"</c>
+    /// and surfaces the limitation on
     /// <see cref="CodeExecutionResult.TargetRuntimeWarnings"/>.
     /// </summary>
     public string TargetProfile { get; init; } = "host";

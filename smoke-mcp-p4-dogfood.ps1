@@ -20,6 +20,16 @@ function Recv([int]$id, [int]$t = 600) { $d=(Get-Date).AddSeconds($t); while($tr
 function Tool([int]$id, [string]$n, $a) { Send @{jsonrpc="2.0";id=$id;method="tools/call";params=@{name=$n;arguments=$a}}; (Recv $id).result.content[0].text }
 $failures = @()
 function Assert($c, $m) { if (-not $c) { $script:failures += $m; Write-Host "  [FAIL] $m" -ForegroundColor Red } else { Write-Host "  [ok]   $m" -ForegroundColor Green } }
+function DumpExecuteIfFailed($r) {
+    if ($r.success) { return }
+    Write-Host ("    error: " + $r.error) -ForegroundColor DarkYellow
+    if (($r.runtimeAssemblyWarnings | Measure-Object).Count -gt 0) {
+        Write-Host ("    runtimeAssemblyWarnings: " + ($r.runtimeAssemblyWarnings -join " | ")) -ForegroundColor DarkYellow
+    }
+    if (($r.targetRuntimeWarnings | Measure-Object).Count -gt 0) {
+        Write-Host ("    targetRuntimeWarnings: " + ($r.targetRuntimeWarnings -join " | ")) -ForegroundColor DarkYellow
+    }
+}
 
 try {
     Send @{jsonrpc="2.0";id=1;method="initialize";params=@{protocolVersion="2024-11-05";capabilities=@{};clientInfo=@{name="p4";version="1"}}}
@@ -36,6 +46,7 @@ try {
     Write-Host ""
     Write-Host "[2] execute trivial expression (host profile, default)"
     $r = (Tool 3 "lifeblood_execute" @{code="21 * 2"}) | ConvertFrom-Json
+    DumpExecuteIfFailed $r
     Assert ($r.success) ('execute success on 21*2 (returnValue=' + $r.returnValue + ')')
     Assert ($r.returnValue -eq "42") ('returnValue is "42"')
     Assert (($r.targetRuntimeWarnings | Measure-Object).Count -eq 0) "host profile has no targetRuntimeWarnings"
@@ -43,25 +54,29 @@ try {
     Write-Host ""
     Write-Host "[3] execute reaches Help global"
     $r = (Tool 4 "lifeblood_execute" @{code="Help.Length"}) | ConvertFrom-Json
+    DumpExecuteIfFailed $r
     Assert ($r.success) ('Help global reachable (returnValue=' + $r.returnValue + ')')
     Assert ([int]$r.returnValue -gt 100) ('Help has substantial content (length=' + $r.returnValue + ')')
 
     Write-Host ""
     Write-Host "[4] execute SymbolsOfKind(""Type"") string helper"
     $r = (Tool 5 "lifeblood_execute" @{code='SymbolsOfKind("Type").Count()'}) | ConvertFrom-Json
+    DumpExecuteIfFailed $r
     Assert ($r.success) ('SymbolsOfKind helper executes (returnValue=' + $r.returnValue + ')')
     Assert ([int]$r.returnValue -gt 0) ('SymbolsOfKind returned a non-zero count')
 
     Write-Host ""
     Write-Host "[5] execute EdgesOfKind(""Contains"") string helper"
     $r = (Tool 6 "lifeblood_execute" @{code='EdgesOfKind("Contains").Count()'}) | ConvertFrom-Json
+    DumpExecuteIfFailed $r
     Assert ($r.success) ('EdgesOfKind helper executes (returnValue=' + $r.returnValue + ')')
     Assert ([int]$r.returnValue -gt 0) ('EdgesOfKind returned a non-zero count')
 
     Write-Host ""
-    Write-Host "[6] execute with unknown targetProfile -> falls back to host with warning"
+    Write-Host "[6] execute with unknown targetProfile -> host execution with explicit warning"
     $r = (Tool 7 "lifeblood_execute" @{code="1+1"; targetProfile="bogus-profile"}) | ConvertFrom-Json
-    Assert ($r.success) ('fallback execute success')
+    DumpExecuteIfFailed $r
+    Assert ($r.success) ('host execute success for unknown targetProfile')
     Assert (($r.targetRuntimeWarnings | Measure-Object).Count -ge 1) "unknown profile surfaces a targetRuntimeWarnings entry"
 
     Write-Host ""

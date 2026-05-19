@@ -288,7 +288,7 @@ public static class ToolRegistry
   Name = "lifeblood_execute",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = HeuristicAdvisorySearch,
-  Description = "Execute C# code against the loaded workspace. Code runs in-process (trusted local sandbox — blocklist + AST security checks, not process-isolated). Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath. The script's globals carry `Graph`, `Compilations`, `ModuleDependencies` plus the `Help` introspection string — see `RoslynSemanticView`. When the workspace is Unity-shaped (Library/ exists at the project root), Unity build artifacts under Library/ScriptAssemblies, Library/Bee/artifacts and Library/PackageCache are auto-injected as references so scripts can touch UnityEngine types; if no build artifacts are found a `runtimeAssemblyWarnings` entry tells the caller to run a Unity build first. Pass `targetProfile` to compile against a specific runtime ref-pack — `'host'` (default), `'net-standard-2.1'`, or `'net-6.0'`. Missing ref-packs surface a `targetRuntimeWarnings` entry instead of a hard failure.",
+  Description = "Execute C# code against the loaded workspace. Code runs in-process (trusted local sandbox — blocklist + AST security checks, not process-isolated). Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath. The script's globals carry `Graph`, `Compilations`, `ModuleDependencies` plus the `Help` introspection string — see `RoslynSemanticView`. When the workspace is Unity-shaped (Library/ exists at the project root), Unity build artifacts under Library/ScriptAssemblies, Library/Bee/artifacts and Library/PackageCache are auto-injected as references so scripts can touch UnityEngine types; non-managed PEs, runtime BCL/contract assemblies, duplicate assembly identities, and retained workspace assemblies are filtered before Roslyn sees the probe set. If no build artifacts are found a `runtimeAssemblyWarnings` entry tells the caller to run a Unity build first. `targetProfile` is a compatibility hint only: `host` is the execution profile, and non-host values run against the host scripting BCL with a `targetRuntimeWarnings` limitation.",
   InputSchema = new
   {
   type = "object",
@@ -301,8 +301,7 @@ public static class ToolRegistry
   targetProfile = new
   {
   type = "string",
-  description = "Target runtime profile for the script's BCL references. 'host' (default) uses the running .NET runtime; 'net-standard-2.1' / 'net-6.0' swap in the matching reference pack when installed locally. Unknown values fall back to 'host' with a targetRuntimeWarnings entry.",
-  @enum = new[] { "host", "net-standard-2.1", "net-6.0" },
+  description = "Compatibility hint for runtime profile. 'host' (default) is the only execution profile; non-host values are accepted but run against the host scripting BCL and surface a targetRuntimeWarnings limitation.",
   },
   },
   },
