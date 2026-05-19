@@ -278,6 +278,100 @@ public class ResponseEnvelopeTests
             => Lifeblood.Analysis.BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // S5: AnalysisGeneration plumbing. Pins the monotonic generation
+    // counter from WorkspaceSession.Load through EnvelopeContext to
+    // ResponseEnvelope. Cross-tool join coherence depends on this.
+    // INV-DIAGNOSE-FRESHNESS-001.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AnalysisGeneration_FreshSession_IsZero()
+    {
+        var session = new Lifeblood.Application.UseCases.WorkspaceSession();
+        Assert.Equal(0L, session.AnalysisGeneration);
+    }
+
+    [Fact]
+    public void AnalysisGeneration_IncrementsOnEveryLoad()
+    {
+        var session = new Lifeblood.Application.UseCases.WorkspaceSession();
+        var emptyGraph = new GraphBuilder().Build();
+        var analysis = new AnalysisResult();
+
+        session.Load(emptyGraph, analysis, null, "csharp");
+        Assert.Equal(1L, session.AnalysisGeneration);
+
+        session.Load(emptyGraph, analysis, null, "csharp");
+        Assert.Equal(2L, session.AnalysisGeneration);
+
+        session.Load(emptyGraph, analysis, null, "csharp");
+        Assert.Equal(3L, session.AnalysisGeneration);
+    }
+
+    [Fact]
+    public void AnalysisGeneration_SurvivesClear_MonotonicAcrossClearLoadPairs()
+    {
+        // Clear/Load is the auto-refresh path. Two reads taken either
+        // side of a Clear/Load pair must see DISTINCT generation values
+        // so cross-tool joins can detect that the underlying graph
+        // changed.
+        var session = new Lifeblood.Application.UseCases.WorkspaceSession();
+        var emptyGraph = new GraphBuilder().Build();
+        var analysis = new AnalysisResult();
+
+        session.Load(emptyGraph, analysis, null, "csharp");
+        var gen1 = session.AnalysisGeneration;
+
+        session.Clear();
+        // After Clear: state is empty but the counter is preserved so
+        // the next Load produces a strictly-greater value.
+        Assert.Equal(gen1, session.AnalysisGeneration);
+
+        session.Load(emptyGraph, analysis, null, "csharp");
+        Assert.True(session.AnalysisGeneration > gen1,
+            $"Post-Clear-Load generation ({session.AnalysisGeneration}) must exceed pre-Clear ({gen1}).");
+    }
+
+    [Fact]
+    public void Decorator_CopiesAnalysisGenerationFromContextToEnvelope()
+    {
+        var d = new LifebloodResponseDecorator(
+            new System.Collections.Generic.Dictionary<string, EnvelopeClassification>(System.StringComparer.Ordinal)
+            {
+                ["any_tool"] = new EnvelopeClassification
+                {
+                    TruthTier = TruthTier.Semantic,
+                    Confidence = ConfidenceBand.Proven,
+                },
+            });
+
+        var env = d.Decorate("any_tool", new EnvelopeContext { AnalysisGeneration = 42 });
+        Assert.Equal(42L, env.AnalysisGeneration);
+    }
+
+    [Fact]
+    public void Decorator_UnregisteredTool_StillCarriesAnalysisGeneration()
+    {
+        // The unregistered-tool path returns a conservative envelope.
+        // It must still copy the generation so even degraded responses
+        // remain joinable by generation. Catch the F3-series mistake
+        // class: feature wired on the happy path but forgotten on the
+        // fallback.
+        var d = new LifebloodResponseDecorator();
+        var env = d.Decorate("not_a_real_tool", new EnvelopeContext { AnalysisGeneration = 7 });
+        Assert.Equal(7L, env.AnalysisGeneration);
+        Assert.Equal(TruthTier.Heuristic, env.TruthTier);
+    }
+
+    [Fact]
+    public void Decorator_NoWorkspaceLoaded_AnalysisGenerationIsZero()
+    {
+        var d = new LifebloodResponseDecorator();
+        var env = d.Decorate("any_tool", new EnvelopeContext());
+        Assert.Equal(0L, env.AnalysisGeneration);
+    }
+
     private sealed class StubFileSystem : Lifeblood.Application.Ports.Infrastructure.IFileSystem
     {
         private readonly System.Collections.Generic.Dictionary<string, System.DateTime> _mtimes;

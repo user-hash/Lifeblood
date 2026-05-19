@@ -1012,7 +1012,11 @@ public sealed class ToolHandler
     {
         if (!_session.IsLoaded || _session.Graph == null)
         {
-            return new EnvelopeContext { FileSystem = _session.FileSystem };
+            return new EnvelopeContext
+            {
+                FileSystem = _session.FileSystem,
+                AnalysisGeneration = _session.AnalysisGeneration,
+            };
         }
 
         // Walk the graph for File symbols. Resolve relative paths against
@@ -1032,6 +1036,7 @@ public sealed class ToolHandler
             TrackedFilePaths = paths,
             FileSystem = _session.FileSystem,
             FileScanLimit = EnvelopeFileScanLimit,
+            AnalysisGeneration = _session.AnalysisGeneration,
         };
     }
 

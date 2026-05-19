@@ -62,6 +62,14 @@ public sealed class EnvelopeContext
     public IFileSystem? FileSystem { get; init; }
 
     /// <summary>
+    /// Monotonic generation counter from the loaded workspace. Bumped
+    /// once per <c>Load</c> / auto-refresh in <c>WorkspaceSession</c>.
+    /// Zero when no workspace is loaded. Surfaced unchanged onto
+    /// <see cref="ResponseEnvelope.AnalysisGeneration"/>. INV-DIAGNOSE-FRESHNESS-001.
+    /// </summary>
+    public long AnalysisGeneration { get; init; }
+
+    /// <summary>
     /// Hard cap on how many tracked files the decorator will mtime-stat
     /// per call. Defaults to <see cref="int.MaxValue"/> (full scan);
     /// callers serving very large workspaces lower it to bound the
