@@ -94,6 +94,24 @@ public class ResponseEnvelopeTests
     }
 
     [Fact]
+    public void Registry_EveryToolWithEnvelopeWrap_DeclaresEnvelopeClassification()
+    {
+        // S6 / INV-ADVISORY-LIMITATIONS-001. WrapWriteSide in ToolHandler
+        // injects an envelope onto every WriteSide response that produces
+        // a JSON-object payload. A WriteSide tool without EnvelopeClassification
+        // would fall through to the degraded "Unregistered tool" envelope
+        // — silently undermining the contract that classifications are
+        // intentional declarations of confidence.
+        var missing = ToolRegistry.GetDefinitions()
+            .Where(t => t.EnvelopeClassification == null)
+            .Select(t => t.Name)
+            .ToArray();
+        Assert.True(missing.Length == 0,
+            "Every ToolDefinition (read OR write side) must declare EnvelopeClassification — write-side responses are now wrapped through WrapWriteSide. Missing: " +
+            string.Join(", ", missing));
+    }
+
+    [Fact]
     public void Decorator_AllReadSideToolsInRegistry_ResolveToRealClassification()
     {
         var d = BuildRegistryDecorator();
