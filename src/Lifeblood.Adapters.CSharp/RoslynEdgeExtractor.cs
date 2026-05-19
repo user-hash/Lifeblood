@@ -115,12 +115,20 @@ public sealed class RoslynEdgeExtractor
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Inherits);
         }
 
-        // Interfaces → Implements (only source-defined interfaces)
+        // Interfaces → Implements (class/struct) or Inherits (interface).
+        // INV-EXTRACT-IFACE-INHERIT-001: an interface that extends another
+        // interface is inheritance, not implementation. Pre-F3c the loop
+        // emitted Implements unconditionally, which made composite-interface
+        // traversal in port_health / authority_report invisible (they walk
+        // Inherits semantics for the inheritance closure).
+        var ifaceEdgeKind = typeSymbol.TypeKind == TypeKind.Interface
+            ? EdgeKind.Inherits
+            : EdgeKind.Implements;
         foreach (var iface in typeSymbol.Interfaces)
         {
             if (!IsTracked(iface)) continue;
             var targetId = SymbolIds.Type(RoslynSymbolExtractor.GetFullName(iface));
-            AddEdge(edges, seen, sourceId, targetId, EdgeKind.Implements);
+            AddEdge(edges, seen, sourceId, targetId, ifaceEdgeKind);
         }
 
         // Member overrides → Overrides (virtual dispatch chain)
