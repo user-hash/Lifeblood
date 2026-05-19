@@ -171,6 +171,68 @@ public enum Mode { Idle, Active, Done }
         AssertNotError("lifeblood_diagnose", result);
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // S5b: diagnose response carries `possiblyStale: bool` scoped to the
+    // requested scope. Compared with the analyze timestamp + on-disk
+    // mtime of files in scope. INV-DIAGNOSE-FRESHNESS-002.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Tool_Diagnose_FreshWorkspace_PossiblyStaleFalse()
+    {
+        // Workspace analyzed in ctor — no edits since. possiblyStale
+        // must be false at every scope.
+        var codePath = Path.Combine(_temp, "Code.cs").Replace('\\', '/');
+
+        var fileScopeResult = _handler.Handle("lifeblood_diagnose",
+            JsonArgs(new { filePath = codePath }));
+        AssertNotError("lifeblood_diagnose (file scope, fresh)", fileScopeResult);
+        Assert.False(JsonDocument.Parse(ExtractText(fileScopeResult)).RootElement
+            .GetProperty("possiblyStale").GetBoolean());
+
+        var projectScopeResult = _handler.Handle("lifeblood_diagnose", JsonArgs(new { }));
+        AssertNotError("lifeblood_diagnose (project scope, fresh)", projectScopeResult);
+        Assert.False(JsonDocument.Parse(ExtractText(projectScopeResult)).RootElement
+            .GetProperty("possiblyStale").GetBoolean());
+    }
+
+    [Fact]
+    public void Tool_Diagnose_FileModifiedAfterAnalyze_PossiblyStaleTrue_FileScope()
+    {
+        // Touch Code.cs to push its mtime past the analyze timestamp.
+        // File-scope diagnose on that file must flag possiblyStale: true.
+        var codePath = Path.Combine(_temp, "Code.cs").Replace('\\', '/');
+
+        // Advance file mtime well past the analyze timestamp. UtcNow.AddSeconds(5)
+        // tolerates filesystem mtime resolution (FAT/NTFS quantized to 1-2 s).
+        System.IO.File.SetLastWriteTimeUtc(codePath, System.DateTime.UtcNow.AddSeconds(5));
+
+        var result = _handler.Handle("lifeblood_diagnose",
+            JsonArgs(new { filePath = codePath }));
+        AssertNotError("lifeblood_diagnose (file scope, stale)", result);
+        var doc = JsonDocument.Parse(ExtractText(result));
+        Assert.True(doc.RootElement.GetProperty("possiblyStale").GetBoolean(),
+            "Diagnose at file scope must flag possiblyStale when the file's mtime is newer than analyzedAtUtc.");
+        // Other fields preserved — possiblyStale is additive.
+        Assert.Equal("file", doc.RootElement.GetProperty("scope").GetString());
+        Assert.True(doc.RootElement.TryGetProperty("diagnostics", out _));
+        Assert.True(doc.RootElement.TryGetProperty("definesActive", out _));
+    }
+
+    [Fact]
+    public void Tool_Diagnose_FileModifiedAfterAnalyze_PossiblyStaleTrue_ProjectScope()
+    {
+        var codePath = Path.Combine(_temp, "Code.cs").Replace('\\', '/');
+        System.IO.File.SetLastWriteTimeUtc(codePath, System.DateTime.UtcNow.AddSeconds(5));
+
+        var result = _handler.Handle("lifeblood_diagnose", JsonArgs(new { }));
+        AssertNotError("lifeblood_diagnose (project scope, stale)", result);
+        var doc = JsonDocument.Parse(ExtractText(result));
+        Assert.True(doc.RootElement.GetProperty("possiblyStale").GetBoolean(),
+            "Diagnose at project scope must flag possiblyStale when ANY tracked file's mtime is newer than analyzedAtUtc.");
+        Assert.Equal("project", doc.RootElement.GetProperty("scope").GetString());
+    }
+
     [Fact]
     public void Tool_CompileCheck_FilePath_RespondsWithoutError()
     {

@@ -69,6 +69,19 @@ internal sealed class WriteToolHandler
         // only noise apart from release-build risk.
         // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.
         var report = _session.CompilationHost!.GetDiagnosticsReport(request);
+
+        // S5b: diagnose has no auto-refresh path (compile_check has it
+        // via MaybeRefreshIfStale). If the graph is older than the
+        // requested scope's source on disk, the diagnostics returned
+        // may not match the file state the user just edited. Surface
+        // an explicit `possiblyStale` flag on the response body so
+        // callers don't have to parse envelope.filesChangedSinceAnalyze
+        // out of band. Scope-aware: file scope checks just that file,
+        // module scope walks files parented to that module, project
+        // scope walks every tracked File symbol.
+        // INV-DIAGNOSE-FRESHNESS-002.
+        bool possiblyStale = ComputePossiblyStale(filePath, moduleName);
+
         return TextResult(JsonSerializer.Serialize(new
         {
             scope = !string.IsNullOrEmpty(filePath) ? "file" : (!string.IsNullOrEmpty(moduleName) ? "module" : "project"),
@@ -77,8 +90,75 @@ internal sealed class WriteToolHandler
             resolvedModule = string.IsNullOrEmpty(report.ResolvedModule) ? null : report.ResolvedModule,
             count = report.Diagnostics.Length,
             definesActive = report.DefinesActive,
+            possiblyStale,
             diagnostics = report.Diagnostics,
         }, _jsonOpts));
+    }
+
+    /// <summary>
+    /// True iff the requested diagnose scope has at least one tracked
+    /// source file whose on-disk mtime is newer than the loaded graph's
+    /// analyze timestamp. Scope-aware:
+    /// <list type="bullet">
+    /// <item><c>file</c> scope: mtime-checks the resolved file path only.</item>
+    /// <item><c>module</c> scope: walks every <c>File</c> symbol whose
+    ///   parent is <c>mod:&lt;moduleName&gt;</c>.</item>
+    /// <item><c>project</c> scope: walks every <c>File</c> symbol in the graph.</item>
+    /// </list>
+    /// Returns false when there's no analyze timestamp (JSON-graph
+    /// import), no file system, or no graph. Filesystem stat failures
+    /// are swallowed silently — a missing/inaccessible file is not
+    /// stale, just gone. INV-DIAGNOSE-FRESHNESS-002.
+    /// </summary>
+    private bool ComputePossiblyStale(string? filePath, string? moduleName)
+    {
+        var analyzedAt = _session.AnalyzedAtUtc;
+        if (!analyzedAt.HasValue) return false;
+        var fs = _session.FileSystem;
+        if (fs == null) return false;
+
+        if (!string.IsNullOrEmpty(filePath))
+        {
+            // File scope: mtime-check just this file. Cheap.
+            var resolved = ResolveWorkspacePath(filePath);
+            try
+            {
+                if (!fs.FileExists(resolved)) return false;
+                return fs.GetLastWriteTimeUtc(resolved) > analyzedAt.Value;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Module or project scope: walk File symbols. Module scope
+        // additionally filters by ParentId == "mod:<moduleName>".
+        if (_session.Graph == null) return false;
+        var root = _session.ProjectRoot;
+        var moduleParentId = !string.IsNullOrEmpty(moduleName) ? $"mod:{moduleName}" : null;
+
+        foreach (var sym in _session.Graph.Symbols)
+        {
+            if (sym.Kind != Lifeblood.Domain.Graph.SymbolKind.File) continue;
+            if (string.IsNullOrEmpty(sym.FilePath)) continue;
+            if (moduleParentId != null
+                && !string.Equals(sym.ParentId, moduleParentId, System.StringComparison.Ordinal))
+                continue;
+
+            var path = System.IO.Path.IsPathRooted(sym.FilePath) || string.IsNullOrEmpty(root)
+                ? sym.FilePath
+                : System.IO.Path.GetFullPath(System.IO.Path.Combine(root, sym.FilePath));
+            try
+            {
+                if (fs.GetLastWriteTimeUtc(path) > analyzedAt.Value) return true;
+            }
+            catch
+            {
+                // File missing / inaccessible — not stale, just gone.
+            }
+        }
+        return false;
     }
 
     public McpToolResult HandleCompileCheck(JsonElement? args)
