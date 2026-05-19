@@ -9,6 +9,7 @@
 #include "NativeGraphSink.h"
 #include "NativeTypeEmitter.h"
 #include "NativeTypeMemberEmitter.h"
+#include "NativeTypeMemberFactsCollector.h"
 #include "NativeCursorHandle.h"
 
 #include <string>
@@ -33,6 +34,7 @@ public:
 
 private:
     NativeTypeEmitter types_;
+    NativeTypeMemberFactsCollector typeMemberFacts_;
     NativeTypeMemberEmitter typeMembers_;
     NativeGlobalFactsCollector globalFacts_;
     NativeGlobalEmitter globals_;

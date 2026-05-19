@@ -131,8 +131,11 @@ add_executable(lifeblood-native-clang
     src/NativeTableValueKinds.h
     src/NativeTypeEmitter.cpp
     src/NativeTypeEmitter.h
+    src/NativeTypeMemberDeclarationFacts.h
     src/NativeTypeMemberEmitter.cpp
     src/NativeTypeMemberEmitter.h
+    src/NativeTypeMemberFactsCollector.cpp
+    src/NativeTypeMemberFactsCollector.h
     src/NativeTranslationUnitFileProperties.cpp
     src/NativeTranslationUnitFileProperties.h
     src/NativeVisibilityCounts.cpp

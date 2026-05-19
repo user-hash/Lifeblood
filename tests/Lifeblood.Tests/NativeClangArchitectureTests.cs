@@ -95,8 +95,7 @@ public class NativeClangArchitectureTests
             "adapters/native-clang/src/NativeTableRowEmitter.h",
             "adapters/native-clang/src/NativeTypeEmitter.cpp",
             "adapters/native-clang/src/NativeTypeEmitter.h",
-            "adapters/native-clang/src/NativeTypeMemberEmitter.cpp",
-            "adapters/native-clang/src/NativeTypeMemberEmitter.h",
+            "adapters/native-clang/src/NativeTypeMemberFactsCollector.cpp",
         };
 
         var actual = NativeSourceFiles()
