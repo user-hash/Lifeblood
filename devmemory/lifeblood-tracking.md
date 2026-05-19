@@ -1196,7 +1196,13 @@ Fix shape:
 
 ### LB-TRACK-20260519-021 - Extension-method calls canonicalize without `ReducedFrom`, live methods may appear dead
 
-Status: Open
+Status: Shipped (in-tree, untagged) — F1a atom of the 2026-05-19 plan.
+Closing commit: post-`881b39f` F1a commit; both `RoslynEdgeExtractor.GetMethodId`
+and `RoslynCompilationHost.BuildSymbolId` normalize via `ReducedFrom` before
+`OriginalDefinition`. Pinned by `INV-EXTRACT-EXTENSION-REDUCED-001` and four
+fixtures in `RoslynExtractorTests` (instance-style, static-style, generic-
+extension, chained-extension). Debug suite 1011 → 1015. STATUS test-count
+anchor refreshed.
 Type: Bug
 Source: `D:/Projekti/lifeblood_plan.txt` Stage 1 (2026-05-18), confirmed by 2026-05-19 source inspection of `RoslynEdgeExtractor.GetMethodId`.
 Workspace: Lifeblood self

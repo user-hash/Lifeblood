@@ -1305,6 +1305,128 @@ public class Caller
     }
 
     [Fact]
+    public void ExtractEdges_ExtensionMethodInstanceCall_AttributesToUnreducedId()
+    {
+        // INV-EXTRACT-EXTENSION-REDUCED-001 / LB-TRACK-20260519-021.
+        // Instance-style extension invocation `value.Tag()` binds to the
+        // REDUCED IMethodSymbol whose parameter list drops the explicit
+        // `this` receiver. The declaration path emits the UNREDUCED form
+        // `Tag(this string)`. Without ReducedFrom normalization in
+        // GetMethodId, the call-site emits the edge to a non-matching id
+        // (`method:App.Ext.Tag()` — no params) so dependants() against the
+        // declared `method:App.Ext.Tag(string)` returns zero. Fix routes
+        // the reduced symbol through ReducedFrom first.
+        var (model, root) = Compile(@"
+namespace App;
+public static class Ext
+{
+    public static string Tag(this string value) => ""[t]"" + value;
+}
+public class Caller
+{
+    public string Run(string v) => v.Tag();
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.Run")
+            && e.TargetId == "method:App.Ext.Tag(string)");
+        // The reduced form (no params) must never reach the graph.
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId == "method:App.Ext.Tag()");
+    }
+
+    [Fact]
+    public void ExtractEdges_ExtensionMethodStaticCall_AttributesToUnreducedId()
+    {
+        // Static-style invocation `Ext.Tag(value)` already passes the
+        // unreduced IMethodSymbol — ReducedFrom is null — so the edge id
+        // must equal the byte-for-byte same canonical id as the
+        // instance-style call. Parity ratchet: both invocation forms
+        // round-trip to the declaration id.
+        var (model, root) = Compile(@"
+namespace App;
+public static class Ext
+{
+    public static string Tag(this string value) => ""[t]"" + value;
+}
+public class Caller
+{
+    public string Run(string v) => Ext.Tag(v);
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.Run")
+            && e.TargetId == "method:App.Ext.Tag(string)");
+    }
+
+    [Fact]
+    public void ExtractEdges_GenericExtensionMethodInstanceCall_AttributesToOpenGenericUnreducedId()
+    {
+        // Generic extension method via instance-style invocation. The
+        // reduced symbol drops `this` AND the constructed form substitutes
+        // the type argument — without BOTH ReducedFrom AND OriginalDefinition
+        // normalization the id drifts. The fix order is ReducedFrom first
+        // (recover the explicit `this` receiver in T form), then
+        // OriginalDefinition (recover the open-generic form).
+        var (model, root) = Compile(@"
+namespace App;
+public static class Ext
+{
+    public static T Pick<T>(this T[] items, int cap) => items[0];
+}
+public class Caller
+{
+    public string Run(string[] arr) => arr.Pick(5);
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.Run")
+            && e.TargetId == "method:App.Ext.Pick(T[],int)");
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains("Pick(string[]"));
+        // Reduced form would be `Pick(int)` (this dropped) — must not appear.
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId == "method:App.Ext.Pick(int)");
+    }
+
+    [Fact]
+    public void ExtractEdges_ChainedExtensionMethodCalls_BothCallsAttributeToUnreducedId()
+    {
+        // Two extension methods chained instance-style — the result of the
+        // first call flows into the receiver of the second. Both call-sites
+        // must attribute to the same unreduced canonical-id family so a
+        // dependants() query on either extension picks up the chain.
+        var (model, root) = Compile(@"
+namespace App;
+public static class Ext
+{
+    public static string Wrap(this string s) => ""("" + s + "")"";
+    public static string Tag(this string s) => ""[t]"" + s;
+}
+public class Caller
+{
+    public string Run(string v) => v.Wrap().Tag();
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        // Both chained calls land under Caller.Run with unreduced ids
+        // (each receiver `this string` shows up in the parameter list).
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.Run")
+            && e.TargetId == "method:App.Ext.Wrap(string)");
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId.Contains("Caller.Run")
+            && e.TargetId == "method:App.Ext.Tag(string)");
+    }
+
+    [Fact]
     public void ExtractEdges_TargetTypedNewMethodGroup_OverloadedMethod_PicksFirstCandidate()
     {
         // Overloaded method-group via target-typed new — Roslyn surfaces

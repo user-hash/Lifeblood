@@ -708,6 +708,17 @@ public sealed class RoslynEdgeExtractor
 
     private static string GetMethodId(IMethodSymbol method)
     {
+        // Extension-method call-sites in instance form (`x.Foo()`) resolve to a
+        // reduced IMethodSymbol whose parameter list drops the explicit `this`
+        // receiver. The declaration path emits the unreduced symbol (`Foo(this T x)`).
+        // Without ReducedFrom normalization here, every reduced-form call-site
+        // lands on a non-matching symbol id, so the declared method shows
+        // directDependants:0 and dead_code may flag it. Normalize to the unreduced
+        // form before OriginalDefinition canonicalization so the consumer-side id
+        // matches the producer-side declaration id byte-for-byte.
+        // INV-EXTRACT-EXTENSION-REDUCED-001 / LB-TRACK-20260519-021.
+        if (method.ReducedFrom != null) method = method.ReducedFrom;
+
         // Constructed-generic call-sites resolve to an IMethodSymbol whose
         // ContainingType + parameter types have been substituted with the
         // call's type arguments (e.g. `ApplyCap(stringArr, n)` binds to
