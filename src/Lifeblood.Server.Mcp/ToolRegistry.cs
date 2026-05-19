@@ -53,6 +53,48 @@ public static class ToolRegistry
     },
   };
 
+  // S6 / INV-ADVISORY-LIMITATIONS-001. Tools whose graph-walk is exact
+  // against the loaded source set but whose verdict can be undermined by
+  // Unity-runtime dispatch invisible to static analysis (UnityEvent YAML
+  // bindings, serialized-reference fields on prefabs/scenes/SOs,
+  // AnimationEvent callbacks, SendMessage / Invoke string-named
+  // dispatch, IL2CPP-reflection-stripping link.xml exemptions).
+  // Distinct from HeuristicAdvisoryDeadCode: those tools are honestly
+  // heuristic; these tools are graph-proven but the graph cannot model
+  // every runtime path. Naming the gap on the wire is the honest move.
+  private static readonly EnvelopeClassification DerivedProvenWithUnityRuntimeRisk = new()
+  {
+    TruthTier = TruthTier.Derived,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Semantic",
+    Limitations = new[]
+    {
+      "Unity runtime dispatch is invisible to static analysis: UnityEvent YAML bindings, prefab/scene serialized-field references, ScriptableObject-bound delegates, AnimationEvent callbacks, SendMessage / Invoke string-named dispatch, and reflection-driven entry points can keep symbols live at runtime even when the graph shows zero incoming edges. On Unity workspaces treat 'dead-looking' results as candidates to verify, not proof.",
+    },
+  };
+
+  private static readonly EnvelopeClassification SemanticProvenWithUnityRuntimeRisk = new()
+  {
+    TruthTier = TruthTier.Semantic,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Semantic",
+    Limitations = new[]
+    {
+      "Unity runtime production is invisible to static analysis: serialized-enum fields on prefabs / scenes / ScriptableObjects, Inspector-bound enum values, UnityEvent YAML payloads, and Resources/Addressables-loaded asset values can produce an enum-member at runtime even when this report shows zero source-text production. 'isUnproduced' on Unity workspaces is a candidate signal, not proof.",
+    },
+  };
+
+  private static readonly EnvelopeClassification DerivedProvenWithTestDiscoveryRisk = new()
+  {
+    TruthTier = TruthTier.Derived,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Semantic",
+    Limitations = new[]
+    {
+      "Reflection-driven test discovery is invisible to static analysis: NUnit [TestCaseSource] static factories, custom test attributes, [Theory] data providers, dynamic fixture generation via TestFixtureSource, and Unity PlayMode runtime-injected test cases may produce test executions whose dependence on the target this report does not predict.",
+    },
+  };
+
   /// <summary>
   /// Returns the wire-format tool list for the MCP <c>tools/list</c>
   /// response. When <paramref name="hasCompilationState"/> is false,
@@ -245,6 +287,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_execute",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = HeuristicAdvisorySearch,
   Description = "Execute C# code against the loaded workspace. Code runs in-process (trusted local sandbox — blocklist + AST security checks, not process-isolated). Returns output, errors, and return value. Requires prior lifeblood_analyze with projectPath. The script's globals carry `Graph`, `Compilations`, `ModuleDependencies` plus the `Help` introspection string — see `RoslynSemanticView`. When the workspace is Unity-shaped (Library/ exists at the project root), Unity build artifacts under Library/ScriptAssemblies, Library/Bee/artifacts and Library/PackageCache are auto-injected as references so scripts can touch UnityEngine types; if no build artifacts are found a `runtimeAssemblyWarnings` entry tells the caller to run a Unity build first. Pass `targetProfile` to compile against a specific runtime ref-pack — `'host'` (default), `'net-standard-2.1'`, or `'net-6.0'`. Missing ref-packs surface a `targetRuntimeWarnings` entry instead of a hard failure.",
   InputSchema = new
   {
@@ -268,6 +311,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_diagnose",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Without filters, returns the full project's diagnostics. Pass `filePath` (relative or absolute) to scope diagnostics to one source file — useful when you want to verify a single file you just edited without drowning in a 300k-line project dump. Pass `moduleName` to scope to a single module. `filePath` and `moduleName` may be combined (file scope wins; module is used to disambiguate which compilation contains the file when the same path appears in multiple modules). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound this scope under) plus `resolvedModule` (the module the scope resolved to; null for project-wide) — distinguishes Editor-only findings from release-build risk without re-running under a different define set. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.",
   InputSchema = new
   {
@@ -283,6 +327,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_compile_check",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Pass either `code` (inline source) or `filePath` (relative or absolute path; the file is read off disk) — exactly one is required. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound the snippet/file under) plus `resolvedModule` (the module the check resolved to) so a caller can tell Editor-only findings apart from release-build risk without re-running. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.",
   InputSchema = new
   {
@@ -409,7 +454,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_authority_report",
   Availability = ToolAvailability.ReadSide,
-  EnvelopeClassification = DerivedProven,
+  EnvelopeClassification = DerivedProvenWithUnityRuntimeRisk,
   Description = "Quantify how much architectural authority a type holds. Use for any type that aggregates surface across multiple subordinates: partial-class hosts, dispatchers that route across many row paths (filter family selectors, kernel routers, capability dispatchers), facade types fronting an internal subsystem, ports with many implementations. Returns implementedInterfaceCount (distinct interfaces directly satisfied — Implements edges for class/struct hosts, Inherits edges for interface hosts that extend other interfaces), ownedPublicSurface (public method/property/field/event count, nested types excluded), per-implemented-interface breakdown carrying direct + inherited member surface (directMemberCount, inheritedMemberCount, aggregateMemberCount, memberCount alias, inheritedInterfaces[], isCompositeInterface) plus distinct consumers reaching the interface OR any of its members across the inheritance closure via Calls/References, and a forwarderRatio (PureForwarder methods / total methods, in [0.0,1.0]; -1.0 sentinel when classification data is missing). Composite-facade interfaces (ABG-style) now report their inherited contract's load-bearing surface in the same row instead of looking empty. Triage heuristics: many interfaces + low ownedPublicSurface + high forwarderRatio = candidate for splitting (the host is mostly indirection); concentrated public surface + low forwarderRatio = doing real work; high implementedInterfaceCount + balanced surface = legitimate aggregator. Pairs naturally with lifeblood_port_health when one of the implemented interfaces looks vestigial.",
   InputSchema = new
   {
@@ -425,7 +470,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_port_health",
   Availability = ToolAvailability.ReadSide,
-  EnvelopeClassification = DerivedProven,
+  EnvelopeClassification = DerivedProvenWithUnityRuntimeRisk,
   Description = "Score how 'alive' the members of an interface or class are. Walks direct Contains edges PLUS the transitive interface-inheritance closure (composite facades — an interface that extends sub-interfaces — aggregate the inherited contract's surface, so an ABG-style empty-looking facade no longer mislabels as 'vestigial'). Runs an incoming-edge check on every member across the aggregate set and reports memberCount (aggregate, back-compat alias) + directMemberCount + inheritedMemberCount + aggregateMemberCount + inheritedInterfaces[] + isCompositeInterface, alongside liveMembers (>=1 incoming non-Contains edge OR outgoing Implements), deadMembers, livenessPct, and a verdict — 'healthy' (>=75% live), 'mixed', or 'vestigial' (<25% live). Use to spot ports/types that are mostly dead surface; composite facades are now triage-able from one call.",
   InputSchema = new
   {
@@ -457,7 +502,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_test_impact",
   Availability = ToolAvailability.ReadSide,
-  EnvelopeClassification = DerivedProven,
+  EnvelopeClassification = DerivedProvenWithTestDiscoveryRisk,
   Description = "Which test classes transitively depend on a target symbol or file. BFS over incoming non-Contains edges with per-symbol distance tracking; classifies each affected symbol as test-vs-non-test via the extractor-recorded method-level attributes set (`[Test]`, `[TestCase]`, `[TestCaseSource]`, `[Theory]`, `[UnityTest]`, `[Fact]`). Lifecycle attributes (`[SetUp]`, `[OneTimeSetUp]`, `[TearDown]`) are excluded — they participate in test execution but are not the assertion-bearing methods. Test methods are folded by containing type; per-class `minDistance` is the smallest hop count to any of its affected methods, mapped to `confidence` Direct (1) / OneHop (2) / Transitive (3+). Response carries `target`, `targetKind` (Symbol or File), `totalTestMethodCount`, `directTestClassCount`, `affectedTestClassCount`, `affectedTestClasses[]` sorted by ascending distance then by qualified name, plus `recommendedFilters[]` — pre-composed `FullyQualifiedName~<class>` strings the caller pastes into `dotnet test --filter` without composing the filter syntax themselves. Disambiguation: a `target` value starting with a canonical-id prefix (`type:` / `method:` / `field:` / `property:` / `mod:` / `file:` / `ns:` / `namespace:`) routes through the symbol resolver; otherwise treated as a file path and every symbol declared in that file becomes a multi-source BFS start. INV-TEST-IMPACT-001 / LB-TRACK-20260514-007.",
   InputSchema = new
   {
@@ -496,6 +541,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_find_references",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Find all references to a symbol across the loaded workspace. Returns file paths, line numbers, and span text. Set includeDeclarations=true to also return the symbol's declaration sites (one entry per partial declaration for partial types).",
   InputSchema = new
   {
@@ -512,6 +558,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_find_definition",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Find where a symbol is declared. Returns file path, line, column, display name, and documentation.",
   InputSchema = new
   {
@@ -527,6 +574,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_find_implementations",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Find all types/methods that implement an interface or override a virtual member.",
   InputSchema = new
   {
@@ -542,6 +590,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_enum_coverage",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProvenWithUnityRuntimeRisk,
   Description = "Per-member reference coverage for an enum type. Walks every loaded compilation once, classifies each member reference by parent syntax — `produced` (RHS of assignment, return / yield / arrow body, argument, variable initializer), `consumedComparison` (==, !=, <, <=, >, >=), `consumedSwitch` (case label, is-pattern, constant-pattern, switch-expression arm) — and returns one row per declared member with `totalReferences`, `producedCount`, `consumedComparisonCount`, `consumedSwitchCount`, `dispatchTableReferenceCount` (additive — references inside static-table-shaped initializers, recognised via the same classifier `lifeblood_static_tables` uses so dispatch-table-routed values are triage-able from one row: `producedCount == dispatchTableReferenceCount` means \"only a routing key, never genuinely produced in app code\"), `isUnproduced` (declared + referenced as a consumer but never assigned), `isUnreferenced` (zero references of any kind). Response carries `unproducedCount` + `unreferencedCount` as top-level summaries so the dogfood case (\"how many values in this state-machine enum are never produced?\") reads off one call instead of pairing find_references with manual syntax inspection per hit. `enumTypeId` accepts canonical (`type:NS.T`), fully-qualified (`NS.T`), or bare short name (`T`) — routed through the same resolver as every other type-id-taking tool. INV-ENUM-COVERAGE-001 + INV-ENUM-COVERAGE-DISPATCH-TABLE-001 / LB-TRACK-20260514-003.",
   InputSchema = new
   {
@@ -576,6 +625,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_symbol_at_position",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Resolve what symbol is at a specific source position. Returns symbol ID, name, kind, qualified name, and documentation.",
   InputSchema = new
   {
@@ -593,6 +643,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_documentation",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Get XML documentation for a symbol. Returns the summary content.",
   InputSchema = new
   {
@@ -608,6 +659,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_rename",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Rename a symbol across the workspace. Returns text edits (does NOT apply them). The caller decides whether to apply.",
   InputSchema = new
   {
@@ -624,6 +676,7 @@ public static class ToolRegistry
   {
   Name = "lifeblood_format",
   Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
   Description = "Format C# code using Roslyn's formatter. Returns the formatted code string.",
   InputSchema = new
   {

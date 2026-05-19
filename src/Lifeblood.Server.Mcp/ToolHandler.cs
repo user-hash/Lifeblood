@@ -91,19 +91,22 @@ public sealed class ToolHandler
                 "lifeblood_port_health" => HandlePortHealth(arguments),
                 "lifeblood_cycles" => HandleCycles(arguments),
                 "lifeblood_test_impact" => HandleTestImpact(arguments),
-                // Write-side
-                "lifeblood_execute" => _write.HandleExecute(arguments),
-                "lifeblood_diagnose" => _write.HandleDiagnose(arguments),
-                "lifeblood_compile_check" => _write.HandleCompileCheck(arguments),
-                "lifeblood_find_references" => _write.HandleFindReferences(arguments),
-                "lifeblood_find_definition" => _write.HandleFindDefinition(arguments),
-                "lifeblood_find_implementations" => _write.HandleFindImplementations(arguments),
-                "lifeblood_enum_coverage" => _write.HandleEnumCoverage(arguments),
-                "lifeblood_static_tables" => _write.HandleStaticTables(arguments),
-                "lifeblood_symbol_at_position" => _write.HandleGetSymbolAtPosition(arguments),
-                "lifeblood_documentation" => _write.HandleGetDocumentation(arguments),
-                "lifeblood_rename" => _write.HandleRename(arguments),
-                "lifeblood_format" => _write.HandleFormat(arguments),
+                // Write-side. Wrapped uniformly through WrapWriteSide so
+                // every write-side response carries the same envelope shape
+                // as the read-side tools. INV-ENVELOPE-001 +
+                // INV-ADVISORY-LIMITATIONS-001.
+                "lifeblood_execute" => WrapWriteSide("lifeblood_execute", _write.HandleExecute(arguments)),
+                "lifeblood_diagnose" => WrapWriteSide("lifeblood_diagnose", _write.HandleDiagnose(arguments)),
+                "lifeblood_compile_check" => WrapWriteSide("lifeblood_compile_check", _write.HandleCompileCheck(arguments)),
+                "lifeblood_find_references" => WrapWriteSide("lifeblood_find_references", _write.HandleFindReferences(arguments)),
+                "lifeblood_find_definition" => WrapWriteSide("lifeblood_find_definition", _write.HandleFindDefinition(arguments)),
+                "lifeblood_find_implementations" => WrapWriteSide("lifeblood_find_implementations", _write.HandleFindImplementations(arguments)),
+                "lifeblood_enum_coverage" => WrapWriteSide("lifeblood_enum_coverage", _write.HandleEnumCoverage(arguments)),
+                "lifeblood_static_tables" => WrapWriteSide("lifeblood_static_tables", _write.HandleStaticTables(arguments)),
+                "lifeblood_symbol_at_position" => WrapWriteSide("lifeblood_symbol_at_position", _write.HandleGetSymbolAtPosition(arguments)),
+                "lifeblood_documentation" => WrapWriteSide("lifeblood_documentation", _write.HandleGetDocumentation(arguments)),
+                "lifeblood_rename" => WrapWriteSide("lifeblood_rename", _write.HandleRename(arguments)),
+                "lifeblood_format" => WrapWriteSide("lifeblood_format", _write.HandleFormat(arguments)),
                 _ => ErrorResult($"Unknown tool: {toolName}"),
             };
         }
@@ -1092,5 +1095,29 @@ public sealed class ToolHandler
             // injection ran into an unparseable payload.
             return payloadJson;
         }
+    }
+
+    /// <summary>
+    /// Wrap a write-side tool's <see cref="McpToolResult"/> with the
+    /// truth envelope. Mirrors the read-side <c>WithEnvelope</c> seam:
+    /// every successful response that carries a JSON-object payload
+    /// gets the same <c>envelope</c> field structure as a read-side
+    /// response. Error results (<c>IsError == true</c>) pass through
+    /// unchanged — envelopes are for successful results, not for
+    /// "no graph loaded" or input-validation errors. Idempotent via
+    /// <see cref="MergeEnvelopeIntoJson"/>. INV-ENVELOPE-001 +
+    /// INV-ADVISORY-LIMITATIONS-001.
+    /// </summary>
+    private McpToolResult WrapWriteSide(string toolName, McpToolResult result)
+    {
+        if (result.IsError == true) return result;
+        if (result.Content.Length == 0) return result;
+        var wrappedText = MergeEnvelopeIntoJson(toolName, result.Content[0].Text);
+        if (ReferenceEquals(wrappedText, result.Content[0].Text)) return result;
+        return new McpToolResult
+        {
+            Content = new[] { new McpContent { Type = result.Content[0].Type, Text = wrappedText } },
+            IsError = result.IsError,
+        };
     }
 }
