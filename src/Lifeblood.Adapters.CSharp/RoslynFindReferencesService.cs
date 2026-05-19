@@ -38,7 +38,8 @@ internal sealed class RoslynFindReferencesService
         // boundary (nullability, reduced names, attribute round-trips), causing legitimate
         // call sites to be silently dropped. The canonical builder is namespace-walking +
         // explicit param types. It produces the same string for source and metadata symbols
-        // because both feed through identical RoslynSymbolExtractor.GetFullName + ToDisplayString.
+        // because both route through Internal.CanonicalSymbolFormat (GetFullName + the pinned
+        // ParamType SymbolDisplayFormat).
         //
         // First we resolve the requested symbol once to get its OWN canonical ID. Then for
         // every visited node we compute the canonical ID and compare strings. This is the

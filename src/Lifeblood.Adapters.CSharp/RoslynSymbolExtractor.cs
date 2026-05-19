@@ -670,7 +670,7 @@ public sealed class RoslynSymbolExtractor
             case SpecialType.System_MulticastDelegate:
                 return;
         }
-        var fqn = GetFullName(b);
+        var fqn = CanonicalSymbolFormat.GetFullName(b);
         if (!string.IsNullOrEmpty(fqn))
             props["baseType"] = fqn;
     }
@@ -784,9 +784,6 @@ public sealed class RoslynSymbolExtractor
         if (names.Count == 0) return;
         props[SymbolPropertyKeys.Attributes] = string.Join(";", names);
     }
-
-    internal static string GetFullName(ISymbol symbol)
-        => CanonicalSymbolFormat.GetFullName(symbol);
 
     private static string ExtractTypeFromId(string typeId)
         => typeId.StartsWith("type:") ? typeId.Substring(5) : typeId;
