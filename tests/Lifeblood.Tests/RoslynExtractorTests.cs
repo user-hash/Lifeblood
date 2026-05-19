@@ -1741,6 +1741,99 @@ public sealed class ModuleCompilationBuilder
     // walker rewrite cannot silently regress it.
     // ──────────────────────────────────────────────────────────────────────
 
+    // ──────────────────────────────────────────────────────────────────────
+    // F1b — cross-partial private method references.
+    // LB-TRACK-20260518-018-adjacent / 2026-05-15 correctness masterplan
+    // Stage 1: file A declares `private void Helper()`, file B (a partial
+    // declaration of the same class) invokes `Helper()`. dependants,
+    // find_references, and dead_code must all agree the method is live.
+    // The Roslyn semantic model resolves the cross-partial call natively
+    // because both files participate in the same Compilation — this ratchet
+    // protects against a future walker change that scopes resolution to
+    // the syntax tree currently being extracted.
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractEdges_CrossPartialPrivateMethodCall_EmitsCallsEdgeWithCanonicalId()
+    {
+        // File A: declares the private method.
+        var fileA = @"
+namespace App;
+public partial class Service
+{
+    private void Helper() { }
+}";
+        // File B: partial declaration of the SAME class, calls Helper.
+        var fileB = @"
+namespace App;
+public partial class Service
+{
+    public void Drive()
+    {
+        Helper();
+    }
+}";
+
+        var treeA = CSharpSyntaxTree.ParseText(fileA, path: "Service.A.cs");
+        var treeB = CSharpSyntaxTree.ParseText(fileB, path: "Service.B.cs");
+        var compilation = CSharpCompilation.Create("CrossPartialAssembly",
+            new[] { treeA, treeB }, BclRefs(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        // Extract from BOTH trees and union the edges. Partial-type call
+        // resolution must produce identical canonical ids regardless of
+        // which tree carries the call site.
+        var extractor = new RoslynEdgeExtractor();
+        var modelA = compilation.GetSemanticModel(treeA);
+        var modelB = compilation.GetSemanticModel(treeB);
+        var edges = extractor.Extract(modelA, treeA.GetRoot())
+            .Concat(extractor.Extract(modelB, treeB.GetRoot()))
+            .ToList();
+
+        // Call from file B's Drive() to file A's Helper() must land on
+        // the canonical id `method:App.Service.Helper()`.
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId == "method:App.Service.Drive()"
+            && e.TargetId == "method:App.Service.Helper()");
+    }
+
+    [Fact]
+    public void ExtractEdges_CrossPartialPrivateFieldReference_EmitsReferencesEdge()
+    {
+        // Partial-class private field — same invariant applied to field
+        // references. Without cross-partial resolution, file B's read of
+        // `_state` would produce no edge.
+        var fileA = @"
+namespace App;
+public partial class Store
+{
+    private int _state;
+}";
+        var fileB = @"
+namespace App;
+public partial class Store
+{
+    public int Snapshot() => _state;
+}";
+
+        var treeA = CSharpSyntaxTree.ParseText(fileA, path: "Store.A.cs");
+        var treeB = CSharpSyntaxTree.ParseText(fileB, path: "Store.B.cs");
+        var compilation = CSharpCompilation.Create("CrossPartialFieldAssembly",
+            new[] { treeA, treeB }, BclRefs(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var extractor = new RoslynEdgeExtractor();
+        var modelA = compilation.GetSemanticModel(treeA);
+        var modelB = compilation.GetSemanticModel(treeB);
+        var edges = extractor.Extract(modelA, treeA.GetRoot())
+            .Concat(extractor.Extract(modelB, treeB.GetRoot()))
+            .ToList();
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "method:App.Store.Snapshot()"
+            && e.TargetId == "field:App.Store._state");
+    }
+
     [Fact]
     public void ExtractEdges_InvocationOnArrayElement_EmitsCallsEdge()
     {
