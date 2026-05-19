@@ -160,6 +160,8 @@ because they refer to the same underlying method symbol.
 
 - **INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001. Dispatch-table-shaped static initializers emit graph edges for every method-group, enum-member, and field-reference cell through the same identifier / member-access walkers regular code paths use — no separate static-table-edge synthesizer is needed.**
 
+- **INV-EXTRACT-EXTENSION-REDUCED-001. Extension-method canonical ids walk through `ReducedFrom` before `OriginalDefinition`, so instance-style invocations (`x.Foo()`) and static-style invocations (`Helper.Foo(x)`) emit graph edges with byte-identical ids.**
+
 - **INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001. Graph edges target the source-declared `OriginalDefinition` of any `IMethodSymbol`, never an instantiated constructed-generic form.**
 
 - **INV-EXTRACT-METHOD-GROUP-CANDIDATE-001. Method-group references that Roslyn surfaces through `SymbolInfo.CandidateSymbols` emit graph edges to the first candidate's source-declared definition.**

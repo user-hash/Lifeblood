@@ -1081,6 +1081,12 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   /// </summary>
   private static string BuildSymbolId(ISymbol symbol)
   {
+  // Extension-method symbols arriving in reduced form (`x.Foo()` invocation
+  // shape) carry a parameter list that drops the explicit `this` receiver.
+  // The declaration path emits the unreduced form, so the consumer side must
+  // normalize first or the canonical ids drift. Mirrors the same discipline
+  // applied in RoslynEdgeExtractor.GetMethodId. INV-EXTRACT-EXTENSION-REDUCED-001.
+  if (symbol is IMethodSymbol m && m.ReducedFrom != null) symbol = m.ReducedFrom;
   return symbol switch
   {
   INamedTypeSymbol type => Internal.SymbolIds.Type(RoslynSymbolExtractor.GetFullName(type)),
