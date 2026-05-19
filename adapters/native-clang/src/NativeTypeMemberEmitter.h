@@ -1,34 +1,25 @@
 #pragma once
 
-#include <clang-c/Index.h>
+#include "NativeTypeMemberDeclarationFacts.h"
 
 #include <string>
 
 namespace lifeblood::native_clang
 {
-class ClangSourceMapper;
-class NativeFileRegistry;
 class NativeGraphSink;
-class NativeTypeEmitter;
 
 class NativeTypeMemberEmitter
 {
 public:
     NativeTypeMemberEmitter(
         std::string buildProfile,
-        NativeGraphSink& graph,
-        const ClangSourceMapper& sourceMap,
-        NativeFileRegistry& files,
-        NativeTypeEmitter& types);
+        NativeGraphSink& graph);
 
-    bool AddEnumConstant(CXCursor cursor, const std::string& enumTypeId);
-    void AddField(CXCursor cursor, const std::string& ownerTypeId);
+    bool AddEnumConstant(const NativeEnumConstantDeclarationFacts& facts);
+    bool AddField(const NativeFieldDeclarationFacts& facts);
 
 private:
     std::string buildProfile_;
     NativeGraphSink& graph_;
-    const ClangSourceMapper& sourceMap_;
-    NativeFileRegistry& files_;
-    NativeTypeEmitter& types_;
 };
 }

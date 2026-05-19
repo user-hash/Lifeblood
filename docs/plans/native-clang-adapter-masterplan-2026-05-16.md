@@ -34,6 +34,9 @@ boundaries, and a more repeatable FFmpeg scout.
 - N2c moved global symbol emission behind `NativeGlobalDeclarationFacts`.
   `NativeGlobalEmitter.*` preserves graph-side callback-table semantics without
   touching raw libclang cursors.
+- N2d moved enum constants and struct fields behind
+  `NativeTypeMemberDeclarationFacts`, leaving `NativeTypeMemberEmitter.*` as
+  graph-side symbol emission only.
 - Open architecture work: many inner native emitters still consume raw
   `CXCursor` rather than adapter-edge fact DTOs.
 

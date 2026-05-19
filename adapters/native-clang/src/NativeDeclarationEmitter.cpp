@@ -9,7 +9,8 @@ NativeDeclarationEmitter::NativeDeclarationEmitter(
     const ClangSourceMapper& sourceMap,
     NativeFileRegistry& files)
     : types_(buildProfile, graph, sourceMap, files),
-      typeMembers_(buildProfile, graph, sourceMap, files, types_),
+      typeMemberFacts_(sourceMap),
+      typeMembers_(buildProfile, graph),
       globalFacts_(sourceMap),
       globals_(buildProfile, graph, files),
       functionFacts_(sourceMap),
@@ -29,12 +30,17 @@ bool NativeDeclarationEmitter::AddTypedefType(NativeCursorHandle cursor)
 
 bool NativeDeclarationEmitter::AddEnumConstant(NativeCursorHandle cursor, const std::string& enumTypeId)
 {
-    return typeMembers_.AddEnumConstant(cursor.cursor, enumTypeId);
+    auto facts = typeMemberFacts_.CollectEnumConstant(cursor, enumTypeId);
+    return facts ? typeMembers_.AddEnumConstant(*facts) : false;
 }
 
 void NativeDeclarationEmitter::AddField(NativeCursorHandle cursor, const std::string& ownerTypeId)
 {
-    typeMembers_.AddField(cursor.cursor, ownerTypeId);
+    auto facts = typeMemberFacts_.CollectField(cursor, ownerTypeId);
+    if (!facts) return;
+    if (!typeMembers_.AddField(*facts)) return;
+
+    typeMemberFacts_.AddFieldTypeReference(cursor, facts->symbolId, types_);
 }
 
 bool NativeDeclarationEmitter::AddGlobalVariable(NativeCursorHandle cursor)
