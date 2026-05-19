@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-05-19
+
 ### Fixed
 
 - **`INV-EXTRACT-PROPERTY-READ-001` — bare-identifier sibling-member property and event reads emit a symbol-level `References` edge.**
@@ -1279,7 +1281,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...HEAD
+[0.7.8]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...v0.7.8
 [0.7.7]: https://github.com/user-hash/Lifeblood/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/user-hash/Lifeblood/compare/v0.7.5...v0.7.6
 [0.7.5]: https://github.com/user-hash/Lifeblood/compare/v0.7.4...v0.7.5
