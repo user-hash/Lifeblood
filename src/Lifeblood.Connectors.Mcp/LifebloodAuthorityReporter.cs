@@ -129,6 +129,15 @@ public sealed class LifebloodAuthorityReporter : IAuthorityReporter
         else
             forwarderRatio = (double)pureForwarderCount / totalMethodCount;
 
+        // 5. Planning-verdict evidence (S7, INV-AUTHORITY-PLANNING-COMPOSITION-001).
+        //    Partition incoming consumers by owning module: same-module
+        //    use is the adapter-shim shape, cross-module use is the
+        //    boundary-contract shape. HasSingleImplementer surfaces
+        //    interface targets whose contract has exactly one source
+        //    implementer (candidate for direct concrete binding).
+        var (crossAssembly, sameAssembly) = ClassifyConsumersByAssembly(graph, typeId);
+        bool? hasSingleImplementer = ComputeHasSingleImplementer(graph, typeId);
+
         return new AuthorityReport
         {
             TypeId = typeId,
@@ -138,7 +147,103 @@ public sealed class LifebloodAuthorityReporter : IAuthorityReporter
             ForwarderRatio = System.Math.Round(forwarderRatio, 3),
             TotalMethodCount = totalMethodCount,
             PureForwarderCount = pureForwarderCount,
+            CrossAssemblyConsumerCount = crossAssembly,
+            SameAssemblyConsumerCount = sameAssembly,
+            HasSingleImplementer = hasSingleImplementer,
         };
+    }
+
+    /// <summary>
+    /// Partition consumers (incoming Calls / References on the type and
+    /// every direct member) by the source's owning module. Returns
+    /// (crossAssemblyModuleCount, sameAssemblyConsumerCount) where the
+    /// former counts DISTINCT modules other than the target's own and
+    /// the latter counts DISTINCT consumer symbols within the same
+    /// module. Returns (0, 0) when the target's own module cannot be
+    /// resolved (defensive — graphs imported from JSON without module
+    /// containment chains land here).
+    /// </summary>
+    private static (int CrossAssembly, int SameAssembly) ClassifyConsumersByAssembly(
+        SemanticGraph graph, string typeId)
+    {
+        var ownModule = FindContainingModule(graph, typeId);
+        if (ownModule == null) return (0, 0);
+
+        var crossModules = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+        var sameAssemblySymbols = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+
+        void Consume(string nodeId)
+        {
+            foreach (int idx in graph.GetIncomingEdgeIndexes(nodeId))
+            {
+                var edge = graph.Edges[idx];
+                if (edge.Kind != EdgeKind.Calls && edge.Kind != EdgeKind.References) continue;
+                var sourceModule = FindContainingModule(graph, edge.SourceId);
+                if (sourceModule == null) continue;
+                if (string.Equals(sourceModule, ownModule, System.StringComparison.Ordinal))
+                    sameAssemblySymbols.Add(edge.SourceId);
+                else
+                    crossModules.Add(sourceModule);
+            }
+        }
+
+        Consume(typeId);
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Contains) continue;
+            var member = graph.GetSymbol(edge.TargetId);
+            if (member == null || member.Kind == SymbolKind.Type) continue;
+            Consume(edge.TargetId);
+        }
+
+        return (crossModules.Count, sameAssemblySymbols.Count);
+    }
+
+    /// <summary>
+    /// True iff the type is an interface AND exactly one source-defined
+    /// type carries an outgoing <see cref="EdgeKind.Implements"/> edge
+    /// into it. Null when the target is not an interface (no semantic
+    /// concept of "single implementer" for class/struct/enum targets).
+    /// </summary>
+    private static bool? ComputeHasSingleImplementer(SemanticGraph graph, string typeId)
+    {
+        var sym = graph.GetSymbol(typeId);
+        if (sym == null) return null;
+        if (sym.Properties == null) return null;
+        if (!sym.Properties.TryGetValue("typeKind", out var kind)) return null;
+        if (!string.Equals(kind, "interface", System.StringComparison.Ordinal)) return null;
+
+        var implementers = new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+        foreach (int idx in graph.GetIncomingEdgeIndexes(typeId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Implements) continue;
+            implementers.Add(edge.SourceId);
+            if (implementers.Count > 1) return false; // short-circuit
+        }
+        return implementers.Count == 1;
+    }
+
+    /// <summary>
+    /// Walk the <see cref="Symbol.ParentId"/> chain until a
+    /// <see cref="SymbolKind.Module"/> node is reached. Returns its id,
+    /// or null when no module ancestor exists (orphaned symbol, JSON-
+    /// imported graph without containment chain). Hard depth cap
+    /// (16 hops) guards against pathological cycles.
+    /// </summary>
+    private static string? FindContainingModule(SemanticGraph graph, string symbolId)
+    {
+        string cursor = symbolId;
+        for (int hops = 0; hops < 16; hops++)
+        {
+            var sym = graph.GetSymbol(cursor);
+            if (sym == null) return null;
+            if (sym.Kind == SymbolKind.Module) return sym.Id;
+            if (string.IsNullOrEmpty(sym.ParentId)) return null;
+            cursor = sym.ParentId;
+        }
+        return null;
     }
 
     private static void CollectIncoming(

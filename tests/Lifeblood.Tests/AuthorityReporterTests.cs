@@ -216,6 +216,182 @@ public abstract class Foo {
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // S7: planning-verdict evidence fields. ADDITIVE — every existing
+    // metric stays stable; new fields surface the partition between
+    // same-module / cross-module consumers and the
+    // single-implementer signal so callers can derive
+    // EvictableDebt / BoundaryContract / SceneDiscoveryContract /
+    // CompositeFacade / AdapterShimOnly / NeedsAudit verdicts client-side
+    // per the composition recipe (INV-AUTHORITY-PLANNING-COMPOSITION-001).
+    // Lifeblood ships evidence, not verdicts — pattern matches
+    // INV-FLAG-COVERAGE-COMPOSITION-001.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AuthorityReport_BoundaryShape_HighCrossAssembly_LowSameAssembly()
+    {
+        // Type lives in ModuleA, consumed by two distinct other modules.
+        // Boundary contract evidence shape.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "mod:ModuleA", Name = "ModuleA", Kind = DomainSymbolKind.Module })
+            .AddSymbol(new Symbol { Id = "mod:ModuleB", Name = "ModuleB", Kind = DomainSymbolKind.Module })
+            .AddSymbol(new Symbol { Id = "mod:ModuleC", Name = "ModuleC", Kind = DomainSymbolKind.Module })
+            .AddSymbol(new Symbol { Id = "type:N.Boundary", Name = "Boundary", Kind = DomainSymbolKind.Type, ParentId = "mod:ModuleA" })
+            .AddSymbol(new Symbol { Id = "method:N.B.X()", Name = "X", Kind = DomainSymbolKind.Method, ParentId = "type:N.B" })
+            .AddSymbol(new Symbol { Id = "type:N.B", Name = "B", Kind = DomainSymbolKind.Type, ParentId = "mod:ModuleB" })
+            .AddSymbol(new Symbol { Id = "method:N.C.Y()", Name = "Y", Kind = DomainSymbolKind.Method, ParentId = "type:N.C" })
+            .AddSymbol(new Symbol { Id = "type:N.C", Name = "C", Kind = DomainSymbolKind.Type, ParentId = "mod:ModuleC" })
+            .AddEdge(new Edge { SourceId = "method:N.B.X()", TargetId = "type:N.Boundary", Kind = EdgeKind.References, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "method:N.C.Y()", TargetId = "type:N.Boundary", Kind = EdgeKind.References, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Boundary");
+
+        Assert.Equal(2, report.CrossAssemblyConsumerCount); // ModuleB + ModuleC
+        Assert.Equal(0, report.SameAssemblyConsumerCount);  // no same-module use
+    }
+
+    [Fact]
+    public void AuthorityReport_AdapterShimShape_HighSameAssembly_ZeroCrossAssembly()
+    {
+        // Type lives in ModuleA, consumed only by other symbols in
+        // ModuleA. Adapter-shim evidence shape.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "mod:ModuleA", Name = "ModuleA", Kind = DomainSymbolKind.Module })
+            .AddSymbol(new Symbol { Id = "type:N.Shim", Name = "Shim", Kind = DomainSymbolKind.Type, ParentId = "mod:ModuleA" })
+            .AddSymbol(new Symbol { Id = "type:N.Local1", Name = "Local1", Kind = DomainSymbolKind.Type, ParentId = "mod:ModuleA" })
+            .AddSymbol(new Symbol { Id = "method:N.Local1.A()", Name = "A", Kind = DomainSymbolKind.Method, ParentId = "type:N.Local1" })
+            .AddSymbol(new Symbol { Id = "type:N.Local2", Name = "Local2", Kind = DomainSymbolKind.Type, ParentId = "mod:ModuleA" })
+            .AddSymbol(new Symbol { Id = "method:N.Local2.B()", Name = "B", Kind = DomainSymbolKind.Method, ParentId = "type:N.Local2" })
+            .AddEdge(new Edge { SourceId = "method:N.Local1.A()", TargetId = "type:N.Shim", Kind = EdgeKind.References, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "method:N.Local2.B()", TargetId = "type:N.Shim", Kind = EdgeKind.References, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Shim");
+
+        Assert.Equal(0, report.CrossAssemblyConsumerCount);
+        Assert.Equal(2, report.SameAssemblyConsumerCount); // both local methods
+    }
+
+    [Fact]
+    public void AuthorityReport_NoModuleAncestor_DegradesGracefullyToZero()
+    {
+        // JSON-imported graph without containment chain — must not
+        // throw; returns zero counts.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Orphan", Name = "Orphan", Kind = DomainSymbolKind.Type })
+            .Build();
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Orphan");
+        Assert.Equal(0, report.CrossAssemblyConsumerCount);
+        Assert.Equal(0, report.SameAssemblyConsumerCount);
+    }
+
+    [Fact]
+    public void AuthorityReport_HasSingleImplementer_TrueForInterfaceWithOneImpl()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.IPort", Name = "IPort", Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string> { ["typeKind"] = "interface" },
+            })
+            .AddSymbol(new Symbol { Id = "type:N.Adapter", Name = "Adapter", Kind = DomainSymbolKind.Type })
+            .AddEdge(new Edge { SourceId = "type:N.Adapter", TargetId = "type:N.IPort", Kind = EdgeKind.Implements, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.IPort");
+        Assert.True(report.HasSingleImplementer);
+    }
+
+    [Fact]
+    public void AuthorityReport_HasSingleImplementer_FalseForInterfaceWithMultipleImpls()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.IPort", Name = "IPort", Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string> { ["typeKind"] = "interface" },
+            })
+            .AddSymbol(new Symbol { Id = "type:N.AdapterA", Name = "AdapterA", Kind = DomainSymbolKind.Type })
+            .AddSymbol(new Symbol { Id = "type:N.AdapterB", Name = "AdapterB", Kind = DomainSymbolKind.Type })
+            .AddEdge(new Edge { SourceId = "type:N.AdapterA", TargetId = "type:N.IPort", Kind = EdgeKind.Implements, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:N.AdapterB", TargetId = "type:N.IPort", Kind = EdgeKind.Implements, Evidence = Ev })
+            .Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.IPort");
+        Assert.False(report.HasSingleImplementer);
+    }
+
+    [Fact]
+    public void AuthorityReport_HasSingleImplementer_NullForNonInterface()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:N.Concrete", Name = "Concrete", Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string> { ["typeKind"] = "class" },
+            })
+            .Build();
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Concrete");
+        Assert.Null(report.HasSingleImplementer);
+    }
+
+    [Fact]
+    public void AuthorityReport_HasSingleImplementer_NullWhenTypeKindMissing()
+    {
+        // Hand-built graph without typeKind property (older JSON
+        // imports) — must not claim single-implementer status it
+        // cannot verify.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:N.Mystery", Name = "Mystery", Kind = DomainSymbolKind.Type })
+            .Build();
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:N.Mystery");
+        Assert.Null(report.HasSingleImplementer);
+    }
+
+    [Fact]
+    public void AuthorityReport_RealGraph_PortWithSingleImplementer_SurfacedAsAdapterShimCandidate()
+    {
+        // End-to-end through production extractor. Single-implementer
+        // interface = caller can derive AdapterShimOnly verdict.
+        var (model, root) = Compile(@"
+namespace App;
+public interface IRunner { void Run(); }
+public class Runner : IRunner { public void Run() { } }
+public class Caller { public void Use(IRunner r) { r.Run(); } }");
+        var symbols = new RoslynSymbolExtractor()
+            .Extract(model, root, "App.cs", "file:App.cs")
+            .ToList();
+        var edges = new RoslynEdgeExtractor().Extract(model, root).ToList();
+        var builder = new GraphBuilder();
+        // Add module ancestor so the same/cross-assembly walk has
+        // something to resolve to.
+        builder.AddSymbol(new Symbol { Id = "mod:TestAssembly", Name = "TestAssembly", Kind = DomainSymbolKind.Module });
+        builder.AddSymbol(new Symbol { Id = "file:App.cs", Name = "App.cs", Kind = DomainSymbolKind.File, ParentId = "mod:TestAssembly" });
+        foreach (var s in symbols)
+        {
+            // Re-parent file-rooted top-level types so module resolution
+            // works on the synthetic test setup.
+            var withParent = string.IsNullOrEmpty(s.ParentId) || s.ParentId == "file:App.cs"
+                ? new Symbol
+                {
+                    Id = s.Id, Name = s.Name, QualifiedName = s.QualifiedName, Kind = s.Kind,
+                    FilePath = s.FilePath, Line = s.Line, ParentId = "file:App.cs",
+                    Visibility = s.Visibility, IsAbstract = s.IsAbstract, IsStatic = s.IsStatic,
+                    Properties = s.Properties,
+                }
+                : s;
+            builder.AddSymbol(withParent);
+        }
+        foreach (var e in edges) builder.AddEdge(e);
+        var graph = builder.Build();
+
+        var report = new LifebloodAuthorityReporter().Analyze(graph, "type:App.IRunner");
+        Assert.True(report.HasSingleImplementer,
+            "IRunner has exactly one source-defined implementer (Runner) — must surface as single-implementer.");
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // F3e: per-interface composite / inherited surface in InterfaceUsage.
     // ABG-style composite-facade ports (an interface that aggregates 3+
     // sub-interfaces with little or no surface of its own) used to report
