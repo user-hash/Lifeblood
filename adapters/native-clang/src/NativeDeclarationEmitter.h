@@ -3,6 +3,7 @@
 #include "ClangSourceMapper.h"
 #include "NativeFileRegistry.h"
 #include "NativeFunctionEmitter.h"
+#include "NativeFunctionFactsCollector.h"
 #include "NativeGlobalEmitter.h"
 #include "NativeGraphSink.h"
 #include "NativeTypeEmitter.h"
@@ -33,6 +34,7 @@ private:
     NativeTypeEmitter types_;
     NativeTypeMemberEmitter typeMembers_;
     NativeGlobalEmitter globals_;
+    NativeFunctionFactsCollector functionFacts_;
     NativeFunctionEmitter functions_;
 };
 }
