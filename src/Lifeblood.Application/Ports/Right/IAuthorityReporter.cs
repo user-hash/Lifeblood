@@ -79,6 +79,39 @@ public sealed class AuthorityReport
     /// extractor. Numerator for <see cref="ForwarderRatio"/>.
     /// </summary>
     public int PureForwarderCount { get; init; }
+
+    /// <summary>
+    /// Distinct number of source modules OTHER THAN the type's own
+    /// module that have any incoming graph edge into the type or any
+    /// of its direct members (Calls / References / Inherits / Implements).
+    /// High value = the type IS a published boundary contract; low /
+    /// zero value (with high <see cref="SameAssemblyConsumerCount"/>) =
+    /// candidate for collapsing into the same module as its consumers.
+    /// INV-AUTHORITY-PLANNING-COMPOSITION-001 evidence.
+    /// </summary>
+    public int CrossAssemblyConsumerCount { get; init; }
+
+    /// <summary>
+    /// Distinct number of source symbols WITHIN the type's own module
+    /// that have any incoming graph edge into the type or any of its
+    /// direct members. Pairs with <see cref="CrossAssemblyConsumerCount"/>
+    /// — concentrated same-module + zero cross-module use is the
+    /// adapter-shim shape, distributed cross-module use is the boundary
+    /// shape.
+    /// </summary>
+    public int SameAssemblyConsumerCount { get; init; }
+
+    /// <summary>
+    /// True iff the type is an interface AND exactly one source-defined
+    /// type in the loaded workspace carries an <see cref="EdgeKind.Implements"/>
+    /// edge into it. Null when the type is not an interface (no semantic
+    /// concept of "single implementer" for class/struct/enum targets).
+    /// A single-implementer interface paired with high
+    /// <see cref="CrossAssemblyConsumerCount"/> is a candidate adapter
+    /// shim (consumers could bind to the concrete type and retire the
+    /// interface). INV-AUTHORITY-PLANNING-COMPOSITION-001 evidence.
+    /// </summary>
+    public bool? HasSingleImplementer { get; init; }
 }
 
 /// <summary>
