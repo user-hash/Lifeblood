@@ -205,4 +205,235 @@ namespace Acme {
         Assert.Equal(new[] { "Zebra", "Alpha", "Mango" },
             report!.Members.Select(m => m.Name).ToArray());
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // S4: dispatch-table reference coverage. ADDITIVE — the same
+    // reference still counts under its syntactic bucket (typically
+    // ProducedCount) AND increments DispatchTableReferenceCount when
+    // the enclosing context is a static-table-shaped initializer. The
+    // recognition logic is shared with the static_tables tool via
+    // RoslynStaticTableExtractor.IsInsideStaticTableInitializer —
+    // single source of truth for "what counts as a static-table-shaped
+    // initializer". INV-ENUM-COVERAGE-DISPATCH-TABLE-001.
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GetEnumCoverage_DispatchTableObjectCreationRow_CountsAsDispatchTable()
+    {
+        // ABG-style: static array of constructed rows. Mode.A is the
+        // routing key in `new(Mode.A, HandleA)`; pre-S4 the only signal
+        // was ProducedCount=1 with no way to distinguish "routing key"
+        // from "actually produced".
+        const string source = @"
+namespace Acme {
+  public enum Mode { A, B }
+  public sealed class Capability {
+    public Capability(Mode m, System.Action h) { Key = m; Handler = h; }
+    public Mode Key { get; }
+    public System.Action Handler { get; }
+  }
+  public static class Registry {
+    public static void HandleA() { }
+    public static void HandleB() { }
+    public static readonly Capability[] All = new[] {
+      new Capability(Mode.A, HandleA),
+      new Capability(Mode.B, HandleB),
+    };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members, m => m.Name == "A");
+        var b = Assert.Single(report.Members, m => m.Name == "B");
+
+        // Additive: each dispatch-table cell increments BOTH Produced
+        // (argument position is syntactically value-producing) AND the
+        // new DispatchTableReferenceCount.
+        Assert.Equal(1, a.ProducedCount);
+        Assert.Equal(1, a.DispatchTableReferenceCount);
+        Assert.Equal(1, b.ProducedCount);
+        Assert.Equal(1, b.DispatchTableReferenceCount);
+    }
+
+    [Fact]
+    public void GetEnumCoverage_RegularProductionSite_DoesNotCountAsDispatchTable()
+    {
+        // Backward-compat: a normal assignment outside any static-table
+        // initializer must NOT increment DispatchTableReferenceCount.
+        const string source = @"
+namespace Acme {
+  public enum Mode { A }
+  public class Host {
+    Mode _m;
+    void Set() { _m = Mode.A; }
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members);
+        Assert.Equal(1, a.ProducedCount);
+        Assert.Equal(0, a.DispatchTableReferenceCount);
+    }
+
+    [Fact]
+    public void GetEnumCoverage_LiteralArrayInitializer_CountsAsDispatchTable()
+    {
+        // Plain-typed static array of enum literals — implicit-array shape
+        // (`Mode[] X = { Mode.A, Mode.B }`). Each element is a dispatch-table
+        // cell at the recognition layer.
+        const string source = @"
+namespace Acme {
+  public enum Mode { A, B }
+  public static class Routes {
+    public static readonly Mode[] All = { Mode.A, Mode.B };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members, m => m.Name == "A");
+        var b = Assert.Single(report.Members, m => m.Name == "B");
+        Assert.Equal(1, a.DispatchTableReferenceCount);
+        Assert.Equal(1, b.DispatchTableReferenceCount);
+    }
+
+    [Fact]
+    public void GetEnumCoverage_SwitchArm_DoesNotCountAsDispatchTable()
+    {
+        // Switch consumption is in method body, not a static initializer.
+        // Backward-compat: ConsumedSwitchCount unchanged, dispatch counter zero.
+        const string source = @"
+namespace Acme {
+  public enum Mode { A }
+  public class Host {
+    int Consume(Mode m) {
+      switch (m) { case Mode.A: return 1; default: return 0; }
+    }
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members);
+        Assert.Equal(1, a.ConsumedSwitchCount);
+        Assert.Equal(0, a.DispatchTableReferenceCount);
+    }
+
+    [Fact]
+    public void GetEnumCoverage_ExpressionBodiedStaticProperty_CountsAsDispatchTable()
+    {
+        // Parity with static_tables tool: TryGetInitializerExpression
+        // recognises BOTH EqualsValueClauseSyntax (= expr) AND
+        // ArrowExpressionClauseSyntax (=> expr) on static properties.
+        // The recognition predicate must match.
+        const string source = @"
+namespace Acme {
+  public enum Mode { A }
+  public static class Routes {
+    public static Mode[] All => new[] { Mode.A };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members);
+        Assert.Equal(1, a.DispatchTableReferenceCount);
+    }
+
+    [Fact]
+    public void GetEnumCoverage_LambdaInsideStaticInitializer_DoesNotCountAsDispatchTable()
+    {
+        // Edge case: a lambda body inside a static initializer is its
+        // own scope. `Mode.A` inside the lambda body is NOT a dispatch-
+        // table cell; the lambda is. Predicate must stop at the
+        // AnonymousFunctionExpressionSyntax boundary.
+        const string source = @"
+namespace Acme {
+  public enum Mode { A }
+  public static class Reg {
+    public static readonly System.Func<Mode> Get = () => Mode.A;
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members);
+        Assert.Equal(0, a.DispatchTableReferenceCount);
+    }
+
+    [Fact]
+    public void GetEnumCoverage_NonStaticFieldInitializer_DoesNotCountAsDispatchTable()
+    {
+        // Recognition predicate must reject INSTANCE field initializers.
+        // Same array shape, but no `static` modifier → not a dispatch
+        // table at the static_tables tool's recognition layer.
+        const string source = @"
+namespace Acme {
+  public enum Mode { A }
+  public class Host {
+    private readonly Mode[] _routes = { Mode.A };
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members);
+        Assert.Equal(1, a.ProducedCount);
+        Assert.Equal(0, a.DispatchTableReferenceCount);
+    }
+
+    [Fact]
+    public void GetEnumCoverage_DispatchTableOnly_MemberIsTriageableFromOneCall()
+    {
+        // The S4 use case: Mode.B's ONLY reference is a dispatch-table
+        // cell. A caller can read off the row and see ProducedCount=1
+        // AND DispatchTableReferenceCount=1 (so the value is ONLY a
+        // routing key, never genuinely produced in app code) — the
+        // state-machine triage signal the F3-series pattern asks for.
+        const string source = @"
+namespace Acme {
+  public enum Mode { A, B }
+  public sealed class Cap { public Cap(Mode m) { K = m; } public Mode K { get; } }
+  public static class Reg {
+    public static readonly Cap[] All = new[] { new Cap(Mode.B) };
+  }
+  public class App {
+    void Use() { var m = Mode.A; var x = m; } // A produced normally
+  }
+}";
+        using var host = HostWith(source);
+
+        var report = host.GetEnumCoverage("type:Acme.Mode");
+
+        Assert.NotNull(report);
+        var a = Assert.Single(report!.Members, m => m.Name == "A");
+        var b = Assert.Single(report.Members, m => m.Name == "B");
+
+        // A: produced normally, never in a dispatch table.
+        Assert.Equal(1, a.ProducedCount);
+        Assert.Equal(0, a.DispatchTableReferenceCount);
+
+        // B: only reference is the dispatch-table cell. Both counters
+        // ring — the additive design lets one row answer "is this value
+        // only a routing key?" via DispatchTable >= Produced.
+        Assert.Equal(1, b.ProducedCount);
+        Assert.Equal(1, b.DispatchTableReferenceCount);
+        Assert.Equal(b.ProducedCount, b.DispatchTableReferenceCount);
+    }
 }

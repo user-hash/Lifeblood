@@ -153,6 +153,78 @@ internal static class RoslynStaticTableExtractor
     }
 
     /// <summary>
+    /// True iff <paramref name="node"/> lives inside a <c>static</c>
+    /// field or property initializer whose <see cref="IOperation"/>
+    /// shape classifies as a static-table container (Array,
+    /// CollectionExpression, or ObjectCreation). Shared recognition
+    /// helper so consumers like <c>enum_coverage</c> can triage
+    /// dispatch-table-routed references off the SAME classifier the
+    /// <c>static_tables</c> tool uses — no text grep, single source of
+    /// truth for "what counts as a static-table-shaped initializer".
+    /// INV-EXTRACT-STATIC-TABLES-001 + INV-ENUM-COVERAGE-DISPATCH-TABLE-001.
+    /// </summary>
+    internal static bool IsInsideStaticTableInitializer(SemanticModel model, SyntaxNode node)
+    {
+        // Walk syntax ancestors looking for an initializer-shaped clause —
+        // either `EqualsValueClauseSyntax` (`= expr`, fields + property
+        // get-set initializers) OR `ArrowExpressionClauseSyntax` (`=> expr`,
+        // expression-bodied static properties). The static_tables tool's
+        // TryGetInitializerExpression recognises BOTH shapes (see
+        // RoslynStaticTableExtractor.TryGetInitializerExpression), and
+        // this predicate must keep parity so dispatch-table recognition
+        // matches what `lifeblood_static_tables` would extract.
+        // Stop at any enclosing statement / lambda since those mark
+        // "no longer inside an initializer expression".
+        for (var current = node; current != null; current = current.Parent)
+        {
+            if (current is StatementSyntax) return false;
+            if (current is AnonymousFunctionExpressionSyntax) return false;
+
+            ExpressionSyntax? initExpr = null;
+            ITypeSymbol? memberType = null;
+
+            if (current is EqualsValueClauseSyntax equals)
+            {
+                switch (equals.Parent)
+                {
+                    case VariableDeclaratorSyntax declarator
+                        when declarator.Parent is VariableDeclarationSyntax varDecl
+                          && varDecl.Parent is FieldDeclarationSyntax fieldDecl
+                          && fieldDecl.Modifiers.Any(SyntaxKind.StaticKeyword):
+                        if (model.GetDeclaredSymbol(declarator) is IFieldSymbol field)
+                            memberType = field.Type;
+                        initExpr = equals.Value;
+                        break;
+                    case PropertyDeclarationSyntax propDecl
+                        when propDecl.Modifiers.Any(SyntaxKind.StaticKeyword):
+                        memberType = model.GetDeclaredSymbol(propDecl)?.Type;
+                        initExpr = equals.Value;
+                        break;
+                    default:
+                        return false; // not a static field/property initializer
+                }
+            }
+            else if (current is ArrowExpressionClauseSyntax arrow
+                  && arrow.Parent is PropertyDeclarationSyntax expProp
+                  && expProp.Modifiers.Any(SyntaxKind.StaticKeyword))
+            {
+                memberType = model.GetDeclaredSymbol(expProp)?.Type;
+                initExpr = arrow.Expression;
+            }
+            else
+            {
+                continue;
+            }
+
+            if (initExpr == null) return false;
+            var rootOp = model.GetOperation(initExpr);
+            if (rootOp == null) return false;
+            return ClassifyContainer(rootOp, memberType) != null;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Classify the initializer's root operation into a container shape
     /// + row-operation list + (optional) element-type symbol. Returns
     /// null when the operation tree is not a recognised table shape, so

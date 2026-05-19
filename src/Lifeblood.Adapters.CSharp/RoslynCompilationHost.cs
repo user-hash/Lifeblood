@@ -765,6 +765,14 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   case EnumRefClass.SwitchPattern: counter.SwitchPattern++; break;
   case EnumRefClass.Other: break;
   }
+  // Additive: a dispatch-table cell still counts under whichever
+  // EnumRefClass bucket its syntactic position falls in (typically
+  // Produced), AND increments this counter so the
+  // "value is only a routing key" triage signal stays surface-able.
+  // Reuses the static_tables tool's recognition classifier — no
+  // text grep, single SSoT. INV-ENUM-COVERAGE-DISPATCH-TABLE-001.
+  if (RoslynStaticTableExtractor.IsInsideStaticTableInitializer(model, node))
+    counter.DispatchTable++;
   }
   }
   }
@@ -787,6 +795,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   ProducedCount = c.Produced,
   ConsumedComparisonCount = c.Comparison,
   ConsumedSwitchCount = c.SwitchPattern,
+  DispatchTableReferenceCount = c.DispatchTable,
   IsUnproduced = isUnprod,
   IsUnreferenced = isUnref,
   };
@@ -829,6 +838,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, IDisposable
   public int Produced;
   public int Comparison;
   public int SwitchPattern;
+  public int DispatchTable;
   }
 
   /// <summary>

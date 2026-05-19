@@ -303,6 +303,21 @@ public sealed class EnumMemberCoverage
     public required int ConsumedSwitchCount { get; init; }
 
     /// <summary>
+    /// References where the member appears inside a <c>static</c>
+    /// field/property initializer whose shape matches a static-table
+    /// container (array, collection expression, or object creation —
+    /// the same recognition logic <c>lifeblood_static_tables</c> uses).
+    /// ADDITIVE — a dispatch-table cell like <c>new(Mode.A, HandleA)</c>
+    /// still increments <see cref="ProducedCount"/> (it IS syntactically
+    /// in argument position) AND also increments this counter so callers
+    /// can distinguish "value used as runtime dispatch key" from "value
+    /// genuinely produced in app code". A value whose only references
+    /// land here is a routing-table key, not a state-machine writer.
+    /// INV-ENUM-COVERAGE-DISPATCH-TABLE-001.
+    /// </summary>
+    public required int DispatchTableReferenceCount { get; init; }
+
+    /// <summary>
     /// Convenience: <see cref="ProducedCount"/> == 0 AND
     /// <see cref="TotalReferences"/> &gt; 0. The state-machine
     /// drift signal — a value exists in the type, is checked for,
