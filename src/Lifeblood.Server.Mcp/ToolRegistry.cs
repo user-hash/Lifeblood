@@ -163,6 +163,7 @@ public static class ToolRegistry
   incremental = new { type = "boolean", description = "When true, only recompiles modules with changed files since the last analysis. Much faster for iterative work. If the adapter detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited), the response is REJECTED unless `allowFullFallback` is also true. Caller-owned scope policy. Default: false." },
   readOnly = new { type = "boolean", description = "When true, uses streaming compilation (much lower memory. ~4GB vs ~7GB for large projects). Write-side tools (execute, find-references, rename, etc.) will be unavailable. Use for large projects when you only need read-side tools. Default: false." },
   allowFullFallback = new { type = "boolean", description = "Pairs with `incremental:true`. When true, the adapter silently widens to a full re-analyze on detected drift and reports `mode:'full'` + `requestedMode:'incremental'` + the populated `fallbackReason` so the cache miss stays visible. When false (default), the adapter REJECTS with `mode:'rejected'` + `requestedMode:'incremental'` + `fallbackReason` + `canRetryFull:true` + `suggestedRetry` and does no work — caller decides next step. Eternal-repo posture: scope policy is the caller's choice, not the adapter's. INV-ANALYZE-FALLBACK-001." },
+  defineProfiles = new { type = "array", items = new { type = "string" }, description = "Optional. Define-profile names to analyze under. Null / empty = single-profile back-compat (default Editor identity, wire shape byte-stable with pre-Wave-6). Non-empty = multi-profile union analyze: the adapter compiles every module once per active profile and unions edges. On Unity workspaces (`Library/` exists) the canonical 2-profile MVP is `[\"Editor\", \"Player\"]` — Player flips `#if !UNITY_EDITOR` callsites from inactive to active. Unknown profile names throw eagerly. Response summary carries `profileCount` + `activeProfiles` + `perProfileEdgeCounts`; edges in dependants/dependencies responses carry `profiles[]`. INV-MULTI-DEFINE-ANALYZE-001." },
   },
   },
   },
@@ -208,7 +209,7 @@ public static class ToolRegistry
   Name = "lifeblood_dependencies",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Get all symbols that the given symbol depends on (outgoing non-Contains edges). Each entry in `dependencies[]` carries `otherEndId`, `kind`, and an optional `callSite` object (`filePath`, `line`, `column`, `endLine`, `endColumn`, `containingSymbolId`) pointing at the FIRST observed authoring expression for that (source, target, kind) edge — graph-level edge deduplication (`INV-STREAM-005`) collapses multiple authoring expressions from the same source to the same target of the same kind into ONE entry, so callSite is the first-extracted occurrence, not every occurrence. `callSite` is null for graph-derived edges with no single authoring location (module→module DependsOn, type→type Inherits without a surfaced clause node). One call answers \"where in source does X depend on Y?\" for the first occurrence. Note: outgoing edges are recorded at the symbol level where the reference physically appears — `Calls` edges live on the calling method, `References` edges live on the referencing field/property/method body, etc. A query for type-level outbound edges (`type:My.Service`) typically returns 0 because the type itself does not author calls; query its members (or use `lifeblood_blast_radius` to walk the transitive incoming closure) to see real coupling.",
+  Description = "Get all symbols that the given symbol depends on (outgoing non-Contains edges). Each entry in `dependencies[]` carries `otherEndId`, `kind`, an optional `callSite` object (`filePath`, `line`, `column`, `endLine`, `endColumn`, `containingSymbolId`) pointing at the FIRST observed authoring expression for that (source, target, kind) edge — graph-level edge deduplication (`INV-STREAM-005`) collapses multiple authoring expressions from the same source to the same target of the same kind into ONE entry, so callSite is the first-extracted occurrence, not every occurrence — and an optional `profiles[]` array naming the define profiles that observed the edge under multi-profile analyze (null on single-profile back-compat, populated set on multi-profile, `INV-MULTI-DEFINE-EDGE-PROFILES-001`). `callSite` is null for graph-derived edges with no single authoring location (module→module DependsOn, type→type Inherits without a surfaced clause node). One call answers \"where in source does X depend on Y?\" for the first occurrence. Pass `profileFilter:[\"Editor\",\"Player\"]` to narrow results to edges observed under at least one of those profiles (single-profile-null edges pass any filter, back-compat). Note: outgoing edges are recorded at the symbol level where the reference physically appears — `Calls` edges live on the calling method, `References` edges live on the referencing field/property/method body, etc. A query for type-level outbound edges (`type:My.Service`) typically returns 0 because the type itself does not author calls; query its members (or use `lifeblood_blast_radius` to walk the transitive incoming closure) to see real coupling.",
   InputSchema = new
   {
   type = "object",
@@ -216,6 +217,7 @@ public static class ToolRegistry
   properties = new
   {
   symbolId = new { type = "string", description = "Symbol ID" },
+  profileFilter = new { type = "array", items = new { type = "string" }, description = "Optional. Narrow results to edges whose `profiles[]` intersect this set. Edges with `profiles=null` (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001." },
   },
   },
   },
@@ -224,7 +226,7 @@ public static class ToolRegistry
   Name = "lifeblood_dependants",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Get all symbols that depend on the given symbol (incoming non-Contains edges). Each entry in `dependants[]` carries `otherEndId`, `kind`, and an optional `callSite` object (`filePath`, `line`, `column`, `endLine`, `endColumn`, `containingSymbolId`) pointing at the FIRST observed authoring expression for that edge — graph-level dedup (`INV-STREAM-005`) collapses repeated expressions from the same source to ONE entry, so callSite is the first-extracted occurrence. `callSite` is null for graph-derived edges with no single authoring location (module→module DependsOn, type→type Inherits without a surfaced clause node).",
+  Description = "Get all symbols that depend on the given symbol (incoming non-Contains edges). Each entry in `dependants[]` carries `otherEndId`, `kind`, an optional `callSite` object (`filePath`, `line`, `column`, `endLine`, `endColumn`, `containingSymbolId`) pointing at the FIRST observed authoring expression for that edge — graph-level dedup (`INV-STREAM-005`) collapses repeated expressions from the same source to ONE entry, so callSite is the first-extracted occurrence — and an optional `profiles[]` array naming the define profiles that observed the edge under multi-profile analyze (`INV-MULTI-DEFINE-EDGE-PROFILES-001`). Pass `profileFilter:[\"Editor\",\"Player\"]` to narrow results to edges observed under at least one of those profiles (single-profile-null edges pass any filter, back-compat). `callSite` is null for graph-derived edges with no single authoring location (module→module DependsOn, type→type Inherits without a surfaced clause node).",
   InputSchema = new
   {
   type = "object",
@@ -232,6 +234,7 @@ public static class ToolRegistry
   properties = new
   {
   symbolId = new { type = "string", description = "Symbol ID" },
+  profileFilter = new { type = "array", items = new { type = "string" }, description = "Optional. Narrow results to edges whose `profiles[]` intersect this set. Edges with `profiles=null` (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001." },
   },
   },
   },

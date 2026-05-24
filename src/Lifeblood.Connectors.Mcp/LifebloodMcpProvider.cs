@@ -64,6 +64,7 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
                 OtherEndId = edge.TargetId,
                 Kind = edge.Kind,
                 CallSite = edge.CallSite,
+                Profiles = edge.Profiles,
             });
         }
         return result.ToArray();
@@ -81,6 +82,7 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
                 OtherEndId = edge.SourceId,
                 Kind = edge.Kind,
                 CallSite = edge.CallSite,
+                Profiles = edge.Profiles,
             });
         }
         return result.ToArray();

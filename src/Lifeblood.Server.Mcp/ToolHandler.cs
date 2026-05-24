@@ -126,15 +126,29 @@ public sealed class ToolHandler
         var rulesPath = WriteToolHandler.GetString(args, "rulesPath");
         var incremental = WriteToolHandler.GetBool(args, "incremental") ?? false;
         var readOnly = WriteToolHandler.GetBool(args, "readOnly") ?? false;
-        // INV-ANALYZE-FALLBACK-001: caller-owned scope policy. Default false
-        // = fail-loud rejection when adapter cannot honor incremental cleanly.
-        // Caller opts in to silent widening by passing allowFullFallback:true.
-        // This handler does NOT auto-retry on rejection — surfacing the
-        // signal is the whole point of the typed fallback shape.
+        // INV-ANALYZE-FALLBACK-001.
         var allowFullFallback = WriteToolHandler.GetBool(args, "allowFullFallback") ?? false;
+        // INV-MULTI-DEFINE-ANALYZE-001.
+        var defineProfiles = ReadStringArray(args, "defineProfiles");
 
-        var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly, allowFullFallback);
+        var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly, allowFullFallback, defineProfiles);
         return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
+    }
+
+    private static string[]? ReadStringArray(JsonElement? args, string key)
+    {
+        if (args == null || args.Value.ValueKind != JsonValueKind.Object) return null;
+        if (!args.Value.TryGetProperty(key, out var arr) || arr.ValueKind != JsonValueKind.Array) return null;
+        var list = new List<string>();
+        foreach (var el in arr.EnumerateArray())
+        {
+            if (el.ValueKind == JsonValueKind.String)
+            {
+                var s = el.GetString();
+                if (!string.IsNullOrWhiteSpace(s)) list.Add(s);
+            }
+        }
+        return list.Count == 0 ? null : list.ToArray();
     }
 
     private McpToolResult HandleContext(JsonElement? args)
@@ -274,12 +288,14 @@ public sealed class ToolHandler
         if (resolved.CanonicalId == null)
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
-        var edges = _provider.GetDependencyEdges(_session.Graph!, resolved.CanonicalId);
+        var profileFilter = ReadStringArray(args, "profileFilter");
+        var edges = ApplyProfileFilter(_provider.GetDependencyEdges(_session.Graph!, resolved.CanonicalId), profileFilter);
         return TextResult(WithEnvelope("lifeblood_dependencies", new
         {
             symbolId = resolved.CanonicalId,
             count = edges.Length,
             dependencies = edges.Select(BuildEdgeWire).ToArray(),
+            profileFilter,
         }));
     }
 
@@ -296,12 +312,14 @@ public sealed class ToolHandler
         if (resolved.CanonicalId == null)
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
-        var edges = _provider.GetDependantEdges(_session.Graph!, resolved.CanonicalId);
+        var profileFilter = ReadStringArray(args, "profileFilter");
+        var edges = ApplyProfileFilter(_provider.GetDependantEdges(_session.Graph!, resolved.CanonicalId), profileFilter);
         return TextResult(WithEnvelope("lifeblood_dependants", new
         {
             symbolId = resolved.CanonicalId,
             count = edges.Length,
             dependants = edges.Select(BuildEdgeWire).ToArray(),
+            profileFilter,
         }));
     }
 
@@ -326,7 +344,25 @@ public sealed class ToolHandler
             endColumn = e.CallSite.EndColumn,
             containingSymbolId = e.CallSite.ContainingSymbolId,
         } as object,
+        // INV-MULTI-DEFINE-EDGE-PROFILES-001.
+        profiles = e.Profiles,
     };
+
+    /// <summary>
+    /// INV-MULTI-DEFINE-WIRE-001. Optional profile narrowing on incoming /
+    /// outgoing edge queries: when `profileFilter` is set, keep only edges
+    /// whose `Profiles` intersect the filter set. Null `Profiles` (single-
+    /// profile back-compat) match every filter; this keeps pre-multi-define
+    /// graphs accessible without forcing callers to opt out of the filter.
+    /// </summary>
+    private static EdgeDetail[] ApplyProfileFilter(EdgeDetail[] edges, string[]? profileFilter)
+    {
+        if (profileFilter == null || profileFilter.Length == 0) return edges;
+        var allowed = new HashSet<string>(profileFilter, StringComparer.Ordinal);
+        return edges
+            .Where(e => e.Profiles == null || e.Profiles.Any(allowed.Contains))
+            .ToArray();
+    }
 
 
     private McpToolResult HandleBlastRadius(JsonElement? args)

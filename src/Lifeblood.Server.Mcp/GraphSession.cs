@@ -164,7 +164,8 @@ public sealed class GraphSession : IDisposable
 
     public string Load(string? projectPath, string? graphPath, string? rulesPath,
                        bool incremental = false, bool readOnly = false,
-                       bool allowFullFallback = false)
+                       bool allowFullFallback = false,
+                       string[]? defineProfiles = null)
     {
         // Incremental path: reuse existing adapter, only recompile changed modules.
         // INV-ANALYZE-FALLBACK-001: caller's allowFullFallback flag flows through
@@ -246,13 +247,20 @@ public sealed class GraphSession : IDisposable
             if (!_fs.DirectoryExists(projectPath))
                 return $"Project directory not found: {projectPath}";
 
-            var adapter = new RoslynWorkspaceAnalyzer(_fs);
+            // INV-MULTI-DEFINE-UNITY-RESOLVER-001. UnityDefineProfileResolver
+            // auto-detects Library/ and returns 2 profiles on Unity, single
+            // Editor identity on non-Unity — safe injection everywhere.
+            var adapter = new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
             var retainCompilations = !readOnly;
             var progress = new StderrProgressSink();
             adapter.OnModuleProgress = (name, i, total) =>
                 Console.Error.WriteLine($"[{i}/{total}] Compiling {name}");
             var result = new AnalyzeWorkspaceUseCase(adapter, progress, UsageProbe)
-                .Execute(projectPath, new AnalysisConfig { RetainCompilations = retainCompilations });
+                .Execute(projectPath, new AnalysisConfig
+                {
+                    RetainCompilations = retainCompilations,
+                    DefineProfiles = defineProfiles,
+                });
             graph = result.Graph;
             capability = adapter.Capability;
             language = "csharp";
@@ -314,7 +322,8 @@ public sealed class GraphSession : IDisposable
             usage: usage,
             changedFileCount: null,
             skipped: _roslynAdapter?.SkippedFiles,
-            requestedMode: "full");
+            requestedMode: "full",
+            activeProfiles: defineProfiles);
     }
 
     private string LoadIncremental(string projectPath, string? rulesPath, bool allowFullFallback)
@@ -450,7 +459,8 @@ public sealed class GraphSession : IDisposable
         string? requestedMode = null,
         FallbackReason? fallbackReason = null,
         string? fallbackDetail = null,
-        bool? canRetryFull = null)
+        bool? canRetryFull = null,
+        string[]? activeProfiles = null)
     {
         // Skipped files surface in the analyze response so users can see
         // exactly which files the adapter dropped and why. Emitted as
@@ -502,6 +512,12 @@ public sealed class GraphSession : IDisposable
                 files = analysis?.Metrics.TotalFiles ?? 0,
                 violations = analysis?.Violations.Length ?? 0,
                 cycles = analysis?.Cycles.Length ?? 0,
+                // INV-MULTI-DEFINE-ANALYZE-001 wire shape.
+                profileCount = activeProfiles?.Length ?? 1,
+                activeProfiles = activeProfiles,
+                perProfileEdgeCounts = activeProfiles == null || activeProfiles.Length <= 1
+                    ? null
+                    : BuildPerProfileEdgeCounts(graph, activeProfiles),
             },
             fallbackReason = fallbackReason.HasValue ? WireReasonName(fallbackReason.Value) : null,
             fallbackDetail,
@@ -536,6 +552,22 @@ public sealed class GraphSession : IDisposable
             },
         };
         return JsonSerializer.Serialize(response, JsonOpts);
+    }
+
+    /// <summary>INV-MULTI-DEFINE-ANALYZE-001 per-profile edge count summary.</summary>
+    private static Dictionary<string, int> BuildPerProfileEdgeCounts(SemanticGraph graph, string[] activeProfiles)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var name in activeProfiles) counts[name] = 0;
+        foreach (var e in graph.Edges)
+        {
+            if (e.Profiles == null) continue;
+            foreach (var p in e.Profiles)
+            {
+                if (counts.ContainsKey(p)) counts[p]++;
+            }
+        }
+        return counts;
     }
 
     /// <summary>
