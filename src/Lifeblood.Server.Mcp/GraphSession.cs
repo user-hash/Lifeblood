@@ -380,10 +380,16 @@ public sealed class GraphSession : IDisposable
         if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0)
         {
             usage = capture.Stop();
+            // Graph is unchanged on noop — reuse the prior session analysis
+            // so the response surfaces real modules/types/files/violations/cycles
+            // counts instead of zeros. Pre-fix this passed analysis:null and
+            // BuildLoadResult fell back to 0 across the board, making
+            // incremental-noop responses indistinguishable from "no graph
+            // loaded" to anything reading the summary metrics.
             return BuildLoadResult(
                 mode: "incremental-noop",
                 graph: graph,
-                analysis: null,
+                analysis: _session.Analysis,
                 usage: usage,
                 changedFileCount: 0,
                 skipped: _roslynAdapter?.SkippedFiles,
