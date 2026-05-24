@@ -536,6 +536,22 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
     return RoslynStaticTableExtractor.Extract(_compilations, typeSymbol, typeId, options, BuildSymbolId);
   }
 
+  /// <summary>
+  /// Per-construction-site slot-coverage extraction. Routes through
+  /// <see cref="RoslynAssignmentCoverageExtractor"/> — keeps host wiring thin
+  /// and isolates the IOperation walker in its own type. Mirrors the
+  /// <see cref="GetStaticTables"/> placement: same Compilation-required
+  /// convention, same resolve-from-source gate, same delegation shape.
+  /// INV-ASSIGNMENT-COVERAGE-001.
+  /// </summary>
+  public AssignmentCoverageReport? GetAssignmentCoverage(string targetTypeId, AssignmentCoverageOptions options)
+  {
+    if (string.IsNullOrEmpty(targetTypeId)) return null;
+    var resolved = ResolveFromSource(targetTypeId);
+    if (resolved is not INamedTypeSymbol typeSymbol) return null;
+    return RoslynAssignmentCoverageExtractor.Extract(_compilations, typeSymbol, targetTypeId, options, BuildSymbolId);
+  }
+
   public string[] FindImplementations(string symbolId)
   {
   // Prefer source-defined symbol for accurate type kind.

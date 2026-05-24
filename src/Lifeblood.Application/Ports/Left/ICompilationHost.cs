@@ -101,6 +101,22 @@ public interface ICompilationHost
     /// </summary>
     StaticTableReport? GetStaticTables(string typeId, StaticTablesOptions options);
 
+    /// <summary>
+    /// Per-construction-site slot coverage for a target type. For each
+    /// <c>new TargetType { ... }</c> or <c>new TargetType()</c> + statement-
+    /// level assignment site, walks the containing method's
+    /// <c>IOperation</c> tree and reports which of the target's public
+    /// mutable slot members are assigned at that site. Operation-tree only;
+    /// never regex, never syntax-text. Confidence is per-site: inline
+    /// initializer or non-aliased single-method statement chain is
+    /// <c>Proven</c>; factory / aliased / branched MAY-assign shapes are
+    /// <c>Advisory</c> with the bumping shape named in
+    /// <c>SiteLimitations</c>. Returns null when
+    /// <paramref name="targetTypeId"/> does not resolve to a type in any
+    /// loaded compilation. INV-ASSIGNMENT-COVERAGE-001.
+    /// </summary>
+    AssignmentCoverageReport? GetAssignmentCoverage(string targetTypeId, AssignmentCoverageOptions options);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 

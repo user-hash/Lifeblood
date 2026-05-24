@@ -59,10 +59,10 @@ polish atom consolidates Roslyn symbol-id construction behind
 through LB-TRACK-20260519-024 is Shipped or an explicitly qualitative close-out.
 
 Current verification anchors (2026-05-19 prerelease check):
-- Debug test suite: **1100/1100 green**, 0 skipped.
+- Debug test suite: **1111/1111 green**, 0 skipped.
 - Lifeblood self-analysis: **3,507 symbols, 21,115 edges, 11 modules,
   363 types, 0 violations, 0 cycles**.
-- Invariant audit: **121 typed invariants across 81 categories**, zero
+- Invariant audit: **125 typed invariants across 82 categories**, zero
   duplicates, zero parse warnings.
 - Native Clang required lane: **27/27 green** when
   `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`.

@@ -103,6 +103,7 @@ public sealed class ToolHandler
                 "lifeblood_find_implementations" => WrapWriteSide("lifeblood_find_implementations", _write.HandleFindImplementations(arguments)),
                 "lifeblood_enum_coverage" => WrapWriteSide("lifeblood_enum_coverage", _write.HandleEnumCoverage(arguments)),
                 "lifeblood_static_tables" => WrapWriteSide("lifeblood_static_tables", _write.HandleStaticTables(arguments)),
+                "lifeblood_assignment_coverage" => WrapWriteSide("lifeblood_assignment_coverage", _write.HandleAssignmentCoverage(arguments)),
                 "lifeblood_symbol_at_position" => WrapWriteSide("lifeblood_symbol_at_position", _write.HandleGetSymbolAtPosition(arguments)),
                 "lifeblood_documentation" => WrapWriteSide("lifeblood_documentation", _write.HandleGetDocumentation(arguments)),
                 "lifeblood_rename" => WrapWriteSide("lifeblood_rename", _write.HandleRename(arguments)),

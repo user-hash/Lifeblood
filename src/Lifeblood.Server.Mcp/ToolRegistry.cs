@@ -622,6 +622,28 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_assignment_coverage",
+  Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
+  Description = "Per-construction-site slot-coverage for a target type. For each `new TargetType { ... }` or `new TargetType()` + statement-level assignment site, walks the containing method's IOperation tree and reports which of the target's public mutable slot members (default: delegate-typed Func/Action/custom-delegate fields and properties — the Bindings shape) are assigned at that site and which are absent. Per-site `confidence` reflects construction shape: inline object-initializer OR non-aliased single-method statement-level assignment chain before escape is `Proven`; factory-constructed, aliased, or branched MAY-assign sites are `Advisory` with the bumping shape named in `siteLimitations[]` (`FactoryConstruction` / `AliasedLocal` / `BranchedMayAssign` / `PostEscapeAssignment`). Per-slot `status` is `Assigned` / `Absent` / `AssignedNull` (null-literal assignment is distinct from absent so a caller can tell 'forgot to wire' from 'deliberately wired null'). Per-slot `expressionKind` classifies the assignment expression (`Lambda` / `MethodGroup` / `FieldReference` / `PropertyAccess` / `NullLiteral` / `Other`). Operation-tree only — never regex, never syntax-text. `targetTypeId` accepts canonical (`type:NS.T`), fully-qualified, or short name — routed through the same resolver as `lifeblood_static_tables`. Optional flags toggle coverage on public mutable non-delegate fields / properties; `slotName` narrows to one slot; `maxSites` (default 256) clamps result size. INV-ASSIGNMENT-COVERAGE-001..004.",
+  InputSchema = new
+  {
+  type = "object",
+  required = new[] { "targetTypeId" },
+  properties = new
+  {
+  targetTypeId = new { type = "string", description = "Canonical, qualified, or short name of the type whose construction sites are reported." },
+  includeDelegateFields = new { type = "boolean", description = "Include public mutable Func/Action/custom-delegate-typed fields as slots. Default true (Bindings shape)." },
+  includeDelegateProperties = new { type = "boolean", description = "Include public mutable Func/Action/custom-delegate-typed properties as slots. Default true." },
+  includePublicMutableFields = new { type = "boolean", description = "Include public mutable non-delegate fields as slots. Default false." },
+  includePublicMutableProperties = new { type = "boolean", description = "Include public mutable non-delegate properties (settable from outside) as slots. Default false." },
+  slotName = new { type = "string", description = "Optional. When set, only the matching slot is reported in the per-site slots array." },
+  maxSites = new { type = "integer", description = "Optional. Cap on construction sites returned; defaults to 256. Zero / negative values clamp to the default." },
+  },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_symbol_at_position",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
