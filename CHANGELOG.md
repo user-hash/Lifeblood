@@ -25,6 +25,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Wave 5: Stage 0 dogfood follow-through (2026-05-24)
 
+- **`lifeblood_file_impact` `summarize` flag + `maxResults` cap**
+
 - **`lifeblood_static_tables` default `maxRows` 1024 → 32; new `summarize` flag**
 
 ## [0.7.8] - 2026-05-19
