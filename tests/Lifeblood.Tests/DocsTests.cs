@@ -1,8 +1,9 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
-using Lifeblood.Connectors.Mcp;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Adapters.CSharp.Internal;
+using Lifeblood.Application.Ports.Left;
+using Lifeblood.Connectors.Mcp;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -10,455 +11,416 @@ namespace Lifeblood.Tests;
 /// <summary>
 /// Ratchet tests that keep docs honest. Doc numbers drift silently if nobody
 /// enforces them. Every number these tests cover derives from a single source
-/// of truth in docs/STATUS.md (HTML comments like <!-- portCount: 17 -->),
-/// and the tests assert the comment matches the live repository state.
+/// of truth in docs/STATUS.md (HTML comments like <!-- portCount: 17 -->), and
+/// the tests assert the comment matches the live repository state.
+///
+/// Architecture: ONE table — <see cref="Anchors"/> — declares every
+/// (anchorName, liveSourceFn, optional visiblePattern) tuple. Two table-driven
+/// Theories enforce the SSoT:
+///   1. <see cref="Anchor_MatchesLiveSource"/> — STATUS.md anchor == live source.
+///   2. <see cref="StatusVisible_MatchesAnchor"/> — STATUS.md's own visible prose
+///      matches its own anchor (self-consistency).
+///   3. <see cref="NonStatusSurface_VisibleCitationMatchesAnchor"/> — if a
+///      non-STATUS surface (README / ARCHITECTURE.md / architecture.html /
+///      TOOLS.md / MCP_SETUP.md / UNITY.md) cites a numeric count matching an
+///      anchor's pattern, it MUST equal the anchor. Strip-and-link is preferred
+///      over copy-and-sync; the ratchet remains as a safety net for regressions.
+///
+/// Adding a new ratcheted count = adding ONE row to <see cref="Anchors"/>.
+/// No new test methods, no per-key copy-paste.
 ///
 /// Invariants enforced:
 /// INV-DOCS-001. Docs/STATUS.md port/test/tool counts match the repository.
-/// INV-DOCS-005. Docs/STATUS.md invariantCount anchor matches live audit.
-/// INV-DOCS-006. Docs/STATUS.md invariantCategoryCount anchor matches live audit.
+/// INV-DOCS-002. Docs/STATUS.md visible prose matches its own anchors.
+/// INV-DOCS-003. Visible read/write tool split matches ToolRegistry availability.
+/// INV-DOCS-004. testCount anchor matches xUnit runtime test-case expansion.
+/// INV-DOCS-005. invariantCount anchor matches live LifebloodInvariantProvider audit.
+/// INV-DOCS-006. invariantCategoryCount anchor matches live audit category count.
+/// INV-DOCS-007. skippableFactCount anchor matches declared [SkippableFact] count.
+/// INV-DOCS-008. selfAnalyze* anchors match live RoslynWorkspaceAnalyzer self-analyze.
+/// INV-DOCS-009. staticTablesDefault* anchors track RoslynStaticTableExtractor constants.
+/// INV-DOCS-SURFACE-PARITY-001. Every non-STATUS surface that cites a SSoT count agrees.
 /// INV-CHANGELOG-001. Every ## [X.Y.Z] heading has a matching link reference.
 /// </summary>
 public class DocsTests
 {
   private static readonly string RepoRoot = FindRepoRoot();
 
-  [Fact]
-  public void StatusDoc_PortCount_MatchesApplicationPortsDeclarations()
+  /// <summary>
+  /// INV-DOCS-008. Lifeblood self-analysis snapshot shared across selfAnalyze*
+  /// anchor rows. One analyze per test session; rows read the tuple by field.
+  /// </summary>
+  private static readonly Lazy<(int Symbols, int Edges, int Modules, int Types)> SelfAnalyzeSnapshot = new(() =>
   {
-  // Single source of truth: <!-- portCount: N --> comment in docs/STATUS.md.
-  // Live truth: count of `public interface I*` declarations under
-  // src/Lifeblood.Application/Ports. Counting DECLARATIONS (not files) is
-  // correct because some port pairs (IUsageProbe + IUsageCapture) share
-  // one file by design.
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
+    var fs = new PhysicalFileSystem();
+    var analyzer = new RoslynWorkspaceAnalyzer(fs);
+    var graph = analyzer.AnalyzeWorkspace(RepoRoot, new AnalysisConfig());
+    var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules: null);
+    return (graph.Symbols.Count, graph.Edges.Count, analysis.Metrics.TotalModules, analysis.Metrics.TotalTypes);
+  });
 
-  var match = Regex.Match(status, @"<!--\s*portCount:\s*(\d+)\s*-->");
-  Assert.True(match.Success,
-  "docs/STATUS.md must declare <!-- portCount: N --> so this ratchet has a single source of truth.");
-  var declared = int.Parse(match.Groups[1].Value);
+  // SSoT table for every ratcheted count. Add a new key = add one row.
+  //   Name           STATUS.md `<!-- name: N -->` anchor
+  //   Live()         source-of-truth lookup (SelfAnalyzeSnapshot for analyzer counts)
+  //   FailHint       in assertion failure messages
+  //   VisiblePattern enforces human-readable citation parity (STATUS visible + every non-STATUS surface)
+  //   VisibleMin/Max outlier filter (version strings, year numbers, historical narrative)
 
-  var portsDir = Path.Combine(RepoRoot, "src", "Lifeblood.Application", "Ports");
-  Assert.True(Directory.Exists(portsDir), $"Ports directory not found: {portsDir}");
+  internal sealed record DocsAnchor(
+    string Name,
+    Func<int> Live,
+    string FailHint,
+    string? VisiblePattern = null,
+    int VisibleMin = 5,
+    int VisibleMax = 5000);
 
-  var live = 0;
-  foreach (var file in Directory.EnumerateFiles(portsDir, "*.cs", SearchOption.AllDirectories))
+  private static readonly DocsAnchor[] Anchors = new DocsAnchor[]
   {
-  var content = File.ReadAllText(file);
-  live += Regex.Matches(content, @"\bpublic\s+interface\s+I[A-Z][A-Za-z0-9_]*\b").Count;
-  }
+    new(
+      Name: "portCount",
+      Live: LivePortCount,
+      FailHint: "src/Lifeblood.Application/Ports `public interface I*` declarations",
+      VisiblePattern: @"(?<![.\w])(\d+)\s*(?:/\s*\d+)?\s+port[s]?(?:\s+interfaces?)?\b",
+      VisibleMin: 5, VisibleMax: 200),
+    new(
+      Name: "toolCount",
+      Live: LiveToolCount,
+      FailHint: "Name = \"lifeblood_*\" literals in ToolRegistry.cs",
+      VisiblePattern: @"(?<![.\w])(\d+)\s+(?:MCP\s+)?[Tt]ools?\b",
+      VisibleMin: 5, VisibleMax: 200),
+    new(
+      Name: "testCount",
+      Live: LiveTestCount,
+      FailHint: "xUnit runtime test-case expansion (Fact + Theory/InlineData/MemberData/ClassData)"),
+    new(
+      Name: "invariantCount",
+      Live: LiveInvariantCount,
+      FailHint: "live LifebloodInvariantProvider.Audit().TotalCount",
+      // Mandatory typed/queryable qualifier — bare "N invariants" matches
+      // historical dogfood snapshots and would false-positive.
+      VisiblePattern: @"(?<![.\w])(\d+)\s+(?:typed\s+(?:architectural\s+)?|queryable\s+)invariants?\b",
+      VisibleMin: 10, VisibleMax: 1000),
+    new(
+      Name: "invariantCategoryCount",
+      Live: LiveInvariantCategoryCount,
+      FailHint: "live LifebloodInvariantProvider.Audit().CategoryCounts.Length"),
+    new(
+      Name: "skippableFactCount",
+      Live: LiveSkippableFactCount,
+      FailHint: "[SkippableFact] methods discovered via reflection in Lifeblood.Tests"),
+    new(
+      Name: "selfAnalyzeSymbols",
+      Live: () => SelfAnalyzeSnapshot.Value.Symbols,
+      FailHint: "live RoslynWorkspaceAnalyzer self-analyze graph.Symbols.Count"),
+    new(
+      Name: "selfAnalyzeEdges",
+      Live: () => SelfAnalyzeSnapshot.Value.Edges,
+      FailHint: "live RoslynWorkspaceAnalyzer self-analyze graph.Edges.Count"),
+    new(
+      Name: "selfAnalyzeModules",
+      Live: () => SelfAnalyzeSnapshot.Value.Modules,
+      FailHint: "live self-analyze AnalysisResult.Metrics.TotalModules"),
+    new(
+      Name: "selfAnalyzeTypes",
+      Live: () => SelfAnalyzeSnapshot.Value.Types,
+      FailHint: "live self-analyze AnalysisResult.Metrics.TotalTypes"),
+    new(
+      Name: "staticTablesDefaultMaxRows",
+      Live: () => RoslynStaticTableExtractor.DefaultMaxRows,
+      FailHint: "RoslynStaticTableExtractor.DefaultMaxRows constant"),
+    new(
+      Name: "staticTablesDefaultMaxTables",
+      Live: () => RoslynStaticTableExtractor.DefaultMaxTables,
+      FailHint: "RoslynStaticTableExtractor.DefaultMaxTables constant"),
+  };
 
-  Assert.True(declared == live,
-  $"docs/STATUS.md declares portCount={declared} but src/Lifeblood.Application/Ports " +
-  $"has {live} `public interface I*` declarations. Update the HTML comment in STATUS.md " +
-  "to the live count, or add/remove the interface that caused the drift.");
-  }
+  public static IEnumerable<object[]> AnchorNames =>
+    Anchors.Select(a => new object[] { a.Name });
 
-  [Fact]
-  public void StatusDoc_ToolCount_MatchesToolRegistryLiterals()
-  {
-  // Single source of truth: <!-- toolCount: N --> comment in docs/STATUS.md.
-  // Live truth: count of Name = "lifeblood_" literals in ToolRegistry.cs.
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
-
-  var match = Regex.Match(status, @"<!--\s*toolCount:\s*(\d+)\s*-->");
-  Assert.True(match.Success,
-  "docs/STATUS.md must declare <!-- toolCount: N --> so this ratchet has a single source of truth.");
-  var declared = int.Parse(match.Groups[1].Value);
-
-  var toolRegistryPath = Path.Combine(
-  RepoRoot, "src", "Lifeblood.Server.Mcp", "ToolRegistry.cs");
-  Assert.True(File.Exists(toolRegistryPath), $"ToolRegistry.cs not found: {toolRegistryPath}");
-
-  var registry = File.ReadAllText(toolRegistryPath);
-  var live = Regex.Matches(registry, @"Name\s*=\s*""lifeblood_[a-z_]+""").Count;
-
-  Assert.True(declared == live,
-  $"docs/STATUS.md declares toolCount={declared} but ToolRegistry.cs has {live} lifeblood_* tool literals.");
-  }
-
-  [Fact]
-  public void Changelog_EveryHeadingHasLinkReference()
-  {
-  // INV-CHANGELOG-001
-  // Parse the changelog for every ## [X.Y.Z] heading and every [X.Y.Z]: URL
-  // reference. Assert bijection. Missing references are how the v0.6.0 release
-  // shipped with stale bottom-of-file links.
-  var changelogPath = Path.Combine(RepoRoot, "CHANGELOG.md");
-  var changelog = File.ReadAllText(changelogPath);
-
-  var headings = Regex.Matches(changelog, @"^##\s*\[([^\]]+)\]", RegexOptions.Multiline)
-  .Select(m => m.Groups[1].Value)
-  .Where(v => v != "Unreleased")
-  .ToHashSet(StringComparer.Ordinal);
-
-  var references = Regex.Matches(changelog, @"^\[([^\]]+)\]:\s*http", RegexOptions.Multiline)
-  .Select(m => m.Groups[1].Value)
-  .Where(v => v != "Unreleased")
-  .ToHashSet(StringComparer.Ordinal);
-
-  var headingsWithoutRef = headings.Except(references).ToArray();
-  var referencesWithoutHeading = references.Except(headings).ToArray();
-
-  Assert.True(headingsWithoutRef.Length == 0,
-  "CHANGELOG.md headings without a matching [X.Y.Z]: link reference: " +
-  string.Join(", ", headingsWithoutRef));
-  Assert.True(referencesWithoutHeading.Length == 0,
-  "CHANGELOG.md link references without a matching ## [X.Y.Z] heading: " +
-  string.Join(", ", referencesWithoutHeading));
-  }
-
-  [Fact]
-  public void StatusDoc_VisibleToolCount_MatchesHiddenAnchor()
-  {
-  // INV-DOCS-002. Visible "N MCP tools" / "N tools" prose in docs/STATUS.md
-  // must match the hidden `<!-- toolCount: N -->` anchor. Catches the
-  // drift class that shipped 28→29 transitions to 6 doc surfaces while
-  // the live-truth ratchet stayed silent (it only reads the HTML anchor).
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
-
-  var anchor = Regex.Match(status, @"<!--\s*toolCount:\s*(\d+)\s*-->");
-  Assert.True(anchor.Success, "docs/STATUS.md must declare <!-- toolCount: N --> anchor.");
-  var declared = int.Parse(anchor.Groups[1].Value);
-
-  // Match any "<number> MCP tools" / "<number> tools" / "<number>R + <number>W"
-  // prose in the body. The visible-count regex deliberately captures the
-  // FIRST numeric token preceding "tools" / "MCP tools" so a future
-  // re-phrasing doesn't silently bypass the ratchet.
-  // Negative-lookbehind on `.` / word-char so version strings like
-  // "v0.7.3 tools land" don't false-positive against "3 tools".
-  var visibleMatches = Regex.Matches(status, @"(?<![.\w])(\d+)\s+(?:MCP\s+)?tools?\b");
-  Assert.NotEmpty(visibleMatches);
-
-  foreach (Match m in visibleMatches)
-  {
-  var visible = int.Parse(m.Groups[1].Value);
-  Assert.True(visible == declared,
-  $"docs/STATUS.md has visible \"{m.Value}\" but hidden anchor declares toolCount={declared}. " +
-  "Update the prose to match, or update the anchor.");
-  }
-  }
-
-  [Fact]
-  public void StatusDoc_TestCount_MatchesDiscoveredCases()
-  {
-  // INV-DOCS-004. Live truth = xUnit runtime test-case expansion
-  // (matches `dotnet test --list-tests`). [InlineData] counted directly;
-  // [MemberData] enumerated via reflection; [ClassData] instantiated.
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
-
-  var match = Regex.Match(status, @"<!--\s*testCount:\s*(\d+)\s*-->");
-  Assert.True(match.Success,
-  "docs/STATUS.md must declare <!-- testCount: N --> so this ratchet has a single source of truth.");
-  var declared = int.Parse(match.Groups[1].Value);
-
-  var assembly = typeof(DocsTests).Assembly;
-  var factAttr = typeof(FactAttribute);
-  var theoryAttr = typeof(TheoryAttribute);
-  var inlineAttr = typeof(InlineDataAttribute);
-  var memberDataAttr = typeof(MemberDataAttribute);
-  var classDataAttr = typeof(ClassDataAttribute);
-
-  var live = 0;
-  foreach (var t in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
-  {
-  foreach (var m in t.GetMethods(
-  BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-  {
-  if (m.GetCustomAttributes(factAttr, inherit: false).Length == 0) continue;
-  var isTheory = m.GetCustomAttributes(theoryAttr, inherit: false).Length > 0;
-  if (!isTheory) { live++; continue; }
-
-  var inlineRows = m.GetCustomAttributes(inlineAttr, inherit: false).Length;
-  if (inlineRows > 0) { live += inlineRows; continue; }
-
-  var memberDataAttrs = m.GetCustomAttributes(memberDataAttr, inherit: false);
-  if (memberDataAttrs.Length > 0)
-  {
-  var rows = 0;
-  foreach (var attr in memberDataAttrs.Cast<MemberDataAttribute>())
-  {
-  rows += CountMemberDataRows(t, attr.MemberName);
-  }
-  // Fallback-to-1 when source is unresolvable (private / instance / dynamic).
-  live += Math.Max(1, rows);
-  continue;
-  }
-
-  var classDataAttrs = m.GetCustomAttributes(classDataAttr, inherit: false);
-  if (classDataAttrs.Length > 0)
-  {
-  var rows = 0;
-  foreach (var attr in classDataAttrs.Cast<ClassDataAttribute>())
-  {
-  rows += CountClassDataRows(attr.Class);
-  }
-  live += Math.Max(1, rows);
-  continue;
-  }
-
-  // Fallback-to-1 for unrecognised custom data-attribute sub-classes.
-  live++;
-  }
-  }
-
-  Assert.True(declared == live,
-  $"docs/STATUS.md declares testCount={declared} but Lifeblood.Tests discovery yields {live} " +
-  "test cases ([Fact] + [InlineData] rows + [MemberData]/[ClassData] expansion of [Theory]). " +
-  "Update the HTML comment in STATUS.md to the live count, or restore the test that caused the drift.");
-  }
-
-  private static int CountMemberDataRows(Type containingType, string memberName)
-  {
-  const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
-  var prop = containingType.GetProperty(memberName, flags);
-  System.Collections.IEnumerable? source = null;
-  if (prop != null && prop.GetGetMethod(nonPublic: true) != null)
-  source = prop.GetValue(null) as System.Collections.IEnumerable;
-  else
-  {
-  var method = containingType.GetMethod(memberName, flags, binder: null, types: Type.EmptyTypes, modifiers: null);
-  if (method != null)
-  source = method.Invoke(null, null) as System.Collections.IEnumerable;
-  }
-  if (source == null) return 0;
-  var count = 0;
-  foreach (var _ in source) count++;
-  return count;
-  }
-
-  private static int CountClassDataRows(Type sourceType)
-  {
-  var instance = Activator.CreateInstance(sourceType) as System.Collections.IEnumerable;
-  if (instance == null) return 0;
-  var count = 0;
-  foreach (var _ in instance) count++;
-  return count;
-  }
-
-  [Fact]
-  public void StatusDoc_VisibleReadWriteSplit_MatchesRegistryAvailability()
-  {
-  // INV-DOCS-003. Visible "(17 read + 12 write)" / "(17R + 12W)" prose in
-  // docs/STATUS.md must match the live ReadSide / WriteSide split in
-  // ToolRegistry.cs. Mirrors the visible-tool-count ratchet for the
-  // read/write breakdown — a second drift class the original ratchet
-  // missed.
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
-
-  var registryPath = Path.Combine(RepoRoot, "src", "Lifeblood.Server.Mcp", "ToolRegistry.cs");
-  var registry = File.ReadAllText(registryPath);
-  var liveRead = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.ReadSide").Count;
-  var liveWrite = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.WriteSide").Count;
-
-  // Two phrase shapes appear in the doc: "(17 read + 12 write)" and "17R + 12W".
-  var prose = Regex.Matches(status, @"\(\s*(\d+)\s+read(?:-side)?\s*\+\s*(\d+)\s+write(?:-side)?\s*\)");
-  foreach (Match m in prose)
-  {
-  var r = int.Parse(m.Groups[1].Value);
-  var w = int.Parse(m.Groups[2].Value);
-  Assert.True(r == liveRead && w == liveWrite,
-  $"docs/STATUS.md has visible \"{m.Value}\" but registry has {liveRead} read + {liveWrite} write.");
-  }
-  }
-
-  [Fact]
-  public void StatusDoc_SkippableFactCount_MatchesLiveDiscovery()
-  {
-  // INV-DOCS-007. Single source of truth: <!-- skippableFactCount: N -->.
-  // Live truth: count of test methods carrying SkippableFactAttribute.
-  // Mechanical declared-count check (env-independent). The runtime-skip
-  // count varies with gates like LIFEBLOOD_REQUIRE_NATIVE_CLANG, so the
-  // ratchet anchors the DECLARED surface, not the runtime outcome.
-  // Closes the drift class where "zero skipped" prose silently outlived
-  // the addition of runtime-gated tests.
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
-
-  var match = Regex.Match(status, @"<!--\s*skippableFactCount:\s*(\d+)\s*-->");
-  Assert.True(match.Success,
-  "docs/STATUS.md must declare <!-- skippableFactCount: N --> so this ratchet has a single source of truth.");
-  var declared = int.Parse(match.Groups[1].Value);
-
-  var assembly = typeof(DocsTests).Assembly;
-  // SkippableFactAttribute lives in the Xunit.SkippableFact NuGet package,
-  // a reference of Lifeblood.Tests. Resolve by FullName from the assembly's
-  // referenced assemblies so the test does not hard-code the package version.
-  Type? skippableFactAttr = null;
-  foreach (var name in assembly.GetReferencedAssemblies())
-  {
-  try
-  {
-  var refAsm = System.Reflection.Assembly.Load(name);
-  skippableFactAttr = refAsm.GetType("Xunit.SkippableFactAttribute");
-  if (skippableFactAttr != null) break;
-  }
-  catch { /* unloadable refs are not skippable-fact carriers */ }
-  }
-  Assert.True(skippableFactAttr != null,
-  "Xunit.SkippableFactAttribute not found in referenced assemblies — the Xunit.SkippableFact package reference is load-bearing for this ratchet.");
-
-  var live = 0;
-  foreach (var t in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
-  {
-  foreach (var m in t.GetMethods(
-  BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-  {
-  if (m.GetCustomAttributes(skippableFactAttr!, inherit: false).Length > 0) live++;
-  }
-  }
-
-  Assert.True(declared == live,
-  $"docs/STATUS.md declares skippableFactCount={declared} but Lifeblood.Tests carries {live} " +
-  "[SkippableFact] methods. Update the HTML comment in STATUS.md to the live count, or " +
-  "convert the gated method back to plain [Fact].");
-  }
-
-  [Fact]
-  public void StatusDoc_InvariantCount_MatchesLiveAudit()
-  {
-  // INV-DOCS-005. Single source of truth: <!-- invariantCount: N --> comment.
-  // Live truth: LifebloodInvariantProvider.Audit(repoRoot).TotalCount.
-  // Sibling to portCount / toolCount / testCount ratchets above.
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
-
-  var match = Regex.Match(status, @"<!--\s*invariantCount:\s*(\d+)\s*-->");
-  Assert.True(match.Success,
-  "docs/STATUS.md must declare <!-- invariantCount: N --> so this ratchet has a single source of truth.");
-  var declared = int.Parse(match.Groups[1].Value);
-
-  var provider = new LifebloodInvariantProvider(new PhysicalFileSystem());
-  var audit = provider.Audit(RepoRoot);
-  var live = audit.TotalCount;
-
-  Assert.True(declared == live,
-  $"docs/STATUS.md declares invariantCount={declared} but live audit reports {live} invariants. " +
-  "Update the HTML comment in STATUS.md to the live count, or restore/remove the invariant " +
-  "in CLAUDE.md / docs/invariants/**.md that caused the drift.");
-  }
-
-  [Fact]
-  public void StatusDoc_InvariantCategoryCount_MatchesLiveAudit()
-  {
-  // INV-DOCS-006. Single source of truth: <!-- invariantCategoryCount: N -->.
-  // Live truth: LifebloodInvariantProvider.Audit(repoRoot).CategoryCounts.Length.
-  // Catches the drift class where total count stays stable but category set
-  // shifts (e.g. INV-FOO-001 renamed to INV-BAR-001).
-  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
-  var status = File.ReadAllText(statusPath);
-
-  var match = Regex.Match(status, @"<!--\s*invariantCategoryCount:\s*(\d+)\s*-->");
-  Assert.True(match.Success,
-  "docs/STATUS.md must declare <!-- invariantCategoryCount: N --> so this ratchet has a single source of truth.");
-  var declared = int.Parse(match.Groups[1].Value);
-
-  var provider = new LifebloodInvariantProvider(new PhysicalFileSystem());
-  var audit = provider.Audit(RepoRoot);
-  var live = audit.CategoryCounts.Length;
-
-  Assert.True(declared == live,
-  $"docs/STATUS.md declares invariantCategoryCount={declared} but live audit reports {live} categories. " +
-  "Update the HTML comment in STATUS.md to the live count, or restore the invariant whose category disappeared.");
-  }
-
-  private static string FindRepoRoot()
-  {
-  var dir = AppDomain.CurrentDomain.BaseDirectory;
-  while (dir != null)
-  {
-  if (File.Exists(Path.Combine(dir, "Lifeblood.sln")))
-  return dir;
-  dir = Path.GetDirectoryName(dir);
-  }
-  throw new DirectoryNotFoundException("Could not locate Lifeblood.sln from test base directory.");
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  // INV-DOCS-SURFACE-PARITY-001. STATUS.md hidden anchors are the
-  // single source of truth; every other reviewer-facing surface that
-  // cites the same counts MUST agree. Pre-2026-05-24 the ratchets only
-  // covered STATUS.md anchors, so drift in README.md / ARCHITECTURE.md
-  // / architecture.html / docs/IMPROVEMENT_INBOX.md passed CI silently
-  // even when STATUS.md was current. Reviewer caught the drift; this
-  // ratchet closes the trap class.
-  //
-  // For each (anchor, count) pair the test loads the file, finds the
-  // first numeric citation matching a known phrasing pattern, and
-  // asserts it equals STATUS.md's anchor count. The phrasing patterns
-  // are intentionally permissive — they capture "30 Tools" / "30 MCP
-  // tools" / "30 tools / CI green" alike. Surfaces that don't cite a
-  // count (no match) skip silently.
-  // ──────────────────────────────────────────────────────────────────
-
-  public static IEnumerable<object[]> SurfaceParitySurfaces => new[]
+  /// <summary>
+  /// Non-STATUS reviewer-facing surfaces. STATUS.md is the SoT; every other
+  /// surface either points at STATUS.md (preferred) or carries a copy that
+  /// must agree. The list is the eternal regression guard.
+  /// </summary>
+  public static IEnumerable<object[]> NonStatusSurfaces => new[]
   {
     new object[] { "README.md" },
     new object[] { Path.Combine("docs", "ARCHITECTURE.md") },
     new object[] { Path.Combine("docs", "architecture.html") },
+    new object[] { Path.Combine("docs", "TOOLS.md") },
+    new object[] { Path.Combine("docs", "MCP_SETUP.md") },
+    new object[] { Path.Combine("docs", "UNITY.md") },
   };
 
-  [Theory]
-  [MemberData(nameof(SurfaceParitySurfaces))]
-  public void SurfaceParity_ToolCountAgreesWithStatusAnchor(string relPath)
-  {
-    var declared = ReadStatusAnchor("toolCount");
-    var path = Path.Combine(RepoRoot, relPath);
-    Assert.True(File.Exists(path), $"Surface file not found: {relPath}");
-    var content = File.ReadAllText(path);
+  public static IEnumerable<object[]> SurfaceAnchorPairs =>
+    from surfaceRow in NonStatusSurfaces
+    from anchor in Anchors
+    where anchor.VisiblePattern != null
+    select new object[] { (string)surfaceRow[0], anchor.Name };
 
-    foreach (var match in Regex.Matches(content, @"(?<![.\w])(\d+)\s+(?:MCP\s+)?[Tt]ools?\b").Cast<Match>())
+  // Three table-driven Theories cover the SSoT contract.
+
+  /// <summary>
+  /// INV-DOCS-001/-004/-005/-006/-007/-008/-009. STATUS.md anchor equals the
+  /// row's <c>Live</c> delegate.
+  /// </summary>
+  [Theory]
+  [MemberData(nameof(AnchorNames))]
+  public void Anchor_MatchesLiveSource(string anchorName)
+  {
+    var entry = Anchors.Single(a => a.Name == anchorName);
+    var declared = ReadStatusAnchor(anchorName);
+    var live = entry.Live();
+    Assert.True(declared == live,
+      $"docs/STATUS.md declares {anchorName}={declared} but live source ({entry.FailHint}) reports {live}. " +
+      "Update the HTML comment in STATUS.md to the live count, or restore/remove the source artefact that caused the drift.");
+  }
+
+  /// <summary>
+  /// INV-DOCS-002. STATUS.md visible prose matches its own anchors —
+  /// self-consistency check internal to STATUS.md.
+  /// </summary>
+  [Theory]
+  [MemberData(nameof(AnchorNames))]
+  public void StatusVisible_MatchesAnchor(string anchorName)
+  {
+    var entry = Anchors.Single(a => a.Name == anchorName);
+    if (entry.VisiblePattern == null) return;
+
+    var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+    var status = File.ReadAllText(statusPath);
+    var declared = ReadStatusAnchor(anchorName);
+
+    foreach (var match in Regex.Matches(status, entry.VisiblePattern).Cast<Match>())
     {
       var visible = int.Parse(match.Groups[1].Value);
       if (visible == declared) continue;
-      // Permissively skip plainly-different signals: version strings,
-      // example counts that aren't the live tool count (matchers that
-      // happen to look like "23 tools" inside historical narrative).
-      // Heuristic: if the number is < 5 or > 200, it's not the tool count.
-      if (visible < 5 || visible > 200) continue;
-      Assert.Fail($"{relPath}: visible \"{match.Value}\" does not match STATUS.md anchor toolCount={declared}. Update the prose or the anchor.");
+      if (visible < entry.VisibleMin || visible > entry.VisibleMax) continue;
+      Assert.Fail(
+        $"docs/STATUS.md visible \"{match.Value}\" does not match its own anchor {anchorName}={declared}. " +
+        "Update the visible prose, or the hidden anchor — they MUST agree inside STATUS.md.");
     }
   }
 
+  /// <summary>
+  /// INV-DOCS-SURFACE-PARITY-001. Non-STATUS surface that cites a numeric
+  /// count matching an anchor's visible pattern MUST equal the anchor.
+  /// Stripped citations match nothing and pass silently — preferred shape.
+  /// </summary>
   [Theory]
-  [MemberData(nameof(SurfaceParitySurfaces))]
-  public void SurfaceParity_PortCountAgreesWithStatusAnchor(string relPath)
+  [MemberData(nameof(SurfaceAnchorPairs))]
+  public void NonStatusSurface_VisibleCitationMatchesAnchor(string surfaceRelPath, string anchorName)
   {
-    var declared = ReadStatusAnchor("portCount");
-    var path = Path.Combine(RepoRoot, relPath);
-    Assert.True(File.Exists(path), $"Surface file not found: {relPath}");
-    var content = File.ReadAllText(path);
+    var entry = Anchors.Single(a => a.Name == anchorName);
+    if (entry.VisiblePattern == null) return;
 
-    foreach (var match in Regex.Matches(content, @"(?<![.\w])(\d+)\s*(?:/\s*\d+)?\s+port[s]?(?:\s+interfaces?)?\b").Cast<Match>())
+    var path = Path.Combine(RepoRoot, surfaceRelPath);
+    if (!File.Exists(path)) return; // surface optional — UNITY.md may not exist on every branch
+
+    var declared = ReadStatusAnchor(anchorName);
+    var content = File.ReadAllText(path);
+    foreach (var match in Regex.Matches(content, entry.VisiblePattern).Cast<Match>())
     {
       var visible = int.Parse(match.Groups[1].Value);
       if (visible == declared) continue;
-      if (visible < 5 || visible > 200) continue;
-      Assert.Fail($"{relPath}: visible \"{match.Value}\" does not match STATUS.md anchor portCount={declared}. Update the prose or the anchor.");
+      if (visible < entry.VisibleMin || visible > entry.VisibleMax) continue;
+      Assert.Fail(
+        $"{surfaceRelPath}: visible \"{match.Value}\" does not match STATUS.md anchor {anchorName}={declared}. " +
+        "Update the prose, the anchor, or (preferred) strip the count and link to docs/STATUS.md — STATUS.md is the single source of truth.");
     }
   }
 
-  [Theory]
-  [MemberData(nameof(SurfaceParitySurfaces))]
-  public void SurfaceParity_InvariantCountAgreesWithStatusAnchor(string relPath)
-  {
-    var declared = ReadStatusAnchor("invariantCount");
-    var path = Path.Combine(RepoRoot, relPath);
-    Assert.True(File.Exists(path), $"Surface file not found: {relPath}");
-    var content = File.ReadAllText(path);
+  // Specialized ratchets — non-integer-equality contracts.
 
-    foreach (var match in Regex.Matches(content, @"(?<![.\w])(\d+)\s+(?:typed\s+(?:architectural\s+)?|queryable\s+)?invariants?\b").Cast<Match>())
+  /// <summary>INV-CHANGELOG-001. Every ## [X.Y.Z] heading has a matching link reference.</summary>
+  [Fact]
+  public void Changelog_EveryHeadingHasLinkReference()
+  {
+    var changelogPath = Path.Combine(RepoRoot, "CHANGELOG.md");
+    var changelog = File.ReadAllText(changelogPath);
+
+    var headings = Regex.Matches(changelog, @"^##\s*\[([^\]]+)\]", RegexOptions.Multiline)
+      .Select(m => m.Groups[1].Value)
+      .Where(v => v != "Unreleased")
+      .ToHashSet(StringComparer.Ordinal);
+
+    var references = Regex.Matches(changelog, @"^\[([^\]]+)\]:\s*http", RegexOptions.Multiline)
+      .Select(m => m.Groups[1].Value)
+      .Where(v => v != "Unreleased")
+      .ToHashSet(StringComparer.Ordinal);
+
+    var headingsWithoutRef = headings.Except(references).ToArray();
+    var referencesWithoutHeading = references.Except(headings).ToArray();
+
+    Assert.True(headingsWithoutRef.Length == 0,
+      "CHANGELOG.md headings without a matching [X.Y.Z]: link reference: " + string.Join(", ", headingsWithoutRef));
+    Assert.True(referencesWithoutHeading.Length == 0,
+      "CHANGELOG.md link references without a matching ## [X.Y.Z] heading: " + string.Join(", ", referencesWithoutHeading));
+  }
+
+  /// <summary>
+  /// INV-DOCS-003. STATUS.md "(N read + M write)" / "(NR + MW)" prose
+  /// matches ToolRegistry ReadSide/WriteSide split. Two-number contract,
+  /// outside the single-integer anchor table.
+  /// </summary>
+  [Fact]
+  public void StatusDoc_VisibleReadWriteSplit_MatchesRegistryAvailability()
+  {
+    var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+    var status = File.ReadAllText(statusPath);
+
+    var registryPath = Path.Combine(RepoRoot, "src", "Lifeblood.Server.Mcp", "ToolRegistry.cs");
+    var registry = File.ReadAllText(registryPath);
+    var liveRead = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.ReadSide").Count;
+    var liveWrite = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.WriteSide").Count;
+
+    var prose = Regex.Matches(status, @"\(\s*(\d+)\s+read(?:-side)?\s*\+\s*(\d+)\s+write(?:-side)?\s*\)");
+    foreach (Match m in prose)
     {
-      var visible = int.Parse(match.Groups[1].Value);
-      if (visible == declared) continue;
-      if (visible < 10 || visible > 1000) continue;
-      Assert.Fail($"{relPath}: visible \"{match.Value}\" does not match STATUS.md anchor invariantCount={declared}. Update the prose or the anchor.");
+      var r = int.Parse(m.Groups[1].Value);
+      var w = int.Parse(m.Groups[2].Value);
+      Assert.True(r == liveRead && w == liveWrite,
+        $"docs/STATUS.md has visible \"{m.Value}\" but registry has {liveRead} read + {liveWrite} write.");
     }
+  }
+
+  // Live-source helpers — one per anchor.
+
+  private static int LivePortCount()
+  {
+    var portsDir = Path.Combine(RepoRoot, "src", "Lifeblood.Application", "Ports");
+    Assert.True(Directory.Exists(portsDir), $"Ports directory not found: {portsDir}");
+
+    var count = 0;
+    foreach (var file in Directory.EnumerateFiles(portsDir, "*.cs", SearchOption.AllDirectories))
+    {
+      var content = File.ReadAllText(file);
+      count += Regex.Matches(content, @"\bpublic\s+interface\s+I[A-Z][A-Za-z0-9_]*\b").Count;
+    }
+    return count;
+  }
+
+  private static int LiveToolCount()
+  {
+    var toolRegistryPath = Path.Combine(RepoRoot, "src", "Lifeblood.Server.Mcp", "ToolRegistry.cs");
+    Assert.True(File.Exists(toolRegistryPath), $"ToolRegistry.cs not found: {toolRegistryPath}");
+    var registry = File.ReadAllText(toolRegistryPath);
+    return Regex.Matches(registry, @"Name\s*=\s*""lifeblood_[a-z_]+""").Count;
+  }
+
+  private static int LiveInvariantCount()
+  {
+    var provider = new LifebloodInvariantProvider(new PhysicalFileSystem());
+    return provider.Audit(RepoRoot).TotalCount;
+  }
+
+  private static int LiveInvariantCategoryCount()
+  {
+    var provider = new LifebloodInvariantProvider(new PhysicalFileSystem());
+    return provider.Audit(RepoRoot).CategoryCounts.Length;
+  }
+
+  private static int LiveTestCount()
+  {
+    var assembly = typeof(DocsTests).Assembly;
+    var factAttr = typeof(FactAttribute);
+    var theoryAttr = typeof(TheoryAttribute);
+    var inlineAttr = typeof(InlineDataAttribute);
+    var memberDataAttr = typeof(MemberDataAttribute);
+    var classDataAttr = typeof(ClassDataAttribute);
+
+    var count = 0;
+    foreach (var t in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
+    {
+      foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+      {
+        if (m.GetCustomAttributes(factAttr, inherit: false).Length == 0) continue;
+        var isTheory = m.GetCustomAttributes(theoryAttr, inherit: false).Length > 0;
+        if (!isTheory) { count++; continue; }
+
+        var inlineRows = m.GetCustomAttributes(inlineAttr, inherit: false).Length;
+        if (inlineRows > 0) { count += inlineRows; continue; }
+
+        var memberDataAttrs = m.GetCustomAttributes(memberDataAttr, inherit: false);
+        if (memberDataAttrs.Length > 0)
+        {
+          var rows = 0;
+          foreach (var attr in memberDataAttrs.Cast<MemberDataAttribute>())
+            rows += CountMemberDataRows(t, attr.MemberName);
+          count += Math.Max(1, rows);
+          continue;
+        }
+
+        var classDataAttrs = m.GetCustomAttributes(classDataAttr, inherit: false);
+        if (classDataAttrs.Length > 0)
+        {
+          var rows = 0;
+          foreach (var attr in classDataAttrs.Cast<ClassDataAttribute>())
+            rows += CountClassDataRows(attr.Class);
+          count += Math.Max(1, rows);
+          continue;
+        }
+
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private static int LiveSkippableFactCount()
+  {
+    var assembly = typeof(DocsTests).Assembly;
+    Type? skippableFactAttr = null;
+    foreach (var name in assembly.GetReferencedAssemblies())
+    {
+      try
+      {
+        var refAsm = System.Reflection.Assembly.Load(name);
+        skippableFactAttr = refAsm.GetType("Xunit.SkippableFactAttribute");
+        if (skippableFactAttr != null) break;
+      }
+      catch { /* unloadable refs are not skippable-fact carriers */ }
+    }
+    Assert.True(skippableFactAttr != null,
+      "Xunit.SkippableFactAttribute not found in referenced assemblies — the Xunit.SkippableFact package reference is load-bearing for this ratchet.");
+
+    var count = 0;
+    foreach (var t in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
+    {
+      foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+      {
+        if (m.GetCustomAttributes(skippableFactAttr!, inherit: false).Length > 0) count++;
+      }
+    }
+    return count;
+  }
+
+  private static int CountMemberDataRows(Type containingType, string memberName)
+  {
+    const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
+    var prop = containingType.GetProperty(memberName, flags);
+    System.Collections.IEnumerable? source = null;
+    if (prop != null && prop.GetGetMethod(nonPublic: true) != null)
+      source = prop.GetValue(null) as System.Collections.IEnumerable;
+    else
+    {
+      var method = containingType.GetMethod(memberName, flags, binder: null, types: Type.EmptyTypes, modifiers: null);
+      if (method != null)
+        source = method.Invoke(null, null) as System.Collections.IEnumerable;
+    }
+    if (source == null) return 0;
+    var count = 0;
+    foreach (var _ in source) count++;
+    return count;
+  }
+
+  private static int CountClassDataRows(Type sourceType)
+  {
+    var instance = Activator.CreateInstance(sourceType) as System.Collections.IEnumerable;
+    if (instance == null) return 0;
+    var count = 0;
+    foreach (var _ in instance) count++;
+    return count;
   }
 
   private static int ReadStatusAnchor(string name)
@@ -468,5 +430,16 @@ public class DocsTests
     var match = Regex.Match(status, $@"<!--\s*{Regex.Escape(name)}:\s*(\d+)\s*-->");
     Assert.True(match.Success, $"docs/STATUS.md must declare <!-- {name}: N -->.");
     return int.Parse(match.Groups[1].Value);
+  }
+
+  private static string FindRepoRoot()
+  {
+    var dir = AppDomain.CurrentDomain.BaseDirectory;
+    while (dir != null)
+    {
+      if (File.Exists(Path.Combine(dir, "Lifeblood.sln"))) return dir;
+      dir = Path.GetDirectoryName(dir);
+    }
+    throw new DirectoryNotFoundException("Could not locate Lifeblood.sln from test base directory.");
   }
 }

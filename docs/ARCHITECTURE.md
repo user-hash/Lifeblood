@@ -46,13 +46,13 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | Assembly | Role | Dependencies |
 |----------|------|-------------|
 | **Lifeblood.Domain** | Graph model, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, rules, results (incl. `EnumCoverageReport`, `DiagnosticsReport`, `TestImpactReport`, `CompileCheckResult`), ResponseEnvelope + EnvelopeClassification, `PathClassification/PathBucketClassifier` (Production / Test / Editor / Generated SSoT, `INV-PATHBUCKET-SHARED-001`), `Graph/SymbolPropertyKeys` (writer↔consumer string-key contract) | None |
-| **Lifeblood.Application** | 28 port interfaces including `IWorkspaceAnalyzer`, `ICompilationHost`, `IRuntimeAssemblyResolver`, `ISymbolResolver`, `IResponseDecorator`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IUnityReachabilityProvider`, `IPartialViewBuilder`, `IAuthorityReporter`, `IInvariantProvider`, `IPortHealthAnalyzer`, `IDefineProfileResolver`, `IUsageProbe` + `IUsageCapture`. AnalyzeWorkspaceUseCase, GenerateContextUseCase. | Domain |
+| **Lifeblood.Application** | Port interfaces (live count in [`STATUS.md`](STATUS.md)) including `IWorkspaceAnalyzer`, `ICompilationHost`, `IRuntimeAssemblyResolver`, `ISymbolResolver`, `IResponseDecorator`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IUnityReachabilityProvider`, `IPartialViewBuilder`, `IAuthorityReporter`, `IInvariantProvider`, `IPortHealthAnalyzer`, `IDefineProfileResolver`, `IUsageProbe` + `IUsageCapture`. AnalyzeWorkspaceUseCase, GenerateContextUseCase. | Domain |
 | **Lifeblood.Adapters.CSharp** | Roslyn reference adapter. `RoslynWorkspaceAnalyzer` (analyze, incremental, asmdef-edit-aware), `RoslynModuleDiscovery` (csproj parse → typed `ModuleInfo` with `BclOwnership`, `AllowUnsafeCode`, `ImplicitUsings`, `LangVersion`, `Nullable`, `NoWarn`, `DefineConstants`), `RoslynCompilationHost` (compile-check, diagnose, enum-coverage), `Internal.ModuleCompilationBuilder` (threads every csproj-driven compilation fact into `CSharpParseOptions` / `CSharpCompilationOptions` — `LangVersion` / `Nullable` warning level / `NoWarn` / `DefineConstants` via FOLLOWUP-001..003 + BUG-2), symbol/edge extraction (records `Properties["attributes"]`, `Properties["baseType"]`, `Properties["classification"]`), `RoslynSemanticView` (sandbox helpers `Help` / `SymbolsOfKind(string)` / `EdgesOfKind(string)`), `CanonicalSymbolFormat` (parameter-type display SSoT), `CsprojPaths` (cross-platform csproj path normalization), `SnippetWrapper` (compile_check auto-wrap), `UnityReachabilityAdapter` (entrypoint attributes + MonoBehaviour magic methods + transitive base walk), `UnityAssemblyResolver` (`Library/ScriptAssemblies` + `Library/Bee/artifacts` + `Library/PackageCache` DLL probe). | Application, Roslyn |
 | **Lifeblood.Adapters.JsonGraph** | JSON import/export with round-trip fidelity. | Application |
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator. | Application |
 | **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius, file impact), LifebloodSymbolResolver (identifier resolution + wrong-namespace short-name fallback + kind correction), LifebloodResponseDecorator (truth envelope; classification injected from registry at composition time), LifebloodAuthorityReporter, LifebloodSemanticSearchProvider (tokenized ranked-OR search over name + xmldoc), LifebloodDeadCodeAnalyzer (consults `IUnityReachabilityProvider` when injected), LifebloodPartialViewBuilder, LifebloodInvariantProvider (CLAUDE.md runtime parser + cache), ClaudeMdInvariantParser (pure text to records), InvariantParseCache (generic timestamp-invalidated cache), McpProtocolSpec (single source of truth for JSON-RPC wire constants). | Application |
 | **Lifeblood.Analysis** | CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector (Tarjan SCC + taxonomy classification per `INV-CYCLE-TAXONOMY-001`), TierClassifier (semantic test-fixture detection via `Properties["attributes"]`), TestImpactAnalyzer (`lifeblood_test_impact` BFS, `INV-TEST-IMPACT-001`), RuleValidator. | Domain |
-| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. 30 tools (17 read + 13 write). Bidirectional Roslyn. McpDispatcher owns the wire protocol. ToolDefinition.EnvelopeClassification is the registry-side source of truth for the truth envelope. | Application, Adapters.CSharp, Connectors |
+| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. MCP tool surface (17 read + 13 write live in [`STATUS.md`](STATUS.md)). Bidirectional Roslyn. McpDispatcher owns the wire protocol. ToolDefinition.EnvelopeClassification is the registry-side source of truth for the truth envelope. | Application, Adapters.CSharp, Connectors |
 | **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. Zero ProjectReferences (INV-SCRIPTHOST-001). | Roslyn Scripting only |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch. | Everything |
 
@@ -71,7 +71,7 @@ The domain is pure. No Roslyn, no JSON, no System.IO.
 
 Properties are `IReadOnlyDictionary` on the public surface. The graph is read-only after construction.
 
-## Port Interfaces (28 total)
+## Port Interfaces
 
 ### Left Side (Language Adapters)
 - `IWorkspaceAnalyzer`. Primary entry point. Takes `projectRoot` plus config and returns a `SemanticGraph`.
@@ -141,13 +141,13 @@ v1 limitation: does not cascade to dependent modules when an API surface changes
 
 ## Unity Bridge
 
-The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes all 30 tools to Unity MCP. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
+The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes every MCP tool to Unity MCP. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
 
 ```
 Unity Editor ──→ Unity MCP (scenes, GameObjects, assets)
                      │
                      └── [McpForUnityTool] ──→ Lifeblood MCP (child process)
-                         └── 28 semantic tools over JSON-RPC
+                         └── semantic tools over JSON-RPC
 ```
 
 ## Deterministic Output
@@ -183,6 +183,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
-- **144 typed invariants across 98 categories under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
+- **Typed invariants under `docs/invariants/`** (8 domain files + INDEX; live count + category coverage in [`STATUS.md`](STATUS.md)), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
 - DocsTests ratchets: `portCount`, `toolCount`, `testCount`, `invariantCount`, `invariantCategoryCount`, `skippedCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)

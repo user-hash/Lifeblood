@@ -426,10 +426,9 @@ public sealed class GraphSession : IDisposable
         // and the `fallbackReason` field surfaces alongside so the caller
         // sees the cache-miss without parsing a hybrid mode value.
         var wireMode = incremental.Mode == IncrementalMode.FullFallback ? "full" : "incremental";
-        // INV-MULTI-DEFINE-INCREMENTAL-001 wire-shape parity: incremental
-        // responses surface the snapshot's retained profile set on the same
-        // path full analyze does. Single-profile collapses to null per the
-        // BuildLoadResult contract so back-compat callers see identical shape.
+        // INV-MULTI-DEFINE-INCREMENTAL-001. Echo snapshot's retained profile
+        // set on the wire when Count >= 2 (Count == 1 collapses to null per
+        // BuildLoadResult contract — single-profile back-compat).
         var incrActiveProfiles = _roslynAdapter?.RetainedProfileNames is { Count: > 1 } names
             ? names.ToArray()
             : null;

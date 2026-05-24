@@ -1,10 +1,10 @@
 # MCP Server Setup
 
-Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents 29 tools over stdio JSON-RPC. This page covers how it works, how to install it, and copy-paste configs for every major MCP client, including the Unity Editor via the Coplay MCP for Unity bridge.
+Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents the full MCP tool surface (read + write side) over stdio JSON-RPC; live counts in [`STATUS.md`](STATUS.md). This page covers how it works, how to install it, and copy-paste configs for every major MCP client, including the Unity Editor via the Coplay MCP for Unity bridge.
 
 ## How it works
 
-[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 8 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes 29 tools.
+[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 8 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes the read + write MCP tool surface in one shared session (live counts in [`STATUS.md`](STATUS.md)).
 
 ```
 ┌─────────────────┐   spawn (stdin/stdout)   ┌──────────────────────────┐
@@ -211,7 +211,7 @@ Call a tool:
 
 ## Unity Editor (via Coplay MCP for Unity)
 
-Lifeblood integrates with the Unity Editor as a **sidecar process** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds its 29 semantic tools to the same connection without competing for assemblies, without triggering domain reloads, and without colliding with Unity's own tooling.
+Lifeblood integrates with the Unity Editor as a **sidecar process** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds its semantic tools to the same connection without competing for assemblies, without triggering domain reloads, and without colliding with Unity's own tooling.
 
 ### How the bridge works
 
@@ -236,7 +236,7 @@ Lifeblood integrates with the Unity Editor as a **sidecar process** under the [C
                                         │   (separate .NET 8 process) │
                                         │   - Roslyn workspace        │
                                         │   - Semantic graph          │
-                                        │   - 29 tools, all share     │
+                                        │   - All tools share         │
                                         │     one loaded state        │
                                         └─────────────────────────────┘
 ```
@@ -336,7 +336,7 @@ You can run both at the same time. Each is its own `lifeblood-mcp` process; noth
 5. For write-side Roslyn features, use `lifeblood_find_references` (pass `includeDeclarations=true` to also list every partial declaration site), `lifeblood_execute` (the script globals `Graph`, `Compilations`, and `ModuleDependencies` give you typed access to the loaded semantic state), and `lifeblood_compile_check`.
 6. After code changes, call `lifeblood_analyze` with `incremental: true` for fast re-analysis. Only changed modules recompile, and csproj edits trigger re-discovery.
 
-The graph stays in memory for the session. All 29 tools share the same loaded workspace.
+The graph stays in memory for the session. Every tool shares the same loaded workspace.
 
 ## Notes for Unity, .NET Framework, and Mono workspaces
 
