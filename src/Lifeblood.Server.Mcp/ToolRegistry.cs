@@ -604,6 +604,7 @@ public static class ToolRegistry
   properties = new
   {
   enumTypeId = new { type = "string", description = "Canonical, qualified, or short name of an enum type." },
+  profileScope = new { type = "string", description = "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001." },
   },
   },
   },
@@ -624,6 +625,7 @@ public static class ToolRegistry
   maxRows = new { type = "integer", description = "Optional. Cap on rows extracted per table; defaults to 32. Zero / negative values clamp to the default. Ignored when `summarize:true`." },
   maxTables = new { type = "integer", description = "Optional. Cap on tables extracted per type; defaults to 64. Zero / negative values clamp to the default. Ignored when `summarize:true`." },
   summarize = new { type = "boolean", description = "Optional. When true, forces compact caps (maxRows=3, maxTables=16) regardless of caller-passed values — smallest viable wire shape for triage workflows on dispatch-table god-types. Defaults to false. INV-STATIC-TABLES-SUMMARIZE-001." },
+  profileScope = new { type = "string", description = "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile (the first one in `defineProfiles` from the most recent analyze) — IOperation-walking tools operate against the retained compilations only. Mismatched values fail with a guidance error. Single-profile analyze: retained profile is the resolver's default (Editor). INV-MULTI-DEFINE-IOP-001." },
   },
   },
   },
@@ -646,6 +648,7 @@ public static class ToolRegistry
   includePublicMutableProperties = new { type = "boolean", description = "Include public mutable non-delegate properties (settable from outside) as slots. Default false." },
   slotName = new { type = "string", description = "Optional. When set, only the matching slot is reported in the per-site slots array." },
   maxSites = new { type = "integer", description = "Optional. Cap on construction sites returned; defaults to 256. Zero / negative values clamp to the default." },
+  profileScope = new { type = "string", description = "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001." },
   },
   },
   },

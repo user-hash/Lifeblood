@@ -39,6 +39,16 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     private AnalysisSnapshot? _snapshot;
 
     /// <summary>
+    /// INV-MULTI-DEFINE-IOP-001. Name of the profile whose compilations are
+    /// retained for write-side / IOperation tools. Equals the first profile
+    /// in the active list (default Editor on Unity workspaces; only profile
+    /// in single-profile back-compat). Null until first AnalyzeWorkspace
+    /// call. Subsequent multi-profile passes use streaming mode and downgrade
+    /// after extraction so peak memory stays at single-profile baseline.
+    /// </summary>
+    public string? RetainedProfileName { get; private set; }
+
+    /// <summary>
     /// Compilations retained during analysis (only when RetainCompilations=true).
     /// Null when streaming mode was used. Available for write-side operations after analysis.
     /// </summary>
@@ -174,6 +184,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // profile-tagged edges that GraphBuilder dedup-unions.
         var activeProfiles = ResolveActiveProfiles(projectRoot, config);
         var multiProfile = activeProfiles.Count > 1;
+        RetainedProfileName = activeProfiles.Count > 0 ? activeProfiles[0].Name : null;
 
         for (var profileIndex = 0; profileIndex < activeProfiles.Count; profileIndex++)
         {
@@ -182,8 +193,23 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             var profileTag = multiProfile ? profile.Name : null;
             var profileModules = ApplyProfileToModules(modules, profile);
 
-            _compilations = compilationBuilder.ProcessInOrder(
-                profileModules, projectRoot, config,
+            // INV-MULTI-DEFINE-IOP-001. First profile retains compilations per
+            // caller config (typically true for write-side / IOperation tool
+            // support). Subsequent profile passes force streaming mode so
+            // their compilations downgrade after extraction — peak RAM stays
+            // at single-profile baseline regardless of profile count.
+            var profileConfig = isFirstProfile
+                ? config
+                : new AnalysisConfig
+                {
+                    ExcludePatterns = config.ExcludePatterns,
+                    AllowFullFallback = config.AllowFullFallback,
+                    DefineProfiles = config.DefineProfiles,
+                    RetainCompilations = false,
+                };
+
+            var profileCompilations = compilationBuilder.ProcessInOrder(
+                profileModules, projectRoot, profileConfig,
                 onModuleProgress: OnModuleProgress,
                 skippedCollector: isFirstProfile ? snapshot.SkippedFiles : null,
                 carryDowngraded: isFirstProfile ? snapshot.DowngradedRefs : null,
@@ -225,6 +251,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                         }
                     }
                 });
+
+            if (isFirstProfile) _compilations = profileCompilations;
         }
 
         // Module dependency edges.

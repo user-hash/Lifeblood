@@ -77,6 +77,9 @@ public sealed class GraphSession : IDisposable
     public IWorkspaceRefactoring? Refactoring => _session.Refactoring;
     public bool HasCompilationState => _session.HasCompilationState;
 
+    /// <summary>INV-MULTI-DEFINE-IOP-001. Name of the retained profile.</summary>
+    public string? RetainedProfileName => _roslynAdapter?.RetainedProfileName;
+
     /// <summary>
     /// Monotonic workspace generation. Bumped on every Load / incremental
     /// refresh / auto-refresh. Read by the envelope decorator so every
