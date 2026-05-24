@@ -17,13 +17,12 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 /// canonical collision; the empirical 7,537 × CS1701 measured against
 /// <c>Lifeblood.Tests</c> originated from this class).
 ///
-/// **Identity granularity** (post-W6 audit). Pre-fix the dedup keyed
-/// on the simple name alone, which would collapse two legitimately
-/// distinct identities sharing a simple name but disagreeing on
-/// culture / public-key (e.g. an official Microsoft-signed assembly
-/// + a third-party shim with the same simple name). The bucket key
-/// is now <c>name|culture|publicKey</c> so distinct identities
-/// survive; only true version collisions inside a bucket unify.
+/// **Identity granularity.** Bucket key is
+/// <c>name|culture|publicKey</c> so two legitimately distinct
+/// identities sharing a simple name (e.g. an official Microsoft-
+/// signed assembly + a third-party shim with the same simple name)
+/// survive separately; only true version collisions inside a bucket
+/// unify.
 /// Public-key bytes are compared as a raw hex string — same blob =
 /// same identity — which is strictly more conservative than the
 /// truncated 8-byte token MSBuild typically prints, and avoids the

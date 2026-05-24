@@ -53,9 +53,7 @@ Pinned by `MultiProfileAnalyzeTests` (11 facts: applier add/remove ordinal + ide
 
 - **`IDefineProfileResolver` port + `DefaultDefineProfileResolver` adapter** (`INV-MULTI-DEFINE-RESOLVER-001`). Wave 6.A of L-LIM-001 multi-define union analyze. New Left-side port at `Lifeblood.Application.Ports.Left.IDefineProfileResolver` returns the set of preprocessor-symbol profiles a project should be analyzed under. Default adapter returns a single identity Editor profile — every existing single-profile callsite keeps byte-stable wire shape. Per-profile active define set computed as `(BASE - RemoveDefines) ∪ AddDefines`; ordinal-sorted for byte-stable provenance. Pinned by `DefineProfileResolverTests` (4 facts). Port count 27 → 28. Test count 1149 → 1153. INV count 135 → 136 across 89 → 90 categories. Wave 6.B (multi-profile compile pipeline) + Wave 6.C (UnityDefineProfileResolver 2-profile MVP) follow.
 
-### Wave 6.F: L-LIM-001 closure (implementation complete, live re-probe pending dist swap) (2026-05-24)
-
-L-LIM-001 (preprocessor-guarded callsites invisible to `find_references` / `dependants`) **CLOSED in-tree** under the 5-wave Wave 6 chain ( → ):
+### Wave 6 chain — L-LIM-001 CLOSED end-to-end (2026-05-24)
 
 - **6.A** `IDefineProfileResolver` Application-layer port + default single-Editor identity adapter (`INV-MULTI-DEFINE-RESOLVER-001`)
 
@@ -71,7 +69,11 @@ Total scope: **7 new INVs** pinned in `docs/invariants/architecture.md` + **29 n
 
 Tests 1155 / 1155 Debug green (filter `!~NativeClang`); zero skipped. STATUS anchors: 142 invariants across 96 categories, 28 ports, 30 MCP tools.
 
-### Wave 6: L-LIM-001 multi-define union analyze — implementation plan landed (2026-05-24)
+### Release readiness note: native-clang opt-in lane
+
+The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build target**, not a bundled artifact. The C# core packages (`Lifeblood`, `Lifeblood.Server.Mcp`) do NOT carry `lifeblood-native-clang.exe` and do NOT depend on LLVM. Consumers who need C-language analysis build the executable from `adapters/native-clang/` via CMake + libclang per `docs/TOOLCHAIN.md`. The 11 `[SkippableFact]` ratchets in `tests/Lifeblood.Tests/NativeClangExecutableRatchetTests*.cs` skip silently when the executable is absent (default suite green at `1180 passed + 11 skipped / 1191 total`) and fail loudly when `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` is set on a host where the executable IS expected to be present — this is the CI-gate path, not a release-blocker. Full opt-in execution requires the consumer's own LLVM toolchain. See `docs/NATIVE_CLANG.md` § "Opt-in execution lane" for the build recipe.
+
+### Wave 6 plan reference (2026-05-24)
 
 ### Wave 5: Stage 0 dogfood follow-through (2026-05-24)
 

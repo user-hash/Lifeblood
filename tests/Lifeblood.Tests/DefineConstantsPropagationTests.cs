@@ -15,17 +15,7 @@ namespace Lifeblood.Tests;
 /// so that <c>#if</c>-guarded code participates in the compilation unit
 /// and, downstream, in the symbol graph.
 ///
-/// Pre-fix: <c>RoslynModuleDiscovery</c> never read
-/// <c>&lt;DefineConstants&gt;</c> and <c>ModuleCompilationBuilder</c>
-/// called <c>CSharpSyntaxTree.ParseText(text, path)</c> with no
-/// <c>ParseOptions</c>. PreprocessorSymbolNames was always empty.
-/// Every <c>#if</c>-guarded symbol referenced only inside the guard was
-/// invisible to <c>find_references</c> / <c>dead_code</c> /
-/// <c>blast_radius</c> (the L-LIM-001 trap empirically observed on
-/// Unity-like workspaces whose csprojs declare platform-specific
-/// preprocessor symbols).
-///
-/// Post-fix: discovery parses every <c>&lt;DefineConstants&gt;</c>,
+/// Contract: discovery parses every <c>&lt;DefineConstants&gt;</c>,
 /// stores onto <see cref="ModuleInfo.PreprocessorSymbols"/>, and the
 /// compilation builder threads it through
 /// <c>CSharpParseOptions.WithPreprocessorSymbols</c>.

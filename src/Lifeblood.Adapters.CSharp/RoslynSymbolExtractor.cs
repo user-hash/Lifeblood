@@ -19,13 +19,9 @@ public sealed class RoslynSymbolExtractor
         // Outer scan handles TOP-LEVEL declarations only (those parented to a
         // compilation unit or a namespace). Nested types/enums/delegates are
         // discovered via ExtractType's member walker, which threads the correct
-        // containing-type ParentId. Pre-fix, DescendantNodes() visited every
-        // declaration regardless of nesting, so a nested type was extracted
-        // twice — once with parentId=file (wrong) and once with parentId=type
-        // (correct). GraphBuilder's first-write-wins dedup hid the duplicate
-        // for plain types, but enum-member extraction (INV-EXTRACT-ENUMMEMBER-001)
-        // produces members at the time of the type-level visit, so dups would
-        // surface as duplicate enum-member emission.
+        // containing-type ParentId. INV-EXTRACT-ENUMMEMBER-001 requires each
+        // type-level visit to emit enum members exactly once, so the outer
+        // scan must not double-visit nested type declarations.
         foreach (var node in root.DescendantNodes())
         {
             if (!IsTopLevelDeclaration(node)) continue;
@@ -186,20 +182,10 @@ public sealed class RoslynSymbolExtractor
         });
 
         // INV-EXTRACT-ENUMMEMBER-001: every enum member is a first-class graph
-        // symbol. Pre-fix, ExtractEnum stopped at the type and enum members
-        // (Color.Red etc.) never entered the graph. Three failure modes followed:
-        //   (1) Exact-ID lookup field:NS.Color.Red missed → resolver Rule 4
-        //       silently substituted any short-name 'Red' on a different type.
-        //       See INV-RESOLVER-007 + R2-3 in IMPROVEMENT_INBOX.
-        //   (2) References to enum members were dropped by GraphBuilder's
-        //       dangling-edge filter (line 89), so find_references / dependants
-        //       returned 0 hits for valid usages.
-        //   (3) Dead-code analysis could never observe enum-member usage —
-        //       every member appeared unreferenced in principle.
-        // Roslyn models enum members as IFieldSymbol, so RoslynEdgeExtractor's
-        // existing IFieldSymbol arm at line 391 already emits References edges
-        // to the field-shape ID we synthesize here — no edge-extractor change
-        // needed; the symbols just have to exist.
+        // symbol. Roslyn models enum members as IFieldSymbol; RoslynEdgeExtractor's
+        // IFieldSymbol arm emits References edges to the field-shape ID we
+        // synthesize here — no edge-extractor change needed, the symbols just
+        // have to exist. INV-RESOLVER-007 + R2-3 reachability hinge on this.
         foreach (var memberDecl in enumDecl.Members)
         {
             var memberSym = model.GetDeclaredSymbol(memberDecl) as IFieldSymbol;

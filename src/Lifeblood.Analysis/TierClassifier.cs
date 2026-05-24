@@ -12,11 +12,7 @@ namespace Lifeblood.Analysis;
 /// <see cref="Symbol.Properties"/> <c>"attributes"</c> which the extractor
 /// populates from Roslyn's <c>ISymbol.GetAttributes()</c> at extraction time —
 /// the Roslyn-canonical "this method is a test case" answer, not a
-/// name-substring guess. Pre-fix the classifier matched
-/// <c>Name.Contains("Test")</c> which false-positived on every Name that
-/// contained the substring (Testable / LatestState / Manifest / ContestPolicy)
-/// AND read a <c>Properties["isTooling"]</c> key the extractor never wrote
-/// (permanently false). INV-ANALYSIS-001: Stateless. INV-ANALYSIS-002: Read-only.
+/// name-substring guess. INV-ANALYSIS-001: Stateless. INV-ANALYSIS-002: Read-only.
 /// </summary>
 public static class TierClassifier
 {
