@@ -939,13 +939,24 @@ public sealed class ToolHandler
         // builds a File-kind symbol with that id); both shapes work.
         var isSymbolId = LooksLikeSymbolId(raw);
 
+        var includeReflectionHeuristic = WriteToolHandler.GetBool(args, "includeReflectionHeuristic") ?? false;
+
         TestImpactReport report;
         if (isSymbolId)
         {
             var resolved = _resolver.Resolve(_session.Graph!, raw);
             if (resolved.CanonicalId == null)
                 return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
-            report = Lifeblood.Analysis.TestImpactAnalyzer.AnalyzeSymbol(_session.Graph!, resolved.CanonicalId);
+            if (includeReflectionHeuristic)
+            {
+                var options = new TestImpactOptions { IncludeReflectionHeuristic = true };
+                report = Lifeblood.Analysis.TestImpactAnalyzer.AnalyzeSymbol(
+                    _session.Graph!, resolved.CanonicalId, options, ReadFileSafe);
+            }
+            else
+            {
+                report = Lifeblood.Analysis.TestImpactAnalyzer.AnalyzeSymbol(_session.Graph!, resolved.CanonicalId);
+            }
         }
         else
         {
@@ -959,6 +970,9 @@ public sealed class ToolHandler
             totalTestMethodCount = report.TotalTestMethodCount,
             directTestClassCount = report.DirectTestClassCount,
             affectedTestClassCount = report.AffectedTestClasses.Length,
+            semanticEdgeHits = report.SemanticEdgeHits,
+            reflectionHeuristicHits = report.ReflectionHeuristicHits,
+            limitations = report.Limitations,
             affectedTestClasses = report.AffectedTestClasses.Select(c => new
             {
                 typeId = c.TypeId,
@@ -969,9 +983,30 @@ public sealed class ToolHandler
                 confidence = c.Confidence.ToString(),
                 testMethodCount = c.TestMethodNames.Length,
                 testMethodNames = c.TestMethodNames,
+                kind = c.Kind,
             }).ToArray(),
             recommendedFilters = report.RecommendedFilters,
         }));
+    }
+
+    /// <summary>
+    /// Source-text reader for the reflection heuristic in
+    /// <c>lifeblood_test_impact</c>. Returns null when the path cannot
+    /// be read so the analyzer cleanly skips that file. Routes through
+    /// the shared <see cref="Application.Ports.Infrastructure.IFileSystem"/>
+    /// so file I/O policy stays at the connector boundary.
+    /// </summary>
+    private string? ReadFileSafe(string path)
+    {
+        try
+        {
+            if (!_session.FileSystem.FileExists(path)) return null;
+            return _session.FileSystem.ReadAllText(path);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>

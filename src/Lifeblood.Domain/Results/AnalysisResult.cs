@@ -138,6 +138,32 @@ public sealed class TestImpactReport
     /// runner without composing the filter syntax themselves.
     /// </summary>
     public required string[] RecommendedFilters { get; init; }
+
+    /// <summary>
+    /// Count of <see cref="AffectedTestClasses"/> sourced via the BFS
+    /// over Calls / References incoming edges (the existing v0.7.x
+    /// behavior). Always populated. INV-TEST-IMPACT-REFLECTION-002.
+    /// </summary>
+    public int SemanticEdgeHits { get; init; }
+
+    /// <summary>
+    /// Count of <see cref="AffectedTestClasses"/> sourced via the
+    /// Wave-3 source-text reflection heuristic (FQN-literal + bare
+    /// short-name with namespace context). Zero when
+    /// <see cref="TestImpactOptions.IncludeReflectionHeuristic"/> was
+    /// false (the default). INV-TEST-IMPACT-REFLECTION-001.
+    /// </summary>
+    public int ReflectionHeuristicHits { get; init; }
+
+    /// <summary>
+    /// Per-tool limitations surfaced when reflection heuristic is
+    /// active. Discloses the approximate nature of the source-text
+    /// scan: tests using <c>Type.GetType(computedString)</c> remain
+    /// invisible; comments and identifier names containing the FQN
+    /// can produce false positives. Open extension set.
+    /// INV-TEST-IMPACT-REFLECTION-003.
+    /// </summary>
+    public IReadOnlyList<string> Limitations { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -166,6 +192,50 @@ public sealed class TestClassImpact
 
     /// <summary>Short names of the affected test methods in this class.</summary>
     public required string[] TestMethodNames { get; init; }
+
+    /// <summary>
+    /// Canonical hit-kind string. <see cref="TestImpactHitKind.Semantic"/>
+    /// (default) when the row was surfaced via the BFS over
+    /// Calls / References incoming edges; <see cref="TestImpactHitKind.ReflectionHeuristic"/>
+    /// when surfaced via the Wave-3 source-text scan. Additive — back-compat
+    /// callers reading only the existing fields keep working.
+    /// INV-TEST-IMPACT-REFLECTION-002.
+    /// </summary>
+    public string Kind { get; init; } = TestImpactHitKind.Semantic;
+}
+
+/// <summary>
+/// Canonical hit-kind string set for <see cref="TestClassImpact.Kind"/>.
+/// Open for non-breaking extension; callers MUST tolerate unknown kinds.
+/// </summary>
+public static class TestImpactHitKind
+{
+    public const string Semantic = "Semantic";
+    public const string ReflectionHeuristic = "ReflectionHeuristic";
+}
+
+/// <summary>
+/// Per-call options for <c>TestImpactAnalyzer.AnalyzeSymbol</c>. The
+/// existing parameterless / int-only overloads remain — this options
+/// shape is the opt-in path for the Wave-3 reflection heuristic.
+/// Default values preserve v0.7.8 wire behavior exactly. INV-TEST-IMPACT-REFLECTION-001.
+/// </summary>
+public sealed class TestImpactOptions
+{
+    /// <summary>BFS depth cap (existing semantic).</summary>
+    public int MaxDepth { get; init; } = 12;
+
+    /// <summary>
+    /// Opt in to the source-text reflection heuristic. When true the
+    /// analyzer scans each test method's containing file for the
+    /// target's fully-qualified name as a source-text substring, AND
+    /// for the bare short name only when the test file also contains
+    /// the target's namespace as a substring (or the short name is
+    /// unique across the workspace's symbol-name index). Default false
+    /// — opt-in keeps the v0.7.8 wire shape byte-stable for callers
+    /// that do not request the heuristic. INV-TEST-IMPACT-REFLECTION-001.
+    /// </summary>
+    public bool IncludeReflectionHeuristic { get; init; } = false;
 }
 
 /// <summary>
