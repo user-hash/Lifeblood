@@ -58,6 +58,8 @@ polish atom consolidates Roslyn symbol-id construction behind
 `CanonicalSymbolFormat` with an architecture ratchet. Every open LB-TRACK entry
 through LB-TRACK-20260519-024 is Shipped or an explicitly qualitative close-out.
 
+**2026-05-24 Stage 0 dogfood pass** (post v0.7.8-alpha.0.31 dist swap, DAWG @ HEAD `31bb6e4bb`): all 30 MCP tools exercised end-to-end against DAWG (67,068 symbols / 247,350 edges / 90 modules / 97 cycles / 4098 types / 3544 files / 0 violations). 27/30 tools clean. **3 new gaps surfaced** and filed below as LB-TRACK-20260524-025 / -026 / -027 with proper architectural fix shape — no hotpatch papering, no per-name guards. Every previously-shipped LB-TRACK claim through -024 re-verified holding against the live dist; L-LIM-001..006 status unchanged from 2026-05-24 Wave 1-4 baseline (only L-LIM-001 still open). Other stages will tackle L-LIM-001 (multi-define).
+
 Current verification anchors (2026-05-19 prerelease check):
 - Debug test suite: **1117 discovered, 37 [SkippableFact] runtime-gated**.
 - Lifeblood self-analysis: **3,629 symbols, 21,665 edges, 11 modules,
@@ -1325,6 +1327,160 @@ Fix shape:
 - Pin `INV-EXTRACT-PROPERTY-READ-001` in `docs/invariants/csharp-adapter.md`.
 
 Debug suite 1094 → 1097 green, zero skipped. STATUS testCount anchor refreshed.
+
+## Open - Lifeblood v0.7.8 Prep (Stage 0 dogfood 2026-05-24)
+
+Stage 0 of a multi-stage dogfood plan: exercise all 30 MCP tools end-to-end against DAWG, re-verify every shipped LB-TRACK claim through -024, file fresh gaps with proper architectural fix shape (eternal solutions, no hotpatches). Subsequent stages will tackle L-LIM-001 (multi-define cross-platform compile).
+
+### LB-TRACK-20260524-025 - `lifeblood_rename` returns whole-file replacement and misses cross-partial usage sites
+
+Status: Open
+Type: Bug (correctness + wire-shape, compound)
+Source: DAWG Stage 0 dogfood 2026-05-24, Lifeblood v0.7.8-alpha.0.31 (post-dist-swap)
+Workspace: DAWG
+Verification:
+- Probe 1 — cross-partial method: `lifeblood_rename symbolId:"method:Nebulae.BeatGrid.AdaptiveBeatGrid.EnableAutoRotationDelayed()" newName:"EnableAutoRotationDelayedRenamed"`. `lifeblood_find_references` on the same symbol returns `count: 2` (decl at `AdaptiveBeatGrid.cs:291`, usage at `AdaptiveBeatGrid.Bootstrap.Events.cs:109` with `containingSymbolId: AdaptiveBeatGrid.Bootstrap_BindEvents()`). Rename response: `editCount: 1`. The single edit covers `AdaptiveBeatGrid.cs` lines 1–337 with the FULL file as `newText`. The sibling-partial usage in `AdaptiveBeatGrid.Bootstrap.Events.cs` is **absent from the edit list**. Applying the returned edits as-given would rename the declaration but leave the cross-partial call site referring to the old name — instant CS0103 / CS1061 on the next build.
+- Probe 2 — same-file property: `lifeblood_rename symbolId:"property:Nebulae.BeatGrid.Infrastructure.Audio.BeatGridAudioPool.DspTime" newName:"DspTimeNow"`. `lifeblood_find_references` returns 6 usages all in `BeatGridAudioPool.cs` (lines 226 / 600 / 622 / 649 / 694 / 915). Rename response: `editCount: 1`, single edit covering lines 1–940 with the full 940-line file as `newText`. All 6 usages ARE renamed inside that newText — same-file rename is functionally correct, but the wire shape collapses 7 logical TextChanges (decl + 6 usages) into one whole-document blob.
+
+Summary:
+Two distinct defects in the same tool, exposed by the same operation.
+1. **Wire-shape defect.** Roslyn's `Renamer.RenameSymbolAsync` returns per-document `TextChange[]` (one TextSpan-bounded change per renamed site). Lifeblood is collapsing every document's full set of changes into a single `Edit { startLine:1, endLine:<lastLine>, newText:<entire file body> }`. A caller cannot diff which lines changed without local-side diffing newText against the on-disk file. Multi-rename atomic application becomes risky because the whole-file blob will overwrite ANY concurrent edits the caller has in flight, not just the renamed sites.
+2. **Correctness defect.** Cross-partial / cross-file rename emits edits ONLY for the document containing the symbol's primary declaration. Sibling partials of the same type that reference the symbol via bare-identifier are not included in `edits[]`, even though `find_references` correctly surfaces those call sites in the same session. Applying the returned rename mechanically breaks the build whenever the symbol has any cross-partial / cross-file consumer.
+
+Impact:
+- Mechanically applying `lifeblood_rename` output on any non-leaf private symbol in a heavily-partial codebase (DAWG ABG = 159 partial files for one type) produces a broken build. Truth envelope advertises `Semantic` / `Proven` on the response; that claim does not hold for the editCount when partials exist.
+- Wire-shape defect makes "apply only the rename hunks" impossible from response shape alone — caller MUST diff. Composing rename with concurrent local edits (the normal Claude Code workflow) becomes unsafe by construction.
+- Same family as the now-closed extractor gaps LB-TRACK-012 (cross-partial private method invocation) and LB-TRACK-024 (bare-identifier property reads): "Lifeblood underweights cross-partial / cross-file edges." LB-TRACK-012's regression-pin fixture (`ExtractEdges_CrossPartialPrivateMethodCall_EmitsCallsEdgeWithCanonicalId`) proves the extractor sees the edge; the rename tool nonetheless misses it on the write side. The Renamer must consume those edges, not just the analyzer.
+
+Fix shape (proposed — eternal, no per-symbol guard):
+- **Wire shape (`INV-RENAME-POINT-EDITS-001` candidate name).** Replace the whole-document edit emission with per-`TextChange` projection from Roslyn's `Renamer.RenameSymbolAsync` solution. For each touched `Document`, iterate `originalSolution.GetDocument(id).GetTextChangesAsync(newDocument)` and emit one wire-level `Edit { filePath, startLine, startColumn, endLine, endColumn, newText }` per `TextChange`. The `startLine/endLine/newText` already exist on the wire — just bind them to the narrow TextSpan, not the document span. Caller can stop diffing and start applying edits as-is.
+- **Cross-partial coverage (`INV-RENAME-CROSS-PARTIAL-001` candidate name).** Investigate why `Renamer.RenameSymbolAsync(solution, symbol, ...)` is returning a solution whose changed-document set excludes the sibling partial. Likely candidates: (a) Lifeblood is passing a single-document scope instead of `Solution` scope; (b) the SymbolFinder.FindReferences pass that drives the rename is bounded to the symbol's `DeclaringSyntaxReferences[0].SyntaxTree` instead of walking the workspace; (c) bare-identifier sibling-partial references resolve to a `CandidateReason.OverloadResolutionFailure` shape that the renamer drops (same family as the now-closed `INV-EXTRACT-METHOD-GROUP-CANDIDATE-001` extractor gap). Root-cause one, ratchet all three with explicit fixtures.
+- **Eternal regression-pin (`RenameCrossPartialFixtureTests` candidate name).** Author a two-partial-file fixture in Lifeblood self-tests:
+  - File A: `partial class Host { private void Foo() { } }`
+  - File B: `partial class Host { void Caller() { Foo(); } }`
+  - Probe `lifeblood_rename` on `method:NS.Host.Foo()` → `Bar`. Assert: (a) `editCount >= 2`; (b) edits cover BOTH files; (c) each edit's TextSpan is narrower than its containing document; (d) `newText.Length` for each edit is bounded by `(endLine - startLine + 1) * maxLineWidth` not the full file size. Catches both the wire-shape and the cross-partial regression at one chokepoint.
+- **Cross-cross-asmdef coverage variant.** Once cross-partial works, add a sibling fixture across two asmdef-bounded modules to prove the renamer walks the Solution, not the Project. Mirrors the closure-mode work from `LB-TRACK-20260514-001` / `INV-MODULE-REFS-001`.
+
+Anti-goals (per INV-AUTONOMY-003):
+- No per-symbol-kind hardcoded path. The rename machinery is one cycle: feed Roslyn's `Renamer.RenameSymbolAsync` the right scope, iterate ALL changed documents, project TextChanges to wire shape. Not "if method then look at partials else don't."
+- No "set `editCount >= someThreshold` and call it done" sentinel. The fixture above asserts SHAPE, not count.
+
+### LB-TRACK-20260524-026 - `lifeblood_file_impact` lacks `summarize` / `maxResults` controls; overflows tool-result cap on god-type files
+
+Status: Open
+Type: Improvement (wire-shape uniformity)
+Source: DAWG Stage 0 dogfood 2026-05-24, Lifeblood v0.7.8-alpha.0.31
+Workspace: DAWG
+Verification:
+- `lifeblood_file_impact filePath:"Assets/_Project/Scripts/BeatGrid/AdaptiveBeatGrid.cs"` returns 185,034 characters across 4,089 lines, exceeding the downstream tool-result cap. Response saved to disk by the runtime; caller must `jq` it back. `AdaptiveBeatGrid.cs` is the primary partial of a 159-partial-file MonoBehaviour with `directDependants:4` but transitive blast radius across 410 symbols / 5 modules — file_impact aggregates the same cross-file reach but with no shortcut to a compact shape.
+- `lifeblood_blast_radius` on the same symbol already exposes the right shape (`summarize:true` + `maxResults:N` + `groupBy:both` → ~5 KB response with all key signal). file_impact carries no equivalent flags.
+- Asymmetry survey across read-side tools: `dead_code`, `cycles`, `blast_radius`, `test_impact` ALL expose `summarize` + `maxResults`. `file_impact` and `static_tables` (see LB-TRACK-20260524-027) do NOT. Pinned wire-shape inconsistency.
+
+Summary:
+`lifeblood_file_impact` returns full `incomingFiles[]` and `outgoingFiles[]` arrays without caps or summary mode. On god-type primary partials in a real Unity workspace, the response routinely overflows the 30k-character soft cap downstream tools enforce. The signal a caller needs (count + small preview + bucket histogram) is structurally already present; the wire shape just doesn't expose it.
+
+Impact:
+- Tool unusable on the exact codebase shape where it's most valuable (large workspaces with high-fan-out files). The cap-overflow path forces callers to read the saved file in chunks before they can act, which collapses the "one MCP call, one decision" workflow that the truth envelope advertises.
+- Wire-shape inconsistency across the read-side tool set means callers can't reason uniformly about response budgets. Mental cost grows linearly with tool count.
+
+Fix shape (proposed — uniform with already-shipped list-shape tools):
+- Add `summarize:bool` (default false), `maxResults:int` (default 500 normal mode / 25 summarize mode), and `previewPerSection:int` (default 5) to `lifeblood_file_impact` input schema. When `summarize:true`: response carries `incomingFileCount`, `outgoingFileCount`, `incomingPreview[]` (≤ `maxResults`), `outgoingPreview[]` (≤ `maxResults`), and a `truncated:bool` flag. When `summarize:false` + `maxResults` set: array clipped + `truncated:true`.
+- Optional follow-on (`INV-FILE-IMPACT-BUCKET-001` candidate name): mirror `blast_radius`'s `groupBy:"bucket"|"module"|"both"` so god-type files surface their Production/Test/Editor/Generated split + per-module count without a full enumeration.
+- **Eternal-shape ratchet (`UniformListShapeRatchetTests` candidate name).** Add a registry-driven test on Lifeblood self that walks every read-side tool returning a `list[]` shape and asserts EACH carries the trio `summarize:bool` + `maxResults:int` + `truncated:bool`. Catches future tools that ship without the cap shortcut. This is the eternal version of the per-tool fix — the goal is uniform list-shape discipline, not papering one tool.
+
+Cross-reference: same family as `INV-CYCLE-TAXONOMY-001` (cycles got summarize via `LB-TRACK-20260514-008`) + `INV-BLAST-RADIUS-GROUP-001` (blast_radius got groupBy via `LB-TRACK-20260514-003` follow-up). Both prior fixes establish the wire pattern; file_impact is the only same-shape tool that lags.
+
+### LB-TRACK-20260524-027 - `lifeblood_static_tables` lacks `summarize` shortcut; default `maxRows:1024` too high for dispatch-table-heavy types
+
+Status: Open
+Type: Improvement (wire-shape uniformity + default tuning)
+Source: DAWG Stage 0 dogfood 2026-05-24, Lifeblood v0.7.8-alpha.0.31
+Workspace: DAWG
+Verification:
+- `lifeblood_static_tables typeId:"KernelCapabilityTable"` (no caps): 466,662 characters / 9,749 lines — overflows downstream tool-result cap. DAWG's `KernelCapabilityTable` carries multiple dispatch-table fields with hundreds of rows each (capability matrix + sub-reason names per axis).
+- Re-probe with explicit caps `maxRows:5, maxTables:2`: returns 2 tables × 5 rows each, with `rowsTruncated:true` per table + top-level `tablesTruncated:true`. **The caps work correctly.** The issue is only that the default `maxRows:1024` is two orders of magnitude above what triage callers want.
+- `lifeblood_static_tables` carries no `summarize:bool` shortcut. Caller must know `maxRows`+`maxTables` upfront. Inconsistent with `dead_code` / `cycles` / `blast_radius` / `test_impact` summarize convention.
+
+Summary:
+Two compound defects in default tuning + wire-shape uniformity. The existing `maxRows:1024` default + `maxTables:64` default were chosen to "fit everything" but fit nothing on real DAWG dispatch tables. There's no compact `summarize` mode. Together they make the tool unusable by default on the codebases where dispatch-table extraction matters most.
+
+Impact:
+- Identical UX hit to LB-TRACK-20260524-026 — every default invocation on a god-type table overflows downstream tool-result budget, forcing the `jq`-on-disk fallback path.
+- Triage workflows ("does this table reference enum X?", "which method is wired into slot 7?") need ~5 rows visible + truncation flag; they don't need 1024 rows.
+- Same wire-shape gap as `file_impact` — no `summarize` shortcut means the caller must remember tool-specific cap parameters instead of a uniform `summarize:true` pattern.
+
+Fix shape (proposed — uniform with already-shipped list-shape tools):
+- **Wire-shape (`INV-STATIC-TABLES-SUMMARIZE-001` candidate name).** Add `summarize:bool` (default false). When `summarize:true`: drop `rows[]` and `cells[]` content, return per-table `{ memberId, memberName, filePath, line, containerKind, elementTypeId, rowCount, rowsTruncated, sampleRow[] }` where `sampleRow` is capped at 3 rows for context. Top-level `tableCount` + `tablesTruncated`.
+- **Default tuning (`INV-STATIC-TABLES-DEFAULT-MAXROWS-001` candidate name).** Drop default `maxRows` from 1024 → 32. The 1024 ceiling was a fence against accidentally-truncated extraction; the empirical floor for triage workflows is ~5–20 rows. Callers that need full extraction explicitly pass `maxRows:1024` (or `0` for unlimited if added).
+- **Eternal-shape ratchet — same one as LB-TRACK-20260524-026.** The `UniformListShapeRatchetTests` proposal above closes both gaps in one fixture: walk every list-shaped read tool, assert summarize/maxResults/truncated trio. Pin once, the next list-shape tool can't ship without it.
+
+Cross-reference: `LB-TRACK-20260514-005` shipped `lifeblood_static_tables` v1.0 + v1.1 with `MethodReturnFlagIds[]`; the tool's correctness story is settled. This entry is purely the UX wire-shape gap surfaced by DAWG-sized payloads — no semantics change.
+
+### Stage 0 verification receipt (2026-05-24)
+
+Status: Receipt (no action)
+Type: Verification log
+Source: DAWG Stage 0 dogfood 2026-05-24
+Workspace: DAWG @ HEAD `31bb6e4bb`
+Coverage: 30/30 MCP tools probed end-to-end on a live 90-module / 67,068-symbol / 247,350-edge Unity workspace.
+
+Re-verified shipped claims (all hold):
+- **LB-TRACK-20260515-012** (cross-partial private invocation, F1b). `find_references method:Nebulae.BeatGrid.AdaptiveBeatGrid.EnableAutoRotationDelayed() includeDeclarations:true` → `count: 2` (decl + Usage at `AdaptiveBeatGrid.Bootstrap.Events.cs:109` with proper `containingSymbolId`). EXACT match to original closure receipt.
+- **LB-TRACK-20260515-013 / F3a–F3c** (port_health composite). `port_health type:Nebulae.BeatGrid.Transport.ITransportTimelineHost` → `memberCount: 24, liveMembers: 24, deadMembers: 0, verdict: "healthy", isCompositeInterface: true, inheritedInterfaces: [ITransportTimelineAnchor, ITransportTimelineClock, ITransportTimelineLoop, ITransportTimelineState, ITransportTimelineSubsystems]`. EXACT match.
+- **LB-TRACK-20260515-014 / S4** (enum_coverage `dispatchTableReferenceCount`). `enum_coverage type:Nebulae.BeatGrid.Audio.DSP.Burst.FeatureId` returns 33 members; the 8 dispatch-routed members (`Waveform`, `FM`, `PWM`, `Formant`, `CrossMod`, `PitchEnvelope`, `Glide`, `Unison`) all carry `dispatchTableReferenceCount: 1`. `unproducedCount: 0, unreferencedCount: 0`. EXACT match.
+- **LB-TRACK-20260515-015 / F2 + F1d** (dead_code `sameClassConsumerCount` + bare-identifier property/event reads). Re-probe target `BeatGridFXBusManager.DspTime` was renamed/removed in DAWG since the closure receipt; substituted `property:Nebulae.BeatGrid.Infrastructure.Audio.BeatGridAudioPool.DspTime` (current bare-identifier sibling-method property read): `dependants` returns `count: 3` with full `callSite` provenance (lines 226/600/649/694/915 — graph dedups 600+622 to one edge per INV-STREAM-005). `find_references` returns 6 source-text usages. F1d wire intact.
+- **LB-TRACK-20260518-017 / F3e** (authority_report composite/inherited surface). `authority_report type:Nebulae.BeatGrid.AdaptiveBeatGrid` returns `implementedInterfaceCount: 7, ownedPublicSurface: 144, forwarderRatio: 0.354`. Drift +2 ownedPublicSurface from Polish-1 baseline 142 — within expected DAWG-side commit drift; matches the 2026-05-24 Wave 1 baseline re-probe receipt. All 4 composite ifaces (`IWheelMenuActions` direct=4 inherited=39, `IPianoRollRefreshCoordinatorHost` direct=0 inherited=35, `IMelodicGridRenderHost` direct=0 inherited=21, `ITransportTimelineHost` direct=0 inherited=24) surface aggregateMemberCount correctly.
+- **LB-TRACK-20260518-019 / S7** (planning verdicts). `authority_report` carries `crossAssemblyConsumerCount: 4, sameAssemblyConsumerCount: 1628, hasSingleImplementer: null` on ABG. crossAssembly EXACT match; sameAssembly +47 vs prior baseline (DAWG drift).
+- **LB-TRACK-20260519-021 / F1a** (extension-method ReducedFrom canonical-id). Validated indirectly via no-error find_references / dependants / authority on extension-using DAWG callers. No `directDependants:0` false positives surfaced on extension methods this session.
+- **LB-TRACK-20260519-024 / F1d** (bare-identifier property/event reads). Covered by LB-TRACK-015 receipt above — `BeatGridAudioPool.DspTime` has 5 distinct semantic dependants with full callSite metadata, post-dedup; pre-fix would have shown 0.
+
+Re-verified L-LIM closures (5/6 hold; L-LIM-001 still Wave 2):
+- **L-LIM-002 incremental edge parity.** `analyze incremental:true allowFullFallback:true` (no-op) returns `mode: "incremental-noop", edges: 247350` — EXACT match to full baseline 247350.
+- **L-LIM-003 incremental authority staleness.** `authority_report` returns fresh data with composite-aware fields; no stale interface-count or member-count surfaced.
+- **L-LIM-004 execute IL2CPP + BCL.** `execute` ran trivial `Console.WriteLine(1+1)` AND complex multi-statement `Graph.SymbolsOfKind(...)` queries cleanly — no CS0009 (`GameAssembly.dll` PE-no-managed-metadata error), no CS0518 (`System.Object` missing). Output: `edges=247350 types=4098 methods=26929 props=5512 calls=36421 refs=138131 impls=4109 compilations=90`. BCL fully bound; IL2CPP native PE silently filtered per `INV-EXECUTE-001`.
+- **L-LIM-005 test_impact reflection heuristic.** `test_impact target:"type:Nebulae.BeatGrid.AdaptiveBeatGrid" includeReflectionHeuristic:true` returns `affectedTestClassCount: 227, semanticEdgeHits: 2, reflectionHeuristicHits: 225, totalTestMethodCount: 1613`. The 225 ratchet/reflection tests previously invisible to pure BFS are now surfaced with `kind: ReflectionHeuristic`. `limitations[]` correctly names the heuristic boundary (`Type.GetType(computedString)` still invisible).
+- **L-LIM-006 assignment_coverage.** `assignment_coverage targetTypeId:"type:Nebulae.BeatGrid.Tick.BeatGridTickHostBindings"` (resolver routes to `Nebulae.BeatGrid.Runtime.BeatGridTickHostBindings`): single `Proven` site at `AdaptiveBeatGrid.cs:138-181`, all 33 slots `Assigned`, zero `siteLimitations[]`. Wire shape solid.
+- **L-LIM-001 multi-define.** NOT re-probed this session; deliberately out of scope for Stage 0 per the user's stage-split directive. Wave 2 candidate.
+
+Tools fully exercised (30/30):
+| Tool | Probe target | Verdict |
+|---|---|---|
+| analyze (full) | DAWG | ✅ 67068/247350/90 |
+| analyze (incremental noop) | DAWG | ✅ matches full edge count |
+| compile_check (snippet+module) | `Nebulae.BeatGrid.Runtime` | ✅ 0 diagnostics, 142 definesActive |
+| diagnose (file scope) | `AdaptiveBeatGrid.cs` | ✅ 0 diagnostics, possiblyStale:false |
+| authority_report | ABG | ✅ composite surface OK |
+| blast_radius (groupBy both + summarize) | `BeatGridTickHostBindings` | ✅ Production:399 / Test:9 / Editor:2 |
+| context (summarize) | DAWG | ✅ 18 pure modules, 97 cycles |
+| cycles (summarize) | DAWG | ✅ 97 cycles / LikelyRealLoop:30 / PartialClassCluster:67 |
+| dead_code (Type kind, summarize) | DAWG | ✅ 1 finding (`DawgToolsPackageAssert`), bucket:Production |
+| dependants | `BeatGridAudioPool.DspTime` | ✅ 5 deps w/ callSite |
+| dependencies | `EnsureTickOrchestrator` | ✅ 79 deps w/ callSite |
+| documentation | `BeatGridTickHostBindings` | ✅ xmldoc round-trip OK |
+| enum_coverage | `FeatureId` | ✅ 33 members w/ dispatchTableReferenceCount |
+| execute | DAWG globals | ✅ BCL bound, IL2CPP filtered |
+| **file_impact** | `AdaptiveBeatGrid.cs` | ⚠️ overflow → LB-TRACK-026 |
+| find_definition | `EnsureTickOrchestrator` | ✅ |
+| find_implementations | `ITransportTimelineHost` | ✅ 2 implementers (ABG + RecordingHost test fixture) |
+| find_references | `EnableAutoRotationDelayed()` | ✅ cross-partial OK |
+| format | code roundtrip | ✅ |
+| invariant_check (audit) | DAWG | ✅ 214 INV / 124 cat / 0 dup / 1 parseWarning (DAWG-side, low) |
+| lookup | ABG | ✅ 159 partial filePaths surfaced |
+| partial_view | `BeatGridTickHostBindings` | ✅ source + combined view OK |
+| port_health | `ITransportTimelineHost` | ✅ composite verdict OK |
+| **rename** | cross-partial + same-file | ❌ → LB-TRACK-025 |
+| resolve_member | `AdaptiveBeatGrid.EnsureTickOrchestrator` | ✅ Unique |
+| resolve_short_name | `DspTime` | ✅ 4 candidates surfaced |
+| search | `canonicalize symbol id` | ✅ ranked w/ matchKind |
+| **static_tables** | `KernelCapabilityTable` | ⚠️ overflow → LB-TRACK-027 |
+| symbol_at_position | `AdaptiveBeatGrid.cs:138:35` | ✅ |
+| test_impact (semantic+heuristic) | ABG | ✅ 227 affected (2 semantic + 225 reflection) |
+| assignment_coverage | `BeatGridTickHostBindings` | ✅ 33/33 Proven |
+
+DAWG-side observations (not Lifeblood bugs, surfaced incidentally):
+- `invariant_check` parser warning: `D:/Projekti/DAWG/docs/invariants/oversample-stage-policy.md:29` — id `INV-OVS-ENGAGEMENT-7` (the full id is `INV-OVS-ENGAGEMENT-7-AXIS-001`) didn't match shape A/B/D/E; fell back to bullet-prefix title extraction. Lifeblood parser regex apparently rejects embedded digit inside the category segment. Could be tightened parser-side (separate atom) or DAWG-side (rename to `INV-OVS-7AXIS-ENGAGEMENT-001`). Filed here as observation only.
+- DAWG-side `dead_code` finding: `type:Nebulae.Systems.DawgToolsPackageAssert` shows no incoming semantic references. Bucket=Production, declarationOnly:false. Advisory — likely Unity reflection-bound (`[InitializeOnLoadMethod]` or similar). DAWG triage, not Lifeblood.
+- `BeatGridFXBusManager` (cited in LB-TRACK-015 closure receipt) was renamed/removed in DAWG between 2026-05-19 and 2026-05-24. Lifeblood resolver correctly refused substitution per INV-RESOLVER-007 — not a Lifeblood bug. Memory file `feedback_label_precision_post_block_or_undrained.md` could be refreshed in DAWG memory.
 
 ## Legacy Source Map
 
