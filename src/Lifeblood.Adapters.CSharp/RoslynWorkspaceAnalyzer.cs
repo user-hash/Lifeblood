@@ -49,6 +49,17 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     public string? RetainedProfileName { get; private set; }
 
     /// <summary>
+    /// INV-MULTI-DEFINE-INCREMENTAL-001. Full list of profile names this
+    /// adapter's most recent <see cref="AnalyzeWorkspace"/> ran under. Empty
+    /// before the first full analyze. Used by <see cref="IncrementalAnalyze"/>
+    /// to replay the same per-profile loop over changed files so per-edge
+    /// <c>Profiles[]</c> provenance survives a file-touch. Exposed on the
+    /// public surface so <see cref="GraphSession"/> can echo it onto incremental
+    /// analyze responses and tests can assert parity directly.
+    /// </summary>
+    public IReadOnlyList<string> RetainedProfileNames { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
     /// Compilations retained during analysis when RetainCompilations=true.
     /// Null under streaming mode. Available for write-side operations after analysis.
     /// </summary>
@@ -173,10 +184,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // analyze response alongside compilation-level skips.
         snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped);
 
-        // INV-MULTI-DEFINE-ANALYZE-001.
+        // INV-MULTI-DEFINE-ANALYZE-001 + INV-MULTI-DEFINE-INCREMENTAL-001.
         var activeProfiles = ResolveActiveProfiles(projectRoot, config);
         var multiProfile = activeProfiles.Count > 1;
         RetainedProfileName = activeProfiles.Count > 0 ? activeProfiles[0].Name : null;
+        RetainedProfileNames = activeProfiles.Select(p => p.Name).ToArray();
+        snapshot.ActiveProfiles = activeProfiles;
 
         for (var profileIndex = 0; profileIndex < activeProfiles.Count; profileIndex++)
         {
@@ -454,50 +467,108 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         _snapshot.SkippedFiles.RemoveAll(sf =>
             changedModules.Contains(sf.ModuleName));
 
-        // For incremental, we always retain compilations (MCP server mode).
-        // INV-INCREMENTAL-XREF-001: thread the snapshot-owned downgraded
-        // refs through so the changed modules' compilations resolve types
-        // from UNCHANGED dependent modules via the carry. The carry is
-        // mutated in-place; on return it reflects the current world (new
-        // PE refs for recompiled modules, prior PE refs preserved for
-        // untouched dependencies).
-        var newCompilations = compilationBuilder.ProcessInOrder(
-            modulesToRecompile, projectRoot, config,
-            skippedCollector: _snapshot.SkippedFiles,
-            carryDowngraded: _snapshot.DowngradedRefs,
-            processor: (module, compilation) =>
+        // INV-INCREMENTAL-XREF-001 (downgraded-refs carry across changed +
+        // unchanged modules) + INV-MULTI-DEFINE-INCREMENTAL-001 (replay the
+        // snapshot's profile set over changed files so per-edge Profiles[]
+        // provenance survives a file-touch). For single-profile snapshots
+        // (Count == 1) the loop runs once with profileTag = null and the
+        // wire shape is byte-stable with pre-Wave-6 behavior. For Count >= 2
+        // each pass tags edges with the profile name and AppendProfileEdges
+        // unions per-edge profile sets at RebuildGraph time.
+        var snapshotProfiles = _snapshot.ActiveProfiles;
+        var snapshotMultiProfile = snapshotProfiles.Count > 1;
+        Dictionary<string, Microsoft.CodeAnalysis.CSharp.CSharpCompilation>? newCompilations = null;
+
+        // Defensive: a pre-Wave-6 snapshot would have ActiveProfiles empty.
+        // The reachable invariant is Count >= 1 after AnalyzeWorkspace, but
+        // we fall back to a single null-tagged pass if a future regression
+        // ever leaves the field unset. Keeps behavior identical to pre-fix
+        // when the invariant breaks instead of NREing.
+        var profilesToReplay = snapshotProfiles.Count > 0
+            ? snapshotProfiles
+            : (IReadOnlyList<DefineProfile>)new[]
             {
-                var moduleId = SymbolIds.Module(module.Name);
-
-                foreach (var tree in compilation.SyntaxTrees)
+                new DefineProfile
                 {
-                    if (string.IsNullOrEmpty(tree.FilePath)) continue;
-                    if (tree.FilePath.StartsWith("<")) continue;
+                    Name = "_default",
+                    AddDefines = Array.Empty<string>(),
+                    RemoveDefines = Array.Empty<string>(),
+                },
+            };
 
-                    // Only re-extract changed files
-                    if (!changedFiles.Contains(tree.FilePath)) continue;
+        for (var profileIndex = 0; profileIndex < profilesToReplay.Count; profileIndex++)
+        {
+            var profile = profilesToReplay[profileIndex];
+            var isFirstProfile = profileIndex == 0;
+            var profileTag = snapshotMultiProfile ? profile.Name : null;
+            var profileModulesToRecompile = snapshotProfiles.Count > 0
+                ? ApplyProfileToModules(modulesToRecompile, profile)
+                : modulesToRecompile;
 
-                    var model = compilation.GetSemanticModel(tree);
-                    var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
+            // INV-MULTI-DEFINE-IOP-001 + INV-INCREMENTAL-XREF-001. First profile
+            // retains compilations for write-side / IOperation tools and is the
+            // sole owner of skipped + downgraded-refs accounting. Subsequent
+            // profiles force streaming mode so their compilations release after
+            // extraction — peak RAM stays at single-profile baseline regardless
+            // of profile count.
+            var profileConfig = isFirstProfile
+                ? config
+                : new AnalysisConfig
+                {
+                    ExcludePatterns = config.ExcludePatterns,
+                    AllowFullFallback = config.AllowFullFallback,
+                    DefineProfiles = config.DefineProfiles,
+                    RetainCompilations = false,
+                };
 
-                    var fileId = SymbolIds.File(relPath);
-                    var fileSymbol = new Symbol
+            var profileCompilations = compilationBuilder.ProcessInOrder(
+                profileModulesToRecompile, projectRoot, profileConfig,
+                skippedCollector: isFirstProfile ? _snapshot.SkippedFiles : null,
+                carryDowngraded: isFirstProfile ? _snapshot.DowngradedRefs : null,
+                processor: (module, compilation) =>
+                {
+                    var moduleId = SymbolIds.Module(module.Name);
+
+                    foreach (var tree in compilation.SyntaxTrees)
                     {
-                        Id = fileId,
-                        Name = Path.GetFileName(tree.FilePath),
-                        QualifiedName = $"{module.Name}/{relPath}",
-                        Kind = DomainSymbolKind.File,
-                        FilePath = relPath,
-                        ParentId = moduleId,
-                    };
+                        if (string.IsNullOrEmpty(tree.FilePath)) continue;
+                        if (tree.FilePath.StartsWith("<")) continue;
 
-                    var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
-                    var edges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
+                        // Only re-extract changed files
+                        if (!changedFiles.Contains(tree.FilePath)) continue;
 
-                    _snapshot.ReplaceFile(fileId, fileSymbol, symbols, edges);
-                    _snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
-                }
-            });
+                        var model = compilation.GetSemanticModel(tree);
+                        var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
+
+                        var fileId = SymbolIds.File(relPath);
+                        var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
+                        var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
+
+                        if (isFirstProfile)
+                        {
+                            var fileSymbol = new Symbol
+                            {
+                                Id = fileId,
+                                Name = Path.GetFileName(tree.FilePath),
+                                QualifiedName = $"{module.Name}/{relPath}",
+                                Kind = DomainSymbolKind.File,
+                                FilePath = relPath,
+                                ParentId = moduleId,
+                            };
+
+                            var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
+                            _snapshot.ReplaceFile(fileId, fileSymbol, symbols, taggedEdges);
+                            _snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
+                        }
+                        else
+                        {
+                            _snapshot.AppendProfileEdges(fileId, taggedEdges);
+                        }
+                    }
+                });
+
+            if (isFirstProfile) newCompilations = profileCompilations;
+        }
 
         // Merge retained compilations: update changed modules, keep unchanged
         if (_compilations != null && newCompilations != null)

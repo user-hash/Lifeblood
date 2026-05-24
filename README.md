@@ -114,7 +114,7 @@ Python            ──┤       ↑                     ├──  CLI / CI
 JSON graph        ──┘    Analysis (optional)      └
 ```
 
-28 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [143 typed invariants across 97 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+28 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [144 typed invariants across 98 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -146,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-Wave-6 multi-define close, 2026-05-24): 3,770 symbols, 22,582 edges, 11 modules, 392 types, 0 violations, 0 cycles. **1,191 discovered test cases** across `Lifeblood.Tests` (37 `[SkippableFact]` methods gate on runtime preconditions such as `LIFEBLOOD_REQUIRE_NATIVE_CLANG`), zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **143 typed invariants across 97 categories**, zero duplicates, zero parse warnings.
+Self-analysis is anchored at every release in [`docs/STATUS.md`](docs/STATUS.md) — symbols, edges, modules, types, violations, cycles. **1,193 discovered test cases** across `Lifeblood.Tests` (37 `[SkippableFact]` methods gate on runtime preconditions such as `LIFEBLOOD_REQUIRE_NATIVE_CLANG`), zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **144 typed invariants across 98 categories**, zero duplicates, zero parse warnings.
 
 Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242,233 edges, 91 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
 
@@ -170,7 +170,7 @@ Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 28 port interfaces, invariant tree |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants tree](docs/invariants/INDEX.md) | 143 typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Invariants tree](docs/invariants/INDEX.md) | 144 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
