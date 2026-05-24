@@ -25,6 +25,10 @@ The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
 
+### Wave 6: L-LIM-001 multi-define union analyze — implementation plan landed (2026-05-24)
+
+Lifeblood Wave 6 plan landed at `docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md`. Six-phase phased rollout (port + default resolver, multi-profile compile, Unity-aware adapter, Edge.Profiles[] wire shape, per-IOperation tool policy, DAWG dogfood closure receipt). Implementation deferred from this session per scope honesty: half-implemented multi-define-union would introduce regressions worse than the original limitation. Plan covers architectural decisions (`IDefineProfileResolver` port, 5-profile Unity adapter with conservative add/remove vocabulary, sequential per-profile compile with eager disposal, edge graph union via existing `INV-STREAM-005` dedup), memory + time budget (~12–16 GB RSS / 150–200s wall on DAWG-sized workspaces vs current 3.4 GB / 40s), wire shape additions (`Edge.Profiles[]`, `AnalyzeResponse.summary.profileCount`, optional `profileFilter:` on read tools), and anti-goals (no per-symbol special casing, no hardcoded Unity beyond `Library/` detection, no silent profile selection, no half-implementation). Tag landing target: `v0.8.0-multi-define`.
+
 ### Wave 5: Stage 0 dogfood follow-through (2026-05-24)
 
 DAWG-side Stage 0 pass against the post-Wave-1/3/4 dist exercised all 30 MCP tools and surfaced three wire-shape gaps not covered by the masterplan. Each closes with eternal-shape posture: not a per-tool patch, but a default-tuning + uniform-shape upgrade that hardens the class of trap for any future tool.

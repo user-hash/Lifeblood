@@ -1330,7 +1330,7 @@ Debug suite 1094 → 1097 green, zero skipped. STATUS testCount anchor refreshed
 
 ## Open - Lifeblood v0.7.8 Prep (Stage 0 dogfood 2026-05-24)
 
-Stage 0 of a multi-stage dogfood plan: exercise all 30 MCP tools end-to-end against DAWG, re-verify every shipped LB-TRACK claim through -024, file fresh gaps with proper architectural fix shape (eternal solutions, no hotpatches). Subsequent stages will tackle L-LIM-001 (multi-define cross-platform compile).
+Stage 0 of a multi-stage dogfood plan: exercise all 30 MCP tools end-to-end against DAWG, re-verify every shipped LB-TRACK claim through -024, file fresh gaps with proper architectural fix shape (eternal solutions, no hotpatches). Wave 5 closed -025 / -026 / -027 + INV-LIST-SHAPE-UNIFORM-001 (eternal list-shape contract ratchet). Wave 6 = L-LIM-001 multi-define union analyze — implementation plan landed at `docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md`; 6-phase phased rollout (port + default resolver, multi-profile compile, Unity adapter, Edge.Profiles[] wire, per-IOperation tool policy, DAWG dogfood closure). Estimated 2–4 weeks focused work + 1 week dogfood. Deferred from this session per scope honesty: half-implemented multi-define would introduce regressions worse than the original limitation.
 
 ### LB-TRACK-20260524-025 - `lifeblood_rename` returns whole-file replacement and misses cross-partial usage sites
 
