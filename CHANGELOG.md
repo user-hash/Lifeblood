@@ -7,6 +7,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`lifeblood_assignment_coverage` MCP tool**
+
+- **`lifeblood_test_impact` reflection heuristic**
+
+- **`INV-DOCS-005` + `INV-DOCS-006` + `INV-DOCS-007` invariant + skipped-count ratchets** (Wave 1 Atom 1.5 + reviewer pass). Closes the drift class where `docs/STATUS.md` prose ("122 typed invariants across 83 categories", "zero skipped") silently outlived the live invariant tree + test discovery. Sibling to the existing `portCount` / `toolCount` / `testCount` ratchets. New STATUS.md HTML anchors: `<!-- invariantCount: N -->`, `<!-- invariantCategoryCount: N -->`, `<!-- skippedCount: N -->`. `DocsTests` adds `StatusDoc_InvariantCount_MatchesLiveAudit` + `StatusDoc_InvariantCategoryCount_MatchesLiveAudit` + `StatusDoc_SkippedCount_MatchesLiveDiscovery` + `StatusDoc_VisibleSkippedCount_MatchesHiddenAnchor` — any future rename / addition / removal of an invariant or `[SkippableFact]` fails the ratchet unless the STATUS.md anchor moves in the same commit.
+
+### Fixed
+
+- **ExampleApp L-LIM-002 / L-LIM-003 / L-LIM-004 confirmed CLOSED under v0.7.8**
+
+- **Stale self-analyze numbers across public docs** (reviewer pass 2026-05-24). `docs/STATUS.md` line 45 self-analysis block + `docs/architecture.html` line 378 footer cited 3,506 symbols / 21,113 edges — the pre-Wave-3-4 baseline. Refreshed to live 3,628 symbols / 21,663 edges / 377 types alongside the existing 0 violations / 0 cycles.
+
+- **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
+
 ## [0.7.8] - 2026-05-19
 
 ### Fixed

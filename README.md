@@ -114,7 +114,7 @@ Python            ──┤       ↑                     ├──  CLI / CI
 JSON graph        ──┘    Analysis (optional)      └
 ```
 
-27 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [128 typed invariants across 83 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+27 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [129 typed invariants across 83 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -146,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-v0.7.7 + 2026-05-19 plan close): 3,506 symbols, 21,113 edges, 11 modules, 363 types, 0 violations, 0 cycles. **1,116 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **128 typed invariants across 83 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post-Wave-3/4 close, 2026-05-24): 3,628 symbols, 21,663 edges, 11 modules, 377 types, 0 violations, 0 cycles. **1,117 discovered test cases** across `Lifeblood.Tests` (37 `[SkippableFact]` methods gate on runtime preconditions such as `LIFEBLOOD_REQUIRE_NATIVE_CLANG`), zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **129 typed invariants across 83 categories**, zero duplicates, zero parse warnings.
 
 ---
 
