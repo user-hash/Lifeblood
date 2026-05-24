@@ -23,6 +23,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
 
+### Wave 6: L-LIM-001 multi-define union analyze — implementation plan landed (2026-05-24)
+
 ### Wave 5: Stage 0 dogfood follow-through (2026-05-24)
 
 - **`lifeblood_rename` per-TextChange wire shape + cross-partial coverage**
