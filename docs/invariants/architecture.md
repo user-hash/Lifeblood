@@ -72,6 +72,10 @@ tests under `tests/Lifeblood.Tests/ArchitectureInvariantTests.cs`.
 
 - **INV-SCRIPTHOST-001. `Lifeblood.ScriptHost` has zero `ProjectReference`.** The script host is a process-isolated child that runs untrusted code; its "no access to parent state" guarantee depends on not taking a ProjectReference to any Lifeblood module. NuGet PackageReferences are allowed (Microsoft.CodeAnalysis.CSharp.Scripting is load-bearing). Ratchet-tested by `ArchitectureInvariantTests.ScriptHost_HasZeroProjectReferences`.
 
+## Multi-Define Profile Resolution (post-v0.7.8 Wave 6.A, LB-TRACK-L-LIM-001)
+
+- **INV-MULTI-DEFINE-RESOLVER-001. `IDefineProfileResolver` is the single Application-layer seam that returns the set of preprocessor-symbol profiles a project should be analyzed under; the default adapter `DefaultDefineProfileResolver` returns exactly one identity Editor profile so every existing single-profile callsite keeps its byte-stable wire shape.**
+
 ## Composition-Root Allowlist
 
 - **INV-COMPROOT-001. Composition roots use only the allowlist.** `Lifeblood.CLI` and `Lifeblood.Server.Mcp` reference only `{Domain, Application, Analysis, Adapters.CSharp, Adapters.JsonGraph, Connectors.ContextPack, Connectors.Mcp}`. The allowlist is declared once as `private static readonly HashSet<string> CompositionRootAllowedModules` on `ArchitectureInvariantTests`. Single source of truth. Expanding it is a conscious architectural decision requiring a commit that edits the test. Ratchet-tested by `CompositionRoot_CLI_UsesOnlyAllowedModules` and `CompositionRoot_ServerMcp_UsesOnlyAllowedModules`.
