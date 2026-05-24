@@ -112,6 +112,8 @@ public sealed class EdgeDetail
     public required string OtherEndId { get; init; }
     public required EdgeKind Kind { get; init; }
     public CallSite? CallSite { get; init; }
+    /// <summary>INV-MULTI-DEFINE-EDGE-PROFILES-001.</summary>
+    public IReadOnlyList<string>? Profiles { get; init; }
 }
 
 /// <summary>

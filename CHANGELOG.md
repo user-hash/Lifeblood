@@ -23,6 +23,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
 
+### Wave 6.D: Edge.Profiles[] wire shape + UnityDefineProfileResolver default injection (2026-05-24)
+
+- **`lifeblood_analyze` `defineProfiles` input + `profileCount`/`activeProfiles`/`perProfileEdgeCounts` on response summary** (`INV-MULTI-DEFINE-WIRE-001`). Caller opts into multi-profile analyze by passing `defineProfiles:["Editor","Player"]` (Unity workspace) or any subset of the resolver's vocabulary. Unknown names throw eagerly. Response summary surfaces the active profile set + per-profile edge counts so the caller can confirm shape without re-querying.
+
+- **`lifeblood_dependants` / `lifeblood_dependencies` surface `profiles[]` per edge + accept `profileFilter:string[]?`** (`INV-MULTI-DEFINE-EDGE-PROFILES-001`). `EdgeDetail.Profiles` plumbs `Edge.Profiles` through the read-side port to wire shape. `ApplyProfileFilter` is a pure post-query narrow; null filter short-circuits to identity; edges with `Profiles=null` (single-profile back-compat) pass every filter so pre-multi-define graph.json files remain accessible.
+
+- **`UnityDefineProfileResolver` injected at composition root**
+
 ### Wave 6.C: UnityDefineProfileResolver 2-profile MVP (2026-05-24)
 
 - **`UnityDefineProfileResolver` sibling adapter** (`INV-MULTI-DEFINE-UNITY-RESOLVER-001`). Workspace-shape-aware (detects `Library/` at root) `IDefineProfileResolver` implementation that returns the canonical 2-profile MVP for Unity workspaces: `Editor` identity + `Player` minus the Unity Editor discriminator family (`UNITY_EDITOR`, `UNITY_EDITOR_WIN`, `UNITY_EDITOR_64`, `UNITY_EDITOR_OSX`, `UNITY_EDITOR_LINUX`). Non-Unity workspaces fall back to single Editor identity, so the resolver is safe to inject into any composition root regardless of workspace flavor. Closes L-LIM-001's load-bearing root cause when wired into `RoslynWorkspaceAnalyzer` — `#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR` canonical witnesses flip from inactive to active under Player. Pinned by `UnityDefineProfileResolverTests` (8 facts). Tests 1164 → 1172. INVs 139 → 140 (93 → 94 categories).
