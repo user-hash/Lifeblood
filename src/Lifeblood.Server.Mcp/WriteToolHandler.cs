@@ -417,6 +417,35 @@ internal sealed class WriteToolHandler
         return TextResult(JsonSerializer.Serialize(report, _jsonOpts));
     }
 
+    public McpToolResult HandleAssignmentCoverage(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+
+        var raw = GetString(args, "targetTypeId");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("targetTypeId is required");
+
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var options = new AssignmentCoverageOptions
+        {
+            IncludeDelegateFields = GetBool(args, "includeDelegateFields") ?? true,
+            IncludeDelegateProperties = GetBool(args, "includeDelegateProperties") ?? true,
+            IncludePublicMutableFields = GetBool(args, "includePublicMutableFields") ?? false,
+            IncludePublicMutableProperties = GetBool(args, "includePublicMutableProperties") ?? false,
+            SlotName = GetString(args, "slotName"),
+            MaxSites = GetInt(args, "maxSites"),
+        };
+
+        var report = _session.CompilationHost!.GetAssignmentCoverage(resolved.CanonicalId, options);
+        if (report == null)
+            return ErrorResult($"Type not found in source: {resolved.CanonicalId}");
+
+        return TextResult(JsonSerializer.Serialize(report, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;

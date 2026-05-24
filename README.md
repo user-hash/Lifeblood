@@ -4,7 +4,7 @@ Compiler-grade code intelligence for AI agents over MCP.
 
 Lifeblood loads a C# / Unity workspace through Roslyn or a C codebase through the beta libclang adapter, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
 
-Roslyn is the C# engine. libclang is the C engine (beta). TypeScript and Python ship as standalone JSON-emitting adapters. Lifeblood is the layer around them: persistent project graph, 29 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
+Roslyn is the C# engine. libclang is the C engine (beta). TypeScript and Python ship as standalone JSON-emitting adapters. Lifeblood is the layer around them: persistent project graph, 30 MCP tools, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands.
 
 ---
 
@@ -86,7 +86,7 @@ JSON graph     ──┤  │   evidence / trust)    │  └──  Context pac
   adapters
 ```
 
-Connect an MCP client. Load a project. The AI agent gets **29 tools**: 17 read, 12 write.
+Connect an MCP client. Load a project. The AI agent gets **30 tools**: 17 read, 13 write.
 
 | | Tools |
 |---|---|
@@ -107,14 +107,14 @@ Hexagonal. Pure domain core with zero dependencies. Language adapters on the lef
 LEFT SIDE                     CORE                     RIGHT SIDE
 (Language Adapters)        (The Pipe)               (AI Connectors)
 
-Roslyn (C#)       ──┐                            ┌──  MCP Server (29 tools)
+Roslyn (C#)       ──┐                            ┌──  MCP Server (30 tools)
 libclang (C)      ──┤                            ├──  Context Pack Generator
 TypeScript        ──┼→  Domain  →  Application  →┤──  Instruction File Generator
 Python            ──┤       ↑                     ├──  CLI / CI
 JSON graph        ──┘    Analysis (optional)      └
 ```
 
-27 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [121 typed invariants across 81 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+27 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [125 typed invariants across 82 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -138,7 +138,7 @@ JSON graph        ──┘    Analysis (optional)      └
 
 ## Unity
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 29 tools available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). All 30 tools available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -146,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-v0.7.7 + 2026-05-19 plan close): 3,506 symbols, 21,113 edges, 11 modules, 363 types, 0 violations, 0 cycles. **1,100 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **121 typed invariants across 81 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post-v0.7.7 + 2026-05-19 plan close): 3,506 symbols, 21,113 edges, 11 modules, 363 types, 0 violations, 0 cycles. **1,111 tests, zero skipped** across `Lifeblood.Tests`, zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **125 typed invariants across 82 categories**, zero duplicates, zero parse warnings.
 
 ---
 
