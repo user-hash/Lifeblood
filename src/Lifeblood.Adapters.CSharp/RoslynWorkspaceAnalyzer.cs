@@ -175,8 +175,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // Full analyze starts with no prior knowledge of any module — clear
         // any carry-over downgraded refs so a re-analyze on the same
         // analyzer instance does not inherit stale PE images from a prior
-        // project root. INV-INCREMENTAL-XREF-001.
-        snapshot.DowngradedRefs.Clear();
+        // project root. INV-INCREMENTAL-XREF-001 + INV-MULTI-DEFINE-INCREMENTAL-001.
+        snapshot.DowngradedRefsByProfile.Clear();
         // Merge discovery-level skips (csproj lists a .cs file that doesn't
         // exist on disk) into the snapshot so users see them in the
         // analyze response alongside compilation-level skips.
@@ -211,11 +211,21 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                     RetainCompilations = false,
                 };
 
+            // INV-MULTI-DEFINE-INCREMENTAL-001. Per-profile carry. Each profile
+            // pass writes its own PE images into a dict keyed by the profile
+            // name. Incremental re-analyze reads back the SAME profile's dict
+            // so changed-modules' compilations resolve cross-project references
+            // under the matching defines. Without per-profile keying, non-first
+            // profile incremental passes silently bind every cross-project
+            // dependency to the first profile's PE image (or to nothing if the
+            // first profile pass left it null) and drop the edge.
+            var profileCarry = GetOrCreateProfileCarry(snapshot, profile.Name);
+
             var profileCompilations = compilationBuilder.ProcessInOrder(
                 profileModules, projectRoot, profileConfig,
                 onModuleProgress: OnModuleProgress,
                 skippedCollector: isFirstProfile ? snapshot.SkippedFiles : null,
-                carryDowngraded: isFirstProfile ? snapshot.DowngradedRefs : null,
+                carryDowngraded: profileCarry,
                 processor: (module, compilation) =>
                 {
                     var moduleId = SymbolIds.Module(module.Name);
@@ -509,10 +519,20 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                     RetainCompilations = false,
                 };
 
+            // INV-MULTI-DEFINE-INCREMENTAL-001. Per-profile carry. Recover the
+            // snapshot's PE images for THIS profile so changed modules can
+            // resolve unchanged cross-project dependencies under the matching
+            // defines. Pre-fix this was first-profile-only — non-first profile
+            // passes received null carry and the local `downgraded` dict in
+            // ProcessInOrder started empty over a subset of modules, silently
+            // dropping every cross-project edge whose target lived in an
+            // unchanged module.
+            var profileCarry = GetOrCreateProfileCarry(_snapshot, profile.Name);
+
             var profileCompilations = compilationBuilder.ProcessInOrder(
                 profileModulesToRecompile, projectRoot, profileConfig,
                 skippedCollector: isFirstProfile ? _snapshot.SkippedFiles : null,
-                carryDowngraded: isFirstProfile ? _snapshot.DowngradedRefs : null,
+                carryDowngraded: profileCarry,
                 processor: (module, compilation) =>
                 {
                     var moduleId = SymbolIds.Module(module.Name);
@@ -685,6 +705,24 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             selected.Add(profile);
         }
         return selected;
+    }
+
+    /// <summary>
+    /// INV-MULTI-DEFINE-INCREMENTAL-001. Recover the snapshot's per-module
+    /// downgraded-ref dict for <paramref name="profileName"/>, creating an
+    /// empty one if absent. The returned reference is the same instance the
+    /// snapshot stores, so <see cref="ModuleCompilationBuilder.ProcessInOrder"/>'s
+    /// write-back lands on the snapshot directly.
+    /// </summary>
+    private static Dictionary<string, Microsoft.CodeAnalysis.MetadataReference> GetOrCreateProfileCarry(
+        AnalysisSnapshot snapshot, string profileName)
+    {
+        if (!snapshot.DowngradedRefsByProfile.TryGetValue(profileName, out var carry))
+        {
+            carry = new Dictionary<string, Microsoft.CodeAnalysis.MetadataReference>(StringComparer.Ordinal);
+            snapshot.DowngradedRefsByProfile[profileName] = carry;
+        }
+        return carry;
     }
 
     /// <summary>INV-MULTI-DEFINE-APPLIER-001.</summary>

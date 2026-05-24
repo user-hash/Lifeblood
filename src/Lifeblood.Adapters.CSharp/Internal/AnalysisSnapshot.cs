@@ -73,32 +73,30 @@ internal sealed class AnalysisSnapshot
     public List<Edge> ModuleEdges { get; } = new();
 
     /// <summary>
-    /// Per-module downgraded MetadataReferences (PE images emitted by the
-    /// previous analyze pass). Persisted across calls so incremental
-    /// re-analyze can hand changed-modules' compilations the metadata
-    /// references for UNCHANGED dependent modules.
+    /// Per-profile, per-module downgraded MetadataReferences (PE images
+    /// emitted by the previous analyze pass). Outer dict keyed by profile
+    /// name; inner dict by module name. Persisted across calls so
+    /// incremental re-analyze can hand changed-modules' compilations the
+    /// metadata references for UNCHANGED dependent modules — under the
+    /// SAME profile defines those modules were originally compiled with.
     ///
-    /// The drift class this guards (INV-INCREMENTAL-XREF-001): when this
-    /// dictionary lived as a local in <c>ModuleCompilationBuilder.ProcessInOrder</c>
-    /// and was discarded at end-of-call, full analyze populated it for every
-    /// module; incremental analyze called <c>ProcessInOrder</c> with only the
-    /// <c>modulesToRecompile</c> subset, so unchanged dependencies had no
-    /// metadata reference, every cross-module symbol bound to a Roslyn
-    /// error symbol, and the corresponding edges were silently dropped by
-    /// <c>GraphBuilder</c>'s dangling-edge filter. Empirical repro on a
-    /// multi-module Unity workspace showed cross-module edges silently
-    /// dropping on a single-file touch in proportion to the
-    /// unchanged-module fan-in. Minimal synthetic repro in
-    /// <c>IncrementalAnalyzeTests.IncrementalAnalyze_CrossModuleEdges_*</c>:
-    /// 5 → 1 (-4) on a 1-file touch in a 2-module project.
+    /// INV-INCREMENTAL-XREF-001 + INV-MULTI-DEFINE-INCREMENTAL-001. The
+    /// per-profile keying is load-bearing: PE images differ across profiles
+    /// because preprocessor symbols gate code inclusion (<c>#if PLAYER_ONLY</c>),
+    /// so a single dict keyed only by module would silently bind every
+    /// non-first profile to the first profile's metadata. The empirical
+    /// repro on a 2-project workspace (caller in B, callee in A guarded by
+    /// <c>#if PLAYER_ONLY</c>): touch B → incremental Player pass had no
+    /// A-under-Player PE image → cross-project Player edge dropped to 0.
     ///
-    /// Invariant: after every successful <c>ProcessInOrder</c> call, this
-    /// dictionary contains exactly one entry per module that the analyzer
-    /// successfully compiled (including unchanged modules carried forward
-    /// from previous full analyze, with their stale-but-still-valid PE
-    /// metadata). INV-INCREMENTAL-XREF-001.
+    /// Invariant: after every successful <see cref="RoslynWorkspaceAnalyzer.AnalyzeWorkspace"/>
+    /// call, this dictionary contains exactly one inner-dict per profile in
+    /// <see cref="ActiveProfiles"/>, and each inner-dict contains exactly
+    /// one entry per module the analyzer successfully compiled under that
+    /// profile. Incremental refreshes the entries for re-compiled modules
+    /// and preserves the rest.
     /// </summary>
-    public Dictionary<string, MetadataReference> DowngradedRefs { get; }
+    public Dictionary<string, Dictionary<string, MetadataReference>> DowngradedRefsByProfile { get; }
         = new(StringComparer.Ordinal);
 
     /// <summary>
