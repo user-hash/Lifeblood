@@ -1089,12 +1089,11 @@ namespace Acme {
         Assert.Null(cell.Value.MethodReturnFlagIds);
     }
 
-    // ── INV-STATIC-TABLES-DEFAULT-MAXROWS-001 + SUMMARIZE-001 (LB-TRACK-20260524-027) ──
+    // INV-STATIC-TABLES-DEFAULT-MAXROWS-001 + INV-STATIC-TABLES-SUMMARIZE-001.
 
     [Fact]
     public void GetStaticTables_DefaultMaxRows_IsBoundedTo32_TriageWorkflowTuning()
     {
-        // Authoring 40 rows; default should truncate to 32 (was 1024 pre-LB-TRACK-20260524-027).
         var builder = new System.Text.StringBuilder();
         builder.AppendLine("namespace Acme { public class Foo {");
         builder.Append("  public static readonly int[] Big = new int[] { ");

@@ -18,18 +18,11 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 internal static class RoslynStaticTableExtractor
 {
-    // INV-STATIC-TABLES-DEFAULT-MAXROWS-001 (LB-TRACK-20260524-027):
-    // 32 / 64 are the triage-workflow defaults. Pre-2026-05-24 the row
-    // default was 1024 — empirically too high for dispatch-table god-types
-    // whose response then overflowed the downstream tool-result cap.
-    // Callers needing full extraction pass maxRows explicitly.
+    // INV-STATIC-TABLES-DEFAULT-MAXROWS-001.
     internal const int DefaultMaxRows = 32;
     internal const int DefaultMaxTables = 64;
 
-    // INV-STATIC-TABLES-SUMMARIZE-001 (LB-TRACK-20260524-027): compact-mode
-    // caps. Forced when StaticTablesOptions.Summarize == true regardless of
-    // caller-passed maxRows / maxTables — summarize is the "smallest viable
-    // wire shape" contract, not a soft hint.
+    // INV-STATIC-TABLES-SUMMARIZE-001.
     internal const int SummarizeMaxRows = 3;
     internal const int SummarizeMaxTables = 16;
 
@@ -40,9 +33,6 @@ internal static class RoslynStaticTableExtractor
         StaticTablesOptions options,
         Func<ISymbol, string> buildSymbolId)
     {
-        // Summarize wins over caller-passed maxRows/maxTables. Eternal posture:
-        // a caller asking for the compact shape gets the compact shape; if they
-        // need a larger view they pass summarize=false (default) + explicit caps.
         var summarize = options.Summarize ?? false;
         var maxRows = summarize
             ? SummarizeMaxRows
