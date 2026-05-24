@@ -7,6 +7,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.9] - 2026-05-24
+
+External-review-driven release. Closes one second-pass blocker (write-side
+profile scope honesty, `INV-MULTI-DEFINE-WRITESIDE-001`), fixes the
+multi-profile incremental cross-project edge drop the first-pass review
+caught (`fix(adapter)`: per-profile `DowngradedRefsByProfile` carry), fixes
+the incremental-noop summary zeroing, and refreshes the public-surface
+truth contract (RELEASE.md skip policy split, NATIVE_CLANG.md local/manual
+audit-gate wording, ci.yml + build.yml overlap collapsed). Two new
+ratchet files pin the contracts (`MultiProfileCrossModuleIncrementalTests`
++ `MultiProfileWriteSideScopeTests`, 9 new facts). The 0.7.8 → 0.7.9
+delta lands ten commits between tag `v0.7.8` (`f8e50bb`) and tag `v0.7.9`
+(this release).
+
+Tests 1191 → 1228 (+37 across the chain: write-side scope ratchet +
+multi-profile cross-module incremental ratchet + the docs-ratchet
+refreshes). Skipped: 11 (native-clang opt-in `[SkippableFact]` lane —
+unchanged). INVs 149 → 150 across 98 → 99 categories (one new:
+`INV-MULTI-DEFINE-WRITESIDE-001`). Self-analyze: 3,834 symbols /
+23,020 edges / 11 modules / 399 types / 0 violations / 0 cycles. All
+public-surface anchors aligned to live source via the existing
+`DocsTests.Anchor_MatchesLiveSource` ratchet.
+
 The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Waves 1 / 3 / 4 (re-probe + drift-ratchet, test-impact reflection heuristic, assignment-coverage) closing five of six DAWG-side limitations (L-LIM-002 / -003 / -004 / -005 / -006). A second-pass DAWG Stage 0 dogfood surfaced and fixed three wire-shape gaps (LB-TRACK-20260524-025 / -026 / -027) under Wave 5. **Wave 6 (`docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md`) ships multi-define union analyze in six phases (6.A → 6.F) closing the last open DAWG limitation L-LIM-001** — `IDefineProfileResolver` port + `UnityDefineProfileResolver` 2-profile MVP (Editor + Player) + `Edge.Profiles[]` per-edge provenance + GraphBuilder union dedup + `profileFilter` narrowing + IOperation `profileScope` discipline. Live DAWG dogfood receipt: edges 247,350 (single-profile) → 247,460 (Editor+Player union) = +110 Player-only edges recovered, canonical L-LIM-001 trap edges restored. Lifeblood self-analysis snapshot (symbols, edges, modules, types, violations, cycles), test discovery, and invariant audit are anchored in [`docs/STATUS.md`](docs/STATUS.md) and ratcheted against the live source on every CI run via `Anchor_MatchesLiveSource` in [`tests/Lifeblood.Tests/DocsTests.cs`](tests/Lifeblood.Tests/DocsTests.cs).
 
 ### Added
@@ -1297,7 +1320,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...HEAD
+[0.7.9]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...v0.7.9
 [0.7.8]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...v0.7.8
 [0.7.7]: https://github.com/user-hash/Lifeblood/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/user-hash/Lifeblood/compare/v0.7.5...v0.7.6
