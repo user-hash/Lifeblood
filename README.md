@@ -114,7 +114,7 @@ Python            ──┤       ↑                     ├──  CLI / CI
 JSON graph        ──┘    Analysis (optional)      └
 ```
 
-28 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [143 typed invariants across 97 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
+28 port interfaces, all wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), [144 typed invariants across 98 categories under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md).
 
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
@@ -146,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-Wave-6 multi-define close, 2026-05-24): 3,770 symbols, 22,582 edges, 11 modules, 392 types, 0 violations, 0 cycles. **1,191 discovered test cases** across `Lifeblood.Tests` (37 `[SkippableFact]` methods gate on runtime preconditions such as `LIFEBLOOD_REQUIRE_NATIVE_CLANG`), zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **143 typed invariants across 97 categories**, zero duplicates, zero parse warnings.
+Self-analysis is anchored at every release in [`docs/STATUS.md`](docs/STATUS.md) — symbols, edges, modules, types, violations, cycles. **1,193 discovered test cases** across `Lifeblood.Tests` (37 `[SkippableFact]` methods gate on runtime preconditions such as `LIFEBLOOD_REQUIRE_NATIVE_CLANG`), zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **144 typed invariants across 98 categories**, zero duplicates, zero parse warnings.
 
 ---
 

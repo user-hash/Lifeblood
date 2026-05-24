@@ -92,6 +92,10 @@ tests under `tests/Lifeblood.Tests/ArchitectureInvariantTests.cs`.
 
 - **INV-MULTI-DEFINE-WIRE-001. `lifeblood_analyze` accepts `defineProfiles:string[]?` input; response carries `profileCount`, `activeProfiles`, and `perProfileEdgeCounts` on the summary. `lifeblood_dependants` / `lifeblood_dependencies` surface `profiles[]` per edge wire-side and accept an optional `profileFilter:string[]?` arg that narrows results to edges whose Profiles intersect the filter; edges with Profiles=null (single-profile back-compat) pass every filter.**
 
+## Multi-Define Incremental Parity (post-v0.7.8 reviewer Stage 1, LB-TRACK-L-LIM-001)
+
+- **INV-MULTI-DEFINE-INCREMENTAL-001. `AnalysisSnapshot.ActiveProfiles` is the single source of truth for "which profiles is this graph under?"; `RoslynWorkspaceAnalyzer.IncrementalAnalyze` MUST replay that same per-profile loop over changed files so per-edge `Profiles[]` provenance survives a file-touch.**
+
 ## IOperation Tool Multi-Profile Scope (post-v0.7.8 Wave 6.E, LB-TRACK-L-LIM-001)
 
 - **INV-MULTI-DEFINE-IOP-001. `lifeblood_enum_coverage`, `lifeblood_static_tables`, `lifeblood_assignment_coverage` operate against the retained profile's compilations only; `RoslynWorkspaceAnalyzer.RetainedProfileName` records which profile that is (= first profile in `AnalysisConfig.DefineProfiles`, or the resolver's first profile in single-profile back-compat). Responses surface `analyzedUnderProfile`; the optional `profileScope` input is honored when it matches the retained name and fails loudly with a switch-instructions error otherwise.**
