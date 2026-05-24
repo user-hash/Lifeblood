@@ -343,6 +343,14 @@ public sealed class GraphSession : IDisposable
         var incremental = _roslynAdapter!.IncrementalAnalyze(config);
         capture.MarkPhase("incremental");
 
+        // INV-MULTI-DEFINE-INCREMENTAL-001. Snapshot's retained profile set echoed
+        // on every incremental wire path (rejected / noop / incremental / full
+        // fallback). Count == 1 collapses to null per BuildLoadResult contract —
+        // single-profile back-compat byte-stable.
+        var incrActiveProfiles = _roslynAdapter?.RetainedProfileNames is { Count: > 1 } names
+            ? names.ToArray()
+            : null;
+
         // INV-ANALYZE-FALLBACK-001: caller refused widening; the adapter
         // returned a typed Rejected. Surface it on the wire — the agent
         // re-runs explicitly with allowFullFallback:true or switches to
@@ -360,7 +368,8 @@ public sealed class GraphSession : IDisposable
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
                 fallbackDetail: incremental.Detail,
-                canRetryFull: true);
+                canRetryFull: true,
+                activeProfiles: incrActiveProfiles);
         }
 
         // From here on Graph is non-null (Incremental or FullFallback).
@@ -377,7 +386,8 @@ public sealed class GraphSession : IDisposable
                 usage: usage,
                 changedFileCount: 0,
                 skipped: _roslynAdapter?.SkippedFiles,
-                requestedMode: "incremental");
+                requestedMode: "incremental",
+                activeProfiles: incrActiveProfiles);
         }
 
         // Validate the rebuilt graph
@@ -426,12 +436,6 @@ public sealed class GraphSession : IDisposable
         // and the `fallbackReason` field surfaces alongside so the caller
         // sees the cache-miss without parsing a hybrid mode value.
         var wireMode = incremental.Mode == IncrementalMode.FullFallback ? "full" : "incremental";
-        // INV-MULTI-DEFINE-INCREMENTAL-001. Echo snapshot's retained profile
-        // set on the wire when Count >= 2 (Count == 1 collapses to null per
-        // BuildLoadResult contract — single-profile back-compat).
-        var incrActiveProfiles = _roslynAdapter?.RetainedProfileNames is { Count: > 1 } names
-            ? names.ToArray()
-            : null;
         return BuildLoadResult(
             mode: wireMode,
             graph: graph,
