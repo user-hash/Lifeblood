@@ -42,10 +42,10 @@ Built-in architecture rule packs:
 
 ```
 $ lifeblood analyze --project .
-Symbols: 3,661
-Edges:   21,851
+Symbols: 3,770
+Edges:   22,582
 Modules: 11
-Types:   379
+Types:   392
 
 ── usage (representative; exact numbers on every lifeblood_analyze response) ──
   Wall time : ~7-15 s

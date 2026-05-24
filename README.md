@@ -146,7 +146,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 ## Dogfooding
 
-Self-analysis (post-Wave-5 Stage 0 cleanup, 2026-05-24): 3,661 symbols, 21,851 edges, 11 modules, 379 types, 0 violations, 0 cycles. **1,149 discovered test cases** across `Lifeblood.Tests` (37 `[SkippableFact]` methods gate on runtime preconditions such as `LIFEBLOOD_REQUIRE_NATIVE_CLANG`), zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **142 typed invariants across 96 categories**, zero duplicates, zero parse warnings.
+Self-analysis (post-Wave-6 multi-define close, 2026-05-24): 3,770 symbols, 22,582 edges, 11 modules, 392 types, 0 violations, 0 cycles. **1,182 discovered test cases** across `Lifeblood.Tests` (37 `[SkippableFact]` methods gate on runtime preconditions such as `LIFEBLOOD_REQUIRE_NATIVE_CLANG`), zero regressions. Lifeblood audits its own architectural invariants via `lifeblood_invariant_check` against `docs/invariants/`: **142 typed invariants across 96 categories**, zero duplicates, zero parse warnings.
 
 Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242,233 edges, 91 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
 
@@ -170,7 +170,7 @@ Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242
 | [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, 28 port interfaces, invariant tree |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants tree](docs/invariants/INDEX.md) | 129 typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Invariants tree](docs/invariants/INDEX.md) | 142 typed architectural invariants, queryable via `lifeblood_invariant_check` |
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
