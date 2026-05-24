@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (re-probe + drift-ratchet), Wave 4 (assignment-coverage), and Wave 3 (test-impact reflection heuristic) — five atomic commits closing five of six DAWG-side limitations (L-LIM-002 / L-LIM-003 / L-LIM-004 / L-LIM-005 / L-LIM-006). Wave 2 (multi-define-set queries, L-LIM-001) deferred to its own session per high-risk scope. Lifeblood self-analysis: **3,628 symbols, 21,663 edges, 11 modules, 377 types, 0 violations, 0 cycles. 1,117 discovered test cases (37 `[SkippableFact]` runtime-gated). 129 typed invariants across 83 categories.**
+The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (re-probe + drift-ratchet), Wave 4 (assignment-coverage), and Wave 3 (test-impact reflection heuristic) — five atomic commits closing five of six DAWG-side limitations (L-LIM-002 / L-LIM-003 / L-LIM-004 / L-LIM-005 / L-LIM-006). Wave 2 (multi-define-set queries, L-LIM-001) deferred to its own session per high-risk scope. Lifeblood self-analysis: **3,629 symbols, 21,665 edges, 11 modules, 377 types, 0 violations, 0 cycles. 1,117 discovered test cases (37 `[SkippableFact]` runtime-gated). 129 typed invariants across 83 categories.**
 
 ### Added
 

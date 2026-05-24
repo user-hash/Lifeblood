@@ -60,7 +60,7 @@ through LB-TRACK-20260519-024 is Shipped or an explicitly qualitative close-out.
 
 Current verification anchors (2026-05-19 prerelease check):
 - Debug test suite: **1117 discovered, 37 [SkippableFact] runtime-gated**.
-- Lifeblood self-analysis: **3,628 symbols, 21,663 edges, 11 modules,
+- Lifeblood self-analysis: **3,629 symbols, 21,665 edges, 11 modules,
   377 types, 0 violations, 0 cycles**.
 - Invariant audit: **129 typed invariants across 83 categories**, zero
   duplicates, zero parse warnings.
