@@ -85,6 +85,7 @@ public sealed class JsonGraphExporter : IGraphExporter
                         ContainingSymbolId = e.CallSite.ContainingSymbolId,
                     }
                     : null,
+                Profiles = e.Profiles?.ToArray(),
             }).ToArray(),
         };
 

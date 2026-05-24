@@ -45,4 +45,15 @@ public sealed class AnalysisConfig
     /// INV-ANALYZE-FALLBACK-001.
     /// </summary>
     public bool AllowFullFallback { get; init; }
+
+    /// <summary>
+    /// INV-MULTI-DEFINE-ANALYZE-001. Define-profile names to analyze under.
+    /// Null or empty = single-profile back-compat (default Editor identity).
+    /// Non-empty = multi-profile union analyze: the adapter resolves each
+    /// name against the injected <see cref="IDefineProfileResolver"/>,
+    /// compiles every module once per active profile, extracts edges per
+    /// profile, attributes the active profile name, and unions edge profile
+    /// sets at the graph-builder dedup seam. INV-MULTI-DEFINE-EDGE-PROFILES-001.
+    /// </summary>
+    public string[]? DefineProfiles { get; init; }
 }

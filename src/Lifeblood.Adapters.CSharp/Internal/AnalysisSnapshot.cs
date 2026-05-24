@@ -148,6 +148,25 @@ internal sealed class AnalysisSnapshot
     }
 
     /// <summary>
+    /// INV-MULTI-DEFINE-ANALYZE-001. Append edges from a follow-up profile
+    /// pass to an already-replaced file. GraphBuilder dedup-unions Profiles[]
+    /// at <see cref="RebuildGraph"/> time. Symbol set is not appended —
+    /// re-extracting symbols under a different profile re-discovers the same
+    /// declarations; symbol union happens via id-based dedup in GraphBuilder.
+    /// </summary>
+    public void AppendProfileEdges(string fileId, List<Edge> edges)
+    {
+        if (EdgesByFile.TryGetValue(fileId, out var existing))
+        {
+            existing.AddRange(edges);
+        }
+        else
+        {
+            EdgesByFile[fileId] = edges;
+        }
+    }
+
+    /// <summary>
     /// Remove all cached data for a file that no longer exists.
     /// </summary>
     public void RemoveFile(string fileId)

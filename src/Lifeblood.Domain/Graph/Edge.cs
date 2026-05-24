@@ -22,6 +22,15 @@ public sealed class Edge
     /// not surfaced, etc.). See <see cref="CallSite"/>. INV-EDGE-CALLSITE-001.
     /// </summary>
     public CallSite? CallSite { get; init; }
+
+    /// <summary>
+    /// INV-MULTI-DEFINE-EDGE-PROFILES-001. Define-profile names that observed
+    /// this edge. Null on single-profile analyze (back-compat wire shape).
+    /// Populated under multi-profile analyze with the sorted set of profile
+    /// names that produced the edge; empty array under multi-profile is a
+    /// bug (every edge MUST be observed by at least one profile).
+    /// </summary>
+    public IReadOnlyList<string>? Profiles { get; init; }
 }
 
 /// <summary>

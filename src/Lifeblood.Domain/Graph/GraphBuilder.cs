@@ -142,11 +142,25 @@ public sealed class GraphBuilder
         // to be emitted once per partial file — typeSymbol.GetMembers() returns all members
         // including from other partial declarations, and each file's Extract() call has
         // its own dedup set. The builder is the single source of truth for deduplication.
+        // INV-MULTI-DEFINE-EDGE-PROFILES-001. Dedup keeps first-write-wins for
+        // every field EXCEPT Profiles[]: when the same (source, target, kind)
+        // edge is observed under multiple define profiles, UNION the profile
+        // sets so the merged edge carries every contributing profile name.
+        // Single-profile analyze: every edge has Profiles=null, union is null.
         var dedupedEdges = new Dictionary<EdgeIdentityKey, Edge>();
         foreach (var edge in allEdges)
         {
             var key = EdgeIdentity.KeyFor(edge);
-            dedupedEdges.TryAdd(key, edge); // first-write-wins, consistent with symbol dedup
+            if (dedupedEdges.TryGetValue(key, out var existing))
+            {
+                var merged = EdgeProfileMerger.MergeProfiles(existing, edge);
+                if (!ReferenceEquals(merged, existing))
+                    dedupedEdges[key] = merged;
+            }
+            else
+            {
+                dedupedEdges[key] = edge;
+            }
         }
 
         // Derive file-level edges from symbol-level edges.
