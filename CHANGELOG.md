@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (re-probe + drift-ratchet), Wave 4 (assignment-coverage), and Wave 3 (test-impact reflection heuristic) — five atomic commits closing five of six DAWG-side limitations (L-LIM-002 / L-LIM-003 / L-LIM-004 / L-LIM-005 / L-LIM-006). Wave 2 (multi-define-set queries, L-LIM-001) deferred to its own session per high-risk scope. Lifeblood self-analysis: **3,629 symbols, 21,665 edges, 11 modules, 377 types, 0 violations, 0 cycles. 1,117 discovered test cases (37 `[SkippableFact]` runtime-gated). 129 typed invariants across 83 categories.**
+The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (re-probe + drift-ratchet), Wave 4 (assignment-coverage), and Wave 3 (test-impact reflection heuristic) — five atomic commits closing five of six DAWG-side limitations (L-LIM-002 / L-LIM-003 / L-LIM-004 / L-LIM-005 / L-LIM-006). Wave 2 (multi-define-set queries, L-LIM-001) deferred to its own session per high-risk scope. A second-pass DAWG Stage 0 dogfood (2026-05-24, post-dist-swap) exercised all 30 MCP tools end-to-end and surfaced three additional wire-shape gaps (LB-TRACK-20260524-025 / -026 / -027) — fixed under "Wave 5: Stage 0 dogfood follow-through" below. Lifeblood self-analysis: **3,629 symbols, 21,665 edges, 11 modules, 377 types, 0 violations, 0 cycles. 1,121 discovered test cases (37 `[SkippableFact]` runtime-gated). 129 typed invariants across 83 categories.**
 
 ### Added
 
@@ -24,6 +24,12 @@ The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (
 - **Stale self-analyze numbers across public docs** (reviewer pass 2026-05-24). `docs/STATUS.md` line 45 self-analysis block + `docs/architecture.html` line 378 footer cited 3,506 symbols / 21,113 edges — the pre-Wave-3-4 baseline. Refreshed to live 3,628 symbols / 21,663 edges / 377 types alongside the existing 0 violations / 0 cycles.
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
+
+### Wave 5: Stage 0 dogfood follow-through (2026-05-24)
+
+DAWG-side Stage 0 pass against the post-Wave-1/3/4 dist exercised all 30 MCP tools and surfaced three wire-shape gaps not covered by the masterplan. Each closes with eternal-shape posture: not a per-tool patch, but a default-tuning + uniform-shape upgrade that hardens the class of trap for any future tool.
+
+- **`lifeblood_static_tables` default `maxRows` 1024 → 32; new `summarize` flag** (`INV-STATIC-TABLES-DEFAULT-MAXROWS-001` + `INV-STATIC-TABLES-SUMMARIZE-001`, LB-TRACK-20260524-027). Pre-fix default of 1024 rows was a fence against accidentally-truncated extraction; empirically overflowed downstream tool-result budgets on real dispatch-table god-types (DAWG `KernelCapabilityTable` returned 466 KB / 9749 lines on default invocation). Default tightened to 32 (matches the triage workflow floor of ~5–20 rows visible) — callers needing full extraction pass `maxRows` explicitly. New `summarize:bool` flag forces hard caps `maxRows=3` + `maxTables=16` regardless of caller-passed values; mirrors the `summarize` shortcut already shipped on `dead_code`, `cycles`, `blast_radius`, `test_impact`. Wire shape preserved — same `tables[]` / `rows[]` / `truncated` flags, just smaller. `StaticTableExtractorTests` adds 4 facts (default-32 truncation, summarize forces rows + tables, summarize:false honors explicit). Closes DAWG LB-TRACK-20260524-027.
 
 ## [0.7.8] - 2026-05-19
 
