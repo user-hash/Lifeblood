@@ -1328,13 +1328,14 @@ Fix shape:
 
 Debug suite 1094 → 1097 green, zero skipped. STATUS testCount anchor refreshed.
 
-## Open - Lifeblood v0.7.8 Prep (Stage 0 dogfood 2026-05-24)
+## Shipped - Lifeblood v0.7.8 Prep (Stage 0 dogfood + Wave 5 cleanup, 2026-05-24)
 
-Stage 0 of a multi-stage dogfood plan: exercise all 30 MCP tools end-to-end against DAWG, re-verify every shipped LB-TRACK claim through -024, file fresh gaps with proper architectural fix shape (eternal solutions, no hotpatches). Wave 5 closed -025 / -026 / -027 + INV-LIST-SHAPE-UNIFORM-001 (eternal list-shape contract ratchet). Wave 6 = L-LIM-001 multi-define union analyze — implementation plan landed at `docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md`; 6-phase phased rollout (port + default resolver, multi-profile compile, Unity adapter, Edge.Profiles[] wire, per-IOperation tool policy, DAWG dogfood closure). Estimated 2–4 weeks focused work + 1 week dogfood. Deferred from this session per scope honesty: half-implemented multi-define would introduce regressions worse than the original limitation.
+Stage 0 of a multi-stage dogfood plan: exercise all 30 MCP tools end-to-end against DAWG, re-verify every shipped LB-TRACK claim through -024, file fresh gaps with proper architectural fix shape (eternal solutions, no hotpatches). Wave 5 closed -025 / -026 / -027 with closing commits `3b664a0` / `c87862e` / `2ae4266` plus eternal-shape ratchet `INV-LIST-SHAPE-UNIFORM-001` (`cdb7691`). All three entries below carry Shipped status with closing-commit references; original Open bodies preserved for regression-trace. Wave 6 = L-LIM-001 multi-define union analyze — implementation plan landed at `docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md` (commit `938893b`); 6-phase phased rollout (port + default resolver, multi-profile compile, Unity adapter, Edge.Profiles[] wire, per-IOperation tool policy, DAWG dogfood closure). Estimated 2–4 weeks focused work + 1 week dogfood. Wave 6 implementation deferred from the Wave 5 session per scope honesty; Phase 2 entry point is `IDefineProfileResolver` port (Wave 6.A).
 
 ### LB-TRACK-20260524-025 - `lifeblood_rename` returns whole-file replacement and misses cross-partial usage sites
 
-Status: Open
+Status: Shipped (in-tree, untagged) — Wave 5 Stage 0 cleanup pass.
+Closing commit: `3b664a0` `fix(rename): per-TextChange wire shape + cross-partial coverage (LB-TRACK-025)`. Two compound defects closed in one atom: (a) `Rename` checked `mgr.Solution == null` BEFORE any operation triggered `EnsureWorkspace`, so first-call returns on a fresh `RoslynWorkspaceRefactoring` instance returned empty — fix moves `ResolveSymbol` BEFORE the Solution null check so `EnsureWorkspace` fires; (b) `SourceText.GetTextChanges(oldText)` did a brute text diff between SourceText instances from different TextLoader containers, degenerating to a single whole-file TextChange — fix switches to `Document.GetTextChangesAsync(oldDoc)` for Roslyn's Document-level granular diff. Cross-partial coverage falls out for free because `Renamer.RenameSymbolAsync` already runs at Solution scope. Pinned by `RenameWireShapeTests` (6 facts: diagnostic single-type probe, cross-partial method, cross-partial field, same-file multi-use property + method, NewText length budget). `WriteSideIntegrationTests.Rename_GreeterType_ReturnsRealEdits` relaxed to match Roslyn's minimal-diff contract. INV-RENAME-POINT-EDITS-001 + INV-RENAME-CROSS-PARTIAL-001 pinned in `docs/invariants/tools.md`. Original entry preserved below for regression-trace.
 Type: Bug (correctness + wire-shape, compound)
 Source: DAWG Stage 0 dogfood 2026-05-24, Lifeblood v0.7.8-alpha.0.31 (post-dist-swap)
 Workspace: DAWG
@@ -1367,7 +1368,8 @@ Anti-goals (per INV-AUTONOMY-003):
 
 ### LB-TRACK-20260524-026 - `lifeblood_file_impact` lacks `summarize` / `maxResults` controls; overflows tool-result cap on god-type files
 
-Status: Open
+Status: Shipped (in-tree, untagged) — Wave 5 Stage 0 cleanup pass.
+Closing commit: `c87862e` `feat(file-impact): summarize flag + maxResults cap (LB-TRACK-026)`. Wire-shape parity with the `dead_code` / `cycles` / `blast_radius` / `test_impact` summarize trio. New input options: `maxResults` (default 500 normal / 25 summarize mode) clips each direction's array independently; `summarize:bool` (default false) forces `maxResults=25` regardless of caller-passed value. Per-direction `dependsOnTruncated` / `dependedOnByTruncated` flags + composite `truncated` bool for one-field checks. Counts (`dependsOnCount` / `dependedOnByCount`) stay full so summarize callers see real magnitude. Fix is purely additive at the handler layer (`Lifeblood.Server.Mcp.ToolHandler.HandleFileImpact`) — Domain port shape unchanged. Pinned by `ToolHandlerTests.Handle_FileImpact_*` (4 facts: default invocation reports counts + truncation shape, explicit maxResults clips + fires flags, summarize:true forces 25 over caller-passed 100, summarize:false honors explicit caller cap as regression guard). Uniform-shape ratchet `INV-LIST-SHAPE-UNIFORM-001` (closing commit `cdb7691`) closes the silent-drift class — future list-shape tools shipping without the trio fail at build time. INV-FILE-IMPACT-SUMMARIZE-001 pinned in `docs/invariants/tools.md`. Original entry preserved below for regression-trace.
 Type: Improvement (wire-shape uniformity)
 Source: DAWG Stage 0 dogfood 2026-05-24, Lifeblood v0.7.8-alpha.0.31
 Workspace: DAWG
@@ -1392,7 +1394,8 @@ Cross-reference: same family as `INV-CYCLE-TAXONOMY-001` (cycles got summarize v
 
 ### LB-TRACK-20260524-027 - `lifeblood_static_tables` lacks `summarize` shortcut; default `maxRows:1024` too high for dispatch-table-heavy types
 
-Status: Open
+Status: Shipped (in-tree, untagged) — Wave 5 Stage 0 cleanup pass.
+Closing commit: `2ae4266` `feat(static-tables): summarize flag + drop maxRows default 1024→32 (LB-TRACK-027)`. Default tuning: `DefaultMaxRows` 1024 → 32 (triage workflow floor, INV-STATIC-TABLES-DEFAULT-MAXROWS-001). New `Summarize:bool?` option on `StaticTablesOptions` forces hard caps `maxRows=3` + `maxTables=16` regardless of caller-passed values (INV-STATIC-TABLES-SUMMARIZE-001). Wire shape preserved — same `tables[]` / `rows[]` / `cells[]` / `truncated` flags, just smaller. No new DTOs / no new ports. Pinned by `StaticTableExtractorTests` (4 new facts: default-32 truncation, summarize forces rows + tables hard caps, summarize:false honors explicit caller-passed maxRows). Uniform-shape ratchet `INV-LIST-SHAPE-UNIFORM-001` (closing commit `cdb7691`) closes the silent-drift class. Both new INVs pinned as standalone bullets in `docs/invariants/tools.md` Static Table Extraction section (post-cleanup audit count). Original entry preserved below for regression-trace.
 Type: Improvement (wire-shape uniformity + default tuning)
 Source: DAWG Stage 0 dogfood 2026-05-24, Lifeblood v0.7.8-alpha.0.31
 Workspace: DAWG

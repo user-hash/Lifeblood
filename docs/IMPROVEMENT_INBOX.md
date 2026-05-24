@@ -11,6 +11,10 @@ State of Lifeblood going forward. Four things:
 
 ---
 
+## Status snapshot (Wave 5 Stage 0 dogfood cleanup, 2026-05-24, [Unreleased])
+
+Wave 5 Stage 0 pass landed three wire-shape closures (LB-TRACK-20260524-025/026/027) + eternal `INV-LIST-SHAPE-UNIFORM-001` ratchet across six commits `6c298a3` → `cdb7691`. Wave 6 L-LIM-001 multi-define union analyze plan landed at `docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md` (commit `938893b`) for the next session; implementation deferred per scope honesty (~2–4 weeks focused work). Strategic-phase reconciliation: LB-INBOX-003 / -004 / -005 are NOT single-fix tickets — each carries a 2026-05-24 status block updated below noting in-tree partial progress (INV-ENVELOPE-001 + INV-DOCS-001..007 + INV-LIST-SHAPE-UNIFORM-001 cover much of Phase 3; Unity-wedge hardening covers much of Phase 4; Phase 5 deliberately deferred until L-LIM-001 + Phase-3-sub-atoms land). Per-entry Status blocks make the actionable-vs-strategic distinction explicit.
+
 ## Status snapshot (2026-05-19 two-phase plan close + F1d dogfood find, [Unreleased] preparing v0.7.8)
 
 The 2026-05-19 two-phase hardening plan (`D:/Projekti/lifeblood_plan.txt`) lands its Phase-1 trust-hardening atoms (F0..F3f + S4..S8a), four native-clang adapter refactors (Phase 9), three execute-robustness fixes surfaced by Unity-IL2CPP DAWG dogfood (LB-LIM-004 a/b), one post-release-wall dogfood find (F1d / `INV-EXTRACT-PROPERTY-READ-001`), and the final canonical-id SSoT consolidation ratchet that closed LB-TRACK-023. **Tests 1,011 → 1,098 (+87), zero skipped. Invariants 101 → 122 (+21) across 63 → 83 categories. Symbols 3,278 → 3,507 (+229). Edges 16,973 → 21,115 (+4,142, +24% — F1d closing the bare-identifier property/event-read gap on Lifeblood self). Types 350 → 363. Ports 26 → 27 (F3a adds `IPortHealthAnalyzer`).** Every Open LB-TRACK entry from the plan baseline flipped to Shipped after live-MCP roundtrip or focused Lifeblood self-verification proved the expected code path and wire shape. The full per-atom catalogue lives in `CHANGELOG.md` `[Unreleased]`; the DAWG verification numbers live in `docs/DOGFOOD_FINDINGS.md` Session 11. The F1d find is the single most impactful: bare-identifier sibling-member property/event reads were emitting no graph edge, splitting Lifeblood's read-tool reality between `find_references` (which walks the semantic model directly) and `dependants` / `dead_code` / `blast_radius` / `port_health` (all edge-graph walkers); F2's `sameClassConsumerCount` triage field consequently always reported 0 on private property findings, defeating the FP-folding contract. Post-fix DAWG re-verification: edges 238,242 → 242,233 (+3,991 recovered property/event-read edges); workspace property zero-incoming rate 88.7% → 67.2% (-21.5 pp, 266 properties recovered); `dead_code` property finding count 247 → 62 (-75%). LB-TRACK-023 (canonical-id parity) is now closed in-tree: F1c fixed `.ctor`/`.cctor` parsing, and the final polish atom routes Roslyn declaration, edge, and lookup ID construction through `CanonicalSymbolFormat` with an architecture ratchet refusing duplicate builders.
@@ -129,7 +133,9 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ---
 
-## LB-INBOX-003. Phase 3. Contract freeze before the platform surface grows further
+## LB-INBOX-003. Phase 3. Contract freeze before the platform surface grows further — **STRATEGIC PHASE, partial in-tree progress (2026-05-24 status)**
+
+**Status (2026-05-24).** Strategic phase, not a single-fix entry. Substantial in-tree progress without a formal v1 contract-freeze release: `INV-ENVELOPE-001` (truth envelope on every read-side response) + `INV-DOCS-001..007` (live-truth ratchets on `STATUS.md` portCount / toolCount / testCount / invariantCount / invariantCategoryCount / skippedCount + 6 stale-anchor closes) + `ToolRegistry.GetDefinitions()` driving every wire-shape ratchet + `INV-LIST-SHAPE-UNIFORM-001` (eternal list-shape contract across summarize-aware tools, closing commit `cdb7691`) together cover suggested fix shape #1 / #2 / #4 across the live surface. Missing: explicit versioned-schema directory (`schemas/tools/v1/*.json`) + replay-against-recorded-session compatibility tests + an `invariant_check` compatibility-window assertion — three concrete sub-atoms remain. Treat this entry as the architectural target; ship sub-atoms under their own LB-TRACK IDs when prioritized.
 
 **Observed.** Lifeblood's wire surface now includes 25 MCP tools, 26 ports, the semantic graph JSON schema, and a growing set of architectural invariants. Several single-source-of-truth sites already exist: `CanonicalSymbolFormat`, `CsprojPaths`, `McpProtocolSpec`, `CLAUDE.md` + `docs/invariants/` tree. But there is no formal versioning story for the tool schemas or the graph schema. A future minor that accidentally renames a response field would break every external integrator silently.
 
@@ -145,7 +151,9 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ---
 
-## LB-INBOX-004. Phase 4. Double down on the C# / Roslyn / Unity wedge
+## LB-INBOX-004. Phase 4. Double down on the C# / Roslyn / Unity wedge — **STRATEGIC PHASE, partial in-tree progress (2026-05-24 status)**
+
+**Status (2026-05-24).** Strategic phase, not a single-fix entry. Substantial in-tree progress on the hardening axis: `INV-UNITY-001..002` (Unity reachability port + asmdef-drift incremental refresh) + `INV-ANALYZE-FALLBACK-001` (caller-owned scope policy on incremental) + `INV-INCREMENTAL-XREF-001` (cross-module edge preservation, closing L-LIM-002 in `798c3de` round) + `INV-EXTRACT-PROPERTY-READ-001` (F1d bare-identifier property reads, closing the 88.7% workspace-property zero-incoming class) + L-LIM-003 + L-LIM-005 (test_impact reflection heuristic) all sit on the Unity-C# wedge. Missing: formal `PLAYBOOK_CSHARP.md` workflow document + anonymized real-repo benchmarks with wall-clock + round-trip count vs naive-agent baseline. Pre-condition for those is Phase 3 (sub-fix #1: versioned schemas) AND Phase 2 (L-LIM-001 multi-define) to land first per the original sequencing note — wedge benchmarks against a half-finished define-set graph would mislead. Treat this entry as the strategic target; defer playbook + benchmarks to post-Wave-6.
 
 **Observed.** The `README.md` maturity table is refreshingly honest: C# / Roslyn is "Proven", TypeScript is "High", Python is "Structural", generic JSON import varies. The strongest use case today is serious C# / Unity codebases with large module counts where AI needs compiler-grounded answers, and the repo has production verification on a 75-module, 400k+ LOC Unity workspace. But the external value story is not yet legible to someone who has not read `docs/STATUS.md` end to end.
 
@@ -160,7 +168,9 @@ Every read-side tool declares its default tier. Advisory tools (today only `life
 
 ---
 
-## LB-INBOX-005. Phase 5. Turn internal credibility into public credibility
+## LB-INBOX-005. Phase 5. Turn internal credibility into public credibility — **STRATEGIC PHASE, not started (2026-05-24 status)**
+
+**Status (2026-05-24).** Strategic phase, not a single-fix entry. Open by design — the sequencing note on the original entry says "depends on everything else landing first". With L-LIM-001 (Wave 6 multi-define) still in plan phase and the Phase 3 versioned-schema sub-atoms unshipped, the trust dashboard would cite work-in-progress signals. Substantial PR copy material accumulated (truth envelope, INV-LIST-SHAPE-UNIFORM-001 eternal ratchet, DAWG dogfood receipts in `devmemory/lifeblood-tracking.md`) is REGRESSION-TRACE substrate, not a public-facing narrative yet. Defer to post-v0.8.0-multi-define; the case-studies / comparison demos / trust dashboard work then has a defensible "what is this for / why trust it / where not yet" answer for every dimension. Treat this entry as a holding pen for the public-credibility work, not as actionable backlog.
 
 **Observed.** Internally, Lifeblood is disciplined: architecture ratchets, runtime-queryable invariants, a real changelog, a status page that matches the code, CI spanning build / TS adapter / Python adapter / dogfood, and a published NuGet release with a real GitHub Release page. Externally, the repo is still early. A stranger landing on the GitHub page cannot immediately answer "what is this for", "why should I trust it", or "where should I not trust it yet".
 

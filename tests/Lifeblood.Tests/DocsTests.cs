@@ -148,10 +148,17 @@ public class DocsTests
   // INV-DOCS-004. Single source of truth: <!-- testCount: N --> comment.
   // Live truth: count of xUnit-discovered test cases across the
   // Lifeblood.Tests assembly. Each [Fact]-derived method counts once;
-  // each [Theory] method counts once per [InlineData] row (fallback
-  // to 1 if a Theory uses [MemberData] / [ClassData] alone, since
-  // those expand only at runtime via test-case generators).
-  // Sibling to portCount / toolCount ratchets above.
+  // each [Theory] method expands by data source — [InlineData] rows
+  // counted directly; [MemberData] with a static IEnumerable<object[]>
+  // source counted by enumeration; [ClassData] counted by instantiating
+  // the source. Sibling to portCount / toolCount ratchets above.
+  //
+  // The ratchet matches xUnit's runtime test-case expansion (the
+  // count `dotnet test --list-tests` reports). Pre-2026-05-24 the
+  // ratchet only counted [InlineData] rows, falling back to 1 for
+  // [MemberData]/[ClassData] Theories — which silently undercounted
+  // user-visible suite size by the number of MemberData rows. The
+  // expansion below resolves the data-source method via reflection.
   var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
   var status = File.ReadAllText(statusPath);
 
@@ -164,6 +171,8 @@ public class DocsTests
   var factAttr = typeof(FactAttribute);
   var theoryAttr = typeof(TheoryAttribute);
   var inlineAttr = typeof(InlineDataAttribute);
+  var memberDataAttr = typeof(MemberDataAttribute);
+  var classDataAttr = typeof(ClassDataAttribute);
 
   var live = 0;
   foreach (var t in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
@@ -174,15 +183,80 @@ public class DocsTests
   if (m.GetCustomAttributes(factAttr, inherit: false).Length == 0) continue;
   var isTheory = m.GetCustomAttributes(theoryAttr, inherit: false).Length > 0;
   if (!isTheory) { live++; continue; }
+
   var inlineRows = m.GetCustomAttributes(inlineAttr, inherit: false).Length;
-  live += Math.Max(1, inlineRows);
+  if (inlineRows > 0) { live += inlineRows; continue; }
+
+  // [MemberData("MemberName")] — resolve the referenced static member
+  // and enumerate it. Source member can be a property OR method,
+  // returning IEnumerable<object[]>.
+  var memberDataAttrs = m.GetCustomAttributes(memberDataAttr, inherit: false);
+  if (memberDataAttrs.Length > 0)
+  {
+  var rows = 0;
+  foreach (var attr in memberDataAttrs.Cast<MemberDataAttribute>())
+  {
+  rows += CountMemberDataRows(t, attr.MemberName);
+  }
+  // If we couldn't resolve any rows (private / instance / dynamic),
+  // fall back to 1 — same as the pre-fix behavior for that edge.
+  live += Math.Max(1, rows);
+  continue;
+  }
+
+  // [ClassData(typeof(SourceType))] — instantiate and enumerate.
+  var classDataAttrs = m.GetCustomAttributes(classDataAttr, inherit: false);
+  if (classDataAttrs.Length > 0)
+  {
+  var rows = 0;
+  foreach (var attr in classDataAttrs.Cast<ClassDataAttribute>())
+  {
+  rows += CountClassDataRows(attr.Class);
+  }
+  live += Math.Max(1, rows);
+  continue;
+  }
+
+  // Theory with no recognised data source (custom data-attribute
+  // sub-class, dynamic source) — preserve fallback-to-1 so the
+  // ratchet doesn't crash on novel xUnit extensions.
+  live++;
   }
   }
 
   Assert.True(declared == live,
   $"docs/STATUS.md declares testCount={declared} but Lifeblood.Tests discovery yields {live} " +
-  "test cases ([Fact] + per-[InlineData] expansion of [Theory]). Update the HTML comment in " +
-  "STATUS.md to the live count, or restore the test that caused the drift.");
+  "test cases ([Fact] + [InlineData] rows + [MemberData]/[ClassData] expansion of [Theory]). " +
+  "Update the HTML comment in STATUS.md to the live count, or restore the test that caused the drift.");
+  }
+
+  private static int CountMemberDataRows(Type containingType, string memberName)
+  {
+  // Static property or method, parameterless, returns IEnumerable<object[]>.
+  const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
+  var prop = containingType.GetProperty(memberName, flags);
+  System.Collections.IEnumerable? source = null;
+  if (prop != null && prop.GetGetMethod(nonPublic: true) != null)
+  source = prop.GetValue(null) as System.Collections.IEnumerable;
+  else
+  {
+  var method = containingType.GetMethod(memberName, flags, binder: null, types: Type.EmptyTypes, modifiers: null);
+  if (method != null)
+  source = method.Invoke(null, null) as System.Collections.IEnumerable;
+  }
+  if (source == null) return 0;
+  var count = 0;
+  foreach (var _ in source) count++;
+  return count;
+  }
+
+  private static int CountClassDataRows(Type sourceType)
+  {
+  var instance = Activator.CreateInstance(sourceType) as System.Collections.IEnumerable;
+  if (instance == null) return 0;
+  var count = 0;
+  foreach (var _ in instance) count++;
+  return count;
   }
 
   [Fact]
