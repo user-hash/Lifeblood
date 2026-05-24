@@ -266,7 +266,7 @@ public static class ToolRegistry
   Name = "lifeblood_file_impact",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = DerivedInferred,
-  Description = "Get file-level impact: which files depend on this file and which files this file depends on. Derived from symbol-level edges. Answers 'if I change this file, what other files are affected?'",
+  Description = "Get file-level impact: which files depend on this file and which files this file depends on. Derived from symbol-level edges. Answers 'if I change this file, what other files are affected?' Every response carries `dependsOnCount` + `dependedOnByCount` (full graph magnitudes — stay byte-stable even when arrays clip) alongside the per-direction arrays. Pass `maxResults` to cap each direction's array (default 500; clipped arrays fire `dependsOnTruncated` / `dependedOnByTruncated` flags plus a composite `truncated` bool for one-field checks). Pass `summarize:true` (INV-FILE-IMPACT-SUMMARIZE-001) for the smallest viable wire shape — forces `maxResults=25` regardless of caller-passed value; mirrors the summarize shortcut already shipped on `dead_code`, `cycles`, `blast_radius`, `test_impact`. Useful on god-type primary partial files (high fan-out / high fan-in) where the full enumeration overflows downstream tool-result budgets.",
   InputSchema = new
   {
   type = "object",
@@ -274,6 +274,8 @@ public static class ToolRegistry
   properties = new
   {
   filePath = new { type = "string", description = "Relative file path (e.g., src/MyApp/AuthService.cs)" },
+  maxResults = new { type = "integer", description = "Optional. Cap on entries returned per direction (`dependsOn` and `dependedOnBy` are clipped independently). Default 500 normal mode / 25 summarize mode. Zero / negative values fall back to the default. Ignored when `summarize:true`." },
+  summarize = new { type = "boolean", description = "Optional. When true, forces `maxResults=25` regardless of caller-passed value — smallest viable wire shape for triage workflows on god-type files. Defaults to false. INV-FILE-IMPACT-SUMMARIZE-001." },
   },
   },
   },

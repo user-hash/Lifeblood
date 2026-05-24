@@ -713,4 +713,148 @@ public class ToolHandlerTests : IDisposable
         else
             Assert.Contains("\"truncated\": true", text);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // INV-FILE-IMPACT-SUMMARIZE-001 (LB-TRACK-20260524-026): file_impact
+    // wire shape parity with the dead_code / cycles / blast_radius / test_impact
+    // summarize trio. Pre-fix the tool returned full DependsOn / DependedOnBy
+    // arrays with no caps; god-type primary partials in real-world Unity
+    // workspaces (DAWG AdaptiveBeatGrid.cs = 159 partials) overflowed the
+    // downstream tool-result budget. Fix is purely additive at the handler
+    // layer — Domain port shape unchanged.
+    // ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Build a temp graph.json where <paramref name="targetFile"/> has
+    /// <paramref name="fanIn"/> incoming file edges and <paramref name="fanOut"/>
+    /// outgoing file edges. Each cross-file edge is materialized via a
+    /// type-to-type reference whose endpoints carry the right FilePath, which
+    /// is the shape <see cref="LifebloodMcpProvider.GetFileImpact"/> aggregates
+    /// against. Returns the graph.json path; caller passes via
+    /// <c>graphPath = ...</c> to <c>lifeblood_analyze</c>.
+    /// </summary>
+    private string BuildFanGraph(string targetFile, int fanIn, int fanOut)
+    {
+        var builder = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "file:" + targetFile, Name = targetFile, Kind = SymbolKind.File, FilePath = targetFile })
+            .AddSymbol(new Symbol { Id = "type:Target", Name = "Target", Kind = SymbolKind.Type, FilePath = targetFile });
+        for (var i = 0; i < fanIn; i++)
+        {
+            var file = $"In{i}.cs";
+            var typeId = $"type:In{i}";
+            builder.AddSymbol(new Symbol { Id = "file:" + file, Name = file, Kind = SymbolKind.File, FilePath = file });
+            builder.AddSymbol(new Symbol { Id = typeId, Name = $"In{i}", Kind = SymbolKind.Type, FilePath = file });
+            builder.AddEdge(new Edge { SourceId = typeId, TargetId = "type:Target", Kind = EdgeKind.References });
+        }
+        for (var i = 0; i < fanOut; i++)
+        {
+            var file = $"Out{i}.cs";
+            var typeId = $"type:Out{i}";
+            builder.AddSymbol(new Symbol { Id = "file:" + file, Name = file, Kind = SymbolKind.File, FilePath = file });
+            builder.AddSymbol(new Symbol { Id = typeId, Name = $"Out{i}", Kind = SymbolKind.Type, FilePath = file });
+            builder.AddEdge(new Edge { SourceId = "type:Target", TargetId = typeId, Kind = EdgeKind.References });
+        }
+
+        var doc = new GraphDocument
+        {
+            Language = "test",
+            Adapter = new AdapterCapability { CanDiscoverSymbols = true, TypeResolution = ConfidenceLevel.Proven },
+            Graph = builder.Build(),
+        };
+        var path = Path.Combine(_tempDir, $"fan-{Guid.NewGuid():N}.json");
+        using var stream = File.Create(path);
+        new Lifeblood.Adapters.JsonGraph.JsonGraphExporter().Export(doc, stream);
+        return path;
+    }
+
+    [Fact]
+    public void Handle_FileImpact_DefaultInvocation_CarriesCountsAndTruncationShape()
+    {
+        var handler = CreateHandler();
+        var graphPath = BuildFanGraph("Target.cs", fanIn: 3, fanOut: 2);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath }));
+
+        var result = handler.Handle("lifeblood_file_impact", MakeArgs(new { filePath = "Target.cs" }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"dependsOnCount\": 2", text);
+        Assert.Contains("\"dependedOnByCount\": 3", text);
+        Assert.Contains("\"dependsOnTruncated\": false", text);
+        Assert.Contains("\"dependedOnByTruncated\": false", text);
+        Assert.Contains("\"truncated\": false", text);
+        Assert.Contains("\"summarize\": false", text);
+    }
+
+    [Fact]
+    public void Handle_FileImpact_ExplicitMaxResults_ClipsArraysAndFiresTruncationFlags()
+    {
+        var handler = CreateHandler();
+        // 30 + 30 fan; cap each direction at 5.
+        var graphPath = BuildFanGraph("Hub.cs", fanIn: 30, fanOut: 30);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath }));
+
+        var result = handler.Handle("lifeblood_file_impact", MakeArgs(new { filePath = "Hub.cs", maxResults = 5 }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        // Counts stay full — caller MUST be able to see the real magnitude.
+        Assert.Contains("\"dependsOnCount\": 30", text);
+        Assert.Contains("\"dependedOnByCount\": 30", text);
+        // Both directions overshoot the cap → both truncated.
+        Assert.Contains("\"dependsOnTruncated\": true", text);
+        Assert.Contains("\"dependedOnByTruncated\": true", text);
+        Assert.Contains("\"truncated\": true", text);
+        Assert.Contains("\"maxResults\": 5", text);
+    }
+
+    [Fact]
+    public void Handle_FileImpact_SummarizeTrue_ForcesMaxResults25_RegardlessOfCallerPassed()
+    {
+        var handler = CreateHandler();
+        // 50 + 50 fan; pass maxResults=100 AND summarize=true.
+        // Summarize must win — INV-FILE-IMPACT-SUMMARIZE-001.
+        var graphPath = BuildFanGraph("God.cs", fanIn: 50, fanOut: 50);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath }));
+
+        var result = handler.Handle("lifeblood_file_impact", MakeArgs(new
+        {
+            filePath = "God.cs",
+            maxResults = 100,
+            summarize = true,
+        }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"summarize\": true", text);
+        // Caller asked for 100 but summarize forced 25 — wire echoes the EFFECTIVE cap.
+        Assert.Contains("\"maxResults\": 25", text);
+        Assert.Contains("\"dependsOnCount\": 50", text);
+        Assert.Contains("\"dependedOnByCount\": 50", text);
+        Assert.Contains("\"truncated\": true", text);
+    }
+
+    [Fact]
+    public void Handle_FileImpact_SummarizeFalse_HonorsExplicitMaxResults_RegressionGuard()
+    {
+        // Regression guard against summarize accidentally becoming sticky.
+        var handler = CreateHandler();
+        var graphPath = BuildFanGraph("Mid.cs", fanIn: 10, fanOut: 10);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath }));
+
+        var result = handler.Handle("lifeblood_file_impact", MakeArgs(new
+        {
+            filePath = "Mid.cs",
+            maxResults = 20,
+            summarize = false,
+        }));
+
+        Assert.Null(result.IsError);
+        var text = result.Content[0].Text;
+        Assert.Contains("\"summarize\": false", text);
+        Assert.Contains("\"maxResults\": 20", text);
+        // 10 + 10 both fit under the 20-cap → neither truncated.
+        Assert.Contains("\"dependsOnTruncated\": false", text);
+        Assert.Contains("\"dependedOnByTruncated\": false", text);
+    }
 }
