@@ -20,7 +20,7 @@ The native-clang adapter is an **opt-in build target**. The executable is NOT bu
 
 11 `[SkippableFact]` ratchets pin the executable's contract:
 - **Default suite (no env var set)**: ratchets skip silently when the executable is absent. Suite reports `1180 passed + 11 skipped / 1191 total` — green.
-- **Opt-in audit (`LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`)**: ratchets fail loudly when the executable is missing. This is the CI-gate path; the env var asserts "the executable IS expected to be here" and the failure is correct behavior when the assertion is false.
+- **Opt-in audit (`LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`)**: ratchets fail loudly when the executable is missing. This is a LOCAL / MANUAL audit gate, NOT a CI gate — no GitHub workflow sets this variable today (the executable requires LLVM + libclang on the runner, which is opt-in toolchain work consumers handle themselves). Set the env var on a host where the executable IS expected to be present (post-build) and the assertion failure is correct behavior when it is not.
 
 To build the executable for local opt-in audit: follow `TOOLCHAIN.md` (requires LLVM dev headers + libclang shared library + CMake + a C++ compiler). Built artifacts land at `artifacts/native-clang-build/lifeblood-native-clang.exe` — the path the ratchets look up.
 
