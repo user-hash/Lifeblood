@@ -71,7 +71,7 @@ The domain is pure. No Roslyn, no JSON, no System.IO.
 
 Properties are `IReadOnlyDictionary` on the public surface. The graph is read-only after construction.
 
-## Port Interfaces (26 total)
+## Port Interfaces (28 total)
 
 ### Left Side (Language Adapters)
 - `IWorkspaceAnalyzer`. Primary entry point. Takes `projectRoot` plus config and returns a `SemanticGraph`.
@@ -183,6 +183,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
-- **142 typed invariants across 96 categories under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
+- **143 typed invariants across 97 categories under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
 - DocsTests ratchets: `portCount`, `toolCount`, `testCount`, `invariantCount`, `invariantCategoryCount`, `skippedCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)

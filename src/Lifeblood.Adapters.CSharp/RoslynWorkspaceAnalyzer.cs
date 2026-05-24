@@ -49,8 +49,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     public string? RetainedProfileName { get; private set; }
 
     /// <summary>
-    /// Compilations retained during analysis (only when RetainCompilations=true).
-    /// Null when streaming mode was used. Available for write-side operations after analysis.
+    /// Compilations retained during analysis when RetainCompilations=true.
+    /// Null under streaming mode. Available for write-side operations after analysis.
     /// </summary>
     public IReadOnlyDictionary<string, CSharpCompilation>? Compilations => _compilations;
 
@@ -173,15 +173,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // analyze response alongside compilation-level skips.
         snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped);
 
-        // INV-MULTI-DEFINE-ANALYZE-001. Resolve the set of define profiles
-        // to compile each module under. Default single-profile flow: the
-        // resolver returns one identity Editor profile, no tagging happens,
-        // wire shape stays byte-stable with pre-Wave-6 behavior. Multi-
-        // profile flow: requested profile names (from AnalysisConfig) are
-        // matched against resolver output; missing names throw so caller
-        // sees the typo. First profile pass populates the snapshot via
-        // ReplaceFile; subsequent passes use AppendProfileEdges to add
-        // profile-tagged edges that GraphBuilder dedup-unions.
+        // INV-MULTI-DEFINE-ANALYZE-001.
         var activeProfiles = ResolveActiveProfiles(projectRoot, config);
         var multiProfile = activeProfiles.Count > 1;
         RetainedProfileName = activeProfiles.Count > 0 ? activeProfiles[0].Name : null;

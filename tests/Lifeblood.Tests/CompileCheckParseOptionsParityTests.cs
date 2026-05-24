@@ -23,13 +23,9 @@ namespace Lifeblood.Tests;
 /// <see cref="CSharpCompilation.AddSyntaxTrees"/> throw
 /// <see cref="ArgumentException"/> with
 /// <c>"Inconsistent language versions (Parameter 'syntaxTrees')"</c>.
-///
-/// Pre-fix this surface was completely broken on every workspace whose
-/// modules declared an explicit LangVersion — every DAWG file-mode
-/// compile_check + every snippet-mode call against such a module threw
-/// before any user diagnostic could be produced. The truth envelope on
-/// <c>diagnose</c> / <c>compile_check</c> (INV-DIAGNOSTIC-ENVELOPE-DEFINES-001)
-/// is load-bearing on these tools working at all.
+/// The truth envelope on <c>diagnose</c> / <c>compile_check</c>
+/// (INV-DIAGNOSTIC-ENVELOPE-DEFINES-001) is load-bearing on these
+/// tools working at all on workspaces with explicit LangVersion.
 /// </summary>
 public class CompileCheckParseOptionsParityTests
 {

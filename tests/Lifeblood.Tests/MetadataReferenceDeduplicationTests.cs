@@ -9,11 +9,9 @@ namespace Lifeblood.Tests;
 /// Regression suite for the assembly identity unification step that
 /// brings Lifeblood's compilation reference graph into parity with
 /// MSBuild's <c>&lt;AutoUnify&gt;true&lt;/AutoUnify&gt;</c> default
-/// (INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001). Pre-fix, a workspace
-/// whose NuGet closure overlapped simple-names with the SDK BCL ref
-/// pack produced CS1701 / CS1702 / CS1705 once per consuming type-ref
-/// (empirically 7,537 spurious findings on Lifeblood's own test
-/// assembly); MSBuild was clean on the same compilation.
+/// (INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001). Workspaces whose NuGet
+/// closure overlaps simple-names with the SDK BCL ref pack MUST emit
+/// zero CS1701 / CS1702 / CS1705 — same outcome MSBuild produces.
 ///
 /// Asserted invariants:
 ///   1. Same simple-name + different version collapses to the

@@ -14,6 +14,18 @@ Beta in v0.7.7. First non-C# adapter for Lifeblood. Parses C code through `libcl
 | Read-side MCP tools against C graphs | Working through `JsonGraphImporter`. `lookup`, `dependencies`, `dependants`, `find_references`, `blast_radius`, `file_impact`, `dead_code`, `cycles` all consume the emitted graph. |
 | Write-side MCP tools against C graphs | Out of scope. Write-side tools (`rename`, `compile_check`, `execute`, `diagnose`) are Roslyn-backed and remain C#-only. |
 
+## Opt-in execution lane
+
+The native-clang adapter is an **opt-in build target**. The executable is NOT bundled with the published NuGet packages (`Lifeblood.dll` / `Lifeblood.Server.Mcp.dll`); it ships as a separate `lifeblood-native-clang.exe` built from `adapters/native-clang/` via CMake + libclang. See `TOOLCHAIN.md` for the build recipe.
+
+11 `[SkippableFact]` ratchets pin the executable's contract:
+- **Default suite (no env var set)**: ratchets skip silently when the executable is absent. Suite reports `1180 passed + 11 skipped / 1191 total` — green.
+- **Opt-in audit (`LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`)**: ratchets fail loudly when the executable is missing. This is the CI-gate path; the env var asserts "the executable IS expected to be here" and the failure is correct behavior when the assertion is false.
+
+To build the executable for local opt-in audit: follow `TOOLCHAIN.md` (requires LLVM dev headers + libclang shared library + CMake + a C++ compiler). Built artifacts land at `artifacts/native-clang-build/lifeblood-native-clang.exe` — the path the ratchets look up.
+
+For each release tag, the C# core (`Lifeblood` + `Lifeblood.Server.Mcp`) ships **without** a bundled native-clang executable. Consumers who need C-language analysis build the executable from source against their own LLVM toolchain. This separation keeps the C# package consumer-toolchain-clean (no LLVM dependency for a Lifeblood install) and lets the native-clang adapter evolve at its own cadence.
+
 ## How it works
 
 ```

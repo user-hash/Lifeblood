@@ -195,13 +195,10 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         //
         // INV-RESOLVER-007: when input parses as a member-kind ID (field:,
         // property:, method:), Rule 4 substitutions MUST stay on the same
-        // containing-type short name AND the same Symbol.Kind. Pre-fix, an
-        // exact-prefixed query like field:NS.Flags.Active that
-        // missed Rule 1 fell through to FindByShortName("Active") and
-        // silently returned field:NS.Pool.Active — a
-        // different containing type, returned as a successful resolution.
-        // Downstream tools (find_references / dependants / blast_radius) then
-        // walked the wrong target. The R2-3 dogfood case from a Unity workspace
+        // containing-type short name AND the same Symbol.Kind. Silent
+        // cross-type substitution would let downstream tools (find_references
+        // / dependants / blast_radius) walk the wrong target. The R2-3
+        // dogfood case from a Unity workspace
         // closes here. The rule's documented intent ("namespace was wrong but
         // symbol uniquely identified") is preserved: same-short-type, different-
         // namespace substitutions still resolve cleanly. Cross-type / cross-kind

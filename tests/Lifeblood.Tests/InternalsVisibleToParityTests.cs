@@ -11,16 +11,15 @@ namespace Lifeblood.Tests;
 
 /// <summary>
 /// Regression suite for friend-assembly parity between Lifeblood and
-/// MSBuild (INV-DIAGNOSTIC-IVT-PARITY-001). Pre-fix, a producer csproj
-/// declaring <c>&lt;InternalsVisibleTo Include="Friend" /&gt;</c>
-/// emitted no friend-assembly metadata onto its Lifeblood-built PE: the
-/// SDK-style source scan skips <c>obj/</c>, so the MSBuild-generated
-/// <c>*.AssemblyInfo.cs</c> file carrying the
-/// <c>[assembly: InternalsVisibleTo("Friend")]</c> attribute never
-/// entered the compilation. The consuming Tests module saw a PE with no
-/// IVT and every internal access fired CS0122 — empirically 223 spurious
-/// findings on Lifeblood's own test assembly while <c>dotnet build</c>
-/// was clean.
+/// MSBuild (INV-DIAGNOSTIC-IVT-PARITY-001). Discovery MUST surface
+/// every <c>&lt;InternalsVisibleTo Include="Friend" /&gt;</c> item
+/// onto <see cref="ModuleInfo.InternalsVisibleTo"/>, and the
+/// compilation builder MUST synthesize an
+/// <c>[assembly: InternalsVisibleTo("Friend")]</c> attribute tree onto
+/// the producer PE so the consuming Friend assembly's internal access
+/// binds. SDK-style source scan skips <c>obj/</c>, so the MSBuild-
+/// generated <c>*.AssemblyInfo.cs</c> file is invisible — the synthesis
+/// is what closes the friend-assembly path.
 ///
 /// Asserted invariants:
 ///   1. <see cref="RoslynModuleDiscovery"/> surfaces every
