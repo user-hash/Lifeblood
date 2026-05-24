@@ -46,10 +46,9 @@ Fix shape:
 
 ## Current Snapshot
 
-Latest shipped Lifeblood tag: **`v0.7.8`** (`git describe --tags HEAD`). The
-current `main` branch is the **[Unreleased]** pre-tag wall for the reviewer
-Stage 1 polish (multi-profile incremental parity + SSoT-table docs ratchet +
-Windows CI). Tag cadence remains a separate maintainer call.
+Latest shipped Lifeblood tag: **`v0.7.9`** (`git describe --tags HEAD`). At
+this snapshot `main` is exactly the `v0.7.9` release tag; `[Unreleased]` is the
+next-version intake area.
 
 Current verification anchors live in [`docs/STATUS.md`](../docs/STATUS.md) —
 self-analyze symbols / edges / modules / types, test discovery count,
@@ -71,7 +70,7 @@ moment): edges 247,350 → 247,460 (delta +110 Player-only edges, invariant);
 **L-LIM-001..006 all CLOSED**. DAWG `reference_lifeblood_known_limitations.md`
 L-LIM-001 marked CLOSED with the full receipt table.
 
-**Reviewer Stage 1 polish (this push)**: `INV-MULTI-DEFINE-INCREMENTAL-001`
+**Reviewer Stage 1 polish (shipped in v0.7.9)**: `INV-MULTI-DEFINE-INCREMENTAL-001`
 closes the multi-profile + incremental-analyze parity defect — `AnalysisSnapshot.ActiveProfiles`
 is SSoT for "which profiles is this graph under?", `IncrementalAnalyze` replays
 the snapshot's profile set over changed files so per-edge `Profiles[]`
@@ -81,6 +80,13 @@ Hardcoded count citations stripped from README / ARCHITECTURE.md /
 architecture.html / TOOLS.md / MCP_SETUP.md / UNITY.md; STATUS.md is the only
 visible-prose carrier for the canonical numbers, every other surface links to
 it. CI matrix extended to `windows-latest`.
+
+**v0.7.9 release cut**: tag `v0.7.9` lands on commit `3531d37`
+(`docs(changelog): cut [0.7.9] - 2026-05-24 release section + link refs`).
+The changelog records the 0.7.8 -> 0.7.9 delta: write-side profile-scope
+honesty, multi-profile incremental cross-project edge carry, incremental-noop
+summary repair, release-surface doc ratchets, and the DAWG live receipts for
+L-LIM-001..006 closure.
 
 **Native-Clang opt-in lane**: ships as an opt-in build target under
 `adapters/native-clang/` (CMake + libclang). The C# core packages (`Lifeblood`,
@@ -119,6 +125,50 @@ Primary source reports:
 
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
+
+## 2026-05-24 - Lifeblood v0.7.9 - DAWG reconnect/post-update notes
+
+Status: Candidate
+Type: UX
+Source: DAWG post-update reconnect during ABG top-down comment pass
+Workspace: DAWG
+Verification: Lifeblood tag `v0.7.9` at commit `3531d37`; DAWG dogfood probes
+from the ABG pass and v0.7.9 changelog `[0.7.9] - 2026-05-24`.
+
+Summary:
+- No new correctness blocker surfaced after the v0.7.9 dist swap. The DAWG ABG
+  pass used `compile_check`, `file_impact`, `cycles`, and
+  `assignment_coverage` without a fresh false-positive class.
+- `lifeblood_assignment_coverage` is the standout new daily-workflow tool for
+  DAWG-style `*HostBindings`: it verified complete slot assignment on the ABG
+  service/MIDI slices without reflection or source-text walking. Example DAWG
+  receipts from the pass: `CoreRebuildHostBindings` 45/45,
+  `CoreStateSyncHostBindings` 39/39, `SnapshotApplyHostBindings` 14/14,
+  `StepShapeEnforcerHostBindings` 10/10, `ClipSyncHostBindings` 11/11,
+  `MidiGridHostBindings` 4/4, `MidiCcHostBindings` 16/16; zero absent/null
+  slots on the checked construction sites.
+- The remaining noticed friction is documentation/capability drift outside
+  Lifeblood: DAWG guidance still carried older tool counts/version wording in
+  places while the server was already at v0.7.9 / 30 MCP tools.
+
+Impact:
+- The product behavior looks healthy, but stale downstream guidance can make
+  agents use older workflows, under-use `assignment_coverage`, or distrust
+  multi-profile results that v0.7.9 now handles honestly.
+- This is the same family as LB-NICE-010, now observed again immediately after
+  the v0.7.9 release cut.
+
+Fix shape:
+- Promote LB-NICE-010 into a concrete next-version acceptance target:
+  `lifeblood_version_info` or `lifeblood_capabilities` should return semver,
+  build hash, dirty flag, tool count, feature flags (`multiProfileAnalyze`,
+  `assignmentCoverage`, `writeSideProfileScope`, summarize-capable tools), and
+  the docs/status anchor path. Callers can then drift-detect on session start
+  instead of learning capability state from stale local prose.
+- Add a small DAWG-side workflow note once the capability endpoint exists:
+  `assignment_coverage` is the first-choice static audit for `*HostBindings`;
+  source-text ratchets are fallback only when the contract itself is source
+  text.
 
 ## Shipped - Lifeblood v0.7.3
 
