@@ -1,10 +1,11 @@
 # L-LIM-001 Multi-Define Union Analyze — Implementation Plan
 
-**Status:** Stage 1 plan, implementation deferred to Wave 6
+**Status:** Stage 1 plan, implementation Wave 6 (Phase 2 entry point)
 **Tracking:** Closes DAWG L-LIM-001 (preprocessor-guarded callsites invisible to `find_references` / `dependants`)
 **Last shipped Stage 0 fixes:** LB-TRACK-20260524-025 / -026 / -027 + INV-LIST-SHAPE-UNIFORM-001
 **Authoring date:** 2026-05-24
-**Estimated scope:** Multi-week feature, ~1500–2500 LOC + ~80 new test cases
+**Revision:** 2026-05-24 post-reviewer tightening — 5-profile scope replaced with 2-profile MVP (Editor + Player) per L-LIM-001 root-cause analysis; `Edge.Profiles[]` empty-array ambiguity closed by omitting the field entirely on single-profile analyze.
+**Estimated scope:** ~1000–1800 LOC + ~60 new test cases (2-profile MVP); 5-profile platform variant is a separate v2 atom that piggybacks on the same port
 
 ---
 
@@ -40,19 +41,20 @@ public sealed class DefineProfile
 
 Default resolver returns ONE profile (Editor) on every workspace — preserves existing behavior. The resolver is a port so workspace-specific profiles (Unity build targets, Xamarin platforms, .NET TFM matrix) ship as sibling adapters without touching the core analyzer.
 
-### 2. Unity-aware adapter: `UnityDefineProfileResolver`
+### 2. Unity-aware adapter: `UnityDefineProfileResolver` (2-profile MVP)
 
-Lives in `Lifeblood.Adapters.CSharp`. Recognizes Unity workspaces (`Library/` exists at root) and returns the canonical 5-profile set:
+Lives in `Lifeblood.Adapters.CSharp`. Recognizes Unity workspaces (`Library/` exists at root) and returns the canonical 2-profile set:
 
 | Profile name | AddDefines | RemoveDefines (relative to csproj's PreprocessorSymbols) |
 |---|---|---|
-| `Editor` | (none — default) | (none) |
-| `Android` | `UNITY_ANDROID`, `PLATFORM_ANDROID`, `ENABLE_IL2CPP` | `UNITY_EDITOR`, `UNITY_EDITOR_WIN`, `UNITY_EDITOR_64` |
-| `iOS` | `UNITY_IOS`, `PLATFORM_IOS`, `ENABLE_IL2CPP` | `UNITY_EDITOR`, `UNITY_EDITOR_WIN`, `UNITY_EDITOR_64` |
-| `WebGL` | `UNITY_WEBGL`, `PLATFORM_WEBGL` | `UNITY_EDITOR`, `UNITY_EDITOR_WIN`, `UNITY_EDITOR_64`, `ENABLE_MONO`, `ENABLE_IL2CPP` |
-| `Standalone` | `UNITY_STANDALONE`, `UNITY_STANDALONE_WIN`, `PLATFORM_STANDALONE`, `PLATFORM_STANDALONE_WIN` | `UNITY_EDITOR`, `UNITY_EDITOR_WIN`, `UNITY_EDITOR_64` |
+| `Editor` | (none — preserves baseline) | (none) |
+| `Player` | (none — relies on baseline platform-target defines) | `UNITY_EDITOR`, `UNITY_EDITOR_WIN`, `UNITY_EDITOR_64`, `UNITY_EDITOR_OSX`, `UNITY_EDITOR_LINUX` |
 
-Profile add/remove sets are conservative — when a profile is uncertain whether a symbol is active, it stays in the existing set. The resolver does NOT enumerate Unity's full ~300-symbol define vocabulary per target; only the load-bearing platform-discriminator subset. The complete Unity define vocabulary varies by Unity version + scripting backend; covering it exhaustively requires hooking Unity's `UnityEditor.PlayerSettings.GetScriptingDefineSymbolsForGroup` API at workspace-discovery time. That's a v2 enhancement — v1 ships with the conservative subset above.
+**Rationale.** L-LIM-001's load-bearing discriminator is the `UNITY_EDITOR` axis: callsites guarded by `#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR` are invisible to Lifeblood because the workspace csproj already has UNITY_EDITOR active. The `Player` profile is the Editor baseline minus the Editor-discriminator symbols — every `#if !UNITY_EDITOR` branch becomes visible, every `#if UNITY_EDITOR && X` branch correctly excludes itself, and the `(UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR` canonical witness flips from "inactive" to "active" on Android-targeting Editor workspaces. The platform-target defines (`UNITY_ANDROID` / `UNITY_IOS` / `UNITY_WEBGL` / `PLATFORM_*` / `ENABLE_IL2CPP`) are ALREADY in the baseline csproj DefineConstants on a workspace whose Editor targets that platform — DAWG-side `compile_check` proves it (Editor target `Android` → `PLATFORM_ANDROID` + `UNITY_ANDROID` + `ENABLE_IL2CPP` all already active). The 5-platform variant earlier in this plan was a category error: those `AddDefines` are no-ops because the symbols are already present. The 2-profile MVP closes L-LIM-001's root cause with half the memory cost.
+
+**Pre-fix attempt (rejected, archived for regression-trace).** The earlier plan revision specified a 5-profile set `Editor / Android / iOS / WebGL / Standalone` with per-platform `AddDefines = UNITY_<PLATFORM>, PLATFORM_<PLATFORM>, ENABLE_IL2CPP`. Rejected on review: the platform-target defines are already in baseline on a workspace targeting that platform, so each "add" was a no-op. The REAL discriminator the L-LIM-001 trap fires on is the `UNITY_EDITOR` axis, not the platform-target axis. The 5-profile variant becomes a v2 enhancement once the 2-profile MVP closes the load-bearing root cause and per-platform code-path inspection becomes a separate distinct use-case.
+
+**v2 (not Wave 6).** Platform-specific profile vocabulary (`Android` / `iOS` / `WebGL` / `Standalone` discriminating which platform-target's branches activate) requires hooking Unity's `UnityEditor.PlayerSettings.GetScriptingDefineSymbolsForGroup` API at workspace-discovery time — the platform-target defines vary by Unity version + scripting backend + active player settings, and inferring them statically requires reading + interpreting `ProjectSettings/ProjectSettings.asset`. That's a v2 atom that piggybacks on the same `IDefineProfileResolver` port; v1 ships with the 2-profile MVP because it solves L-LIM-001's root cause without that dependency.
 
 ### 3. Multi-profile compilation pipeline
 
@@ -67,10 +69,10 @@ Profile add/remove sets are conservative — when a profile is uncertain whether
 
 ### 4. Wire-shape additions
 
-- `Edge.Profiles: string[]` — profile names that emitted this edge. Empty array means "Editor only" (back-compat default). Populated under any multi-profile analyze.
-- `AnalyzeResponse.summary.profileCount: int` — how many profiles were analyzed this round.
-- `AnalyzeResponse.summary.perProfileEdgeCounts: Dict<string,int>` — debug provenance, surfaced when `defineProfiles` is non-default.
-- New optional input arg on `lifeblood_analyze`: `defineProfiles: string[]` (canonical names matching the `IDefineProfileResolver` vocabulary).
+- `Edge.Profiles: string[]?` — profile names that emitted this edge. **Field is OMITTED entirely on single-profile analyze (back-compat: pre-multi-define wire shape).** Populated only under multi-profile analyze; empty array under multi-profile = bug (every edge MUST be observed by at least one profile). Eliminates the "empty array means Editor only" ambiguity — the absence of the field unambiguously signals single-profile analyze.
+- `AnalyzeResponse.summary.profileCount: int` — how many profiles were analyzed this round. `1` for single-profile back-compat; `≥ 2` for multi-profile.
+- `AnalyzeResponse.summary.perProfileEdgeCounts: Dict<string,int>?` — debug provenance, populated when `defineProfiles` is non-default; null otherwise.
+- New optional input arg on `lifeblood_analyze`: `defineProfiles: string[]` (canonical names matching the `IDefineProfileResolver` vocabulary). On Unity workspaces with the 2-profile MVP: `["Editor", "Player"]` is the canonical multi-profile invocation.
 
 ### 5. Per-tool consumption
 
@@ -80,9 +82,10 @@ Profile add/remove sets are conservative — when a profile is uncertain whether
 ### 6. Memory + time budget
 
 For DAWG-sized workspaces (90 modules):
-- Single profile: ~3.4 GB RSS, 40s wall-time (current baseline).
-- 5 profiles (Editor + Android + iOS + WebGL + Standalone): expected ~12–16 GB RSS, ~150–200s wall-time. RAM dominated by retained `CSharpCompilation` objects (each holding syntax trees + semantic models).
-- Mitigation: profile compilations can be processed sequentially with eager disposal — peak RAM stays close to single-profile baseline at the cost of higher wall-time. Default policy: sequential + eager-dispose for memory safety; opt-in `parallelProfiles:true` for analyze-time-sensitive workflows on workspaces with ≥ 32 GB RAM.
+- Single profile (back-compat): ~3.4 GB RSS, 40s wall-time (current baseline).
+- 2-profile MVP (Editor + Player): expected ~5–7 GB RSS, ~70–90s wall-time. RAM dominated by retained `CSharpCompilation` objects (each holding syntax trees + semantic models). Memory ~2× single-profile baseline, wall-time ~2× single-profile.
+- Sequential-with-eager-disposal default policy: each profile compiled, edges extracted, then compilation disposed before next profile starts → peak RAM stays close to single-profile baseline at the cost of higher wall-time. Opt-in `parallelProfiles:true` for analyze-time-sensitive workflows on workspaces with ≥ 16 GB RAM.
+- v2 5-profile platform variant: expected ~10–14 GB RSS / ~150–180s wall-time. Out of Wave 6 scope.
 
 ## Implementation phases
 
@@ -99,11 +102,11 @@ For DAWG-sized workspaces (90 modules):
 - Edge.Profiles[] field threaded through extractor → graph
 - Pinned by `MultiProfileAnalyzeTests` (6 facts: single-profile back-compat, two-profile edge union, profile-disjoint edge attribution, sequential disposal frees RAM, parallel option, byte-stable profile ordering)
 
-### Wave 6.C: UnityDefineProfileResolver (≈ 300 LOC)
-- The 5-profile Unity adapter
+### Wave 6.C: UnityDefineProfileResolver — 2-profile MVP (≈ 150 LOC)
+- The 2-profile Unity adapter (Editor + Player)
 - Workspace detection (Library/ exists)
-- Add/Remove vocabulary per profile, frozen as eternal constants with INV pin
-- Pinned by `UnityDefineProfileResolverTests` (10+ facts: each profile emits correct add/remove set, Editor profile is identity, non-Unity workspace returns single profile)
+- Add/Remove vocabulary per profile, frozen as eternal `internal static readonly` arrays with INV pin
+- Pinned by `UnityDefineProfileResolverTests` (6+ facts: Editor profile is identity, Player profile drops UNITY_EDITOR family, non-Unity workspace returns single Editor profile, asmdef-generated csproj is treated identically to SDK-style for define resolution, double-invocation is idempotent)
 
 ### Wave 6.D: Edge.Profiles[] wire shape + INV pin (≈ 200 LOC)
 - Domain DTO field
