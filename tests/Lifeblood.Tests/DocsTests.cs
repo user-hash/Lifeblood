@@ -213,6 +213,58 @@ public class DocsTests
   }
 
   [Fact]
+  public void StatusDoc_SkippableFactCount_MatchesLiveDiscovery()
+  {
+  // INV-DOCS-007. Single source of truth: <!-- skippableFactCount: N -->.
+  // Live truth: count of test methods carrying SkippableFactAttribute.
+  // Mechanical declared-count check (env-independent). The runtime-skip
+  // count varies with gates like LIFEBLOOD_REQUIRE_NATIVE_CLANG, so the
+  // ratchet anchors the DECLARED surface, not the runtime outcome.
+  // Closes the drift class where "zero skipped" prose silently outlived
+  // the addition of runtime-gated tests.
+  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+  var status = File.ReadAllText(statusPath);
+
+  var match = Regex.Match(status, @"<!--\s*skippableFactCount:\s*(\d+)\s*-->");
+  Assert.True(match.Success,
+  "docs/STATUS.md must declare <!-- skippableFactCount: N --> so this ratchet has a single source of truth.");
+  var declared = int.Parse(match.Groups[1].Value);
+
+  var assembly = typeof(DocsTests).Assembly;
+  // SkippableFactAttribute lives in the Xunit.SkippableFact NuGet package,
+  // a reference of Lifeblood.Tests. Resolve by FullName from the assembly's
+  // referenced assemblies so the test does not hard-code the package version.
+  Type? skippableFactAttr = null;
+  foreach (var name in assembly.GetReferencedAssemblies())
+  {
+  try
+  {
+  var refAsm = System.Reflection.Assembly.Load(name);
+  skippableFactAttr = refAsm.GetType("Xunit.SkippableFactAttribute");
+  if (skippableFactAttr != null) break;
+  }
+  catch { /* unloadable refs are not skippable-fact carriers */ }
+  }
+  Assert.True(skippableFactAttr != null,
+  "Xunit.SkippableFactAttribute not found in referenced assemblies — the Xunit.SkippableFact package reference is load-bearing for this ratchet.");
+
+  var live = 0;
+  foreach (var t in assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
+  {
+  foreach (var m in t.GetMethods(
+  BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+  {
+  if (m.GetCustomAttributes(skippableFactAttr!, inherit: false).Length > 0) live++;
+  }
+  }
+
+  Assert.True(declared == live,
+  $"docs/STATUS.md declares skippableFactCount={declared} but Lifeblood.Tests carries {live} " +
+  "[SkippableFact] methods. Update the HTML comment in STATUS.md to the live count, or " +
+  "convert the gated method back to plain [Fact].");
+  }
+
+  [Fact]
   public void StatusDoc_InvariantCount_MatchesLiveAudit()
   {
   // INV-DOCS-005. Single source of truth: <!-- invariantCount: N --> comment.
