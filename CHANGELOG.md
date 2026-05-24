@@ -17,6 +17,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Multi-profile incremental drops cross-project edges on caller-touch**
+
+- **`incremental-noop` response zeros out modules/types/files/violations/cycles** (external review pass 2026-05-24). `GraphSession.LoadIncremental` passed `analysis:null` into `BuildLoadResult` on the no-change incremental path; the summary block fell back to 0 for every analysis-derived metric because the `analysis?.X ?? 0` chains had nothing to read. Graph is unchanged on noop so the prior `_session.Analysis` is still valid — noop now reuses it and surfaces real counts. The wire-shape difference between "no changes" and "no graph loaded" stops being indistinguishable to summary-readers.
+
 - **ExampleApp L-LIM-002 / L-LIM-003 / L-LIM-004 confirmed CLOSED under v0.7.8**
 
 - **Stale self-analyze numbers across public docs** (reviewer pass 2026-05-24). `docs/STATUS.md` line 45 self-analysis block + `docs/architecture.html` line 378 footer cited 3,506 symbols / 21,113 edges — the pre-Wave-3-4 baseline. Refreshed to live 3,628 symbols / 21,663 edges / 377 types alongside the existing 0 violations / 0 cycles.
@@ -71,7 +75,7 @@ Tests 1155 / 1155 Debug green (filter `!~NativeClang`); zero skipped. STATUS anc
 
 ### Release readiness note: native-clang opt-in lane
 
-The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build target**, not a bundled artifact. The C# core packages (`Lifeblood`, `Lifeblood.Server.Mcp`) do NOT carry `lifeblood-native-clang.exe` and do NOT depend on LLVM. Consumers who need C-language analysis build the executable from `adapters/native-clang/` via CMake + libclang per `docs/TOOLCHAIN.md`. The 11 `[SkippableFact]` ratchets in `tests/Lifeblood.Tests/NativeClangExecutableRatchetTests*.cs` skip silently when the executable is absent (default suite green at `1180 passed + 11 skipped / 1191 total`) and fail loudly when `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` is set on a host where the executable IS expected to be present — this is the CI-gate path, not a release-blocker. Full opt-in execution requires the consumer's own LLVM toolchain. See `docs/NATIVE_CLANG.md` § "Opt-in execution lane" for the build recipe.
+The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build target**, not a bundled artifact. The C# core packages (`Lifeblood`, `Lifeblood.Server.Mcp`) do NOT carry `lifeblood-native-clang.exe` and do NOT depend on LLVM. Consumers who need C-language analysis build the executable from `adapters/native-clang/` via CMake + libclang per `docs/TOOLCHAIN.md`. The 11 `[SkippableFact]` ratchets in `tests/Lifeblood.Tests/NativeClangExecutableRatchetTests*.cs` skip silently when the executable is absent (default suite green at `1180 passed + 11 skipped / 1191 total`) and fail loudly when `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` is set on a host where the executable IS expected to be present — this is a LOCAL / MANUAL audit gate (no GitHub workflow sets the env var; LLVM toolchain on the runner is opt-in consumer work), not a release-blocker. Full opt-in execution requires the consumer's own LLVM toolchain. See `docs/NATIVE_CLANG.md` § "Opt-in execution lane" for the build recipe.
 
 ### Wave 6 plan reference (2026-05-24)
 
