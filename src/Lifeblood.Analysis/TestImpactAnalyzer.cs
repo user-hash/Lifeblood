@@ -59,7 +59,33 @@ public static class TestImpactAnalyzer
     public static TestImpactReport AnalyzeSymbol(SemanticGraph graph, string symbolId, int maxDepth = 12)
     {
         var sources = ExpandTypeMembers(graph, symbolId);
-        return Analyze(graph, sources, symbolId, TestImpactTargetKind.Symbol, maxDepth);
+        return Analyze(graph, sources, symbolId, TestImpactTargetKind.Symbol, maxDepth, options: null, sourceReader: null);
+    }
+
+    /// <summary>
+    /// Wave-3 opt-in overload — extends <see cref="AnalyzeSymbol(SemanticGraph,string,int)"/>
+    /// with optional reflection-heuristic source-text scanning.
+    /// <paramref name="options"/>.IncludeReflectionHeuristic combined with a non-null
+    /// <paramref name="sourceReader"/> enables a post-BFS scan: every test method's
+    /// containing file is read once and substring-searched for the target's
+    /// fully-qualified name (FQN), and for the bare short name only when the file
+    /// also contains the target's namespace as a substring OR the short name is
+    /// unique across the workspace's symbol-name index. Hits surface as
+    /// <see cref="TestImpactHitKind.ReflectionHeuristic"/> rows alongside the
+    /// existing semantic-edge BFS rows. INV-TEST-IMPACT-REFLECTION-001..003.
+    /// </summary>
+    /// <param name="sourceReader">Pluggable file-text reader. Returns null when a
+    /// file cannot be read (missing / permission denied / non-text). The reader is
+    /// invoked at most once per distinct file path. Pass null to disable the
+    /// heuristic regardless of <paramref name="options"/>.</param>
+    public static TestImpactReport AnalyzeSymbol(
+        SemanticGraph graph,
+        string symbolId,
+        TestImpactOptions options,
+        Func<string, string?>? sourceReader)
+    {
+        var sources = ExpandTypeMembers(graph, symbolId);
+        return Analyze(graph, sources, symbolId, TestImpactTargetKind.Symbol, options.MaxDepth, options, sourceReader);
     }
 
     /// <summary>
@@ -102,7 +128,7 @@ public static class TestImpactAnalyzer
             if (NormalizePath(s.FilePath) == normalized)
                 sources.Add(s.Id);
         }
-        return Analyze(graph, sources, filePath, TestImpactTargetKind.File, maxDepth);
+        return Analyze(graph, sources, filePath, TestImpactTargetKind.File, maxDepth, options: null, sourceReader: null);
     }
 
     private static TestImpactReport Analyze(
@@ -110,7 +136,9 @@ public static class TestImpactAnalyzer
         IReadOnlyCollection<string> sourceIds,
         string target,
         TestImpactTargetKind kind,
-        int maxDepth)
+        int maxDepth,
+        TestImpactOptions? options,
+        Func<string, string?>? sourceReader)
     {
         if (sourceIds.Count == 0)
             return Empty(target, kind);
@@ -222,6 +250,37 @@ public static class TestImpactAnalyzer
             return d != 0 ? d : string.CompareOrdinal(a.QualifiedName, b.QualifiedName);
         });
 
+        var semanticEdgeHits = rows.Count;
+        var heuristicHits = 0;
+        IReadOnlyList<string> limitations = Array.Empty<string>();
+
+        if (options is { IncludeReflectionHeuristic: true }
+            && sourceReader != null
+            && kind == TestImpactTargetKind.Symbol
+            && sourceIds.Count > 0)
+        {
+            var targetSymbol = graph.GetSymbol(sourceIds.First());
+            if (targetSymbol != null)
+            {
+                ApplyReflectionHeuristic(graph, rows, targetSymbol, sourceReader, ref heuristicHits);
+                limitations = new[]
+                {
+                    "ReflectionHeuristic uses source-text substring matching: FQN-literal AND bare short-name with namespace context (or short-name uniqueness). Tests using Type.GetType(computedString) remain invisible. Comments and identifier names containing the FQN can produce false positives.",
+                };
+
+                // Re-sort to keep the wire order stable across runs after
+                // heuristic rows joined the semantic-edge set.
+                rows.Sort((a, b) =>
+                {
+                    var d = a.MinDistance.CompareTo(b.MinDistance);
+                    return d != 0 ? d : string.CompareOrdinal(a.QualifiedName, b.QualifiedName);
+                });
+
+                totalMethods = rows.Sum(r => r.TestMethodNames.Length);
+                directCount = rows.Count(r => r.Confidence == TestImpactConfidence.Direct);
+            }
+        }
+
         var filters = rows
             .Select(r => $"FullyQualifiedName~{(string.IsNullOrEmpty(r.QualifiedName) ? r.Name : r.QualifiedName)}")
             .ToArray();
@@ -234,7 +293,111 @@ public static class TestImpactAnalyzer
             TotalTestMethodCount = totalMethods,
             DirectTestClassCount = directCount,
             RecommendedFilters = filters,
+            SemanticEdgeHits = semanticEdgeHits,
+            ReflectionHeuristicHits = heuristicHits,
+            Limitations = limitations,
         };
+    }
+
+    /// <summary>
+    /// Source-text reflection heuristic. For every test method in the graph
+    /// whose containing class is NOT already in <paramref name="rows"/>,
+    /// read the test file once and substring-search for the target's FQN
+    /// or short-name (with namespace context or uniqueness gate). Adds
+    /// matching test-class rows with <see cref="TestImpactHitKind.ReflectionHeuristic"/>.
+    /// INV-TEST-IMPACT-REFLECTION-001 / INV-TEST-IMPACT-REFLECTION-002.
+    /// </summary>
+    private static void ApplyReflectionHeuristic(
+        SemanticGraph graph,
+        List<TestClassImpact> rows,
+        Symbol targetSymbol,
+        Func<string, string?> sourceReader,
+        ref int heuristicHits)
+    {
+        var fqn = string.IsNullOrEmpty(targetSymbol.QualifiedName) ? targetSymbol.Name : targetSymbol.QualifiedName;
+        var shortName = targetSymbol.Name;
+        var ns = ExtractNamespace(fqn, shortName);
+
+        // Short-name uniqueness gate: short name is unique across the
+        // workspace's symbol-name index iff exactly one symbol carries
+        // that name. Computed once per call.
+        var shortNameUnique = CountSymbolsByName(graph, shortName) == 1;
+
+        var alreadyCovered = new HashSet<string>(rows.Select(r => r.TypeId), StringComparer.Ordinal);
+        var fileCache = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var perClassMethods = new Dictionary<string, (Symbol Type, List<string> Methods)>(StringComparer.Ordinal);
+
+        foreach (var sym in graph.Symbols)
+        {
+            if (sym.Kind != SymbolKind.Method) continue;
+            if (!IsTestMethod(sym)) continue;
+            var containingTypeId = FindContainingType(graph, sym);
+            if (containingTypeId == null) continue;
+            if (alreadyCovered.Contains(containingTypeId)) continue;
+
+            var filePath = sym.FilePath;
+            if (string.IsNullOrEmpty(filePath)) continue;
+
+            if (!fileCache.TryGetValue(filePath, out var content))
+            {
+                content = sourceReader(filePath);
+                fileCache[filePath] = content;
+            }
+            if (string.IsNullOrEmpty(content)) continue;
+
+            bool fqnMatch = !string.IsNullOrEmpty(fqn) && content.Contains(fqn, StringComparison.Ordinal);
+            bool shortHit = !fqnMatch
+                && content.Contains(shortName, StringComparison.Ordinal)
+                && (shortNameUnique || (!string.IsNullOrEmpty(ns) && content.Contains(ns, StringComparison.Ordinal)));
+            if (!fqnMatch && !shortHit) continue;
+
+            if (!perClassMethods.TryGetValue(containingTypeId, out var bucket))
+            {
+                var containingType = graph.GetSymbol(containingTypeId);
+                if (containingType == null || containingType.Kind != SymbolKind.Type) continue;
+                bucket = (containingType, new List<string>());
+                perClassMethods[containingTypeId] = bucket;
+            }
+            bucket.Methods.Add(sym.Name);
+        }
+
+        foreach (var kv in perClassMethods)
+        {
+            var names = kv.Value.Methods
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToArray();
+            rows.Add(new TestClassImpact
+            {
+                TypeId = kv.Key,
+                Name = kv.Value.Type.Name,
+                QualifiedName = kv.Value.Type.QualifiedName,
+                FilePath = kv.Value.Type.FilePath,
+                MinDistance = int.MaxValue,
+                Confidence = TestImpactConfidence.Transitive,
+                TestMethodNames = names,
+                Kind = TestImpactHitKind.ReflectionHeuristic,
+            });
+            heuristicHits++;
+        }
+    }
+
+    private static string ExtractNamespace(string fqn, string shortName)
+    {
+        if (string.IsNullOrEmpty(fqn)) return "";
+        var idx = fqn.LastIndexOf('.');
+        return idx > 0 ? fqn.Substring(0, idx) : "";
+    }
+
+    private static int CountSymbolsByName(SemanticGraph graph, string name)
+    {
+        int count = 0;
+        foreach (var s in graph.Symbols)
+        {
+            if (string.Equals(s.Name, name, StringComparison.Ordinal)) count++;
+            if (count > 1) return count;
+        }
+        return count;
     }
 
     private static TestImpactReport Empty(string target, TestImpactTargetKind kind) => new()
