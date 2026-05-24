@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Lifeblood.Connectors.Mcp;
+using Lifeblood.Adapters.CSharp;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -13,6 +15,8 @@ namespace Lifeblood.Tests;
 ///
 /// Invariants enforced:
 /// INV-DOCS-001. Docs/STATUS.md port/test/tool counts match the repository.
+/// INV-DOCS-005. Docs/STATUS.md invariantCount anchor matches live audit.
+/// INV-DOCS-006. Docs/STATUS.md invariantCategoryCount anchor matches live audit.
 /// INV-CHANGELOG-001. Every ## [X.Y.Z] heading has a matching link reference.
 /// </summary>
 public class DocsTests
@@ -206,6 +210,54 @@ public class DocsTests
   Assert.True(r == liveRead && w == liveWrite,
   $"docs/STATUS.md has visible \"{m.Value}\" but registry has {liveRead} read + {liveWrite} write.");
   }
+  }
+
+  [Fact]
+  public void StatusDoc_InvariantCount_MatchesLiveAudit()
+  {
+  // INV-DOCS-005. Single source of truth: <!-- invariantCount: N --> comment.
+  // Live truth: LifebloodInvariantProvider.Audit(repoRoot).TotalCount.
+  // Sibling to portCount / toolCount / testCount ratchets above.
+  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+  var status = File.ReadAllText(statusPath);
+
+  var match = Regex.Match(status, @"<!--\s*invariantCount:\s*(\d+)\s*-->");
+  Assert.True(match.Success,
+  "docs/STATUS.md must declare <!-- invariantCount: N --> so this ratchet has a single source of truth.");
+  var declared = int.Parse(match.Groups[1].Value);
+
+  var provider = new LifebloodInvariantProvider(new PhysicalFileSystem());
+  var audit = provider.Audit(RepoRoot);
+  var live = audit.TotalCount;
+
+  Assert.True(declared == live,
+  $"docs/STATUS.md declares invariantCount={declared} but live audit reports {live} invariants. " +
+  "Update the HTML comment in STATUS.md to the live count, or restore/remove the invariant " +
+  "in CLAUDE.md / docs/invariants/**.md that caused the drift.");
+  }
+
+  [Fact]
+  public void StatusDoc_InvariantCategoryCount_MatchesLiveAudit()
+  {
+  // INV-DOCS-006. Single source of truth: <!-- invariantCategoryCount: N -->.
+  // Live truth: LifebloodInvariantProvider.Audit(repoRoot).CategoryCounts.Length.
+  // Catches the drift class where total count stays stable but category set
+  // shifts (e.g. INV-FOO-001 renamed to INV-BAR-001).
+  var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+  var status = File.ReadAllText(statusPath);
+
+  var match = Regex.Match(status, @"<!--\s*invariantCategoryCount:\s*(\d+)\s*-->");
+  Assert.True(match.Success,
+  "docs/STATUS.md must declare <!-- invariantCategoryCount: N --> so this ratchet has a single source of truth.");
+  var declared = int.Parse(match.Groups[1].Value);
+
+  var provider = new LifebloodInvariantProvider(new PhysicalFileSystem());
+  var audit = provider.Audit(RepoRoot);
+  var live = audit.CategoryCounts.Length;
+
+  Assert.True(declared == live,
+  $"docs/STATUS.md declares invariantCategoryCount={declared} but live audit reports {live} categories. " +
+  "Update the HTML comment in STATUS.md to the live count, or restore the invariant whose category disappeared.");
   }
 
   private static string FindRepoRoot()
