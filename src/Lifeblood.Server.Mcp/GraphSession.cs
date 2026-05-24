@@ -81,6 +81,17 @@ public sealed class GraphSession : IDisposable
     public string? RetainedProfileName => _roslynAdapter?.RetainedProfileName;
 
     /// <summary>
+    /// INV-MULTI-DEFINE-IOP-001 / INV-MULTI-DEFINE-WRITESIDE-001. Active
+    /// profile names from the most-recent analyze. Count >= 2 means the graph
+    /// was built under multiple profiles; the live Roslyn write-side tools
+    /// (find_references / find_definition / find_implementations / rename)
+    /// still operate against the retained (first) profile's compilations only.
+    /// Empty when no profile-aware analyze has run.
+    /// </summary>
+    public IReadOnlyList<string> RetainedProfileNames =>
+        _roslynAdapter?.RetainedProfileNames ?? System.Array.Empty<string>();
+
+    /// <summary>
     /// Monotonic workspace generation. Bumped on every Load / incremental
     /// refresh / auto-refresh. Read by the envelope decorator so every
     /// read-side response carries the generation that produced it.

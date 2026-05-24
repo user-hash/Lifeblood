@@ -547,7 +547,7 @@ public static class ToolRegistry
   Name = "lifeblood_find_references",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Find all references to a symbol across the loaded workspace. Returns file paths, line numbers, and span text. Set includeDeclarations=true to also return the symbol's declaration sites (one entry per partial declaration for partial types).",
+  Description = "Find all references to a symbol across the loaded workspace. Returns file paths, line numbers, and span text. Set includeDeclarations=true to also return the symbol's declaration sites (one entry per partial declaration for partial types). **Profile scope (INV-MULTI-DEFINE-WRITESIDE-001):** searches against the retained (first) profile's compilations only — on a multi-profile snapshot, call sites guarded by preprocessor symbols active under OTHER profiles are NOT in the response. Every response carries `analyzedUnderProfile` + a `limitations[]` entry when the graph is multi-profile. For union-graph reference queries that span profiles use `lifeblood_dependants` / `lifeblood_dependencies` with `profileFilter`. To switch the retained profile, re-analyze with the target profile FIRST in `defineProfiles`. Optional `profileScope` fails loudly when the requested profile is not the retained one.",
   InputSchema = new
   {
   type = "object",
@@ -556,6 +556,7 @@ public static class ToolRegistry
   {
   symbolId = new { type = "string", description = "Symbol ID (e.g., type:MyApp.AuthService)" },
   includeDeclarations = new { type = "boolean", description = "When true, include the symbol's declaration sites in the result. Default false." },
+  profileScope = new { type = "string", description = "Optional INV-MULTI-DEFINE-WRITESIDE-001 honesty gate. When set, must equal the retained profile name; mismatched values fail loudly with switch-instructions." },
   },
   },
   },
@@ -564,7 +565,7 @@ public static class ToolRegistry
   Name = "lifeblood_find_definition",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Find where a symbol is declared. Returns file path, line, column, display name, and documentation.",
+  Description = "Find where a symbol is declared. Returns file path, line, column, display name, and documentation. Resolves against the retained profile's compilations (INV-MULTI-DEFINE-WRITESIDE-001); response carries `analyzedUnderProfile` + a `limitations[]` entry when graph is multi-profile.",
   InputSchema = new
   {
   type = "object",
@@ -572,6 +573,7 @@ public static class ToolRegistry
   properties = new
   {
   symbolId = new { type = "string", description = "Symbol ID (e.g., type:MyApp.AuthService)" },
+  profileScope = new { type = "string", description = "Optional INV-MULTI-DEFINE-WRITESIDE-001 honesty gate. When set, must equal the retained profile name; mismatched values fail loudly." },
   },
   },
   },
@@ -580,7 +582,7 @@ public static class ToolRegistry
   Name = "lifeblood_find_implementations",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Find all types/methods that implement an interface or override a virtual member.",
+  Description = "Find all types/methods that implement an interface or override a virtual member. Walks the retained profile's compilations only (INV-MULTI-DEFINE-WRITESIDE-001); response carries `analyzedUnderProfile` + a `limitations[]` entry when graph is multi-profile, so implementations gated by other-profile preprocessor symbols (e.g. `#if !UNITY_EDITOR` on a Player-only override) surface as a documented gap, not a silent omission.",
   InputSchema = new
   {
   type = "object",
@@ -588,6 +590,7 @@ public static class ToolRegistry
   properties = new
   {
   symbolId = new { type = "string", description = "Interface, abstract class, or virtual method ID" },
+  profileScope = new { type = "string", description = "Optional INV-MULTI-DEFINE-WRITESIDE-001 honesty gate. When set, must equal the retained profile name; mismatched values fail loudly." },
   },
   },
   },
@@ -691,7 +694,7 @@ public static class ToolRegistry
   Name = "lifeblood_rename",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Rename a symbol across the workspace. Returns text edits (does NOT apply them). The caller decides whether to apply.",
+  Description = "Rename a symbol across the workspace. Returns text edits (does NOT apply them). The caller decides whether to apply. Computes edits against the retained profile's compilations (INV-MULTI-DEFINE-WRITESIDE-001) — on a multi-profile snapshot, edit sites guarded by other-profile preprocessor symbols are NOT in the returned edit set. Response carries `analyzedUnderProfile` + a `limitations[]` entry when graph is multi-profile so callers see the gap before applying. To rename across both profiles today, re-analyze under each profile separately and union the edit sets.",
   InputSchema = new
   {
   type = "object",
@@ -700,6 +703,7 @@ public static class ToolRegistry
   {
   symbolId = new { type = "string", description = "Symbol ID to rename" },
   newName = new { type = "string", description = "The new name" },
+  profileScope = new { type = "string", description = "Optional INV-MULTI-DEFINE-WRITESIDE-001 honesty gate. When set, must equal the retained profile name; mismatched values fail loudly." },
   },
   },
   },
