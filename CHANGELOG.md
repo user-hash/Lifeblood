@@ -68,7 +68,12 @@ Total scope: **7 new INVs** pinned in `docs/invariants/architecture.md` + **29 n
 
 Tests 1155 / 1155 Debug green (filter `!~NativeClang`); zero skipped. STATUS anchors: 142 invariants across 96 categories, 28 ports, 30 MCP tools.
 
-**Live re-probe receipt pending dist swap.** dist-next built at `D:/Projekti/Lifeblood/dist-next/`. Procedure (same as Stage 0 closure earlier): kill MCP subprocess → swap `dist` ↔ `dist-next` → restart Claude Code → reconnect → probe `lifeblood_analyze projectPath:DAWG defineProfiles:["Editor","Player"]` + canonical L-LIM-001 witnesses (`RequestConfiguration` / `AudioRuntimeProfilePolicy.Resolve` / `AudioRuntimeProfilePersistenceLocator.Current`). Expected: each canonical witness shows `count: 2` (semantic edge from Editor settings-panel + bootstrap callsite under Player), with `profiles[]` annotating which profile observed each edge. Receipt then lands in DAWG `reference_lifeblood_known_limitations.md` L-LIM-001 "Wave 6.F closure receipt" subsection.
+**Live re-probe receipt (post-dist-swap, 2026-05-24):**
+- `lifeblood_analyze projectPath:DAWG defineProfiles:["Editor","Player"]`: `profileCount:2`, `activeProfiles:["Editor","Player"]`, `perProfileEdgeCounts:{Editor:161548, Player:157889}`. Edges 247,350 (single-profile) → 247,460 (union) = **+110 Player-only edges recovered**. Wall 71.9s / Peak RSS 4.58GB = 1.8× / 1.35× single-profile baseline (within plan budget).
+- `lifeblood_dependants(AudioRuntimeProfilePolicy.Resolve)`: 19 dependants — `AdaptiveBeatGrid.Bootstrap_WireServices` at `AdaptiveBeatGrid.Bootstrap.Services.cs:64` visible with `profiles:["Player"]` ← **L-LIM-001 canonical trap edge restored**.
+- `lifeblood_dependants(AudioRuntimeProfilePersistenceLocator.Current)`: 12 dependants — `Bootstrap_WireServices` at line 59 visible with `profiles:["Player"]`.
+- `profileFilter` wire shape validated: filter `["Player"]` → 19 dependants on `Resolve`, filter `["Editor"]` → 18 (the Player-only bootstrap edge drops as the spec requires). Delta = 1 = exactly the L-LIM-001 trap edge.
+- DAWG-side `reference_lifeblood_known_limitations.md` L-LIM-001 marked CLOSED with the full receipt table.
 
 ### Wave 6: L-LIM-001 multi-define union analyze — implementation plan landed (2026-05-24)
 
