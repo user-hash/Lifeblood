@@ -15,6 +15,7 @@ dist/
 
 # Staging directory for hot-swap redeploy (detached-watcher pattern when MCP holds dist DLL handles)
 dist-staging/
+dist-next/
 
 # Local hot-swap redeploy tooling — machine-local, not part of the eternal repo
 redeploy-watcher.ps1
