@@ -378,4 +378,95 @@ public class DocsTests
   }
   throw new DirectoryNotFoundException("Could not locate Lifeblood.sln from test base directory.");
   }
+
+  // ──────────────────────────────────────────────────────────────────
+  // INV-DOCS-SURFACE-PARITY-001. STATUS.md hidden anchors are the
+  // single source of truth; every other reviewer-facing surface that
+  // cites the same counts MUST agree. Pre-2026-05-24 the ratchets only
+  // covered STATUS.md anchors, so drift in README.md / ARCHITECTURE.md
+  // / architecture.html / docs/IMPROVEMENT_INBOX.md passed CI silently
+  // even when STATUS.md was current. Reviewer caught the drift; this
+  // ratchet closes the trap class.
+  //
+  // For each (anchor, count) pair the test loads the file, finds the
+  // first numeric citation matching a known phrasing pattern, and
+  // asserts it equals STATUS.md's anchor count. The phrasing patterns
+  // are intentionally permissive — they capture "30 Tools" / "30 MCP
+  // tools" / "30 tools / CI green" alike. Surfaces that don't cite a
+  // count (no match) skip silently.
+  // ──────────────────────────────────────────────────────────────────
+
+  public static IEnumerable<object[]> SurfaceParitySurfaces => new[]
+  {
+    new object[] { "README.md" },
+    new object[] { Path.Combine("docs", "ARCHITECTURE.md") },
+    new object[] { Path.Combine("docs", "architecture.html") },
+  };
+
+  [Theory]
+  [MemberData(nameof(SurfaceParitySurfaces))]
+  public void SurfaceParity_ToolCountAgreesWithStatusAnchor(string relPath)
+  {
+    var declared = ReadStatusAnchor("toolCount");
+    var path = Path.Combine(RepoRoot, relPath);
+    Assert.True(File.Exists(path), $"Surface file not found: {relPath}");
+    var content = File.ReadAllText(path);
+
+    foreach (var match in Regex.Matches(content, @"(?<![.\w])(\d+)\s+(?:MCP\s+)?[Tt]ools?\b").Cast<Match>())
+    {
+      var visible = int.Parse(match.Groups[1].Value);
+      if (visible == declared) continue;
+      // Permissively skip plainly-different signals: version strings,
+      // example counts that aren't the live tool count (matchers that
+      // happen to look like "23 tools" inside historical narrative).
+      // Heuristic: if the number is < 5 or > 200, it's not the tool count.
+      if (visible < 5 || visible > 200) continue;
+      Assert.Fail($"{relPath}: visible \"{match.Value}\" does not match STATUS.md anchor toolCount={declared}. Update the prose or the anchor.");
+    }
+  }
+
+  [Theory]
+  [MemberData(nameof(SurfaceParitySurfaces))]
+  public void SurfaceParity_PortCountAgreesWithStatusAnchor(string relPath)
+  {
+    var declared = ReadStatusAnchor("portCount");
+    var path = Path.Combine(RepoRoot, relPath);
+    Assert.True(File.Exists(path), $"Surface file not found: {relPath}");
+    var content = File.ReadAllText(path);
+
+    foreach (var match in Regex.Matches(content, @"(?<![.\w])(\d+)\s*(?:/\s*\d+)?\s+port[s]?(?:\s+interfaces?)?\b").Cast<Match>())
+    {
+      var visible = int.Parse(match.Groups[1].Value);
+      if (visible == declared) continue;
+      if (visible < 5 || visible > 200) continue;
+      Assert.Fail($"{relPath}: visible \"{match.Value}\" does not match STATUS.md anchor portCount={declared}. Update the prose or the anchor.");
+    }
+  }
+
+  [Theory]
+  [MemberData(nameof(SurfaceParitySurfaces))]
+  public void SurfaceParity_InvariantCountAgreesWithStatusAnchor(string relPath)
+  {
+    var declared = ReadStatusAnchor("invariantCount");
+    var path = Path.Combine(RepoRoot, relPath);
+    Assert.True(File.Exists(path), $"Surface file not found: {relPath}");
+    var content = File.ReadAllText(path);
+
+    foreach (var match in Regex.Matches(content, @"(?<![.\w])(\d+)\s+(?:typed\s+(?:architectural\s+)?|queryable\s+)?invariants?\b").Cast<Match>())
+    {
+      var visible = int.Parse(match.Groups[1].Value);
+      if (visible == declared) continue;
+      if (visible < 10 || visible > 1000) continue;
+      Assert.Fail($"{relPath}: visible \"{match.Value}\" does not match STATUS.md anchor invariantCount={declared}. Update the prose or the anchor.");
+    }
+  }
+
+  private static int ReadStatusAnchor(string name)
+  {
+    var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+    var status = File.ReadAllText(statusPath);
+    var match = Regex.Match(status, $@"<!--\s*{Regex.Escape(name)}:\s*(\d+)\s*-->");
+    Assert.True(match.Success, $"docs/STATUS.md must declare <!-- {name}: N -->.");
+    return int.Parse(match.Groups[1].Value);
+  }
 }
