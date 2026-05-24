@@ -43,7 +43,11 @@ Run these in order on the release commit before tagging.
    dotnet test Lifeblood.sln -c Release --no-restore
    ```
 
-   Required: exit code 0, zero failures. Skips are only allowed when documented by an open `LB-INBOX-*` regression pin referenced in the test attribute. A red `dotnet test` blocks the release. The fix is to land another commit, not to skip the test or to amend the release note.
+   Required: exit code 0, zero failures. Two skip categories are allowed:
+   - **Regression-pin skips**: documented by an open `LB-INBOX-*` reference in the `Skip = "..."` attribute argument. Used while a fix is being staged; the skip retires the moment the underlying extractor / handler / wire-shape lands.
+   - **Toolchain-gated `[SkippableFact]` skips**: the native-clang lane (`NativeClangExecutableRatchetTests*`) gates on `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` plus a built executable on disk. Default CI hosts skip these silently (LLVM + libclang are opt-in consumer toolchain work, not shipped with the C# core). The release gate accepts these skips because the build pipeline does not own that toolchain.
+
+   A red `dotnet test` blocks the release. The fix is to land another commit, not to skip the test or to amend the release note. To gate native-clang explicitly before a release, set `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` on a host that has the executable at `artifacts/native-clang-build/lifeblood-native-clang.exe` (see `docs/NATIVE_CLANG.md` § "Opt-in execution lane") and re-run step 5; the suite then fails loudly when the executable is missing.
 
 6. **Self-analyze green.**
 
