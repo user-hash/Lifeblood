@@ -714,25 +714,9 @@ public class ToolHandlerTests : IDisposable
             Assert.Contains("\"truncated\": true", text);
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // INV-FILE-IMPACT-SUMMARIZE-001 (LB-TRACK-20260524-026): file_impact
-    // wire shape parity with the dead_code / cycles / blast_radius / test_impact
-    // summarize trio. Pre-fix the tool returned full DependsOn / DependedOnBy
-    // arrays with no caps; god-type primary partials in real-world Unity
-    // workspaces (DAWG AdaptiveBeatGrid.cs = 159 partials) overflowed the
-    // downstream tool-result budget. Fix is purely additive at the handler
-    // layer — Domain port shape unchanged.
-    // ──────────────────────────────────────────────────────────────────
+    // INV-FILE-IMPACT-SUMMARIZE-001.
 
-    /// <summary>
-    /// Build a temp graph.json where <paramref name="targetFile"/> has
-    /// <paramref name="fanIn"/> incoming file edges and <paramref name="fanOut"/>
-    /// outgoing file edges. Each cross-file edge is materialized via a
-    /// type-to-type reference whose endpoints carry the right FilePath, which
-    /// is the shape <see cref="LifebloodMcpProvider.GetFileImpact"/> aggregates
-    /// against. Returns the graph.json path; caller passes via
-    /// <c>graphPath = ...</c> to <c>lifeblood_analyze</c>.
-    /// </summary>
+    /// <summary>Temp graph.json fan-shaped fixture for INV-FILE-IMPACT-SUMMARIZE-001 tests.</summary>
     private string BuildFanGraph(string targetFile, int fanIn, int fanOut)
     {
         var builder = new GraphBuilder()
@@ -812,8 +796,7 @@ public class ToolHandlerTests : IDisposable
     public void Handle_FileImpact_SummarizeTrue_ForcesMaxResults25_RegardlessOfCallerPassed()
     {
         var handler = CreateHandler();
-        // 50 + 50 fan; pass maxResults=100 AND summarize=true.
-        // Summarize must win — INV-FILE-IMPACT-SUMMARIZE-001.
+        // INV-FILE-IMPACT-SUMMARIZE-001: summarize forces 25 over caller-passed.
         var graphPath = BuildFanGraph("God.cs", fanIn: 50, fanOut: 50);
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath }));
 
@@ -837,7 +820,7 @@ public class ToolHandlerTests : IDisposable
     [Fact]
     public void Handle_FileImpact_SummarizeFalse_HonorsExplicitMaxResults_RegressionGuard()
     {
-        // Regression guard against summarize accidentally becoming sticky.
+        // Regression guard: summarize MUST NOT become sticky.
         var handler = CreateHandler();
         var graphPath = BuildFanGraph("Mid.cs", fanIn: 10, fanOut: 10);
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath }));

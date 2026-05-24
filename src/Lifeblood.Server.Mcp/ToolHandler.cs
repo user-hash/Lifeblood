@@ -771,15 +771,7 @@ public sealed class ToolHandler
         return list.Count > 0 ? list.ToArray() : null;
     }
 
-    // INV-FILE-IMPACT-SUMMARIZE-001 (LB-TRACK-20260524-026): uniform list-shape
-    // shortcut. Mirrors the `summarize` shortcut already shipped on
-    // `dead_code`, `cycles`, `blast_radius`, `test_impact`. Default `maxResults`
-    // = 500 in normal mode, 25 in summarize mode (matches BlastRadiusAnalyzer
-    // policy for consistency across list-shaped read tools). Full file-impact
-    // queries on god-type primary partials (DAWG `AdaptiveBeatGrid.cs` with
-    // 159 partial siblings) overflow downstream tool-result budgets without
-    // these caps; the count fields stay byte-stable so summarize callers still
-    // see the magnitude before deciding whether to paginate.
+    // INV-FILE-IMPACT-SUMMARIZE-001 + INV-LIST-SHAPE-UNIFORM-001.
     private const int FileImpactDefaultMaxResults = 500;
     private const int FileImpactSummarizeMaxResults = 25;
 
@@ -797,11 +789,6 @@ public sealed class ToolHandler
         if (symbol == null)
             return ErrorResult($"File not found in graph: {filePath} (tried ID: {fileId})");
 
-        // INV-FILE-IMPACT-SUMMARIZE-001: summarize wins over caller-passed
-        // maxResults. Eternal posture matches static_tables — when a caller
-        // asks for the compact shape they get the compact shape; needing a
-        // larger view means passing summarize=false (default) + explicit
-        // maxResults.
         var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
         var requestedMax = WriteToolHandler.GetInt(args, "maxResults");
         var maxResults = summarize
@@ -812,10 +799,6 @@ public sealed class ToolHandler
 
         var dependsOnTruncated = result.DependsOn.Length > maxResults;
         var dependedOnByTruncated = result.DependedOnBy.Length > maxResults;
-        // System.Linq's Take() is allocation-friendly on already-bounded arrays
-        // and preserves source order — file-impact has no ranking, ordinal is
-        // source-graph-order which the caller has no reason to assume but we
-        // must not reshuffle.
         var dependsOnView = dependsOnTruncated
             ? result.DependsOn.Take(maxResults).ToArray()
             : result.DependsOn;
@@ -827,14 +810,10 @@ public sealed class ToolHandler
         {
             result.FileId,
             result.FilePath,
-            // Counts stay full — caller MUST be able to see the real magnitude
-            // even when the array view is clipped. Same convention as blast_radius.
             dependsOnCount = result.DependsOn.Length,
             dependedOnByCount = result.DependedOnBy.Length,
             dependsOn = dependsOnView,
             dependedOnBy = dependedOnByView,
-            // Per-array truncation flags + composite truncated for callers that
-            // only check one field.
             dependsOnTruncated,
             dependedOnByTruncated,
             truncated = dependsOnTruncated || dependedOnByTruncated,

@@ -145,20 +145,9 @@ public class DocsTests
   [Fact]
   public void StatusDoc_TestCount_MatchesDiscoveredCases()
   {
-  // INV-DOCS-004. Single source of truth: <!-- testCount: N --> comment.
-  // Live truth: count of xUnit-discovered test cases across the
-  // Lifeblood.Tests assembly. Each [Fact]-derived method counts once;
-  // each [Theory] method expands by data source — [InlineData] rows
-  // counted directly; [MemberData] with a static IEnumerable<object[]>
-  // source counted by enumeration; [ClassData] counted by instantiating
-  // the source. Sibling to portCount / toolCount ratchets above.
-  //
-  // The ratchet matches xUnit's runtime test-case expansion (the
-  // count `dotnet test --list-tests` reports). Pre-2026-05-24 the
-  // ratchet only counted [InlineData] rows, falling back to 1 for
-  // [MemberData]/[ClassData] Theories — which silently undercounted
-  // user-visible suite size by the number of MemberData rows. The
-  // expansion below resolves the data-source method via reflection.
+  // INV-DOCS-004. Live truth = xUnit runtime test-case expansion
+  // (matches `dotnet test --list-tests`). [InlineData] counted directly;
+  // [MemberData] enumerated via reflection; [ClassData] instantiated.
   var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
   var status = File.ReadAllText(statusPath);
 
@@ -187,9 +176,6 @@ public class DocsTests
   var inlineRows = m.GetCustomAttributes(inlineAttr, inherit: false).Length;
   if (inlineRows > 0) { live += inlineRows; continue; }
 
-  // [MemberData("MemberName")] — resolve the referenced static member
-  // and enumerate it. Source member can be a property OR method,
-  // returning IEnumerable<object[]>.
   var memberDataAttrs = m.GetCustomAttributes(memberDataAttr, inherit: false);
   if (memberDataAttrs.Length > 0)
   {
@@ -198,13 +184,11 @@ public class DocsTests
   {
   rows += CountMemberDataRows(t, attr.MemberName);
   }
-  // If we couldn't resolve any rows (private / instance / dynamic),
-  // fall back to 1 — same as the pre-fix behavior for that edge.
+  // Fallback-to-1 when source is unresolvable (private / instance / dynamic).
   live += Math.Max(1, rows);
   continue;
   }
 
-  // [ClassData(typeof(SourceType))] — instantiate and enumerate.
   var classDataAttrs = m.GetCustomAttributes(classDataAttr, inherit: false);
   if (classDataAttrs.Length > 0)
   {
@@ -217,9 +201,7 @@ public class DocsTests
   continue;
   }
 
-  // Theory with no recognised data source (custom data-attribute
-  // sub-class, dynamic source) — preserve fallback-to-1 so the
-  // ratchet doesn't crash on novel xUnit extensions.
+  // Fallback-to-1 for unrecognised custom data-attribute sub-classes.
   live++;
   }
   }
@@ -232,7 +214,6 @@ public class DocsTests
 
   private static int CountMemberDataRows(Type containingType, string memberName)
   {
-  // Static property or method, parameterless, returns IEnumerable<object[]>.
   const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
   var prop = containingType.GetProperty(memberName, flags);
   System.Collections.IEnumerable? source = null;
