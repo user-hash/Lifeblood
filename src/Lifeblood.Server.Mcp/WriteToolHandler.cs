@@ -361,17 +361,33 @@ internal sealed class WriteToolHandler
             _jsonOpts));
     }
 
+    /// <summary>
+    /// INV-MULTI-DEFINE-IOP-001. The IOperation-walking tools (enum_coverage,
+    /// static_tables, assignment_coverage) operate against the retained
+    /// profile's compilations only. profileScope must match the retained
+    /// profile name when set; mismatched values fail loudly.
+    /// </summary>
+    private McpToolResult? CheckProfileScope(JsonElement? args)
+    {
+        var requested = GetString(args, "profileScope");
+        if (string.IsNullOrEmpty(requested)) return null;
+        var retained = _session.RetainedProfileName;
+        if (string.IsNullOrEmpty(retained))
+            return ErrorResult($"profileScope='{requested}' but no profile is retained. Call lifeblood_analyze with `defineProfiles` first.");
+        if (!string.Equals(requested, retained, StringComparison.Ordinal))
+            return ErrorResult($"profileScope='{requested}' is not the retained profile ('{retained}'). IOperation-walking tools currently support only the first / retained profile per INV-MULTI-DEFINE-IOP-001. Re-analyze with the requested profile FIRST in `defineProfiles` to switch.");
+        return null;
+    }
+
     public McpToolResult HandleEnumCoverage(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "enumTypeId");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("enumTypeId is required");
 
-        // Route through the same resolver every other type-id-taking
-        // tool uses so callers can pass canonical / qualified / bare
-        // short type names interchangeably. Mirrors HandleFindReferences.
         var resolved = _resolver.Resolve(_session.Graph!, raw);
         if (resolved.CanonicalId == null)
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
@@ -388,12 +404,14 @@ internal sealed class WriteToolHandler
             unproducedCount = report.UnproducedCount,
             unreferencedCount = report.UnreferencedCount,
             members = report.Members,
+            analyzedUnderProfile = _session.RetainedProfileName,
         }, _jsonOpts));
     }
 
     public McpToolResult HandleStaticTables(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "typeId");
         if (string.IsNullOrEmpty(raw))
@@ -415,12 +433,19 @@ internal sealed class WriteToolHandler
         if (report == null)
             return ErrorResult($"Type not found in source: {resolved.CanonicalId}");
 
-        return TextResult(JsonSerializer.Serialize(report, _jsonOpts));
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            report.TypeId,
+            report.Tables,
+            report.TablesTruncated,
+            analyzedUnderProfile = _session.RetainedProfileName,
+        }, _jsonOpts));
     }
 
     public McpToolResult HandleAssignmentCoverage(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "targetTypeId");
         if (string.IsNullOrEmpty(raw))
@@ -444,7 +469,13 @@ internal sealed class WriteToolHandler
         if (report == null)
             return ErrorResult($"Type not found in source: {resolved.CanonicalId}");
 
-        return TextResult(JsonSerializer.Serialize(report, _jsonOpts));
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            report.TargetTypeId,
+            report.AllSlots,
+            report.Sites,
+            analyzedUnderProfile = _session.RetainedProfileName,
+        }, _jsonOpts));
     }
 
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)

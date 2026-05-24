@@ -23,6 +23,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
 
+### Wave 6.E: IOperation tool multi-profile scope (2026-05-24)
+
+- **`lifeblood_enum_coverage` / `lifeblood_static_tables` / `lifeblood_assignment_coverage` carry `analyzedUnderProfile` + accept `profileScope:string?`**
+
 ### Wave 6.D: Edge.Profiles[] wire shape + UnityDefineProfileResolver default injection (2026-05-24)
 
 - **`lifeblood_analyze` `defineProfiles` input + `profileCount`/`activeProfiles`/`perProfileEdgeCounts` on response summary** (`INV-MULTI-DEFINE-WIRE-001`). Caller opts into multi-profile analyze by passing `defineProfiles:["Editor","Player"]` (Unity workspace) or any subset of the resolver's vocabulary. Unknown names throw eagerly. Response summary surfaces the active profile set + per-profile edge counts so the caller can confirm shape without re-querying.
