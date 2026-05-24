@@ -269,6 +269,7 @@ internal sealed class WriteToolHandler
     public McpToolResult HandleFindReferences(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
@@ -288,14 +289,20 @@ internal sealed class WriteToolHandler
         };
 
         var locations = _session.CompilationHost!.FindReferences(resolved.CanonicalId, options);
-        return TextResult(JsonSerializer.Serialize(
-            new { symbolId = resolved.CanonicalId, count = locations.Length, locations },
-            _jsonOpts));
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            symbolId = resolved.CanonicalId,
+            count = locations.Length,
+            locations,
+            analyzedUnderProfile = _session.RetainedProfileName,
+            limitations = WriteSideRetainedProfileLimitations(),
+        }, _jsonOpts));
     }
 
     public McpToolResult HandleRename(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
         var newName = GetString(args, "newName");
@@ -307,9 +314,15 @@ internal sealed class WriteToolHandler
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
         var edits = _session.Refactoring!.Rename(resolved.CanonicalId, newName);
-        return TextResult(JsonSerializer.Serialize(
-            new { symbolId = resolved.CanonicalId, newName, editCount = edits.Length, edits },
-            _jsonOpts));
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            symbolId = resolved.CanonicalId,
+            newName,
+            editCount = edits.Length,
+            edits,
+            analyzedUnderProfile = _session.RetainedProfileName,
+            limitations = WriteSideRetainedProfileLimitations(),
+        }, _jsonOpts));
     }
 
     public McpToolResult HandleFormat(JsonElement? args)
@@ -327,6 +340,7 @@ internal sealed class WriteToolHandler
     public McpToolResult HandleFindDefinition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
@@ -340,12 +354,20 @@ internal sealed class WriteToolHandler
         if (def == null)
             return ErrorResult($"Definition not found: {resolved.CanonicalId}");
 
-        return TextResult(JsonSerializer.Serialize(def, _jsonOpts));
+        // Wrap so analyzedUnderProfile + limitations surface alongside the
+        // definition payload. INV-MULTI-DEFINE-WRITESIDE-001.
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            definition = def,
+            analyzedUnderProfile = _session.RetainedProfileName,
+            limitations = WriteSideRetainedProfileLimitations(),
+        }, _jsonOpts));
     }
 
     public McpToolResult HandleFindImplementations(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
@@ -356,16 +378,24 @@ internal sealed class WriteToolHandler
             return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
 
         var impls = _session.CompilationHost!.FindImplementations(resolved.CanonicalId);
-        return TextResult(JsonSerializer.Serialize(
-            new { symbolId = resolved.CanonicalId, count = impls.Length, implementations = impls },
-            _jsonOpts));
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            symbolId = resolved.CanonicalId,
+            count = impls.Length,
+            implementations = impls,
+            analyzedUnderProfile = _session.RetainedProfileName,
+            limitations = WriteSideRetainedProfileLimitations(),
+        }, _jsonOpts));
     }
 
     /// <summary>
-    /// INV-MULTI-DEFINE-IOP-001. The IOperation-walking tools (enum_coverage,
-    /// static_tables, assignment_coverage) operate against the retained
-    /// profile's compilations only. profileScope must match the retained
-    /// profile name when set; mismatched values fail loudly.
+    /// INV-MULTI-DEFINE-IOP-001 + INV-MULTI-DEFINE-WRITESIDE-001. Every
+    /// Roslyn-write-side tool that walks the retained compilation host
+    /// (find_references, find_definition, find_implementations, rename,
+    /// enum_coverage, static_tables, assignment_coverage) operates against
+    /// the retained profile's compilations only. profileScope must match the
+    /// retained profile name when set; mismatched values fail loudly so the
+    /// caller never silently consumes the wrong profile's view.
     /// </summary>
     private McpToolResult? CheckProfileScope(JsonElement? args)
     {
@@ -375,8 +405,33 @@ internal sealed class WriteToolHandler
         if (string.IsNullOrEmpty(retained))
             return ErrorResult($"profileScope='{requested}' but no profile is retained. Call lifeblood_analyze with `defineProfiles` first.");
         if (!string.Equals(requested, retained, StringComparison.Ordinal))
-            return ErrorResult($"profileScope='{requested}' is not the retained profile ('{retained}'). IOperation-walking tools currently support only the first / retained profile per INV-MULTI-DEFINE-IOP-001. Re-analyze with the requested profile FIRST in `defineProfiles` to switch.");
+            return ErrorResult($"profileScope='{requested}' is not the retained profile ('{retained}'). Roslyn write-side tools currently support only the first / retained profile per INV-MULTI-DEFINE-WRITESIDE-001 (memory: cross-profile retention would multiply peak RAM per profile retained). Re-analyze with the requested profile FIRST in `defineProfiles` to switch.");
         return null;
+    }
+
+    /// <summary>
+    /// INV-MULTI-DEFINE-WRITESIDE-001. On a multi-profile snapshot, every
+    /// write-side Roslyn tool response advertises that its results reflect
+    /// the retained (first) profile only — call sites guarded by
+    /// preprocessor symbols active under OTHER profiles are invisible to
+    /// the current compilation host. Graph-side tools (`dependants`,
+    /// `dependencies`) honor `profileFilter` over the union graph; write-
+    /// side tools require an explicit re-analyze with the desired profile
+    /// first in `defineProfiles` to see those sites. Returned as
+    /// <c>limitations[]</c> on the tool payload (separate from the
+    /// truth-envelope's own limitations) so the caller's wire-shape parse
+    /// sees the constraint inline with the data it qualifies.
+    /// </summary>
+    private string[] WriteSideRetainedProfileLimitations()
+    {
+        var profiles = _session.RetainedProfileNames;
+        if (profiles.Count <= 1) return System.Array.Empty<string>();
+        var retained = _session.RetainedProfileName ?? profiles[0];
+        var others = string.Join(", ", profiles.Where(p => !string.Equals(p, retained, StringComparison.Ordinal)));
+        return new[]
+        {
+            $"Graph is multi-profile ({string.Join(", ", profiles)}); this tool answered against retained profile '{retained}' only. Call sites guarded by preprocessor symbols active under [{others}] are NOT in this response. Use `lifeblood_dependants` / `lifeblood_dependencies` with `profileFilter` for union-graph reference queries, or re-analyze with the target profile first in `defineProfiles` to switch the retained profile.",
+        };
     }
 
     public McpToolResult HandleEnumCoverage(JsonElement? args)
