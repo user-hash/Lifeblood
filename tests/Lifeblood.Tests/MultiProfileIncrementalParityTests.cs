@@ -7,27 +7,17 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// INV-MULTI-DEFINE-INCREMENTAL-001. Pins the Wave 6 multi-profile contract
-/// across the incremental seam. Pre-fix incremental rebuilt edges from a
-/// single un-tagged extraction pass — every Player-only callsite emitted by
-/// the previous full multi-profile analyze vanished on the next file-touch
-/// (or worse, leaked through profileFilter:["Editor"] as an untagged edge).
-/// Post-fix incremental replays the snapshot's <c>ActiveProfiles</c> per the
-/// same loop the full-analyze path uses, so per-edge <c>Profiles[]</c>
-/// provenance survives a file-touch byte-stable.
+/// INV-MULTI-DEFINE-INCREMENTAL-001. Multi-profile snapshots MUST preserve
+/// per-edge <c>Profiles[]</c> provenance across <see cref="RoslynWorkspaceAnalyzer.IncrementalAnalyze"/>.
 ///
-/// Asserted invariants:
-///   1. Full Editor+Player analyze produces a Caller.Hit→Target.Run edge
-///      tagged Profiles=["Player"] (Editor pass sees empty body; Player pass
-///      sees the guarded call).
-///   2. After touching the file under the SAME profile set, incremental
-///      re-analyze returns Mode=Incremental (NOT FullFallback) and the edge
-///      is STILL present with Profiles=["Player"].
-///   3. profileFilter parity post-incremental: filter ["Player"] keeps the
-///      edge; filter ["Editor"] excludes it (asserted directly on
-///      <c>Edge.Profiles</c> since the filter is a pure list-shape narrow).
-///   4. <c>RetainedProfileNames</c> stays Count=2 across the incremental
-///      transition so <c>GraphSession</c> can echo it on the wire response.
+/// Pinned contracts:
+///   1. Editor+Player full analyze emits Caller.Hit→Target.Run with Profiles=["Player"].
+///   2. Touching the file under the same profile set returns Mode=Incremental
+///      (not FullFallback); the edge is STILL present with Profiles=["Player"].
+///   3. profileFilter ["Player"] keeps the edge; ["Editor"] excludes it.
+///   4. <c>RetainedProfileNames</c> stays Count=2 across the incremental transition.
+///   5. Single-profile snapshot (Count == 1) keeps <c>Edge.Profiles=null</c>
+///      byte-stable post-incremental.
 /// </summary>
 public sealed class MultiProfileIncrementalParityTests : IDisposable
 {
@@ -60,7 +50,7 @@ public sealed class MultiProfileIncrementalParityTests : IDisposable
 
         var graph1 = analyzer.AnalyzeWorkspace(_tempDir, config);
 
-        // (1) Full analyze: edge present with Player-only provenance.
+        // (1) Edge present with Player-only provenance.
         var edge1 = FindCallEdge(graph1);
         Assert.NotNull(edge1);
         Assert.NotNull(edge1!.Profiles);
@@ -69,9 +59,6 @@ public sealed class MultiProfileIncrementalParityTests : IDisposable
         // (4-pre) Snapshot retained both profile names.
         Assert.Equal(new[] { "Editor", "Player" }, analyzer.RetainedProfileNames);
 
-        // Touch the guarded file — change a whitespace inside the guarded
-        // block so the syntax is identical post-Editor preprocessor + the
-        // call edge is structurally unchanged post-Player preprocessor.
         var callerPath = Path.Combine(_tempDir, "Caller.cs");
         Thread.Sleep(50);
         var callerCode = File.ReadAllText(callerPath);
@@ -79,7 +66,7 @@ public sealed class MultiProfileIncrementalParityTests : IDisposable
 
         var incremental = analyzer.IncrementalAnalyze(config);
 
-        // (2) Incremental, not full fallback.
+        // (2) Incremental mode, edge still tagged Player-only.
         Assert.Equal(IncrementalMode.Incremental, incremental.Mode);
         Assert.True(incremental.ChangedFileCount > 0);
         Assert.NotNull(incremental.Graph);
@@ -89,10 +76,8 @@ public sealed class MultiProfileIncrementalParityTests : IDisposable
         Assert.NotNull(edge2!.Profiles);
         Assert.Equal(new[] { "Player" }, edge2.Profiles);
 
-        // (3) profileFilter parity — the contract the wire `profileFilter`
-        // input applies on dependants/dependencies handlers. We assert it
-        // directly on the edge to stay independent of the read-side tool
-        // surface (which has its own ratchets).
+        // (3) profileFilter parity — asserted on Edge.Profiles directly,
+        // independent of read-side handler implementations.
         var keptUnderPlayer = ApplyProfileFilter(incremental.Graph!, new[] { "Player" })
             .FirstOrDefault(e => IsCallerHitToTargetRun(e));
         Assert.NotNull(keptUnderPlayer);
@@ -108,10 +93,8 @@ public sealed class MultiProfileIncrementalParityTests : IDisposable
     [Fact]
     public void IncrementalAnalyze_SingleProfileSnapshot_BackCompatByteStable()
     {
-        // Regression guard: a Wave-6-era snapshot under single-profile
-        // (Count == 1) MUST keep Edge.Profiles == null through incremental
-        // re-analyze. The multi-profile loop must collapse to the same
-        // wire shape pre-Wave-6 emitted.
+        // INV-MULTI-DEFINE-INCREMENTAL-001 contract #5. Single-profile snapshot
+        // keeps Edge.Profiles=null through incremental re-analyze.
         WriteMultiProfileWorkspace();
 
         var resolver = new EditorPlayerProfileResolver();
@@ -192,9 +175,9 @@ public sealed class MultiProfileIncrementalParityTests : IDisposable
     }
 
     /// <summary>
-    /// Test resolver returning two profiles: Editor identity + Player with
-    /// PLAYER_ONLY added. Mirrors UnityDefineProfileResolver shape without
-    /// requiring a Library/ directory on disk.
+    /// Editor identity + Player with PLAYER_ONLY added. Mirrors
+    /// <see cref="UnityDefineProfileResolver"/> shape without requiring a
+    /// Library/ directory on disk.
     /// </summary>
     private sealed class EditorPlayerProfileResolver : IDefineProfileResolver
     {

@@ -65,7 +65,7 @@ The domain is pure. No Roslyn, no JSON, no System.IO.
 
 Properties are `IReadOnlyDictionary` on the public surface. The graph is read-only after construction.
 
-## Port Interfaces (28 total)
+## Port Interfaces
 
 ### Left Side (Language Adapters)
 
@@ -127,13 +127,13 @@ v1 limitation: does not cascade to dependent modules when an API surface changes
 
 ## Unity Bridge
 
-The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes all 30 tools to Unity MCP. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
+The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes every MCP tool to Unity MCP. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
 
 ```
 Unity Editor ──→ Unity MCP (scenes, GameObjects, assets)
                      │
                      └── [McpForUnityTool] ──→ Lifeblood MCP (child process)
-                         └── 28 semantic tools over JSON-RPC
+                         └── semantic tools over JSON-RPC
 ```
 
 ## Deterministic Output
@@ -170,6 +170,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
 
-- **144 typed invariants across 98 categories under `docs/invariants/`** (8 domain files + INDEX), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
+- **Typed invariants under `docs/invariants/`** (8 domain files + INDEX; live count + category coverage in [`STATUS.md`](STATUS.md)), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
 - DocsTests ratchets: `portCount`, `toolCount`, `testCount`, `invariantCount`, `invariantCategoryCount`, `skippedCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)

@@ -10,7 +10,7 @@ Claude Code ──→ Unity MCP (action/control plane)
                     ├── built-in tools (scenes, GameObjects, scripts...)
                     │
                     └── [McpForUnityTool] custom tools ──→ Lifeblood MCP (child process)
-                        └── 28 semantic tools (analyze, references, blast radius, dead code, search, invariant check, authority report, port health, cycles, test impact, enum coverage, ...)
+                        └── semantic tools (analyze, references, blast radius, dead code, search, invariant check, authority report, port health, cycles, test impact, enum coverage, ...)
 ```
 
 Lifeblood does NOT run inside Unity. It spawns as a separate .NET process with its own Roslyn workspace. No assembly conflicts, no domain reload interference, no memory pressure on the Editor.

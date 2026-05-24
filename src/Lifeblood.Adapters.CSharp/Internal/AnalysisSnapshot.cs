@@ -21,15 +21,10 @@ internal sealed class AnalysisSnapshot
     public ModuleInfo[] Modules { get; set; } = Array.Empty<ModuleInfo>();
 
     /// <summary>
-    /// INV-MULTI-DEFINE-INCREMENTAL-001. The profile set this snapshot was
-    /// built under. Owned here (not on <see cref="Lifeblood.Application.Ports.Left.AnalysisConfig"/>)
-    /// because the snapshot is the SSoT for "which profiles is this graph under?" — a
-    /// follow-up incremental MUST replay the same set so per-edge <c>Profiles[]</c>
-    /// provenance survives. Set once at full-analyze time. Single-profile back-compat:
-    /// Count == 1 keeps <c>Edge.Profiles</c> null; Count >= 2 tags edges + dedup-unions
-    /// at <c>GraphBuilder</c>. Empty only for a pre-Wave-6 hypothetical (snapshot
-    /// not serialized, so unreachable in practice — caller invariant enforced at the
-    /// analyzer's writer site).
+    /// INV-MULTI-DEFINE-INCREMENTAL-001. Profile set this snapshot was built under.
+    /// Snapshot is the SSoT for which profiles the graph is under; incremental MUST
+    /// replay the same set. Count == 1 keeps <c>Edge.Profiles</c> null; Count >= 2
+    /// tags edges and dedup-unions at <c>GraphBuilder</c>.
     /// </summary>
     public IReadOnlyList<DefineProfile> ActiveProfiles { get; set; } = Array.Empty<DefineProfile>();
 

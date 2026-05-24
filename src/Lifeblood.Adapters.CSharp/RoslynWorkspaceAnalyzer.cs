@@ -49,13 +49,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     public string? RetainedProfileName { get; private set; }
 
     /// <summary>
-    /// INV-MULTI-DEFINE-INCREMENTAL-001. Full list of profile names this
-    /// adapter's most recent <see cref="AnalyzeWorkspace"/> ran under. Empty
-    /// before the first full analyze. Used by <see cref="IncrementalAnalyze"/>
-    /// to replay the same per-profile loop over changed files so per-edge
-    /// <c>Profiles[]</c> provenance survives a file-touch. Exposed on the
-    /// public surface so <see cref="GraphSession"/> can echo it onto incremental
-    /// analyze responses and tests can assert parity directly.
+    /// INV-MULTI-DEFINE-INCREMENTAL-001. Profile names the most recent
+    /// <see cref="AnalyzeWorkspace"/> ran under. <see cref="IncrementalAnalyze"/>
+    /// replays this set over changed files so per-edge <c>Profiles[]</c>
+    /// provenance survives a file-touch. <see cref="GraphSession"/> echoes
+    /// it onto incremental analyze responses.
     /// </summary>
     public IReadOnlyList<string> RetainedProfileNames { get; private set; } = Array.Empty<string>();
 
@@ -467,23 +465,16 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         _snapshot.SkippedFiles.RemoveAll(sf =>
             changedModules.Contains(sf.ModuleName));
 
-        // INV-INCREMENTAL-XREF-001 (downgraded-refs carry across changed +
-        // unchanged modules) + INV-MULTI-DEFINE-INCREMENTAL-001 (replay the
-        // snapshot's profile set over changed files so per-edge Profiles[]
-        // provenance survives a file-touch). For single-profile snapshots
-        // (Count == 1) the loop runs once with profileTag = null and the
-        // wire shape is byte-stable with pre-Wave-6 behavior. For Count >= 2
-        // each pass tags edges with the profile name and AppendProfileEdges
-        // unions per-edge profile sets at RebuildGraph time.
+        // INV-MULTI-DEFINE-INCREMENTAL-001 + INV-INCREMENTAL-XREF-001.
+        // Replay the snapshot's profile set over changed files. Count == 1
+        // collapses to a single null-tagged pass (byte-stable single-profile
+        // back-compat). Count >= 2 tags edges per profile + AppendProfileEdges
+        // unions them at RebuildGraph time. Defensive _default-profile fallback
+        // covers the unreachable case where ActiveProfiles is empty.
         var snapshotProfiles = _snapshot.ActiveProfiles;
         var snapshotMultiProfile = snapshotProfiles.Count > 1;
         Dictionary<string, Microsoft.CodeAnalysis.CSharp.CSharpCompilation>? newCompilations = null;
 
-        // Defensive: a pre-Wave-6 snapshot would have ActiveProfiles empty.
-        // The reachable invariant is Count >= 1 after AnalyzeWorkspace, but
-        // we fall back to a single null-tagged pass if a future regression
-        // ever leaves the field unset. Keeps behavior identical to pre-fix
-        // when the invariant breaks instead of NREing.
         var profilesToReplay = snapshotProfiles.Count > 0
             ? snapshotProfiles
             : (IReadOnlyList<DefineProfile>)new[]
@@ -505,12 +496,9 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 ? ApplyProfileToModules(modulesToRecompile, profile)
                 : modulesToRecompile;
 
-            // INV-MULTI-DEFINE-IOP-001 + INV-INCREMENTAL-XREF-001. First profile
-            // retains compilations for write-side / IOperation tools and is the
-            // sole owner of skipped + downgraded-refs accounting. Subsequent
-            // profiles force streaming mode so their compilations release after
-            // extraction — peak RAM stays at single-profile baseline regardless
-            // of profile count.
+            // INV-MULTI-DEFINE-IOP-001. First profile retains compilations
+            // and owns skipped-files + downgraded-refs accounting; subsequent
+            // profiles force streaming so peak RAM stays at single-profile baseline.
             var profileConfig = isFirstProfile
                 ? config
                 : new AnalysisConfig

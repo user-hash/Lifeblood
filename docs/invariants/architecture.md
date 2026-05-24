@@ -94,7 +94,7 @@ tests under `tests/Lifeblood.Tests/ArchitectureInvariantTests.cs`.
 
 ## Multi-Define Incremental Parity (post-v0.7.8 reviewer Stage 1, LB-TRACK-L-LIM-001)
 
-- **INV-MULTI-DEFINE-INCREMENTAL-001. `AnalysisSnapshot.ActiveProfiles` is the single source of truth for "which profiles is this graph under?"; `RoslynWorkspaceAnalyzer.IncrementalAnalyze` MUST replay that same per-profile loop over changed files so per-edge `Profiles[]` provenance survives a file-touch.**
+- **INV-MULTI-DEFINE-INCREMENTAL-001. `AnalysisSnapshot.ActiveProfiles` is the single source of truth for which profiles a graph is under; `RoslynWorkspaceAnalyzer.IncrementalAnalyze` MUST replay that profile set over changed files so per-edge `Profiles[]` provenance survives a file-touch.**
 
 ## IOperation Tool Multi-Profile Scope (post-v0.7.8 Wave 6.E, LB-TRACK-L-LIM-001)
 
