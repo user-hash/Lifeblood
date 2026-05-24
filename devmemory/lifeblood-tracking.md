@@ -46,32 +46,50 @@ Fix shape:
 
 ## Current Snapshot
 
-Latest shipped Lifeblood tag: **`v0.7.7`** (2026-05-16). The current
-`main` branch is an **[Unreleased]** pre-tag wall for the 2026-05-19
-two-phase hardening plan (`D:/Projekti/lifeblood_plan.txt`). The landed slice
-covers F0..F3f, S4..S8a, four native-clang adapter refactors, three
-execute-robustness fixes surfaced by Unity IL2CPP dogfood, and the F1d
-bare-identifier property/event edge fix. No release tag is cut by this tracker
-update; tag cadence remains a separate maintainer call. LB-TRACK-20260519-023
-is now **Shipped** in-tree: F1c fixed `.ctor` / `.cctor` parsing, and the final
-polish atom consolidates Roslyn symbol-id construction behind
-`CanonicalSymbolFormat` with an architecture ratchet. Every open LB-TRACK entry
-through LB-TRACK-20260519-024 is Shipped or an explicitly qualitative close-out.
+Latest shipped Lifeblood tag: **`v0.7.8`** (`git describe --tags HEAD`). The
+current `main` branch is the **[Unreleased]** pre-tag wall for the reviewer
+Stage 1 polish (multi-profile incremental parity + SSoT-table docs ratchet +
+Windows CI). Tag cadence remains a separate maintainer call.
 
-**2026-05-24 Wave 6 close — L-LIM-001 CLOSED (head `7671605` post-self-review)**: full multi-define union analyze chain shipped (Wave 6.A → 6.F) across commits `43c1499..dd157af`. New port `IDefineProfileResolver` + adapter `UnityDefineProfileResolver` (2-profile MVP Editor + Player) + `Edge.Profiles[]` + GraphBuilder union dedup + `lifeblood_analyze defineProfiles` input + `lifeblood_dependants/dependencies` `profiles[]` + `profileFilter` narrowing + IOperation `profileScope`. Live DAWG receipt: edges 247,350 → 247,460 (+110 Player-only edges restored); `AdaptiveBeatGrid.Bootstrap_WireServices` callsite now visible on `AudioRuntimeProfilePolicy.Resolve` + `AudioRuntimeProfilePersistenceLocator.Current` with `profiles:["Player"]`. **L-LIM-001..006 all CLOSED**. DAWG `reference_lifeblood_known_limitations.md` L-LIM-001 marked CLOSED with the full receipt table.
+Current verification anchors live in [`docs/STATUS.md`](../docs/STATUS.md) —
+self-analyze symbols / edges / modules / types, test discovery count,
+`[SkippableFact]` count, typed-invariant audit, MCP tool count, port count,
+static-tables defaults. Every anchor is ratcheted against the live source by
+`DocsTests.Anchor_MatchesLiveSource` on every CI run. The historical
+verification-anchor block that used to appear here (point-in-time snapshots)
+is retired in favour of the live STATUS.md anchors.
 
-**2026-05-24 Stage 0 dogfood pass** (post v0.7.8-alpha.0.31 dist swap, DAWG @ HEAD `31bb6e4bb` — HISTORICAL, superseded by Wave 6 close above for the L-LIM-001 axis): all 30 MCP tools exercised end-to-end against DAWG (67,068 symbols / 247,350 edges / 90 modules / 97 cycles / 4098 types / 3544 files / 0 violations). 27/30 tools clean. **3 new gaps surfaced** and filed below as LB-TRACK-20260524-025 / -026 / -027 with proper architectural fix shape — no hotpatch papering, no per-name guards. Every previously-shipped LB-TRACK claim through -024 re-verified holding against the live dist. At the time of this Stage 0 snapshot L-LIM-001 was open (closed later under Wave 6).
+**2026-05-24 Wave 6 close — L-LIM-001 CLOSED**: multi-define union analyze chain
+shipped (Wave 6.A → 6.F) across commits `43c1499..dd157af`. Port `IDefineProfileResolver`
++ adapter `UnityDefineProfileResolver` (Editor + Player MVP) + `Edge.Profiles[]`
++ GraphBuilder union dedup + `lifeblood_analyze defineProfiles` input +
+`lifeblood_dependants/dependencies` `profiles[]` + `profileFilter` narrowing
++ IOperation `profileScope`. DAWG receipt (point-in-time, at the dist swap
+moment): edges 247,350 → 247,460 (delta +110 Player-only edges, invariant);
+`AdaptiveBeatGrid.Bootstrap_WireServices` callsite visible on `AudioRuntimeProfilePolicy.Resolve`
++ `AudioRuntimeProfilePersistenceLocator.Current` with `profiles:["Player"]`.
+**L-LIM-001..006 all CLOSED**. DAWG `reference_lifeblood_known_limitations.md`
+L-LIM-001 marked CLOSED with the full receipt table.
 
-Current verification anchors (2026-05-19 prerelease check):
-- Debug test suite: **1117 discovered, 37 [SkippableFact] runtime-gated**.
-- Lifeblood self-analysis: **3,629 symbols, 21,665 edges, 11 modules,
-  377 types, 0 violations, 0 cycles**.
-- Invariant audit: **129 typed invariants across 83 categories**, zero
-  duplicates, zero parse warnings.
-- Native Clang required lane: **27/27 green** when
-  `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`.
-- DAWG live-MCP smoke: **P4 DOGFOOD: ALL GREEN** after the execute
-  reference-set fixes.
+**Reviewer Stage 1 polish (this push)**: `INV-MULTI-DEFINE-INCREMENTAL-001`
+closes the multi-profile + incremental-analyze parity defect — `AnalysisSnapshot.ActiveProfiles`
+is SSoT for "which profiles is this graph under?", `IncrementalAnalyze` replays
+the snapshot's profile set over changed files so per-edge `Profiles[]`
+provenance survives a file-touch. `DocsTests` refactored to a single
+`DocsAnchor[]` table — adding a ratcheted count is one row, not one method.
+Hardcoded count citations stripped from README / ARCHITECTURE.md /
+architecture.html / TOOLS.md / MCP_SETUP.md / UNITY.md; STATUS.md is the only
+visible-prose carrier for the canonical numbers, every other surface links to
+it. CI matrix extended to `windows-latest`.
+
+**Native-Clang opt-in lane**: ships as an opt-in build target under
+`adapters/native-clang/` (CMake + libclang). The C# core packages (`Lifeblood`,
+`Lifeblood.Server.Mcp`) do NOT carry `lifeblood-native-clang.exe` and do NOT
+depend on LLVM. The 11 `[SkippableFact]` ratchets skip silently when the
+executable is absent (default suite green) and fail loudly when
+`LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` is set on a host where the executable IS
+expected. See [`docs/NATIVE_CLANG.md`](../docs/NATIVE_CLANG.md) § "Opt-in
+execution lane" for the build recipe.
 
 Gravity-well measurement at plan start (historical Phase-2 targets):
 - `src/Lifeblood.Adapters.CSharp/RoslynCompilationHost.cs`: 1,139 LOC.
