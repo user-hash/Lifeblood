@@ -346,8 +346,9 @@ public sealed class GraphSession : IDisposable
         // INV-MULTI-DEFINE-INCREMENTAL-001. Snapshot's retained profile set echoed
         // on every incremental wire path (rejected / noop / incremental / full
         // fallback). Count == 1 collapses to null per BuildLoadResult contract —
-        // single-profile back-compat byte-stable.
-        var incrActiveProfiles = _roslynAdapter?.RetainedProfileNames is { Count: > 1 } names
+        // single-profile back-compat byte-stable. _roslynAdapter is non-null
+        // here per the CanIncremental gate at the public Load entry.
+        var incrActiveProfiles = _roslynAdapter!.RetainedProfileNames is { Count: > 1 } names
             ? names.ToArray()
             : null;
 
