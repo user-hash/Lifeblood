@@ -210,14 +210,25 @@ public class WriteSideIntegrationTests
   var edits = refactoring.Rename("type:WriteSideApp.Core.Greeter", "SimpleGreeter");
 
   Assert.NotNull(edits);
-  // AdhocWorkspace Rename may return edits. Verify structure if any
+  // INV-RENAME-POINT-EDITS-001 (LB-TRACK-20260524-025): Document.GetTextChangesAsync
+  // emits MINIMAL text diffs, not full-identifier replacements. For
+  // `Greeter` → `SimpleGreeter` the minimal change is "insert 'Simple'
+  // before column 14" — NewText is "Simple", not "SimpleGreeter". The
+  // wire-shape contract verifies the edit lands inside the renamed
+  // identifier's bounds (narrow span, ≤ new-identifier text length).
   if (edits.Length > 0)
   {
   Assert.All(edits, e =>
   {
   Assert.True(e.StartLine > 0);
   Assert.True(e.StartColumn > 0);
-  Assert.Contains("SimpleGreeter", e.NewText);
+  // NewText must be a contiguous substring of the new identifier
+  // (Roslyn minimal-diff guarantee). Whole-file replacement would
+  // exceed the new-identifier length by orders of magnitude.
+  Assert.True(
+  e.NewText.Length <= "SimpleGreeter".Length,
+  $"Edit NewText length {e.NewText.Length} exceeds new identifier length; whole-file shape detected.");
+  Assert.Contains(e.NewText, "SimpleGreeter");
   });
   }
   }
