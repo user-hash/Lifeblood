@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (re-probe + drift-ratchet), Wave 4 (assignment-coverage), and Wave 3 (test-impact reflection heuristic) — five atomic commits closing five of six DAWG-side limitations (L-LIM-002 / L-LIM-003 / L-LIM-004 / L-LIM-005 / L-LIM-006). Wave 2 (multi-define-set queries, L-LIM-001) deferred to its own session per high-risk scope. A second-pass DAWG Stage 0 dogfood (2026-05-24, post-dist-swap) exercised all 30 MCP tools end-to-end and surfaced three additional wire-shape gaps (LB-TRACK-20260524-025 / -026 / -027) — fixed under "Wave 5: Stage 0 dogfood follow-through" below. Lifeblood self-analysis: **3,661 symbols, 21,851 edges, 11 modules, 379 types, 0 violations, 0 cycles. 1,149 discovered test cases (37 `[SkippableFact]` runtime-gated). 135 typed invariants across 89 categories.**
+The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (re-probe + drift-ratchet), Wave 4 (assignment-coverage), and Wave 3 (test-impact reflection heuristic) — five atomic commits closing five of six DAWG-side limitations (L-LIM-002 / L-LIM-003 / L-LIM-004 / L-LIM-005 / L-LIM-006). Wave 2 (multi-define-set queries, L-LIM-001) deferred to its own session per high-risk scope. A second-pass DAWG Stage 0 dogfood (2026-05-24, post-dist-swap) exercised all 30 MCP tools end-to-end and surfaced three additional wire-shape gaps (LB-TRACK-20260524-025 / -026 / -027) — fixed under "Wave 5: Stage 0 dogfood follow-through" below. Lifeblood self-analysis: **3,661 symbols, 21,851 edges, 11 modules, 379 types, 0 violations, 0 cycles. 1,149 discovered test cases (37 `[SkippableFact]` runtime-gated). 136 typed invariants across 90 categories.**
 
 ### Added
 
@@ -24,6 +24,10 @@ The 2026-05-24 masterplan (`docs/plans/MASTERPLAN-2026-05-24.md`) lands Wave 1 (
 - **Stale self-analyze numbers across public docs** (reviewer pass 2026-05-24). `docs/STATUS.md` line 45 self-analysis block + `docs/architecture.html` line 378 footer cited 3,506 symbols / 21,113 edges — the pre-Wave-3-4 baseline. Refreshed to live 3,628 symbols / 21,663 edges / 377 types alongside the existing 0 violations / 0 cycles.
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
+
+### Wave 6.A: IDefineProfileResolver port + default resolver (2026-05-24)
+
+- **`IDefineProfileResolver` port + `DefaultDefineProfileResolver` adapter** (`INV-MULTI-DEFINE-RESOLVER-001`). Wave 6.A of L-LIM-001 multi-define union analyze. New Left-side port at `Lifeblood.Application.Ports.Left.IDefineProfileResolver` returns the set of preprocessor-symbol profiles a project should be analyzed under. Default adapter returns a single identity Editor profile — every existing single-profile callsite keeps byte-stable wire shape. Per-profile active define set computed as `(BASE - RemoveDefines) ∪ AddDefines`; ordinal-sorted for byte-stable provenance. Pinned by `DefineProfileResolverTests` (4 facts). Port count 27 → 28. Test count 1149 → 1153. INV count 135 → 136 across 89 → 90 categories. Wave 6.B (multi-profile compile pipeline) + Wave 6.C (UnityDefineProfileResolver 2-profile MVP) follow.
 
 ### Wave 6: L-LIM-001 multi-define union analyze — implementation plan landed (2026-05-24)
 
