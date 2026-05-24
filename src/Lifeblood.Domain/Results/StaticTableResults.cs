@@ -255,6 +255,15 @@ public static class StaticTableArgumentKind
 /// Per-call extraction caps. Callers that omit the options receive
 /// adapter-side defaults — the host MUST clamp negative / zero values
 /// so a caller cannot disable extraction by passing <c>maxRows = 0</c>.
+///
+/// Default tuning (INV-STATIC-TABLES-DEFAULT-MAXROWS-001): default
+/// <c>MaxRows</c> is 32, matched to the triage workflow ("does this
+/// table reference enum X?", "which method is wired into slot 7?")
+/// that needs ~5–20 rows of context. Callers needing full extraction
+/// pass <c>maxRows</c> explicitly. The historical 1024 ceiling was a
+/// fence against accidentally-truncated extraction; in practice it
+/// overflowed downstream tool-result budgets on real dispatch-table
+/// god-types. LB-TRACK-20260524-027.
 /// </summary>
 public sealed class StaticTablesOptions
 {
@@ -266,4 +275,16 @@ public sealed class StaticTablesOptions
 
     /// <summary>Maximum tables extracted per type. Adapter-side default applies when unset.</summary>
     public int? MaxTables { get; init; }
+
+    /// <summary>
+    /// Compact-mode toggle (INV-STATIC-TABLES-SUMMARIZE-001). When true,
+    /// caps tighten to <c>maxRows = 3</c> + <c>maxTables = 16</c> regardless
+    /// of caller-passed values — the same wire shape is returned, just
+    /// smaller. Use for triage workflows on dispatch-table-heavy types
+    /// where the goal is "do tables exist + what shape" not "give me every
+    /// row". Mirrors the <c>summarize</c> shortcut already shipped on
+    /// <c>dead_code</c>, <c>cycles</c>, <c>blast_radius</c>, <c>test_impact</c>.
+    /// LB-TRACK-20260524-027.
+    /// </summary>
+    public bool? Summarize { get; init; }
 }

@@ -1088,4 +1088,107 @@ namespace Acme {
         // No DeclaringSyntaxReferences on BCL method → cannot walk body → null flags.
         Assert.Null(cell.Value.MethodReturnFlagIds);
     }
+
+    // ── INV-STATIC-TABLES-DEFAULT-MAXROWS-001 + SUMMARIZE-001 (LB-TRACK-20260524-027) ──
+
+    [Fact]
+    public void GetStaticTables_DefaultMaxRows_IsBoundedTo32_TriageWorkflowTuning()
+    {
+        // Authoring 40 rows; default should truncate to 32 (was 1024 pre-LB-TRACK-20260524-027).
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("namespace Acme { public class Foo {");
+        builder.Append("  public static readonly int[] Big = new int[] { ");
+        for (var i = 0; i < 40; i++)
+        {
+            if (i > 0) builder.Append(", ");
+            builder.Append(i);
+        }
+        builder.AppendLine(" };");
+        builder.AppendLine("} }");
+        using var host = HostWith(builder.ToString());
+
+        var report = host.GetStaticTables("type:Acme.Foo", Default);
+        Assert.NotNull(report);
+        var table = Assert.Single(report!.Tables);
+
+        // Default cap = 32. The 40-row authoring is clipped, truncation flag fires.
+        Assert.Equal(RoslynStaticTableExtractor.DefaultMaxRows, table.Rows.Length);
+        Assert.Equal(32, table.Rows.Length);
+        Assert.True(table.RowsTruncated);
+    }
+
+    [Fact]
+    public void GetStaticTables_SummarizeTrue_ForcesCompactCaps_RegardlessOfCallerPassedMaxRows()
+    {
+        // Same 40-row authoring; pass an explicit maxRows=100 AND summarize=true.
+        // Summarize wins (INV-STATIC-TABLES-SUMMARIZE-001) — 100 is ignored, hard cap 3.
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("namespace Acme { public class Foo {");
+        builder.Append("  public static readonly int[] Big = new int[] { ");
+        for (var i = 0; i < 40; i++)
+        {
+            if (i > 0) builder.Append(", ");
+            builder.Append(i);
+        }
+        builder.AppendLine(" };");
+        builder.AppendLine("} }");
+        using var host = HostWith(builder.ToString());
+
+        var options = new StaticTablesOptions { MaxRows = 100, Summarize = true };
+        var report = host.GetStaticTables("type:Acme.Foo", options);
+        Assert.NotNull(report);
+        var table = Assert.Single(report!.Tables);
+
+        Assert.Equal(RoslynStaticTableExtractor.SummarizeMaxRows, table.Rows.Length);
+        Assert.Equal(3, table.Rows.Length);
+        Assert.True(table.RowsTruncated);
+    }
+
+    [Fact]
+    public void GetStaticTables_SummarizeTrue_ForcesTableCap_RegardlessOfCallerPassedMaxTables()
+    {
+        // 20 separate single-row tables on a type; summarize forces maxTables=16.
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("namespace Acme { public class Foo {");
+        for (var i = 0; i < 20; i++)
+        {
+            builder.AppendLine($"  public static readonly int[] T{i} = new int[] {{ {i} }};");
+        }
+        builder.AppendLine("} }");
+        using var host = HostWith(builder.ToString());
+
+        var options = new StaticTablesOptions { MaxTables = 500, Summarize = true };
+        var report = host.GetStaticTables("type:Acme.Foo", options);
+        Assert.NotNull(report);
+
+        Assert.Equal(RoslynStaticTableExtractor.SummarizeMaxTables, report!.Tables.Length);
+        Assert.Equal(16, report.Tables.Length);
+        Assert.True(report.TablesTruncated);
+    }
+
+    [Fact]
+    public void GetStaticTables_SummarizeFalse_HonorsExplicitCallerMaxRows()
+    {
+        // Caller turning off summarize gets explicit caps respected (regression guard
+        // against summarize accidentally becoming sticky).
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("namespace Acme { public class Foo {");
+        builder.Append("  public static readonly int[] Big = new int[] { ");
+        for (var i = 0; i < 50; i++)
+        {
+            if (i > 0) builder.Append(", ");
+            builder.Append(i);
+        }
+        builder.AppendLine(" };");
+        builder.AppendLine("} }");
+        using var host = HostWith(builder.ToString());
+
+        var options = new StaticTablesOptions { MaxRows = 50, Summarize = false };
+        var report = host.GetStaticTables("type:Acme.Foo", options);
+        Assert.NotNull(report);
+        var table = Assert.Single(report!.Tables);
+
+        Assert.Equal(50, table.Rows.Length);
+        Assert.False(table.RowsTruncated);
+    }
 }

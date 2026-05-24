@@ -408,6 +408,7 @@ internal sealed class WriteToolHandler
             MemberName = GetString(args, "memberName"),
             MaxRows = GetInt(args, "maxRows"),
             MaxTables = GetInt(args, "maxTables"),
+            Summarize = GetBool(args, "summarize"),
         };
 
         var report = _session.CompilationHost!.GetStaticTables(resolved.CanonicalId, options);

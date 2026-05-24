@@ -18,8 +18,20 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 internal static class RoslynStaticTableExtractor
 {
-    internal const int DefaultMaxRows = 1024;
+    // INV-STATIC-TABLES-DEFAULT-MAXROWS-001 (LB-TRACK-20260524-027):
+    // 32 / 64 are the triage-workflow defaults. Pre-2026-05-24 the row
+    // default was 1024 — empirically too high for dispatch-table god-types
+    // whose response then overflowed the downstream tool-result cap.
+    // Callers needing full extraction pass maxRows explicitly.
+    internal const int DefaultMaxRows = 32;
     internal const int DefaultMaxTables = 64;
+
+    // INV-STATIC-TABLES-SUMMARIZE-001 (LB-TRACK-20260524-027): compact-mode
+    // caps. Forced when StaticTablesOptions.Summarize == true regardless of
+    // caller-passed maxRows / maxTables — summarize is the "smallest viable
+    // wire shape" contract, not a soft hint.
+    internal const int SummarizeMaxRows = 3;
+    internal const int SummarizeMaxTables = 16;
 
     internal static StaticTableReport? Extract(
         IReadOnlyDictionary<string, CSharpCompilation> compilations,
@@ -28,8 +40,16 @@ internal static class RoslynStaticTableExtractor
         StaticTablesOptions options,
         Func<ISymbol, string> buildSymbolId)
     {
-        var maxRows = ClampPositive(options.MaxRows, DefaultMaxRows);
-        var maxTables = ClampPositive(options.MaxTables, DefaultMaxTables);
+        // Summarize wins over caller-passed maxRows/maxTables. Eternal posture:
+        // a caller asking for the compact shape gets the compact shape; if they
+        // need a larger view they pass summarize=false (default) + explicit caps.
+        var summarize = options.Summarize ?? false;
+        var maxRows = summarize
+            ? SummarizeMaxRows
+            : ClampPositive(options.MaxRows, DefaultMaxRows);
+        var maxTables = summarize
+            ? SummarizeMaxTables
+            : ClampPositive(options.MaxTables, DefaultMaxTables);
         var memberFilter = options.MemberName;
 
         // ResolveFromSource may return a workspace-owned symbol whose
