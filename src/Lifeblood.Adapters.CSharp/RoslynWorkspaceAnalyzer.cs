@@ -33,6 +33,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     private readonly RoslynModuleDiscovery _discovery;
     private readonly RoslynSymbolExtractor _symbolExtractor = new();
     private readonly RoslynEdgeExtractor _edgeExtractor = new();
+    private readonly IDefineProfileResolver _profileResolver;
 
     private Dictionary<string, CSharpCompilation>? _compilations;
     private AnalysisSnapshot? _snapshot;
@@ -66,9 +67,16 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         ?? System.Array.Empty<Lifeblood.Domain.Results.SkippedFile>();
 
     public RoslynWorkspaceAnalyzer(IFileSystem fs)
+        : this(fs, new DefaultDefineProfileResolver())
+    {
+    }
+
+    /// <summary>INV-MULTI-DEFINE-RESOLVER-001 injection seam.</summary>
+    public RoslynWorkspaceAnalyzer(IFileSystem fs, IDefineProfileResolver profileResolver)
     {
         _fs = fs;
         _discovery = new RoslynModuleDiscovery(fs);
+        _profileResolver = profileResolver;
     }
 
     public AdapterCapability Capability => RoslynCapabilityDescriptor.Capability;
@@ -154,45 +162,70 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // exist on disk) into the snapshot so users see them in the
         // analyze response alongside compilation-level skips.
         snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped);
-        _compilations = compilationBuilder.ProcessInOrder(
-            modules, projectRoot, config,
-            onModuleProgress: OnModuleProgress,
-            skippedCollector: snapshot.SkippedFiles,
-            carryDowngraded: snapshot.DowngradedRefs,
-            processor: (module, compilation) =>
-            {
-                var moduleId = SymbolIds.Module(module.Name);
 
-                foreach (var tree in compilation.SyntaxTrees)
+        // INV-MULTI-DEFINE-ANALYZE-001. Resolve the set of define profiles
+        // to compile each module under. Default single-profile flow: the
+        // resolver returns one identity Editor profile, no tagging happens,
+        // wire shape stays byte-stable with pre-Wave-6 behavior. Multi-
+        // profile flow: requested profile names (from AnalysisConfig) are
+        // matched against resolver output; missing names throw so caller
+        // sees the typo. First profile pass populates the snapshot via
+        // ReplaceFile; subsequent passes use AppendProfileEdges to add
+        // profile-tagged edges that GraphBuilder dedup-unions.
+        var activeProfiles = ResolveActiveProfiles(projectRoot, config);
+        var multiProfile = activeProfiles.Count > 1;
+
+        for (var profileIndex = 0; profileIndex < activeProfiles.Count; profileIndex++)
+        {
+            var profile = activeProfiles[profileIndex];
+            var isFirstProfile = profileIndex == 0;
+            var profileTag = multiProfile ? profile.Name : null;
+            var profileModules = ApplyProfileToModules(modules, profile);
+
+            _compilations = compilationBuilder.ProcessInOrder(
+                profileModules, projectRoot, config,
+                onModuleProgress: OnModuleProgress,
+                skippedCollector: isFirstProfile ? snapshot.SkippedFiles : null,
+                carryDowngraded: isFirstProfile ? snapshot.DowngradedRefs : null,
+                processor: (module, compilation) =>
                 {
-                    if (string.IsNullOrEmpty(tree.FilePath)) continue;
-                    // Skip synthetic trees (e.g., <ImplicitGlobalUsings>.cs injected
-                    // by ModuleCompilationBuilder for ImplicitUsings support).
-                    if (tree.FilePath.StartsWith("<")) continue;
+                    var moduleId = SymbolIds.Module(module.Name);
 
-                    var model = compilation.GetSemanticModel(tree);
-                    var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
-
-                    var fileId = SymbolIds.File(relPath);
-                    var fileSymbol = new Symbol
+                    foreach (var tree in compilation.SyntaxTrees)
                     {
-                        Id = fileId,
-                        Name = Path.GetFileName(tree.FilePath),
-                        QualifiedName = $"{module.Name}/{relPath}",
-                        Kind = DomainSymbolKind.File,
-                        FilePath = relPath,
-                        ParentId = moduleId,
-                    };
+                        if (string.IsNullOrEmpty(tree.FilePath)) continue;
+                        if (tree.FilePath.StartsWith("<")) continue;
 
-                    var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
-                    var edges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
+                        var model = compilation.GetSemanticModel(tree);
+                        var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
 
-                    snapshot.ReplaceFile(fileId, fileSymbol, symbols, edges);
+                        var fileId = SymbolIds.File(relPath);
+                        var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
+                        var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
 
-                    // Record file timestamp for incremental change detection
-                    snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
-                }
-            });
+                        if (isFirstProfile)
+                        {
+                            var fileSymbol = new Symbol
+                            {
+                                Id = fileId,
+                                Name = Path.GetFileName(tree.FilePath),
+                                QualifiedName = $"{module.Name}/{relPath}",
+                                Kind = DomainSymbolKind.File,
+                                FilePath = relPath,
+                                ParentId = moduleId,
+                            };
+
+                            var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
+                            snapshot.ReplaceFile(fileId, fileSymbol, symbols, taggedEdges);
+                            snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
+                        }
+                        else
+                        {
+                            snapshot.AppendProfileEdges(fileId, taggedEdges);
+                        }
+                    }
+                });
+        }
 
         // Module dependency edges.
         var moduleNames = new HashSet<string>(modules.Select(m => m.Name), StringComparer.Ordinal);
@@ -547,6 +580,41 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         foreach (var module in modules)
             map[module.Name] = module.Dependencies;
         return map;
+    }
+
+    /// <summary>
+    /// INV-MULTI-DEFINE-ANALYZE-001. Resolve which define profiles to compile
+    /// each module under. Empty / null <see cref="AnalysisConfig.DefineProfiles"/>
+    /// returns the default resolver's first profile only (back-compat).
+    /// Non-empty config narrows the resolver's profile list to caller-requested
+    /// names; an unknown name throws so the caller sees the typo eagerly.
+    /// </summary>
+    private IReadOnlyList<DefineProfile> ResolveActiveProfiles(string projectRoot, AnalysisConfig config)
+    {
+        var available = _profileResolver.ResolveProfiles(projectRoot);
+        if (config.DefineProfiles == null || config.DefineProfiles.Length == 0)
+            return available.Count > 0 ? new[] { available[0] } : Array.Empty<DefineProfile>();
+
+        var byName = available.ToDictionary(p => p.Name, StringComparer.Ordinal);
+        var selected = new List<DefineProfile>();
+        foreach (var name in config.DefineProfiles)
+        {
+            if (!byName.TryGetValue(name, out var profile))
+                throw new ArgumentException(
+                    $"Unknown define profile '{name}'. Resolver '{_profileResolver.GetType().Name}' returned: {string.Join(", ", available.Select(p => p.Name))}.",
+                    nameof(config));
+            selected.Add(profile);
+        }
+        return selected;
+    }
+
+    /// <summary>INV-MULTI-DEFINE-APPLIER-001.</summary>
+    private static ModuleInfo[] ApplyProfileToModules(ModuleInfo[] modules, DefineProfile profile)
+    {
+        var result = new ModuleInfo[modules.Length];
+        for (var i = 0; i < modules.Length; i++)
+            result[i] = DefineProfileApplier.WithProfileDefines(modules[i], profile);
+        return result;
     }
 
     private static Dictionary<string, string> BuildModuleFileIndex(ModuleInfo[] modules)

@@ -23,6 +23,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
 
+### Wave 6.B: Multi-profile compile pipeline + Edge.Profiles[] (2026-05-24)
+
+- **`AnalysisConfig.DefineProfiles` + per-profile compile orchestration**
+
+- **`Edge.Profiles: IReadOnlyList<string>?` field + GraphBuilder union dedup** (`INV-MULTI-DEFINE-EDGE-PROFILES-001`). New optional provenance field on every `Edge`. Null on single-profile back-compat (preserves pre-Wave-6 wire shape). Populated under multi-profile with the sorted set of profile names that observed the edge. `EdgeProfileMerger.MergeProfiles` unions Profile sets at the GraphBuilder dedup seam (`(SourceId, TargetId, Kind)` key); first-write-wins for every other field. JSON graph round-trip via `JsonGraphExporter` + `JsonGraphImporter` preserves the field (additive — pre-existing graph.json files load with `Profiles=null`).
+
+- **`DefineProfileApplier` pure transform** (`INV-MULTI-DEFINE-APPLIER-001`). Single function `Apply(baseSymbols, profile)` derives the active preprocessor-symbol set as `(BASE - RemoveDefines) ∪ AddDefines`, ordinal-sorted + distinct. `WithProfileDefines(module, profile)` returns a shallow `ModuleInfo` clone with `PreprocessorSymbols` replaced; every other csproj-discovered field stays identity-equal. Never mutates input.
+
+Pinned by `MultiProfileAnalyzeTests` (11 facts: applier add/remove ordinal + identity, tagger null/named, merger union/identity/double-null, GraphBuilder union dedup, single-profile back-compat keeps Profiles=null, AnalysisConfig defaults, unknown-profile throws). Tests 1153 → 1164. INVs 136 → 139 across 90 → 93 categories.
+
 ### Wave 6.A: IDefineProfileResolver port + default resolver (2026-05-24)
 
 - **`IDefineProfileResolver` port + `DefaultDefineProfileResolver` adapter** (`INV-MULTI-DEFINE-RESOLVER-001`). Wave 6.A of L-LIM-001 multi-define union analyze. New Left-side port at `Lifeblood.Application.Ports.Left.IDefineProfileResolver` returns the set of preprocessor-symbol profiles a project should be analyzed under. Default adapter returns a single identity Editor profile — every existing single-profile callsite keeps byte-stable wire shape. Per-profile active define set computed as `(BASE - RemoveDefines) ∪ AddDefines`; ordinal-sorted for byte-stable provenance. Pinned by `DefineProfileResolverTests` (4 facts). Port count 27 → 28. Test count 1149 → 1153. INV count 135 → 136 across 89 → 90 categories. Wave 6.B (multi-profile compile pipeline) + Wave 6.C (UnityDefineProfileResolver 2-profile MVP) follow.

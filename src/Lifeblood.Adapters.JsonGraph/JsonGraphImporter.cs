@@ -95,6 +95,7 @@ public sealed class JsonGraphImporter : IGraphImporter
                             ContainingSymbolId = je.CallSite.ContainingSymbolId ?? "",
                         }
                         : null,
+                    Profiles = je.Profiles,
                 });
             }
         }
@@ -178,6 +179,8 @@ internal sealed class JsonEdge
     public JsonEvidence? Evidence { get; set; }
     public Dictionary<string, string>? Properties { get; set; }
     public JsonCallSite? CallSite { get; set; }
+    /// <summary>INV-MULTI-DEFINE-EDGE-PROFILES-001.</summary>
+    public string[]? Profiles { get; set; }
 }
 
 internal sealed class JsonCallSite
