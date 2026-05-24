@@ -7,6 +7,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.9] - 2026-05-24
+
+External-review-driven release. Closes one second-pass blocker (write-side
+profile scope honesty, `INV-MULTI-DEFINE-WRITESIDE-001`), fixes the
+multi-profile incremental cross-project edge drop the first-pass review
+caught (`fix(adapter)`: per-profile `DowngradedRefsByProfile` carry), fixes
+the incremental-noop summary zeroing, and refreshes the public-surface
+truth contract (RELEASE.md skip policy split, NATIVE_CLANG.md local/manual
+audit-gate wording, ci.yml + build.yml overlap collapsed). Two new
+ratchet files pin the contracts (`MultiProfileCrossModuleIncrementalTests`
++ `MultiProfileWriteSideScopeTests`, 9 new facts). The 0.7.8 → 0.7.9
+delta lands ten commits between tag `v0.7.8`  and tag `v0.7.9`
+(this release).
+
+Tests 1191 → 1228 (+37 across the chain: write-side scope ratchet +
+multi-profile cross-module incremental ratchet + the docs-ratchet
+refreshes). Skipped: 11 (native-clang opt-in `[SkippableFact]` lane —
+unchanged). INVs 149 → 150 across 98 → 99 categories (one new:
+`INV-MULTI-DEFINE-WRITESIDE-001`). Self-analyze: 3,834 symbols /
+23,020 edges / 11 modules / 399 types / 0 violations / 0 cycles. All
+public-surface anchors aligned to live source via the existing
+`DocsTests.Anchor_MatchesLiveSource` ratchet.
+
 ### Added
 
 - **`lifeblood_assignment_coverage` MCP tool**
@@ -1367,7 +1390,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...HEAD
+[0.7.9]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...v0.7.9
 [0.7.8]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...v0.7.8
 [0.7.7]: https://github.com/user-hash/Lifeblood/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/user-hash/Lifeblood/compare/v0.7.5...v0.7.6
