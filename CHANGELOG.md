@@ -23,6 +23,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
 
+### Wave 6.C: UnityDefineProfileResolver 2-profile MVP (2026-05-24)
+
+- **`UnityDefineProfileResolver` sibling adapter** (`INV-MULTI-DEFINE-UNITY-RESOLVER-001`). Workspace-shape-aware (detects `Library/` at root) `IDefineProfileResolver` implementation that returns the canonical 2-profile MVP for Unity workspaces: `Editor` identity + `Player` minus the Unity Editor discriminator family (`UNITY_EDITOR`, `UNITY_EDITOR_WIN`, `UNITY_EDITOR_64`, `UNITY_EDITOR_OSX`, `UNITY_EDITOR_LINUX`). Non-Unity workspaces fall back to single Editor identity, so the resolver is safe to inject into any composition root regardless of workspace flavor. Closes L-LIM-001's load-bearing root cause when wired into `RoslynWorkspaceAnalyzer` — `#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR` canonical witnesses flip from inactive to active under Player. Pinned by `UnityDefineProfileResolverTests` (8 facts). Tests 1164 → 1172. INVs 139 → 140 (93 → 94 categories).
+
 ### Wave 6.B: Multi-profile compile pipeline + Edge.Profiles[] (2026-05-24)
 
 - **`AnalysisConfig.DefineProfiles` + per-profile compile orchestration**
