@@ -261,7 +261,7 @@ Priority order:
 8. .NET 11 Runtime Async lane: detect/analyze user projects first, opt-in
    Lifeblood benchmark second, production never before stable evidence.
 
-## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET JSON contract hardening
+## 2026-05-28 - Lifeblood .NET JSON contract hardening
 
 Status: Partially shipped
 Type: Improvement
@@ -312,7 +312,7 @@ Fix shape:
 - No breaking field rename/removal; any break follows
   `docs/SCHEMA_DEPRECATION_POLICY.md`.
 
-## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET telemetry surface
+## 2026-05-28 - Lifeblood .NET telemetry surface
 
 Status: Partially shipped
 Type: Improvement
@@ -352,16 +352,18 @@ Fix shape:
 - Add sink tests proving every MCP tool emits start/stop/error events without
   requiring external OpenTelemetry infrastructure.
 
-## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET runtime/JIT benchmark lane
+## 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 
-Status: Open
+Status: Partially shipped
 Type: Optimization
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self and DAWG dogfood workspace
 Verification: local inspection: production projects target `net8.0`; `global.json`
 pins SDK `8.0.100` with `latestFeature` roll-forward; local machine has 8/9/10
-runtimes but no .NET 11 SDK/runtime; `measure-analyze.ps1` exists for current
-target measurement but no side-by-side runtime lane exists.
+runtimes but no .NET 11 SDK/runtime; baseline harness shipped in
+`tools/runtime-benchmarks/run-lifeblood-runtime-benchmark.ps1`; local smoke run
+completed `net8.0` self-analyze and captured graph counts, process wall/CPU,
+peak memory, GC collections, and analyze/validate phase timings.
 
 Summary:
 - Newer runtimes may improve JIT, GC, JSON, and async behavior, but Lifeblood
@@ -380,6 +382,9 @@ Impact:
 Fix shape:
 - Add a benchmark script/project that runs identical workloads on the current
   target and experimental newer targets when SDKs are installed.
+- Keep the first harness generic and source-only: it should discover supported
+  CLI target frameworks, mark unsupported requested targets as skipped, and emit
+  output under `artifacts/runtime-benchmarks/` without committing run products.
 - Required workloads: Lifeblood self full analyze, Lifeblood self incremental
   noop, DAWG full analyze when available, DAWG read-only analyze, and the top
   read-side tools on a retained graph.
@@ -419,7 +424,7 @@ Fix shape:
   only where they make sense for the MCP server and CLI; do not sacrifice Roslyn
   compatibility for theoretical startup wins.
 
-## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET concurrency prep for shared server
+## 2026-05-28 - Lifeblood .NET concurrency prep for shared server
 
 Status: Candidate
 Type: Improvement
@@ -452,7 +457,7 @@ Fix shape:
 - Do not build a shared Lifeblood daemon as part of this entry; remove obvious
   lock-risk and document the future shape.
 
-## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET Runtime Async compatibility
+## 2026-05-28 - Lifeblood .NET Runtime Async compatibility
 
 Status: Open
 Type: Improvement
