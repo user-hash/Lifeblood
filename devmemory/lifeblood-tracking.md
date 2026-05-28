@@ -426,14 +426,18 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
 
-Status: Open
+Status: Partially shipped
 Type: Improvement
 Source: legacy-repo review of the .NET platform-feature plan, 2026-05-28
 Workspace: Lifeblood self and released dotnet tool packages
 Verification: Lifeblood ships as a dotnet tool; platform-specific tools,
 `dotnet tool exec`, `dnx`, CLI schema, self-contained publishing, and AOT
-experiments are product-relevant upgrade surfaces independent of language
-syntax features.
+experiments are product-relevant upgrade surfaces independent of language syntax
+features. Baseline local packaging smoke shipped in
+`tools/dotnet-lanes/run-lifeblood-tool-packaging.ps1`; local run packed both
+tool entry points, installed them from the local package folder, verified
+`lifeblood --help`, and verified `lifeblood-mcp` starts and exits cleanly when
+stdin closes.
 
 Summary:
 - Lifeblood is a tool product. Runtime retargeting is not enough; packaging,
@@ -444,6 +448,8 @@ Fix shape:
 - Add an experimental packaging lane that builds and smoke-tests the current
   global tool package, platform-specific tool packages when SDK support is
   available, and `dotnet tool exec` / `dnx` invocation forms.
+- Keep the baseline lane local-only: pack, local install, command smoke, report;
+  never publish from this script.
 - Include CLI schema/help output checks so packaging changes cannot drift the
   user-facing command surface.
 - Compare framework-dependent, self-contained, trimmed, and AOT-friendly builds
