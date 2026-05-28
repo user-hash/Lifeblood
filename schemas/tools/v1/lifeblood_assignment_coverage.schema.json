@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "required": [
+    "targetTypeId"
+  ],
+  "properties": {
+    "targetTypeId": {
+      "type": "string",
+      "description": "Canonical, qualified, or short name of the type whose construction sites are reported."
+    },
+    "includeDelegateFields": {
+      "type": "boolean",
+      "description": "Include public mutable Func/Action/custom-delegate-typed fields as slots. Default true (Bindings shape)."
+    },
+    "includeDelegateProperties": {
+      "type": "boolean",
+      "description": "Include public mutable Func/Action/custom-delegate-typed properties as slots. Default true."
+    },
+    "includePublicMutableFields": {
+      "type": "boolean",
+      "description": "Include public mutable non-delegate fields as slots. Default false."
+    },
+    "includePublicMutableProperties": {
+      "type": "boolean",
+      "description": "Include public mutable non-delegate properties (settable from outside) as slots. Default false."
+    },
+    "slotName": {
+      "type": "string",
+      "description": "Optional. When set, only the matching slot is reported in the per-site slots array."
+    },
+    "maxSites": {
+      "type": "integer",
+      "description": "Optional. Cap on construction sites returned; defaults to 256. Zero / negative values clamp to the default."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Canonical symbol id of the type (e.g. \u0027type:MyApp.MyClass\u0027)."
+    }
+  }
+}

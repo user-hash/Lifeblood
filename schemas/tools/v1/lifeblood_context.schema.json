@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "summarize": {
+      "type": "boolean",
+      "description": "Smallest viable response: drop every list-section to 0, keep summary \u002B invariants \u002B violations. Defaults to false."
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional allowlist of section names to include. Sections not on the list are emitted as empty arrays. Recognised: highValueFiles, boundaries, hotspots, readingOrder, dependencyMatrix. Summary, invariants, and violations are always retained."
+    },
+    "maxFiles": {
+      "type": "integer",
+      "description": "Cap on highValueFiles entries. Default 25. -1 unlimited; 0 drops the section."
+    },
+    "maxBoundaries": {
+      "type": "integer",
+      "description": "Cap on boundaries entries (one per module). Default 50."
+    },
+    "maxHotspots": {
+      "type": "integer",
+      "description": "Cap on hotspots entries. Default 20."
+    },
+    "maxReadingOrder": {
+      "type": "integer",
+      "description": "Cap on readingOrder entries. Default 50."
+    },
+    "maxMatrixEntries": {
+      "type": "integer",
+      "description": "Cap on dependencyMatrix entries (module-to-module edges). Default 100. The full matrix on an 80\u002B-module workspace is ~2600 entries."
+    }
+  }
+}

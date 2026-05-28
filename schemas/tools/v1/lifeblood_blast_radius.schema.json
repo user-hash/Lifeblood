@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Symbol ID"
+    },
+    "maxDepth": {
+      "type": "integer",
+      "description": "Maximum traversal depth (default: 10)"
+    },
+    "summarize": {
+      "type": "boolean",
+      "description": "When true, omit the full affected-id array and return only counts \u002B a small preview (size capped by maxResults). Defaults to false. Mutually exclusive with \u0060groupBy\u0060 \u2014 when \u0060groupBy\u0060 is set, the response shape switches to grouped buckets/modules and \u0060summarize\u0060 is ignored."
+    },
+    "maxResults": {
+      "type": "integer",
+      "description": "Maximum number of affected-symbol IDs embedded in the response. When the transitive set is larger, the array is clipped and \u0060truncated:true\u0060 is set. Default: 500 in normal mode, 25 in summarize mode."
+    },
+    "groupBy": {
+      "type": "string",
+      "description": "Optional grouping mode. \u0027bucket\u0027 = Production/Test/Editor/Generated; \u0027module\u0027 = per-module/asmdef counts; \u0027both\u0027 = both groupings populated; \u0027none\u0027 (default) = legacy flat shape. INV-BLAST-RADIUS-GROUP-001.",
+      "enum": [
+        "none",
+        "bucket",
+        "module",
+        "both"
+      ]
+    },
+    "previewPerGroup": {
+      "type": "integer",
+      "description": "Cap on preview entries per bucket/module when \u0060groupBy\u0060 is set. 0 = no preview, counts only. Default: 5."
+    }
+  }
+}

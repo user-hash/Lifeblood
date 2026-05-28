@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId",
+    "newName"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Symbol ID to rename"
+    },
+    "newName": {
+      "type": "string",
+      "description": "The new name"
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional INV-MULTI-DEFINE-WRITESIDE-001 honesty gate. When set, must equal the retained profile name; mismatched values fail loudly."
+    }
+  }
+}

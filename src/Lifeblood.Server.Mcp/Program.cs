@@ -108,6 +108,7 @@ class Program
         Console.Error.WriteLine("Lifeblood MCP server starting...");
 
         using var reader = new StreamReader(Console.OpenStandardInput());
+        var strictJson = McpJsonRequestParser.ReadStrictJsonFlag("LIFEBLOOD_STRICT_JSON");
 
         while (!cts.IsCancellationRequested)
         {
@@ -117,7 +118,7 @@ class Program
 
             try
             {
-                var request = JsonSerializer.Deserialize<JsonRpcRequest>(line, JsonOpts);
+                var request = McpJsonRequestParser.DeserializeRequest(line, JsonOpts, strictJson);
                 if (request == null) continue;
 
                 var response = dispatcher.Dispatch(request);

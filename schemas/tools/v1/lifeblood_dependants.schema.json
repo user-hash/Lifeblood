@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Symbol ID"
+    },
+    "profileFilter": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional. Narrow results to edges whose \u0060profiles[]\u0060 intersect this set. Edges with \u0060profiles=null\u0060 (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001."
+    }
+  }
+}

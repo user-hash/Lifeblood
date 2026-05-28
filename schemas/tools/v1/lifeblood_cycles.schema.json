@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "summarize": {
+      "type": "boolean",
+      "description": "When true, omit the full \u0060cycles[]\u0060 array and return only counts \u002B a small \u0060preview[]\u0060 (size capped by maxResults). Defaults to false."
+    },
+    "maxResults": {
+      "type": "integer",
+      "description": "Maximum number of cycles embedded in the response. When the SCC set is larger, the array is clipped and \u0060truncated:true\u0060 is set. Default: 500 in normal mode, 25 in summarize mode."
+    }
+  }
+}

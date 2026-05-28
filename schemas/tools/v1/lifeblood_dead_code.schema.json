@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "includeKinds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional symbol-kind filter (e.g. [\u0027Method\u0027,\u0027Type\u0027]). Case-insensitive. Unknown kinds are silently ignored. Default: Method, Type, Property, Field."
+    },
+    "excludePublic": {
+      "type": "boolean",
+      "description": "Skip public symbols (default true)."
+    },
+    "excludeTests": {
+      "type": "boolean",
+      "description": "Skip files matching test conventions \u2014 any \u0027tests/\u0027 path segment or *Tests.cs / *Test.cs filename (default true)."
+    },
+    "summarize": {
+      "type": "boolean",
+      "description": "When true, omit the full \u0060findings[]\u0060 array and return only counts \u002B \u0060kindBreakdown\u0060 \u002B a small \u0060preview[]\u0060 (size capped by maxResults). Defaults to false."
+    },
+    "maxResults": {
+      "type": "integer",
+      "description": "Maximum number of findings embedded in the response. When the finding set is larger, the array is clipped and \u0060truncated:true\u0060 is set. Default: 500 in normal mode, 25 in summarize mode."
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "C# code to compile-check. Mutually exclusive with filePath."
+    },
+    "filePath": {
+      "type": "string",
+      "description": "Path to a .cs file (relative to project root, or absolute) to read and compile-check. Mutually exclusive with code."
+    },
+    "moduleName": {
+      "type": "string",
+      "description": "Module context for type resolution"
+    },
+    "staleRefresh": {
+      "type": "boolean",
+      "description": "If true (default), incrementally re-analyze the workspace before compile_check when any tracked file has changed on disk since the last analyze. Set false to check against the pinned workspace state."
+    }
+  }
+}

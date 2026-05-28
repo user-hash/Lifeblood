@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "required": [
+    "typeName",
+    "memberName"
+  ],
+  "properties": {
+    "typeName": {
+      "type": "string",
+      "description": "Containing type: canonical \u0027type:NS.T\u0027, fully-qualified \u0027NS.T\u0027, or bare short name \u0027T\u0027."
+    },
+    "memberName": {
+      "type": "string",
+      "description": "Simple member name (no namespace, no parens)."
+    },
+    "paramTypes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional: fully-qualified parameter type names for method overload disambiguation. Each array entry is one parameter. Ignored for non-method members."
+    }
+  }
+}

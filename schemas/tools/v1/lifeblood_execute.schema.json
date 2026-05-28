@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "required": [
+    "code"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "C# code to compile and execute"
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional using namespaces"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "description": "Execution timeout in milliseconds (default: 5000)"
+    },
+    "targetProfile": {
+      "type": "string",
+      "description": "Compatibility hint for runtime profile. \u0027host\u0027 (default) is the only execution profile; non-host values are accepted but run against the host scripting BCL and surface a targetRuntimeWarnings limitation."
+    }
+  }
+}

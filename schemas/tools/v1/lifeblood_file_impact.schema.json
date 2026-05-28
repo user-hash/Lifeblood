@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "required": [
+    "filePath"
+  ],
+  "properties": {
+    "filePath": {
+      "type": "string",
+      "description": "Relative file path (e.g., src/MyApp/AuthService.cs)"
+    },
+    "maxResults": {
+      "type": "integer",
+      "description": "Optional. Cap on entries returned per direction (\u0060dependsOn\u0060 and \u0060dependedOnBy\u0060 are clipped independently). Default 500 normal mode / 25 summarize mode. Zero / negative values fall back to the default. Ignored when \u0060summarize:true\u0060."
+    },
+    "summarize": {
+      "type": "boolean",
+      "description": "Optional. When true, forces \u0060maxResults=25\u0060 regardless of caller-passed value \u2014 smallest viable wire shape for triage workflows on god-type files. Defaults to false. INV-FILE-IMPACT-SUMMARIZE-001."
+    }
+  }
+}
