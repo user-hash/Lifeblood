@@ -39,6 +39,7 @@ internal static class DefineProfileApplier
             LanguageVersion = module.LanguageVersion,
             NullableContext = module.NullableContext,
             NoWarnDiagnosticIds = module.NoWarnDiagnosticIds,
+            CompilerFeatures = module.CompilerFeatures,
             ReferenceClosure = module.ReferenceClosure,
             InternalsVisibleTo = module.InternalsVisibleTo,
             Properties = module.Properties,
