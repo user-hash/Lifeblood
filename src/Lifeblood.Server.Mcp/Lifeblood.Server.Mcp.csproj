@@ -14,6 +14,11 @@
     <!-- Server GC handles large Roslyn heaps (7GB+ on big projects) without thrashing.
          Workstation GC spends most of its time in full collections at that scale. -->
     <ServerGarbageCollection>true</ServerGarbageCollection>
+    <!-- DATAS right-sizes the Server-GC heap instead of reserving per-core arenas.
+         Default-off on net8, default-on net9+. Without it Server GC holds ~5x the
+         working set (self-analyze: 878MB private vs 242MB with it) at equal wall time.
+         Emits System.GC.DynamicAdaptationMode=1 into runtimeconfig.json. -->
+    <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
     <!-- MCP server host. Composition root for interactive AI agent sessions. -->
   </PropertyGroup>
   <ItemGroup>
