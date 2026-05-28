@@ -96,8 +96,10 @@ class Program
                 "LIFEBLOOD_FILES_CHANGED_THRESHOLD",
                 StalenessPolicy.Default.FilesChangedWarnThreshold));
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications, stalenessPolicy);
+        var telemetry = DotNetDiagnosticsTelemetrySink.CreateFromEnvironment("LIFEBLOOD_TELEMETRY");
+        using var telemetryLifetime = telemetry as IDisposable;
         var toolHandler = new ToolHandler(
-            session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants, decorator);
+            session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants, decorator, telemetry: telemetry);
         var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)

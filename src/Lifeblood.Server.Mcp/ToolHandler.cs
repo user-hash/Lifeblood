@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.Ports.Right.Invariants;
 using Lifeblood.Application.UseCases;
@@ -30,6 +31,7 @@ public sealed class ToolHandler
     private readonly IAuthorityReporter _authority;
     private readonly IPortHealthAnalyzer _portHealth;
     private readonly WriteToolHandler _write;
+    private readonly ITelemetrySink _telemetry;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -52,7 +54,8 @@ public sealed class ToolHandler
         IInvariantProvider invariants,
         IResponseDecorator decorator,
         IAuthorityReporter? authority = null,
-        IPortHealthAnalyzer? portHealth = null)
+        IPortHealthAnalyzer? portHealth = null,
+        ITelemetrySink? telemetry = null)
     {
         _session = session;
         _provider = provider;
@@ -64,14 +67,19 @@ public sealed class ToolHandler
         _decorator = decorator;
         _authority = authority ?? new Lifeblood.Connectors.Mcp.LifebloodAuthorityReporter();
         _portHealth = portHealth ?? new Lifeblood.Connectors.Mcp.LifebloodPortHealthAnalyzer();
+        _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
     public McpToolResult Handle(string toolName, JsonElement? arguments)
     {
+        using var operation = _telemetry.StartOperation(
+            "lifeblood.tool",
+            new TelemetryTag("tool.name", toolName));
+
         try
         {
-            return toolName switch
+            var result = toolName switch
             {
                 // Read-side
                 "lifeblood_analyze" => HandleAnalyze(arguments),
@@ -110,9 +118,24 @@ public sealed class ToolHandler
                 "lifeblood_format" => WrapWriteSide("lifeblood_format", _write.HandleFormat(arguments)),
                 _ => ErrorResult($"Unknown tool: {toolName}"),
             };
+
+            if (result.IsError == true)
+            {
+                operation.SetTag("tool.result", "error");
+                _telemetry.RecordEvent(
+                    "lifeblood.tool.error_result",
+                    new TelemetryTag("tool.name", toolName));
+            }
+            else
+            {
+                operation.SetTag("tool.result", "success");
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
+            operation.SetError(ex);
             return ErrorResult($"Error: {ex.Message}");
         }
     }
