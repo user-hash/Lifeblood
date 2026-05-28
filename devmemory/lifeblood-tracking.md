@@ -458,13 +458,17 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET concurrency prep for shared server
 
-Status: Candidate
+Status: Partially shipped
 Type: Improvement
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self
 Verification: local inspection: current MCP server is a stdio process with a
 retained `GraphSession`; no `System.Threading.Lock` adoption exists; shared
-multi-client daemon/server work is not yet implemented.
+multi-client daemon/server work is not yet implemented. Baseline audit shipped
+in `docs/plans/dotnet-concurrency-prep-2026-05-28.md`, backed by Lifeblood
+self analyze plus targeted dependency/file-impact queries on `GraphSession`,
+`WorkspaceSession`, invariant parse cache, metadata reference cache, usage
+probe, and telemetry sink.
 
 Summary:
 - Newer locking primitives are potentially useful, but only around real shared
@@ -482,6 +486,9 @@ Impact:
 Fix shape:
 - Audit current mutable shared-state sites and document which are per-process,
   per-session, per-workspace, or future shared-server concerns.
+- Keep concurrency policy at the host/session edge: Server.Mcp or a future host
+  adapter serializes session replacement; Domain and Application remain free of
+  daemon scheduling concerns.
 - Keep ordinary locks on production `net8.0`; adopt `System.Threading.Lock` only
   in an experimental newer-target lane or after a measured retarget is approved.
 - Add focused tests around graph replacement, incremental refresh, and concurrent
