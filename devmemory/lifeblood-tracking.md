@@ -170,6 +170,61 @@ Fix shape:
   source-text ratchets are fallback only when the contract itself is source
   text.
 
+## 2026-05-28 - Lifeblood v0.7.9-1-g4a7a63a - Durable documentation receipts for living-doc baselines
+
+Status: Candidate
+Type: UX
+Source: DAWG LDF eternal living-doc refresh, top-down architecture/doc pass
+Workspace: DAWG
+Verification: Lifeblood DAWG MCP session returned
+`lifeblood_analyze` summary `68,311` symbols, `252,832` edges, `90` modules,
+`3,618` files, `0` violations, `101` cycles; `lifeblood_invariant_check`
+audit returned `102` parsed entries, no duplicates, no parse warnings. DAWG
+follow-through commits: `742e4e245 docs(invariants): align audit baseline`
+and `ed2df3dc6 docs(invariants): remove brittle lifeblood generations`.
+
+Summary:
+- Lifeblood was semantically correct enough to drive the DAWG LDF refresh, but
+  downstream living docs still had to hand-normalize evidence. Twelve active
+  docs carried stale invariant-audit totals (`113` / `114`), and six active
+  invariant docs had copied a session-local Lifeblood generation label from an
+  older run.
+- The friction is not a new analysis false-positive class. It is a documentation
+  receipt shape problem: agents need a durable, citation-safe Lifeblood evidence
+  block for living docs, and clear guidance about which envelope fields are
+  session-local diagnostics rather than stable doc facts.
+- This overlaps with the existing LB-NICE-010 capability/version endpoint, but
+  it is narrower: capability discovery says "what server am I talking to?";
+  a docs receipt says "what exact semantic evidence may I cite in a living doc?"
+
+Impact:
+- Without a citation-safe receipt, downstream docs copy whatever field is nearby
+  (`analysisGeneration`, old invariant totals, stale profile notes), then future
+  LDF passes spend time cleaning evidence drift instead of architecture content.
+- The invariant-audit count is especially easy to misquote because active docs
+  want a single baseline, while humans still need source-path provenance,
+  source-local counts, duplicate IDs, parse warnings, and parse-warning file
+  lines to know whether a count is complete enough to cite.
+
+Fix shape:
+- Add a docs-safe `citation` / `evidenceReceipt` block to `lifeblood_analyze`
+  and `lifeblood_invariant_check` responses, or add a small
+  `lifeblood_evidence_summary` / `lifeblood_docs_receipt` tool that composes the
+  same data after analyze.
+- The receipt should include durable fields: Lifeblood semver/build hash, dirty
+  flag, workspace root, requested/active define profiles, graph counts, module
+  count, file count, violation count, cycle count, invariant total,
+  `sourcePaths[]`, per-source invariant counts, duplicate IDs, parse warnings,
+  and the exact query recipe used.
+- The receipt should explicitly exclude or mark as "do not cite in docs":
+  `analysisGeneration`, `stalenessSeconds`, and other session-local freshness
+  diagnostics. Those fields remain valuable for tool joins and stale-read
+  detection, but they are not living-doc facts.
+- Add a ratchet fixture that builds a docs receipt from a multi-source invariant
+  fixture and asserts: `sourcePaths[]` is present, per-source counts are present,
+  parse warnings retain file/line provenance, and no session-local generation
+  label appears in the citation block.
+
 ## Shipped - Lifeblood v0.7.3
 
 Status: Shipped
