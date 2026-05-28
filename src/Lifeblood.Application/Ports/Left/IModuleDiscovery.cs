@@ -234,6 +234,25 @@ public sealed class ModuleInfo
     public string[] NoWarnDiagnosticIds { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Experimental compiler feature switches declared by the csproj's
+    /// <c>&lt;Features&gt;</c> property, parsed as semicolon-separated
+    /// <c>name=value</c> pairs and threaded into Roslyn
+    /// <c>ParseOptions.WithFeatures</c>. This is compatibility metadata,
+    /// not a Lifeblood runtime feature switch: if a user project opts into
+    /// preview compiler behavior such as <c>runtime-async=on</c>, Lifeblood
+    /// must preserve the same parse/compilation options for analyze,
+    /// diagnose, and compile-check.
+    ///
+    /// Decided at discovery time by <see cref="RoslynModuleDiscovery"/>.
+    /// Consumed at compilation time by <c>ModuleCompilationBuilder.CreateCompilation</c>.
+    /// Default empty preserves behavior for projects with no
+    /// <c>&lt;Features&gt;</c> property. INV-RUNTIME-ASYNC-COMPAT-001 /
+    /// INV-COMPFACT-001..003.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> CompilerFeatures { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
     /// How <see cref="Dependencies"/> expands into Roslyn compilation
     /// references. Decided at discovery time by inspecting the csproj
     /// schema; consumed by <c>ModuleCompilationBuilder</c>. Default

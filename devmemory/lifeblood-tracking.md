@@ -498,21 +498,27 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET Runtime Async compatibility
 
-Status: Open
+Status: Partially shipped
 Type: Improvement
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self and user-analyzed projects
 Verification: local inspection: no .NET 11 SDK/runtime is installed locally;
-Lifeblood production target remains `net8.0`; no tracker entry or fixture covers
-project `<Features>runtime-async=on</Features>` metadata.
+Lifeblood production target remains `net8.0`; compatibility awareness shipped
+with csproj `<Features>` discovery, `ModuleInfo.CompilerFeatures`,
+`CSharpParseOptions.WithFeatures` thread-through, profile-clone preservation,
+and focused fixtures in `CsprojCompilationFactsTests`. Remaining open work:
+diagnose/compile-check fixture coverage around feature-bearing projects, an
+opt-in server benchmark lane when a supporting SDK exists, and production
+adoption only after stable evidence.
 
 Summary:
 - Runtime Async is preview/experimental until the SDK/runtime is available and
   stable. Lifeblood should treat it as compatibility awareness first, not as a
   production-server feature.
-- The immediate Lifeblood requirement is Roslyn parity for projects that opt in:
+- The first Lifeblood requirement is Roslyn parity for projects that opt in:
   analyze, diagnose, and compile-check should not drift because a project carries
-  a new `<Features>` marker.
+  a new `<Features>` marker. Analyze parse-option preservation is now pinned;
+  diagnose/compile-check compatibility fixtures remain open.
 
 Impact:
 - Users may analyze projects that enable Runtime Async before Lifeblood itself
@@ -522,9 +528,12 @@ Impact:
   proven on MCP request loops and Roslyn-heavy Lifeblood workloads, not assumed.
 
 Fix shape:
-- Add project-option awareness and a fixture for
-  `<Features>runtime-async=on</Features>` so analyze/diagnose/compile-check
-  behavior remains stable for opted-in projects.
+- Keep project-option awareness for `<Features>runtime-async=on</Features>`
+  on the csproj-driven compilation-facts seam: discover once, store on
+  `ModuleInfo.CompilerFeatures`, preserve through define-profile cloning, and
+  pass into `CSharpParseOptions.WithFeatures`.
+- Add the remaining diagnose and compile-check fixtures so replacement/snippet
+  trees also prove feature-bearing project compatibility.
 - Promote those compile-parity traps ahead of enabling Runtime Async in
   Lifeblood itself: user-project analysis compatibility is earlier than server
   runtime experimentation.

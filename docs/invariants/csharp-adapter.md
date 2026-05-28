@@ -74,6 +74,10 @@ csproj-driven option follows the same shape.
   actually compiles under C# 13 instead of the host default), `DefineConstants`
   (BUG-2, post-v0.7.3 — preprocessor symbols flow into `ParseOptions` so
   `#if MY_FLAG` blocks survive parse instead of dead-code-eliminating).
+  `CompilerFeatures` (runtime-async compatibility awareness) carries csproj
+  `<Features>` name/value pairs into `CSharpParseOptions.WithFeatures` so
+  experimental compiler switches are represented in the same parse-options
+  seam as the user's build.
   Future additions (`Platform`, `WarningLevel`, etc.) follow the same
   shape with zero new incremental work per INV-COMPFACT-003.
 
@@ -89,6 +93,20 @@ csproj-driven option follows the same shape.
   covers every compilation fact for free. `IncrementalAnalyze` rebuilds the
   entire `ModuleInfo` on csproj edit, not just one field. The next compilation
   fact added under this convention ships with zero new incremental work.
+
+- **INV-RUNTIME-ASYNC-COMPAT-001. Runtime Async starts as user-project
+  compatibility metadata, not a Lifeblood server feature.** If an analyzed
+  csproj declares `<Features>runtime-async=on</Features>` or another compiler
+  feature switch, `RoslynModuleDiscovery.ParseProject` parses the semicolon-
+  separated name/value pairs into `ModuleInfo.CompilerFeatures`.
+  `DefineProfileApplier.WithProfileDefines` must preserve the field while
+  applying profile-specific preprocessor symbols, and
+  `ModuleCompilationBuilder.CreateCompilation` must pass it into
+  `CSharpParseOptions.WithFeatures` for every real source tree. This keeps
+  analyze, diagnose, and compile-check aligned with the user's project options
+  before Lifeblood itself ever experiments with running under Runtime Async.
+  Pinned by `CsprojCompilationFactsTests.Discovery_ReadsCompilerFeatures_FromCsproj`
+  and `CsprojCompilationFactsTests.Compilation_ThreadsCompilerFeatures_IntoParseOptions`.
 
 ## Diagnostic Parity Wall
 

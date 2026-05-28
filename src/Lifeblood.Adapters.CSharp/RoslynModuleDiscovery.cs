@@ -314,6 +314,21 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            // Compilation fact: <Features> (INV-RUNTIME-ASYNC-COMPAT-001).
+            // Roslyn exposes CSharpParseOptions.WithFeatures for experimental
+            // compiler switches. Runtime Async projects can opt in via
+            // <Features>runtime-async=on</Features>; Lifeblood must preserve
+            // that project fact when it parses source and when compile_check
+            // replaces syntax trees. Take the LAST <Features> element's value
+            // (MSBuild property assignment semantics) and parse its semicolon-
+            // separated name/value pairs without interpreting the names.
+            var compilerFeatures = ParseCompilerFeatures(
+                doc.Descendants()
+                    .Where(el => el.Name.LocalName == "Features")
+                    .Select(el => el.Value?.Trim() ?? string.Empty)
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .LastOrDefault() ?? string.Empty);
+
             // Compilation fact: <InternalsVisibleTo Include="X" /> items
             // (INV-DIAGNOSTIC-IVT-PARITY-001 / INV-COMPFACT-001..003).
             // MSBuild's GenerateAssemblyInfo target turns each item into an
@@ -371,6 +386,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 LanguageVersion = languageVersion,
                 NullableContext = nullableContext,
                 NoWarnDiagnosticIds = noWarnIds,
+                CompilerFeatures = compilerFeatures,
                 ReferenceClosure = referenceClosure,
                 InternalsVisibleTo = internalsVisibleTo,
                 Properties = new Dictionary<string, string>
@@ -404,6 +420,28 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     // Detection logic lives ONLY here. ModuleCompilationBuilder consumes the
     // resulting BclOwnership field and never re-derives it from filenames.
     // ────────────────────────────────────────────────────────────────────────
+
+    private static IReadOnlyDictionary<string, string> ParseCompilerFeatures(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+
+        var features = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var token in raw.Split(';'))
+        {
+            var part = token.Trim();
+            if (part.Length == 0) continue;
+
+            var equals = part.IndexOf('=');
+            var name = equals < 0 ? part : part.Substring(0, equals).Trim();
+            if (name.Length == 0) continue;
+
+            var value = equals < 0 ? string.Empty : part.Substring(equals + 1).Trim();
+            features[name] = value;
+        }
+
+        return features;
+    }
 
     private static bool ReferenceDeclaresBcl(XElement referenceElement)
     {

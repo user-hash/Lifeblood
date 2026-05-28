@@ -242,4 +242,61 @@ public class CsprojCompilationFactsTests
         }
         finally { Directory.Delete(tempDir, true); }
     }
+
+    [Fact]
+    public void Discovery_ReadsCompilerFeatures_FromCsproj()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-features-disc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "Empty.cs"),
+                "namespace Test; public class Empty { }");
+            File.WriteAllText(Path.Combine(tempDir, "Test.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <AssemblyName>Test</AssemblyName>
+    <Features>runtime-async=on;other-feature=enabled</Features>
+  </PropertyGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+
+            Assert.Single(modules);
+            Assert.Equal("on", modules[0].CompilerFeatures["runtime-async"]);
+            Assert.Equal("enabled", modules[0].CompilerFeatures["other-feature"]);
+        }
+        finally { Directory.Delete(tempDir, true); }
+    }
+
+    [Fact]
+    public void Compilation_ThreadsCompilerFeatures_IntoParseOptions()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-features-comp-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "Empty.cs"),
+                "namespace Test; public class Empty { }");
+            File.WriteAllText(Path.Combine(tempDir, "Test.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <AssemblyName>Test</AssemblyName>
+    <Features>runtime-async=on</Features>
+  </PropertyGroup>
+</Project>");
+
+            var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem());
+            analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig { RetainCompilations = true });
+            var compilation = analyzer.Compilations!["Test"];
+
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                if (tree.FilePath.EndsWith("<ImplicitGlobalUsings>.cs")) continue;
+                var opts = Assert.IsType<CSharpParseOptions>(tree.Options);
+                Assert.Equal("on", opts.Features["runtime-async"]);
+            }
+        }
+        finally { Directory.Delete(tempDir, true); }
+    }
 }

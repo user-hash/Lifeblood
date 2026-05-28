@@ -282,6 +282,15 @@ internal sealed class ModuleCompilationBuilder
             parseOptions = parseOptions.WithLanguageVersion(langVersion);
         }
 
+        // <Features> (INV-RUNTIME-ASYNC-COMPAT-001). Preserve compiler
+        // feature switches declared by the analyzed project, including
+        // preview markers such as runtime-async=on. Lifeblood does not
+        // interpret or enable these for itself; it threads the project fact
+        // into Roslyn so analyze/diagnose/compile_check see the same parse
+        // options as the user's build.
+        if (module.CompilerFeatures.Count > 0)
+            parseOptions = (CSharpParseOptions)parseOptions.WithFeatures(module.CompilerFeatures);
+
         var trees = sourceFiles
             .Select(f =>
             {
