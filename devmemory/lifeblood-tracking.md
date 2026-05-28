@@ -225,6 +225,188 @@ Fix shape:
   parse warnings retain file/line provenance, and no session-local generation
   label appears in the citation block.
 
+## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET JSON contract hardening
+
+Status: Open
+Type: Improvement
+Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
+Workspace: Lifeblood self
+Verification: local inspection: all C# projects target `net8.0`; `ToolRegistry`
+owns hand-authored anonymous MCP input schemas; `docs/SCHEMA_DEPRECATION_POLICY.md`
+names future `schemas/tools/v1/<tool>.json` snapshots; no existing tracker entry
+covered `System.Text.Json` schema/strict parsing, duplicate-property rejection, or
+`PipeReader` input handling.
+
+Summary:
+- Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
+  public MCP wire contracts: schema export/validation, stricter reader behavior,
+  duplicate-property rejection, and possible `PipeReader` parsing.
+- Lifeblood currently hand-maintains `tools/list` schemas in `ToolRegistry`, with
+  ratchets for some conventions but no per-tool snapshot files yet.
+
+Impact:
+- Schema drift is a high-leverage failure class: clients learn tool arguments
+  from `tools/list`, and a silent input-schema change can break agents without
+  breaking Lifeblood tests.
+- Strict parsing catches malformed or duplicated arguments at the protocol
+  boundary instead of letting handlers infer partial intent from ambiguous JSON.
+
+Fix shape:
+- Create a typed schema source model for MCP tool inputs (DTOs or a
+  schema-builder abstraction) while preserving the existing `tools/list` wire
+  shape.
+- Generate or validate per-tool schema snapshots under `schemas/tools/v1/` and
+  ratchet every `ToolRegistry.GetTools()` schema against those snapshots.
+- Add an opt-in strict JSON mode first; reject duplicate properties, missing
+  required fields, and unknown strict-mode fields without changing default
+  compatibility.
+- Investigate `PipeReader` only after strict-mode tests pass and measurement
+  shows stdio parsing is a real cost or the implementation becomes cleaner.
+- No breaking field rename/removal; any break follows
+  `docs/SCHEMA_DEPRECATION_POLICY.md`.
+
+## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET telemetry surface
+
+Status: Open
+Type: Improvement
+Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
+Workspace: Lifeblood self
+Verification: local inspection: `ProcessUsageProbe` and `AnalysisUsage` already
+provide analyze receipts; no `ActivitySource` or `Meter` instrumentation exists
+for MCP tool calls, JSON parse/dispatch, cache fallback, truncation, or
+cross-request operational signal.
+
+Summary:
+- Lifeblood has good user-facing analyze receipts, but not a general operational
+  telemetry surface for a future shared server or multi-client host.
+- .NET diagnostics primitives map cleanly to the current architecture if they are
+  introduced behind an Application-layer port with a no-op default.
+
+Impact:
+- Without telemetry, performance regressions and multi-user contention will be
+  diagnosed from ad hoc wall-clock logs instead of comparable tool/analyze spans
+  and counters.
+- DAWG-scale workspaces make this especially important because result truncation,
+  graph size, fallback mode, profile count, GC deltas, and cache behavior matter
+  more than a single success/failure bit.
+
+Fix shape:
+- Add an internal telemetry port with no-op default and a diagnostics adapter
+  using `ActivitySource` and `Meter`.
+- Instrument analyze wall time, per-phase timing, tool latency, success/error
+  counts, fallback mode, graph size, profile count, GC deltas, JSON parse/dispatch
+  cost, and truncation events.
+- Keep `AnalysisUsage` as the user-facing receipt; telemetry is operational
+  signal, not a replacement for response evidence.
+- Add sink tests proving every MCP tool emits start/stop/error events without
+  requiring external OpenTelemetry infrastructure.
+
+## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET runtime/JIT benchmark lane
+
+Status: Open
+Type: Optimization
+Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
+Workspace: Lifeblood self and DAWG dogfood workspace
+Verification: local inspection: production projects target `net8.0`; `global.json`
+pins SDK `8.0.100` with `latestFeature` roll-forward; local machine has 8/9/10
+runtimes but no .NET 11 SDK/runtime; `measure-analyze.ps1` exists for current
+target measurement but no side-by-side runtime lane exists.
+
+Summary:
+- Newer runtimes may improve JIT, GC, JSON, and async behavior, but Lifeblood
+  should not retarget production until identical workloads show real benefit with
+  no schema or semantic drift.
+- DAWG is the right large-workspace benchmark subject, but benchmark code must
+  stay generic and usable on Lifeblood self.
+
+Impact:
+- A runtime upgrade that looks good in general .NET marketing can still be a loss
+  for Roslyn-heavy retained-graph workloads if memory, startup, or compilation
+  behavior regresses.
+- A reproducible benchmark lane gives the project a factual gate for retargeting
+  instead of intuition.
+
+Fix shape:
+- Add a benchmark script/project that runs identical workloads on the current
+  target and experimental newer targets when SDKs are installed.
+- Required workloads: Lifeblood self full analyze, Lifeblood self incremental
+  noop, DAWG full analyze when available, DAWG read-only analyze, and the top
+  read-side tools on a retained graph.
+- Emit machine-readable JSON plus a short human summary with wall time, peak
+  working set/private bytes, GC counts, graph counts, and tool success/error
+  counts.
+- Gate production retargeting on measured wall-time or memory improvement with
+  unchanged tests, schema snapshots, and semantic graph results.
+
+## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET concurrency prep for shared server
+
+Status: Candidate
+Type: Improvement
+Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
+Workspace: Lifeblood self
+Verification: local inspection: current MCP server is a stdio process with a
+retained `GraphSession`; no `System.Threading.Lock` adoption exists; shared
+multi-client daemon/server work is not yet implemented.
+
+Summary:
+- Newer locking primitives are potentially useful, but only around real shared
+  state: retained graph/session access, compilation host refresh, incremental
+  cache transitions, telemetry counters, and future multi-client scheduling.
+- This is preparation work, not permission to build a shared daemon prematurely.
+
+Impact:
+- If Lifeblood grows from per-client stdio processes into a shared server, lock
+  placement and session isolation will determine whether concurrent agents can
+  analyze/query safely.
+- Premature lock rewrites on `net8.0` add complexity without benefit because
+  newer primitives are not available on the current production target.
+
+Fix shape:
+- Audit current mutable shared-state sites and document which are per-process,
+  per-session, per-workspace, or future shared-server concerns.
+- Keep ordinary locks on production `net8.0`; adopt `System.Threading.Lock` only
+  in an experimental newer-target lane or after a measured retarget is approved.
+- Add focused tests around graph replacement, incremental refresh, and concurrent
+  read-side tool calls before any daemon/shared-host work starts.
+- Do not build a shared Lifeblood daemon as part of this entry; remove obvious
+  lock-risk and document the future shape.
+
+## 2026-05-28 - Lifeblood v0.7.9-2-g540ca79 - .NET Runtime Async compatibility
+
+Status: Candidate
+Type: Improvement
+Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
+Workspace: Lifeblood self and user-analyzed projects
+Verification: local inspection: no .NET 11 SDK/runtime is installed locally;
+Lifeblood production target remains `net8.0`; no tracker entry or fixture covers
+project `<Features>runtime-async=on</Features>` metadata.
+
+Summary:
+- Runtime Async is preview/experimental until the SDK/runtime is available and
+  stable. Lifeblood should treat it as compatibility metadata first, not as a
+  production-server feature.
+- The immediate Lifeblood requirement is Roslyn parity for projects that opt in:
+  analyze, diagnose, and compile-check should not drift because a project carries
+  a new `<Features>` marker.
+
+Impact:
+- Users may analyze projects that enable Runtime Async before Lifeblood itself
+  should run that way. Lifeblood needs to preserve project parse/compilation
+  options accurately even when the feature is only metadata to the current host.
+- If Runtime Async eventually reduces allocation pressure, the benefit must be
+  proven on MCP request loops and Roslyn-heavy Lifeblood workloads, not assumed.
+
+Fix shape:
+- Add project-option awareness and a fixture for
+  `<Features>runtime-async=on</Features>` so analyze/diagnose/compile-check
+  behavior remains stable for opted-in projects.
+- Add an opt-in experimental Lifeblood server build lane with Runtime Async only
+  when a supporting SDK/runtime is installed.
+- Benchmark async-heavy MCP request loops, JSON dispatch, and retained-graph tool
+  calls for latency and allocation pressure before any production adoption.
+- Do not ship production Runtime Async until the platform feature is stable and
+  the benchmark lane shows real improvement without semantic or schema drift.
+
 ## Shipped - Lifeblood v0.7.3
 
 Status: Shipped
