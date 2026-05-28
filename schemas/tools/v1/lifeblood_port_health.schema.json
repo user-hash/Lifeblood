@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Canonical id of an interface or class type."
+    }
+  }
+}

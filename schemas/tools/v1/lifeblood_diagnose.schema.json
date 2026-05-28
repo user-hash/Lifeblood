@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "filePath": {
+      "type": "string",
+      "description": "Source file path (relative to the project root, or absolute). When set, diagnostics are scoped to this file\u0027s syntax tree."
+    },
+    "moduleName": {
+      "type": "string",
+      "description": "Specific module to diagnose, or omit for all. When combined with filePath, picks the module that contains the file."
+    }
+  }
+}

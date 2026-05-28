@@ -14,7 +14,7 @@ human-readable rulebook).
 | Surface | Owned by | Pinned by |
 |---------|----------|-----------|
 | `ResponseEnvelope` field set | `Lifeblood.Domain.Results.ResponseEnvelope` | `ResponseEnvelopeWireShapeContractTests` |
-| MCP tool input schemas (`tools/list` `inputSchema` field) | `ToolRegistry.GetTools` | `McpProtocolSourceOfTruthTests` |
+| MCP tool input schemas (`tools/list` `inputSchema` field) | `ToolRegistry.GetTools` | `ToolSchemaSnapshotTests` |
 | MCP tool output shapes (the JSON each handler returns) | per-tool, in `ToolHandler.Handle*` | per-tool tests |
 | Graph JSON schema | `schemas/graph.schema.json` | `JsonGraphRoundTripTests` |
 
@@ -93,10 +93,14 @@ When a breaking change is needed:
 Versioned schema snapshots live under `schemas/`:
 
 - `schemas/graph.schema.json` — graph JSON.
-- (Future) `schemas/tools/v1/<tool>.json` — per-tool input + output
-  shapes. Not yet written; the per-tool ratchets currently live in
-  `tests/Lifeblood.Tests/*Tests.cs` as inline JSON assertions. When
-  the per-tool snapshot files exist, this section will name them.
+- `schemas/tools/v1/<tool>.schema.json` — per-tool MCP input schemas
+  as exposed by `tools/list` through `ToolRegistry.GetDefinitions()`.
+  `ToolSchemaSnapshotTests` fails if a registered tool is missing a
+  snapshot, if a snapshot drifts from the registry schema, or if the
+  directory carries a stale snapshot for a removed/renamed tool.
+- Per-tool output shapes still live in focused tests beside the handler
+  behavior they exercise. Promote them to versioned files when a tool's
+  output contract needs file-backed schema enforcement.
 
 The contract ratchets read either the snapshot file or the reflection
 of the current type. They MUST fail loudly on drift. Updating a

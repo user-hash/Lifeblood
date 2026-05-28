@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Symbol ID (e.g., type:MyApp.AuthService)"
+    }
+  }
+}

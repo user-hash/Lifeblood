@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": [
+    "typeId"
+  ],
+  "properties": {
+    "typeId": {
+      "type": "string",
+      "description": "Canonical, qualified, or short name of a type that may carry static table initializers."
+    },
+    "memberName": {
+      "type": "string",
+      "description": "Optional. When set, only the matching static field / property is reported."
+    },
+    "maxRows": {
+      "type": "integer",
+      "description": "Optional. Cap on rows extracted per table; defaults to 32. Zero / negative values clamp to the default. Ignored when \u0060summarize:true\u0060."
+    },
+    "maxTables": {
+      "type": "integer",
+      "description": "Optional. Cap on tables extracted per type; defaults to 64. Zero / negative values clamp to the default. Ignored when \u0060summarize:true\u0060."
+    },
+    "summarize": {
+      "type": "boolean",
+      "description": "Optional. When true, forces compact caps (maxRows=3, maxTables=16) regardless of caller-passed values \u2014 smallest viable wire shape for triage workflows on dispatch-table god-types. Defaults to false. INV-STATIC-TABLES-SUMMARIZE-001."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile (the first one in \u0060defineProfiles\u0060 from the most recent analyze) \u2014 IOperation-walking tools operate against the retained compilations only. Mismatched values fail with a guidance error. Single-profile analyze: retained profile is the resolver\u0027s default (Editor). INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}

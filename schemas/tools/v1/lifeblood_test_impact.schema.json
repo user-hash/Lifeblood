@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": [
+    "target"
+  ],
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Symbol id (canonical / qualified / bare short name) OR a file path. Symbol-id routing happens when the value starts with a known id prefix; otherwise it\u0027s treated as a file."
+    },
+    "includeReflectionHeuristic": {
+      "type": "boolean",
+      "description": "Default false. When true, after the BFS completes, scan each test method\u0027s containing file for the target\u0027s FQN as a source-text substring (with namespace-context or uniqueness-gated short-name fallback). Hits surface as \u0060kind: ReflectionHeuristic\u0060 rows. Symbol targets only \u2014 ignored when \u0060target\u0060 is a file path."
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Canonical id of a type (e.g. \u0027type:My.Service\u0027)."
+    }
+  }
+}

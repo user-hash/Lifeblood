@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": [
+    "filePath",
+    "line",
+    "column"
+  ],
+  "properties": {
+    "filePath": {
+      "type": "string",
+      "description": "Source file path (absolute or relative)"
+    },
+    "line": {
+      "type": "integer",
+      "description": "Line number (1-based)"
+    },
+    "column": {
+      "type": "integer",
+      "description": "Column number (1-based)"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "projectPath": {
+      "type": "string",
+      "description": "Path to C# project root (with .sln or .csproj)"
+    },
+    "graphPath": {
+      "type": "string",
+      "description": "Path to a graph.json file (alternative to projectPath)"
+    },
+    "rulesPath": {
+      "type": "string",
+      "description": "Optional: built-in pack name (hexagonal, clean-architecture, lifeblood) or path to a rules.json file"
+    },
+    "incremental": {
+      "type": "boolean",
+      "description": "When true, only recompiles modules with changed files since the last analysis. Much faster for iterative work. If the adapter detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited), the response is REJECTED unless \u0060allowFullFallback\u0060 is also true. Caller-owned scope policy. Default: false."
+    },
+    "readOnly": {
+      "type": "boolean",
+      "description": "When true, uses streaming compilation (much lower memory. ~4GB vs ~7GB for large projects). Write-side tools (execute, find-references, rename, etc.) will be unavailable. Use for large projects when you only need read-side tools. Default: false."
+    },
+    "allowFullFallback": {
+      "type": "boolean",
+      "description": "Pairs with \u0060incremental:true\u0060. When true, the adapter silently widens to a full re-analyze on detected drift and reports \u0060mode:\u0027full\u0027\u0060 \u002B \u0060requestedMode:\u0027incremental\u0027\u0060 \u002B the populated \u0060fallbackReason\u0060 so the cache miss stays visible. When false (default), the adapter REJECTS with \u0060mode:\u0027rejected\u0027\u0060 \u002B \u0060requestedMode:\u0027incremental\u0027\u0060 \u002B \u0060fallbackReason\u0060 \u002B \u0060canRetryFull:true\u0060 \u002B \u0060suggestedRetry\u0060 and does no work \u2014 caller decides next step. Eternal-repo posture: scope policy is the caller\u0027s choice, not the adapter\u0027s. INV-ANALYZE-FALLBACK-001."
+    },
+    "defineProfiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional. Define-profile names to analyze under. Null / empty = single-profile back-compat (default Editor identity, wire shape byte-stable with pre-Wave-6). Non-empty = multi-profile union analyze: the adapter compiles every module once per active profile and unions edges. On Unity workspaces (\u0060Library/\u0060 exists) the canonical 2-profile MVP is \u0060[\u0022Editor\u0022, \u0022Player\u0022]\u0060 \u2014 Player flips \u0060#if !UNITY_EDITOR\u0060 callsites from inactive to active. Unknown profile names throw eagerly. Response summary carries \u0060profileCount\u0060 \u002B \u0060activeProfiles\u0060 \u002B \u0060perProfileEdgeCounts\u0060; edges in dependants/dependencies responses carry \u0060profiles[]\u0060. INV-MULTI-DEFINE-ANALYZE-001."
+    }
+  }
+}

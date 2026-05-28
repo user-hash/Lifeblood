@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "required": [
+    "name"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Short symbol name (no namespace)"
+    },
+    "mode": {
+      "type": "string",
+      "description": "Matching mode: \u0027exact\u0027 (default, literal), \u0027contains\u0027 (substring), or \u0027fuzzy\u0027 (ranked near-match).",
+      "enum": [
+        "exact",
+        "contains",
+        "fuzzy"
+      ]
+    }
+  }
+}

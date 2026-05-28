@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Symbol ID (e.g., type:MyApp.AuthService)"
+    },
+    "includeDeclarations": {
+      "type": "boolean",
+      "description": "When true, include the symbol\u0027s declaration sites in the result. Default false."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional INV-MULTI-DEFINE-WRITESIDE-001 honesty gate. When set, must equal the retained profile name; mismatched values fail loudly with switch-instructions."
+    }
+  }
+}

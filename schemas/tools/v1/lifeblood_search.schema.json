@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "required": [
+    "query"
+  ],
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Query text. Matched against symbol names, qualified names, and xmldoc summaries."
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional symbol-kind filter (e.g. [\u0027Method\u0027,\u0027Type\u0027]). Case-insensitive. Unknown kinds are silently ignored."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of results (default 20)."
+    }
+  }
+}

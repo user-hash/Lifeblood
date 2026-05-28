@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": [
+    "enumTypeId"
+  ],
+  "properties": {
+    "enumTypeId": {
+      "type": "string",
+      "description": "Canonical, qualified, or short name of an enum type."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}

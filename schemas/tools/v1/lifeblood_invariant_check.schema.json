@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Exact invariant id (e.g. \u0027INV-CANONICAL-001\u0027). Mutually exclusive with \u0027mode\u0027."
+    },
+    "mode": {
+      "type": "string",
+      "description": "\u0027audit\u0027 (default) or \u0027list\u0027. Mutually exclusive with \u0027id\u0027."
+    }
+  }
+}
