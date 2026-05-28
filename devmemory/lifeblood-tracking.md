@@ -398,6 +398,32 @@ Fix shape:
   before .NET 8 EOL. If customers still need `net8.0`, keep it as a compatibility
   branch rather than leaving `main` stranded on an unsupported runtime.
 
+## 2026-05-28 - Lifeblood .NET 10 experimental target lane
+
+Status: Partially shipped
+Type: Improvement
+Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
+Workspace: Lifeblood self
+Verification: baseline lane shipped in
+`tools/dotnet-lanes/run-lifeblood-experimental-target.ps1`; local smoke run on
+2026-05-28 skipped honestly because only the .NET 8 SDK is installed locally.
+
+Summary:
+- The production solution remains pinned to `net8.0`; the experimental lane is
+  an external build/test/package probe that passes `TargetFramework` as an
+  MSBuild property when a matching SDK is installed.
+- The script runs from a temp directory so the repo `global.json` cannot pin it
+  back to the production SDK lane.
+
+Fix shape:
+- Keep this lane report-driven and non-production: no project TFM edits, no
+  package publishing, and no production migration until tests, schema snapshots,
+  semantic graph counts, and benchmark measurements stay stable.
+- Build/test/package the solution and the two tool entry points when the SDK is
+  present; emit a machine-readable skip report when it is not.
+- Use this lane as the prerequisite for packaging experiments and runtime/JIT
+  benchmarks on newer SDKs.
+
 ## 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
 
 Status: Open
