@@ -1,6 +1,6 @@
 # Lifeblood
 
-Compiler-grade code intelligence for AI agents over MCP.
+Compiler tools and semantic codebase knowledge for AI agents over MCP. Developed for C#, Roslyn and Unity, but with support for other langueges since it uses hexagonal architecture.
 
 Lifeblood loads a C# / Unity workspace through Roslyn or a C codebase through the beta libclang adapter, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
 
