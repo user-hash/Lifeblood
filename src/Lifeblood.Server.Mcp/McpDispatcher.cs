@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using Lifeblood.Connectors.Mcp;
 
@@ -56,7 +55,7 @@ public sealed class McpDispatcher
   {
   _session = session;
   _toolHandler = toolHandler;
-  _serverVersion = ResolveServerVersion();
+  _serverVersion = ServerIdentity.ResolveServerVersion();
   }
 
   /// <summary>
@@ -173,28 +172,4 @@ public sealed class McpDispatcher
   return response;
   }
 
-  // ─── Version resolution ──────────────────────────────────────────────
-
-  /// <summary>
-  /// Prefer <see cref="AssemblyInformationalVersionAttribute"/> because
-  /// MinVer populates it with the full semver-plus-provenance form
-  /// (e.g. <c>0.6.0+abc123</c> or <c>0.6.1-pre.0.3+def456</c>).
-  /// Falls back to the plain <c>AssemblyName.Version</c> three-part form,
-  /// then to <c>"0.0.0"</c> if neither is set. Resolved once per dispatcher
-  /// instance. The assembly metadata does not change at runtime.
-  /// </summary>
-  private static string ResolveServerVersion()
-  {
-  var asm = typeof(McpDispatcher).Assembly;
-
-  var informational = asm
-  .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-  .InformationalVersion;
-  if (!string.IsNullOrWhiteSpace(informational))
-  {
-  return informational!;
-  }
-
-  return asm.GetName().Version?.ToString(3) ?? "0.0.0";
-  }
 }

@@ -148,6 +148,18 @@ public static class ToolRegistry
   {
   new()
   {
+  Name = "lifeblood_capabilities",
+  Availability = ToolAvailability.ReadSide,
+  EnvelopeClassification = DerivedProven,
+  Description = "Report the live Lifeblood MCP server capabilities: server version and version source, optional git commit/dirty state when running from a repo checkout, MCP tool count with read/write split, feature flags, schema snapshot path, STATUS.md anchor path, and current session state. Use this at session start to detect local-tool/documentation drift before relying on stale prose.",
+  InputSchema = new
+  {
+  type = "object",
+  properties = new { },
+  },
+  },
+  new()
+  {
   Name = "lifeblood_analyze",
   Availability = ToolAvailability.ReadSide,
   EnvelopeClassification = SemanticProven,

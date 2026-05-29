@@ -143,6 +143,7 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
             ParseWarnings = aggregated.Warnings,
             SourcePath = aggregated.SourcePaths.Length > 0 ? aggregated.SourcePaths[0] : "",
             SourcePaths = aggregated.SourcePaths,
+            SourceCounts = aggregated.SourceCounts,
         };
     }
 
@@ -162,12 +163,18 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
 
         var allInvariants = new List<Invariant>();
         var allWarnings = new List<string>();
+        var sourceCounts = new List<InvariantSourceCount>(sources.Length);
         var allDuplicateLines = new Dictionary<string, List<int>>(System.StringComparer.Ordinal);
         var seenIds = new HashSet<string>(System.StringComparer.Ordinal);
 
         foreach (var sourcePath in sources)
         {
             var entry = _cache.GetOrLoad(sourcePath, ClaudeMdInvariantParser.Parse, EmptyParseResult);
+            sourceCounts.Add(new InvariantSourceCount
+            {
+                SourcePath = sourcePath,
+                Count = entry.Result.Invariants.Length,
+            });
             foreach (var inv in entry.Result.Invariants)
             {
                 if (seenIds.Add(inv.Id))
@@ -199,7 +206,8 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
             allInvariants.ToArray(),
             allWarnings.ToArray(),
             duplicates,
-            sources);
+            sources,
+            sourceCounts.ToArray());
     }
 
     /// <summary>
@@ -239,23 +247,27 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
             System.Array.Empty<Invariant>(),
             System.Array.Empty<string>(),
             new Dictionary<string, int[]>(System.StringComparer.Ordinal),
-            System.Array.Empty<string>());
+            System.Array.Empty<string>(),
+            System.Array.Empty<InvariantSourceCount>());
 
         public Invariant[] Invariants { get; }
         public string[] Warnings { get; }
         public Dictionary<string, int[]> Duplicates { get; }
         public string[] SourcePaths { get; }
+        public InvariantSourceCount[] SourceCounts { get; }
 
         public AggregatedParseResult(
             Invariant[] invariants,
             string[] warnings,
             Dictionary<string, int[]> duplicates,
-            string[] sourcePaths)
+            string[] sourcePaths,
+            InvariantSourceCount[] sourceCounts)
         {
             Invariants = invariants;
             Warnings = warnings;
             Duplicates = duplicates;
             SourcePaths = sourcePaths;
+            SourceCounts = sourceCounts;
         }
     }
 }

@@ -15,7 +15,14 @@ function Get-RepoRoot {
 }
 
 function Invoke-DotnetLines([string[]]$Arguments) {
-    $output = & dotnet @Arguments 2>&1
+    # Windows PowerShell 5.1: `2>&1` on a native exe wraps each stderr line as
+    # a NativeCommandError ErrorRecord, which terminates under
+    # $ErrorActionPreference='Stop' even on exit 0 (NuGet writes warnings to
+    # stderr). Demote to Continue across the call so the real exit code - not
+    # incidental stderr - is the success signal.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $output = & dotnet @Arguments 2>&1 } finally { $ErrorActionPreference = $prevEap }
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE.`n$output"
     }
@@ -51,11 +58,14 @@ function Invoke-Step($Report, [string]$Name, [string[]]$Arguments, [string]$Work
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     Push-Location -LiteralPath $WorkingDirectory
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'   # see Invoke-DotnetLines: native stderr is not a failure
     try {
         $output = & dotnet @Arguments 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
+        $ErrorActionPreference = $prevEap
         Pop-Location
         $stopwatch.Stop()
     }
@@ -105,6 +115,7 @@ $report = [ordered]@{
     notes = @(
         "Production project files remain pinned to net8.0.",
         "The lane passes TargetFramework as an MSBuild global property.",
+        "Build serializes MSBuild nodes because a solution-level TargetFramework override can compile duplicate project references into the same obj path.",
         "Commands run from a temp directory so repo global.json does not pin the experimental SDK."
     )
     steps = @()
@@ -135,6 +146,7 @@ try {
         "-c", $Configuration,
         "-p:TargetFramework=$TargetFramework",
         "--no-restore",
+        "-maxcpucount:1",
         "--nologo"
     ) $workDir
 

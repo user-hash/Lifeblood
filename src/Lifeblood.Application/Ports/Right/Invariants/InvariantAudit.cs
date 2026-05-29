@@ -57,6 +57,14 @@ public sealed class InvariantAudit
     /// actually found. Empty when no source could be located.
     /// </summary>
     public string[] SourcePaths { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// Per-source unique invariant counts, aligned to the same source
+    /// discovery set as <see cref="SourcePaths"/>. Used by docs-safe
+    /// evidence receipts so living docs can cite both the aggregate and
+    /// where it came from without reparsing markdown themselves.
+    /// </summary>
+    public InvariantSourceCount[] SourceCounts { get; init; } = System.Array.Empty<InvariantSourceCount>();
 }
 
 /// <summary>
@@ -76,4 +84,13 @@ public sealed class DuplicateInvariantId
 {
     public string Id { get; init; } = "";
     public int[] SourceLines { get; init; } = System.Array.Empty<int>();
+}
+
+/// <summary>
+/// Unique invariant count for one parsed source file.
+/// </summary>
+public sealed class InvariantSourceCount
+{
+    public string SourcePath { get; init; } = "";
+    public int Count { get; init; }
 }
