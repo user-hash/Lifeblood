@@ -87,6 +87,17 @@ public static class ServerIdentity
                 evidenceReceipts = true,
                 strictJsonDuplicateRejection = true,
                 operationalTelemetry = true,
+                operationalTelemetryEvents = new[]
+                {
+                    "lifeblood.tool.success_result",
+                    "lifeblood.tool.error_result",
+                    "lifeblood.tool.exception",
+                    "lifeblood.tool.response_json",
+                    "lifeblood.tool.truncated",
+                    "lifeblood.analyze.result",
+                    "lifeblood.analyze.fallback",
+                    "lifeblood.cache.lookup",
+                },
                 summarizeCapableTools = summarizeCapable,
             },
             contract = new

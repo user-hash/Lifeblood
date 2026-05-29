@@ -73,6 +73,7 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 - `IFileSystem`. Filesystem abstraction for testability.
 - `IUsageProbe`. Creates a fresh `IUsageCapture` per analyze run. Every analyze carries a structured `AnalysisUsage` snapshot with wall time, CPU time, peak memory, and GC counts (`INV-USAGE-001..002`, `INV-USAGE-PORT-001..002`, `INV-USAGE-PROBE-001..002`).
 - `IUsageCapture`. One-shot usage capture scoped to a single analyze run.
+- `ITelemetrySink`. Optional operational telemetry port. The server default is no-op; `DotNetDiagnosticsTelemetrySink` maps `StartOperation` / `RecordEvent` to .NET `ActivitySource` and `Meter` counters when `LIFEBLOOD_TELEMETRY` opts in.
 
 ### Output
 - `IProgressSink`. Receives stderr-style progress events from long-running pipelines (per-module compile, validate, complete).

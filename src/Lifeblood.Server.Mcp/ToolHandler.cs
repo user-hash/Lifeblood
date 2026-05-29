@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
@@ -32,6 +34,8 @@ public sealed class ToolHandler
     private readonly IPortHealthAnalyzer _portHealth;
     private readonly WriteToolHandler _write;
     private readonly ITelemetrySink _telemetry;
+
+    private bool TelemetryEnabled => !ReferenceEquals(_telemetry, NoOpTelemetrySink.Instance);
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -130,6 +134,9 @@ public sealed class ToolHandler
             else
             {
                 operation.SetTag("tool.result", "success");
+                _telemetry.RecordEvent(
+                    "lifeblood.tool.success_result",
+                    new TelemetryTag("tool.name", toolName));
             }
 
             return result;
@@ -137,6 +144,10 @@ public sealed class ToolHandler
         catch (Exception ex)
         {
             operation.SetError(ex);
+            _telemetry.RecordEvent(
+                "lifeblood.tool.exception",
+                new TelemetryTag("tool.name", toolName),
+                new TelemetryTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name));
             return ErrorResult($"Error: {ex.Message}");
         }
     }
@@ -169,6 +180,7 @@ public sealed class ToolHandler
         var defineProfiles = ReadStringArray(args, "defineProfiles");
 
         var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly, allowFullFallback, defineProfiles);
+        RecordAnalyzeTelemetry(result);
         return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
     }
 
@@ -228,6 +240,11 @@ public sealed class ToolHandler
         if (hsTrunc.HasValue) truncated["hotspots"] = new { fullCount = hsTrunc.Value, included = hotspots.Length };
         if (roTrunc.HasValue) truncated["readingOrder"] = new { fullCount = roTrunc.Value, included = readingOrder.Length };
         if (mxTrunc.HasValue) truncated["dependencyMatrix"] = new { fullCount = mxTrunc.Value, included = matrix.Length };
+        RecordTruncationIfAny("lifeblood_context", "highValueFiles", filesTrunc, highValueFiles.Length, summarize, maxFiles);
+        RecordTruncationIfAny("lifeblood_context", "boundaries", bndTrunc, boundaries.Length, summarize, maxBoundaries);
+        RecordTruncationIfAny("lifeblood_context", "hotspots", hsTrunc, hotspots.Length, summarize, maxHotspots);
+        RecordTruncationIfAny("lifeblood_context", "readingOrder", roTrunc, readingOrder.Length, summarize, maxReadingOrder);
+        RecordTruncationIfAny("lifeblood_context", "dependencyMatrix", mxTrunc, matrix.Length, summarize, maxMatrixEntries);
 
         // `sections` allowlist: when set, every section not on the list is
         // dropped to an empty array. Summary, invariants, and violations
@@ -430,6 +447,22 @@ public sealed class ToolHandler
             if (groupPreview < 0) groupPreview = 0;
             var groups = _provider.ClassifyBlastRadius(
                 _session.Graph!, resolved.CanonicalId, maxDepth, groupPreview);
+            if (groupBy == "bucket" || groupBy == "both")
+            {
+                foreach (var kv in groups.ByBucket)
+                {
+                    if (kv.Value.Preview.Length < kv.Value.Count)
+                        RecordTruncation("lifeblood_blast_radius", "bucket", kv.Value.Count, kv.Value.Preview.Length, summarize: false, maxResults: groupPreview);
+                }
+            }
+            if (groupBy == "module" || groupBy == "both")
+            {
+                foreach (var kv in groups.ByModule)
+                {
+                    if (kv.Value.Preview.Length < kv.Value.Count)
+                        RecordTruncation("lifeblood_blast_radius", "module", kv.Value.Count, kv.Value.Preview.Length, summarize: false, maxResults: groupPreview);
+                }
+            }
 
             return TextResult(WithEnvelope("lifeblood_blast_radius", new
             {
@@ -463,6 +496,8 @@ public sealed class ToolHandler
         var affected = _provider.GetBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth);
         var truncated = affected.Length > maxResults;
         var preview = truncated ? affected.Take(maxResults).ToArray() : affected;
+        if (truncated)
+            RecordTruncation("lifeblood_blast_radius", "affected", affected.Length, preview.Length, summarize, maxResults);
 
         if (summarize)
         {
@@ -628,6 +663,8 @@ public sealed class ToolHandler
 
         var truncated = findings.Length > maxResults;
         var preview = truncated ? findings.Take(maxResults).ToArray() : findings;
+        if (truncated)
+            RecordTruncation("lifeblood_dead_code", "findings", findings.Length, preview.Length, summarize, maxResults);
 
         // Per-kind breakdown — small map, always cheap, always emitted.
         // SymbolKind is a Domain enum; serialize as its string name so the
@@ -881,6 +918,10 @@ public sealed class ToolHandler
         var dependedOnByView = dependedOnByTruncated
             ? result.DependedOnBy.Take(maxResults).ToArray()
             : result.DependedOnBy;
+        if (dependsOnTruncated)
+            RecordTruncation("lifeblood_file_impact", "dependsOn", result.DependsOn.Length, dependsOnView.Length, summarize, maxResults);
+        if (dependedOnByTruncated)
+            RecordTruncation("lifeblood_file_impact", "dependedOnBy", result.DependedOnBy.Length, dependedOnByView.Length, summarize, maxResults);
 
         return TextResult(WithEnvelope("lifeblood_file_impact", new
         {
@@ -988,6 +1029,8 @@ public sealed class ToolHandler
         }
 
         var previewDescriptors = truncated ? descriptors.Take(maxResults).ToArray() : descriptors;
+        if (truncated)
+            RecordTruncation("lifeblood_cycles", "cycles", descriptors.Length, previewDescriptors.Length, summarize, maxResults);
         // Project into wire shape AFTER truncation so the legacy
         // `cycles[][]` array view stays available alongside the new
         // `descriptors[]` shape — purely additive, no field removal.
@@ -1127,6 +1170,129 @@ public sealed class ToolHandler
             || prefix.SequenceEqual("ns") || prefix.SequenceEqual("namespace");
     }
 
+    private void RecordAnalyzeTelemetry(string payloadJson)
+    {
+        if (!TelemetryEnabled) return;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return;
+
+            var mode = GetString(root, "mode") ?? "";
+            var requestedMode = GetString(root, "requestedMode") ?? "";
+            var fallbackReason = GetString(root, "fallbackReason") ?? "";
+            var canRetryFull = GetBool(root, "canRetryFull");
+            var changedSourceFiles = GetInt(root, "changedSourceFiles");
+
+            var summary = root.TryGetProperty("summary", out var summaryElement)
+                && summaryElement.ValueKind == JsonValueKind.Object
+                    ? summaryElement
+                    : default;
+            var symbols = summary.ValueKind == JsonValueKind.Object ? GetInt(summary, "symbols") : null;
+            var edges = summary.ValueKind == JsonValueKind.Object ? GetInt(summary, "edges") : null;
+            var modules = summary.ValueKind == JsonValueKind.Object ? GetInt(summary, "modules") : null;
+            var profileCount = summary.ValueKind == JsonValueKind.Object ? GetInt(summary, "profileCount") : null;
+
+            _telemetry.RecordEvent(
+                "lifeblood.analyze.result",
+                new TelemetryTag("tool.name", "lifeblood_analyze"),
+                new TelemetryTag("analyze.mode", mode),
+                new TelemetryTag("analyze.requested_mode", requestedMode),
+                new TelemetryTag("analyze.fallback_reason", fallbackReason),
+                new TelemetryTag("analyze.changed_source_files", changedSourceFiles),
+                new TelemetryTag("graph.symbols", symbols),
+                new TelemetryTag("graph.edges", edges),
+                new TelemetryTag("graph.modules", modules),
+                new TelemetryTag("graph.profile_count", profileCount));
+
+            if (mode == "rejected"
+                || !string.IsNullOrEmpty(fallbackReason)
+                || (!string.IsNullOrEmpty(requestedMode) && !string.Equals(mode, requestedMode, StringComparison.Ordinal)))
+            {
+                _telemetry.RecordEvent(
+                    "lifeblood.analyze.fallback",
+                    new TelemetryTag("tool.name", "lifeblood_analyze"),
+                    new TelemetryTag("analyze.mode", mode),
+                    new TelemetryTag("analyze.requested_mode", requestedMode),
+                    new TelemetryTag("analyze.fallback_reason", fallbackReason),
+                    new TelemetryTag("analyze.can_retry_full", canRetryFull));
+            }
+        }
+        catch
+        {
+            // Analyze can also return plain validation/error text. Telemetry
+            // is advisory; never change the tool result because parsing failed.
+        }
+    }
+
+    private void RecordTruncationIfAny(
+        string toolName,
+        string dimension,
+        int? fullCount,
+        int included,
+        bool summarize,
+        int maxResults)
+    {
+        if (!fullCount.HasValue) return;
+        RecordTruncation(toolName, dimension, fullCount.Value, included, summarize, maxResults);
+    }
+
+    private void RecordTruncation(
+        string toolName,
+        string dimension,
+        int fullCount,
+        int included,
+        bool summarize,
+        int maxResults)
+    {
+        if (!TelemetryEnabled) return;
+
+        _telemetry.RecordEvent(
+            "lifeblood.tool.truncated",
+            new TelemetryTag("tool.name", toolName),
+            new TelemetryTag("truncation.dimension", dimension),
+            new TelemetryTag("truncation.full_count", fullCount),
+            new TelemetryTag("truncation.included_count", included),
+            new TelemetryTag("truncation.max_results", maxResults),
+            new TelemetryTag("truncation.summarize", summarize));
+    }
+
+    private void RecordResponseJson(string toolName, string path, string json, Stopwatch? stopwatch)
+    {
+        if (!TelemetryEnabled || stopwatch == null) return;
+        stopwatch.Stop();
+        _telemetry.RecordEvent(
+            "lifeblood.tool.response_json",
+            new TelemetryTag("tool.name", toolName),
+            new TelemetryTag("json.path", path),
+            new TelemetryTag("json.bytes", Encoding.UTF8.GetByteCount(json)),
+            new TelemetryTag("json.duration_ms", stopwatch.Elapsed.TotalMilliseconds));
+    }
+
+    private static string? GetString(JsonElement obj, string propertyName)
+    {
+        return obj.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+    }
+
+    private static int? GetInt(JsonElement obj, string propertyName)
+    {
+        return obj.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var parsed)
+                ? parsed
+                : null;
+    }
+
+    private static bool? GetBool(JsonElement obj, string propertyName)
+    {
+        return obj.TryGetProperty(propertyName, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : null;
+    }
+
     private static McpToolResult TextResult(string text) => new()
     {
         Content = new[] { new McpContent { Type = "text", Text = text } },
@@ -1193,6 +1359,7 @@ public sealed class ToolHandler
     /// </summary>
     private string WithEnvelope(string toolName, object payload)
     {
+        var stopwatch = TelemetryEnabled ? Stopwatch.StartNew() : null;
         var envelope = _decorator.Decorate(toolName, BuildEnvelopeContext());
         var node = System.Text.Json.JsonSerializer.SerializeToNode(payload, JsonOpts)
             as System.Text.Json.Nodes.JsonObject;
@@ -1200,14 +1367,18 @@ public sealed class ToolHandler
         {
             // Payload wasn't an object (string / array / scalar). Fall back to
             // a thin wrapper so the envelope still ships.
-            return JsonSerializer.Serialize(new
+            var wrapped = JsonSerializer.Serialize(new
             {
                 envelope,
                 result = payload,
             }, JsonOpts);
+            RecordResponseJson(toolName, "withEnvelope.scalar", wrapped, stopwatch);
+            return wrapped;
         }
         node["envelope"] = System.Text.Json.JsonSerializer.SerializeToNode(envelope, JsonOpts);
-        return node.ToJsonString(new System.Text.Json.JsonSerializerOptions(JsonOpts) { WriteIndented = true });
+        var json = node.ToJsonString(new System.Text.Json.JsonSerializerOptions(JsonOpts) { WriteIndented = true });
+        RecordResponseJson(toolName, "withEnvelope.object", json, stopwatch);
+        return json;
     }
 
     /// <summary>
@@ -1218,20 +1389,32 @@ public sealed class ToolHandler
     /// </summary>
     private string MergeEnvelopeIntoJson(string toolName, string payloadJson)
     {
+        var stopwatch = TelemetryEnabled ? Stopwatch.StartNew() : null;
         try
         {
             var node = System.Text.Json.Nodes.JsonNode.Parse(payloadJson)
                 as System.Text.Json.Nodes.JsonObject;
-            if (node == null) return payloadJson;
-            if (node.ContainsKey("envelope")) return payloadJson;
+            if (node == null)
+            {
+                RecordResponseJson(toolName, "mergeEnvelope.nonObject", payloadJson, stopwatch);
+                return payloadJson;
+            }
+            if (node.ContainsKey("envelope"))
+            {
+                RecordResponseJson(toolName, "mergeEnvelope.alreadyPresent", payloadJson, stopwatch);
+                return payloadJson;
+            }
             var envelope = _decorator.Decorate(toolName, BuildEnvelopeContext());
             node["envelope"] = System.Text.Json.JsonSerializer.SerializeToNode(envelope, JsonOpts);
-            return node.ToJsonString(new System.Text.Json.JsonSerializerOptions(JsonOpts) { WriteIndented = true });
+            var json = node.ToJsonString(new System.Text.Json.JsonSerializerOptions(JsonOpts) { WriteIndented = true });
+            RecordResponseJson(toolName, "mergeEnvelope.injected", json, stopwatch);
+            return json;
         }
         catch
         {
             // Best-effort merge; never fail a tool call because envelope
             // injection ran into an unparseable payload.
+            RecordResponseJson(toolName, "mergeEnvelope.parseFailed", payloadJson, stopwatch);
             return payloadJson;
         }
     }

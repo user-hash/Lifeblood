@@ -126,6 +126,14 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal(31, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
         Assert.Equal(13, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
+        var telemetryEvents = doc.RootElement
+            .GetProperty("featureFlags")
+            .GetProperty("operationalTelemetryEvents")
+            .EnumerateArray()
+            .Select(e => e.GetString())
+            .ToArray();
+        Assert.Contains("lifeblood.tool.truncated", telemetryEvents);
+        Assert.Contains("lifeblood.analyze.fallback", telemetryEvents);
         Assert.Contains("schemas", doc.RootElement.GetProperty("contract").GetProperty("schemaSnapshotPath").GetString());
         Assert.Contains("STATUS.md", doc.RootElement.GetProperty("contract").GetProperty("statusDocAnchorPath").GetString());
         Assert.False(doc.RootElement.GetProperty("session").GetProperty("hasGraphLoaded").GetBoolean());

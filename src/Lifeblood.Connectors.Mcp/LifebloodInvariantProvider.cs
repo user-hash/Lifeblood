@@ -88,10 +88,10 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
     private readonly IFileSystem _fs;
     private readonly InvariantParseCache<ClaudeMdParseResult> _cache;
 
-    public LifebloodInvariantProvider(IFileSystem fs)
+    public LifebloodInvariantProvider(IFileSystem fs, ITelemetrySink? telemetry = null)
     {
         _fs = fs ?? throw new System.ArgumentNullException(nameof(fs));
-        _cache = new InvariantParseCache<ClaudeMdParseResult>(fs);
+        _cache = new InvariantParseCache<ClaudeMdParseResult>(fs, telemetry);
     }
 
     public Invariant[] GetAll(string projectRoot)

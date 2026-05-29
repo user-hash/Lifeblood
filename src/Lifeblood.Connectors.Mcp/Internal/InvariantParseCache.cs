@@ -53,12 +53,14 @@ namespace Lifeblood.Connectors.Mcp.Internal;
 internal sealed class InvariantParseCache<T> where T : class
 {
     private readonly IFileSystem _fs;
+    private readonly ITelemetrySink _telemetry;
     private readonly object _lock = new();
     private readonly Dictionary<string, Entry> _cache = new(StringComparer.OrdinalIgnoreCase);
 
-    public InvariantParseCache(IFileSystem fs)
+    public InvariantParseCache(IFileSystem fs, ITelemetrySink? telemetry = null)
     {
         _fs = fs ?? throw new System.ArgumentNullException(nameof(fs));
+        _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
     }
 
     /// <summary>
@@ -94,6 +96,7 @@ internal sealed class InvariantParseCache<T> where T : class
     {
         if (string.IsNullOrEmpty(sourcePath))
         {
+            RecordCacheLookup("emptyPath");
             return new Entry("", 0, emptyResult);
         }
 
@@ -117,16 +120,28 @@ internal sealed class InvariantParseCache<T> where T : class
 
         lock (_lock)
         {
-            if (_cache.TryGetValue(sourcePath, out var cached)
-                && cached.Timestamp == currentTimestamp
-                && currentTimestamp != 0)
+            if (_cache.TryGetValue(sourcePath, out var cached))
             {
-                return cached;
+                if (cached.Timestamp == currentTimestamp && currentTimestamp != 0)
+                {
+                    RecordCacheLookup("hit");
+                    return cached;
+                }
+
+                if (exists)
+                {
+                    RecordCacheLookup("stale");
+                }
+            }
+            else if (exists)
+            {
+                RecordCacheLookup("miss");
             }
         }
 
         if (!exists)
         {
+            RecordCacheLookup("missing");
             var missingEntry = new Entry(sourcePath, 0, emptyResult);
             lock (_lock) { _cache[sourcePath] = missingEntry; }
             return missingEntry;
@@ -145,12 +160,21 @@ internal sealed class InvariantParseCache<T> where T : class
             // retries against the (possibly-fixed) filesystem state.
             // The cache is NOT poisoned — we don't record this as the
             // entry for sourcePath.
+            RecordCacheLookup("error");
             return new Entry(sourcePath, 0, emptyResult);
         }
 
         var freshEntry = new Entry(sourcePath, currentTimestamp, result);
         lock (_lock) { _cache[sourcePath] = freshEntry; }
         return freshEntry;
+    }
+
+    private void RecordCacheLookup(string result)
+    {
+        _telemetry.RecordEvent(
+            "lifeblood.cache.lookup",
+            new TelemetryTag("cache.name", "invariant_parse"),
+            new TelemetryTag("cache.result", result));
     }
 
     /// <summary>
