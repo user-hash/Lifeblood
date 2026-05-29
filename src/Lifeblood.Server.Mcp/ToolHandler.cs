@@ -820,6 +820,8 @@ public sealed class ToolHandler
                 mode = "audit",
                 audit.SourcePath,
                 audit.TotalCount,
+                audit.DeclaredCount,
+                audit.DuplicateDeclarationCount,
                 audit.CategoryCounts,
                 audit.Duplicates,
                 audit.ParseWarnings,

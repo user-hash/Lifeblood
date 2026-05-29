@@ -186,6 +186,8 @@ public static class ServerIdentity
                 mode = "audit",
             },
             invariantTotal = audit.TotalCount,
+            declaredCount = audit.DeclaredCount,
+            duplicateDeclarationCount = audit.DuplicateDeclarationCount,
             sourcePaths = audit.SourcePaths,
             sourceCounts = audit.SourceCounts,
             duplicateIds = audit.Duplicates.Select(d => d.Id).ToArray(),

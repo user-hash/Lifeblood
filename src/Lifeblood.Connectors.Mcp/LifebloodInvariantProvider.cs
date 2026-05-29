@@ -132,12 +132,19 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
 
         var duplicates = aggregated.Duplicates
             .OrderBy(kv => kv.Key, System.StringComparer.Ordinal)
-            .Select(kv => new DuplicateInvariantId { Id = kv.Key, SourceLines = kv.Value })
+            .Select(kv => new DuplicateInvariantId
+            {
+                Id = kv.Key,
+                Occurrences = kv.Value,
+                SourceLines = kv.Value.Select(o => o.Line).ToArray(),
+            })
             .ToArray();
 
         return new InvariantAudit
         {
             TotalCount = invariants.Length,
+            DeclaredCount = aggregated.DeclaredCount,
+            DuplicateDeclarationCount = aggregated.DeclaredCount - invariants.Length,
             CategoryCounts = categoryCounts,
             Duplicates = duplicates,
             ParseWarnings = aggregated.Warnings,
@@ -164,50 +171,78 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
         var allInvariants = new List<Invariant>();
         var allWarnings = new List<string>();
         var sourceCounts = new List<InvariantSourceCount>(sources.Length);
-        var allDuplicateLines = new Dictionary<string, List<int>>(System.StringComparer.Ordinal);
+        // Occurrences are keyed by id and accumulated across EVERY source,
+        // so a duplicate is "id with more than one declaration site" whether
+        // the sites are in one file (within-file repeat) or several
+        // (cross-file mirror). The prior per-file-only path silently dropped
+        // cross-file repeats, leaving the audit math unreconcilable.
+        var occurrencesById = new Dictionary<string, List<InvariantOccurrence>>(System.StringComparer.Ordinal);
         var seenIds = new HashSet<string>(System.StringComparer.Ordinal);
 
         foreach (var sourcePath in sources)
         {
             var entry = _cache.GetOrLoad(sourcePath, ClaudeMdInvariantParser.Parse, EmptyParseResult);
-            sourceCounts.Add(new InvariantSourceCount
-            {
-                SourcePath = sourcePath,
-                Count = entry.Result.Invariants.Length,
-            });
+            // Per-source count is declaration SITES, not distinct ids: a
+            // within-file repeat is a real second `- **INV-X**:` line and
+            // counts as a declaration. This keeps the audit math exact —
+            // declaredCount (= sum of these) minus totalCount (unique ids)
+            // equals the redundant-declaration count, with every redundant
+            // site attributed in Duplicates[].Occurrences.
+            var declarationSitesInFile = 0;
             foreach (var inv in entry.Result.Invariants)
             {
                 if (seenIds.Add(inv.Id))
                     allInvariants.Add(inv);
+
+                if (!occurrencesById.TryGetValue(inv.Id, out var sites))
+                {
+                    sites = new List<InvariantOccurrence>(1);
+                    occurrencesById[inv.Id] = sites;
+                }
+                // The parser collapses within-file repeats to a single
+                // Invariant but records every line in Duplicates[id]. Emit
+                // one occurrence per recorded line so within-file drift stays
+                // attributed; otherwise the invariant has a single site.
+                if (entry.Result.Duplicates.TryGetValue(inv.Id, out var withinFileLines))
+                {
+                    foreach (var line in withinFileLines)
+                        sites.Add(new InvariantOccurrence { SourcePath = sourcePath, Line = line, Title = inv.Title });
+                    declarationSitesInFile += withinFileLines.Length;
+                }
+                else
+                {
+                    sites.Add(new InvariantOccurrence { SourcePath = sourcePath, Line = inv.SourceLine, Title = inv.Title });
+                    declarationSitesInFile += 1;
+                }
             }
+            sourceCounts.Add(new InvariantSourceCount
+            {
+                SourcePath = sourcePath,
+                Count = declarationSitesInFile,
+            });
             foreach (var w in entry.Result.Warnings)
             {
                 allWarnings.Add($"{sourcePath}: {w}");
             }
-            foreach (var kv in entry.Result.Duplicates)
-            {
-                if (!allDuplicateLines.TryGetValue(kv.Key, out var list))
-                {
-                    list = new List<int>();
-                    allDuplicateLines[kv.Key] = list;
-                }
-                list.AddRange(kv.Value);
-            }
         }
 
-        var duplicates = new Dictionary<string, int[]>(System.StringComparer.Ordinal);
-        foreach (var kv in allDuplicateLines)
+        var duplicates = new Dictionary<string, InvariantOccurrence[]>(System.StringComparer.Ordinal);
+        foreach (var kv in occurrencesById)
         {
             if (kv.Value.Count > 1)
                 duplicates[kv.Key] = kv.Value.ToArray();
         }
+
+        var declaredCount = 0;
+        foreach (var sc in sourceCounts) declaredCount += sc.Count;
 
         return new AggregatedParseResult(
             allInvariants.ToArray(),
             allWarnings.ToArray(),
             duplicates,
             sources,
-            sourceCounts.ToArray());
+            sourceCounts.ToArray(),
+            declaredCount);
     }
 
     /// <summary>
@@ -246,28 +281,32 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
         public static readonly AggregatedParseResult Empty = new(
             System.Array.Empty<Invariant>(),
             System.Array.Empty<string>(),
-            new Dictionary<string, int[]>(System.StringComparer.Ordinal),
+            new Dictionary<string, InvariantOccurrence[]>(System.StringComparer.Ordinal),
             System.Array.Empty<string>(),
-            System.Array.Empty<InvariantSourceCount>());
+            System.Array.Empty<InvariantSourceCount>(),
+            declaredCount: 0);
 
         public Invariant[] Invariants { get; }
         public string[] Warnings { get; }
-        public Dictionary<string, int[]> Duplicates { get; }
+        public Dictionary<string, InvariantOccurrence[]> Duplicates { get; }
         public string[] SourcePaths { get; }
         public InvariantSourceCount[] SourceCounts { get; }
+        public int DeclaredCount { get; }
 
         public AggregatedParseResult(
             Invariant[] invariants,
             string[] warnings,
-            Dictionary<string, int[]> duplicates,
+            Dictionary<string, InvariantOccurrence[]> duplicates,
             string[] sourcePaths,
-            InvariantSourceCount[] sourceCounts)
+            InvariantSourceCount[] sourceCounts,
+            int declaredCount)
         {
             Invariants = invariants;
             Warnings = warnings;
             Duplicates = duplicates;
             SourcePaths = sourcePaths;
             SourceCounts = sourceCounts;
+            DeclaredCount = declaredCount;
         }
     }
 }
