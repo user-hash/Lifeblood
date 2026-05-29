@@ -9,13 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `lifeblood_capabilities` read-side MCP tool reports the live server version, version source, optional git commit / dirty state, tool count with read/write split, feature flags, schema snapshot path, STATUS.md anchor path, and current session state.
-- Docs-safe `evidenceReceipt` blocks on `lifeblood_analyze` and `lifeblood_invariant_check` audit responses separate durable citation facts from session-local envelope freshness fields.
-- Opt-in operational telemetry events now cover tool success/error results, response JSON serialization cost, analyze result/fallback shape, result truncation, and invariant-parse cache hit/miss/stale/error outcomes.
+- `lifeblood_capabilities` read-side MCP tool (tool 31, read-side 18) reports the live server version + version source, optional git commit / dirty state when running from a repo checkout, tool count with read/write split, feature flags (including the active operational-telemetry event names and `summarizeCapableTools`), `schemas/tools/v1` snapshot path, `STATUS.md` anchor path, and current session state. Call it at session start to detect local-server / local-doc drift before relying on stale prose.
+- Docs-safe `evidenceReceipt` blocks on `lifeblood_analyze` and `lifeblood_invariant_check` audit responses. Each receipt separates durable citation facts (server identity, source-control state, query recipe, counts) from session-local envelope freshness via an explicit `doNotCite[]` list, and `invariant_check` adds per-source invariant counts (`SourceCounts[]`).
+- Opt-in operational telemetry (`LIFEBLOOD_TELEMETRY`) via the `ITelemetrySink` port. Events: `lifeblood.tool.success_result` / `error_result` / `exception` / `response_json` / `truncated`, `lifeblood.analyze.result` / `fallback`, and `lifeblood.cache.lookup` (`hit` / `miss` / `stale` / `missing` / `error`). The default sink is no-op; the `DotNetDiagnosticsTelemetrySink` maps to .NET `ActivitySource` / `Meter` only when opted in.
 
 ### Fixed
 
-- `tools/dotnet-lanes/run-lifeblood-experimental-target.ps1` demotes native `dotnet` stderr handling under Windows PowerShell 5.1 so successful commands that write warnings to stderr are governed by exit code rather than `NativeCommandError` wrapping, and serializes the experimental build step to avoid duplicate project-reference writes under a solution-level `TargetFramework` override.
+- `tools/dotnet-lanes/run-lifeblood-experimental-target.ps1` demotes native `dotnet` stderr handling under Windows PowerShell 5.1 so successful commands that write warnings to stderr are governed by exit code rather than `NativeCommandError` wrapping, and serializes the experimental build step (`-maxcpucount:1`) to avoid duplicate project-reference writes under a solution-level `TargetFramework` override.
+
+### Documentation
+
+- Brought the public doc surface to 1:1 with code for release prep: tool count corrected to 31 across `README.md`, `docs/MCP_SETUP.md`, `docs/TOOLS.md` (added the missing `lifeblood_assignment_coverage` row + the `Capabilities` / `Assignment Coverage` entries in the README tool table); documented the four server environment variables (`LIFEBLOOD_TELEMETRY`, `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` default `3600`, `LIFEBLOOD_FILES_CHANGED_THRESHOLD` default `10`, `LIFEBLOOD_STRICT_JSON`) in `docs/MCP_SETUP.md`; completed the `docs/ARCHITECTURE.md` port-interface list (now all 30, adding `IDefineProfileResolver`, `ITelemetryOperation`, `IPortHealthAnalyzer`); and removed a drifted read-side tool count from `INV-PORT-HEALTH-ANALYZER-SEAM-001`.
 
 ## [0.7.9] - 2026-05-24
 

@@ -90,8 +90,8 @@ Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface*
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Resolve Member, Search, Dead Code, Partial View, Invariant Check, Authority Report, Port Health, Cycles, Test Impact |
-| **Write** | Execute, Diagnose, Compile-check, Enum Coverage, Static Tables, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
+| **Read** | Analyze, Capabilities, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Resolve Member, Search, Dead Code, Partial View, Invariant Check, Authority Report, Port Health, Cycles, Test Impact |
+| **Write** | Execute, Diagnose, Compile-check, Enum Coverage, Static Tables, Assignment Coverage, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 

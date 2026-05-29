@@ -70,6 +70,21 @@ If `lifeblood-mcp` is not found, check that `~/.dotnet/tools` (or the platform e
 
 ---
 
+## Configuration (environment variables)
+
+The server reads four optional environment variables at startup. All have safe defaults; set them per deployment without a code change. They are honored by both the standalone CLI and the Unity bridge child process.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `LIFEBLOOD_TELEMETRY` | off | Opt-in operational telemetry. Set to `1`, `true`, `yes`, `on`, or `diagnostics` to emit .NET `ActivitySource` / `Meter` events (tool success/error, response-JSON cost, analyze result/fallback, result truncation, invariant-parse cache outcomes). Any other value (or unset) uses the no-op sink. |
+| `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` | `3600` | Wall-clock age (seconds) past which a read-side response adds a staleness limitation to its truth envelope. |
+| `LIFEBLOOD_FILES_CHANGED_THRESHOLD` | `10` | File-churn count since the last analyze past which a read-side response adds a files-changed limitation to its truth envelope. |
+| `LIFEBLOOD_STRICT_JSON` | off | When set truthy, the MCP request parser rejects requests containing duplicate JSON properties (`INV-MCP-STRICT-JSON-001`). Off by default for client compatibility. |
+
+Malformed numeric values fall through to the default (`StalenessPolicy.Default`); they never throw. The live capability surface — including which feature flags and telemetry events are active in the running server — is reported by the `lifeblood_capabilities` tool.
+
+---
+
 ## Claude Code
 
 Add to `.mcp.json` in your project root (or `~/.claude/.mcp.json` for global). The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form. Copy it to `.mcp.json` and you are done:
@@ -290,7 +305,7 @@ Assets/Editor/LifebloodBridge.meta
 
 The bridge files belong in the Lifeblood repo. They should not be committed to the consuming Unity project's git history.
 
-**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. All 25 Lifeblood tools appear in Coplay's tool list alongside the built-in Unity tools.
+**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. All 31 Lifeblood tools appear in Coplay's tool list alongside the built-in Unity tools.
 
 **Step 5. Connect any MCP client to Coplay MCP for Unity** following Coplay's own setup guide. From the client's perspective, Lifeblood tools (`lifeblood_analyze`, `lifeblood_lookup`, `lifeblood_blast_radius`, and so on) appear next to Coplay's tools (`unity_manage_scene`, `unity_find_gameobjects`, and so on) on a single MCP connection.
 

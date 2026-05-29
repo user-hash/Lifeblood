@@ -82,12 +82,14 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 - `IWorkspaceRefactoring`. Rename (returns edits, does NOT apply), and format.
 - `IGraphImporter`. Reads a stream into a `SemanticGraph` via the JSON protocol.
 - `IGraphExporter`. Writes a `SemanticGraph` to a stream.
+- `IDefineProfileResolver`. Resolves the set of `DefineProfile` build configurations for a project root (e.g. Editor + Player for Unity). Drives multi-define union analyze so per-edge `Edge.Profiles[]` provenance survives the union dedup (`INV-MULTI-DEFINE-WRITESIDE-001`, multi-define union plan). Reference adapter: `UnityDefineProfileResolver`.
 
 ### Infrastructure
 - `IFileSystem`. Filesystem abstraction for testability.
 - `IUsageProbe`. Creates a fresh `IUsageCapture` per analyze run. Every analyze carries a structured `AnalysisUsage` snapshot with wall time, CPU time, peak memory, and GC counts (`INV-USAGE-001..002`, `INV-USAGE-PORT-001..002`, `INV-USAGE-PROBE-001..002`).
 - `IUsageCapture`. One-shot usage capture scoped to a single analyze run.
-- `ITelemetrySink`. Optional operational telemetry port. The server default is no-op; `DotNetDiagnosticsTelemetrySink` maps `StartOperation` / `RecordEvent` to .NET `ActivitySource` and `Meter` counters when `LIFEBLOOD_TELEMETRY` opts in.
+- `ITelemetrySink`. Optional operational telemetry port. The server default is no-op; `DotNetDiagnosticsTelemetrySink` maps `StartOperation` / `RecordEvent` to .NET `ActivitySource` and `Meter` counters when `LIFEBLOOD_TELEMETRY` opts in (`INV-TELEMETRY-001`).
+- `ITelemetryOperation`. The `IDisposable` scope returned by `ITelemetrySink.StartOperation`. Carries `SetTag` / `SetError`; dispose records the operation's duration + success/error status. Neutral primitive-tag surface only — no `Activity` / `Meter` types leak across the port.
 
 ### Output
 - `IProgressSink`. Receives stderr-style progress events from long-running pipelines (per-module compile, validate, complete).
@@ -107,6 +109,7 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 - `IDeadCodeAnalyzer`. Finds symbols with no incoming semantic references. Optional `IUnityReachabilityProvider` injection downgrades MonoBehaviour magic methods + Unity entrypoint attributes from 'flagged' to 'live by runtime dispatch' (`INV-UNITY-001`). See `INV-DEADCODE-001`.
 - `IUnityReachabilityProvider`. Returns true when a symbol is reachable through Unity runtime dispatch (entrypoint attribute or MonoBehaviour magic method on a Unity-message-receiver-derived type). Walks the inheritance chain via `Properties["baseType"]` so external bases (UnityEngine.dll) still resolve.
 - `IAuthorityReporter`. Single graph walk produces an `AuthorityReport`: implementedInterfaceCount, ownedPublicSurface, per-interface usage (member count + consumer count), forwarderRatio (`INV-AUTHORITY-001`).
+- `IPortHealthAnalyzer`. Classifies a single interface's health from the graph — member walk + liveness rule (incoming non-`Contains` edge OR outgoing `Implements`) into verdict bands (`empty` / `healthy` ≥0.75 / `mixed` ≥0.25 / `vestigial`). `lifeblood_port_health` runs entirely behind this port; the algorithm body does not live in `ToolHandler` (`INV-PORT-HEALTH-ANALYZER-SEAM-001`).
 - `IPartialViewBuilder`. Combines every partial declaration of a type into one view with file headers.
 - `Invariants.IInvariantProvider`. Walks well-known repo conventions dynamically — `<root>/CLAUDE.md`, `<root>/AGENTS.md`, and any `<root>/docs/invariants/**.md` tree — via `IFileSystem`, parses each through `ClaudeMdInvariantParser` (five authoring shapes A/B/C/D/E), aggregates results across all sources with per-id duplicate detection, and caches per-file in `InvariantParseCache<T>`. Three methods: `GetAll`, `GetById`, `Audit` (the audit reports every contributing source path on `SourcePaths[]`). The conventions live in the adapter (`LifebloodInvariantProvider`), NOT the port — a repo with a different layout supplies its own provider, reusing the parser + cache without touching Application (`INV-INVARIANT-001`).
 
