@@ -41,10 +41,11 @@ public sealed class ToolHandler
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
-        // INV-ENVELOPE-001: human-readable enum names in every read-side
+        // INV-ENVELOPE-001: human-readable enum names in every tool
         // response so envelope.truthTier / envelope.confidence ship as
-        // "Semantic" / "Proven" instead of integer ordinals. Applies to
-        // every tool's payload, not just the envelope.
+        // "Semantic" / "Proven" instead of integer ordinals. Shared by
+        // read-side payloads and write-side WrapWriteSide alike — applies
+        // to every tool's payload, not just the envelope.
         Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
     };
 
