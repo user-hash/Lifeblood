@@ -50,6 +50,45 @@ public class McpJsonRequestParserTests
         Assert.Contains("Duplicate JSON property 'name'", ex.Message);
     }
 
+    [Fact]
+    public void DeserializeRequest_StrictMode_RejectsUnknownEnvelopeProperty()
+    {
+        var ex = Assert.Throws<JsonException>(() =>
+            McpJsonRequestParser.DeserializeRequest(
+                """{"jsonrpc":"2.0","id":1,"method":"tools/list","bogusField":true}""",
+                JsonOpts,
+                strictJson: true));
+
+        Assert.Contains("bogusField", ex.Message);
+    }
+
+    [Fact]
+    public void DeserializeRequest_DefaultMode_IgnoresUnknownEnvelopePropertyForBackCompat()
+    {
+        var request = McpJsonRequestParser.DeserializeRequest(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/list","bogusField":true}""",
+            JsonOpts,
+            strictJson: false);
+
+        Assert.NotNull(request);
+        Assert.Equal("tools/list", request!.Method);
+    }
+
+    [Fact]
+    public void DeserializeRequest_StrictMode_AllowsUnknownPropertyInsideParams()
+    {
+        // params is bound to JsonElement (opaque tool-arg blob) — unknown
+        // members there are validated per-tool by the handler, NOT rejected
+        // at the envelope layer. Strict mode guards the envelope only.
+        var request = McpJsonRequestParser.DeserializeRequest(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lifeblood_analyze","unmappedArg":42}}""",
+            JsonOpts,
+            strictJson: true);
+
+        Assert.NotNull(request);
+        Assert.Equal("tools/call", request!.Method);
+    }
+
     [Theory]
     [InlineData("1", true)]
     [InlineData("true", true)]
