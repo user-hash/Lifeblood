@@ -7,6 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.10] - 2026-05-29
+
 ### Added
 
 - `lifeblood_capabilities` read-side MCP tool (tool 31, read-side 18) reports the live server version + version source, optional git commit / dirty state when running from a repo checkout, tool count with read/write split, feature flags (including the active operational-telemetry event names and `summarizeCapableTools`), `schemas/tools/v1` snapshot path, `STATUS.md` anchor path, and current session state. Call it at session start to detect local-server / local-doc drift before relying on stale prose.
@@ -1335,7 +1337,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.10...HEAD
+[0.7.10]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...v0.7.10
 [0.7.9]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...v0.7.9
 [0.7.8]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...v0.7.8
 [0.7.7]: https://github.com/user-hash/Lifeblood/compare/v0.7.6...v0.7.7
