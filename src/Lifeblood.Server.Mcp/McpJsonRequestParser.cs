@@ -1,5 +1,7 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -8,21 +10,39 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class McpJsonRequestParser
 {
+    // Strict-mode derived options are cached per source-options instance so
+    // System.Text.Json metadata caching is preserved across requests (the
+    // stdio loop passes one stable options instance for the process lifetime).
+    private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> StrictOptionsCache = new();
+
     /// <summary>
     /// Parse a JSON-RPC request. When strict mode is enabled, duplicate
-    /// property names are rejected before normal System.Text.Json binding.
+    /// property names AND unknown envelope properties are rejected before
+    /// normal System.Text.Json binding. Unknown properties inside
+    /// <c>params</c> stay opaque (bound to <see cref="JsonElement"/>) and are
+    /// validated per-tool by the handler — see ToolHandler missing-required
+    /// arms.
     /// </summary>
     public static JsonRpcRequest? DeserializeRequest(
         string json,
         JsonSerializerOptions options,
         bool strictJson)
     {
-        if (strictJson)
+        if (!strictJson)
         {
-            ThrowIfDuplicateProperties(json);
+            return JsonSerializer.Deserialize<JsonRpcRequest>(json, options);
         }
 
-        return JsonSerializer.Deserialize<JsonRpcRequest>(json, options);
+        ThrowIfDuplicateProperties(json);
+
+        var strictOptions = StrictOptionsCache.GetValue(
+            options,
+            static src => new JsonSerializerOptions(src)
+            {
+                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            });
+
+        return JsonSerializer.Deserialize<JsonRpcRequest>(json, strictOptions);
     }
 
     public static bool ReadStrictJsonFlag(string environmentVariableName)
