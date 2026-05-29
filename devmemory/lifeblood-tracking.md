@@ -46,9 +46,9 @@ Fix shape:
 
 ## Current Snapshot
 
-Latest shipped Lifeblood tag: **`v0.7.9`** (`git describe --tags HEAD`). At
-this snapshot `main` is exactly the `v0.7.9` release tag; `[Unreleased]` is the
-next-version intake area.
+Latest released Lifeblood tag: **`v0.7.9`**. `main` is now post-release; the
+`[Unreleased]` changelog section is the next-version intake area and is the
+canonical place for post-`v0.7.9` release notes until a release cut is made.
 
 Current verification anchors live in [`docs/STATUS.md`](../docs/STATUS.md) —
 self-analyze symbols / edges / modules / types, test discovery count,
@@ -128,12 +128,20 @@ must not be unversioned.
 
 ## 2026-05-24 - Lifeblood v0.7.9 - DAWG reconnect/post-update notes
 
-Status: Candidate
+Status: Shipped (in-tree, untagged) - Lifeblood endpoint closed; DAWG workflow
+note remains downstream guidance, not a Lifeblood release gate.
 Type: UX
 Source: DAWG post-update reconnect during ABG top-down comment pass
 Workspace: DAWG
 Verification: Lifeblood tag `v0.7.9` at commit `3531d37`; DAWG dogfood probes
-from the ABG pass and v0.7.9 changelog `[0.7.9] - 2026-05-24`.
+from the ABG pass and v0.7.9 changelog `[0.7.9] - 2026-05-24`. Lifeblood-side
+capability drift fix shipped in `b6d13c7` (`feat(mcp): expose capabilities and
+docs evidence`): `lifeblood_capabilities` reports server version/source,
+optional git commit/dirty state, tool count with read/write split, feature
+flags, schema snapshot path, STATUS.md anchor path, operational telemetry event
+names, and session state. Pinned by
+`ToolHandlerTests.Handle_Capabilities_WithoutLoad_ReturnsVersionToolCountsAndContractPaths`
+and advertised in `schemas/tools/v1/lifeblood_capabilities.schema.json`.
 
 Summary:
 - No new correctness blocker surfaced after the v0.7.9 dist swap. The DAWG ABG
@@ -170,9 +178,20 @@ Fix shape:
   source-text ratchets are fallback only when the contract itself is source
   text.
 
+Non-blocking follow-ups found during 2026-05-29 review:
+- `ServerIdentity.RunGit` waits for process exit before reading redirected
+  stdout/stderr. A very dirty repo can fill the `git status --porcelain` pipe,
+  force the 1500ms timeout, and degrade `dirty`/`state` to unknown. This is
+  graceful, not a release blocker. Bulletproof shape: async output/error reads
+  or drain-before-wait discipline.
+- `featureFlags.summarizeCapableTools` is discovered by serializing anonymous
+  input schemas and searching for a `"summarize"` property token. It is
+  advisory capability prose, not behavior, but a future typed capability flag or
+  schema-walker would be less fragile.
+
 ## 2026-05-28 - Lifeblood v0.7.9-1-g4a7a63a - Durable documentation receipts for living-doc baselines
 
-Status: Candidate
+Status: Shipped (in-tree, untagged)
 Type: UX
 Source: DAWG LDF eternal living-doc refresh, top-down architecture/doc pass
 Workspace: DAWG
@@ -182,6 +201,14 @@ Verification: Lifeblood DAWG MCP session returned
 audit returned `102` parsed entries, no duplicates, no parse warnings. DAWG
 follow-through commits: `742e4e245 docs(invariants): align audit baseline`
 and `ed2df3dc6 docs(invariants): remove brittle lifeblood generations`.
+Lifeblood-side receipt fix shipped in `b6d13c7` (`feat(mcp): expose
+capabilities and docs evidence`): `lifeblood_analyze` and
+`lifeblood_invariant_check` audit responses now include docs-safe
+`evidenceReceipt` blocks, source-local invariant counts, durable query recipes,
+and explicit `doNotCite` lists for volatile envelope freshness fields. Pinned by
+`ToolHandlerTests.Handle_Analyze_Response_IncludesDocsSafeEvidenceReceipt`,
+`InvariantProviderAndHandlerTests.Provider_Audit_ReportsPerSourceCounts`, and
+the invariant-check handler receipt assertions.
 
 Summary:
 - Lifeblood was semantically correct enough to drive the DAWG LDF refresh, but
@@ -321,9 +348,15 @@ Workspace: Lifeblood self
 Verification: local inspection: `ProcessUsageProbe` and `AnalysisUsage` already
 provide analyze receipts; baseline shipped in `5cff398` with `ITelemetrySink`,
 no-op default, `DotNetDiagnosticsTelemetrySink`, and `ToolHandler` tool-call
-operation telemetry. Remaining open work: deeper analyze/phase spans, JSON
-parse/serialize timing, cache/fallback/truncation counters, and allocation
-measurements.
+operation telemetry. The release-prep atom for fallback/truncation/cache/JSON
+dispatch telemetry shipped in `9e4ce90` (`feat(telemetry): record operational
+tool events`): events now cover `lifeblood.tool.success_result`,
+`lifeblood.tool.error_result`, `lifeblood.tool.response_json`,
+`lifeblood.tool.truncated`, `lifeblood.analyze.result`,
+`lifeblood.analyze.fallback`, and `lifeblood.cache.lookup`. Pinned by
+`ToolHandlerTelemetryTests` and surfaced by `lifeblood_capabilities`
+`featureFlags.operationalTelemetryEvents`. Remaining open work: deeper
+analyze/phase spans and allocation measurements.
 
 Summary:
 - Lifeblood has good user-facing analyze receipts, but not a general operational
@@ -345,12 +378,22 @@ Fix shape:
 - Instrument analyze wall time, per-phase timing, tool latency, success/error
   counts, fallback mode, graph size, profile count, GC deltas, JSON parse/dispatch
   cost, and truncation events.
+- 2026-05-29 closure note: the top-level tool/analyze/cache/truncation atom is
+  closed; phase-boundary spans and allocation deltas are still intentionally
+  open so the next pass does not overclaim per-phase coverage from handler-level
+  events.
 - Add phase-level telemetry at the actual phase boundaries; do not claim
   per-phase coverage from the top-level tool seam alone.
 - Keep `AnalysisUsage` as the user-facing receipt; telemetry is operational
   signal, not a replacement for response evidence.
 - Add sink tests proving every MCP tool emits start/stop/error events without
   requiring external OpenTelemetry infrastructure.
+
+Non-blocking follow-up found during 2026-05-29 review:
+- `InvariantParseCache<T>` records `hit` / `stale` / `miss` cache telemetry
+  while holding its private cache lock. The default sink is no-op and the
+  diagnostics sink is fast, so this is not a blocker. Cleaner shape: compute the
+  lookup outcome under lock, then emit telemetry after releasing the lock.
 
 ## 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 
@@ -407,6 +450,11 @@ Workspace: Lifeblood self
 Verification: baseline lane shipped in
 `tools/dotnet-lanes/run-lifeblood-experimental-target.ps1`; local smoke run on
 2026-05-28 skipped honestly because only the .NET 8 SDK is installed locally.
+2026-05-29 release-prep fix shipped in `b6d13c7`: native `dotnet` stderr is
+demoted under Windows PowerShell 5.1 so successful commands are governed by exit
+code instead of `NativeCommandError` wrapping, and the build step serializes
+MSBuild nodes with `-maxcpucount:1` under solution-level `TargetFramework`
+overrides. Validated locally with the net8 lane and the net10 skip path.
 
 Summary:
 - The production solution remains pinned to `net8.0`; the experimental lane is
