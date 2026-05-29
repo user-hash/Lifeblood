@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Right;
@@ -132,6 +133,53 @@ public class InvariantProviderAndHandlerTests : IDisposable
         var dup = Assert.Single(audit.Duplicates);
         Assert.Equal("INV-FOO-001", dup.Id);
         Assert.Equal(2, dup.SourceLines.Length);
+        // Occurrences attribute both within-file sites to CLAUDE.md.
+        Assert.Equal(2, dup.Occurrences.Length);
+        Assert.All(dup.Occurrences, o => Assert.EndsWith("CLAUDE.md", o.SourcePath));
+        // Declaration-site math: 4 sites (FOO-001 twice + FOO-002 + BAR-001),
+        // 3 unique ids, 1 redundant declaration.
+        Assert.Equal(4, audit.DeclaredCount);
+        Assert.Equal(3, audit.TotalCount);
+        Assert.Equal(1, audit.DuplicateDeclarationCount);
+    }
+
+    [Fact]
+    public void Provider_Audit_DetectsCrossFileDuplicateWithProvenance()
+    {
+        // The exact DAWG shape: the same id declared in CLAUDE.md AND
+        // AGENTS.md. The old per-file-only path deduped this silently —
+        // sum(sourceCounts) exceeded totalCount with no duplicate reported.
+        File.WriteAllText(
+            Path.Combine(_tempDir, "CLAUDE.md"),
+            "- **INV-MIRROR-001. Canonical rule.** body in claude.\n" +
+            "- **INV-ONLY-001**: claude-only rule.\n");
+        File.WriteAllText(
+            Path.Combine(_tempDir, "AGENTS.md"),
+            "- **INV-MIRROR-001. Mirrored rule.** body in agents.\n");
+
+        var provider = new LifebloodInvariantProvider(Fs);
+        var audit = provider.Audit(_tempDir);
+
+        // Unique ids: INV-MIRROR-001, INV-ONLY-001 → 2.
+        Assert.Equal(2, audit.TotalCount);
+        // Declaration sites: 2 in CLAUDE.md + 1 in AGENTS.md = 3.
+        Assert.Equal(3, audit.DeclaredCount);
+        Assert.Equal(1, audit.DuplicateDeclarationCount);
+        // sum(sourceCounts) can exceed totalCount — that is the reconciled,
+        // no-longer-mysterious case.
+        Assert.Equal(audit.DeclaredCount, audit.SourceCounts.Sum(c => c.Count));
+        Assert.True(audit.SourceCounts.Sum(c => c.Count) > audit.TotalCount);
+
+        // The cross-file duplicate is now surfaced with full provenance.
+        var dup = Assert.Single(audit.Duplicates);
+        Assert.Equal("INV-MIRROR-001", dup.Id);
+        Assert.Equal(2, dup.Occurrences.Length);
+        Assert.Contains(dup.Occurrences, o => o.SourcePath.EndsWith("CLAUDE.md") && o.Title.Contains("Canonical"));
+        Assert.Contains(dup.Occurrences, o => o.SourcePath.EndsWith("AGENTS.md") && o.Title.Contains("Mirrored"));
+        // duplicateDeclarationCount reconciles with the occurrence ledger.
+        Assert.Equal(
+            audit.DuplicateDeclarationCount,
+            audit.Duplicates.Sum(d => d.Occurrences.Length - 1));
     }
 
     [Fact]

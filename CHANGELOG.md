@@ -15,6 +15,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `lifeblood_invariant_check` audit now detects **cross-file** duplicate invariant ids (the same `INV-X` declared in both `CLAUDE.md` and `AGENTS.md`, for example), not just within-file repeats. The prior aggregation deduped cross-file ids silently, so a repo that mirrored invariants across sources produced an unreconcilable receipt — per-source counts summed to more than the unique total with an empty `duplicates[]`. Each duplicate now carries a per-site `occurrences[]` ledger (`sourcePath` + `line` + `title`), and the audit reports `declaredCount` (Σ of per-source declaration sites) and `duplicateDeclarationCount` (= `declaredCount` − `totalCount`) so the math reconciles. `DuplicateInvariantId.SourceLines` is retained for v1 compatibility but marked deprecated in favour of `Occurrences`. `sourceCounts` now counts declaration sites (within-file repeats included) so it sums to `declaredCount`.
 - `tools/dotnet-lanes/run-lifeblood-experimental-target.ps1` demotes native `dotnet` stderr handling under Windows PowerShell 5.1 so successful commands that write warnings to stderr are governed by exit code rather than `NativeCommandError` wrapping, and serializes the experimental build step (`-maxcpucount:1`) to avoid duplicate project-reference writes under a solution-level `TargetFramework` override.
 
 ### Documentation

@@ -17,17 +17,39 @@ public sealed class InvariantAudit
     public int TotalCount { get; init; }
 
     /// <summary>
+    /// Total number of invariant declarations across every source —
+    /// the sum of <see cref="SourceCounts"/>. Equals <see cref="TotalCount"/>
+    /// when no id is declared in more than one source; exceeds it by
+    /// <see cref="DuplicateDeclarationCount"/> when sources re-declare the
+    /// same id (e.g. a repo that mirrors invariants between CLAUDE.md and
+    /// AGENTS.md). Reconciles the otherwise-confusing case where the
+    /// per-source counts sum to more than the unique total.
+    /// </summary>
+    public int DeclaredCount { get; init; }
+
+    /// <summary>
+    /// <see cref="DeclaredCount"/> minus <see cref="TotalCount"/>: how many
+    /// declarations are redundant because their id is already declared in
+    /// an earlier source. Zero for a drift-free single-declaration project.
+    /// Every redundant declaration is attributed in <see cref="Duplicates"/>
+    /// via <see cref="DuplicateInvariantId.Occurrences"/>.
+    /// </summary>
+    public int DuplicateDeclarationCount { get; init; }
+
+    /// <summary>
     /// Count of invariants per category, sorted by count descending then
     /// by category name ascending for stable ordering across runs.
     /// </summary>
     public CategoryCount[] CategoryCounts { get; init; } = System.Array.Empty<CategoryCount>();
 
     /// <summary>
-    /// Ids that were declared more than once in the source. Empty when
-    /// the project has no drift. Populated ids indicate the same
-    /// identifier describes two different rules — a real architectural
-    /// bug the tool surfaces for the maintainer to resolve (rename one,
-    /// or merge the two).
+    /// Ids that were declared more than once — within a single source OR
+    /// across sources (e.g. the same id in both CLAUDE.md and AGENTS.md).
+    /// Empty when the project has no drift. A populated entry means one
+    /// identifier has multiple declaration sites; <see cref="DuplicateInvariantId.Occurrences"/>
+    /// attributes each site to its file + line + title so the maintainer
+    /// can tell a benign mirror (identical titles) from a real collision
+    /// (same id, two different rules) and fix it.
     /// </summary>
     public DuplicateInvariantId[] Duplicates { get; init; } = System.Array.Empty<DuplicateInvariantId>();
 
@@ -59,8 +81,10 @@ public sealed class InvariantAudit
     public string[] SourcePaths { get; init; } = System.Array.Empty<string>();
 
     /// <summary>
-    /// Per-source unique invariant counts, aligned to the same source
-    /// discovery set as <see cref="SourcePaths"/>. Used by docs-safe
+    /// Per-source declaration-site counts, aligned to the same source
+    /// discovery set as <see cref="SourcePaths"/>. These sum to
+    /// <see cref="DeclaredCount"/> and may exceed <see cref="TotalCount"/>
+    /// when an id is declared in more than one source. Used by docs-safe
     /// evidence receipts so living docs can cite both the aggregate and
     /// where it came from without reparsing markdown themselves.
     /// </summary>
@@ -77,17 +101,50 @@ public sealed class CategoryCount
 }
 
 /// <summary>
-/// One entry in <see cref="InvariantAudit.Duplicates"/>. Points at the
-/// id that collides and the 1-based line numbers of every occurrence.
+/// One entry in <see cref="InvariantAudit.Duplicates"/>: an id with more
+/// than one declaration site, and the full provenance of every site.
 /// </summary>
 public sealed class DuplicateInvariantId
 {
     public string Id { get; init; } = "";
+
+    /// <summary>
+    /// DEPRECATED (v1 compatibility only — slated for removal in the next
+    /// wire-contract version per <c>docs/SCHEMA_DEPRECATION_POLICY.md</c>).
+    /// File-blind 1-based line numbers of every occurrence. Retained
+    /// because v1 froze this shape, but it cannot say WHICH file each line
+    /// is in — which is exactly how cross-file duplicates went unreported.
+    /// Prefer <see cref="Occurrences"/>, which carries file + line + title
+    /// per site. This array equals <c>Occurrences.Select(o =&gt; o.Line)</c>.
+    /// </summary>
     public int[] SourceLines { get; init; } = System.Array.Empty<int>();
+
+    /// <summary>
+    /// Every declaration site for this id, in discovery order. Each site
+    /// carries its source file, 1-based line, and the title parsed there,
+    /// so a caller can distinguish a benign cross-file mirror (identical
+    /// titles) from a genuine collision (divergent titles) — and cite the
+    /// exact files to fix. Covers both within-file and cross-file repeats.
+    /// </summary>
+    public InvariantOccurrence[] Occurrences { get; init; } = System.Array.Empty<InvariantOccurrence>();
 }
 
 /// <summary>
-/// Unique invariant count for one parsed source file.
+/// One declaration site of an invariant id: the source file it was
+/// declared in, the 1-based line, and the title parsed at that site.
+/// </summary>
+public sealed class InvariantOccurrence
+{
+    public string SourcePath { get; init; } = "";
+    public int Line { get; init; }
+    public string Title { get; init; } = "";
+}
+
+/// <summary>
+/// Declaration-site count for one parsed source file. Counts every
+/// <c>INV-*</c> declaration in the file, including within-file repeats
+/// (a repeated id is a real second declaration line), so the per-source
+/// counts sum to the audit's <see cref="InvariantAudit.DeclaredCount"/>.
 /// </summary>
 public sealed class InvariantSourceCount
 {
