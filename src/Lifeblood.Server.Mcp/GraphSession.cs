@@ -222,7 +222,9 @@ public sealed class GraphSession : IDisposable
                     requestedMode: "incremental",
                     fallbackReason: FallbackReason.NoPriorAnalysis,
                     fallbackDetail: detail,
-                    canRetryFull: true);
+                    canRetryFull: true,
+                    projectPath: projectPath,
+                    rulesPath: rulesPath);
             }
             // allowFullFallback==true: fall through to full re-analyze.
         }
@@ -337,7 +339,10 @@ public sealed class GraphSession : IDisposable
             changedFileCount: null,
             skipped: _roslynAdapter?.SkippedFiles,
             requestedMode: "full",
-            activeProfiles: defineProfiles);
+            activeProfiles: defineProfiles,
+            projectPath: projectPath,
+            graphPath: graphPath,
+            rulesPath: rulesPath);
     }
 
     private string LoadIncremental(string projectPath, string? rulesPath, bool allowFullFallback)
@@ -381,7 +386,9 @@ public sealed class GraphSession : IDisposable
                 fallbackReason: incremental.Reason,
                 fallbackDetail: incremental.Detail,
                 canRetryFull: true,
-                activeProfiles: incrActiveProfiles);
+                activeProfiles: incrActiveProfiles,
+                projectPath: projectPath,
+                rulesPath: rulesPath ?? _lastRulesPath);
         }
 
         // From here on Graph is non-null (Incremental or FullFallback).
@@ -405,7 +412,9 @@ public sealed class GraphSession : IDisposable
                 changedFileCount: 0,
                 skipped: _roslynAdapter?.SkippedFiles,
                 requestedMode: "incremental",
-                activeProfiles: incrActiveProfiles);
+                activeProfiles: incrActiveProfiles,
+                projectPath: projectPath,
+                rulesPath: rulesPath ?? _lastRulesPath);
         }
 
         // Validate the rebuilt graph
@@ -464,7 +473,9 @@ public sealed class GraphSession : IDisposable
             requestedMode: "incremental",
             fallbackReason: incremental.Reason,
             fallbackDetail: incremental.Detail,
-            activeProfiles: incrActiveProfiles);
+            activeProfiles: incrActiveProfiles,
+            projectPath: projectPath,
+            rulesPath: rulesPath ?? _lastRulesPath);
         }
         catch
         {
@@ -492,7 +503,10 @@ public sealed class GraphSession : IDisposable
         FallbackReason? fallbackReason = null,
         string? fallbackDetail = null,
         bool? canRetryFull = null,
-        string[]? activeProfiles = null)
+        string[]? activeProfiles = null,
+        string? projectPath = null,
+        string? graphPath = null,
+        string? rulesPath = null)
     {
         // Skipped files surface in the analyze response so users can see
         // exactly which files the adapter dropped and why. Emitted as
@@ -562,6 +576,16 @@ public sealed class GraphSession : IDisposable
             changedSourceFiles = changedFileCount,
             touchedGraphFiles = changedFileCount,
             skipped = skippedField,
+            evidenceReceipt = ServerIdentity.BuildAnalyzeEvidenceReceipt(
+                mode,
+                requestedMode,
+                graph,
+                analysis,
+                projectPath,
+                graphPath,
+                rulesPath,
+                activeProfiles,
+                fallbackReason.HasValue ? WireReasonName(fallbackReason.Value) : null),
             usage = usage == null ? null : new
             {
                 wallTimeMs = usage.WallTimeMs,

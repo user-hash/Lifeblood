@@ -113,6 +113,44 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_Capabilities_WithoutLoad_ReturnsVersionToolCountsAndContractPaths()
+    {
+        var handler = CreateHandler();
+
+        var result = handler.Handle("lifeblood_capabilities", null);
+
+        Assert.Null(result.IsError);
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
+        Assert.Equal(31, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
+        Assert.Equal(13, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
+        Assert.Contains("schemas", doc.RootElement.GetProperty("contract").GetProperty("schemaSnapshotPath").GetString());
+        Assert.Contains("STATUS.md", doc.RootElement.GetProperty("contract").GetProperty("statusDocAnchorPath").GetString());
+        Assert.False(doc.RootElement.GetProperty("session").GetProperty("hasGraphLoaded").GetBoolean());
+    }
+
+    [Fact]
+    public void Handle_Analyze_Response_IncludesDocsSafeEvidenceReceipt()
+    {
+        var handler = CreateHandler();
+
+        var result = handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+
+        Assert.Null(result.IsError);
+        var doc = JsonDocument.Parse(result.Content[0].Text);
+        var receipt = doc.RootElement.GetProperty("evidenceReceipt");
+        Assert.True(receipt.GetProperty("citationSafe").GetBoolean());
+        Assert.Equal("lifeblood.analyze", receipt.GetProperty("kind").GetString());
+        Assert.Equal("lifeblood_analyze", receipt.GetProperty("queryRecipe").GetProperty("tool").GetString());
+        Assert.Equal("full", receipt.GetProperty("queryRecipe").GetProperty("mode").GetString());
+        Assert.Equal(4, receipt.GetProperty("counts").GetProperty("symbols").GetInt32());
+        Assert.Contains("envelope.analysisGeneration", receipt.GetProperty("doNotCite").EnumerateArray().Select(e => e.GetString()));
+        Assert.Contains("envelope.stalenessSeconds", receipt.GetProperty("doNotCite").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
     public void Handle_Analyze_MissingPath_ReturnsMessage()
     {
         var handler = CreateHandler();
@@ -591,11 +629,12 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns30Tools()
+    public void ToolRegistry_Returns31Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(30, tools.Length);
+        Assert.Equal(31, tools.Length);
+        Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_test_impact");
         Assert.Contains(tools, t => t.Name == "lifeblood_enum_coverage");
         Assert.Contains(tools, t => t.Name == "lifeblood_static_tables");

@@ -82,6 +82,7 @@ public sealed class ToolHandler
             var result = toolName switch
             {
                 // Read-side
+                "lifeblood_capabilities" => HandleCapabilities(arguments),
                 "lifeblood_analyze" => HandleAnalyze(arguments),
                 "lifeblood_context" => HandleContext(arguments),
                 "lifeblood_lookup" => HandleLookup(arguments),
@@ -141,6 +142,19 @@ public sealed class ToolHandler
     }
 
     // ── Read-side handlers ──
+
+    private McpToolResult HandleCapabilities(JsonElement? args)
+    {
+        var sessionInfo = new ServerSessionInfo(
+            HasGraphLoaded: _session.IsLoaded,
+            HasCompilationState: _session.HasCompilationState,
+            AnalysisGeneration: _session.AnalysisGeneration,
+            ProjectRoot: _session.ProjectRoot,
+            RetainedProfileName: _session.RetainedProfileName,
+            RetainedProfileNames: _session.RetainedProfileNames.ToArray());
+
+        return TextResult(WithEnvelope("lifeblood_capabilities", ServerIdentity.BuildCapabilities(sessionInfo)));
+    }
 
     private McpToolResult HandleAnalyze(JsonElement? args)
     {
@@ -771,6 +785,9 @@ public sealed class ToolHandler
                 audit.CategoryCounts,
                 audit.Duplicates,
                 audit.ParseWarnings,
+                audit.SourcePaths,
+                audit.SourceCounts,
+                evidenceReceipt = ServerIdentity.BuildInvariantEvidenceReceipt(projectRoot, audit),
             }));
         }
 

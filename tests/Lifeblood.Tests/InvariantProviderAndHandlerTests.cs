@@ -135,6 +135,28 @@ public class InvariantProviderAndHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Provider_Audit_ReportsPerSourceCounts()
+    {
+        File.WriteAllText(
+            Path.Combine(_tempDir, "CLAUDE.md"),
+            "- **INV-FOO-001**: root rule.\n");
+        var invDir = Path.Combine(_tempDir, "docs", "invariants");
+        Directory.CreateDirectory(invDir);
+        File.WriteAllText(
+            Path.Combine(invDir, "extra.md"),
+            "- **INV-BAR-001**: tree rule one.\n" +
+            "- **INV-BAR-002**: tree rule two.\n");
+
+        var provider = new LifebloodInvariantProvider(Fs);
+        var audit = provider.Audit(_tempDir);
+
+        Assert.Equal(3, audit.TotalCount);
+        Assert.Equal(2, audit.SourceCounts.Length);
+        Assert.Contains(audit.SourceCounts, c => c.SourcePath.EndsWith("CLAUDE.md") && c.Count == 1);
+        Assert.Contains(audit.SourceCounts, c => c.SourcePath.EndsWith("extra.md") && c.Count == 2);
+    }
+
+    [Fact]
     public void Provider_Caches_SecondCallDoesNotReparse()
     {
         File.WriteAllText(
@@ -211,6 +233,11 @@ public class InvariantProviderAndHandlerTests : IDisposable
         var text = result.Content[0].Text;
         Assert.Contains("\"mode\": \"audit\"", text);
         Assert.Contains("\"totalCount\": 2", text);
+        Assert.Contains("\"sourcePaths\":", text);
+        Assert.Contains("\"sourceCounts\":", text);
+        Assert.Contains("\"evidenceReceipt\":", text);
+        Assert.Contains("\"kind\": \"lifeblood.invariant_audit\"", text);
+        Assert.Contains("\"doNotCite\":", text);
         // Audit surfaces categories, not individual ids. FOO and BAR are
         // the two categories derived from the invariants' id prefixes.
         Assert.Contains("\"category\": \"FOO\"", text);
