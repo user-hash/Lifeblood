@@ -81,8 +81,10 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
 
     public void RecordEvent(string name, params TelemetryTag[] tags)
     {
-        var eventTags = BuildTags(name, tags);
-        Activity.Current?.AddEvent(new ActivityEvent(name));
+        var eventTags = BuildLowCardinalityTags(name, tags);
+        Activity.Current?.AddEvent(new ActivityEvent(
+            name,
+            tags: BuildActivityTags(tags)));
         _eventCounter.Add(1, eventTags);
     }
 
@@ -107,6 +109,34 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
         return tagList;
     }
 
+    private static TagList BuildLowCardinalityTags(string name, TelemetryTag[] tags)
+    {
+        var tagList = new TagList
+        {
+            { "operation.name", name },
+        };
+
+        foreach (var tag in tags)
+        {
+            if (tag.Value is string or bool)
+            {
+                tagList.Add(tag.Name, tag.Value);
+            }
+        }
+
+        return tagList;
+    }
+
+    private static ActivityTagsCollection BuildActivityTags(TelemetryTag[] tags)
+    {
+        var activityTags = new ActivityTagsCollection();
+        foreach (var tag in tags)
+        {
+            activityTags.Add(tag.Name, tag.Value);
+        }
+        return activityTags;
+    }
+
     private sealed class Operation : ITelemetryOperation
     {
         private readonly string _name;
@@ -116,6 +146,7 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
         private readonly Counter<long> _operationFailed;
         private readonly Histogram<double> _operationDurationMs;
         private readonly Stopwatch _stopwatch;
+        private readonly List<TelemetryTag> _dynamicTags = new();
         private bool _failed;
         private bool _disposed;
 
@@ -139,6 +170,7 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
         public void SetTag(string name, object? value)
         {
             _activity?.SetTag(name, value);
+            _dynamicTags.Add(new TelemetryTag(name, value));
         }
 
         public void SetError(Exception exception)
@@ -160,6 +192,10 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
             _stopwatch.Stop();
 
             var tags = BuildTags(_name, _startTags);
+            foreach (var tag in _dynamicTags)
+            {
+                tags.Add(tag.Name, tag.Value);
+            }
             tags.Add("operation.status", _failed ? "error" : "success");
             _operationDurationMs.Record(_stopwatch.Elapsed.TotalMilliseconds, tags);
             if (_failed)

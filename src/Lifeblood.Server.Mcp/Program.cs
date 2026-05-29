@@ -64,11 +64,13 @@ class Program
         IUnityReachabilityProvider unityReachability = new UnityReachabilityAdapter();
         IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer(unityReachability);
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(fs);
+        var telemetry = DotNetDiagnosticsTelemetrySink.CreateFromEnvironment("LIFEBLOOD_TELEMETRY");
+        using var telemetryLifetime = telemetry as IDisposable;
         // Invariant provider parses CLAUDE.md + AGENTS.md + docs/invariants/**.md
         // at the loaded project root. No graph dependency; pure text-in,
         // data-out. Session-scoped so its per-project-root cache persists
         // across tool calls.
-        IInvariantProvider invariants = new LifebloodInvariantProvider(fs);
+        IInvariantProvider invariants = new LifebloodInvariantProvider(fs, telemetry);
         // IResponseDecorator is the single source of truth for the truth
         // envelope attached to every read-side response
         // (INV-ENVELOPE-001). The classification table flows from
@@ -96,8 +98,6 @@ class Program
                 "LIFEBLOOD_FILES_CHANGED_THRESHOLD",
                 StalenessPolicy.Default.FilesChangedWarnThreshold));
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications, stalenessPolicy);
-        var telemetry = DotNetDiagnosticsTelemetrySink.CreateFromEnvironment("LIFEBLOOD_TELEMETRY");
-        using var telemetryLifetime = telemetry as IDisposable;
         var toolHandler = new ToolHandler(
             session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants, decorator, telemetry: telemetry);
         var dispatcher = new McpDispatcher(session, toolHandler);

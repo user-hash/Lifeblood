@@ -1,10 +1,12 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Adapters.JsonGraph;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Connectors.Mcp;
+using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Lifeblood.Server.Mcp;
@@ -37,6 +39,111 @@ public class ToolHandlerTelemetryTests
         var evt = Assert.Single(telemetry.Events);
         Assert.Equal("lifeblood.tool.error_result", evt.Name);
         Assert.Equal("lifeblood_lookup", evt.Tags["tool.name"]);
+    }
+
+    [Fact]
+    public void Handle_SuccessfulTool_RecordsSuccessAndResponseJsonTelemetry()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var handler = CreateHandler(telemetry);
+
+        var result = handler.Handle("lifeblood_capabilities", null);
+
+        Assert.Null(result.IsError);
+        var operation = Assert.Single(telemetry.Operations);
+        Assert.Equal("success", operation.Tags["tool.result"]);
+        Assert.Contains(telemetry.Events, e =>
+            e.Name == "lifeblood.tool.success_result"
+            && Equals(e.Tags["tool.name"], "lifeblood_capabilities"));
+        Assert.Contains(telemetry.Events, e =>
+            e.Name == "lifeblood.tool.response_json"
+            && Equals(e.Tags["tool.name"], "lifeblood_capabilities")
+            && Equals(e.Tags["json.path"], "withEnvelope.object")
+            && (int)e.Tags["json.bytes"]! > 0);
+    }
+
+    [Fact]
+    public void Handle_AnalyzeIncrementalRejected_RecordsResultAndFallbackTelemetry()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var handler = CreateHandler(telemetry);
+
+        var result = handler.Handle(
+            "lifeblood_analyze",
+            JsonArgs(new { projectPath = "D:/not-a-real-lifeblood-project", incremental = true }));
+
+        Assert.Null(result.IsError);
+        Assert.Contains("\"mode\": \"rejected\"", result.Content[0].Text);
+        Assert.Contains(telemetry.Events, e =>
+            e.Name == "lifeblood.analyze.result"
+            && Equals(e.Tags["analyze.mode"], "rejected")
+            && Equals(e.Tags["analyze.requested_mode"], "incremental"));
+        Assert.Contains(telemetry.Events, e =>
+            e.Name == "lifeblood.analyze.fallback"
+            && Equals(e.Tags["analyze.fallback_reason"], "noPriorAnalysis")
+            && Equals(e.Tags["analyze.can_retry_full"], true));
+    }
+
+    [Fact]
+    public void Handle_TruncatedToolResponse_RecordsTruncationTelemetry()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var handler = CreateHandler(telemetry);
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-telemetry-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var graphPath = CreateGraphFile(tempDir);
+            handler.Handle("lifeblood_analyze", JsonArgs(new { graphPath }));
+
+            var result = handler.Handle(
+                "lifeblood_blast_radius",
+                JsonArgs(new { symbolId = "type:Core.Bar", maxResults = 0 }));
+
+            Assert.Null(result.IsError);
+            Assert.Contains("\"truncated\": true", result.Content[0].Text);
+            Assert.Contains(telemetry.Events, e =>
+                e.Name == "lifeblood.tool.truncated"
+                && Equals(e.Tags["tool.name"], "lifeblood_blast_radius")
+                && Equals(e.Tags["truncation.dimension"], "affected")
+                && (int)e.Tags["truncation.full_count"]! > 0
+                && Equals(e.Tags["truncation.included_count"], 0));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void InvariantProvider_RecordsCacheMissAndHitTelemetry()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-telemetry-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(tempDir, "CLAUDE.md"),
+                "- **INV-FOO-001**: cached rule.\n");
+            var provider = new LifebloodInvariantProvider(Fs, telemetry);
+
+            _ = provider.Audit(tempDir);
+            _ = provider.Audit(tempDir);
+
+            Assert.Contains(telemetry.Events, e =>
+                e.Name == "lifeblood.cache.lookup"
+                && Equals(e.Tags["cache.name"], "invariant_parse")
+                && Equals(e.Tags["cache.result"], "miss"));
+            Assert.Contains(telemetry.Events, e =>
+                e.Name == "lifeblood.cache.lookup"
+                && Equals(e.Tags["cache.name"], "invariant_parse")
+                && Equals(e.Tags["cache.result"], "hit"));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     [Fact]
@@ -106,6 +213,42 @@ public class ToolHandlerTelemetryTests
     {
         var json = JsonSerializer.Serialize(obj);
         return JsonSerializer.Deserialize<JsonElement>(json);
+    }
+
+    private static string CreateGraphFile(string tempDir)
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "mod:Core", Name = "Core", Kind = SymbolKind.Module })
+            .AddSymbol(new Symbol { Id = "type:Core.Foo", Name = "Foo", Kind = SymbolKind.Type, ParentId = "mod:Core", FilePath = "Foo.cs", Line = 1 })
+            .AddSymbol(new Symbol { Id = "type:Core.Bar", Name = "Bar", Kind = SymbolKind.Type, ParentId = "mod:Core", FilePath = "Bar.cs", Line = 1 })
+            .AddSymbol(new Symbol { Id = "method:Core.Foo.Do", Name = "Do", Kind = SymbolKind.Method, ParentId = "type:Core.Foo" })
+            .AddEdge(new Edge
+            {
+                SourceId = "type:Core.Foo",
+                TargetId = "type:Core.Bar",
+                Kind = EdgeKind.DependsOn,
+                Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test", Confidence = ConfidenceLevel.Proven },
+            })
+            .AddEdge(new Edge
+            {
+                SourceId = "method:Core.Foo.Do",
+                TargetId = "type:Core.Bar",
+                Kind = EdgeKind.Calls,
+                Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test", Confidence = ConfidenceLevel.Proven },
+            })
+            .Build();
+
+        var doc = new GraphDocument
+        {
+            Language = "test",
+            Adapter = new AdapterCapability { CanDiscoverSymbols = true, TypeResolution = ConfidenceLevel.Proven },
+            Graph = graph,
+        };
+
+        var graphPath = Path.Combine(tempDir, "graph.json");
+        using var stream = File.Create(graphPath);
+        new JsonGraphExporter().Export(doc, stream);
+        return graphPath;
     }
 
     private sealed class TestBlastRadiusProvider : IBlastRadiusProvider

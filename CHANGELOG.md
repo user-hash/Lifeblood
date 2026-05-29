@@ -11,6 +11,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `lifeblood_capabilities` read-side MCP tool reports the live server version, version source, optional git commit / dirty state, tool count with read/write split, feature flags, schema snapshot path, STATUS.md anchor path, and current session state.
 - Docs-safe `evidenceReceipt` blocks on `lifeblood_analyze` and `lifeblood_invariant_check` audit responses separate durable citation facts from session-local envelope freshness fields.
+- Opt-in operational telemetry events now cover tool success/error results, response JSON serialization cost, analyze result/fallback shape, result truncation, and invariant-parse cache hit/miss/stale/error outcomes.
 
 ### Fixed
 
