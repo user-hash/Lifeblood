@@ -29,7 +29,7 @@ Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents the full MCP tool surfa
 
 **Memory.** Streaming compilation with downgrading keeps a 75-module Unity workspace under about 4 GB. Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (around 10 to 100 KB), so only one full Roslyn `Compilation` is held at once. Smaller projects (around 10 modules) sit at about 200 MB.
 
-**Read vs write side.** Twelve tools are read-side: graph queries, namely `analyze`, `lookup`, `dependencies`, `dependants`, `blast_radius`, `file_impact`, `context`, `resolve_short_name`, `search`, `dead_code`, `partial_view`, and `invariant_check`. Ten tools are write-side: Roslyn-backed compiler operations, namely `execute`, `diagnose`, `compile_check`, `find_references`, `find_definition`, `find_implementations`, `symbol_at_position`, `documentation`, `rename`, and `format`. The split matters because write-side tools require a real Roslyn workspace and become unavailable in `readOnly` analysis mode.
+**Read vs write side.** Eighteen tools are read-side: graph queries, namely `analyze`, `capabilities`, `lookup`, `dependencies`, `dependants`, `blast_radius`, `file_impact`, `context`, `resolve_short_name`, `resolve_member`, `search`, `dead_code`, `partial_view`, `invariant_check`, `authority_report`, `port_health`, `cycles`, and `test_impact`. Thirteen tools are write-side: Roslyn-backed compiler operations, namely `execute`, `diagnose`, `compile_check`, `find_references`, `find_definition`, `find_implementations`, `enum_coverage`, `static_tables`, `assignment_coverage`, `symbol_at_position`, `documentation`, `rename`, and `format`. The split matters because write-side tools require a real Roslyn workspace and become unavailable in `readOnly` analysis mode. The authoritative live split is reported by `lifeblood_capabilities` and tracked in [`STATUS.md`](STATUS.md).
 
 **Symbol resolution.** Every read-side tool that takes a `symbolId` routes through `ISymbolResolver` before hitting the graph or workspace. Resolution order is: exact canonical id, then truncated method form (single-overload lenient), then bare short name. So `method:Foo.Bar` resolves correctly even though the canonical form is `method:Foo.Bar(int)`, and `lifeblood_resolve_short_name name="Bar"` discovers the canonical id when you don't know the namespace.
 
@@ -264,7 +264,7 @@ Three pieces work together:
 
 The child process runs **outside** Unity's `AppDomain`. Three consequences:
 
-- **No assembly conflicts.** Lifeblood pulls Roslyn 4.12.0 plus Microsoft.CodeAnalysis. Unity ships its own (often older) Roslyn assemblies. Sidecar isolation means neither side fights for type identity.
+- **No assembly conflicts.** Lifeblood pulls Roslyn 4.14 (Microsoft.CodeAnalysis). Unity ships its own (often older) Roslyn assemblies. Sidecar isolation means neither side fights for type identity.
 - **No domain reload interference.** When Unity recompiles, the bridge kills the child and restarts it on the next call. The semantic graph is rebuilt fresh after the reload, so analysis state cannot leak across compilation cycles.
 - **Editor stays responsive.** Lifeblood analysis (around 60 to 90 seconds on a 75-module Unity workspace cold) runs on the child process. Unity's main thread is not blocked.
 
@@ -305,7 +305,7 @@ Assets/Editor/LifebloodBridge.meta
 
 The bridge files belong in the Lifeblood repo. They should not be committed to the consuming Unity project's git history.
 
-**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. All 31 Lifeblood tools appear in Coplay's tool list alongside the built-in Unity tools.
+**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. The Unity bridge surfaces a curated subset — 18 of the 31 tools (the in-Editor-relevant read + write ones, with `lifeblood_analyze_project` wrapping analyze) — in Coplay's tool list alongside the built-in Unity tools. The remaining tools (`lifeblood_capabilities`, `lifeblood_search`, `lifeblood_dead_code`, `lifeblood_port_health`, `lifeblood_cycles`, `lifeblood_enum_coverage`, `lifeblood_static_tables`, `lifeblood_assignment_coverage`, and others) are reachable by connecting an MCP client directly to the standalone `lifeblood-mcp` server (see the client sections above).
 
 **Step 5. Connect any MCP client to Coplay MCP for Unity** following Coplay's own setup guide. From the client's perspective, Lifeblood tools (`lifeblood_analyze`, `lifeblood_lookup`, `lifeblood_blast_radius`, and so on) appear next to Coplay's tools (`unity_manage_scene`, `unity_find_gameobjects`, and so on) on a single MCP connection.
 
