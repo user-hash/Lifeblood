@@ -126,6 +126,56 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-05-30 - Lifeblood v0.7.10+e98a9b7 - Unity new-file discovery misses pre-meta source
+
+Status: Open
+Type: Bug
+Source: DAWG Burst-first comb sidecar/parity implementation session, 2026-05-30
+Workspace: DAWG (`D:/Projekti/DAWG`, Unity workspace, Editor+Player analyze)
+Verification: `lifeblood_capabilities` reported server
+`0.7.10+e98a9b7c16030678f826fc9550e02ceb6fd2a577`. A newly-created test file
+`Assets/Tests/Editor/Audio/Burst/BurstCombFilterKernelParityTests.cs` existed
+on disk under an asmdef, but before Unity generated the `.meta`/project refresh:
+`lifeblood_compile_check(filePath)` returned `LB0002 file not found in any
+loaded compilation`; `lifeblood_analyze(incremental:true, allowFullFallback:true,
+defineProfiles:["Editor","Player"])` returned `incremental-noop`,
+`changedSourceFiles:0`, `files:3670`; a full analyze also stayed at
+`files:3670`. After `refresh_unity(scope:"all", mode:"force",
+compile:"request")` generated the `.meta`, incremental analyze picked up the
+file (`files:3671`, `types:4258`) and the same compile_check succeeded.
+
+Summary:
+- Lifeblood's tool description says a `.cs` file added to a Unity workspace
+  without a `.meta` sibling will be picked up by the incremental walker on the
+  next analyze. The observed DAWG dogfood session contradicted that contract:
+  the existing disk file was invisible until Unity regenerated metadata/project
+  descriptors.
+- The failure mode looked like a clean no-op/full analyze rather than a
+  descriptor-staleness warning, so an agent could falsely conclude the new test
+  did not compile or did not belong to any module.
+
+Impact:
+- This is exactly the edit loop where Lifeblood should be strongest: create a
+  new C# test/source file, compile_check it before Unity's full refresh cost,
+  then run focused tests. Missing the file makes the semantic gate unavailable
+  at the moment it is most valuable.
+- The current behavior also conflicts with Lifeblood's public MCP tool
+  description, which is worse than a documented limitation because callers will
+  trust the advertised pre-meta path.
+
+Fix shape:
+- Either implement the advertised Unity pre-meta disk sweep for newly-added
+  `.cs` files under asmdef/project roots, or narrow the tool description and
+  surface a structured `fallbackReason` / `limitations[]` entry when project
+  descriptors are stale.
+- `compile_check(filePath)` should distinguish "path does not exist" from
+  "path exists on disk but is not in any loaded compilation"; include guidance
+  such as "Unity project files appear stale; run Unity refresh/regenerate
+  project files" until direct disk-to-module inference is available.
+- Add a regression fixture that creates a new Unity-shaped `.cs` under an
+  asmdef without `.meta`, runs incremental/full analyze, and asserts the
+  advertised behavior or the documented warning shape.
+
 ## 2026-05-24 - Lifeblood v0.7.9 - DAWG reconnect/post-update notes
 
 Status: Shipped (in-tree, untagged) - Lifeblood endpoint closed; DAWG workflow
