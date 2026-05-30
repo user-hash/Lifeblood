@@ -23,6 +23,24 @@ Wave 5 Stage 0 pass landed three wire-shape closures (LB-TRACK-20260524-025/026/
 
 **Why it matters.** This is not a correctness bug; it is operator-loop friction. Repeated focused compile checks are exactly where Lifeblood shines versus Unity reloads, and compact success payloads would make that loop easier to read without weakening the evidence contract.
 
+## LB-TRACK-20260530-002. `lifeblood_execute` compiles against workspace/Unity types but cannot runtime-load them — opaque assembly-load error instead of a clear boundary
+
+**Observed.** During a DAWG dogfood, a reviewer needed one runtime fact about a workspace value type: the unmanaged size of an `unsafe struct` mirror (`WorkspaceStruct`, an engine-runtime type backed by pointers/fixed buffers). `lifeblood_execute` injects the workspace assemblies as Roslyn **metadata references** so the snippet compiles against project types (the host-BCL-only design from the B11 fix / `Session 4`). But the workspace assemblies are never loaded into the Lifeblood host runtime, so any snippet that forces a runtime load of a project type throws at execution, not at compile:
+
+```text
+Could not load file or assembly '<WorkspaceAssembly>, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null'. The system cannot find the file specified.
+```
+
+Reproduced with `System.Runtime.CompilerServices.Unsafe.SizeOf<WorkspaceStruct>()` (compiles clean — no CS error — then throws the loader error at run). The generic-method-via-reflection workaround is also unavailable: the sandbox blocks `System.Reflection`'s `GetMethod` (`Blocked: reflection API 'GetMethod' — use direct calls instead`). Net: `execute` is **compile-against but not run-against** for workspace/engine types — instantiation, `Unsafe.SizeOf<T>`, and member reflection over project types all fail. The caller fell back to the engine's own runtime (an editor `sizeof()` probe) to get the number, after a confusing detour through an assembly-load error that reads like a tool defect rather than a known boundary.
+
+**Suggested fix shape.**
+
+1. **Document the boundary as a user-facing limitation, not just an internal invariant.** The execute tool description advertises "runtime-style analysis ... (voice pool sizes, alloc-free paths)" and "auto-injects Unity DLLs", which reads as "run code against project types." Add a `limitations`-style caveat to the tool description AND `DOGFOOD_CODE_EXECUTION.md` "Remaining Known Limitations": *execute compiles against workspace/engine types but cannot runtime-load them; instantiation, `Unsafe.SizeOf<T>`, and reflection over project types are unsupported. Use the `Graph` / `Compilations` symbol globals for project-type facts; runtime values needing the workspace assembly loaded must come from the engine's own runtime.*
+2. **Translate the loader error into a structured signal.** When a script's runtime exception is a `FileLoadException` / `FileNotFoundException` whose assembly name matches a known workspace module (the module set is already in hand), wrap it into a clear `limitations[]` / typed error naming the compile-against-not-run-against boundary, instead of leaking the raw loader message. Cheap to detect, removes the "is this a tool bug?" ambiguity.
+3. **(Optional, larger)** Offer a Roslyn-symbol-based blittable-struct size/layout helper computed from `ITypeSymbol` field layout via `Compilations` — so the common "what is `sizeof(struct)`" question has a semantic answer with no runtime load. Mark Advisory (alignment/packing/`[StructLayout]`/pointer-width edge cases); do not over-promise bit-exactness vs the engine's `sizeof`.
+
+**Why it matters.** This is the exact moment the "verified by Lifeblood, ship it" trust budget gets spent: a caller reaches for a genuine runtime fact about a project struct, gets an opaque loader error, and round-trips to the engine — the friction Lifeblood exists to remove. A one-line honest limitation plus a translated error converts a confusing failure into a crisp boundary ("use the symbol graph, or the engine runtime"), and a symbol-based size helper would close the common case outright. Distinct from `LB-LIM-004` / B11 (which fixed *compile-time* host-vs-target BCL conflicts so snippets compile at all) — this is the downstream *runtime-load* boundary, correct by design but currently surfaced only as a raw exception.
+
 ## Status snapshot (2026-05-19 two-phase plan close + F1d dogfood find, [Unreleased] preparing v0.7.8)
 
 The 2026-05-19 two-phase hardening plan (`D:/Projekti/lifeblood_plan.txt`) lands its Phase-1 trust-hardening atoms (F0..F3f + S4..S8a), four native-clang adapter refactors (Phase 9), three execute-robustness fixes surfaced by Unity-IL2CPP DAWG dogfood (LB-LIM-004 a/b), one post-release-wall dogfood find (F1d / `INV-EXTRACT-PROPERTY-READ-001`), and the final canonical-id SSoT consolidation ratchet that closed LB-TRACK-023. **Tests 1,011 → 1,098 (+87), zero skipped. Invariants 101 → 122 (+21) across 63 → 83 categories. Symbols 3,278 → 3,507 (+229). Edges 16,973 → 21,115 (+4,142, +24% — F1d closing the bare-identifier property/event-read gap on Lifeblood self). Types 350 → 363. Ports 26 → 27 (F3a adds `IPortHealthAnalyzer`).** Every Open LB-TRACK entry from the plan baseline flipped to Shipped after live-MCP roundtrip or focused Lifeblood self-verification proved the expected code path and wire shape. The full per-atom catalogue lives in `CHANGELOG.md` `[Unreleased]`; the DAWG verification numbers live in `docs/DOGFOOD_FINDINGS.md` Session 11. The F1d find is the single most impactful: bare-identifier sibling-member property/event reads were emitting no graph edge, splitting Lifeblood's read-tool reality between `find_references` (which walks the semantic model directly) and `dependants` / `dead_code` / `blast_radius` / `port_health` (all edge-graph walkers); F2's `sameClassConsumerCount` triage field consequently always reported 0 on private property findings, defeating the FP-folding contract. Post-fix DAWG re-verification: edges 238,242 → 242,233 (+3,991 recovered property/event-read edges); workspace property zero-incoming rate 88.7% → 67.2% (-21.5 pp, 266 properties recovered); `dead_code` property finding count 247 → 62 (-75%). LB-TRACK-023 (canonical-id parity) is now closed in-tree: F1c fixed `.ctor`/`.cctor` parsing, and the final polish atom routes Roslyn declaration, edge, and lookup ID construction through `CanonicalSymbolFormat` with an architecture ratchet refusing duplicate builders.
@@ -474,6 +492,43 @@ policy rows. Lifeblood already exposes those facts through
 read-side tools split reality in two. This is exactly the kind of gap that
 makes an AI agent believe a table-driven method is unused when it is
 actually load-bearing.
+
+---
+
+## LB-INBOX-012. Full multi-profile analyze can throw NullReference after Unity asset import churn
+
+**Observed.** During a real Unity workspace session, `lifeblood_analyze`
+with `incremental:true`, `allowFullFallback:true`, and
+`defineProfiles:["Editor","Player"]` succeeded repeatedly after source
+edits. A forced full analyze of the same workspace and profile set then
+failed with only:
+
+`Error: Object reference not set to an instance of an object.`
+
+The failure happened after Unity generated a `.meta` for a newly-added C#
+test file and after partial-class signatures had changed. Incremental
+analysis recovered and later included the new file, but the full path gave
+no structured rejection, no module/file context, and no stack-shaped
+diagnostic envelope.
+
+**Suggested fix shape.**
+
+1. Wrap the full-analyze pipeline with the same structured diagnostic
+   envelope style used by read-side tools: phase, module descriptor, current
+   file if known, active define profile, and whether the failure occurred
+   before or after compilation creation.
+2. Add a regression fixture that simulates Unity-shaped asset churn: new
+   `.cs` file first without `.meta`, then with `.meta`, plus a partial-class
+   signature change in a sibling file. Run incremental first, then full
+   multi-profile analyze.
+3. Ensure full analyze either succeeds or returns a structured failure that
+   preserves enough context to file a targeted adapter bug. A raw NRE should
+   never be the wire result.
+
+**Why it matters.** Agents use full analyze as the trust reset when
+incremental results look stale. If the reset path itself collapses into an
+opaque NRE, the agent either over-trusts stale semantic data or falls back to
+Unity/grep without knowing which Lifeblood phase is unsafe.
 
 ---
 
