@@ -328,7 +328,7 @@ public static class ToolRegistry
   Name = "lifeblood_diagnose",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Without filters, returns the full project's diagnostics. Pass `filePath` (relative or absolute) to scope diagnostics to one source file — useful when you want to verify a single file you just edited without drowning in a 300k-line project dump. Pass `moduleName` to scope to a single module. `filePath` and `moduleName` may be combined (file scope wins; module is used to disambiguate which compilation contains the file when the same path appears in multiple modules). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound this scope under) plus `resolvedModule` (the module the scope resolved to; null for project-wide) — distinguishes Editor-only findings from release-build risk without re-running under a different define set. Also carries `possiblyStale: bool` — diagnose has no auto-refresh path (compile_check has it via MaybeRefreshIfStale), so when the requested scope has any source file whose on-disk mtime is newer than the graph's analyze timestamp the flag fires true. Scope-aware: file scope checks just that file, module scope walks files parented to that module, project scope walks every tracked File symbol. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / INV-DIAGNOSE-FRESHNESS-002 / LB-INBOX-008.",
+  Description = "Get compilation diagnostics (errors, warnings) for the loaded project. Without filters, returns the full project's diagnostics. Pass `filePath` (relative or absolute) to scope diagnostics to one source file — useful when you want to verify a single file you just edited without drowning in a 300k-line project dump. Pass `moduleName` to scope to a single module. `filePath` and `moduleName` may be combined (file scope wins; module is used to disambiguate which compilation contains the file when the same path appears in multiple modules). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound this scope under) plus `resolvedModule` (the module the scope resolved to; null for project-wide) — distinguishes Editor-only findings from release-build risk without re-running under a different define set. Also carries `possiblyStale: bool` — diagnose has no auto-refresh path (compile_check has it via MaybeRefreshIfStale), so when the requested scope has any source file whose on-disk mtime is newer than the graph's analyze timestamp the flag fires true. Scope-aware: file scope checks just that file, module scope walks files parented to that module, project scope walks every tracked File symbol. Pass `verbosity:\"compact\"` to drop the full `definesActive[]` list (kept as `definesActiveCount`) for repeated focused checks. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / INV-DIAGNOSE-FRESHNESS-002 / INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001 / LB-INBOX-008.",
   InputSchema = new
   {
   type = "object",
@@ -336,6 +336,7 @@ public static class ToolRegistry
   {
   filePath = new { type = "string", description = "Source file path (relative to the project root, or absolute). When set, diagnostics are scoped to this file's syntax tree." },
   moduleName = new { type = "string", description = "Specific module to diagnose, or omit for all. When combined with filePath, picks the module that contains the file." },
+  verbosity = new { type = "string", description = "'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list." },
   },
   },
   },
@@ -344,7 +345,7 @@ public static class ToolRegistry
   Name = "lifeblood_compile_check",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
-  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Pass either `code` (inline source) or `filePath` (relative or absolute path; the file is read off disk) — exactly one is required. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound the snippet/file under) plus `resolvedModule` (the module the check resolved to) so a caller can tell Editor-only findings apart from release-build risk without re-running. INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.",
+  Description = "Check if a C# code snippet compiles in the project context. Returns success/failure with diagnostics. Does not execute the code. Pass either `code` (inline source) or `filePath` (relative or absolute path; the file is read off disk) — exactly one is required. Auto-refreshes the workspace if any tracked file has been edited since the last analyze (opt out via `staleRefresh:false`). Every response carries `definesActive` (the preprocessor symbols Lifeblood bound the snippet/file under) plus `resolvedModule` (the module the check resolved to) so a caller can tell Editor-only findings apart from release-build risk without re-running. File-mode also carries `fileResolution` (Resolved / NotInModule / NotInAnyCompilation / NoTreeToCompile) and, when a path that exists on disk resolves to no loaded compilation, a `staleDescriptorHint` naming the stale-project-descriptor case. Pass `verbosity:\"compact\"` to drop the full `definesActive[]` list (kept as `definesActiveCount`). INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / INV-COMPILE-CHECK-FILE-RESOLUTION-001 / INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001 / LB-INBOX-008.",
   InputSchema = new
   {
   type = "object",
@@ -354,6 +355,7 @@ public static class ToolRegistry
   filePath = new { type = "string", description = "Path to a .cs file (relative to project root, or absolute) to read and compile-check. Mutually exclusive with code." },
   moduleName = new { type = "string", description = "Module context for type resolution" },
   staleRefresh = new { type = "boolean", description = "If true (default), incrementally re-analyze the workspace before compile_check when any tracked file has changed on disk since the last analyze. Set false to check against the pinned workspace state." },
+  verbosity = new { type = "string", description = "'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list." },
   },
   },
   },

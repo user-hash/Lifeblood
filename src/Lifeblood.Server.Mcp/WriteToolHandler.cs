@@ -82,6 +82,14 @@ internal sealed class WriteToolHandler
         // INV-DIAGNOSE-FRESHNESS-002.
         bool possiblyStale = ComputePossiblyStale(filePath, moduleName);
 
+        // INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001 / LB-TRACK-20260530-030.
+        // Compact mode drops the full definesActive[] list (150+ entries on a
+        // Unity profile) while keeping the count + resolvedModule, so repeated
+        // focused checks stay readable. Default verbose preserves the byte-stable
+        // wire shape. Wire-shaping is a connector concern — lives here, not in
+        // the Domain DTO or the Roslyn adapter.
+        var (definesActiveCount, definesActive) = ProjectDefines(report.DefinesActive, IsCompactVerbosity(args));
+
         return TextResult(JsonSerializer.Serialize(new
         {
             scope = !string.IsNullOrEmpty(filePath) ? "file" : (!string.IsNullOrEmpty(moduleName) ? "module" : "project"),
@@ -89,11 +97,34 @@ internal sealed class WriteToolHandler
             moduleName,
             resolvedModule = string.IsNullOrEmpty(report.ResolvedModule) ? null : report.ResolvedModule,
             count = report.Diagnostics.Length,
-            definesActive = report.DefinesActive,
+            definesActiveCount,
+            definesActive,
             possiblyStale,
             diagnostics = report.Diagnostics,
         }, _jsonOpts));
     }
+
+    /// <summary>
+    /// Reads the optional <c>verbosity</c> argument. <c>"compact"</c> (case-
+    /// insensitive) drops verbose payload such as the full preprocessor-symbol
+    /// list; anything else (including absent) preserves the default verbose wire
+    /// shape for back-compat. INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001.
+    /// </summary>
+    private static bool IsCompactVerbosity(JsonElement? args)
+        => string.Equals(GetString(args, "verbosity"), "compact", System.StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Pure wire-shaping for the preprocessor-symbol envelope field. Verbose
+    /// keeps the full list; compact returns the count only and a null list so
+    /// the 150+-entry Unity profile payload is dropped from repeated focused
+    /// checks. The count is ALWAYS surfaced so a compact caller still knows the
+    /// scope's define breadth. INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001 /
+    /// LB-TRACK-20260530-030. Behavior is verified end-to-end via dogfood
+    /// (Server.Mcp exposes no internals to the test project by design — see
+    /// McpDispatcher); the input contract is pinned by ToolSchemaSnapshotTests.
+    /// </summary>
+    private static (int Count, string[]? List) ProjectDefines(string[] definesActive, bool compact)
+        => (definesActive.Length, compact ? null : definesActive);
 
     /// <summary>
     /// True iff the requested diagnose scope has at least one tracked
@@ -235,6 +266,8 @@ internal sealed class WriteToolHandler
               "files / refresh the editor, then re-run lifeblood_analyze."
             : null;
 
+        var (definesActiveCount, definesActiveList) = ProjectDefines(result.DefinesActive, IsCompactVerbosity(args));
+
         var commonShape = new
         {
             result.Success,
@@ -244,7 +277,10 @@ internal sealed class WriteToolHandler
             resolvedModule = string.IsNullOrEmpty(result.ResolvedModule) ? null : result.ResolvedModule,
             existingTreeReplaced = result.ExistingTreeReplaced,
             // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.
-            definesActive = result.DefinesActive,
+            // INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001 / LB-TRACK-20260530-030:
+            // compact mode keeps the count but drops the full list.
+            definesActiveCount,
+            definesActive = definesActiveList,
             // INV-COMPILE-CHECK-FILE-RESOLUTION-001 / LB-TRACK-20260530-028.
             fileResolution = result.FileResolution.ToString(),
             staleDescriptorHint,
@@ -260,6 +296,7 @@ internal sealed class WriteToolHandler
                 commonShape.filePath,
                 commonShape.resolvedModule,
                 commonShape.existingTreeReplaced,
+                commonShape.definesActiveCount,
                 commonShape.definesActive,
                 commonShape.fileResolution,
                 commonShape.staleDescriptorHint,

@@ -16,6 +16,10 @@
     "staleRefresh": {
       "type": "boolean",
       "description": "If true (default), incrementally re-analyze the workspace before compile_check when any tracked file has changed on disk since the last analyze. Set false to check against the pinned workspace state."
+    },
+    "verbosity": {
+      "type": "string",
+      "description": "'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list."
     }
   }
 }
