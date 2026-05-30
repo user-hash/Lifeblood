@@ -203,6 +203,8 @@ When `GetDiagnostics("nonexistent_module")` was called with a module name that d
 
 2. **Rename scope:** Rename edits are generated from the AdhocWorkspace, which only includes source files in the analyzed project. Renames don't propagate to external consumers.
 
+3. **Workspace-type runtime-load boundary (`INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001`):** `execute` COMPILES against workspace/engine types because each loaded compilation is injected as a Roslyn metadata reference, but those assemblies are never loaded into the analysis host runtime. Any script that forces a runtime load — type instantiation, `Unsafe.SizeOf<T>`, reflection over a workspace type — fails. The executor detects the resulting `FileLoadException`/`FileNotFoundException` against the known workspace module set and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary instead of leaking the raw "Could not load file or assembly" loader message. Use the `Graph`/`Compilations` symbol globals for workspace-type facts; runtime values needing the workspace assembly loaded must come from the engine's own runtime.
+
 ## What This Proved
 
 The write-side Roslyn tools transform Lifeblood from a read-only analysis framework into a bidirectional compiler-as-a-service. An AI agent can now:
