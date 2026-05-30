@@ -105,6 +105,17 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
     public SemanticGraph AnalyzeWorkspace(string projectRoot, AnalysisConfig config)
     {
+        // INV-ANALYZE-STRUCTURED-FAILURE-001: track a coarse progress cursor so
+        // any unexpected fault (e.g. a NullReference after Unity asset-import
+        // churn, LB-INBOX-012) surfaces as a phase/module/file-scoped
+        // WorkspaceAnalysisException instead of a raw exception on the wire.
+        var phase = "discovery";
+        string? cursorModule = null;
+        string? cursorFile = null;
+        string? cursorProfile = null;
+        var reachedCompilation = false;
+        try
+        {
         var modules = _discovery.DiscoverModules(projectRoot);
 
         var snapshot = new AnalysisSnapshot
@@ -189,11 +200,15 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         RetainedProfileNames = activeProfiles.Select(p => p.Name).ToArray();
         snapshot.ActiveProfiles = activeProfiles;
 
+        phase = "compilation";
+        reachedCompilation = true;
+
         for (var profileIndex = 0; profileIndex < activeProfiles.Count; profileIndex++)
         {
             var profile = activeProfiles[profileIndex];
             var isFirstProfile = profileIndex == 0;
             var profileTag = multiProfile ? profile.Name : null;
+            cursorProfile = profile.Name;
             var profileModules = ApplyProfileToModules(modules, profile);
 
             // INV-MULTI-DEFINE-IOP-001. First profile retains compilations per
@@ -223,12 +238,17 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
             var profileCompilations = compilationBuilder.ProcessInOrder(
                 profileModules, projectRoot, profileConfig,
-                onModuleProgress: OnModuleProgress,
+                onModuleProgress: (name, idx, total) =>
+                {
+                    cursorModule = name;
+                    OnModuleProgress?.Invoke(name, idx, total);
+                },
                 skippedCollector: isFirstProfile ? snapshot.SkippedFiles : null,
                 carryDowngraded: profileCarry,
                 processor: (module, compilation) =>
                 {
                     var moduleId = SymbolIds.Module(module.Name);
+                    cursorModule = module.Name;
 
                     foreach (var tree in compilation.SyntaxTrees)
                     {
@@ -237,6 +257,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
                         var model = compilation.GetSemanticModel(tree);
                         var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
+                        cursorFile = relPath;
 
                         var fileId = SymbolIds.File(relPath);
                         var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
@@ -268,6 +289,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             if (isFirstProfile) _compilations = profileCompilations;
         }
 
+        phase = "module-edges";
+        cursorModule = null;
+        cursorFile = null;
+        cursorProfile = null;
+
         // Module dependency edges.
         var moduleNames = new HashSet<string>(modules.Select(m => m.Name), StringComparer.Ordinal);
         foreach (var module in modules)
@@ -295,7 +321,21 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         _moduleDependencies = BuildModuleDependencyMap(modules);
 
         _snapshot = snapshot;
+        phase = "graph-build";
         return snapshot.RebuildGraph();
+        }
+        catch (WorkspaceAnalysisException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // INV-ANALYZE-STRUCTURED-FAILURE-001: never let a raw fault escape
+            // the analyze pipeline. Wrap with the cursor so the wire carries
+            // phase/module/file/profile context instead of an opaque message.
+            throw new WorkspaceAnalysisException(
+                phase, cursorModule, cursorFile, cursorProfile, !reachedCompilation, ex);
+        }
     }
 
     /// <summary>

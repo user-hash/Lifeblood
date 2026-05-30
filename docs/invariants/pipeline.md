@@ -30,4 +30,6 @@ the MCP server.
 
 - **INV-MCP-STDIO-UTF8-001. MCP / JSON-RPC stdio ports MUST be pinned to UTF-8.** The MCP protocol mandates UTF-8 over stdio. The host process's `Console.InputEncoding` / `Console.OutputEncoding` defaults are OS-dependent — on Windows they are typically a non-UTF-8 ANSI codepage (e.g. Windows-1252, Shift-JIS), which silently mangles multi-byte characters in JSON args (Unicode identifiers, accented characters in search queries) and JSON responses. Every MCP-server composition root MUST set `Console.InputEncoding = Console.OutputEncoding = Encoding.UTF8` before any `Console.In.Read*` / `Console.Out.Write*` call. Enforcement site: `Server.Mcp.Program.Main` (top of the method, before the dispatcher loop). Defensive — no test failure has been observed, but the broader bug class is identical to `INV-JSON-IMPORT-BOM-001`: a transport that mandates UTF-8 must explicitly pin UTF-8 rather than trust the host's defaults.
 
+- **INV-ANALYZE-STRUCTURED-FAILURE-001. The analyze pipeline never lets a raw fault escape — it wraps it with phase/module/file/profile context.**
+
 - **INV-ANALYZE-FALLBACK-001. Scope-widening is a caller policy, not an adapter decision.**
