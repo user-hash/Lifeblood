@@ -2082,3 +2082,29 @@ Important historical asks that later informed the product:
 
 Do not add new work to the legacy file. Promote any still-current item here with
 a Lifeblood version and a fresh repro.
+
+### LB-TRACK-20260530-028 - `lifeblood_analyze` can miss newly-created Unity test files before Unity import creates `.meta`
+
+Status: Open
+Type: Bug / stale-workspace correctness
+Source: DAWG Burst-first dogfood, 2026-05-30, Lifeblood v0.7.10+e98a9b7c
+Workspace: DAWG (`D:/Projekti/DAWG`, Unity project, multi-profile Editor+Player)
+
+Observed:
+- During the S2 Burst event-boundary slice, a new file `Assets/Tests/Editor/Audio/Burst/BurstEventBoundaryOracleTests.cs` was created on disk before Unity had imported it / generated the sibling `.meta`.
+- A full Lifeblood analyze on the DAWG project did not include the new file in the graph; the file count stayed at 3671.
+- After `refresh_unity` generated `BurstEventBoundaryOracleTests.cs.meta`, `lifeblood_compile_check(filePath, staleRefresh:true)` resolved the file in module `Nebulae.Tests.Audio.Burst`, auto-refreshed the workspace, and the graph file count moved to 3672.
+- This contradicts the current tool description claim that a `.cs` file added to disk but not yet seen by Unity (no `.meta` sibling) will be picked up by Lifeblood's incremental walker on the next analyze.
+
+Impact:
+- AI agents can add a new Unity test/source file, run Lifeblood analyze immediately, and receive a Proven-looking graph that omits the new file until Unity import catches up. That can produce stale test-impact, dependency, and compile-planning decisions in the exact edit-then-analyze loop Lifeblood is meant to support.
+- The failure mode is subtle because `compile_check(filePath, staleRefresh:true)` later succeeds, making the earlier analyze result look like user error rather than a graph refresh gap.
+
+Suggested fix shape:
+- Reproduce in a Unity-shaped fixture: create a new `.cs` under an asmdef-owned folder without a `.meta`, run full analyze and incremental analyze before Unity import, assert the file is discovered and assigned to the owning module.
+- If the current module discovery intentionally filters on Unity `.meta` or generated csproj membership, update the tool description and truth-envelope limitations to state that new Unity files may require Unity import before graph analysis, while `compile_check(filePath)` can still bind the file after stale refresh.
+- Eternal preference: make analyze and compile_check share the same source-file discovery policy so file counts, module resolution, and compile diagnostics converge before Unity import. If Unity `.meta` GUID stability is the blocker, surface a limitation field naming the temporary identity.
+
+Acceptance:
+- Regression test covering new-file/no-meta discovery in a Unity-shaped workspace.
+- Tool description and STATUS/known-limitations updated to match the implemented behavior.
