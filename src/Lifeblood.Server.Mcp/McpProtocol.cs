@@ -45,6 +45,15 @@ public sealed class JsonRpcError
 
   [JsonPropertyName("message")]
   public string Message { get; set; } = "";
+
+  /// <summary>
+  /// Optional JSON-RPC 2.0 <c>data</c> member. Carries the structured fatal
+  /// envelope on internal-error responses (phase / recoverable / recovery hint)
+  /// so an agent can decide whether to retry, re-analyze, or reconnect instead
+  /// of treating an opaque transport drop as terminal. INV-MCP-TRANSPORT-RESILIENCE-001.
+  /// </summary>
+  [JsonPropertyName("data")]
+  public object? Data { get; set; }
 }
 
 /// <summary>
