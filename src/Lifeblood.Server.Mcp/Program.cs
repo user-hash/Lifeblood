@@ -112,46 +112,17 @@ class Program
         using var reader = new StreamReader(Console.OpenStandardInput());
         var strictJson = McpJsonRequestParser.ReadStrictJsonFlag("LIFEBLOOD_STRICT_JSON");
 
-        while (!cts.IsCancellationRequested)
-        {
-            var line = await reader.ReadLineAsync();
-            if (line == null) break; // stdin closed
-            if (string.IsNullOrWhiteSpace(line)) continue;
-
-            try
-            {
-                var request = McpJsonRequestParser.DeserializeRequest(line, JsonOpts, strictJson);
-                if (request == null) continue;
-
-                var response = dispatcher.Dispatch(request);
-                if (response == null) continue; // Notifications get no response
-                var json = JsonSerializer.Serialize(response, JsonOpts);
-                Console.WriteLine(json);
-                Console.Out.Flush();
-            }
-            catch (System.Text.Json.JsonException ex)
-            {
-                // JSON-RPC 2.0: parse error → respond with -32700, id: null
-                Console.Error.WriteLine($"Parse error: {ex.Message}");
-                var errorResponse = JsonSerializer.Serialize(new JsonRpcResponse
-                {
-                    Error = new JsonRpcError { Code = -32700, Message = "Parse error" },
-                }, JsonOpts);
-                Console.WriteLine(errorResponse);
-                Console.Out.Flush();
-            }
-            catch (Exception ex)
-            {
-                // JSON-RPC 2.0: internal error → respond with -32603
-                Console.Error.WriteLine($"Internal error: {ex.Message}");
-                var internalError = JsonSerializer.Serialize(new JsonRpcResponse
-                {
-                    Error = new JsonRpcError { Code = -32603, Message = $"Internal error: {ex.Message}" },
-                }, JsonOpts);
-                Console.WriteLine(internalError);
-                Console.Out.Flush();
-            }
-        }
+        // The read-dispatch-write loop lives in McpServerLoop so its resilience
+        // contract is unit-testable. INV-MCP-TRANSPORT-RESILIENCE-001: no single
+        // request fault may close the transport for every other call.
+        await McpServerLoop.RunAsync(
+            reader,
+            Console.Out,
+            dispatcher.Dispatch,
+            JsonOpts,
+            strictJson,
+            cts.Token,
+            logError: msg => Console.Error.WriteLine(msg));
 
         // Clean up write-side resources (AdhocWorkspace, compilations)
         session.Dispose();
