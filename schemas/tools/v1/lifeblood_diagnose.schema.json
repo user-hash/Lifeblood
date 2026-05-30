@@ -8,6 +8,10 @@
     "moduleName": {
       "type": "string",
       "description": "Specific module to diagnose, or omit for all. When combined with filePath, picks the module that contains the file."
+    },
+    "verbosity": {
+      "type": "string",
+      "description": "'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list."
     }
   }
 }
