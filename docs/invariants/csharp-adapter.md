@@ -137,6 +137,16 @@ before the compiler ever sees them. Roslyn does not.
 
 - **INV-DIAGNOSTIC-MSBUILD-IMPLICIT-NOWARN-001. The MSBuild csc-default NoWarn baseline (`1701`, `1702`) is unioned into every discovered module's suppression set.** `Microsoft.CSharp.CurrentVersion.targets` sets `<NoWarn>$(NoWarn);1701;1702</NoWarn>` for every csc invocation MSBuild produces, regardless of csproj schema. Both IDs are cross-module TypeRef binding-redirect warnings (`CS1701`: "Assuming assembly reference matches identity"; `CS1702`: same family with stricter version comparison). They fire per consuming type-ref whenever an upstream PE's recorded version of a transitively-shared assembly disagrees with the version currently loaded — exactly the shape that produced 7,642 spurious `CS1701` findings against `Lifeblood.Tests` (xunit.core baked against `System.Runtime 4.0.0.0` vs BCL ref pack `8.0.0.0`) while `dotnet build` was clean on the same compilation. The baseline is documented MSBuild behavior, not a Lifeblood opinion: not mirroring it ships diagnose responses with thousands of warnings the workspace's own CI does not see. The seam is `RoslynModuleDiscovery.MsbuildImplicitNoWarnBaseline` (private static, one source of truth) unioned into `noWarnIds` during `ParseProject` before the field lands on `ModuleInfo`. User-declared `<NoWarn>` entries union with the baseline (dedupe by `OrdinalIgnoreCase`); a module that genuinely needs `1701`/`1702` back uses MSBuild's own escape hatch — `<WarningsNotAsErrors>` or per-finding `#pragma warning restore` — exactly the same shape MSBuild offers. Pinned by `BuildDiagnosticParityTests.LifebloodSelfDiagnose_NeverFiresParityClassDiagnostics` (the wall ratchet) and via the existing `INV-COMPFACT-001..003` thread-through (`noWarnIds` → `WithSpecificDiagnosticOptions(ReportDiagnostic.Suppress)` in `ModuleCompilationBuilder.CreateCompilation`).
 
+## Workspace File Discovery
+
+Lifeblood discovers source files through generated project descriptors
+(`.csproj` / asmdef membership), never a raw disk sweep. A `.cs` file on disk
+that no descriptor lists is in no module and cannot enter the graph until the
+descriptors regenerate — so the public tool surface must describe descriptor-
+driven discovery honestly rather than promise pre-import disk pickup.
+
+- **INV-UNITY-NEWFILE-DISCOVERY-HONESTY-001. The analyze tool description states descriptor-driven discovery, never raw pre-meta disk pickup, and compile_check surfaces the stale-descriptor case.**
+
 ## Symbol ID Grammar (C# Adapter)
 
 Lifeblood symbol IDs are stable identifiers produced by `Lifeblood.Adapters.CSharp.Internal.SymbolIds`
