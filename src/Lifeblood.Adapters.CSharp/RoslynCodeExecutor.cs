@@ -281,6 +281,26 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
         catch (Exception ex)
         {
             var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            if (TryClassifyWorkspaceLoadBoundary(ex, out var assemblyName))
+                return new CodeExecutionResult
+                {
+                    Success = false,
+                    Error =
+                        $"Workspace runtime-load boundary: lifeblood_execute compiles against " +
+                        $"workspace/engine assembly '{assemblyName}' (injected as a Roslyn metadata " +
+                        $"reference) but cannot load it into the analysis host at runtime. " +
+                        $"Instantiation, Unsafe.SizeOf<T>, and reflection over workspace types are " +
+                        $"unsupported by design. Use the Graph / Compilations symbol globals for " +
+                        $"workspace-type facts; runtime values that need the workspace assembly " +
+                        $"loaded must come from the engine's own runtime.",
+                    ElapsedMs = Math.Round(elapsed, 1),
+                    RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                    TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings
+                        .Append(
+                            $"compile-against-not-run boundary hit for workspace assembly " +
+                            $"'{assemblyName}' — INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001")
+                        .ToArray(),
+                };
             return new CodeExecutionResult
             {
                 Success = false,
@@ -289,6 +309,85 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
                 RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
                 TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
             };
+        }
+    }
+
+    /// <summary>
+    /// Detects the compile-against-but-not-run boundary
+    /// (INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001). Scripts compile against
+    /// workspace/engine assemblies because those are injected as Roslyn
+    /// metadata references, but the assemblies are never loaded into the
+    /// analysis host runtime. Any script that forces a runtime load — type
+    /// instantiation, <c>Unsafe.SizeOf&lt;T&gt;</c>, reflection over a
+    /// workspace type — throws <see cref="FileLoadException"/> /
+    /// <see cref="FileNotFoundException"/> at execution (often wrapped in
+    /// <see cref="AggregateException"/> / <c>TargetInvocationException</c>).
+    /// Walks the full exception chain and confirms the failing assembly is a
+    /// known workspace module, so the raw loader message becomes a structured
+    /// boundary instead of an "is this a tool bug?" leak.
+    /// </summary>
+    private bool TryClassifyWorkspaceLoadBoundary(Exception ex, out string assemblyName)
+    {
+        assemblyName = "";
+        foreach (var inner in Flatten(ex))
+        {
+            string? fileName = inner switch
+            {
+                FileLoadException fle => fle.FileName,
+                FileNotFoundException fnf => fnf.FileName,
+                _ => null,
+            };
+            if (string.IsNullOrEmpty(fileName))
+                continue;
+
+            var simpleName = fileName.Split(',')[0].Trim();
+            if (IsWorkspaceAssembly(simpleName))
+            {
+                assemblyName = simpleName;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True when <paramref name="simpleName"/> is a loaded workspace module —
+    /// matched against both the compilation dictionary keys and each
+    /// compilation's <c>AssemblyName</c> so an asmdef whose module key differs
+    /// from its assembly identity still resolves.
+    /// </summary>
+    private bool IsWorkspaceAssembly(string simpleName)
+    {
+        if (_compilations.ContainsKey(simpleName))
+            return true;
+        foreach (var compilation in _compilations.Values)
+            if (string.Equals(compilation.AssemblyName, simpleName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Depth-first flatten of an exception and every inner /
+    /// <see cref="AggregateException"/> child, so the workspace-load classifier
+    /// sees loader exceptions wrapped by the scripting host's task machinery.
+    /// </summary>
+    private static IEnumerable<Exception> Flatten(Exception ex)
+    {
+        var stack = new Stack<Exception>();
+        stack.Push(ex);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            yield return current;
+            if (current is AggregateException aggregate)
+            {
+                foreach (var child in aggregate.InnerExceptions)
+                    stack.Push(child);
+            }
+            else if (current.InnerException is not null)
+            {
+                stack.Push(current.InnerException);
+            }
         }
     }
 

@@ -247,6 +247,40 @@ public class ExecuteRobustnessTests
         finally { Directory.Delete(temp, true); }
     }
 
+    [Fact]
+    public void Executor_WorkspaceTypeRuntimeLoad_ReturnsStructuredBoundary_NotRawLoaderError()
+    {
+        // INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001 / LB-TRACK-20260530-031.
+        // A workspace compilation is injected as a Roslyn metadata reference
+        // (ScriptReferenceSetBuilder), so a script COMPILES against the
+        // workspace type. The assembly is never loaded into the analysis host
+        // runtime, so instantiation forces a load that throws
+        // FileLoadException/FileNotFoundException. The executor must reframe
+        // that into a structured compile-against-not-run boundary instead of
+        // leaking the raw "Could not load file or assembly" loader message.
+        var workspace = CSharpCompilation.Create(
+            "WorkspaceModule",
+            new[] { CSharpSyntaxTree.ParseText("namespace Workspace { public sealed class Thing { } }") },
+            BasicReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var view = new RoslynSemanticView(
+            new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal) { ["WorkspaceModule"] = workspace },
+            new SemanticGraph(),
+            new Dictionary<string, string[]>(StringComparer.Ordinal));
+        var exec = new RoslynCodeExecutor(view);
+
+        var result = exec.Execute(new CodeExecutionRequest { Code = "new Workspace.Thing()" });
+
+        Assert.False(result.Success, "Forcing a runtime load of a workspace type must fail: " + result.ReturnValue);
+        Assert.Contains("runtime-load boundary", result.Error);
+        Assert.Contains("WorkspaceModule", result.Error);
+        Assert.DoesNotContain("Could not load file or assembly", result.Error);
+        Assert.Contains(
+            result.TargetRuntimeWarnings,
+            w => w.Contains("INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001"));
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // 3. RoslynSemanticView sandbox helpers (Help / EdgesOfKind / SymbolsOfKind)
     // ──────────────────────────────────────────────────────────────────
