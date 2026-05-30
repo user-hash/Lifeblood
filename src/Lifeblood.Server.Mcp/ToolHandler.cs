@@ -180,9 +180,31 @@ public sealed class ToolHandler
         // INV-MULTI-DEFINE-ANALYZE-001.
         var defineProfiles = ReadStringArray(args, "defineProfiles");
 
-        var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly, allowFullFallback, defineProfiles);
-        RecordAnalyzeTelemetry(result);
-        return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
+        try
+        {
+            var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly, allowFullFallback, defineProfiles);
+            RecordAnalyzeTelemetry(result);
+            return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
+        }
+        catch (Lifeblood.Application.Ports.Left.WorkspaceAnalysisException ex)
+        {
+            // INV-ANALYZE-STRUCTURED-FAILURE-001 / LB-INBOX-012: a pipeline
+            // fault returns a phase/module/file-scoped diagnostic, never a raw
+            // "Object reference not set to an instance of an object." on the wire.
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = "lifeblood_analyze",
+                failure = "workspace-analysis",
+                phase = ex.Phase,
+                module = ex.Module,
+                filePath = ex.FilePath,
+                profile = ex.Profile,
+                failedBeforeCompilation = ex.FailedBeforeCompilation,
+                exceptionType = ex.InnerException?.GetType().FullName ?? ex.GetType().FullName,
+                message = ex.Message,
+            }, JsonOpts));
+        }
     }
 
     private static string[]? ReadStringArray(JsonElement? args, string key)
