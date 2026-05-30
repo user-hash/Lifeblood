@@ -328,11 +328,19 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         {
             throw;
         }
+        catch (ArgumentException)
+        {
+            // Deliberate caller-input validation (e.g. an unknown define-profile
+            // name from ResolveActiveProfiles) propagates as its typed contract.
+            // INV-ANALYZE-STRUCTURED-FAILURE-001 wraps only UNEXPECTED faults, not
+            // validation the caller is meant to catch by type.
+            throw;
+        }
         catch (Exception ex)
         {
-            // INV-ANALYZE-STRUCTURED-FAILURE-001: never let a raw fault escape
-            // the analyze pipeline. Wrap with the cursor so the wire carries
-            // phase/module/file/profile context instead of an opaque message.
+            // INV-ANALYZE-STRUCTURED-FAILURE-001: never let an unexpected fault
+            // escape the analyze pipeline raw. Wrap with the cursor so the wire
+            // carries phase/module/file/profile context instead of an opaque message.
             throw new WorkspaceAnalysisException(
                 phase, cursorModule, cursorFile, cursorProfile, !reachedCompilation, ex);
         }
