@@ -2108,3 +2108,54 @@ Suggested fix shape:
 Acceptance:
 - Regression test covering new-file/no-meta discovery in a Unity-shaped workspace.
 - Tool description and STATUS/known-limitations updated to match the implemented behavior.
+
+### LB-TRACK-20260530-029 - MCP transport closure after parallel compile-check leaves no reconnect path
+
+Status: Open
+Type: Bug / session resilience / diagnostic envelope
+Source: DAWG Burst-first dogfood, 2026-05-30, Lifeblood v0.7.10 session
+Workspace: DAWG (`D:/Projekti/DAWG`, Unity project, multi-profile Editor+Player)
+
+Observed:
+- During the L4a bound-patch pass, one `lifeblood_compile_check(filePath)`
+  succeeded, while sibling compile-check calls issued in the same parallel tool
+  batch returned only `Transport closed`.
+- After that point every direct Lifeblood MCP call retried in the session
+  (`lifeblood_capabilities`, `lifeblood_analyze`) failed immediately with the
+  same `Transport closed` message.
+- The result carried no structured envelope naming whether the Lifeblood server
+  process crashed, the MCP client transport closed, a request payload overflowed,
+  or a concurrent request violated a server-side single-flight assumption.
+- Unity/Roslyn compile and targeted NUnit tests remained healthy, so the DAWG
+  work could continue, but the mandatory Lifeblood lane was unavailable for the
+  rest of the checkpoint.
+
+Impact:
+- Agent workflows treat Lifeblood as the semantic trust source. A bare transport
+  close during parallel compile-check leaves the agent unable to decide whether
+  to retry serially, force a fresh analyze, restart the MCP server, reduce
+  payload size, or file a product bug.
+- The failure is especially expensive in Unity sessions where compile checks
+  are often batched after source edits. A single transport collapse turns the
+  semantic lane from Proven to unavailable with no recovery receipt.
+
+Suggested fix shape:
+- Add a structured top-level failure envelope for MCP-side fatal errors:
+  `phase`, `activeTool`, `requestId`, `workspaceRoot`, `profile`, `isConcurrent`,
+  `serverPid` if known, and a bounded exception/stack excerpt when available.
+- If Lifeblood is intentionally single-flight for write-side/Roslyn compilation
+  tools, reject concurrent compile-check calls explicitly with a recoverable
+  `RetrySerially` outcome instead of letting the transport die.
+- Add a smoke regression that runs two compile-check requests concurrently
+  against a large Unity-shaped workspace snapshot. Acceptance is either both
+  succeed, or one returns a structured recoverable rejection while subsequent
+  `lifeblood_capabilities` and `lifeblood_analyze` calls still work.
+- Document the recovery posture in the tool descriptions: whether agents should
+  retry serially, run full analyze, or reconnect the MCP server.
+
+Acceptance:
+- Parallel compile-check stress no longer closes the MCP transport.
+- If a fatal exception still occurs, the wire result is structured enough to
+  route the bug without external logs.
+- Subsequent read-side calls after a failed compile-check still succeed, or the
+  client receives an explicit server-restart-required status.
