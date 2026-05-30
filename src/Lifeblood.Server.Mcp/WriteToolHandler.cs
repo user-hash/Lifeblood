@@ -221,6 +221,20 @@ internal sealed class WriteToolHandler
         };
         var result = _session.CompilationHost!.CompileCheck(request);
 
+        // INV-COMPILE-CHECK-FILE-RESOLUTION-001 / LB-TRACK-20260530-028.
+        // The handler proved the path exists on disk above (FileExists guard),
+        // so a NotInAnyCompilation result in file-mode can ONLY mean "on disk
+        // but not in any loaded compilation" — the stale-descriptor case. The
+        // host stays disk-agnostic; the disk-aware hint is composed here where
+        // the IFileSystem port lives.
+        var staleDescriptorHint =
+            !string.IsNullOrEmpty(filePath)
+            && result.FileResolution == CompileCheckFileResolution.NotInAnyCompilation
+            ? "File exists on disk but is not in any loaded compilation. Project descriptors are " +
+              "likely stale (e.g. a freshly-added Unity file before import). Regenerate project " +
+              "files / refresh the editor, then re-run lifeblood_analyze."
+            : null;
+
         var commonShape = new
         {
             result.Success,
@@ -231,6 +245,9 @@ internal sealed class WriteToolHandler
             existingTreeReplaced = result.ExistingTreeReplaced,
             // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.
             definesActive = result.DefinesActive,
+            // INV-COMPILE-CHECK-FILE-RESOLUTION-001 / LB-TRACK-20260530-028.
+            fileResolution = result.FileResolution.ToString(),
+            staleDescriptorHint,
         };
 
         if (refreshed is int changedFileCount)
@@ -244,6 +261,8 @@ internal sealed class WriteToolHandler
                 commonShape.resolvedModule,
                 commonShape.existingTreeReplaced,
                 commonShape.definesActive,
+                commonShape.fileResolution,
+                commonShape.staleDescriptorHint,
                 autoRefreshed = true,
                 changedFileCount,
             }, _jsonOpts));

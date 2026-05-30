@@ -220,6 +220,10 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   FindOwningCompilation(filePath, moduleName);
   if (owningCompilation == null)
   {
+  // The host knows only compilation membership, not disk presence.
+  // A pinned-but-missing module is NotInModule; an unmatched path is
+  // NotInAnyCompilation — which a disk-aware caller reads as the
+  // stale-descriptor case. INV-COMPILE-CHECK-FILE-RESOLUTION-001.
   return new CompileCheckResult
   {
   Success = false,
@@ -228,11 +232,15 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   Id = "LB0002",
   Message = moduleName != null
   ? $"File '{filePath}' not found in module '{moduleName}'. Pass moduleName=null to auto-detect."
-  : $"File '{filePath}' not found in any loaded compilation. Did the analyze step include this module? " +
+  : $"File '{filePath}' not found in any loaded compilation. The file may exist on disk but not yet be in a loaded module — " +
+  $"re-run analyze, or if project descriptors are stale (e.g. a freshly-added Unity file), regenerate project files / refresh first. " +
   $"Compilations available: {string.Join(", ", _compilations.Keys)}.",
   Severity = DomainDiagnosticSeverity.Error,
   }},
   ResolvedModule = resolvedModule ?? "",
+  FileResolution = moduleName != null
+  ? CompileCheckFileResolution.NotInModule
+  : CompileCheckFileResolution.NotInAnyCompilation,
   };
   }
 
@@ -261,6 +269,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   Severity = DomainDiagnosticSeverity.Error,
   }},
   ResolvedModule = resolvedModule ?? "",
+  FileResolution = CompileCheckFileResolution.NoTreeToCompile,
   };
   }
 
