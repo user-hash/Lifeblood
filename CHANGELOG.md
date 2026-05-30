@@ -7,6 +7,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+DAWG-dogfood cheap bug-first pass (2026-05-30). Six trust-and-robustness fixes
+surfaced during a DAWG Burst session, reconciled from `IMPROVEMENT_INBOX.md` +
+`devmemory/lifeblood-tracking.md`. Full suite 1258 passed / 0 failed / 11
+native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1269;
+invariants 150 → 156; self symbols 3834 → 4073 / edges 23020 → 24046.
+
+### Fixed
+
+- **`execute` workspace-type runtime-load boundary** (`INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001`, LB-TRACK-20260530-031). Scripts compile against workspace/engine types (injected as Roslyn metadata references) but those assemblies are not loaded into the host runtime, so instantiation / `Unsafe.SizeOf<T>` / reflection over a workspace type threw `FileLoadException` and the executor leaked the raw "Could not load file or assembly" message. `RoslynCodeExecutor` now classifies the exception chain against the known workspace module set and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary. Pinned by `ExecuteRobustnessTests`.
+- **`compile_check` file-resolution states** (`INV-COMPILE-CHECK-FILE-RESOLUTION-001`, LB-TRACK-20260530-028). LB0002 collapsed "pinned-module miss", "matched no loaded compilation", and "resolved" into one opaque message. New typed `CompileCheckResult.FileResolution` enum; the file-mode handler (which proves on-disk presence) surfaces a `staleDescriptorHint` for the on-disk-but-not-in-compilation case. Pinned by `CompileCheckFileResolutionTests`.
+- **full `analyze` structured failure** (`INV-ANALYZE-STRUCTURED-FAILURE-001`, LB-INBOX-012). A pipeline fault (e.g. NullReference after Unity asset-import churn) surfaced as a bare "Object reference not set to an instance of an object.". `RoslynWorkspaceAnalyzer` tracks a phase/module/file/profile cursor and wraps unexpected faults in a new `WorkspaceAnalysisException`; `ToolHandler.HandleAnalyze` serializes the structured context. Validation exceptions (`ArgumentException`) propagate unchanged. Pinned by `WorkspaceAnalysisFailureTests`.
+- **MCP stdio transport resilience** (`INV-MCP-TRANSPORT-RESILIENCE-001`, LB-TRACK-20260530-029). A broken-pipe `IOException` in the loop's own error-path write escaped and terminated the process, closing the transport permanently; error responses also dropped the request id. The read-dispatch-write loop is extracted to a testable `McpServerLoop`: dispatch faults become id-correlated `-32603` responses with a structured recovery `data` envelope, serialization faults still emit an id-correlated error, and broken-pipe writes are logged and swallowed. `JsonRpcError` gains the JSON-RPC 2.0 `data` member. Pinned by `McpServerLoopTests`.
+
+### Changed
+
+- **`compile_check` / `diagnose` compact verbosity** (`INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001`, LB-TRACK-20260530-030). Additive `verbosity:"compact"` drops the full `definesActive[]` list (150+ entries on a Unity profile) while keeping `definesActiveCount`; default verbose wire shape is byte-stable. `v1` input-schema snapshots updated.
+- **`analyze` tool description honesty** (`INV-UNITY-NEWFILE-DISCOVERY-HONESTY-001`, LB-TRACK-20260530-028). Removed the false "a `.cs` file ... WILL be picked up by the incremental walker" claim — discovery is descriptor-driven (`.csproj` / asmdef membership); a pre-import file needs project-file regeneration. Points at the `compile_check` `staleDescriptorHint` as the pre-import path. Pinned by `AnalyzeDescriptionHonestyTests` (source-text ratchet).
+
 ## [0.7.10] - 2026-05-29
 
 ### Added

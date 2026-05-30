@@ -15,9 +15,11 @@ State of Lifeblood going forward. Four things:
 
 Wave 5 Stage 0 pass landed three wire-shape closures (LB-TRACK-20260524-025/026/027) + eternal `INV-LIST-SHAPE-UNIFORM-001` ratchet across six commits `6c298a3` → `cdb7691`. **Wave 6 L-LIM-001 multi-define union analyze SHIPPED end-to-end** (`43c1499` → `dd157af` chain, phases 6.A → 6.F): `IDefineProfileResolver` port + `UnityDefineProfileResolver` 2-profile Editor+Player MVP + `Edge.Profiles[]` per-edge provenance + GraphBuilder union dedup + `profileFilter` narrowing + per-IOperation `analyzedUnderProfile` discipline. Live DAWG receipt: edges 247,350 (single-profile) → 247,460 (Editor+Player union) = +110 Player-only edges recovered; canonical L-LIM-001 trap edge restored. Multi-profile **incremental** parity hardened post-release: `AnalysisSnapshot.DowngradedRefsByProfile` per-profile PE-image carry replaces the pre-fix single-dict carry that dropped cross-project Player edges on caller-touch. Strategic-phase reconciliation: LB-INBOX-003 / -004 / -005 are NOT single-fix tickets — each carries a 2026-05-24 status block updated below noting in-tree partial progress (INV-ENVELOPE-001 + INV-DOCS-001..007 + INV-LIST-SHAPE-UNIFORM-001 cover much of Phase 3; Unity-wedge hardening covers much of Phase 4; Phase 5 deliberately deferred until Phase-3-sub-atoms land). Per-entry Status blocks make the actionable-vs-strategic distinction explicit.
 
-## LB-TRACK-20260530-030. Compact diagnostic envelopes for repeated `compile_check`
+## LB-TRACK-20260530-030. Compact diagnostic envelopes for repeated `compile_check` — **SHIPPED [Unreleased] (INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001)**
 
 > Renumbered from `LB-TRACK-20260530-001` (2026-05-30 reconciliation) to remove the id collision with the sequential `LB-TRACK-20260530-028/029` entries in `devmemory/lifeblood-tracking.md`. Canonical sequence is now 028 (Unity new-file) · 029 (transport closure) · 030 (this) · 031 (execute load boundary).
+
+**Resolution.** Additive `verbosity:"compact"` on `compile_check` + `diagnose` (default verbose = byte-stable wire shape). Compact drops the full `definesActive[]` list and keeps `definesActiveCount`. Wire-shaping lives in `WriteToolHandler` (pure `ProjectDefines` seam), not the Domain DTO. `v1` input-schema snapshots updated; pinned by `ToolSchemaSnapshotTests`. Original entry below for regression-trace.
 
 **Observed.** DAWG Burst dogfood used `lifeblood_compile_check` repeatedly across focused files after an incremental Editor+Player analyze. The tool was fast and correct, but every successful response repeated the full `definesActive[]` set (Unity/Android profile: 150+ entries) even when the caller only needed success/diagnostics/module identity. That made the evidence stream noisy and pushed low-value payload into the chat budget during tight compile/fix loops.
 
@@ -25,9 +27,11 @@ Wave 5 Stage 0 pass landed three wire-shape closures (LB-TRACK-20260524-025/026/
 
 **Why it matters.** This is not a correctness bug; it is operator-loop friction. Repeated focused compile checks are exactly where Lifeblood shines versus Unity reloads, and compact success payloads would make that loop easier to read without weakening the evidence contract.
 
-## LB-TRACK-20260530-031. `lifeblood_execute` compiles against workspace/Unity types but cannot runtime-load them — opaque assembly-load error instead of a clear boundary
+## LB-TRACK-20260530-031. `lifeblood_execute` compiles against workspace/Unity types but cannot runtime-load them — opaque assembly-load error instead of a clear boundary — **SHIPPED [Unreleased] (INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001)**
 
 > Renumbered from `LB-TRACK-20260530-002` (2026-05-30 reconciliation) — see the note on `LB-TRACK-20260530-030`.
+
+**Resolution.** Fix shapes #1 (document the boundary) + #2 (translate the loader error) shipped. `RoslynCodeExecutor` classifies the exception chain for a `FileLoadException`/`FileNotFoundException` whose assembly matches a known workspace module and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary instead of the raw loader message; execute tool description + `DOGFOOD_CODE_EXECUTION.md` document it. Fix shape #3 (symbol-based `sizeof` helper) NOT shipped — out of cheap scope. Pinned by `ExecuteRobustnessTests`. Original entry below for regression-trace.
 
 **Observed.** During a DAWG dogfood, a reviewer needed one runtime fact about a workspace value type: the unmanaged size of an `unsafe struct` mirror (`WorkspaceStruct`, an engine-runtime type backed by pointers/fixed buffers). `lifeblood_execute` injects the workspace assemblies as Roslyn **metadata references** so the snippet compiles against project types (the host-BCL-only design from the B11 fix / `Session 4`). But the workspace assemblies are never loaded into the Lifeblood host runtime, so any snippet that forces a runtime load of a project type throws at execution, not at compile:
 
@@ -501,7 +505,9 @@ actually load-bearing.
 
 ---
 
-## LB-INBOX-012. Full multi-profile analyze can throw NullReference after Unity asset import churn
+## LB-INBOX-012. Full multi-profile analyze can throw NullReference after Unity asset import churn — **SHIPPED [Unreleased] (INV-ANALYZE-STRUCTURED-FAILURE-001)**
+
+**Resolution.** Fix shapes #1 (wrap the full-analyze pipeline with a structured diagnostic envelope) + #3 (structured failure preserves context) shipped. `RoslynWorkspaceAnalyzer.AnalyzeWorkspace` tracks a coarse progress cursor (phase / module / file / profile / reached-compilation) and wraps any UNEXPECTED fault in a new language-agnostic `WorkspaceAnalysisException`; `ToolHandler.HandleAnalyze` serializes `{phase, module, filePath, profile, failedBeforeCompilation, exceptionType, message}` instead of the bare NRE. Deliberate `ArgumentException` validation propagates unchanged. Fix shape #2 (Unity-churn regression fixture) approximated by a faulting-resolver unit test — `WorkspaceAnalysisFailureTests` — rather than a full Unity-asset-churn harness. Original entry below for regression-trace.
 
 **Observed.** During a real Unity workspace session, `lifeblood_analyze`
 with `incremental:true`, `allowFullFallback:true`, and

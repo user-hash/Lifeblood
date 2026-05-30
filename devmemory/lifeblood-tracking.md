@@ -2046,8 +2046,16 @@ a Lifeblood version and a fresh repro.
 
 ### LB-TRACK-20260530-028 - `lifeblood_analyze` can miss newly-created Unity test files before Unity import creates `.meta`
 
-Status: Open
+Status: Shipped (in-tree, untagged) — [Unreleased] cheap bug-first pass 2026-05-30
 Type: Bug / stale-workspace correctness
+Resolution: Two-part close. (1) `compile_check` now distinguishes "path not
+found" from "on disk but not in any loaded compilation" via the typed
+`CompileCheckResult.FileResolution` enum + a handler-composed `staleDescriptorHint`
+(`INV-COMPILE-CHECK-FILE-RESOLUTION-001`, `CompileCheckFileResolutionTests`).
+(2) The `lifeblood_analyze` tool description no longer over-promises pre-meta
+disk pickup — discovery is descriptor-driven and the honest contract points at
+the `compile_check` signal (`INV-UNITY-NEWFILE-DISCOVERY-HONESTY-001`,
+`AnalyzeDescriptionHonestyTests`). The raw pre-meta disk sweep stays deferred.
 Source: DAWG Burst-first dogfood, 2026-05-30, Lifeblood v0.7.10+e98a9b7c
 Workspace: DAWG (`D:/Projekti/DAWG`, Unity project, multi-profile Editor+Player)
 
@@ -2072,8 +2080,19 @@ Acceptance:
 
 ### LB-TRACK-20260530-029 - MCP transport closure after parallel compile-check leaves no reconnect path
 
-Status: Open
+Status: Shipped (in-tree, untagged) — [Unreleased] cheap bug-first pass 2026-05-30
 Type: Bug / session resilience / diagnostic envelope
+Resolution: Root cause was NOT a server-side concurrency race — the stdio loop is
+serial by construction, so an MCP client's parallel batch is serialized
+server-side. The real faults: a broken-pipe IOException in the loop's own
+error-path write escaped and killed the process (permanent transport close), and
+error responses dropped the request id. The loop is extracted to a testable
+`McpServerLoop` (`INV-MCP-TRANSPORT-RESILIENCE-001`): dispatch faults → id-
+correlated `-32603` with a structured recovery `data` envelope; serialize faults
+→ id-correlated error not silence; broken-pipe writes logged + swallowed. No
+single-flight guard (would be theater on a serial loop, INV-WORK-005/007). Pinned
+by `McpServerLoopTests` (4 facts). The proposed structured fatal envelope shipped
+as the JSON-RPC 2.0 `data` member on `JsonRpcError`.
 Source: DAWG Burst-first dogfood, 2026-05-30, Lifeblood v0.7.10 session
 Workspace: DAWG (`D:/Projekti/DAWG`, Unity project, multi-profile Editor+Player)
 
