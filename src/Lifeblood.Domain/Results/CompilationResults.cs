@@ -59,6 +59,40 @@ public sealed class CompileCheckResult
     /// LB-INBOX-008.
     /// </summary>
     public string[] DefinesActive { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// How file-mode path resolution landed. The host knows only
+    /// compilation membership, not disk presence — so a consumer that
+    /// also knows the file exists on disk can read
+    /// <see cref="CompileCheckFileResolution.NotInAnyCompilation"/> as the
+    /// stale-project-descriptor signal (file on disk, not yet in any loaded
+    /// compilation) rather than a generic miss. Snippet-mode and successful
+    /// file-mode resolve to <see cref="CompileCheckFileResolution.Resolved"/>.
+    /// INV-COMPILE-CHECK-FILE-RESOLUTION-001 / LB-TRACK-20260530-028.
+    /// </summary>
+    public CompileCheckFileResolution FileResolution { get; init; } = CompileCheckFileResolution.Resolved;
+}
+
+/// <summary>
+/// Outcome of file-mode path resolution inside
+/// <c>ICompilationHost.CompileCheck</c>. Pure compilation-membership
+/// vocabulary — deliberately disk-agnostic so the contract stays
+/// language-agnostic. A caller that additionally knows the path exists on
+/// disk pairs <see cref="NotInAnyCompilation"/> with that fact to report
+/// "exists on disk but not in any loaded compilation" (the stale-descriptor
+/// case) distinctly from "path does not exist".
+/// INV-COMPILE-CHECK-FILE-RESOLUTION-001.
+/// </summary>
+public enum CompileCheckFileResolution
+{
+    /// <summary>File-mode resolved to an owning compilation, or snippet-mode.</summary>
+    Resolved,
+    /// <summary>A module was pinned but the file is not in that module's compilation.</summary>
+    NotInModule,
+    /// <summary>The file matched no loaded compilation's syntax-tree paths.</summary>
+    NotInAnyCompilation,
+    /// <summary>Resolved to a module but had no existing tree and no inline override to compile.</summary>
+    NoTreeToCompile,
 }
 
 /// <summary>
