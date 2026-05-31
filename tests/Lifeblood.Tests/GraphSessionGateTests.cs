@@ -67,6 +67,67 @@ public class GraphSessionGateTests
         Assert.Equal(1, Volatile.Read(ref writeEntered));
     }
 
+    [Fact]
+    public async Task Read_WaitsForActiveWriter()
+    {
+        using var gate = new GraphSessionGate();
+        using var writerEntered = new ManualResetEventSlim(false);
+        using var releaseWriter = new ManualResetEventSlim(false);
+        var readEntered = 0;
+
+        var write = Task.Run(() => gate.Write(() =>
+        {
+            writerEntered.Set();
+            releaseWriter.Wait(TimeSpan.FromSeconds(5));
+            return 1;
+        }));
+
+        Assert.True(writerEntered.Wait(TimeSpan.FromSeconds(5)));
+        var read = Task.Run(() => gate.Read(() =>
+        {
+            Interlocked.Exchange(ref readEntered, 1);
+            return 1;
+        }));
+
+        Thread.Sleep(100);
+        Assert.Equal(0, Volatile.Read(ref readEntered));
+
+        releaseWriter.Set();
+        await Task.WhenAll(read, write);
+        Assert.Equal(1, Volatile.Read(ref readEntered));
+    }
+
+    [Fact]
+    public async Task Write_AllowsOnlyOneActiveWriter()
+    {
+        using var gate = new GraphSessionGate();
+        using var firstWriterEntered = new ManualResetEventSlim(false);
+        using var releaseFirstWriter = new ManualResetEventSlim(false);
+        var inside = 0;
+        var maxInside = 0;
+
+        int WriteBody(ManualResetEventSlim? entered = null)
+        {
+            var current = Interlocked.Increment(ref inside);
+            UpdateMax(ref maxInside, current);
+            entered?.Set();
+            releaseFirstWriter.Wait(TimeSpan.FromSeconds(5));
+            Interlocked.Decrement(ref inside);
+            return 1;
+        }
+
+        var first = Task.Run(() => gate.Write(() => WriteBody(firstWriterEntered)));
+        Assert.True(firstWriterEntered.Wait(TimeSpan.FromSeconds(5)));
+
+        var second = Task.Run(() => gate.Write(() => WriteBody()));
+        Thread.Sleep(100);
+        Assert.Equal(1, Volatile.Read(ref maxInside));
+
+        releaseFirstWriter.Set();
+        await Task.WhenAll(first, second);
+        Assert.Equal(1, maxInside);
+    }
+
     private static void UpdateMax(ref int target, int candidate)
     {
         int current;

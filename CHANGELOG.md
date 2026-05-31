@@ -13,6 +13,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Analyze phase telemetry and session gate** (`INV-TELEMETRY-001`, `INV-MCP-SESSION-GATE-001`). `GraphSession` records real `lifeblood.analyze.phase` scopes/events with allocation deltas; invariant cache lookup telemetry now emits after the cache lock is released. `GraphSessionGate` keeps retained-session mutation at the MCP host boundary: read-side calls share read access, while analyze and compile-check stale refresh use the write gate.
 
+- **Session-gate stress ratchets** (`INV-MCP-SESSION-GATE-001`). `GraphSessionGateTests` now pin reader/writer exclusion in both directions plus writer serialization, and `ToolHandlerTelemetryTests` verifies `lifeblood_compile_check` uses the write gate because stale refresh can replace the retained session.
+
 - **.NET adoption lanes**. Runtime benchmark script now reports expanded workloads (`analyze`, `context`, `incremental-noop`, `cli-help`) with category metadata and parse-duration measurements. Tool-packaging smoke records optional `dotnet tool exec` / `dnx` help checks when available and honest skips otherwise. Runtime Async fixtures now cover diagnose, compile-check file mode, and compile-check snippet mode for `<Features>runtime-async=on</Features>` projects.
 
 - **Tracking ledger SSoT ratchet** (`INV-TRACKING-SSOT-001`). `TrackingLedgerTests` parses `devmemory/lifeblood-tracking.md` entry bodies, keeps status summary anchors honest, pins the active backlog to the `Partially shipped` entries, and requires every partial entry to declare its remaining open work.
