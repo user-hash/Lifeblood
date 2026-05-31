@@ -7,6 +7,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+**Release-candidate state (final commit):** 1322 discovered / **1311 passed / 0 failed**
+/ 11 native-clang skips; self-analyze **0 violations / 0 cycles, 4385 symbols / 25092 edges**;
+31 MCP tools, 30 ports, 160 invariants. Authoritative live counts live in `docs/STATUS.md`
+(truth-receipt SSoT) — the per-pass deltas below are historical within this unreleased span,
+not the final-state numbers.
+
 DAWG-dogfood cheap bug-first pass (2026-05-30). Six trust-and-robustness fixes
 surfaced during a DAWG Burst session, reconciled from `IMPROVEMENT_INBOX.md` +
 `devmemory/lifeblood-tracking.md`. Full suite 1258 passed / 0 failed / 11
