@@ -49,7 +49,6 @@ docs/AUDIT_HOLES.md
 .claude/
 
 # Dev-internal process notes - kept local, not published
-docs/plans/
 docs/audit/
 docs/DOGFOOD_FINDINGS.md
 docs/IMPROVEMENT_INBOX.md

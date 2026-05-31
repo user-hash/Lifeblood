@@ -185,3 +185,10 @@ caller. The triage workflow:
 | `Limitations[]` contains "Unregistered tool" | File a Lifeblood bug — the tool registry has a gap. |
 
 ## What this playbook does NOT cover
+
+- Lifeblood's full tool reference is in `docs/TOOLS.md` — read that for
+  every flag, every cell-kind, every option.
+- The architectural invariants live in `docs/invariants/**.md`; every
+  tool's behavior is pinned by at least one INV.
+- The deprecation policy for wire shapes is `docs/SCHEMA_DEPRECATION_POLICY.md`.
+- The full release history is `CHANGELOG.md`.

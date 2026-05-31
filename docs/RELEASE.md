@@ -18,7 +18,7 @@ Run these in order on the release commit before tagging.
 
 1. **All release commits are on the release branch.** No work-in-progress on disk. Confirm with `git status` (clean) and `git log --oneline <prev-tag>..HEAD` (every commit intended for the release is present, nothing extra).
 
-2. **CHANGELOG entry exists and is honest.** `CHANGELOG.md` carries a `## [X.Y.Z] - YYYY-MM-DD` heading describing what landed since the previous tag. Section uses `Added`, `Changed`, `Fixed`, `Removed` per Keep a Changelog. Describes shipped work, not intent. Pending items belong in `docs/IMPROVEMENT_INBOX.md` or a plan, not in a release note.
+2. **CHANGELOG entry exists and is honest.** `CHANGELOG.md` carries a `## [X.Y.Z] - YYYY-MM-DD` heading describing what landed since the previous tag. Section uses `Added`, `Changed`, `Fixed`, `Removed` per Keep a Changelog. Describes shipped work, not intent. Pending items belong in the tracking ledger (`devmemory/lifeblood-tracking.md`) or a plan, not in a release note.
 
 3. **CHANGELOG link references are complete.** Two link refs at the bottom of `CHANGELOG.md` are mandatory:
 

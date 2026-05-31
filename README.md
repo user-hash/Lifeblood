@@ -164,6 +164,20 @@ Self-analysis (symbols, edges, modules, types, violations, cycles), discovered t
 
 ## Documentation
 
+| Page | Description |
+|------|-------------|
+| [Tools](docs/TOOLS.md) | Every MCP tool — symbol ID format, incremental usage, dead_code caveats, file-mode compile_check, smart-dynamic context shaping |
+| [MCP Setup](docs/MCP_SETUP.md) | Copy-paste configs for Claude Code, Cursor, VS Code, Claude Desktop, Unity |
+| [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
+| [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, port interfaces, invariant tree |
+| [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
+| [Invariants tree](docs/invariants/INDEX.md) | Typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
+| [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
+| [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
+| [Release checklist](docs/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet single-use-key publish flow |
+| [CHANGELOG](CHANGELOG.md) | Every release — additions, fixes, known limitations |
+
 ---
 
 ## Related
