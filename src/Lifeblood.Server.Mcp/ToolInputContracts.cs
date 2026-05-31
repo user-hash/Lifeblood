@@ -239,7 +239,17 @@ public sealed record ToolArgumentDiagnostic(
     string? Argument,
     string Message,
     string? Expected,
-    string? Actual);
+    string? Actual)
+{
+    // Diagnostic-kind SSoT shared by the producer (ToolArgumentBinder.Validate)
+    // and every consumer (ToolHandler argument-binding telemetry buckets). A new
+    // kind added here without a telemetry bucket is the drift this prevents.
+    public const string KindUnknown = "unknown";
+    public const string KindMissingRequired = "missingRequired";
+    public const string KindTypeMismatch = "typeMismatch";
+    public const string KindDuplicate = "duplicate";
+    public const string KindEnumMismatch = "enumMismatch";
+}
 
 public sealed record ToolArgumentBindingResult(
     ToolJsonCompatibilityMode Mode,
@@ -283,7 +293,7 @@ public sealed class ToolArgumentBinder
         if (arguments.Value.ValueKind != JsonValueKind.Object)
         {
             diagnostics.Add(new ToolArgumentDiagnostic(
-                "typeMismatch",
+                ToolArgumentDiagnostic.KindTypeMismatch,
                 Argument: null,
                 Message: "Tool arguments must be a JSON object.",
                 Expected: "object",
@@ -299,7 +309,7 @@ public sealed class ToolArgumentBinder
             if (!seen.Add(property.Name))
             {
                 diagnostics.Add(new ToolArgumentDiagnostic(
-                    "duplicate",
+                    ToolArgumentDiagnostic.KindDuplicate,
                     property.Name,
                     $"Duplicate tool argument '{property.Name}' is not allowed in {mode.ToString().ToLowerInvariant()} JSON compatibility mode.",
                     Expected: "single property",
@@ -310,7 +320,7 @@ public sealed class ToolArgumentBinder
             if (!contract.Arguments.TryGetValue(property.Name, out var argument))
             {
                 diagnostics.Add(new ToolArgumentDiagnostic(
-                    "unknown",
+                    ToolArgumentDiagnostic.KindUnknown,
                     property.Name,
                     $"Unknown argument '{property.Name}' for tool '{toolName}'.",
                     Expected: "known argument",
@@ -321,7 +331,7 @@ public sealed class ToolArgumentBinder
             if (!MatchesType(argument, property.Value))
             {
                 diagnostics.Add(new ToolArgumentDiagnostic(
-                    "typeMismatch",
+                    ToolArgumentDiagnostic.KindTypeMismatch,
                     property.Name,
                     $"Argument '{property.Name}' for tool '{toolName}' has the wrong JSON type.",
                     Expected: Describe(argument),
@@ -330,7 +340,7 @@ public sealed class ToolArgumentBinder
             else if (!MatchesEnum(argument, property.Value))
             {
                 diagnostics.Add(new ToolArgumentDiagnostic(
-                    "enumMismatch",
+                    ToolArgumentDiagnostic.KindEnumMismatch,
                     property.Name,
                     $"Argument '{property.Name}' for tool '{toolName}' is outside the declared enum values.",
                     Expected: Describe(argument),
@@ -359,7 +369,7 @@ public sealed class ToolArgumentBinder
 
     private static ToolArgumentDiagnostic Missing(string name)
         => new(
-            "missingRequired",
+            ToolArgumentDiagnostic.KindMissingRequired,
             name,
             $"Required argument '{name}' is missing.",
             Expected: "present",

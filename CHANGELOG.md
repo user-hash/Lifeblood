@@ -21,6 +21,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Typed contract-backed capability flags.** `lifeblood_capabilities.featureFlags.summarizeCapableTools` now derives from `ToolInputContract` argument metadata instead of serializing input schemas and searching for a `"summarize"` token. The existing capabilities wire shape is unchanged; `ToolHandlerTests` pins the flag list against the typed contract SSoT.
 
+- **Authoritative MCP input contract catalog.** `ToolInputContractCatalog` now owns registered MCP tool argument names, types, required flags, enum values, and descriptions. `ToolDefinition.InputSchema` is generated from the typed contract, and `ToolRegistry` no longer authors anonymous schema objects. Snapshot tests still pin the `tools/list` wire shape byte-stably.
+
 ### Fixed
 
 - **`execute` workspace-type runtime-load boundary** (`INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001`, LB-TRACK-20260530-031). Scripts compile against workspace/engine types (injected as Roslyn metadata references) but those assemblies are not loaded into the host runtime, so instantiation / `Unsafe.SizeOf<T>` / reflection over a workspace type threw `FileLoadException` and the executor leaked the raw "Could not load file or assembly" message. `RoslynCodeExecutor` now classifies the exception chain against the known workspace module set and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary. Pinned by `ExecuteRobustnessTests`.

@@ -126,8 +126,9 @@ public sealed class ToolDefinition
 {
   public required string Name { get; init; }
   public required string Description { get; init; }
-  public required object InputSchema { get; init; }
   public required ToolAvailability Availability { get; init; }
+  public ToolInputContract InputContract => ToolInputContractCatalog.Get(Name);
+  public object InputSchema => InputContract.ToInputSchema();
 
   /// <summary>
   /// Truth-envelope classification carried by every successful response
