@@ -369,11 +369,20 @@ source-generated-context diagnostic-parity gate. Local 2026-05-31 smoke could
 not execute the standalone benchmark project in this session because MSBuild
 object-file writes for the new project were denied even after redirecting output
 to the scratch tree; this entry therefore records the harness as compile-proven
-and ready for a writable build host, not as completed adoption.
-Remaining open work: run the JSON parser benchmark report on a writable host,
-decide `PipeReader` adoption from evidence, and adopt source-generated contexts
-only after diagnostic parity can see the generated surface or production no
-longer depends on generator-only members.
+and ready for a writable build host, not as completed adoption. Follow-up local
+evidence receipt `D:\Projekti\DAWG\codex_tmp\lifeblood-json-parser-benchmark-after.json`
+ran 50,000 iterations after rebuilding the standalone harness. The benchmark
+keeps `PipeReader` as a measurement-only candidate: the buffered candidate
+remains semantically equivalent but allocates more per operation because MCP
+stdio is still newline-framed, so no production transport rewrite is justified
+from this pass. A small production parser improvement did ship: strict JSON mode
+now reuses the UTF-8 bytes already required for duplicate-property detection when
+deserializing the envelope, avoiding the previous second parse from the original
+string. Pinned by `McpJsonRequestParserTests`, `McpServerLoopTests`, and
+`BenchmarkSmokeTests`.
+Remaining open work: adopt source-generated contexts only after diagnostic
+parity can see the generated surface or production no longer depends on
+generator-only members.
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
@@ -387,11 +396,9 @@ Summary:
   source remains open.
 
 Remaining open work:
-- Run the JSON parser benchmark on a host that can build the standalone harness,
-  then measure `PipeReader` before adopting it. Adopt source-generated JSON
-  contexts only after Lifeblood diagnostic parity can see the generated surface
-  or the production code path is otherwise proven not to depend on generator-only
-  members.
+- Adopt source-generated JSON contexts only after Lifeblood diagnostic parity
+  can see the generated surface or the production code path is otherwise proven
+  not to depend on generator-only members.
 
 Impact:
 - Schema drift is a high-leverage failure class: clients learn tool arguments

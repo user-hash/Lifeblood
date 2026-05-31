@@ -257,8 +257,9 @@ internal static class McpJsonRequestParser
     {
         if (strictJson)
         {
-            DuplicatePropertyGuard.ThrowIfDuplicateProperties(Encoding.UTF8.GetBytes(json));
-            return JsonSerializer.Deserialize<JsonRpcRequest>(json, JsonOptions.Strict);
+            var utf8 = Encoding.UTF8.GetBytes(json);
+            DuplicatePropertyGuard.ThrowIfDuplicateProperties(utf8);
+            return JsonSerializer.Deserialize<JsonRpcRequest>(utf8, JsonOptions.Strict);
         }
 
         return JsonSerializer.Deserialize<JsonRpcRequest>(json, options);

@@ -33,7 +33,8 @@ public static class McpJsonRequestParser
             return JsonSerializer.Deserialize<JsonRpcRequest>(json, options);
         }
 
-        ThrowIfDuplicateProperties(json);
+        var utf8 = Encoding.UTF8.GetBytes(json);
+        ThrowIfDuplicateProperties(utf8);
 
         var strictOptions = StrictOptionsCache.GetValue(
             options,
@@ -42,7 +43,7 @@ public static class McpJsonRequestParser
                 UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             });
 
-        return JsonSerializer.Deserialize<JsonRpcRequest>(json, strictOptions);
+        return JsonSerializer.Deserialize<JsonRpcRequest>(utf8, strictOptions);
     }
 
     public static bool ReadStrictJsonFlag(string environmentVariableName)
@@ -60,11 +61,10 @@ public static class McpJsonRequestParser
         };
     }
 
-    private static void ThrowIfDuplicateProperties(string json)
+    private static void ThrowIfDuplicateProperties(ReadOnlySpan<byte> utf8)
     {
-        var bytes = Encoding.UTF8.GetBytes(json);
         var reader = new Utf8JsonReader(
-            bytes,
+            utf8,
             new JsonReaderOptions
             {
                 AllowTrailingCommas = false,
