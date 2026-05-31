@@ -31,9 +31,32 @@ public class DotNetLaneScriptTests
 
         Assert.Contains("smoke-dotnet-tool-exec-help", script);
         Assert.Contains("smoke-dnx-help", script);
+        Assert.Contains("smoke-cli-help-contract", script);
         Assert.Contains("requires .NET 10.0.100 SDK or later", script);
         Assert.Contains("this script never publishes packages", script);
+        Assert.Contains("artifactRootFallbackReason", script);
+        Assert.Contains("Could not clean the previous artifact root", script);
         Assert.Contains("Add-SkippedStep", script);
+    }
+
+    [Fact]
+    public void ToolPackagingLane_CarriesReportOnlyPublishExperiments()
+    {
+        var script = ReadRepoFile("tools", "dotnet-lanes", "run-lifeblood-tool-packaging.ps1");
+
+        Assert.Contains("RunPublishExperiments", script);
+        Assert.Contains("PublishRuntimeIdentifier", script);
+        Assert.Contains("publishExperiments", script);
+        Assert.Contains("report-only", script);
+        Assert.Contains("experiment-publish-cli-framework-dependent", script);
+        Assert.Contains("experiment-publish-mcp-framework-dependent", script);
+        Assert.Contains("experiment-publish-cli-self-contained", script);
+        Assert.Contains("experiment-publish-cli-trimmed", script);
+        Assert.Contains("experiment-publish-cli-aot", script);
+        Assert.Contains("experiment-publish-mcp-self-contained", script);
+        Assert.Contains("MCP trimming is intentionally skipped", script);
+        Assert.Contains("PublishTrimmed=true", script);
+        Assert.Contains("PublishAot=true", script);
     }
 
     private static string ReadRepoFile(params string[] parts)

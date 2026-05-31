@@ -3,6 +3,8 @@ param(
     [string]$Configuration = "Release",
     [string]$OutputPath = "artifacts/tool-packaging/tool-packaging-report.json",
     [int]$McpSmokeTimeoutSeconds = 10,
+    [switch]$RunPublishExperiments,
+    [string]$PublishRuntimeIdentifier = "",
     [switch]$SkipMcpSmoke
 )
 
@@ -61,6 +63,36 @@ function Invoke-Step($Report, [string]$Name, [string]$FileName, [string[]]$Argum
     }
 
     return @($output)
+}
+
+function Invoke-ReportOnlyStep($Report, [string]$Name, [string]$FileName, [string[]]$Arguments, [string]$WorkingDirectory) {
+    Write-Host "[$Name] $FileName $($Arguments -join ' ')"
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    Push-Location -LiteralPath $WorkingDirectory
+    try {
+        $output = & $FileName @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+        $stopwatch.Stop()
+    }
+
+    $Report.steps += [pscustomobject]@{
+        name = $Name
+        command = @($FileName) + $Arguments
+        workingDirectory = $WorkingDirectory
+        optional = $true
+        reportOnly = $true
+        exitCode = $exitCode
+        durationMs = [long]$stopwatch.ElapsedMilliseconds
+        output = @($output)
+        skipped = $exitCode -ne 0
+        reason = if ($exitCode -ne 0) { "Report-only publish experiment did not complete on this host/configuration; see exitCode/output." } else { $null }
+    }
+
+    return $exitCode -eq 0
 }
 
 function Get-PackageVersion([string]$PackagesDir, [string]$PackageId) {
@@ -180,15 +212,77 @@ function Add-SkippedStep($Report, [string]$Name, [string]$Reason) {
     }
 }
 
+function Add-ValidationStep($Report, [string]$Name, [bool]$Passed, [string]$Reason) {
+    $Report.steps += [pscustomobject]@{
+        name = $Name
+        validation = $true
+        skipped = $false
+        passed = $Passed
+        reason = if ($Passed) { $null } else { $Reason }
+    }
+
+    if (-not $Passed) {
+        $Report.status = "failed"
+        throw "Validation '$Name' failed: $Reason"
+    }
+}
+
+function Assert-LastStepStdoutContains($Report, [string]$Name, [string[]]$ExpectedTokens) {
+    if ($Report.steps.Count -eq 0) {
+        throw "No prior step exists for validation '$Name'."
+    }
+
+    $lastStep = $Report.steps[-1]
+    $stdout = [string]$lastStep.stdout
+    $missing = @($ExpectedTokens | Where-Object { $stdout -notlike "*$_*" })
+    Add-ValidationStep $Report $Name ($missing.Count -eq 0) "Missing expected help tokens: $($missing -join ', ')"
+}
+
+function Invoke-PublishExperiment(
+    $Report,
+    [string]$Name,
+    [string]$ProjectPath,
+    [string]$OutputDirectory,
+    [string[]]$ExtraArguments,
+    [string]$WorkingDirectory) {
+
+    if (-not $RunPublishExperiments) {
+        Add-SkippedStep $Report $Name "Report-only publish experiments are opt-in; pass -RunPublishExperiments to execute."
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+    Invoke-ReportOnlyStep $Report $Name "dotnet" (@(
+        "publish", $ProjectPath,
+        "-c", $Configuration,
+        "-f", $TargetFramework,
+        "-o", $OutputDirectory,
+        "--nologo"
+    ) + $ExtraArguments) $WorkingDirectory | Out-Null
+}
+
 $repoRoot = Get-RepoRoot
 $outputFullPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $repoRoot $OutputPath }
-$laneRoot = Assert-UnderRoot $repoRoot (Join-Path $repoRoot "artifacts/tool-packaging/$TargetFramework")
-$packagesDir = Join-Path $laneRoot "packages"
-$toolsDir = Join-Path $laneRoot "tools"
+$requestedLaneRoot = Assert-UnderRoot $repoRoot (Join-Path $repoRoot "artifacts/tool-packaging/$TargetFramework")
+$laneRoot = $requestedLaneRoot
+$laneRootFallbackReason = $null
 
 if (Test-Path -LiteralPath $laneRoot) {
-    Remove-Item -LiteralPath $laneRoot -Recurse -Force
+    try {
+        Remove-Item -LiteralPath $laneRoot -Recurse -Force
+    }
+    catch {
+        $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
+        $laneRoot = Assert-UnderRoot $repoRoot (Join-Path $repoRoot "artifacts/tool-packaging/$TargetFramework-$stamp")
+        $laneRootFallbackReason = "Could not clean the previous artifact root '$requestedLaneRoot' (likely locked local package/tool files): $($_.Exception.Message). Using '$laneRoot' for this run."
+        Write-Warning $laneRootFallbackReason
+    }
 }
+
+$packagesDir = Join-Path $laneRoot "packages"
+$toolsDir = Join-Path $laneRoot "tools"
+$publishExperimentsDir = Join-Path $laneRoot "publish-experiments"
+
 New-Item -ItemType Directory -Force -Path $packagesDir | Out-Null
 New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
 
@@ -200,16 +294,26 @@ $report = [ordered]@{
     targetFramework = $TargetFramework
     configuration = $Configuration
     status = "running"
+    requestedArtifactRoot = $requestedLaneRoot
+    artifactRoot = $laneRoot
+    artifactRootFallbackReason = $laneRootFallbackReason
     artifacts = [ordered]@{
         packages = $packagesDir
         tools = $toolsDir
+        publishExperiments = $publishExperimentsDir
+    }
+    publishExperiments = [ordered]@{
+        enabled = [bool]$RunPublishExperiments
+        runtimeIdentifier = if ([string]::IsNullOrWhiteSpace($PublishRuntimeIdentifier)) { $null } else { $PublishRuntimeIdentifier }
+        posture = "report-only"
     }
     packageIds = @("Lifeblood", "Lifeblood.Server.Mcp")
     notes = @(
         "Local packaging smoke only; this script never publishes packages.",
         "Production project files remain pinned to their checked-in target frameworks.",
         "MCP smoke closes stdin immediately and verifies graceful startup/shutdown.",
-        "dotnet tool exec / dnx smoke checks run only when the installed SDK exposes those .NET 10 commands."
+        "dotnet tool exec / dnx smoke checks run only when the installed SDK exposes those .NET 10 commands.",
+        "Publish experiments are report-only. Framework-dependent publish is safe to compare; self-contained/trimming/AOT require an explicit runtime identifier and may be unsupported for Roslyn-heavy tools."
     )
     steps = @()
 }
@@ -255,6 +359,35 @@ try {
     ) $repoRoot | Out-Null
 
     Invoke-ProcessSmoke $report "smoke-cli-help" (Get-ToolExecutable $toolsDir "lifeblood") @("--help") $repoRoot | Out-Null
+    Assert-LastStepStdoutContains $report "smoke-cli-help-contract" @(
+        "lifeblood analyze --project",
+        "lifeblood context --project",
+        "lifeblood export  --project",
+        "lifeblood verify  --incremental",
+        "Built-in rule packs:"
+    )
+
+    $cliProject = Join-Path $repoRoot "src/Lifeblood.CLI/Lifeblood.CLI.csproj"
+    $mcpProject = Join-Path $repoRoot "src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj"
+    Invoke-PublishExperiment $report "experiment-publish-cli-framework-dependent" $cliProject (Join-Path $publishExperimentsDir "cli-framework-dependent") @() $repoRoot
+    Invoke-PublishExperiment $report "experiment-publish-mcp-framework-dependent" $mcpProject (Join-Path $publishExperimentsDir "mcp-framework-dependent") @() $repoRoot
+
+    if ([string]::IsNullOrWhiteSpace($PublishRuntimeIdentifier)) {
+        Add-SkippedStep $report "experiment-publish-cli-self-contained" "Self-contained publish experiments require -PublishRuntimeIdentifier."
+        Add-SkippedStep $report "experiment-publish-cli-trimmed" "Trim publish experiments require -PublishRuntimeIdentifier."
+        Add-SkippedStep $report "experiment-publish-cli-aot" "AOT publish experiments require -PublishRuntimeIdentifier."
+        Add-SkippedStep $report "experiment-publish-mcp-self-contained" "Self-contained publish experiments require -PublishRuntimeIdentifier."
+        Add-SkippedStep $report "experiment-publish-mcp-trimmed" "MCP trimming is intentionally skipped until Roslyn compatibility evidence says otherwise."
+        Add-SkippedStep $report "experiment-publish-mcp-aot" "MCP AOT is intentionally skipped until Roslyn compatibility evidence says otherwise."
+    } else {
+        $ridArgs = @("-r", $PublishRuntimeIdentifier)
+        Invoke-PublishExperiment $report "experiment-publish-cli-self-contained" $cliProject (Join-Path $publishExperimentsDir "cli-self-contained") ($ridArgs + @("--self-contained", "true")) $repoRoot
+        Invoke-PublishExperiment $report "experiment-publish-cli-trimmed" $cliProject (Join-Path $publishExperimentsDir "cli-trimmed") ($ridArgs + @("--self-contained", "true", "-p:PublishTrimmed=true")) $repoRoot
+        Invoke-PublishExperiment $report "experiment-publish-cli-aot" $cliProject (Join-Path $publishExperimentsDir "cli-aot") ($ridArgs + @("--self-contained", "true", "-p:PublishAot=true")) $repoRoot
+        Invoke-PublishExperiment $report "experiment-publish-mcp-self-contained" $mcpProject (Join-Path $publishExperimentsDir "mcp-self-contained") ($ridArgs + @("--self-contained", "true")) $repoRoot
+        Add-SkippedStep $report "experiment-publish-mcp-trimmed" "MCP trimming is intentionally skipped until Roslyn compatibility evidence says otherwise."
+        Add-SkippedStep $report "experiment-publish-mcp-aot" "MCP AOT is intentionally skipped until Roslyn compatibility evidence says otherwise."
+    }
 
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'

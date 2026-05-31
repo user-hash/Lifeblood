@@ -582,7 +582,12 @@ tool entry points, installed them from the local package folder, verified
 stdin closes. 2026-05-31 slice extends the packaging report with optional
 `dotnet tool exec` and `dnx` help smokes when the local SDK/tooling supports
 those entrypoints; unsupported hosts record honest skipped steps instead of
-failing or pretending coverage. Pinned by `DotNetLaneScriptTests`.
+failing or pretending coverage. Follow-up local slice adds a CLI help-contract
+validation step plus opt-in report-only publish experiments for
+framework-dependent, self-contained, trimmed, and AOT publish shapes under
+`artifacts/tool-packaging/<tfm>/publish-experiments`; MCP trim/AOT paths are
+recorded as intentional skips until Roslyn compatibility evidence says
+otherwise. Pinned by `DotNetLaneScriptTests`.
 
 Summary:
 - Lifeblood is a tool product. Runtime retargeting is not enough; packaging,
@@ -590,9 +595,9 @@ Summary:
   product surface.
 
 Remaining open work:
-- Add report-only platform-specific, self-contained, trimming, and AOT
-  experiments where Roslyn compatibility permits, plus CLI schema/help smoke
-  checks that fail on user-facing drift.
+- Run the report-only publish experiments on supported RID/SDK hosts, compare
+  outputs across platforms, and decide whether any platform-specific package
+  shape graduates from experiment to supported lane.
 
 Fix shape:
 - Add an experimental packaging lane that builds and smoke-tests the current
