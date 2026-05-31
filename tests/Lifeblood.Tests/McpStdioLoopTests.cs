@@ -51,9 +51,15 @@ public class McpStdioLoopTests
 
     private static Process StartServer(string dllPath)
     {
+        var dotnetHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        if (string.IsNullOrWhiteSpace(dotnetHost))
+        {
+            dotnetHost = "dotnet";
+        }
+
         var psi = new ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = dotnetHost,
             ArgumentList = { dllPath },
             RedirectStandardInput = true,
             RedirectStandardOutput = true,

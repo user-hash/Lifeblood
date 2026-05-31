@@ -299,4 +299,34 @@ public class CsprojCompilationFactsTests
         }
         finally { Directory.Delete(tempDir, true); }
     }
+
+    [Fact]
+    public void Compilation_ThreadsCompilerFeatures_IntoSyntheticImplicitGlobalUsings()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-features-implicit-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "Empty.cs"),
+                "namespace Test; public class Empty { }");
+            File.WriteAllText(Path.Combine(tempDir, "Test.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <AssemblyName>Test</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Features>runtime-async=on</Features>
+  </PropertyGroup>
+</Project>");
+
+            var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem());
+            analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig { RetainCompilations = true });
+            var compilation = analyzer.Compilations!["Test"];
+            var implicitTree = Assert.Single(compilation.SyntaxTrees,
+                tree => tree.FilePath.EndsWith("<ImplicitGlobalUsings>.cs", StringComparison.Ordinal));
+            var opts = Assert.IsType<CSharpParseOptions>(implicitTree.Options);
+
+            Assert.Equal("on", opts.Features["runtime-async"]);
+        }
+        finally { Directory.Delete(tempDir, true); }
+    }
 }

@@ -22,13 +22,7 @@ internal sealed class ModuleCompilationBuilder
     private readonly NuGetReferenceResolver _nuget;
     private readonly SharedMetadataReferenceCache _refCache;
 
-    /// <summary>
-    /// Synthetic tree matching the global usings MSBuild generates when
-    /// <c>&lt;ImplicitUsings&gt;enable&lt;/ImplicitUsings&gt;</c> is set.
-    /// Parsed once, shared across all compilations that need it.
-    /// </summary>
-    private static readonly SyntaxTree ImplicitGlobalUsings = CSharpSyntaxTree.ParseText(
-        """
+    private const string ImplicitGlobalUsingsSource = """
         global using global::System;
         global using global::System.Collections.Generic;
         global using global::System.IO;
@@ -36,8 +30,7 @@ internal sealed class ModuleCompilationBuilder
         global using global::System.Net.Http;
         global using global::System.Threading;
         global using global::System.Threading.Tasks;
-        """,
-        path: "<ImplicitGlobalUsings>.cs");
+        """;
 
     public ModuleCompilationBuilder(IFileSystem fs, SharedMetadataReferenceCache? refCache = null)
     {
@@ -365,7 +358,7 @@ internal sealed class ModuleCompilationBuilder
         // versions" when the module declares a non-default LangVersion.
         var allTrees = trees;
         if (module.ImplicitUsings)
-            allTrees = allTrees.Append(ImplicitGlobalUsings).ToArray();
+            allTrees = allTrees.Append(BuildImplicitGlobalUsingsTree(parseOptions)).ToArray();
         if (module.InternalsVisibleTo.Length > 0)
             allTrees = allTrees.Append(BuildInternalsVisibleToTree(module.InternalsVisibleTo, parseOptions)).ToArray();
 
@@ -406,6 +399,19 @@ internal sealed class ModuleCompilationBuilder
             sb.Append("[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(\"").Append(target).AppendLine("\")]");
         return CSharpSyntaxTree.ParseText(sb.ToString(), parseOptions, path: "<InternalsVisibleTo>.cs");
     }
+
+    /// <summary>
+    /// Build the synthetic tree that mirrors MSBuild's implicit global-usings
+    /// output. Parse with the module's own <see cref="CSharpParseOptions"/>
+    /// because Roslyn requires every tree in a compilation to carry the same
+    /// feature set. This is load-bearing for preview compiler switches such as
+    /// <c>&lt;Features&gt;runtime-async=on&lt;/Features&gt;</c>.
+    /// </summary>
+    private static SyntaxTree BuildImplicitGlobalUsingsTree(CSharpParseOptions parseOptions)
+        => CSharpSyntaxTree.ParseText(
+            ImplicitGlobalUsingsSource,
+            parseOptions,
+            path: "<ImplicitGlobalUsings>.cs");
 
     /// <summary>
     /// Map the csproj <c>&lt;Nullable&gt;</c> string value to Roslyn's

@@ -61,7 +61,7 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 34 --><!-- trackingStatusPartiallyShippedCount: 6 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 35 --><!-- trackingStatusPartiallyShippedCount: 5 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
@@ -70,7 +70,6 @@ Active non-shipped implementation ledger:
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 - 2026-05-28 - Lifeblood .NET 10 experimental target lane
 - 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
-- 2026-05-28 - Lifeblood .NET Runtime Async compatibility
 <!-- trackingActiveBacklog:end -->
 
 **2026-05-24 Wave 6 close — L-LIM-001 CLOSED**: multi-define union analyze chain
@@ -302,8 +301,10 @@ Summary:
   the server-edge tool argument contract/binder, `LIFEBLOOD_JSON_COMPAT`
   compatibility modes, analyze phase telemetry, a retained-session gate,
   Runtime Async diagnose/compile-check fixtures, expanded benchmark workloads,
-  and optional packaging checks. Production projects remain on `net8.0`;
-  .NET 10 remains an experimental lane until SDK-backed evidence says otherwise.
+  optional packaging checks, and an opt-in Runtime Async benchmark lane that
+  passed a local side-by-side .NET 11 preview SDK run with `runtime-async=on`.
+  Production projects remain on `net8.0`; .NET 10 remains an experimental lane
+  until SDK-backed evidence says otherwise.
 
 Priority order:
 1. Telemetry on `net8.0`: port + no-op + diagnostics adapter + tool/analyze
@@ -322,8 +323,9 @@ Priority order:
    Lifeblood benchmark second, production never before stable evidence.
 
 Remaining open work:
-- Close the seven concrete child entries below with evidence receipts, then make
-  the production `net10.0` migration decision from benchmark/package/schema data.
+- Close the remaining concrete child entries below with evidence receipts, then
+  make the production `net10.0` migration decision from
+  benchmark/package/schema data.
 
 ## 2026-05-28 - Lifeblood .NET JSON contract hardening
 
@@ -712,19 +714,38 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET Runtime Async compatibility
 
-Status: Partially shipped
+Status: Shipped
 Type: Improvement
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self and user-analyzed projects
-Verification: local inspection: no .NET 11 SDK/runtime is installed locally;
-Lifeblood production target remains `net8.0`; compatibility awareness shipped
-with csproj `<Features>` discovery, `ModuleInfo.CompilerFeatures`,
-`CSharpParseOptions.WithFeatures` thread-through, profile-clone preservation,
-and focused fixtures in `CsprojCompilationFactsTests`. 2026-05-31 slice adds
-feature-bearing fixtures for `diagnose`, compile-check file mode, and
-compile-check snippet mode in `CompileCheckParseOptionsParityTests`. Remaining
-open work: an opt-in server benchmark lane when a supporting SDK exists, and
-production adoption only after stable evidence.
+Verification: Lifeblood production target remains `net8.0`; compatibility
+awareness shipped with csproj `<Features>` discovery,
+`ModuleInfo.CompilerFeatures`, `CSharpParseOptions.WithFeatures` thread-through,
+profile-clone preservation, and focused fixtures in
+`CsprojCompilationFactsTests`. 2026-05-31 slice adds feature-bearing fixtures
+for `diagnose`, compile-check file mode, and compile-check snippet mode in
+`CompileCheckParseOptionsParityTests`. Remaining local slice adds
+`tools/runtime-benchmarks/run-lifeblood-runtime-async-benchmark.ps1`: it injects
+`<Features>runtime-async=on</Features>` only into the temporary copied
+experimental tree via the `run-lifeblood-experimental-target.ps1`
+`-CompilerFeatures` hook, measures CLI workloads, and delegates retained MCP
+read-side measurement to the MCP GC benchmark harness when a supporting SDK is
+available. Local side-by-side .NET 11 preview SDK
+`11.0.100-preview.4.26230.115` was installed under
+`D:\Projekti\DAWG\codex_tmp\dotnet-11`; the Runtime Async lane then restored,
+built, and ran the copied `net11.0` tree with `runtime-async=on`, producing
+`1307 passed / 11 skipped / 1318 total`, semantic self-analysis counts matching
+the production anchors (`4316` symbols, `24876` edges, 11 modules, 455 types),
+and CLI workload receipts for self-analyze and help. The retained MCP read-side
+measurement also completed on the `net11.0` Runtime Async server: all three GC
+configs analyzed successfully, all retained read-side dispatches completed, and
+workstation read-side latencies were capabilities 139 ms, context 53 ms, cycles
+34 ms, and dead-code summarize 20 ms. The real compatibility defect found by
+this lane was fixed: synthetic implicit-global-usings trees now parse with the
+module's feature-bearing `CSharpParseOptions`; stdio tests use the current
+`DOTNET_HOST_PATH`, and the JSON parser benchmark compile probe locates the
+active SDK reference pack. Production Runtime Async adoption remains a future
+runtime/platform decision, not part of this shipped compatibility entry.
 
 Summary:
 - Runtime Async is preview/experimental until the SDK/runtime is available and
@@ -735,10 +756,13 @@ Summary:
   a new `<Features>` marker. Analyze parse-option preservation was already
   pinned; diagnose and compile-check compatibility fixtures are now covered.
 
-Remaining open work:
-- Add an opt-in server/runtime benchmark lane for Runtime Async once the
-  supporting SDK/runtime is stable enough to test, then decide production
-  adoption only from allocation/latency evidence.
+Closure:
+- Current-pass Runtime Async compatibility is complete: Lifeblood preserves
+  feature-bearing parse options through analyze, diagnose, compile-check, and
+  synthetic module trees; the opt-in benchmark lane runs against a local
+  side-by-side .NET 11 SDK and records test, semantic, CLI, and retained MCP
+  evidence. Future production adoption gets a new entry when the platform
+  feature is stable enough to consider for Lifeblood itself.
 
 Impact:
 - Users may analyze projects that enable Runtime Async before Lifeblood itself

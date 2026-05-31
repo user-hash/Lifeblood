@@ -6,10 +6,23 @@ param(
     [switch]$SkipPack,
     [switch]$SkipSemanticAnalyze,
     [switch]$RestoreIgnoreFailedSources,
+    [string[]]$PackageSources = @(),
+    [string]$CompilerFeatures = "",
+    [string]$DotnetExe = "dotnet",
+    [string]$DotnetCliHome = "",
+    [string]$WorkDirRoot = "",
     [switch]$FailWhenUnavailable
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($DotnetCliHome)) {
+    $DotnetCliHome = Join-Path ([System.IO.Path]::GetTempPath()) "lifeblood-dotnet-cli-home"
+}
+New-Item -ItemType Directory -Force -Path $DotnetCliHome | Out-Null
+[Environment]::SetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT", "1", "Process")
+[Environment]::SetEnvironmentVariable("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1", "Process")
+[Environment]::SetEnvironmentVariable("DOTNET_NOLOGO", "1", "Process")
+[Environment]::SetEnvironmentVariable("DOTNET_CLI_HOME", $DotnetCliHome, "Process")
 
 function Get-RepoRoot {
     $dir = Resolve-Path (Join-Path $PSScriptRoot "..\..")
@@ -34,9 +47,9 @@ function Invoke-DotnetLines([string[]]$Arguments) {
     # incidental stderr - is the success signal.
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    try { $output = & dotnet @Arguments 2>&1 } finally { $ErrorActionPreference = $prevEap }
+    try { $output = & $script:DotnetExe @Arguments 2>&1 } finally { $ErrorActionPreference = $prevEap }
     if ($LASTEXITCODE -ne 0) {
-        throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE.`n$output"
+        throw "$script:DotnetExe $($Arguments -join ' ') failed with exit code $LASTEXITCODE.`n$output"
     }
     return @($output)
 }
@@ -265,15 +278,58 @@ function Set-CopiedProjectTargetFrameworks([string]$SourceRoot, [string]$TargetF
     return @($retargeted)
 }
 
+function Set-CopiedProjectCompilerFeatures([string]$SourceRoot, [string]$CompilerFeatures) {
+    $projects = @()
+
+    $srcRoot = Join-Path $SourceRoot "src"
+    if (Test-Path -LiteralPath $srcRoot) {
+        $projects += @(Get-ChildItem -LiteralPath $srcRoot -Recurse -Filter "*.csproj")
+    }
+
+    $testProject = Join-Path $SourceRoot "tests/Lifeblood.Tests/Lifeblood.Tests.csproj"
+    if (Test-Path -LiteralPath $testProject) {
+        $projects += @(Get-Item -LiteralPath $testProject)
+    }
+
+    $updated = @()
+    foreach ($project in $projects) {
+        [xml]$xml = Get-Content -LiteralPath $project.FullName -Raw
+        $propertyGroup = @($xml.Project.PropertyGroup | Where-Object { $null -ne $_ }) | Select-Object -First 1
+        if ($null -eq $propertyGroup) {
+            $propertyGroup = $xml.CreateElement("PropertyGroup")
+            [void]$xml.Project.AppendChild($propertyGroup)
+        }
+
+        $featuresNode = $propertyGroup.SelectSingleNode("Features")
+        if ($null -eq $featuresNode) {
+            $featuresNode = $xml.CreateElement("Features")
+            [void]$propertyGroup.AppendChild($featuresNode)
+        }
+
+        $featuresNode.InnerText = $CompilerFeatures
+        $settings = [System.Xml.XmlWriterSettings]::new()
+        $settings.Indent = $true
+        $settings.Encoding = [System.Text.UTF8Encoding]::new($false)
+        $writer = [System.Xml.XmlWriter]::Create($project.FullName, $settings)
+        try { $xml.Save($writer) } finally { $writer.Close() }
+
+        $updated += $project.FullName.Substring($SourceRoot.Length).TrimStart(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar)
+    }
+
+    return @($updated)
+}
+
 function Invoke-Step($Report, [string]$Name, [string[]]$Arguments, [string]$WorkingDirectory) {
-    Write-Host "[$Name] dotnet $($Arguments -join ' ')"
+    Write-Host "[$Name] $script:DotnetExe $($Arguments -join ' ')"
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     Push-Location -LiteralPath $WorkingDirectory
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'   # see Invoke-DotnetLines: native stderr is not a failure
     try {
-        $output = & dotnet @Arguments 2>&1
+        $output = & $script:DotnetExe @Arguments 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -284,11 +340,11 @@ function Invoke-Step($Report, [string]$Name, [string[]]$Arguments, [string]$Work
 
     $Report.steps += [pscustomobject]@{
         name = $Name
-        command = @("dotnet") + $Arguments
+        command = @($script:DotnetExe) + $Arguments
         workingDirectory = $WorkingDirectory
         exitCode = $exitCode
         durationMs = [long]$stopwatch.ElapsedMilliseconds
-        output = @($output)
+        output = @($output | ForEach-Object { [string]$_ })
     }
 
     if ($exitCode -ne 0) {
@@ -306,7 +362,11 @@ $repoRoot = Get-RepoRoot
 $outputFullPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $repoRoot $OutputPath }
 $checkedInSolution = Join-Path $repoRoot "Lifeblood.sln"
 $targetPathName = $TargetFramework -replace '[^A-Za-z0-9_.-]', '_'
-$tempBase = Join-Path ([System.IO.Path]::GetTempPath()) "lifeblood-dotnet-experimental"
+$tempBase = if ([string]::IsNullOrWhiteSpace($WorkDirRoot)) {
+    Join-Path ([System.IO.Path]::GetTempPath()) "lifeblood-dotnet-experimental"
+} else {
+    $WorkDirRoot
+}
 $workDir = Assert-UnderRoot $tempBase (Join-Path $tempBase $targetPathName)
 $experimentalSourceRoot = Join-Path $workDir "source"
 $solution = Join-Path $experimentalSourceRoot "Lifeblood.sln"
@@ -331,8 +391,11 @@ $report = [ordered]@{
     solution = $solution
     targetFramework = $TargetFramework
     configuration = $Configuration
+    dotnetExe = $DotnetExe
+    dotnetCliHome = $DotnetCliHome
     restore = [ordered]@{
         ignoreFailedSources = [bool]$RestoreIgnoreFailedSources
+        packageSources = @($PackageSources)
     }
     status = "running"
     artifacts = [ordered]@{
@@ -350,15 +413,20 @@ $report = [ordered]@{
         dotnetSdks = $sdkLines
         dotnetRuntimes = $runtimeLines
         highestSdkMajor = $highestSdkMajor
+        dotnetCliTelemetryOptOut = [Environment]::GetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT", "Process")
+        dotnetCliHome = [Environment]::GetEnvironmentVariable("DOTNET_CLI_HOME", "Process")
     }
     notes = @(
         "Production project files remain pinned to net8.0.",
         "The lane copies source to a temporary tree and retargets only the copied solution projects.",
+        "Optional compiler features are injected only into the copied tree; checked-in projects remain unchanged.",
         "The temporary tree omits root global.json so the installed experimental SDK can be selected honestly.",
         "Build serializes MSBuild nodes to keep experimental obj/bin output isolated and deterministic.",
         "Packages are written under repository artifacts for CI collection; no packages are published."
     )
     retargetedProjects = @()
+    compilerFeatures = $CompilerFeatures
+    compilerFeatureProjects = @()
     steps = @()
 }
 
@@ -389,9 +457,14 @@ if (Test-Path -LiteralPath $workDir) {
 }
 
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
-New-Item -ItemType Directory -Force -Path $packagesDir | Out-Null
+if (-not $SkipPack) {
+    New-Item -ItemType Directory -Force -Path $packagesDir | Out-Null
+}
 Copy-SourceTree $repoRoot $experimentalSourceRoot
 $report.retargetedProjects = @(Set-CopiedProjectTargetFrameworks $experimentalSourceRoot $TargetFramework)
+if (-not [string]::IsNullOrWhiteSpace($CompilerFeatures)) {
+    $report.compilerFeatureProjects = @(Set-CopiedProjectCompilerFeatures $experimentalSourceRoot $CompilerFeatures)
+}
 
 try {
     $restoreArgs = @(
@@ -399,8 +472,12 @@ try {
         "--disable-parallel",
         "-maxcpucount:1",
         "-nodeReuse:false",
+        "-p:NuGetAudit=false",
         "--nologo"
     )
+    foreach ($source in $PackageSources) {
+        $restoreArgs += @("--source", $source)
+    }
     if ($RestoreIgnoreFailedSources) {
         $restoreArgs += "--ignore-failed-sources"
     }

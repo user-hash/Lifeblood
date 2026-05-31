@@ -23,6 +23,7 @@ param(
     [string]$Project = "",
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-mcp-gc-benchmark.json",
     [string]$BenchmarkRunId = "",
+    [string]$DotnetExe = "dotnet",
     [int]$Runs = 2,
     [int]$TimeoutSec = 180,
     [switch]$SkipReadSideTools
@@ -64,7 +65,7 @@ $readSideToolCalls = @(
 
 function Invoke-OneRun($EnvironmentOverrides) {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = "dotnet"
+    $psi.FileName = $DotnetExe
     $psi.Arguments = '"' + $serverDllFull + '"'
     $psi.WorkingDirectory = $repoRoot
     $psi.UseShellExecute = $false
@@ -222,6 +223,7 @@ $report = [ordered]@{
     repoRoot       = $repoRoot
     project        = $projectPath
     serverDll      = $serverDllFull
+    dotnetExe      = $DotnetExe
     runsPerConfig  = $Runs
     readSideTools  = if ($SkipReadSideTools) { @() } else { @($readSideToolCalls | ForEach-Object { $_.name }) }
     host           = [ordered]@{
