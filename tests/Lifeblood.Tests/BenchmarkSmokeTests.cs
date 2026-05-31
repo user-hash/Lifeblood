@@ -52,6 +52,8 @@ public class BenchmarkSmokeTests
         Assert.Contains("parseDurationMs", script);
         Assert.Contains("category =", script);
         Assert.Contains("schemaVersion = 1", script);
+        Assert.Contains("BenchmarkRunId", script);
+        Assert.Contains("benchmarkRunId", script);
 
         var mcpScript = File.ReadAllText(Path.Combine(
             repoRoot,
@@ -67,6 +69,8 @@ public class BenchmarkSmokeTests
         Assert.Contains("EnvironmentOverrides", mcpScript);
         Assert.Contains("SetEnvironmentVariable", mcpScript);
         Assert.Contains("previousEnvironment", mcpScript);
+        Assert.Contains("LIFEBLOOD_BENCHMARK_RUN_ID", mcpScript);
+        Assert.Contains("benchmarkRunId", mcpScript);
         Assert.DoesNotContain("[hashtable]$Env", mcpScript);
     }
 

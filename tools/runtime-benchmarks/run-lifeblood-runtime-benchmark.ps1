@@ -1,6 +1,7 @@
 param(
     [string]$Project = ".",
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-runtime-benchmark.json",
+    [string]$BenchmarkRunId = "",
     [string[]]$TargetFrameworks = @("net8.0"),
     [ValidateSet("self-analyze", "analyze", "context", "self-context", "incremental-noop", "cli-help")]
     [string[]]$Workloads = @("self-analyze"),
@@ -170,6 +171,7 @@ function Invoke-MeasuredProcess([string]$FileName, [string[]]$Arguments, [string
 }
 
 $repoRoot = Get-RepoRoot
+$resolvedBenchmarkRunId = if ([string]::IsNullOrWhiteSpace($BenchmarkRunId)) { [Guid]::NewGuid().ToString("N") } else { $BenchmarkRunId }
 $outputFullPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $repoRoot $OutputPath }
 $outputDir = Split-Path -Parent $outputFullPath
 if (-not [string]::IsNullOrWhiteSpace($outputDir)) {
@@ -186,6 +188,7 @@ $resolvedProject = if ($Workloads -contains "self-analyze") {
 
 $report = [ordered]@{
     schemaVersion = 1
+    benchmarkRunId = $resolvedBenchmarkRunId
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("O")
     repoRoot = $repoRoot
     project = $resolvedProject

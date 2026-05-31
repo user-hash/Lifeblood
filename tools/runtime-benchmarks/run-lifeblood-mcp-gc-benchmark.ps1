@@ -22,6 +22,7 @@ param(
     [string]$ServerDll = "artifacts/runtime-benchmarks/mcp-publish/net8.0/Lifeblood.Server.Mcp.dll",
     [string]$Project = "",
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-mcp-gc-benchmark.json",
+    [string]$BenchmarkRunId = "",
     [int]$Runs = 2,
     [int]$TimeoutSec = 180,
     [switch]$SkipReadSideTools
@@ -34,6 +35,7 @@ function Get-RepoRoot {
 }
 
 $repoRoot = Get-RepoRoot
+$resolvedBenchmarkRunId = if ([string]::IsNullOrWhiteSpace($BenchmarkRunId)) { [Guid]::NewGuid().ToString("N") } else { $BenchmarkRunId }
 $projectPath = if ([string]::IsNullOrWhiteSpace($Project)) { $repoRoot } else { (Resolve-Path $Project).Path }
 $serverDllFull = if ([System.IO.Path]::IsPathRooted($ServerDll)) { $ServerDll } else { Join-Path $repoRoot $ServerDll }
 if (-not (Test-Path -LiteralPath $serverDllFull)) {
@@ -76,6 +78,8 @@ function Invoke-OneRun($EnvironmentOverrides) {
         $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
         [Environment]::SetEnvironmentVariable($name, [string]$EnvironmentOverrides[$k], "Process")
     }
+    $previousEnvironment["LIFEBLOOD_BENCHMARK_RUN_ID"] = [Environment]::GetEnvironmentVariable("LIFEBLOOD_BENCHMARK_RUN_ID", "Process")
+    [Environment]::SetEnvironmentVariable("LIFEBLOOD_BENCHMARK_RUN_ID", $resolvedBenchmarkRunId, "Process")
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
@@ -213,6 +217,7 @@ foreach ($cfg in $configs) {
 
 $report = [ordered]@{
     schemaVersion  = 1
+    benchmarkRunId = $resolvedBenchmarkRunId
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("O")
     repoRoot       = $repoRoot
     project        = $projectPath
