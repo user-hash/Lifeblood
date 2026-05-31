@@ -65,6 +65,24 @@ public class CompileCheckParseOptionsParityTests
         };
     }
 
+    private static IReadOnlyDictionary<string, CSharpCompilation> BuildOneModuleWithCompilerFeatures(
+        string source, string fileName)
+    {
+        var options = new CSharpParseOptions(LanguageVersion.CSharp12)
+            .WithFeatures(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["runtime-async"] = "on",
+            });
+        var tree = CSharpSyntaxTree.ParseText(source, options: options, path: fileName);
+        var comp = CSharpCompilation.Create(
+            "ModuleWithFeatures", new[] { tree }, BclReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        return new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal)
+        {
+            ["ModuleWithFeatures"] = comp,
+        };
+    }
+
     [Fact]
     public void CompileCheckFile_OnModuleWithNonDefaultLangVersion_DoesNotThrowInconsistentLanguageVersions()
     {
@@ -123,5 +141,54 @@ public class CompileCheckParseOptionsParityTests
         });
 
         Assert.True(result.Success, $"compile_check failed unexpectedly: {string.Join(", ", result.Diagnostics.Select(d => d.Message))}");
+    }
+
+    [Fact]
+    public void CompileCheckFile_OnModuleWithRuntimeAsyncFeature_PreservesParseOptions()
+    {
+        const string source = "namespace App { public class Foo { public int X { get; set; } } }";
+        const string path = "Foo.cs";
+        using var host = new RoslynCompilationHost(BuildOneModuleWithCompilerFeatures(source, path));
+
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            FilePath = path,
+            Code = source,
+        });
+
+        Assert.True(result.Success, $"compile_check failed unexpectedly: {string.Join(", ", result.Diagnostics.Select(d => d.Message))}");
+        Assert.True(result.ExistingTreeReplaced);
+        Assert.Equal("ModuleWithFeatures", result.ResolvedModule);
+    }
+
+    [Fact]
+    public void CompileCheckSnippet_OnModuleWithRuntimeAsyncFeature_PreservesParseOptions()
+    {
+        const string source = "namespace App { public class Foo { } }";
+        using var host = new RoslynCompilationHost(BuildOneModuleWithCompilerFeatures(source, "Foo.cs"));
+
+        var result = host.CompileCheck(new CompileCheckRequest
+        {
+            ModuleName = "ModuleWithFeatures",
+            Code = "namespace App { public class Bar { } }",
+        });
+
+        Assert.True(result.Success, $"compile_check failed unexpectedly: {string.Join(", ", result.Diagnostics.Select(d => d.Message))}");
+        Assert.Equal("ModuleWithFeatures", result.ResolvedModule);
+    }
+
+    [Fact]
+    public void Diagnose_OnModuleWithRuntimeAsyncFeature_PreservesLoadedCompilation()
+    {
+        const string source = "namespace App { public class Foo { } }";
+        using var host = new RoslynCompilationHost(BuildOneModuleWithCompilerFeatures(source, "Foo.cs"));
+
+        var report = host.GetDiagnosticsReport(new DiagnosticsRequest
+        {
+            ModuleName = "ModuleWithFeatures",
+        });
+
+        Assert.Equal("ModuleWithFeatures", report.ResolvedModule);
+        Assert.Empty(report.Diagnostics);
     }
 }

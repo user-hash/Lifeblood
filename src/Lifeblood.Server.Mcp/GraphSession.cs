@@ -25,13 +25,18 @@ public sealed class GraphSession : IDisposable
     };
 
     private readonly IFileSystem _fs;
+    private readonly ITelemetrySink _telemetry;
     private readonly WorkspaceSession _session = new();
     private RoslynWorkspaceAnalyzer? _roslynAdapter;
     private string? _lastProjectPath;
     private string? _lastRulesPath;
     private DateTime? _analyzedAtUtc;
 
-    public GraphSession(IFileSystem fs) => _fs = fs;
+    public GraphSession(IFileSystem fs, ITelemetrySink? telemetry = null)
+    {
+        _fs = fs;
+        _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
+    }
 
     /// <summary>
     /// Project root of the most recent Roslyn <c>lifeblood_analyze</c>
@@ -128,7 +133,11 @@ public sealed class GraphSession : IDisposable
                 RetainCompilations = true,
                 AllowFullFallback = true,
             };
-            var incremental = _roslynAdapter.IncrementalAnalyze(config);
+            IncrementalAnalyzeResult incremental;
+            using (TelemetryPhase("auto-refresh.incremental"))
+            {
+                incremental = _roslynAdapter.IncrementalAnalyze(config);
+            }
             // Mode==Rejected only happens here when the snapshot disappeared
             // mid-run (CanIncremental gated above) — degrade silently per
             // the best-effort contract.
@@ -140,7 +149,11 @@ public sealed class GraphSession : IDisposable
 
             // Source changed — rebuild the session view. This mirrors the
             // LoadIncremental happy path but skips the response-building.
-            var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, null);
+            AnalysisResult analysis;
+            using (TelemetryPhase("auto-refresh.analyze"))
+            {
+                analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, null);
+            }
 
             ICompilationHost? newCompilationHost = null;
             ICodeExecutor? newCodeExecutor = null;
@@ -159,11 +172,14 @@ public sealed class GraphSession : IDisposable
                 newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
             }
 
-            _session.Clear();
-            _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
-            if (newCompilationHost != null)
-                _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
-            _analyzedAtUtc = DateTime.UtcNow;
+            using (TelemetryPhase("auto-refresh.commit"))
+            {
+                _session.Clear();
+                _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
+                if (newCompilationHost != null)
+                    _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+                _analyzedAtUtc = DateTime.UtcNow;
+            }
 
             return changedFileCount;
         }
@@ -243,14 +259,22 @@ public sealed class GraphSession : IDisposable
             if (!_fs.FileExists(graphPath))
                 return $"Graph file not found: {graphPath}";
 
-            using var stream = _fs.OpenRead(graphPath);
-            var doc = new JsonGraphImporter().ImportDocument(stream);
+            GraphDocument doc;
+            using (TelemetryPhase("json-import"))
+            {
+                using var stream = _fs.OpenRead(graphPath);
+                doc = new JsonGraphImporter().ImportDocument(stream);
+            }
             graph = doc.Graph;
             language = doc.Language;
             capability = doc.Adapter ?? UnknownImportedGraphCapability(language);
 
             // Validate — JSON graphs don't go through AnalyzeWorkspaceUseCase
-            var errors = GraphValidator.Validate(graph);
+            GraphValidationError[] errors;
+            using (TelemetryPhase("json-validate"))
+            {
+                errors = GraphValidator.Validate(graph);
+            }
             if (errors.Length > 0)
                 return $"Graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
 
@@ -271,12 +295,18 @@ public sealed class GraphSession : IDisposable
             var progress = new StderrProgressSink();
             adapter.OnModuleProgress = (name, i, total) =>
                 Console.Error.WriteLine($"[{i}/{total}] Compiling {name}");
-            var result = new AnalyzeWorkspaceUseCase(adapter, progress, UsageProbe)
-                .Execute(projectPath, new AnalysisConfig
-                {
-                    RetainCompilations = retainCompilations,
-                    DefineProfiles = defineProfiles,
-                });
+            AnalyzeWorkspaceResult result;
+            using (TelemetryPhase("workspace-analyze",
+                new TelemetryTag("analyze.read_only", readOnly),
+                new TelemetryTag("analyze.profile_count", defineProfiles?.Length ?? 1)))
+            {
+                result = new AnalyzeWorkspaceUseCase(adapter, progress, UsageProbe)
+                    .Execute(projectPath, new AnalysisConfig
+                    {
+                        RetainCompilations = retainCompilations,
+                        DefineProfiles = defineProfiles,
+                    });
+            }
             graph = result.Graph;
             capability = adapter.Capability;
             language = "csharp";
@@ -322,14 +352,21 @@ public sealed class GraphSession : IDisposable
         ArchitectureRule[]? rules = ResolveRules(rulesPath);
         _lastRulesPath = rulesPath;
 
-        var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
+        AnalysisResult analysis;
+        using (TelemetryPhase("rules-analyze"))
+        {
+            analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
+        }
 
         // Commit atomically via WorkspaceSession
-        _session.Clear();
-        _session.Load(graph, analysis, capability, language);
-        if (newCompilationHost != null)
-            _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
-        _analyzedAtUtc = DateTime.UtcNow;
+        using (TelemetryPhase("session-commit"))
+        {
+            _session.Clear();
+            _session.Load(graph, analysis, capability, language);
+            if (newCompilationHost != null)
+                _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+            _analyzedAtUtc = DateTime.UtcNow;
+        }
 
         return BuildLoadResult(
             mode: "full",
@@ -356,7 +393,12 @@ public sealed class GraphSession : IDisposable
             RetainCompilations = true,
             AllowFullFallback = allowFullFallback,
         };
-        var incremental = _roslynAdapter!.IncrementalAnalyze(config);
+        IncrementalAnalyzeResult incremental;
+        using (TelemetryPhase("incremental-analyze",
+            new TelemetryTag("analyze.allow_full_fallback", allowFullFallback)))
+        {
+            incremental = _roslynAdapter!.IncrementalAnalyze(config);
+        }
         capture.MarkPhase("incremental");
 
         // INV-MULTI-DEFINE-INCREMENTAL-001. Snapshot's retained profile set echoed
@@ -418,7 +460,11 @@ public sealed class GraphSession : IDisposable
         }
 
         // Validate the rebuilt graph
-        var errors = GraphValidator.Validate(graph);
+        GraphValidationError[] errors;
+        using (TelemetryPhase("incremental-validate"))
+        {
+            errors = GraphValidator.Validate(graph);
+        }
         if (errors.Length > 0)
         {
             capture.Dispose();
@@ -447,14 +493,21 @@ public sealed class GraphSession : IDisposable
         }
 
         ArchitectureRule[]? rules = ResolveRules(rulesPath ?? _lastRulesPath);
-        var analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
+        AnalysisResult analysis;
+        using (TelemetryPhase("incremental-rules-analyze"))
+        {
+            analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
+        }
         capture.MarkPhase("validate-analyze");
 
-        _session.Clear();
-        _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
-        if (newCompilationHost != null)
-            _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
-        _analyzedAtUtc = DateTime.UtcNow;
+        using (TelemetryPhase("incremental-session-commit"))
+        {
+            _session.Clear();
+            _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
+            if (newCompilationHost != null)
+                _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+            _analyzedAtUtc = DateTime.UtcNow;
+        }
 
         usage = capture.Stop();
         // INV-ANALYZE-FALLBACK-001: `mode` reports what the adapter DID,
@@ -664,6 +717,50 @@ public sealed class GraphSession : IDisposable
         };
 
     public void Dispose() => _session.Clear();
+
+    private TelemetryPhaseScope TelemetryPhase(string phaseName, params TelemetryTag[] tags)
+        => new(_telemetry, phaseName, tags);
+
+    private sealed class TelemetryPhaseScope : IDisposable
+    {
+        private readonly ITelemetrySink _telemetry;
+        private readonly ITelemetryOperation _operation;
+        private readonly string _phaseName;
+        private readonly TelemetryTag[] _tags;
+        private readonly long _allocatedBytesStart;
+        private bool _disposed;
+
+        public TelemetryPhaseScope(ITelemetrySink telemetry, string phaseName, TelemetryTag[] tags)
+        {
+            _telemetry = telemetry;
+            _phaseName = phaseName;
+            _tags = tags;
+            _allocatedBytesStart = GC.GetTotalAllocatedBytes(precise: false);
+            _operation = telemetry.StartOperation(
+                "lifeblood.analyze.phase",
+                new[] { new TelemetryTag("analyze.phase", phaseName) }
+                    .Concat(tags)
+                    .ToArray());
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            var allocatedBytes = GC.GetTotalAllocatedBytes(precise: false) - _allocatedBytesStart;
+            _operation.SetTag("allocation.bytes", allocatedBytes);
+            _telemetry.RecordEvent(
+                "lifeblood.analyze.phase",
+                new[] { new TelemetryTag("analyze.phase", _phaseName), new TelemetryTag("allocation.bytes", allocatedBytes) }
+                    .Concat(_tags)
+                    .ToArray());
+            _operation.Dispose();
+        }
+    }
 
     /// <summary>
     /// Writes analysis progress to stderr so MCP clients can show status.

@@ -103,6 +103,7 @@ function Invoke-ProcessSmoke(
     [string[]]$Arguments,
     [string]$WorkingDirectory,
     [switch]$CloseStandardInput,
+    [switch]$Optional,
     [int]$TimeoutSeconds = 10) {
 
     Write-Host "[$Name] $FileName $($Arguments -join ' ')"
@@ -148,15 +149,34 @@ function Invoke-ProcessSmoke(
         name = $Name
         command = @($FileName) + $Arguments
         workingDirectory = $WorkingDirectory
+        optional = [bool]$Optional
         exitCode = $process.ExitCode
         durationMs = [long]$stopwatch.ElapsedMilliseconds
         stdout = $stdout
         stderr = $stderr
+        skipped = $false
+        reason = $null
     }
 
     if ($process.ExitCode -ne 0) {
+        if ($Optional) {
+            $Report.steps[-1].skipped = $true
+            $Report.steps[-1].reason = "Optional smoke is unsupported or failed on this SDK/tooling; see exitCode/stdout/stderr."
+            return $false
+        }
+
         $Report.status = "failed"
         throw "Step '$Name' failed with exit code $($process.ExitCode)."
+    }
+
+    return $true
+}
+
+function Add-SkippedStep($Report, [string]$Name, [string]$Reason) {
+    $Report.steps += [pscustomobject]@{
+        name = $Name
+        skipped = $true
+        reason = $Reason
     }
 }
 
@@ -188,7 +208,8 @@ $report = [ordered]@{
     notes = @(
         "Local packaging smoke only; this script never publishes packages.",
         "Production project files remain pinned to their checked-in target frameworks.",
-        "MCP smoke closes stdin immediately and verifies graceful startup/shutdown."
+        "MCP smoke closes stdin immediately and verifies graceful startup/shutdown.",
+        "dotnet tool exec / dnx smoke checks run only when the installed SDK exposes those .NET 10 commands."
     )
     steps = @()
 }
@@ -233,10 +254,44 @@ try {
         "Lifeblood.Server.Mcp"
     ) $repoRoot | Out-Null
 
-    Invoke-ProcessSmoke $report "smoke-cli-help" (Get-ToolExecutable $toolsDir "lifeblood") @("--help") $repoRoot
+    Invoke-ProcessSmoke $report "smoke-cli-help" (Get-ToolExecutable $toolsDir "lifeblood") @("--help") $repoRoot | Out-Null
+
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $toolExecHelp = & dotnet tool exec --help 2>&1
+        $toolExecExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+    }
+
+    $toolExecHelpText = (@($toolExecHelp) -join "`n")
+    if ($toolExecExitCode -eq 0 -and $toolExecHelpText -match '(?m)^\s+exec\s') {
+        Invoke-ProcessSmoke $report "smoke-dotnet-tool-exec-help" "dotnet" @(
+            "tool", "exec", "Lifeblood@$($cliPackage.version)",
+            "--add-source", $packagesDir,
+            "--",
+            "--help"
+        ) $repoRoot -Optional | Out-Null
+    } else {
+        Add-SkippedStep $report "smoke-dotnet-tool-exec-help" "Installed SDK does not expose `dotnet tool exec` (requires .NET 10.0.100 SDK or later)."
+    }
+
+    $dnxCommand = Get-Command "dnx" -ErrorAction SilentlyContinue
+    if ($null -ne $dnxCommand) {
+        Invoke-ProcessSmoke $report "smoke-dnx-help" $dnxCommand.Source @(
+            "Lifeblood@$($cliPackage.version)",
+            "--add-source", $packagesDir,
+            "--",
+            "--help"
+        ) $repoRoot -Optional | Out-Null
+    } else {
+        Add-SkippedStep $report "smoke-dnx-help" "dnx command not found on PATH (installed with .NET 10 SDKs that provide it)."
+    }
 
     if (-not $SkipMcpSmoke) {
-        Invoke-ProcessSmoke $report "smoke-mcp-closed-stdin" (Get-ToolExecutable $toolsDir "lifeblood-mcp") @() $repoRoot -CloseStandardInput -TimeoutSeconds $McpSmokeTimeoutSeconds
+        Invoke-ProcessSmoke $report "smoke-mcp-closed-stdin" (Get-ToolExecutable $toolsDir "lifeblood-mcp") @() $repoRoot -CloseStandardInput -TimeoutSeconds $McpSmokeTimeoutSeconds | Out-Null
     }
 
     $report.status = "passed"

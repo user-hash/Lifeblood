@@ -7,6 +7,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **MCP argument contracts + JSON compatibility modes** (`INV-MCP-TOOL-ARG-CONTRACT-001`, `INV-MCP-STRICT-JSON-001`). `ToolInputContract.FromSchema` projects registered input schemas into typed contract metadata at the handler/composition edge; `ToolArgumentBinder` validates tool arguments under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`. Legacy remains default, warn accepts with `lifeblood.tool.arguments` telemetry, strict rejects invalid arguments with structured diagnostics, and `LIFEBLOOD_STRICT_JSON` remains the strict alias.
+
+- **Analyze phase telemetry and session gate** (`INV-TELEMETRY-001`, `INV-MCP-SESSION-GATE-001`). `GraphSession` records real `lifeblood.analyze.phase` scopes/events with allocation deltas; invariant cache lookup telemetry now emits after the cache lock is released. `GraphSessionGate` keeps retained-session mutation at the MCP host boundary: read-side calls share read access, while analyze and compile-check stale refresh use the write gate.
+
+- **.NET adoption lanes**. Runtime benchmark script now reports expanded workloads (`analyze`, `context`, `incremental-noop`, `cli-help`) with category metadata and parse-duration measurements. Tool-packaging smoke records optional `dotnet tool exec` / `dnx` help checks when available and honest skips otherwise. Runtime Async fixtures now cover diagnose, compile-check file mode, and compile-check snippet mode for `<Features>runtime-async=on</Features>` projects.
+
 ### Fixed
 
 - **`execute` workspace-type runtime-load boundary** (`INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001`, LB-TRACK-20260530-031). Scripts compile against workspace/engine types (injected as Roslyn metadata references) but those assemblies are not loaded into the host runtime, so instantiation / `Unsafe.SizeOf<T>` / reflection over a workspace type threw `FileLoadException` and the executor leaked the raw "Could not load file or assembly" message. `RoslynCodeExecutor` now classifies the exception chain against the known workspace module set and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary. Pinned by `ExecuteRobustnessTests`.

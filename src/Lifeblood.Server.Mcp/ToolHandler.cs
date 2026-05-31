@@ -34,6 +34,9 @@ public sealed class ToolHandler
     private readonly IPortHealthAnalyzer _portHealth;
     private readonly WriteToolHandler _write;
     private readonly ITelemetrySink _telemetry;
+    private readonly ToolArgumentBinder _argumentBinder;
+    private readonly ToolJsonCompatibilityMode _jsonCompatibilityMode;
+    private readonly ISessionGate _sessionGate;
 
     private bool TelemetryEnabled => !ReferenceEquals(_telemetry, NoOpTelemetrySink.Instance);
 
@@ -60,7 +63,10 @@ public sealed class ToolHandler
         IResponseDecorator decorator,
         IAuthorityReporter? authority = null,
         IPortHealthAnalyzer? portHealth = null,
-        ITelemetrySink? telemetry = null)
+        ITelemetrySink? telemetry = null,
+        ToolArgumentBinder? argumentBinder = null,
+        ToolJsonCompatibilityMode jsonCompatibilityMode = ToolJsonCompatibilityMode.Legacy,
+        ISessionGate? sessionGate = null)
     {
         _session = session;
         _provider = provider;
@@ -73,10 +79,25 @@ public sealed class ToolHandler
         _authority = authority ?? new Lifeblood.Connectors.Mcp.LifebloodAuthorityReporter();
         _portHealth = portHealth ?? new Lifeblood.Connectors.Mcp.LifebloodPortHealthAnalyzer();
         _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
+        _argumentBinder = argumentBinder ?? BuildArgumentBinder();
+        _jsonCompatibilityMode = jsonCompatibilityMode;
+        _sessionGate = sessionGate ?? new GraphSessionGate();
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
+    private static ToolArgumentBinder BuildArgumentBinder()
+        => new(ToolRegistry.GetDefinitions()
+            .Select(d => ToolInputContract.FromSchema(d.Name, d.InputSchema)));
+
     public McpToolResult Handle(string toolName, JsonElement? arguments)
+        => RequiresExclusiveSessionAccess(toolName)
+            ? _sessionGate.Write(() => HandleCore(toolName, arguments))
+            : _sessionGate.Read(() => HandleCore(toolName, arguments));
+
+    private static bool RequiresExclusiveSessionAccess(string toolName)
+        => toolName is "lifeblood_analyze" or "lifeblood_compile_check";
+
+    private McpToolResult HandleCore(string toolName, JsonElement? arguments)
     {
         using var operation = _telemetry.StartOperation(
             "lifeblood.tool",
@@ -84,6 +105,21 @@ public sealed class ToolHandler
 
         try
         {
+            var binding = _argumentBinder.Validate(toolName, arguments, _jsonCompatibilityMode);
+            RecordArgumentBindingTelemetry(toolName, binding);
+            if (!binding.Accepted)
+            {
+                operation.SetTag("tool.result", "argument_error");
+                return ErrorResult(JsonSerializer.Serialize(new
+                {
+                    error = true,
+                    tool = toolName,
+                    failure = "tool-argument-contract",
+                    mode = binding.Mode.ToString(),
+                    diagnostics = binding.Diagnostics,
+                }, JsonOpts));
+            }
+
             var result = toolName switch
             {
                 // Read-side
@@ -1250,6 +1286,48 @@ public sealed class ToolHandler
             // Analyze can also return plain validation/error text. Telemetry
             // is advisory; never change the tool result because parsing failed.
         }
+    }
+
+    private void RecordArgumentBindingTelemetry(string toolName, ToolArgumentBindingResult binding)
+    {
+        if (!TelemetryEnabled || binding.Mode == ToolJsonCompatibilityMode.Legacy)
+        {
+            return;
+        }
+
+        var unknown = 0;
+        var missing = 0;
+        var typeMismatch = 0;
+        var duplicate = 0;
+        foreach (var diagnostic in binding.Diagnostics)
+        {
+            switch (diagnostic.Kind)
+            {
+                case "unknown":
+                    unknown++;
+                    break;
+                case "missingRequired":
+                    missing++;
+                    break;
+                case "typeMismatch":
+                    typeMismatch++;
+                    break;
+                case "duplicate":
+                    duplicate++;
+                    break;
+            }
+        }
+
+        _telemetry.RecordEvent(
+            "lifeblood.tool.arguments",
+            new TelemetryTag("tool.name", toolName),
+            new TelemetryTag("json.compat.mode", binding.Mode.ToString()),
+            new TelemetryTag("json.compat.accepted", binding.Accepted),
+            new TelemetryTag("json.compat.diagnostic_count", binding.Diagnostics.Length),
+            new TelemetryTag("json.compat.unknown_count", unknown),
+            new TelemetryTag("json.compat.missing_count", missing),
+            new TelemetryTag("json.compat.type_mismatch_count", typeMismatch),
+            new TelemetryTag("json.compat.duplicate_count", duplicate));
     }
 
     private void RecordTruncationIfAny(
