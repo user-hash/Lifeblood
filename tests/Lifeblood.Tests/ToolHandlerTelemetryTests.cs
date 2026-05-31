@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
@@ -293,6 +294,54 @@ public class ToolHandlerTelemetryTests
         finally
         {
             Environment.SetEnvironmentVariable(name, null);
+        }
+    }
+
+    [Fact]
+    public void DiagnosticsTelemetrySink_ExposesRuntimeObservableGauges()
+    {
+        var published = new HashSet<string>(StringComparer.Ordinal);
+        var measurements = new Dictionary<string, List<long>>(StringComparer.Ordinal);
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, meterListener) =>
+        {
+            if (instrument.Meter.Name != DotNetDiagnosticsTelemetrySink.MeterName)
+            {
+                return;
+            }
+
+            published.Add(instrument.Name);
+            meterListener.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) =>
+        {
+            if (!measurements.TryGetValue(instrument.Name, out var values))
+            {
+                values = new List<long>();
+                measurements[instrument.Name] = values;
+            }
+
+            values.Add(measurement);
+        });
+
+        listener.Start();
+        using var sink = new DotNetDiagnosticsTelemetrySink();
+        listener.RecordObservableInstruments();
+
+        var expected = new[]
+        {
+            "lifeblood.process.working_set",
+            "lifeblood.process.private_bytes",
+            "lifeblood.gc.managed_heap",
+            "lifeblood.process.thread_count",
+        };
+
+        foreach (var name in expected)
+        {
+            Assert.Contains(name, published);
+            Assert.True(
+                measurements.TryGetValue(name, out var values) && values.Any(v => v > 0),
+                $"Observable gauge '{name}' did not record a positive measurement.");
         }
     }
 
