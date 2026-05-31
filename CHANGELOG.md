@@ -23,6 +23,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Authoritative MCP input contract catalog.** `ToolInputContractCatalog` now owns registered MCP tool argument names, types, required flags, enum values, and descriptions. `ToolDefinition.InputSchema` is generated from the typed contract, and `ToolRegistry` no longer authors anonymous schema objects. Snapshot tests still pin the `tools/list` wire shape byte-stably.
 
+- **Telemetry event-name SSoT** (`INV-TELEMETRY-002`). `McpTelemetryEvents` centralizes every emitted server-edge event name; `ServerIdentity` advertises it verbatim and the emit sites reference the constants, closing the gap where `lifeblood.analyze.phase` was emitted and documented but missing from the advertised capability list. Pinned by `McpTelemetryEventsTests` and `ToolHandlerTests`.
+
 ### Fixed
 
 - **`execute` workspace-type runtime-load boundary** (`INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001`, LB-TRACK-20260530-031). Scripts compile against workspace/engine types (injected as Roslyn metadata references) but those assemblies are not loaded into the host runtime, so instantiation / `Unsafe.SizeOf<T>` / reflection over a workspace type threw `FileLoadException` and the executor leaked the raw "Could not load file or assembly" message. `RoslynCodeExecutor` now classifies the exception chain against the known workspace module set and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary. Pinned by `ExecuteRobustnessTests`.

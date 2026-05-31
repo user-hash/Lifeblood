@@ -4,7 +4,7 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// INV-TELEMETRY-EVENT-SSOT-001. Pins the emitted-telemetry-event surface so a
+/// INV-TELEMETRY-002. Pins the emitted-telemetry-event surface so a
 /// new event is a deliberate edit and stays advertised through ServerIdentity.
 /// </summary>
 public class McpTelemetryEventsTests
