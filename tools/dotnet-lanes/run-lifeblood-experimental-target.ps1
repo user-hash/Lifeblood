@@ -4,6 +4,8 @@ param(
     [string]$Configuration = "Release",
     [switch]$SkipTests,
     [switch]$SkipPack,
+    [switch]$SkipSemanticAnalyze,
+    [switch]$RestoreIgnoreFailedSources,
     [switch]$FailWhenUnavailable
 )
 
@@ -52,6 +54,119 @@ function Get-SdkMajor([string]$SdkLine) {
     $match = [regex]::Match($SdkLine, '^(\d+)\.')
     if (-not $match.Success) { return $null }
     return [int]$match.Groups[1].Value
+}
+
+function Parse-Long([string]$Text) {
+    return [long]($Text -replace ',', '')
+}
+
+function Match-Long([string]$Text, [string]$Pattern) {
+    $match = [regex]::Match($Text, $Pattern, [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    if (-not $match.Success) { return $null }
+    return Parse-Long $match.Groups[1].Value
+}
+
+function Read-StatusAnchors([string]$RepoRoot) {
+    $statusPath = Join-Path $RepoRoot "docs/STATUS.md"
+    $text = Get-Content -LiteralPath $statusPath -Raw
+    $anchors = [ordered]@{}
+
+    foreach ($match in [regex]::Matches($text, '<!--\s*([A-Za-z][A-Za-z0-9]*):\s*([\d,]+)\s*-->')) {
+        $anchors[$match.Groups[1].Value] = Parse-Long $match.Groups[2].Value
+    }
+
+    return $anchors
+}
+
+function Get-AnchorValue($Anchors, [string]$Name) {
+    if ($Anchors.Contains($Name)) { return $Anchors[$Name] }
+    return $null
+}
+
+function Get-SchemaSnapshotInventory([string]$RepoRoot) {
+    $schemaDir = Join-Path $RepoRoot "schemas/tools/v1"
+    if (-not (Test-Path -LiteralPath $schemaDir)) {
+        return [ordered]@{
+            path = $schemaDir
+            count = 0
+            files = @()
+            missing = $true
+        }
+    }
+
+    $files = @(Get-ChildItem -LiteralPath $schemaDir -Filter "*.schema.json" -File | Sort-Object Name)
+    return [ordered]@{
+        path = $schemaDir
+        count = $files.Count
+        files = @($files | ForEach-Object { $_.Name })
+        missing = $false
+    }
+}
+
+function Convert-CliAnalyzeOutput([string]$Text) {
+    return [ordered]@{
+        symbols = Match-Long $Text '^Symbols:\s+([\d,]+)'
+        edges = Match-Long $Text '^Edges:\s+([\d,]+)'
+        modules = Match-Long $Text '^Modules:\s+([\d,]+)'
+        types = Match-Long $Text '^Types:\s+([\d,]+)'
+        violations = Match-Long $Text '^Violations:\s+([\d,]+)'
+        cycles = Match-Long $Text '^Cycles:\s+([\d,]+)'
+    }
+}
+
+function Convert-DotnetTestOutput($Output) {
+    $text = (@($Output) -join "`n")
+    $match = [regex]::Match($text, 'Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)')
+    if (-not $match.Success) {
+        return [ordered]@{
+            parsed = $false
+            reason = "Could not find the standard dotnet test summary line."
+        }
+    }
+
+    return [ordered]@{
+        parsed = $true
+        failed = [int]$match.Groups[1].Value
+        passed = [int]$match.Groups[2].Value
+        skipped = [int]$match.Groups[3].Value
+        total = [int]$match.Groups[4].Value
+    }
+}
+
+function New-ComparisonValue([string]$Name, $Expected, $Actual) {
+    return [ordered]@{
+        name = $Name
+        expected = $Expected
+        actual = $Actual
+        matches = ($null -ne $Expected -and $null -ne $Actual -and $Expected -eq $Actual)
+    }
+}
+
+function New-SemanticComparison($StatusAnchors, $Actual) {
+    $checks = @(
+        New-ComparisonValue "symbols" (Get-AnchorValue $StatusAnchors "selfAnalyzeSymbols") $Actual.symbols
+        New-ComparisonValue "edges" (Get-AnchorValue $StatusAnchors "selfAnalyzeEdges") $Actual.edges
+        New-ComparisonValue "modules" (Get-AnchorValue $StatusAnchors "selfAnalyzeModules") $Actual.modules
+        New-ComparisonValue "types" (Get-AnchorValue $StatusAnchors "selfAnalyzeTypes") $Actual.types
+    )
+
+    return [ordered]@{
+        baseline = "docs/STATUS.md selfAnalyze* anchors from the production net8.0 lane"
+        checks = $checks
+        matchesStatusAnchors = (-not ($checks | Where-Object { -not $_.matches }))
+    }
+}
+
+function New-TestComparison($StatusAnchors, $Summary) {
+    $checks = @(
+        New-ComparisonValue "total" (Get-AnchorValue $StatusAnchors "testCount") $Summary.total
+    )
+
+    return [ordered]@{
+        baseline = "docs/STATUS.md testCount anchor from the production net8.0 lane"
+        checks = $checks
+        matchesStatusAnchors = (-not ($checks | Where-Object { -not $_.matches }))
+    }
 }
 
 function Write-Report($Report, [string]$Path) {
@@ -182,6 +297,11 @@ function Invoke-Step($Report, [string]$Name, [string[]]$Arguments, [string]$Work
     }
 }
 
+function Get-LatestStep($Report) {
+    if ($Report.steps.Count -eq 0) { return $null }
+    return $Report.steps[$Report.steps.Count - 1]
+}
+
 $repoRoot = Get-RepoRoot
 $outputFullPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $repoRoot $OutputPath }
 $checkedInSolution = Join-Path $repoRoot "Lifeblood.sln"
@@ -196,20 +316,35 @@ $runtimeLines = @(Invoke-DotnetLines @("--list-runtimes"))
 $sdkMajors = @($sdkLines | ForEach-Object { Get-SdkMajor $_ } | Where-Object { $null -ne $_ })
 $targetMajor = Get-TargetMajor $TargetFramework
 $highestSdkMajor = if ($sdkMajors.Count -gt 0) { ($sdkMajors | Measure-Object -Maximum).Maximum } else { 0 }
+$statusAnchors = Read-StatusAnchors $repoRoot
 
 $report = [ordered]@{
     schemaVersion = 1
     lane = "dotnet-experimental-target"
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("O")
     repoRoot = $repoRoot
+    requestedWorkDir = $workDir
+    workDir = $workDir
+    workDirFallbackReason = $null
     sourceRoot = $experimentalSourceRoot
     checkedInSolution = $checkedInSolution
     solution = $solution
     targetFramework = $TargetFramework
     configuration = $Configuration
+    restore = [ordered]@{
+        ignoreFailedSources = [bool]$RestoreIgnoreFailedSources
+    }
     status = "running"
     artifacts = [ordered]@{
         packages = $packagesDir
+    }
+    statusAnchors = $statusAnchors
+    evidence = [ordered]@{
+        schemaSnapshots = Get-SchemaSnapshotInventory $repoRoot
+        testSummary = $null
+        testComparison = $null
+        semanticSelfAnalyze = $null
+        semanticComparison = $null
     }
     host = [ordered]@{
         dotnetSdks = $sdkLines
@@ -237,7 +372,20 @@ if ($highestSdkMajor -lt $targetMajor) {
 }
 
 if (Test-Path -LiteralPath $workDir) {
-    Remove-Item -LiteralPath $workDir -Recurse -Force
+    try {
+        Remove-Item -LiteralPath $workDir -Recurse -Force
+    }
+    catch {
+        $fallbackPathName = "{0}-{1}-{2}" -f $targetPathName, (Get-Date -Format "yyyyMMddHHmmss"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+        $fallbackWorkDir = Assert-UnderRoot $tempBase (Join-Path $tempBase $fallbackPathName)
+        $report["workDirFallbackReason"] = "Could not clean the previous experimental work directory '$workDir': $($_.Exception.Message)"
+        $workDir = $fallbackWorkDir
+        $experimentalSourceRoot = Join-Path $workDir "source"
+        $solution = Join-Path $experimentalSourceRoot "Lifeblood.sln"
+        $report["workDir"] = $workDir
+        $report["sourceRoot"] = $experimentalSourceRoot
+        $report["solution"] = $solution
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
@@ -246,11 +394,18 @@ Copy-SourceTree $repoRoot $experimentalSourceRoot
 $report.retargetedProjects = @(Set-CopiedProjectTargetFrameworks $experimentalSourceRoot $TargetFramework)
 
 try {
-    Invoke-Step $report "restore" @(
+    $restoreArgs = @(
         "restore", $solution,
+        "--disable-parallel",
+        "-maxcpucount:1",
         "-nodeReuse:false",
         "--nologo"
-    ) $workDir
+    )
+    if ($RestoreIgnoreFailedSources) {
+        $restoreArgs += "--ignore-failed-sources"
+    }
+
+    Invoke-Step $report "restore" $restoreArgs $workDir
 
     Invoke-Step $report "build" @(
         "build", $solution,
@@ -270,6 +425,27 @@ try {
             "-nodeReuse:false",
             "--nologo"
         ) $workDir
+
+        $testStep = Get-LatestStep $report
+        $report.evidence.testSummary = Convert-DotnetTestOutput $testStep.output
+        if ($report.evidence.testSummary.parsed) {
+            $report.evidence.testComparison = New-TestComparison $statusAnchors $report.evidence.testSummary
+        }
+    }
+
+    if (-not $SkipSemanticAnalyze) {
+        $cliDll = Join-Path $experimentalSourceRoot "src/Lifeblood.CLI/bin/$Configuration/$TargetFramework/Lifeblood.CLI.dll"
+        Invoke-Step $report "semantic-self-analyze" @(
+            $cliDll,
+            "analyze",
+            "--project", $experimentalSourceRoot,
+            "--rules", "lifeblood"
+        ) $workDir
+
+        $semanticStep = Get-LatestStep $report
+        $semanticOutput = (@($semanticStep.output) -join "`n")
+        $report.evidence.semanticSelfAnalyze = Convert-CliAnalyzeOutput $semanticOutput
+        $report.evidence.semanticComparison = New-SemanticComparison $statusAnchors $report.evidence.semanticSelfAnalyze
     }
 
     if (-not $SkipPack) {

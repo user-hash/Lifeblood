@@ -21,7 +21,27 @@ public class DotNetLaneScriptTests
         Assert.Contains("Set-CopiedProjectTargetFrameworks", script);
         Assert.Contains("retargets only the copied solution projects", script);
         Assert.Contains("omits root global.json", script);
+        Assert.Contains("workDirFallbackReason", script);
+        Assert.Contains("Could not clean the previous experimental work directory", script);
+        Assert.Contains("--disable-parallel", script);
+        Assert.Contains("RestoreIgnoreFailedSources", script);
+        Assert.Contains("--ignore-failed-sources", script);
         Assert.DoesNotContain("-p:TargetFramework=$TargetFramework", script);
+    }
+
+    [Fact]
+    public void ExperimentalTargetLane_EmitsSemanticTestAndSchemaReceipts()
+    {
+        var script = ReadRepoFile("tools", "dotnet-lanes", "run-lifeblood-experimental-target.ps1");
+
+        Assert.Contains("Read-StatusAnchors", script);
+        Assert.Contains("Get-SchemaSnapshotInventory", script);
+        Assert.Contains("testSummary", script);
+        Assert.Contains("testComparison", script);
+        Assert.Contains("semantic-self-analyze", script);
+        Assert.Contains("semanticComparison", script);
+        Assert.Contains("matchesStatusAnchors", script);
+        Assert.Contains("docs/STATUS.md selfAnalyze* anchors from the production net8.0 lane", script);
     }
 
     [Fact]

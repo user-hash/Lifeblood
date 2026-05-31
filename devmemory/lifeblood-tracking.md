@@ -544,7 +544,16 @@ omitted from the copy, and packages are emitted under `artifacts/` for CI
 collection. Verified locally with SDK `10.0.300`: restore, build, full test
 suite, CLI pack, and MCP pack all passed. `DotNetLaneScriptTests` pin the honest
 skip report, temp-copy retargeting, and no `-p:TargetFramework=$TargetFramework`
-override posture.
+override posture. Follow-up local slice adds target-lane evidence receipts:
+schema snapshot inventory, parsed experimental test totals, experimental CLI
+self-analyze counts, and comparisons against the production `docs/STATUS.md`
+test/semantic anchors. The same slice hardens the lane for repeatable local/CI
+runs by serializing restore, adding an explicit cached/offline restore switch
+(`-RestoreIgnoreFailedSources`), and falling forward to a fresh temp work
+directory when the previous experimental tree is locked. Local 2026-05-31 smoke
+with SDK `10.0.300` reached restore and emitted host/schema/status receipts, but
+could not complete in this session because NuGet source access is refused and
+required Roslyn/xUnit packages are not present in the local cache.
 
 Summary:
 - The production solution remains pinned to `net8.0`; the experimental lane is
@@ -554,8 +563,9 @@ Summary:
   experimental lane back to the production SDK.
 
 Remaining open work:
-- Keep this lane green in CI-like conditions, compare its semantic/schema/test
-  outputs with `net8.0`, and use those receipts before changing production TFMs.
+- Keep this lane green in CI-like conditions and use the emitted
+  schema/test/semantic receipts before changing production TFMs. A connected or
+  fully primed package-cache host is required for the next net10 pass.
 
 Fix shape:
 - Keep this lane report-driven and non-production: no project TFM edits, no
