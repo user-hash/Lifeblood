@@ -627,7 +627,9 @@ probe, and telemetry sink. 2026-05-31 slice adds `GraphSessionGate` /
 `ISessionGate` in `Lifeblood.Server.Mcp`: read-side calls share a read gate,
 while `lifeblood_analyze` and `lifeblood_compile_check` take the write gate
 because they can replace or refresh the retained session. Pinned by
-`GraphSessionGateTests` and `ToolHandlerTelemetryTests`.
+`GraphSessionGateTests` and `ToolHandlerTelemetryTests`. Follow-up local slice
+adds concurrent gate stress for reader-before-writer, writer-before-reader,
+writer serialization, and explicit `lifeblood_compile_check` write-gate routing.
 
 Summary:
 - Newer locking primitives are potentially useful, but only around real shared
@@ -636,9 +638,8 @@ Summary:
 - This is preparation work, not permission to build a shared daemon prematurely.
 
 Remaining open work:
-- Add concurrent read/analyze/compile-check stress fixtures around the current
-  gate, then revisit host policy only when a concrete shared-server transport
-  exists.
+- Revisit host policy only when a concrete shared-server transport exists; no
+  shared daemon is part of this pass.
 
 Impact:
 - If Lifeblood grows from per-client stdio processes into a shared server, lock

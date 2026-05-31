@@ -10,13 +10,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 DAWG-dogfood cheap bug-first pass (2026-05-30). Six trust-and-robustness fixes
 surfaced during a DAWG Burst session, reconciled from `IMPROVEMENT_INBOX.md` +
 `devmemory/lifeblood-tracking.md`. Full suite 1258 passed / 0 failed / 11
-native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1310;
-invariants 150 → 160; self symbols 3834 → 4298 / edges 23020 → 24817.
+native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1313;
+invariants 150 → 160; self symbols 3834 → 4301 / edges 23020 → 24836.
 
 ### Added
 
 - **MCP argument contracts + JSON compatibility modes** (`INV-MCP-TOOL-ARG-CONTRACT-001`, `INV-MCP-STRICT-JSON-001`). `ToolInputContract.FromSchema` projects registered input schemas into typed contract metadata at the handler/composition edge; `ToolArgumentBinder` validates tool arguments under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`. Legacy remains default, warn accepts with `lifeblood.tool.arguments` telemetry, strict rejects invalid arguments with structured diagnostics, and `LIFEBLOOD_STRICT_JSON` remains the strict alias.
 - **Analyze phase telemetry and session gate** (`INV-TELEMETRY-001`, `INV-MCP-SESSION-GATE-001`). `GraphSession` records real `lifeblood.analyze.phase` scopes/events with allocation deltas; invariant cache lookup telemetry now emits after the cache lock is released. `GraphSessionGate` keeps retained-session mutation at the MCP host boundary: read-side calls share read access, while analyze and compile-check stale refresh use the write gate.
+- **Session-gate stress ratchets** (`INV-MCP-SESSION-GATE-001`). `GraphSessionGateTests` now pin reader/writer exclusion in both directions plus writer serialization, and `ToolHandlerTelemetryTests` verifies `lifeblood_compile_check` uses the write gate because stale refresh can replace the retained session.
 - **.NET adoption lanes**. Runtime benchmark script now reports expanded workloads (`analyze`, `context`, `incremental-noop`, `cli-help`) with category metadata and parse-duration measurements. Tool-packaging smoke records optional `dotnet tool exec` / `dnx` help checks when available and honest skips otherwise. Runtime Async fixtures now cover diagnose, compile-check file mode, and compile-check snippet mode for `<Features>runtime-async=on</Features>` projects.
 - **Tracking ledger SSoT ratchet** (`INV-TRACKING-SSOT-001`). `TrackingLedgerTests` parses `devmemory/lifeblood-tracking.md` entry bodies, keeps status summary anchors honest, pins the active backlog to the `Partially shipped` entries, and requires every partial entry to declare its remaining open work.
 - **Enum-aware tool argument contracts.** `ToolInputContract` now preserves declared schema enum values, can regenerate every registered tool input schema byte-stably through the existing canonicalizer, and `ToolArgumentBinder` rejects enum values outside the schema in strict mode.

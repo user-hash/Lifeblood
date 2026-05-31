@@ -216,6 +216,19 @@ public class ToolHandlerTelemetryTests
     }
 
     [Fact]
+    public void Handle_CompileCheck_RoutesThroughWriteSessionGate()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var gate = new RecordingSessionGate();
+        var handler = CreateHandler(telemetry, sessionGate: gate);
+
+        _ = handler.Handle("lifeblood_compile_check", JsonArgs(new { code = "class C {}" }));
+
+        Assert.Equal(0, gate.ReadCount);
+        Assert.Equal(1, gate.WriteCount);
+    }
+
+    [Fact]
     public void InvariantProvider_RecordsCacheMissAndHitTelemetry()
     {
         var telemetry = new RecordingTelemetrySink();
