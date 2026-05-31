@@ -61,13 +61,12 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 32 --><!-- trackingStatusPartiallyShippedCount: 8 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 33 --><!-- trackingStatusPartiallyShippedCount: 7 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
 - 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 - 2026-05-28 - Lifeblood .NET JSON contract hardening
-- 2026-05-28 - Lifeblood .NET telemetry surface
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 - 2026-05-28 - Lifeblood .NET 10 experimental target lane
 - 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
@@ -408,7 +407,7 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET telemetry surface
 
-Status: Partially shipped
+Status: Shipped
 Type: Improvement
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self
@@ -425,11 +424,14 @@ tool events`): events now cover `lifeblood.tool.success_result`,
 `featureFlags.operationalTelemetryEvents`. 2026-05-31 slice adds
 `lifeblood.tool.arguments`, real `lifeblood.analyze.phase` scopes/events from
 `GraphSession` phase boundaries, and `allocation.bytes` deltas. Invariant cache
-lookup telemetry now emits after releasing the cache lock. Remaining open work:
-broader runtime counters where the host supports them. Cross-process benchmark
-correlation is covered by the shared `benchmarkRunId` emitted by the CLI and MCP
-benchmark reports and injected into the MCP benchmark child process as
-`LIFEBLOOD_BENCHMARK_RUN_ID`.
+lookup telemetry now emits after releasing the cache lock. Follow-up local
+slice adds broader runtime counters where the host supports them:
+`lifeblood.process.working_set`, `lifeblood.process.private_bytes`,
+`lifeblood.gc.managed_heap`, and `lifeblood.process.thread_count` observable
+gauges on the opt-in diagnostics sink, pinned by a real `MeterListener`
+measurement test. Cross-process benchmark correlation is covered by the shared
+`benchmarkRunId` emitted by the CLI and MCP benchmark reports and injected into
+the MCP benchmark child process as `LIFEBLOOD_BENCHMARK_RUN_ID`.
 
 Summary:
 - Lifeblood has good user-facing analyze receipts, but not a general operational
@@ -437,9 +439,10 @@ Summary:
 - .NET diagnostics primitives map cleanly to the current architecture if they are
   introduced behind an Application-layer port with a no-op default.
 
-Remaining open work:
-- Add broader runtime counters while preserving `AnalysisUsage` as the
-  user-facing evidence receipt.
+Closure:
+- Telemetry remains opt-in, Domain/Application still see only the neutral
+  `ITelemetrySink` port, and `AnalysisUsage` remains the user-facing evidence
+  receipt. Runtime counters are diagnostics-only process gauges.
 
 Impact:
 - Without telemetry, performance regressions and multi-user contention will be

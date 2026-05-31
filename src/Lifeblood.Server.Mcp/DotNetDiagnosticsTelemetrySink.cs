@@ -19,6 +19,10 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
     private readonly Counter<long> _operationFailed;
     private readonly Counter<long> _eventCounter;
     private readonly Histogram<double> _operationDurationMs;
+    private readonly ObservableGauge<long> _processWorkingSetBytes;
+    private readonly ObservableGauge<long> _processPrivateBytes;
+    private readonly ObservableGauge<long> _managedHeapBytes;
+    private readonly ObservableGauge<long> _processThreadCount;
 
     public DotNetDiagnosticsTelemetrySink()
     {
@@ -42,6 +46,26 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
             "lifeblood.operation.duration",
             unit: "ms",
             description: "Lifeblood operation duration in milliseconds.");
+        _processWorkingSetBytes = _meter.CreateObservableGauge<long>(
+            "lifeblood.process.working_set",
+            observeValue: static () => Environment.WorkingSet,
+            unit: "By",
+            description: "Current Lifeblood process working set.");
+        _processPrivateBytes = _meter.CreateObservableGauge<long>(
+            "lifeblood.process.private_bytes",
+            observeValue: static () => ReadCurrentProcessPrivateBytes(),
+            unit: "By",
+            description: "Current Lifeblood process private bytes.");
+        _managedHeapBytes = _meter.CreateObservableGauge<long>(
+            "lifeblood.gc.managed_heap",
+            observeValue: static () => GC.GetTotalMemory(forceFullCollection: false),
+            unit: "By",
+            description: "Current managed heap bytes visible to the Lifeblood process.");
+        _processThreadCount = _meter.CreateObservableGauge<long>(
+            "lifeblood.process.thread_count",
+            observeValue: static () => ReadCurrentProcessThreadCount(),
+            unit: "{thread}",
+            description: "Current Lifeblood process thread count.");
     }
 
     public static ITelemetrySink CreateFromEnvironment(string environmentVariableName)
@@ -135,6 +159,18 @@ public sealed class DotNetDiagnosticsTelemetrySink : ITelemetrySink, IDisposable
             activityTags.Add(tag.Name, tag.Value);
         }
         return activityTags;
+    }
+
+    private static long ReadCurrentProcessPrivateBytes()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.PrivateMemorySize64;
+    }
+
+    private static long ReadCurrentProcessThreadCount()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.Threads.Count;
     }
 
     private sealed class Operation : ITelemetryOperation
