@@ -198,6 +198,15 @@ public sealed class ModuleInfo
     public string LanguageVersion { get; init; } = "";
 
     /// <summary>
+    /// Primary target framework declared by the project. For single-target
+    /// projects this is <c>&lt;TargetFramework&gt;</c>; for multi-targeted
+    /// projects Lifeblood uses the first <c>&lt;TargetFrameworks&gt;</c> entry
+    /// because one discovered module maps to one Roslyn compilation pass.
+    /// Empty string means the project did not declare a target framework.
+    /// </summary>
+    public string TargetFramework { get; init; } = "";
+
+    /// <summary>
     /// Raw <c>&lt;Nullable&gt;</c> value declared in the csproj — one of
     /// <c>"enable"</c>, <c>"disable"</c>, <c>"warnings"</c>,
     /// <c>"annotations"</c>, or empty string (csproj did not declare it).
@@ -288,4 +297,14 @@ public sealed class ModuleInfo
     /// INV-DIAGNOSTIC-IVT-PARITY-001 / INV-COMPFACT-001..003.
     /// </summary>
     public string[] InternalsVisibleTo { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Analyzer assemblies that contain source generators the build would
+    /// provide for this module's target framework. The compilation builder runs
+    /// only generators from these assemblies before extraction/diagnostics so
+    /// generated syntax such as System.Text.Json source-generation context
+    /// members is visible to semantic queries. Diagnostics-only analyzers remain
+    /// out of scope for Lifeblood's compile seam.
+    /// </summary>
+    public string[] SourceGeneratorAnalyzerPaths { get; init; } = Array.Empty<string>();
 }

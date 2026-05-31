@@ -268,6 +268,18 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Where(s => !string.IsNullOrEmpty(s))
                 .LastOrDefault() ?? string.Empty;
 
+            // Compilation fact: <TargetFramework> / <TargetFrameworks>. MSBuild
+            // framework references contribute source-generator analyzers from
+            // the matching Microsoft.NETCore.App.Ref pack (for example
+            // System.Text.Json.SourceGeneration.dll). Lifeblood compiles
+            // source directly, so discovery surfaces the target framework and
+            // framework source-generator paths as module facts for the
+            // compilation seam to run. Multi-target projects are represented by
+            // one ModuleInfo today; use the first TFM as the same conservative
+            // single-compilation posture the rest of discovery already takes.
+            var targetFramework = ReadTargetFramework(doc);
+            var sourceGeneratorAnalyzerPaths = DiscoverFrameworkSourceGeneratorAnalyzerPaths(targetFramework);
+
             // Compilation fact: <Nullable> (INV-COMPFACT-001..003 +
             // LB-FOLLOWUP-002). Take the LAST <Nullable> element's value
             // (MSBuild "later wins"). Stored raw — values "enable" /
@@ -384,11 +396,13 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 ImplicitUsings = implicitUsings,
                 PreprocessorSymbols = preprocessorSymbols,
                 LanguageVersion = languageVersion,
+                TargetFramework = targetFramework,
                 NullableContext = nullableContext,
                 NoWarnDiagnosticIds = noWarnIds,
                 CompilerFeatures = compilerFeatures,
                 ReferenceClosure = referenceClosure,
                 InternalsVisibleTo = internalsVisibleTo,
+                SourceGeneratorAnalyzerPaths = sourceGeneratorAnalyzerPaths,
                 Properties = new Dictionary<string, string>
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),
@@ -441,6 +455,94 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
         }
 
         return features;
+    }
+
+    private static string ReadTargetFramework(XDocument doc)
+    {
+        var single = doc.Descendants()
+            .Where(el => el.Name.LocalName == "TargetFramework")
+            .Select(el => el.Value?.Trim() ?? string.Empty)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .LastOrDefault();
+        if (!string.IsNullOrEmpty(single))
+            return single!;
+
+        var multi = doc.Descendants()
+            .Where(el => el.Name.LocalName == "TargetFrameworks")
+            .Select(el => el.Value?.Trim() ?? string.Empty)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .LastOrDefault();
+        if (string.IsNullOrEmpty(multi))
+            return string.Empty;
+
+        return multi!
+            .Split(';')
+            .Select(s => s.Trim())
+            .FirstOrDefault(s => !string.IsNullOrEmpty(s))
+            ?? string.Empty;
+    }
+
+    private static string[] DiscoverFrameworkSourceGeneratorAnalyzerPaths(string targetFramework)
+    {
+        var major = ParseNetTargetFrameworkMajor(targetFramework);
+        if (major == null)
+            return Array.Empty<string>();
+
+        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+        var dotnetRoot = runtimeDir == null
+            ? null
+            : Directory.GetParent(runtimeDir)?.Parent?.Parent?.FullName;
+        if (string.IsNullOrEmpty(dotnetRoot))
+            return Array.Empty<string>();
+
+        var packRoot = Path.Combine(dotnetRoot, "packs", "Microsoft.NETCore.App.Ref");
+        if (!Directory.Exists(packRoot))
+            return Array.Empty<string>();
+
+        var packDir = new DirectoryInfo(packRoot)
+            .EnumerateDirectories()
+            .Select(d => (Directory: d, Version: TryParseVersion(d.Name, out var version) ? version : null))
+            .Where(candidate => candidate.Version != null && candidate.Version.Major == major.Value)
+            .OrderByDescending(candidate => candidate.Version)
+            .Select(candidate => candidate.Directory)
+            .FirstOrDefault();
+        if (packDir == null)
+            return Array.Empty<string>();
+
+        var analyzerDir = Path.Combine(packDir.FullName, "analyzers", "dotnet", "cs");
+        if (!Directory.Exists(analyzerDir))
+            return Array.Empty<string>();
+
+        return Directory.EnumerateFiles(analyzerDir, "*.dll")
+            .Where(path => Path.GetFileName(path).EndsWith("Generator.dll", StringComparison.OrdinalIgnoreCase)
+                || Path.GetFileName(path).Contains("SourceGeneration", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    internal static int? ParseNetTargetFrameworkMajor(string targetFramework)
+    {
+        if (!targetFramework.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var start = 3;
+        var end = start;
+        while (end < targetFramework.Length && char.IsDigit(targetFramework[end]))
+            end++;
+
+        return end == start
+            ? null
+            : int.Parse(targetFramework.Substring(start, end - start));
+    }
+
+    internal static bool TryParseVersion(string raw, out Version version)
+    {
+        var prereleaseStart = raw.IndexOf('-');
+        var stablePart = prereleaseStart < 0
+            ? raw
+            : raw.Substring(0, prereleaseStart);
+
+        return Version.TryParse(stablePart, out version!);
     }
 
     private static bool ReferenceDeclaresBcl(XElement referenceElement)

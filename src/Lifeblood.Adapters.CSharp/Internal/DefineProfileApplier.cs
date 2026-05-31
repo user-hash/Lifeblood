@@ -37,11 +37,13 @@ internal static class DefineProfileApplier
             ImplicitUsings = module.ImplicitUsings,
             PreprocessorSymbols = active,
             LanguageVersion = module.LanguageVersion,
+            TargetFramework = module.TargetFramework,
             NullableContext = module.NullableContext,
             NoWarnDiagnosticIds = module.NoWarnDiagnosticIds,
             CompilerFeatures = module.CompilerFeatures,
             ReferenceClosure = module.ReferenceClosure,
             InternalsVisibleTo = module.InternalsVisibleTo,
+            SourceGeneratorAnalyzerPaths = module.SourceGeneratorAnalyzerPaths,
             Properties = module.Properties,
         };
     }
