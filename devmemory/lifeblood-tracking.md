@@ -484,8 +484,15 @@ peak memory, GC collections, and analyze/validate phase timings. 2026-05-31
 slice expands the workload selector beyond self-analyze to analyze/context,
 incremental-noop, and CLI help lanes, adds category metadata plus
 `parseDurationMs` for CLI output parsing, and records the measurement
-availability caveats in the machine-readable report. Pinned by
-`BenchmarkSmokeTests`.
+availability caveats in the machine-readable report. Follow-up local slice
+extends the MCP GC benchmark beyond memory ceilings: after retained
+`lifeblood_analyze`, it dispatches `lifeblood_capabilities`,
+`lifeblood_context`, `lifeblood_cycles`, and `lifeblood_dead_code`, recording
+per-tool `dispatchLatencyMs`, response bytes, and completion status. Pinned by
+`BenchmarkSmokeTests`. Local 2026-05-31 smoke (`Runs=1`, net8 MCP publish)
+completed all three GC configs and all retained read-side dispatches; workstation
+read-side latencies were capabilities 21 ms, context 131 ms, cycles 24 ms, and
+dead-code summarize 22 ms.
 
 Summary:
 - Newer runtimes may improve JIT, GC, JSON, and async behavior, but Lifeblood
@@ -496,8 +503,8 @@ Summary:
 
 Remaining open work:
 - Run comparable `net8.0`/`net10.0` workloads over Lifeblood and DAWG, including
-  retained read-side tools and MCP dispatch latency, then gate retargeting on
-  stable semantic counts and measured win/loss data.
+  the retained read-side MCP dispatch lane, then gate retargeting on stable
+  semantic counts and measured win/loss data.
 
 Impact:
 - A runtime upgrade that looks good in general .NET marketing can still be a loss
