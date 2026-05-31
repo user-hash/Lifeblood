@@ -14,6 +14,16 @@ function Get-RepoRoot {
     return $dir.Path
 }
 
+function Assert-UnderRoot([string]$Root, [string]$Path) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $rootFull = [System.IO.Path]::GetFullPath($Root)
+    if (-not $full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside expected root: $full"
+    }
+
+    return $full
+}
+
 function Invoke-DotnetLines([string[]]$Arguments) {
     # Windows PowerShell 5.1: `2>&1` on a native exe wraps each stderr line as
     # a NativeCommandError ErrorRecord, which terminates under
@@ -53,6 +63,93 @@ function Write-Report($Report, [string]$Path) {
     $Report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
+function Copy-SourceTree([string]$SourceRoot, [string]$DestinationRoot) {
+    $excludedSegments = @(
+        ".git",
+        ".vs",
+        "artifacts",
+        "bin",
+        "cli-dist",
+        "dist",
+        "dist-next",
+        "dist-staging",
+        "nupkg-local",
+        "obj",
+        "packages",
+        "publish-staging",
+        "TestResults"
+    )
+
+    New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+
+    Get-ChildItem -LiteralPath $SourceRoot -Force -Recurse | ForEach-Object {
+        $relative = $_.FullName.Substring($SourceRoot.Length).TrimStart(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar)
+
+        if ([string]::IsNullOrWhiteSpace($relative)) {
+            return
+        }
+
+        $segments = @($relative -split '[\\/]+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($segments.Count -eq 1 -and $segments[0] -eq "global.json") {
+            return
+        }
+
+        if (@($segments | Where-Object { $excludedSegments -contains $_ }).Count -gt 0) {
+            return
+        }
+
+        $destination = Join-Path $DestinationRoot $relative
+        if ($_.PSIsContainer) {
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            return
+        }
+
+        $parent = Split-Path -Parent $destination
+        if (-not [string]::IsNullOrWhiteSpace($parent)) {
+            New-Item -ItemType Directory -Force -Path $parent | Out-Null
+        }
+
+        Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
+    }
+}
+
+function Set-CopiedProjectTargetFrameworks([string]$SourceRoot, [string]$TargetFramework) {
+    $projects = @()
+
+    $srcRoot = Join-Path $SourceRoot "src"
+    if (Test-Path -LiteralPath $srcRoot) {
+        $projects += @(Get-ChildItem -LiteralPath $srcRoot -Recurse -Filter "*.csproj")
+    }
+
+    $testProject = Join-Path $SourceRoot "tests/Lifeblood.Tests/Lifeblood.Tests.csproj"
+    if (Test-Path -LiteralPath $testProject) {
+        $projects += @(Get-Item -LiteralPath $testProject)
+    }
+
+    $retargeted = @()
+    foreach ($project in $projects) {
+        $text = Get-Content -LiteralPath $project.FullName -Raw
+        if ($text -notmatch '<TargetFramework>[^<]+</TargetFramework>') {
+            throw "Project does not declare a single TargetFramework: $($project.FullName)"
+        }
+
+        $next = [regex]::Replace(
+            $text,
+            '<TargetFramework>[^<]+</TargetFramework>',
+            "<TargetFramework>$TargetFramework</TargetFramework>",
+            1)
+
+        Set-Content -LiteralPath $project.FullName -Value $next -Encoding UTF8
+        $retargeted += $project.FullName.Substring($SourceRoot.Length).TrimStart(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar)
+    }
+
+    return @($retargeted)
+}
+
 function Invoke-Step($Report, [string]$Name, [string[]]$Arguments, [string]$WorkingDirectory) {
     Write-Host "[$Name] dotnet $($Arguments -join ' ')"
 
@@ -87,7 +184,12 @@ function Invoke-Step($Report, [string]$Name, [string[]]$Arguments, [string]$Work
 
 $repoRoot = Get-RepoRoot
 $outputFullPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $repoRoot $OutputPath }
-$solution = Join-Path $repoRoot "Lifeblood.sln"
+$checkedInSolution = Join-Path $repoRoot "Lifeblood.sln"
+$targetPathName = $TargetFramework -replace '[^A-Za-z0-9_.-]', '_'
+$tempBase = Join-Path ([System.IO.Path]::GetTempPath()) "lifeblood-dotnet-experimental"
+$workDir = Assert-UnderRoot $tempBase (Join-Path $tempBase $targetPathName)
+$experimentalSourceRoot = Join-Path $workDir "source"
+$solution = Join-Path $experimentalSourceRoot "Lifeblood.sln"
 $packagesDir = Join-Path $repoRoot "artifacts/dotnet-experimental/$TargetFramework/packages"
 $sdkLines = @(Invoke-DotnetLines @("--list-sdks"))
 $runtimeLines = @(Invoke-DotnetLines @("--list-runtimes"))
@@ -100,6 +202,8 @@ $report = [ordered]@{
     lane = "dotnet-experimental-target"
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("O")
     repoRoot = $repoRoot
+    sourceRoot = $experimentalSourceRoot
+    checkedInSolution = $checkedInSolution
     solution = $solution
     targetFramework = $TargetFramework
     configuration = $Configuration
@@ -114,10 +218,12 @@ $report = [ordered]@{
     }
     notes = @(
         "Production project files remain pinned to net8.0.",
-        "The lane passes TargetFramework as an MSBuild global property.",
-        "Build serializes MSBuild nodes because a solution-level TargetFramework override can compile duplicate project references into the same obj path.",
-        "Commands run from a temp directory so repo global.json does not pin the experimental SDK."
+        "The lane copies source to a temporary tree and retargets only the copied solution projects.",
+        "The temporary tree omits root global.json so the installed experimental SDK can be selected honestly.",
+        "Build serializes MSBuild nodes to keep experimental obj/bin output isolated and deterministic.",
+        "Packages are written under repository artifacts for CI collection; no packages are published."
     )
+    retargetedProjects = @()
     steps = @()
 }
 
@@ -130,52 +236,57 @@ if ($highestSdkMajor -lt $targetMajor) {
     return
 }
 
-$workDir = Join-Path ([System.IO.Path]::GetTempPath()) "lifeblood-dotnet-experimental"
+if (Test-Path -LiteralPath $workDir) {
+    Remove-Item -LiteralPath $workDir -Recurse -Force
+}
+
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 New-Item -ItemType Directory -Force -Path $packagesDir | Out-Null
+Copy-SourceTree $repoRoot $experimentalSourceRoot
+$report.retargetedProjects = @(Set-CopiedProjectTargetFrameworks $experimentalSourceRoot $TargetFramework)
 
 try {
     Invoke-Step $report "restore" @(
         "restore", $solution,
-        "-p:TargetFramework=$TargetFramework",
+        "-nodeReuse:false",
         "--nologo"
     ) $workDir
 
     Invoke-Step $report "build" @(
         "build", $solution,
         "-c", $Configuration,
-        "-p:TargetFramework=$TargetFramework",
         "--no-restore",
         "-maxcpucount:1",
+        "-nodeReuse:false",
         "--nologo"
     ) $workDir
 
     if (-not $SkipTests) {
         Invoke-Step $report "test" @(
-            "test", (Join-Path $repoRoot "tests/Lifeblood.Tests/Lifeblood.Tests.csproj"),
+            "test", (Join-Path $experimentalSourceRoot "tests/Lifeblood.Tests/Lifeblood.Tests.csproj"),
             "-c", $Configuration,
-            "-p:TargetFramework=$TargetFramework",
             "--no-build",
             "--no-restore",
+            "-nodeReuse:false",
             "--nologo"
         ) $workDir
     }
 
     if (-not $SkipPack) {
         Invoke-Step $report "pack-cli" @(
-            "pack", (Join-Path $repoRoot "src/Lifeblood.CLI/Lifeblood.CLI.csproj"),
+            "pack", (Join-Path $experimentalSourceRoot "src/Lifeblood.CLI/Lifeblood.CLI.csproj"),
             "-c", $Configuration,
-            "-p:TargetFramework=$TargetFramework",
             "--no-build",
+            "-nodeReuse:false",
             "-o", $packagesDir,
             "--nologo"
         ) $workDir
 
         Invoke-Step $report "pack-mcp" @(
-            "pack", (Join-Path $repoRoot "src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj"),
+            "pack", (Join-Path $experimentalSourceRoot "src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj"),
             "-c", $Configuration,
-            "-p:TargetFramework=$TargetFramework",
             "--no-build",
+            "-nodeReuse:false",
             "-o", $packagesDir,
             "--nologo"
         ) $workDir
