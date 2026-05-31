@@ -354,8 +354,23 @@ open because the first attempt proved a real diagnostic-parity constraint:
 dotnet build runs the System.Text.Json source generator, but Lifeblood's current
 Roslyn diagnose path does not, so production code cannot require generated
 `JsonSerializerContext.Default` members until generator/parity support exists.
-Remaining open work: measured `PipeReader` adoption plus source-generated
-contexts behind benchmark and diagnostic-parity evidence.
+Follow-up benchmark slice adds
+`tools/runtime-benchmarks/Lifeblood.JsonParserBenchmark`, a measurement-only
+report harness that compares the current string parser with UTF-8 span and
+buffered `PipeReader` parser shapes in legacy and strict modes. The production
+MCP transport stays on the current line/string path until the report proves
+timing/allocation improvement with equivalent diagnostics. `BenchmarkSmokeTests`
+ratchets the harness shape, compiles the benchmark source through Roslyn with
+the required .NET + ASP.NET Core reference packs, and preserves the
+source-generated-context diagnostic-parity gate. Local 2026-05-31 smoke could
+not execute the standalone benchmark project in this session because MSBuild
+object-file writes for the new project were denied even after redirecting output
+to the scratch tree; this entry therefore records the harness as compile-proven
+and ready for a writable build host, not as completed adoption.
+Remaining open work: run the JSON parser benchmark report on a writable host,
+decide `PipeReader` adoption from evidence, and adopt source-generated contexts
+only after diagnostic parity can see the generated surface or production no
+longer depends on generator-only members.
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
@@ -369,7 +384,8 @@ Summary:
   source remains open.
 
 Remaining open work:
-- Measure `PipeReader` before adopting it, and adopt source-generated JSON
+- Run the JSON parser benchmark on a host that can build the standalone harness,
+  then measure `PipeReader` before adopting it. Adopt source-generated JSON
   contexts only after Lifeblood diagnostic parity can see the generated surface
   or the production code path is otherwise proven not to depend on generator-only
   members.
