@@ -426,8 +426,10 @@ tool events`): events now cover `lifeblood.tool.success_result`,
 `lifeblood.tool.arguments`, real `lifeblood.analyze.phase` scopes/events from
 `GraphSession` phase boundaries, and `allocation.bytes` deltas. Invariant cache
 lookup telemetry now emits after releasing the cache lock. Remaining open work:
-cross-process benchmark correlation and broader runtime counters where the host
-supports them.
+broader runtime counters where the host supports them. Cross-process benchmark
+correlation is covered by the shared `benchmarkRunId` emitted by the CLI and MCP
+benchmark reports and injected into the MCP benchmark child process as
+`LIFEBLOOD_BENCHMARK_RUN_ID`.
 
 Summary:
 - Lifeblood has good user-facing analyze receipts, but not a general operational
@@ -436,8 +438,8 @@ Summary:
   introduced behind an Application-layer port with a no-op default.
 
 Remaining open work:
-- Add cross-process benchmark correlation and broader runtime counters while
-  preserving `AnalysisUsage` as the user-facing evidence receipt.
+- Add broader runtime counters while preserving `AnalysisUsage` as the
+  user-facing evidence receipt.
 
 Impact:
 - Without telemetry, performance regressions and multi-user contention will be
@@ -489,10 +491,13 @@ extends the MCP GC benchmark beyond memory ceilings: after retained
 `lifeblood_analyze`, it dispatches `lifeblood_capabilities`,
 `lifeblood_context`, `lifeblood_cycles`, and `lifeblood_dead_code`, recording
 per-tool `dispatchLatencyMs`, response bytes, and completion status. Pinned by
-`BenchmarkSmokeTests`. Local 2026-05-31 smoke (`Runs=1`, net8 MCP publish)
+`BenchmarkSmokeTests`. Local 2026-05-31 smoke (`Runs=1`, net8 MCP publish,
+`benchmarkRunId=codex-smoke-20260531`)
 completed all three GC configs and all retained read-side dispatches; workstation
-read-side latencies were capabilities 21 ms, context 131 ms, cycles 24 ms, and
-dead-code summarize 22 ms.
+read-side latencies were capabilities 19 ms, context 88 ms, cycles 26 ms, and
+dead-code summarize 22 ms. CLI and MCP benchmark reports now carry a shared
+`benchmarkRunId`; the MCP harness also passes it into the child process as
+`LIFEBLOOD_BENCHMARK_RUN_ID` for future telemetry/report joins.
 
 Summary:
 - Newer runtimes may improve JIT, GC, JSON, and async behavior, but Lifeblood
