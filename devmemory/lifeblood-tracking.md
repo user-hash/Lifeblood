@@ -339,10 +339,11 @@ property rejection behind `LIFEBLOOD_STRICT_JSON`. 2026-05-31 slice adds
 `ToolInputContract` projection, `ToolArgumentBinder`, `LIFEBLOOD_JSON_COMPAT`
 (`legacy` / `warn` / `strict`), the `LIFEBLOOD_STRICT_JSON` strict alias,
 warn-mode argument telemetry, and strict-mode structured tool errors. Pinned by
-`ToolArgumentContractTests` and `ToolHandlerTelemetryTests`. Remaining open
-work: making typed contracts the primary authoring source instead of projecting
-from anonymous schemas, source-generated contexts, and measured `PipeReader`
-adoption.
+`ToolArgumentContractTests` and `ToolHandlerTelemetryTests`. Follow-up local
+slice adds enum preservation/enforcement and a typed-contract schema round-trip
+ratchet across every registered tool. Remaining open work: making typed
+contracts the primary authoring source instead of projecting from anonymous
+schemas, source-generated contexts, and measured `PipeReader` adoption.
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
@@ -350,13 +351,15 @@ Summary:
   duplicate-property rejection, and possible `PipeReader` parsing.
 - Lifeblood now has per-tool `tools/list` input-schema snapshots, but schemas
   are still authored as anonymous objects in `ToolRegistry`; the typed contract
-  projection and binder now exist at the server edge, while the deeper typed
-  DTO/schema-builder authoring source remains open.
+  projection and binder now exist at the server edge. The typed projection now
+  preserves enum values, enforces them in strict mode, and can regenerate the
+  current schema surface, while the deeper typed DTO/schema-builder authoring
+  source remains open.
 
 Remaining open work:
 - Make typed contracts the primary authoring source, generate/validate schemas
-  from that source, add source-generated JSON contexts, and measure `PipeReader`
-  before adopting it.
+  from that source without projecting from anonymous registry objects, add
+  source-generated JSON contexts, and measure `PipeReader` before adopting it.
 
 Impact:
 - Schema drift is a high-leverage failure class: clients learn tool arguments

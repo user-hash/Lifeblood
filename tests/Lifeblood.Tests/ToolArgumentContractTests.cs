@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Lifeblood.Server.Mcp;
 using Xunit;
 
@@ -10,6 +11,13 @@ namespace Lifeblood.Tests;
 /// </summary>
 public class ToolArgumentContractTests
 {
+    private static readonly JsonSerializerOptions SchemaJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = true,
+    };
+
     [Fact]
     public void ToolDefinitions_ExposeTypedInputContracts_WithRequiredFields()
     {
@@ -19,6 +27,29 @@ public class ToolArgumentContractTests
         Assert.True(contract.Arguments.TryGetValue("symbolId", out var symbolId));
         Assert.True(symbolId.Required);
         Assert.Equal(ToolArgumentType.String, symbolId.Type);
+    }
+
+    [Fact]
+    public void ToolInputContract_RoundTripsEveryRegisteredInputSchema()
+    {
+        foreach (var definition in ToolRegistry.GetDefinitions())
+        {
+            var contract = ToolInputContract.FromSchema(definition.Name, definition.InputSchema);
+            var expected = Canonicalize(JsonSerializer.Serialize(definition.InputSchema, SchemaJsonOptions));
+            var actual = Canonicalize(JsonSerializer.Serialize(contract.ToInputSchema(), SchemaJsonOptions));
+
+            Assert.Equal(expected, actual);
+        }
+    }
+
+    [Fact]
+    public void ToolInputContract_PreservesEnumValues()
+    {
+        var definition = ToolRegistry.GetDefinitions().Single(d => d.Name == "lifeblood_resolve_short_name");
+        var contract = ToolInputContract.FromSchema(definition.Name, definition.InputSchema);
+
+        Assert.True(contract.Arguments.TryGetValue("mode", out var mode));
+        Assert.Equal(new[] { "exact", "contains", "fuzzy" }, mode.EnumValues);
     }
 
     [Fact]
@@ -82,6 +113,20 @@ public class ToolArgumentContractTests
     }
 
     [Fact]
+    public void Binder_StrictMode_RejectsEnumValuesOutsideSchema()
+    {
+        var binder = NewBinder();
+
+        var result = binder.Validate(
+            "lifeblood_resolve_short_name",
+            JsonArgs(new { name = "MidiLearnManager", mode = "wild" }),
+            ToolJsonCompatibilityMode.Strict);
+
+        Assert.False(result.Accepted);
+        Assert.Contains(result.Diagnostics, d => d.Kind == "enumMismatch" && d.Argument == "mode");
+    }
+
+    [Fact]
     public void ReadFromEnvironment_StrictJsonAlias_RemainsStrictAlias()
     {
         const string compatName = "LIFEBLOOD_JSON_COMPAT_TEST";
@@ -122,4 +167,11 @@ public class ToolArgumentContractTests
     private static ToolArgumentBinder NewBinder()
         => new(ToolRegistry.GetDefinitions()
             .Select(d => ToolInputContract.FromSchema(d.Name, d.InputSchema)));
+
+    private static string Canonicalize(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        return JsonSerializer.Serialize(document.RootElement, SchemaJsonOptions);
+    }
 }

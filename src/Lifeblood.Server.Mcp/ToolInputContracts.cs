@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -29,23 +30,29 @@ public sealed record ToolArgumentContract(
     ToolArgumentType Type,
     bool Required,
     ToolArgumentType? ArrayItemType,
-    string? Description);
+    string? Description,
+    IReadOnlyList<string> EnumValues);
 
 public sealed record ToolInputContract(
     string ToolName,
-    IReadOnlyDictionary<string, ToolArgumentContract> Arguments)
+    IReadOnlyList<ToolArgumentContract> ArgumentList)
 {
     private static readonly JsonSerializerOptions SchemaJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    public IReadOnlyDictionary<string, ToolArgumentContract> Arguments { get; } =
+        ArgumentList.ToDictionary(a => a.Name, a => a, StringComparer.Ordinal);
+
     public static ToolInputContract FromSchema(string toolName, object inputSchema)
     {
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(inputSchema, SchemaJsonOptions));
         var root = document.RootElement;
         var required = ReadRequiredNames(root);
-        var arguments = new Dictionary<string, ToolArgumentContract>(StringComparer.Ordinal);
+        var requiredSet = required.ToHashSet(StringComparer.Ordinal);
+        var arguments = new List<ToolArgumentContract>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         if (root.ValueKind == JsonValueKind.Object
             && root.TryGetProperty("properties", out var properties)
@@ -63,35 +70,109 @@ public sealed record ToolInputContract(
                     && desc.ValueKind == JsonValueKind.String
                         ? desc.GetString()
                         : null;
+                var enumValues = ReadEnumValues(value);
 
-                arguments[property.Name] = new ToolArgumentContract(
+                seen.Add(property.Name);
+                arguments.Add(new ToolArgumentContract(
                     property.Name,
                     type,
-                    required.Contains(property.Name),
+                    requiredSet.Contains(property.Name),
                     itemType,
-                    description);
+                    description,
+                    enumValues));
             }
         }
 
         foreach (var requiredName in required)
         {
-            if (!arguments.ContainsKey(requiredName))
+            if (!seen.Contains(requiredName))
             {
-                arguments[requiredName] = new ToolArgumentContract(
+                arguments.Add(new ToolArgumentContract(
                     requiredName,
                     ToolArgumentType.Unknown,
                     Required: true,
                     ArrayItemType: null,
-                    Description: null);
+                    Description: null,
+                    EnumValues: Array.Empty<string>()));
             }
         }
 
         return new ToolInputContract(toolName, arguments);
     }
 
-    private static HashSet<string> ReadRequiredNames(JsonElement root)
+    public JsonElement ToInputSchema()
     {
-        var required = new HashSet<string>(StringComparer.Ordinal);
+        var root = new JsonObject
+        {
+            ["type"] = "object",
+        };
+
+        var required = ArgumentList.Where(a => a.Required).Select(a => a.Name).ToArray();
+        if (required.Length > 0)
+        {
+            var requiredArray = new JsonArray();
+            foreach (var name in required)
+            {
+                requiredArray.Add(name);
+            }
+
+            root["required"] = requiredArray;
+        }
+
+        var properties = new JsonObject();
+        foreach (var argument in ArgumentList)
+        {
+            var schema = new JsonObject
+            {
+                ["type"] = ToSchemaType(argument.Type),
+            };
+
+            if (argument.Type == ToolArgumentType.Array && argument.ArrayItemType is { } itemType)
+            {
+                schema["items"] = new JsonObject
+                {
+                    ["type"] = ToSchemaType(itemType),
+                };
+            }
+
+            if (argument.Description is { Length: > 0 } description)
+            {
+                schema["description"] = description;
+            }
+
+            if (argument.EnumValues.Count > 0)
+            {
+                var values = new JsonArray();
+                foreach (var value in argument.EnumValues)
+                {
+                    values.Add(value);
+                }
+
+                schema["enum"] = values;
+            }
+
+            properties[argument.Name] = schema;
+        }
+
+        root["properties"] = properties;
+        return JsonSerializer.SerializeToElement(root, SchemaJsonOptions);
+    }
+
+    private static string ToSchemaType(ToolArgumentType type)
+        => type switch
+        {
+            ToolArgumentType.String => "string",
+            ToolArgumentType.Integer => "integer",
+            ToolArgumentType.Number => "number",
+            ToolArgumentType.Boolean => "boolean",
+            ToolArgumentType.Array => "array",
+            ToolArgumentType.Object => "object",
+            _ => "object",
+        };
+
+    private static List<string> ReadRequiredNames(JsonElement root)
+    {
+        var required = new List<string>();
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("required", out var requiredElement)
             || requiredElement.ValueKind != JsonValueKind.Array)
@@ -108,6 +189,27 @@ public sealed record ToolInputContract(
         }
 
         return required;
+    }
+
+    private static string[] ReadEnumValues(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object
+            || !schema.TryGetProperty("enum", out var enumElement)
+            || enumElement.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        foreach (var item in enumElement.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String && item.GetString() is { } value)
+            {
+                values.Add(value);
+            }
+        }
+
+        return values.ToArray();
     }
 
     private static ToolArgumentType ReadType(JsonElement schema)
@@ -216,7 +318,7 @@ public sealed class ToolArgumentBinder
                 continue;
             }
 
-            if (!Matches(argument, property.Value))
+            if (!MatchesType(argument, property.Value))
             {
                 diagnostics.Add(new ToolArgumentDiagnostic(
                     "typeMismatch",
@@ -224,6 +326,15 @@ public sealed class ToolArgumentBinder
                     $"Argument '{property.Name}' for tool '{toolName}' has the wrong JSON type.",
                     Expected: Describe(argument),
                     Actual: Describe(property.Value)));
+            }
+            else if (!MatchesEnum(argument, property.Value))
+            {
+                diagnostics.Add(new ToolArgumentDiagnostic(
+                    "enumMismatch",
+                    property.Name,
+                    $"Argument '{property.Name}' for tool '{toolName}' is outside the declared enum values.",
+                    Expected: Describe(argument),
+                    Actual: property.Value.GetString()));
             }
         }
 
@@ -254,7 +365,7 @@ public sealed class ToolArgumentBinder
             Expected: "present",
             Actual: "missing");
 
-    private static bool Matches(ToolArgumentContract argument, JsonElement value)
+    private static bool MatchesType(ToolArgumentContract argument, JsonElement value)
     {
         if (argument.Type == ToolArgumentType.Unknown)
         {
@@ -273,12 +384,29 @@ public sealed class ToolArgumentBinder
         };
     }
 
+    private static bool MatchesEnum(ToolArgumentContract argument, JsonElement value)
+    {
+        if (argument.EnumValues.Count == 0)
+        {
+            return true;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            && value.GetString() is { } raw
+            && argument.EnumValues.Contains(raw, StringComparer.Ordinal);
+    }
+
     private static string Describe(ToolArgumentContract argument)
     {
         var type = argument.Type.ToString().ToLowerInvariant();
         if (argument.Type == ToolArgumentType.Array && argument.ArrayItemType is { } itemType)
         {
             type += $"<{itemType.ToString().ToLowerInvariant()}>";
+        }
+
+        if (argument.EnumValues.Count > 0)
+        {
+            type += " enum[" + string.Join(", ", argument.EnumValues) + "]";
         }
 
         return type;
