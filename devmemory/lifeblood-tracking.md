@@ -61,7 +61,7 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 38 --><!-- trackingStatusPartiallyShippedCount: 2 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 39 --><!-- trackingStatusPartiallyShippedCount: 2 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
@@ -368,7 +368,7 @@ not execute the standalone benchmark project in this session because MSBuild
 object-file writes for the new project were denied even after redirecting output
 to the scratch tree; this entry therefore records the harness as compile-proven
 and ready for a writable build host, not as completed adoption. Follow-up local
-evidence receipt `D:\Projekti\DAWG\codex_tmp\lifeblood-json-parser-benchmark-after.json`
+evidence receipt `<workspace>\codex_tmp\lifeblood-json-parser-benchmark-after.json`
 ran 50,000 iterations after rebuilding the standalone harness. The benchmark
 keeps `PipeReader` as a measurement-only candidate: the buffered candidate
 remains semantically equivalent but allocates more per operation because MCP
@@ -620,7 +620,7 @@ required Roslyn/xUnit packages were not present in the local cache. Follow-up
 hardening adds explicit `-PackageSources`, `-DotnetExe`, `-DotnetCliHome`, and
 `-WorkDirRoot` controls so the lane can run against local SDK/package/cache
 state without mutating production project files. Local net10 receipt
-`D:\Projekti\DAWG\codex_tmp\lifeblood-net10-experimental-target.json` passed
+`<workspace>\codex_tmp\lifeblood-net10-experimental-target.json` passed
 with SDK `10.0.300`: restore, build, full test suite
 (`1307 passed / 11 skipped / 1318 total`), semantic self-analysis matching the
 production anchors (`4316` symbols, `24876` edges, 11 modules, 455 types), CLI
@@ -652,8 +652,8 @@ Fix shape:
 
 ## 2026-05-31 - .NET 10 lane parity/docs failures are a concurrency artifact (diagnosis correction)
 
-Status: Investigated (no production change)
-Type: Diagnosis correction
+Status: Shipped
+Type: Diagnosis correction (no production code change)
 Source: DAWG-session full verification of the pushed tracking-list-hardening chain, 2026-05-31
 Workspace: Lifeblood self (net8 production + net10 copied-tree lane)
 
@@ -727,7 +727,7 @@ framework-dependent, self-contained, trimmed, and AOT publish shapes under
 recorded as intentional skips until Roslyn compatibility evidence says
 otherwise. Pinned by `DotNetLaneScriptTests`.
 Local receipt
-`D:\Projekti\DAWG\codex_tmp\lifeblood-tool-packaging-net8-win-x64.json`
+`<workspace>\codex_tmp\lifeblood-tool-packaging-net8-win-x64.json`
 passed on Windows `win-x64`: CLI and MCP packages packed at
 `0.7.11-alpha.0.28`, local tool installs succeeded, `lifeblood --help` passed
 the help-contract validation, and `lifeblood-mcp` started/stopped cleanly with
@@ -845,7 +845,7 @@ experimental tree via the `run-lifeblood-experimental-target.ps1`
 read-side measurement to the MCP GC benchmark harness when a supporting SDK is
 available. Local side-by-side .NET 11 preview SDK
 `11.0.100-preview.4.26230.115` was installed under
-`D:\Projekti\DAWG\codex_tmp\dotnet-11`; the Runtime Async lane then restored,
+`<workspace>\codex_tmp\dotnet-11`; the Runtime Async lane then restored,
 built, and ran the copied `net11.0` tree with `runtime-async=on`, producing
 `1307 passed / 11 skipped / 1318 total`, semantic self-analysis counts matching
 the production anchors (`4316` symbols, `24876` edges, 11 modules, 455 types),
@@ -1920,7 +1920,7 @@ Type: Improvement
 Source: DAWG ABG final-phase review, 2026-05-18, Lifeblood v0.7.7 live MCP
 Workspace: DAWG
 Verification:
-- `lifeblood_analyze(projectPath:"D:/Projekti/DAWG", incremental:true, allowFullFallback:true)` returned `incremental-noop`, 65,693 symbols, 237,066 edges, 0 violations.
+- `lifeblood_analyze(projectPath:"<workspace>", incremental:true, allowFullFallback:true)` returned `incremental-noop`, 65,693 symbols, 237,066 edges, 0 violations.
 - `lifeblood_authority_report(type:Nebulae.BeatGrid.AdaptiveBeatGrid)` reported 12 implemented interfaces, 142 owned public surface, and forwarderRatio 0.359.
 - The same report showed direct `memberCount:0` for `IPianoRollRefreshCoordinatorHost`, `IMelodicGridRenderHost`, and `ITransportTimelineHost`, and `memberCount:4` for `IWheelMenuActions`.
 - Source review showed those are composite surfaces, not empty/trivial contracts: PR refresh is 0 own + 6 sub-ports (~35 aggregate members), melodic render is 0 own + 6 sub-ports (~21 aggregate members), transport timeline is 0 own + 5 sub-ports (~24 aggregate members), and wheel menu is 4 own + 9 sub-ports (~43 aggregate members).
@@ -2035,7 +2035,7 @@ fixtures in `RoslynExtractorTests` (instance-style, static-style, generic-
 extension, chained-extension). Debug suite 1011 → 1015. STATUS test-count
 anchor refreshed.
 Type: Bug
-Source: `D:/Projekti/lifeblood_plan.txt` Stage 1 (2026-05-18), confirmed by 2026-05-19 source inspection of `RoslynEdgeExtractor.GetMethodId`.
+Source: `<plan-file>` Stage 1 (2026-05-18), confirmed by 2026-05-19 source inspection of `RoslynEdgeExtractor.GetMethodId`.
 Workspace: Lifeblood self
 Verification:
 - Grep across `src/` and `tests/` for `ReducedFrom` / `IsExtensionMethod` returns zero matches (excluding Roslyn binary DLLs).
@@ -2058,7 +2058,7 @@ Fix shape:
 Status: Shipped (in-tree, untagged) — F3a + F3b + F3c + F3d + F3e + F3f atoms of the 2026-05-19 plan.
 Closing commits: `fe50998` F3a (extract seam) + `8df96c6` F3b (composite + inherited surface, `INV-PORT-HEALTH-COMPOSITE-001`) + `bf23480` F3c (interface-extends-interface emits `Inherits` not `Implements`, `INV-EXTRACT-IFACE-INHERIT-001`) + `9cc4e91` F3d (real-graph composite-interface fixtures closing F3b synthetic-graph blind spot) + `bd4c59f` F3e (composite/inherited surface on `authority_report` `InterfaceUsage`, `INV-AUTHORITY-COMPOSITE-001`) + `33d2fc1` F3f (docs/tools description sync). F3a extracted the algorithm behind `IPortHealthAnalyzer` in `Lifeblood.Application.Ports.Right`; F3b added the composite-aware traversal; F3c-F3f closed the iface-edge-kind, fixture-blind-spot, authority-side parity, and doc-sync follow-ups. `ToolHandler` routes through the injected port (default ctor falls back to a new instance). Pinned by 9+ `PortHealthAnalyzerTests` fixtures plus real-graph composite tests + a seam-discipline scan that refuses to find the inline algorithm tokens in `ToolHandler.cs`. Debug suite 1028 → 1037 → … → 1097 over the chain; port count 26 → 27. STATUS testCount + portCount anchors refreshed. **DAWG re-verified 2026-05-19**: see LB-TRACK-013 closure for the live-MCP composite verdict on `ITransportTimelineHost`.
 Type: Improvement
-Source: `D:/Projekti/lifeblood_plan.txt` Stage 3 + `docs/plans/lifeblood-correctness-masterplan-2026-05-15.md` Stage 3, confirmed by 2026-05-19 source inspection.
+Source: `<plan-file>` Stage 3 + `docs/plans/lifeblood-correctness-masterplan-2026-05-15.md` Stage 3, confirmed by 2026-05-19 source inspection.
 Workspace: Lifeblood self
 Verification:
 - `grep -rn "IPortHealthAnalyzer\|PortHealth" src/` returns only two hits, both in `ToolHandler.cs` (the dispatch arm at line 88 and the inline 75-line implementation at lines 812-886).
@@ -2282,7 +2282,7 @@ Tools fully exercised (30/30):
 | assignment_coverage | `BeatGridTickHostBindings` | ✅ 33/33 Proven |
 
 DAWG-side observations (not Lifeblood bugs, surfaced incidentally):
-- `invariant_check` parser warning: `D:/Projekti/DAWG/docs/invariants/oversample-stage-policy.md:29` — id `INV-OVS-ENGAGEMENT-7` (the full id is `INV-OVS-ENGAGEMENT-7-AXIS-001`) didn't match shape A/B/D/E; fell back to bullet-prefix title extraction. Lifeblood parser regex apparently rejects embedded digit inside the category segment. Could be tightened parser-side (separate atom) or DAWG-side (rename to `INV-OVS-7AXIS-ENGAGEMENT-001`). Filed here as observation only.
+- `invariant_check` parser warning: `<workspace>/docs/invariants/oversample-stage-policy.md:29` — id `INV-OVS-ENGAGEMENT-7` (the full id is `INV-OVS-ENGAGEMENT-7-AXIS-001`) didn't match shape A/B/D/E; fell back to bullet-prefix title extraction. Lifeblood parser regex apparently rejects embedded digit inside the category segment. Could be tightened parser-side (separate atom) or DAWG-side (rename to `INV-OVS-7AXIS-ENGAGEMENT-001`). Filed here as observation only.
 - DAWG-side `dead_code` finding: `type:Nebulae.Systems.DawgToolsPackageAssert` shows no incoming semantic references. Bucket=Production, declarationOnly:false. Advisory — likely Unity reflection-bound (`[InitializeOnLoadMethod]` or similar). DAWG triage, not Lifeblood.
 - `BeatGridFXBusManager` (cited in LB-TRACK-015 closure receipt) was renamed/removed in DAWG between 2026-05-19 and 2026-05-24. Lifeblood resolver correctly refused substitution per INV-RESOLVER-007 — not a Lifeblood bug. Memory file `feedback_label_precision_post_block_or_undrained.md` could be refreshed in DAWG memory.
 
@@ -2355,7 +2355,7 @@ disk pickup — discovery is descriptor-driven and the honest contract points at
 the `compile_check` signal (`INV-UNITY-NEWFILE-DISCOVERY-HONESTY-001`,
 `AnalyzeDescriptionHonestyTests`). The raw pre-meta disk sweep stays deferred.
 Source: DAWG Burst-first dogfood, 2026-05-30, Lifeblood v0.7.10+e98a9b7c
-Workspace: DAWG (`D:/Projekti/DAWG`, Unity project, multi-profile Editor+Player)
+Workspace: DAWG (`<workspace>`, Unity project, multi-profile Editor+Player)
 
 Observed:
 - During the S2 Burst event-boundary slice, a new file `Assets/Tests/Editor/Audio/Burst/BurstEventBoundaryOracleTests.cs` was created on disk before Unity had imported it / generated the sibling `.meta`.
@@ -2392,7 +2392,7 @@ single-flight guard (would be theater on a serial loop, INV-WORK-005/007). Pinne
 by `McpServerLoopTests` (4 facts). The proposed structured fatal envelope shipped
 as the JSON-RPC 2.0 `data` member on `JsonRpcError`.
 Source: DAWG Burst-first dogfood, 2026-05-30, Lifeblood v0.7.10 session
-Workspace: DAWG (`D:/Projekti/DAWG`, Unity project, multi-profile Editor+Player)
+Workspace: DAWG (`<workspace>`, Unity project, multi-profile Editor+Player)
 
 Observed:
 - During the L4a bound-patch pass, one `lifeblood_compile_check(filePath)`

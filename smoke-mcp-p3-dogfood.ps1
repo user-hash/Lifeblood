@@ -1,5 +1,5 @@
 param(
-    [string]$Project = "D:\Projekti\DAWG",
+    [string]$Project = ".",
     [string]$ServerDll = "$PSScriptRoot/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll"
 )
 
