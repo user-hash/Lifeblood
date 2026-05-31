@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Left;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -72,6 +74,112 @@ public class BenchmarkSmokeTests
         Assert.Contains("LIFEBLOOD_BENCHMARK_RUN_ID", mcpScript);
         Assert.Contains("benchmarkRunId", mcpScript);
         Assert.DoesNotContain("[hashtable]$Env", mcpScript);
+
+        var jsonParserBenchmark = File.ReadAllText(Path.Combine(
+            repoRoot,
+            "tools",
+            "runtime-benchmarks",
+            "Lifeblood.JsonParserBenchmark",
+            "Program.cs"));
+        var jsonParserProject = File.ReadAllText(Path.Combine(
+            repoRoot,
+            "tools",
+            "runtime-benchmarks",
+            "Lifeblood.JsonParserBenchmark",
+            "Lifeblood.JsonParserBenchmark.csproj"));
+
+        Assert.Contains("PipeReader", jsonParserBenchmark);
+        Assert.Contains("pipe-reader-buffered", jsonParserBenchmark);
+        Assert.Contains("utf8-span", jsonParserBenchmark);
+        Assert.Contains("adoptionPosture", jsonParserBenchmark);
+        Assert.Contains("source-generated JSON contexts remain gated", jsonParserBenchmark);
+        Assert.Contains("EquivalentToCurrent", jsonParserBenchmark);
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>", jsonParserProject);
+        Assert.Contains("<FrameworkReference Include=\"Microsoft.AspNetCore.App\" />", jsonParserProject);
+
+        var diagnostics = CompileBenchmarkSource(jsonParserBenchmark)
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => d.ToString())
+            .ToArray();
+        Assert.Empty(diagnostics);
+    }
+
+    private static IEnumerable<Diagnostic> CompileBenchmarkSource(string source)
+    {
+        var parseOptions = CSharpParseOptions.Default
+            .WithLanguageVersion(LanguageVersion.CSharp12);
+        var implicitUsings = """
+            global using System;
+            global using System.Collections.Generic;
+            global using System.IO;
+            global using System.Linq;
+            global using System.Threading;
+            global using System.Threading.Tasks;
+            """;
+        var compilation = CSharpCompilation.Create(
+            "Lifeblood.JsonParserBenchmark.CompileProbe",
+            new[]
+            {
+                CSharpSyntaxTree.ParseText(implicitUsings, parseOptions),
+                CSharpSyntaxTree.ParseText(source, parseOptions),
+            },
+            BenchmarkReferences(),
+            new CSharpCompilationOptions(OutputKind.ConsoleApplication)
+                .WithNullableContextOptions(NullableContextOptions.Enable)
+                .WithOptimizationLevel(OptimizationLevel.Release));
+
+        return compilation.GetDiagnostics();
+    }
+
+    private static IReadOnlyList<MetadataReference> BenchmarkReferences()
+    {
+        var references = new List<MetadataReference>();
+        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+        var dotnetRoot = runtimeDir == null
+            ? null
+            : Directory.GetParent(runtimeDir)?.Parent?.Parent?.FullName;
+        if (dotnetRoot != null)
+        {
+            AddReferencePack(references, dotnetRoot, "Microsoft.NETCore.App.Ref");
+            AddReferencePack(references, dotnetRoot, "Microsoft.AspNetCore.App.Ref");
+        }
+
+        Assert.NotEmpty(references);
+        return references;
+    }
+
+    private static void AddReferencePack(
+        List<MetadataReference> references,
+        string dotnetRoot,
+        string packName)
+    {
+        var packRoot = Path.Combine(dotnetRoot, "packs", packName);
+        if (!Directory.Exists(packRoot))
+        {
+            return;
+        }
+
+        var refDir = new DirectoryInfo(packRoot)
+            .EnumerateDirectories()
+            .OrderByDescending(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(d => Path.Combine(d.FullName, "ref", "net8.0"))
+            .FirstOrDefault(Directory.Exists);
+        if (refDir == null)
+        {
+            return;
+        }
+
+        AddReferencesFromDirectory(references, refDir);
+    }
+
+    private static void AddReferencesFromDirectory(
+        List<MetadataReference> references,
+        string directory)
+    {
+        foreach (var path in Directory.EnumerateFiles(directory, "*.dll"))
+        {
+            references.Add(MetadataReference.CreateFromFile(path));
+        }
     }
 
     private static string FindRepoRoot()
