@@ -42,6 +42,46 @@ public class MultiProfileAnalyzeTests
     }
 
     [Fact]
+    public void DefineProfileApplier_WithProfileDefines_PreservesCompilationFacts()
+    {
+        var profile = new DefineProfile
+        {
+            Name = "Player",
+            AddDefines = new[] { "PLAYER" },
+            RemoveDefines = new[] { "EDITOR" },
+        };
+        var module = new ModuleInfo
+        {
+            Name = "App",
+            FilePaths = new[] { "App.cs" },
+            Dependencies = new[] { "Lib" },
+            IsPure = true,
+            ExternalDllPaths = new[] { "UnityEngine.dll" },
+            BclOwnership = BclOwnershipMode.ModuleProvided,
+            AllowUnsafeCode = true,
+            ImplicitUsings = true,
+            PreprocessorSymbols = new[] { "EDITOR", "BASE" },
+            LanguageVersion = "preview",
+            TargetFramework = "net8.0",
+            NullableContext = "enable",
+            NoWarnDiagnosticIds = new[] { "CS1701" },
+            CompilerFeatures = new Dictionary<string, string> { ["runtime-async"] = "on" },
+            ReferenceClosure = ReferenceClosureMode.DirectOnly,
+            InternalsVisibleTo = new[] { "App.Tests" },
+            SourceGeneratorAnalyzerPaths = new[] { "System.Text.Json.SourceGeneration.dll" },
+            Properties = new Dictionary<string, string> { ["projectFile"] = "App.csproj" },
+        };
+
+        var clone = DefineProfileApplier.WithProfileDefines(module, profile);
+
+        Assert.Equal(new[] { "BASE", "PLAYER" }, clone.PreprocessorSymbols);
+        Assert.Equal(module.TargetFramework, clone.TargetFramework);
+        Assert.Equal(module.SourceGeneratorAnalyzerPaths, clone.SourceGeneratorAnalyzerPaths);
+        Assert.Equal(module.CompilerFeatures, clone.CompilerFeatures);
+        Assert.Equal(module.Properties, clone.Properties);
+    }
+
+    [Fact]
     public void EdgeProfileTagger_NullProfile_ReturnsEdgesUntagged()
     {
         var edges = new List<Edge>

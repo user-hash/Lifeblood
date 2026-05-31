@@ -30,7 +30,7 @@ public static class McpJsonRequestParser
     {
         if (!strictJson)
         {
-            return JsonSerializer.Deserialize<JsonRpcRequest>(json, options);
+            return JsonSerializer.Deserialize(json, McpJsonSerializerContext.For(options).JsonRpcRequest);
         }
 
         var utf8 = Encoding.UTF8.GetBytes(json);
@@ -43,7 +43,7 @@ public static class McpJsonRequestParser
                 UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             });
 
-        return JsonSerializer.Deserialize<JsonRpcRequest>(utf8, strictOptions);
+        return JsonSerializer.Deserialize(utf8, McpJsonSerializerContext.For(strictOptions).JsonRpcRequest);
     }
 
     public static bool ReadStrictJsonFlag(string environmentVariableName)

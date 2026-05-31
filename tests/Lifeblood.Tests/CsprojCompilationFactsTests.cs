@@ -329,4 +329,102 @@ public class CsprojCompilationFactsTests
         }
         finally { Directory.Delete(tempDir, true); }
     }
+
+    [Fact]
+    public void Discovery_FindsFrameworkSourceGeneratorAnalyzers_ForTargetFramework()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-sg-disc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "Empty.cs"),
+                "namespace Test; public class Empty { }");
+            File.WriteAllText(Path.Combine(tempDir, "Test.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <AssemblyName>Test</AssemblyName>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>");
+
+            var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
+
+            Assert.Single(modules);
+            Assert.Equal("net8.0", modules[0].TargetFramework);
+            Assert.Contains(
+                modules[0].SourceGeneratorAnalyzerPaths,
+                path => path.EndsWith("System.Text.Json.SourceGeneration.dll", StringComparison.OrdinalIgnoreCase));
+        }
+        finally { Directory.Delete(tempDir, true); }
+    }
+
+    [Fact]
+    public void Discovery_ParsesPreviewFrameworkPackVersions()
+    {
+        Assert.Equal(11, RoslynModuleDiscovery.ParseNetTargetFrameworkMajor("net11.0"));
+
+        Assert.True(
+            RoslynModuleDiscovery.TryParseVersion(
+                "11.0.0-preview.4.26230.115",
+                out var preview));
+        Assert.Equal(11, preview.Major);
+        Assert.Equal(0, preview.Minor);
+        Assert.Equal(0, preview.Build);
+    }
+
+    [Fact]
+    public void Compilation_RunsFrameworkSourceGenerators_ForJsonSerializerContext()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-sg-comp-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "Program.cs"), """
+                using System.Text.Json.Serialization;
+
+                namespace Test;
+
+                public sealed record Payload(int Id);
+
+                [JsonSerializable(typeof(Payload))]
+                public partial class MyContext : JsonSerializerContext
+                {
+                }
+
+                public static class Runner
+                {
+                    public static object Run() => MyContext.Default.Payload;
+                }
+                """);
+            File.WriteAllText(Path.Combine(tempDir, "Test.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <AssemblyName>Test</AssemblyName>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+
+            var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem());
+            analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig { RetainCompilations = true });
+            var compilation = analyzer.Compilations!["Test"];
+
+            Assert.Contains(
+                compilation.SyntaxTrees,
+                tree => tree.FilePath.Contains("System.Text.Json.SourceGeneration", StringComparison.Ordinal)
+                    && tree.FilePath.EndsWith("MyContext.g.cs", StringComparison.Ordinal));
+
+            var context = compilation.GetTypeByMetadataName("Test.MyContext");
+            Assert.NotNull(context);
+            Assert.NotEmpty(context!.GetMembers("Payload"));
+
+            var errors = compilation.GetDiagnostics()
+                .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+                .ToArray();
+            Assert.DoesNotContain(errors, d => d.Id == "CS0117");
+            Assert.Empty(errors);
+        }
+        finally { Directory.Delete(tempDir, true); }
+    }
 }

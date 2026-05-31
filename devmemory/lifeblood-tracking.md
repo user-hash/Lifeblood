@@ -61,12 +61,11 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 36 --><!-- trackingStatusPartiallyShippedCount: 4 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 37 --><!-- trackingStatusPartiallyShippedCount: 3 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
 - 2026-05-28 - Lifeblood .NET feature adoption revised stage order
-- 2026-05-28 - Lifeblood .NET JSON contract hardening
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 - 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
 <!-- trackingActiveBacklog:end -->
@@ -330,7 +329,7 @@ Remaining open work:
 
 ## 2026-05-28 - Lifeblood .NET JSON contract hardening
 
-Status: Partially shipped
+Status: Shipped
 Type: Improvement
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self
@@ -380,25 +379,49 @@ now reuses the UTF-8 bytes already required for duplicate-property detection whe
 deserializing the envelope, avoiding the previous second parse from the original
 string. Pinned by `McpJsonRequestParserTests`, `McpServerLoopTests`, and
 `BenchmarkSmokeTests`.
-Remaining open work: adopt source-generated contexts only after diagnostic
-parity can see the generated surface or production no longer depends on
-generator-only members.
+Closure evidence: source-generated context adoption is now proven after the C#
+adapter gained framework source-generator parity. Lifeblood discovers
+source-generator analyzers from the module target-framework ref pack (for
+example `System.Text.Json.SourceGeneration.dll` under
+`Microsoft.NETCore.App.Ref`), runs those generators before
+extraction/diagnostics, preserves the discovered compilation facts through
+define-profile cloning, and parses MCP `JsonRpcRequest` through generated
+metadata while keeping dynamic response serialization on the existing reflection
+path. Pinned by source-generator parity fixtures in
+`CsprojCompilationFactsTests`, multi-profile preservation coverage in
+`MultiProfileAnalyzeTests`, and MCP request/server-loop coverage in
+`McpJsonRequestParserTests` / `McpServerLoopTests`.
+
+Verification: local full suite passed
+(`dotnet test Lifeblood.sln --no-restore --nologo -m:1`: 1311 passed /
+11 skipped / 1322 total). Current-source CLI self-analysis reports
+4374 symbols / 25065 edges / 11 modules / 458 types with no rule violations
+printed. DAWG dogfood was exercised both through the retained MCP path
+(`defineProfiles:[Editor,Player]`: 69327 symbols / 257277 edges / 90 modules /
+0 Lifeblood rule violations / 102 existing cycles; `compile_check` on
+`Assets/_Project/Scripts/BeatGrid/AdaptiveBeatGrid.cs` succeeded) and through
+the freshly built current-source CLI single-profile path (69327 symbols /
+257167 edges / 90 modules / no Lifeblood rule violations printed /
+102 existing cycles).
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
   public MCP wire contracts: schema export/validation, stricter reader behavior,
   duplicate-property rejection, and possible `PipeReader` parsing.
-- Lifeblood now has per-tool `tools/list` input-schema snapshots, but schemas
-  are still authored as anonymous objects in `ToolRegistry`; the typed contract
-  projection and binder now exist at the server edge. The typed projection now
-  preserves enum values, enforces them in strict mode, and can regenerate the
-  current schema surface, while the deeper typed DTO/schema-builder authoring
-  source remains open.
+- Lifeblood now has typed tool contracts as the MCP-edge SSoT: `ToolRegistry`
+  owns identity/availability/descriptions, `ToolInputContractCatalog` owns
+  argument metadata and schema generation, `ToolRequestBinder` handles
+  high-risk typed request records, and `McpJsonRequestParser` uses generated
+  request metadata after generator parity proved the generated surface.
 
-Remaining open work:
-- Adopt source-generated JSON contexts only after Lifeblood diagnostic parity
-  can see the generated surface or the production code path is otherwise proven
-  not to depend on generator-only members.
+Closure:
+- JSON contract hardening is complete for this backlog entry: typed tool
+  contracts and request records are the MCP-edge SSoT, legacy/warn/strict modes
+  are tested, strict duplicate/unknown/enum/missing-field behavior is enforced,
+  schema snapshots are generated from typed contracts, parser evidence drove a
+  small strict-mode optimization, `PipeReader` remains measurement-only by
+  evidence, and source-generated request metadata is adopted only after
+  Lifeblood's own diagnostic/analyze seam can see framework-generated syntax.
 
 Impact:
 - Schema drift is a high-leverage failure class: clients learn tool arguments
@@ -422,9 +445,10 @@ Fix shape:
   fields, unknown strict-mode fields).
 - Use the `warn` mode to collect evidence before enabling strict mode in
   CI/dogfood; production strict mode stays a separate decision.
-- Add source-generated `System.Text.Json` contexts for hot MCP request/response
-  DTOs and compare them against reflection-based serialization for throughput,
-  allocation pressure, and future AOT friendliness.
+- Adopt source-generated `System.Text.Json` metadata for the hot MCP request
+  envelope after generator parity is proven. Keep response DTOs on the dynamic
+  serializer path while `JsonRpcResponse.Result` / `JsonRpcError.Data` carry
+  object-shaped tool payloads.
 - Investigate `PipeReader` only after strict-mode tests pass and measurement
   shows stdio parsing is a real cost or the implementation becomes cleaner.
 - No breaking field rename/removal; any break follows

@@ -373,11 +373,13 @@ internal sealed class ModuleCompilationBuilder
         // per simple-name keeping the highest version. No per-name special case.
         var dedupedReferences = MetadataReferenceDeduplicator.Deduplicate(references);
 
-        return CSharpCompilation.Create(
+        var compilation = CSharpCompilation.Create(
             module.Name,
             allTrees,
             dedupedReferences,
             compilationOptions);
+
+        return SourceGeneratorRunner.Run(compilation, module.SourceGeneratorAnalyzerPaths);
     }
 
     /// <summary>
