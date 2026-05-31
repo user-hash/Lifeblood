@@ -61,14 +61,13 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 35 --><!-- trackingStatusPartiallyShippedCount: 5 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 36 --><!-- trackingStatusPartiallyShippedCount: 4 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
 - 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 - 2026-05-28 - Lifeblood .NET JSON contract hardening
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
-- 2026-05-28 - Lifeblood .NET 10 experimental target lane
 - 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
 <!-- trackingActiveBacklog:end -->
 
@@ -301,10 +300,12 @@ Summary:
   the server-edge tool argument contract/binder, `LIFEBLOOD_JSON_COMPAT`
   compatibility modes, analyze phase telemetry, a retained-session gate,
   Runtime Async diagnose/compile-check fixtures, expanded benchmark workloads,
-  optional packaging checks, and an opt-in Runtime Async benchmark lane that
-  passed a local side-by-side .NET 11 preview SDK run with `runtime-async=on`.
-  Production projects remain on `net8.0`; .NET 10 remains an experimental lane
-  until SDK-backed evidence says otherwise.
+  optional packaging checks, an opt-in Runtime Async benchmark lane that passed
+  a local side-by-side .NET 11 preview SDK run with `runtime-async=on`, and a
+  hardened .NET 10 experimental target lane with restore/build/test/semantic
+  self-analyze/pack receipts. Production projects remain on `net8.0`; .NET 10
+  remains experimental until benchmark/package data supports a production
+  migration decision.
 
 Priority order:
 1. Telemetry on `net8.0`: port + no-op + diagnostics adapter + tool/analyze
@@ -559,7 +560,7 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET 10 experimental target lane
 
-Status: Partially shipped
+Status: Shipped
 Type: Improvement
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self
@@ -584,8 +585,16 @@ runs by serializing restore, adding an explicit cached/offline restore switch
 (`-RestoreIgnoreFailedSources`), and falling forward to a fresh temp work
 directory when the previous experimental tree is locked. Local 2026-05-31 smoke
 with SDK `10.0.300` reached restore and emitted host/schema/status receipts, but
-could not complete in this session because NuGet source access is refused and
-required Roslyn/xUnit packages are not present in the local cache.
+could not complete in that session because NuGet source access was refused and
+required Roslyn/xUnit packages were not present in the local cache. Follow-up
+hardening adds explicit `-PackageSources`, `-DotnetExe`, `-DotnetCliHome`, and
+`-WorkDirRoot` controls so the lane can run against local SDK/package/cache
+state without mutating production project files. Local net10 receipt
+`D:\Projekti\DAWG\codex_tmp\lifeblood-net10-experimental-target.json` passed
+with SDK `10.0.300`: restore, build, full test suite
+(`1307 passed / 11 skipped / 1318 total`), semantic self-analysis matching the
+production anchors (`4316` symbols, `24876` edges, 11 modules, 455 types), CLI
+pack, and MCP pack all completed with exit code 0.
 
 Summary:
 - The production solution remains pinned to `net8.0`; the experimental lane is
@@ -594,10 +603,13 @@ Summary:
 - The copied tree omits root `global.json` so the repo SDK pin cannot force the
   experimental lane back to the production SDK.
 
-Remaining open work:
-- Keep this lane green in CI-like conditions and use the emitted
-  schema/test/semantic receipts before changing production TFMs. A connected or
-  fully primed package-cache host is required for the next net10 pass.
+Closure:
+- Current-pass .NET 10 experimental target evidence is complete: the lane uses a
+  copied tree, omits root `global.json`, retargets only copied projects, records
+  schema/test/semantic receipts, restores from an explicit package source,
+  builds/tests/self-analyzes, and packs both tool entry points without changing
+  checked-in TFMs or publishing packages. Production migration remains a
+  separate runtime/packaging benchmark decision.
 
 Fix shape:
 - Keep this lane report-driven and non-production: no project TFM edits, no

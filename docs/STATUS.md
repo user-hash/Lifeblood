@@ -28,7 +28,7 @@ Dogfood-verified. 1318 discovered test cases (37 `[SkippableFact]` methods gate 
 
 ## Rule Packs
 
-The 2026-05-31 .NET adoption slice is pinned by `ToolArgumentContractTests`, `GraphSessionGateTests`, expanded `ToolHandlerTelemetryTests`, `CompileCheckParseOptionsParityTests` Runtime Async fixtures, `CsprojCompilationFactsTests` synthetic-tree Runtime Async parity, `BenchmarkSmokeTests` (including the JSON parser benchmark harness ratchet), `DotNetLaneScriptTests` (including Runtime Async benchmark-lane report ratchets), and the existing invariant-cache telemetry tests.
+The 2026-05-31 .NET adoption slice is pinned by `ToolArgumentContractTests`, `GraphSessionGateTests`, expanded `ToolHandlerTelemetryTests`, `CompileCheckParseOptionsParityTests` Runtime Async fixtures, `CsprojCompilationFactsTests` synthetic-tree Runtime Async parity, `BenchmarkSmokeTests` (including the JSON parser benchmark harness ratchet), `DotNetLaneScriptTests` (including .NET 10 and Runtime Async benchmark-lane report ratchets), and the existing invariant-cache telemetry tests.
 
 Built-in architecture rule packs:
 - [hexagonal](../packs/hexagonal/rules.json)
