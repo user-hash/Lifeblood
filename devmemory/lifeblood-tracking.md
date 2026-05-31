@@ -58,6 +58,23 @@ static-tables defaults. Every anchor is ratcheted against the live source by
 verification-anchor block that used to appear here (point-in-time snapshots)
 is retired in favour of the live STATUS.md anchors.
 
+Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
+as the SSoT; do not hand-edit these counts without making the entry bodies agree):
+
+<!-- trackingStatusShippedCount: 32 --><!-- trackingStatusPartiallyShippedCount: 8 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+
+Active non-shipped implementation ledger:
+<!-- trackingActiveBacklog:start -->
+- 2026-05-28 - Lifeblood .NET feature adoption revised stage order
+- 2026-05-28 - Lifeblood .NET JSON contract hardening
+- 2026-05-28 - Lifeblood .NET telemetry surface
+- 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
+- 2026-05-28 - Lifeblood .NET 10 experimental target lane
+- 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
+- 2026-05-28 - Lifeblood .NET concurrency prep for shared server
+- 2026-05-28 - Lifeblood .NET Runtime Async compatibility
+<!-- trackingActiveBacklog:end -->
+
 **2026-05-24 Wave 6 close — L-LIM-001 CLOSED**: multi-define union analyze chain
 shipped (Wave 6.A → 6.F) across commits `43c1499..dd157af`. Port `IDefineProfileResolver`
 + adapter `UnityDefineProfileResolver` (Editor + Player MVP) + `Edge.Profiles[]`
@@ -305,6 +322,10 @@ Priority order:
 8. .NET 11 Runtime Async lane: detect/analyze user projects first, opt-in
    Lifeblood benchmark second, production never before stable evidence.
 
+Remaining open work:
+- Close the seven concrete child entries below with evidence receipts, then make
+  the production `net10.0` migration decision from benchmark/package/schema data.
+
 ## 2026-05-28 - Lifeblood .NET JSON contract hardening
 
 Status: Partially shipped
@@ -331,6 +352,11 @@ Summary:
   are still authored as anonymous objects in `ToolRegistry`; the typed contract
   projection and binder now exist at the server edge, while the deeper typed
   DTO/schema-builder authoring source remains open.
+
+Remaining open work:
+- Make typed contracts the primary authoring source, generate/validate schemas
+  from that source, add source-generated JSON contexts, and measure `PipeReader`
+  before adopting it.
 
 Impact:
 - Schema drift is a high-leverage failure class: clients learn tool arguments
@@ -391,6 +417,10 @@ Summary:
 - .NET diagnostics primitives map cleanly to the current architecture if they are
   introduced behind an Application-layer port with a no-op default.
 
+Remaining open work:
+- Add cross-process benchmark correlation and broader runtime counters while
+  preserving `AnalysisUsage` as the user-facing evidence receipt.
+
 Impact:
 - Without telemetry, performance regressions and multi-user contention will be
   diagnosed from ad hoc wall-clock logs instead of comparable tool/analyze spans
@@ -446,6 +476,11 @@ Summary:
 - DAWG is the right large-workspace benchmark subject, but benchmark code must
   stay generic and usable on Lifeblood self.
 
+Remaining open work:
+- Run comparable `net8.0`/`net10.0` workloads over Lifeblood and DAWG, including
+  retained read-side tools and MCP dispatch latency, then gate retargeting on
+  stable semantic counts and measured win/loss data.
+
 Impact:
 - A runtime upgrade that looks good in general .NET marketing can still be a loss
   for Roslyn-heavy retained-graph workloads if memory, startup, or compilation
@@ -500,6 +535,10 @@ Summary:
 - The copied tree omits root `global.json` so the repo SDK pin cannot force the
   experimental lane back to the production SDK.
 
+Remaining open work:
+- Keep this lane green in CI-like conditions, compare its semantic/schema/test
+  outputs with `net8.0`, and use those receipts before changing production TFMs.
+
 Fix shape:
 - Keep this lane report-driven and non-production: no project TFM edits, no
   package publishing, and no production migration until tests, schema snapshots,
@@ -531,6 +570,11 @@ Summary:
 - Lifeblood is a tool product. Runtime retargeting is not enough; packaging,
   install, execution, and cross-platform startup behavior are part of the
   product surface.
+
+Remaining open work:
+- Add report-only platform-specific, self-contained, trimming, and AOT
+  experiments where Roslyn compatibility permits, plus CLI schema/help smoke
+  checks that fail on user-facing drift.
 
 Fix shape:
 - Add an experimental packaging lane that builds and smoke-tests the current
@@ -567,6 +611,11 @@ Summary:
   state: retained graph/session access, compilation host refresh, incremental
   cache transitions, telemetry counters, and future multi-client scheduling.
 - This is preparation work, not permission to build a shared daemon prematurely.
+
+Remaining open work:
+- Add concurrent read/analyze/compile-check stress fixtures around the current
+  gate, then revisit host policy only when a concrete shared-server transport
+  exists.
 
 Impact:
 - If Lifeblood grows from per-client stdio processes into a shared server, lock
@@ -617,6 +666,11 @@ Summary:
   analyze, diagnose, and compile-check should not drift because a project carries
   a new `<Features>` marker. Analyze parse-option preservation was already
   pinned; diagnose and compile-check compatibility fixtures are now covered.
+
+Remaining open work:
+- Add an opt-in server/runtime benchmark lane for Runtime Async once the
+  supporting SDK/runtime is stable enough to test, then decide production
+  adoption only from allocation/latency evidence.
 
 Impact:
 - Users may analyze projects that enable Runtime Async before Lifeblood itself
