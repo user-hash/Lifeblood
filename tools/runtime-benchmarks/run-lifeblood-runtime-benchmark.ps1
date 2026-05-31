@@ -208,7 +208,7 @@ $report = [ordered]@{
         roslynLoadTimeMs = "covered by CLI analyze phase timing until adapter-level spans are exported"
         graphBuildTimeMs = "covered by analyze phase timing until adapter-level spans are exported"
         resolverIndexTimeMs = "not captured yet"
-        mcpDispatchLatencyMs = "covered by tools/runtime-benchmarks/run-lifeblood-mcp-gc-benchmark.ps1"
+        mcpDispatchLatencyMs = "captured per retained read-side tool by tools/runtime-benchmarks/run-lifeblood-mcp-gc-benchmark.ps1"
     }
     targetFrameworks = @()
 }

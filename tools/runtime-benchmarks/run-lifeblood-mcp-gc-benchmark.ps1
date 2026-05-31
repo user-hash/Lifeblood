@@ -23,7 +23,8 @@ param(
     [string]$Project = "",
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-mcp-gc-benchmark.json",
     [int]$Runs = 2,
-    [int]$TimeoutSec = 180
+    [int]$TimeoutSec = 180,
+    [switch]$SkipReadSideTools
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,7 +53,14 @@ $configs = @(
     [ordered]@{ name = "server-datas";    env = @{ DOTNET_gcServer = "1"; DOTNET_GCDynamicAdaptationMode = "1" } }
 )
 
-function Invoke-OneRun([hashtable]$Env) {
+$readSideToolCalls = @(
+    [ordered]@{ id = 3; name = "lifeblood_capabilities"; arguments = [ordered]@{} },
+    [ordered]@{ id = 4; name = "lifeblood_context"; arguments = [ordered]@{ summarize = $true } },
+    [ordered]@{ id = 5; name = "lifeblood_cycles"; arguments = [ordered]@{ summarize = $true; maxResults = 10 } },
+    [ordered]@{ id = 6; name = "lifeblood_dead_code"; arguments = [ordered]@{ summarize = $true; maxResults = 10 } }
+)
+
+function Invoke-OneRun($EnvironmentOverrides) {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = "dotnet"
     $psi.Arguments = '"' + $serverDllFull + '"'
@@ -61,12 +69,25 @@ function Invoke-OneRun([hashtable]$Env) {
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
-    foreach ($k in $Env.Keys) { $psi.Environment[$k] = [string]$Env[$k] }
+
+    $previousEnvironment = @{}
+    foreach ($k in $EnvironmentOverrides.Keys) {
+        $name = [string]$k
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+        [Environment]::SetEnvironmentVariable($name, [string]$EnvironmentOverrides[$k], "Process")
+    }
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    [void]$proc.Start()
+    try {
+        [void]$proc.Start()
+    }
+    finally {
+        foreach ($name in $previousEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable([string]$name, $previousEnvironment[$name], "Process")
+        }
+    }
 
     $stdin = $proc.StandardInput
     $stdin.WriteLine('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}')
@@ -78,6 +99,7 @@ function Invoke-OneRun([hashtable]$Env) {
     $peakPriv = 0L
     $samples = 0
     $analyzeSeen = $false
+    $readSideDispatches = @()
     $reader = $proc.StandardOutput
     $pending = $reader.ReadLineAsync()
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
@@ -98,6 +120,57 @@ function Invoke-OneRun([hashtable]$Env) {
         }
     }
 
+    if ($analyzeSeen -and -not $SkipReadSideTools) {
+        foreach ($toolCall in $readSideToolCalls) {
+            $request = [ordered]@{
+                jsonrpc = "2.0"
+                id = $toolCall.id
+                method = "tools/call"
+                params = [ordered]@{
+                    name = $toolCall.name
+                    arguments = $toolCall.arguments
+                }
+            } | ConvertTo-Json -Depth 20 -Compress
+
+            $toolStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+            $stdin.WriteLine($request)
+            $stdin.Flush()
+
+            $toolSeen = $false
+            $responseBytes = 0
+            $pending = $reader.ReadLineAsync()
+            $toolDeadline = [DateTime]::UtcNow.AddSeconds([Math]::Max(10, [Math]::Min($TimeoutSec, 60)))
+
+            while (-not $proc.HasExited -and [DateTime]::UtcNow -lt $toolDeadline) {
+                try {
+                    $proc.Refresh()
+                    if ($proc.WorkingSet64 -gt $peakWs) { $peakWs = $proc.WorkingSet64 }
+                    if ($proc.PrivateMemorySize64 -gt $peakPriv) { $peakPriv = $proc.PrivateMemorySize64 }
+                    $samples++
+                } catch { }
+
+                if ($pending.Wait(100)) {
+                    $line = $pending.Result
+                    if ($null -eq $line) { break }
+                    if ($line -match ('"id"\s*:\s*' + $toolCall.id)) {
+                        $toolSeen = $true
+                        $responseBytes = [System.Text.Encoding]::UTF8.GetByteCount($line)
+                        break
+                    }
+                    $pending = $reader.ReadLineAsync()
+                }
+            }
+
+            $toolStopwatch.Stop()
+            $readSideDispatches += [pscustomobject]@{
+                toolName = $toolCall.name
+                responseSeen = $toolSeen
+                dispatchLatencyMs = [long]$toolStopwatch.ElapsedMilliseconds
+                responseBytes = $responseBytes
+            }
+        }
+    }
+
     # Capture one final post-analyze peak, then shut the server down cleanly.
     try { $proc.Refresh(); if ($proc.PrivateMemorySize64 -gt $peakPriv) { $peakPriv = $proc.PrivateMemorySize64 }; if ($proc.WorkingSet64 -gt $peakWs) { $peakWs = $proc.WorkingSet64 } } catch { }
     $sw.Stop()
@@ -110,6 +183,8 @@ function Invoke-OneRun([hashtable]$Env) {
         peakWorkingSetMb   = [math]::Round($peakWs / 1MB, 1)
         peakPrivateBytesMb = [math]::Round($peakPriv / 1MB, 1)
         memorySamples      = $samples
+        readSideDispatches = $readSideDispatches
+        allReadSideCompleted = ($SkipReadSideTools -or -not ($readSideDispatches | Where-Object { -not $_.responseSeen }))
     }
 }
 
@@ -122,7 +197,7 @@ foreach ($cfg in $configs) {
         Write-Host ("  run {0}: priv={1} MB  ws={2} MB  analyze={3}  {4} ms  ({5} samples)" -f $i, $r.peakPrivateBytesMb, $r.peakWorkingSetMb, $r.analyzeCompleted, $r.wallTimeMs, $r.memorySamples)
         $runResults += $r
     }
-    # Report the worst (max) peak across runs — the ceiling is the contract.
+    # Report the worst (max) peak across runs; the ceiling is the contract.
     $maxPriv = ($runResults | Measure-Object -Property peakPrivateBytesMb -Maximum).Maximum
     $maxWs   = ($runResults | Measure-Object -Property peakWorkingSetMb   -Maximum).Maximum
     $results += [pscustomobject]@{
@@ -132,6 +207,7 @@ foreach ($cfg in $configs) {
         maxPeakPrivateBytesMb = $maxPriv
         maxPeakWorkingSetMb   = $maxWs
         allAnalyzeCompleted   = (-not ($runResults | Where-Object { -not $_.analyzeCompleted }))
+        allReadSideCompleted  = (-not ($runResults | Where-Object { -not $_.allReadSideCompleted }))
     }
 }
 
@@ -142,6 +218,7 @@ $report = [ordered]@{
     project        = $projectPath
     serverDll      = $serverDllFull
     runsPerConfig  = $Runs
+    readSideTools  = if ($SkipReadSideTools) { @() } else { @($readSideToolCalls | ForEach-Object { $_.name }) }
     host           = [ordered]@{
         osDescription        = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
         frameworkDescription = [System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription
@@ -153,7 +230,7 @@ $report = [ordered]@{
 $report | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $outputFullPath -Encoding UTF8
 
 Write-Host ""
-Write-Host "── MCP-server peak memory by GC config (max over $Runs runs) ──"
+Write-Host "-- MCP-server peak memory by GC config (max over $Runs runs) --"
 $results | ForEach-Object {
     Write-Host ("  {0,-16}  priv={1,7} MB   ws={2,7} MB" -f $_.config, $_.maxPeakPrivateBytesMb, $_.maxPeakWorkingSetMb)
 }

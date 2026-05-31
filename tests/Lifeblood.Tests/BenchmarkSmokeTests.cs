@@ -52,6 +52,22 @@ public class BenchmarkSmokeTests
         Assert.Contains("parseDurationMs", script);
         Assert.Contains("category =", script);
         Assert.Contains("schemaVersion = 1", script);
+
+        var mcpScript = File.ReadAllText(Path.Combine(
+            repoRoot,
+            "tools",
+            "runtime-benchmarks",
+            "run-lifeblood-mcp-gc-benchmark.ps1"));
+
+        Assert.Contains("readSideToolCalls", mcpScript);
+        Assert.Contains("lifeblood_context", mcpScript);
+        Assert.Contains("lifeblood_dead_code", mcpScript);
+        Assert.Contains("dispatchLatencyMs", mcpScript);
+        Assert.Contains("allReadSideCompleted", mcpScript);
+        Assert.Contains("EnvironmentOverrides", mcpScript);
+        Assert.Contains("SetEnvironmentVariable", mcpScript);
+        Assert.Contains("previousEnvironment", mcpScript);
+        Assert.DoesNotContain("[hashtable]$Env", mcpScript);
     }
 
     private static string FindRepoRoot()
