@@ -47,3 +47,9 @@ docs/AUDIT_HOLES.md
 
 # Working notes / session plans (kept on disk, not published)
 .claude/
+
+# Dev-internal process notes - kept local, not published
+docs/plans/
+docs/audit/
+docs/DOGFOOD_FINDINGS.md
+docs/IMPROVEMENT_INBOX.md

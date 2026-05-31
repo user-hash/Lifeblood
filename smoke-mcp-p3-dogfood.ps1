@@ -1,5 +1,5 @@
 param(
-    [string]$Project = "/path/to/workspace",
+    [string]$Project = ".",
     [string]$ServerDll = "$PSScriptRoot/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll"
 )
 
