@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Versioning;
-using System.Text.Json;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 
@@ -14,11 +13,6 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class ServerIdentity
 {
-    private static readonly JsonSerializerOptions CompactJson = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
-
     private static readonly string[] SessionLocalDoNotCiteFields =
     {
         "envelope.analysisGeneration",
@@ -61,7 +55,7 @@ public static class ServerIdentity
         var readSide = definitions.Where(d => d.Availability == ToolAvailability.ReadSide).Select(d => d.Name).ToArray();
         var writeSide = definitions.Where(d => d.Availability == ToolAvailability.WriteSide).Select(d => d.Name).ToArray();
         var summarizeCapable = definitions
-            .Where(d => JsonSerializer.Serialize(d.InputSchema, CompactJson).Contains("\"summarize\"", StringComparison.Ordinal))
+            .Where(HasBooleanSummarizeArgument)
             .Select(d => d.Name)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
@@ -87,17 +81,9 @@ public static class ServerIdentity
                 evidenceReceipts = true,
                 strictJsonDuplicateRejection = true,
                 operationalTelemetry = true,
-                operationalTelemetryEvents = new[]
-                {
-                    "lifeblood.tool.success_result",
-                    "lifeblood.tool.error_result",
-                    "lifeblood.tool.exception",
-                    "lifeblood.tool.response_json",
-                    "lifeblood.tool.truncated",
-                    "lifeblood.analyze.result",
-                    "lifeblood.analyze.fallback",
-                    "lifeblood.cache.lookup",
-                },
+                operationalTelemetryEvents = McpTelemetryEvents.All,
+                toolArgumentContracts = true,
+                jsonCompatibilityModes = new[] { "legacy", "warn", "strict" },
                 summarizeCapableTools = summarizeCapable,
             },
             contract = new
@@ -298,6 +284,12 @@ public static class ServerIdentity
         => string.IsNullOrWhiteSpace(repoRoot)
             ? string.Join("/", parts)
             : Path.Combine(new[] { repoRoot }.Concat(parts).ToArray());
+
+    private static bool HasBooleanSummarizeArgument(ToolDefinition definition)
+    {
+        return definition.InputContract.Arguments.TryGetValue("summarize", out var argument)
+            && argument.Type == ToolArgumentType.Boolean;
+    }
 
     private static string ExtractBuildMetadata(string version)
     {

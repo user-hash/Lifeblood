@@ -134,6 +134,26 @@ public class ToolHandlerTests : IDisposable
             .ToArray();
         Assert.Contains("lifeblood.tool.truncated", telemetryEvents);
         Assert.Contains("lifeblood.analyze.fallback", telemetryEvents);
+        // INV-TELEMETRY-002: the advertised surface is exactly the
+        // emitted-event SSoT, so an emitted-but-unadvertised event fails here.
+        Assert.Equal(McpTelemetryEvents.All, telemetryEvents);
+        Assert.Contains("lifeblood.analyze.phase", telemetryEvents);
+        var summarizeCapableTools = doc.RootElement
+            .GetProperty("featureFlags")
+            .GetProperty("summarizeCapableTools")
+            .EnumerateArray()
+            .Select(e => e.GetString())
+            .ToArray();
+        var expectedSummarizeCapableTools = ToolRegistry.GetDefinitions()
+            .Where(d =>
+            {
+                return d.InputContract.Arguments.TryGetValue("summarize", out var argument)
+                    && argument.Type == ToolArgumentType.Boolean;
+            })
+            .Select(d => d.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(expectedSummarizeCapableTools, summarizeCapableTools);
         Assert.Contains("schemas", doc.RootElement.GetProperty("contract").GetProperty("schemaSnapshotPath").GetString());
         Assert.Contains("STATUS.md", doc.RootElement.GetProperty("contract").GetProperty("statusDocAnchorPath").GetString());
         Assert.False(doc.RootElement.GetProperty("session").GetProperty("hasGraphLoaded").GetBoolean());

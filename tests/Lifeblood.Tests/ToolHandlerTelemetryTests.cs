@@ -85,6 +85,40 @@ public class ToolHandlerTelemetryTests
     }
 
     [Fact]
+    public void Handle_AnalyzeGraphPath_RecordsRealPhaseTelemetry()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var handler = CreateHandler(telemetry);
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-telemetry-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var graphPath = CreateGraphFile(tempDir);
+
+            var result = handler.Handle("lifeblood_analyze", JsonArgs(new { graphPath }));
+
+            Assert.Null(result.IsError);
+            Assert.Contains(telemetry.Events, e =>
+                e.Name == "lifeblood.analyze.phase"
+                && Equals(e.Tags["analyze.phase"], "json-import")
+                && (long)e.Tags["allocation.bytes"]! >= 0);
+            Assert.Contains(telemetry.Events, e =>
+                e.Name == "lifeblood.analyze.phase"
+                && Equals(e.Tags["analyze.phase"], "rules-analyze")
+                && (long)e.Tags["allocation.bytes"]! >= 0);
+            Assert.Contains(telemetry.Operations, o =>
+                o.Name == "lifeblood.analyze.phase"
+                && Equals(o.Tags["analyze.phase"], "session-commit")
+                && o.Tags.ContainsKey("allocation.bytes")
+                && o.Disposed);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Handle_TruncatedToolResponse_RecordsTruncationTelemetry()
     {
         var telemetry = new RecordingTelemetrySink();
@@ -113,6 +147,72 @@ public class ToolHandlerTelemetryTests
         {
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Handle_WarnJsonCompatibility_RecordsArgumentDiagnostics_ButAllowsCall()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var handler = CreateHandler(telemetry, ToolJsonCompatibilityMode.Warn);
+
+        var result = handler.Handle(
+            "lifeblood_capabilities",
+            JsonArgs(new { unexpected = true }));
+
+        Assert.Null(result.IsError);
+        Assert.Contains(telemetry.Events, e =>
+            e.Name == "lifeblood.tool.arguments"
+            && Equals(e.Tags["tool.name"], "lifeblood_capabilities")
+            && Equals(e.Tags["json.compat.mode"], nameof(ToolJsonCompatibilityMode.Warn))
+            && Equals(e.Tags["json.compat.accepted"], true)
+            && Equals(e.Tags["json.compat.unknown_count"], 1));
+    }
+
+    [Fact]
+    public void Handle_StrictJsonCompatibility_RejectsInvalidToolArguments_BeforeDispatch()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var handler = CreateHandler(telemetry, ToolJsonCompatibilityMode.Strict);
+
+        var result = handler.Handle(
+            "lifeblood_capabilities",
+            JsonArgs(new { unexpected = true }));
+
+        Assert.True(result.IsError);
+        Assert.Contains("tool-argument-contract", result.Content[0].Text);
+        Assert.Contains("\"kind\": \"unknown\"", result.Content[0].Text);
+        Assert.Contains(telemetry.Events, e =>
+            e.Name == "lifeblood.tool.arguments"
+            && Equals(e.Tags["tool.name"], "lifeblood_capabilities")
+            && Equals(e.Tags["json.compat.mode"], nameof(ToolJsonCompatibilityMode.Strict))
+            && Equals(e.Tags["json.compat.accepted"], false)
+            && Equals(e.Tags["json.compat.unknown_count"], 1));
+    }
+
+    [Fact]
+    public void Handle_ReadSideTool_RoutesThroughReadSessionGate()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var gate = new RecordingSessionGate();
+        var handler = CreateHandler(telemetry, sessionGate: gate);
+
+        _ = handler.Handle("lifeblood_capabilities", null);
+
+        Assert.Equal(1, gate.ReadCount);
+        Assert.Equal(0, gate.WriteCount);
+    }
+
+    [Fact]
+    public void Handle_SessionReplacingTool_RoutesThroughWriteSessionGate()
+    {
+        var telemetry = new RecordingTelemetrySink();
+        var gate = new RecordingSessionGate();
+        var handler = CreateHandler(telemetry, sessionGate: gate);
+
+        _ = handler.Handle("lifeblood_analyze", JsonArgs(new { graphPath = "missing.json" }));
+
+        Assert.Equal(0, gate.ReadCount);
+        Assert.Equal(1, gate.WriteCount);
     }
 
     [Fact]
@@ -183,9 +283,12 @@ public class ToolHandlerTelemetryTests
         }
     }
 
-    private static ToolHandler CreateHandler(ITelemetrySink telemetry)
+    private static ToolHandler CreateHandler(
+        ITelemetrySink telemetry,
+        ToolJsonCompatibilityMode jsonCompatibilityMode = ToolJsonCompatibilityMode.Legacy,
+        ISessionGate? sessionGate = null)
     {
-        var session = new GraphSession(Fs);
+        var session = new GraphSession(Fs, telemetry);
         IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
         ISymbolResolver resolver = new LifebloodSymbolResolver();
         ISemanticSearchProvider search = new LifebloodSemanticSearchProvider();
@@ -206,7 +309,9 @@ public class ToolHandlerTelemetryTests
             partialView,
             invariants,
             decorator,
-            telemetry: telemetry);
+            telemetry: telemetry,
+            jsonCompatibilityMode: jsonCompatibilityMode,
+            sessionGate: sessionGate);
     }
 
     private static JsonElement? JsonArgs(object obj)
@@ -294,6 +399,24 @@ public class ToolHandlerTelemetryTests
     }
 
     private sealed record RecordingEvent(string Name, Dictionary<string, object?> Tags);
+
+    private sealed class RecordingSessionGate : ISessionGate
+    {
+        public int ReadCount { get; private set; }
+        public int WriteCount { get; private set; }
+
+        public T Read<T>(Func<T> action)
+        {
+            ReadCount++;
+            return action();
+        }
+
+        public T Write<T>(Func<T> action)
+        {
+            WriteCount++;
+            return action();
+        }
+    }
 
     private static Dictionary<string, object?> ToDictionary(TelemetryTag[] tags)
         => tags.ToDictionary(t => t.Name, t => t.Value, StringComparer.Ordinal);

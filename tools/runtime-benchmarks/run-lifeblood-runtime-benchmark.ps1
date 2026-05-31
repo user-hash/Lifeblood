@@ -2,7 +2,7 @@ param(
     [string]$Project = ".",
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-runtime-benchmark.json",
     [string[]]$TargetFrameworks = @("net8.0"),
-    [ValidateSet("self-analyze", "analyze")]
+    [ValidateSet("self-analyze", "analyze", "context", "self-context", "incremental-noop", "cli-help")]
     [string[]]$Workloads = @("self-analyze"),
     [switch]$SkipPublish,
     [switch]$RuntimeInfoOnly
@@ -54,6 +54,7 @@ function Match-Long([string]$Text, [string]$Pattern) {
 }
 
 function Convert-CliAnalyzeOutput([string]$Text) {
+    $parseStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $phases = @()
     foreach ($match in [regex]::Matches($Text, '^\s+([A-Za-z0-9_.-]+)\s+:\s+([\d,]+)\s+ms\s*$', [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
         $phases += [pscustomobject]@{
@@ -72,7 +73,7 @@ function Convert-CliAnalyzeOutput([string]$Text) {
         }
     }
 
-    return [pscustomobject]@{
+    $result = [pscustomobject]@{
         symbols = Match-Long $Text '^Symbols:\s+([\d,]+)'
         edges = Match-Long $Text '^Edges:\s+([\d,]+)'
         modules = Match-Long $Text '^Modules:\s+([\d,]+)'
@@ -88,6 +89,9 @@ function Convert-CliAnalyzeOutput([string]$Text) {
             phases = $phases
         }
     }
+    $parseStopwatch.Stop()
+    $result | Add-Member -NotePropertyName parseDurationMs -NotePropertyValue ([long]$parseStopwatch.ElapsedMilliseconds)
+    return $result
 }
 
 function Join-ProcessArguments([string[]]$Arguments) {
@@ -199,12 +203,12 @@ $report = [ordered]@{
         peakWorkingSetBytes = "captured"
         peakPrivateBytes = "captured"
         gcCollections = "parsed from CLI AnalysisUsage when present"
-        allocatedBytes = "not captured yet"
-        jsonParseSerializeTimeMs = "not captured yet"
-        roslynLoadTimeMs = "not captured yet"
-        graphBuildTimeMs = "covered by analyze phase until deeper telemetry lands"
+        allocatedBytes = "captured by MCP analyze phase telemetry; process harness does not expose per-workload allocations yet"
+        jsonParseSerializeTimeMs = "parseDurationMs captured for CLI analyze output parsing"
+        roslynLoadTimeMs = "covered by CLI analyze phase timing until adapter-level spans are exported"
+        graphBuildTimeMs = "covered by analyze phase timing until adapter-level spans are exported"
         resolverIndexTimeMs = "not captured yet"
-        mcpDispatchLatencyMs = "not captured yet"
+        mcpDispatchLatencyMs = "covered by tools/runtime-benchmarks/run-lifeblood-mcp-gc-benchmark.ps1"
     }
     targetFrameworks = @()
 }
@@ -242,14 +246,36 @@ foreach ($tfm in $TargetFrameworks) {
     }
 
     foreach ($workload in $Workloads) {
-        $workloadProject = if ($workload -eq "self-analyze") { $repoRoot } else { $resolvedProject }
         $dll = Join-Path $publishDir "Lifeblood.CLI.dll"
-        $measurement = Invoke-MeasuredProcess "dotnet" @($dll, "analyze", "--project", $workloadProject) $repoRoot
-        $parsed = Convert-CliAnalyzeOutput ($measurement.stdout + "`n" + $measurement.stderr)
+        $workloadProject = if ($workload -in @("self-analyze", "self-context", "cli-help")) { $repoRoot } else { $resolvedProject }
+        $arguments = switch ($workload) {
+            "self-analyze" { @($dll, "analyze", "--project", $repoRoot) }
+            "analyze" { @($dll, "analyze", "--project", $workloadProject) }
+            "self-context" { @($dll, "context", "--project", $repoRoot) }
+            "context" { @($dll, "context", "--project", $workloadProject) }
+            "incremental-noop" { @($dll, "verify", "--incremental", "--project", $workloadProject) }
+            "cli-help" { @($dll, "--help") }
+            default { throw "Unsupported workload: $workload" }
+        }
+
+        $measurement = Invoke-MeasuredProcess "dotnet" $arguments $repoRoot
+        $combinedOutput = $measurement.stdout + "`n" + $measurement.stderr
+        $parsed = if ($workload -in @("self-analyze", "analyze")) {
+            Convert-CliAnalyzeOutput $combinedOutput
+        } else {
+            $null
+        }
 
         $targetResult.workloads += [pscustomobject]@{
             name = $workload
             project = $workloadProject
+            category = switch ($workload) {
+                { $_ -in @("self-analyze", "analyze") } { "analyze"; break }
+                { $_ -in @("self-context", "context") } { "context"; break }
+                "incremental-noop" { "incremental"; break }
+                "cli-help" { "packaging-smoke"; break }
+                default { "unknown"; break }
+            }
             process = [pscustomobject]@{
                 command = $measurement.command
                 exitCode = $measurement.exitCode

@@ -33,9 +33,11 @@ namespace Lifeblood.Connectors.Mcp.Internal;
 /// Thread safety: a private lock guards the cache dictionary.
 /// Concurrent reads for the same project root may each compute a
 /// parse independently — the last writer wins and no one sees torn
-/// state. Future optimisation could add per-key locks if the cold-path
-/// parse ever becomes a contention bottleneck; today it is well below
-/// the threshold that matters.
+/// state. Telemetry is emitted after the lock is released so host-side
+/// sinks cannot become part of the cache synchronization policy. Future
+/// optimisation could add per-key locks if the cold-path parse ever
+/// becomes a contention bottleneck; today it is well below the threshold
+/// that matters.
 /// </para>
 ///
 /// <para>
@@ -118,25 +120,35 @@ internal sealed class InvariantParseCache<T> where T : class
             }
         }
 
+        string? cacheLookupResult = null;
+        Entry? cacheHit = null;
         lock (_lock)
         {
             if (_cache.TryGetValue(sourcePath, out var cached))
             {
                 if (cached.Timestamp == currentTimestamp && currentTimestamp != 0)
                 {
-                    RecordCacheLookup("hit");
-                    return cached;
+                    cacheLookupResult = "hit";
+                    cacheHit = cached;
                 }
 
-                if (exists)
+                if (cacheHit == null && exists)
                 {
-                    RecordCacheLookup("stale");
+                    cacheLookupResult = "stale";
                 }
             }
             else if (exists)
             {
-                RecordCacheLookup("miss");
+                cacheLookupResult = "miss";
             }
+        }
+        if (cacheLookupResult != null)
+        {
+            RecordCacheLookup(cacheLookupResult);
+        }
+        if (cacheHit != null)
+        {
+            return cacheHit;
         }
 
         if (!exists)
