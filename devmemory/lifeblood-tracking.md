@@ -61,13 +61,12 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 37 --><!-- trackingStatusPartiallyShippedCount: 3 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 38 --><!-- trackingStatusPartiallyShippedCount: 2 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
 - 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
-- 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
 <!-- trackingActiveBacklog:end -->
 
 **2026-05-24 Wave 6 close — L-LIM-001 CLOSED**: multi-define union analyze chain
@@ -653,7 +652,7 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
 
-Status: Partially shipped
+Status: Shipped
 Type: Improvement
 Source: legacy-repo review of the .NET platform-feature plan, 2026-05-28
 Workspace: Lifeblood self and released dotnet tool packages
@@ -673,16 +672,33 @@ framework-dependent, self-contained, trimmed, and AOT publish shapes under
 `artifacts/tool-packaging/<tfm>/publish-experiments`; MCP trim/AOT paths are
 recorded as intentional skips until Roslyn compatibility evidence says
 otherwise. Pinned by `DotNetLaneScriptTests`.
+Local receipt
+`D:\Projekti\DAWG\codex_tmp\lifeblood-tool-packaging-net8-win-x64.json`
+passed on Windows `win-x64`: CLI and MCP packages packed at
+`0.7.11-alpha.0.28`, local tool installs succeeded, `lifeblood --help` passed
+the help-contract validation, and `lifeblood-mcp` started/stopped cleanly with
+stdin closed. Report-only publish experiments completed for CLI/MCP
+framework-dependent shapes, CLI self-contained, CLI trimmed, and MCP
+self-contained. CLI AOT remained report-only skipped because the host lacks the
+native AOT platform linker prerequisites; MCP trimming/AOT remain intentionally
+skipped until Roslyn compatibility evidence says otherwise. `dotnet tool exec`
+and `dnx` invocation forms were recorded as honest skips on this host/tooling.
 
 Summary:
 - Lifeblood is a tool product. Runtime retargeting is not enough; packaging,
   install, execution, and cross-platform startup behavior are part of the
   product surface.
 
-Remaining open work:
-- Run the report-only publish experiments on supported RID/SDK hosts, compare
-  outputs across platforms, and decide whether any platform-specific package
-  shape graduates from experiment to supported lane.
+Closure:
+- Packaging/distribution lane is complete for this backlog pass. The script
+  packs, local-installs, smoke-tests, validates CLI help, records optional
+  `dotnet tool exec` / `dnx` support, runs report-only publish experiments where
+  the host supports them, and never publishes packages. No platform-specific
+  package shape graduates from experiment to supported product surface yet:
+  framework-dependent global tools remain the supported distribution shape, CLI
+  self-contained/trimmed stay measured candidates, CLI AOT waits on native AOT
+  prerequisites plus warning triage, and MCP trim/AOT remain blocked by Roslyn
+  compatibility risk.
 
 Fix shape:
 - Add an experimental packaging lane that builds and smoke-tests the current
