@@ -171,6 +171,68 @@ public class ToolArgumentContractTests
     }
 
     [Fact]
+    public void ToolRequestBinder_BindsAnalyzeRequestRecord()
+    {
+        var request = ToolRequestBinder.BindAnalyze(JsonArgs(new
+        {
+            projectPath = "D:/repo",
+            rulesPath = "lifeblood",
+            incremental = true,
+            allowFullFallback = true,
+            defineProfiles = new[] { "Editor", "", " Player " },
+        }));
+
+        Assert.Equal("D:/repo", request.ProjectPath);
+        Assert.Equal("lifeblood", request.RulesPath);
+        Assert.True(request.Incremental);
+        Assert.True(request.AllowFullFallback);
+        Assert.Equal(new[] { "Editor", "Player" }, request.DefineProfiles);
+        Assert.Same(AnalyzeToolRequest.Empty, ToolRequestBinder.BindAnalyze(null));
+
+        var legacyBadTypes = ToolRequestBinder.BindAnalyze(JsonArgs(new
+        {
+            projectPath = 42,
+            incremental = "true",
+            defineProfiles = new object[] { 42, " Editor " },
+        }));
+        Assert.Null(legacyBadTypes.ProjectPath);
+        Assert.False(legacyBadTypes.Incremental);
+        Assert.Equal(new[] { "Editor" }, legacyBadTypes.DefineProfiles);
+    }
+
+    [Fact]
+    public void ToolRequestBinder_BindsCompileCheckRequestWithBackCompatDefaults()
+    {
+        var request = ToolRequestBinder.BindCompileCheck(JsonArgs(new
+        {
+            filePath = "src/Foo.cs",
+            moduleName = "App",
+            verbosity = "compact",
+        }));
+
+        Assert.Equal("src/Foo.cs", request.FilePath);
+        Assert.Equal("App", request.ModuleName);
+        Assert.Equal("compact", request.Verbosity);
+        Assert.True(request.EffectiveStaleRefresh);
+
+        var explicitFalse = ToolRequestBinder.BindCompileCheck(JsonArgs(new
+        {
+            code = "class C {}",
+            staleRefresh = false,
+        }));
+        Assert.Equal("class C {}", explicitFalse.Code);
+        Assert.False(explicitFalse.EffectiveStaleRefresh);
+
+        var legacyBadTypes = ToolRequestBinder.BindCompileCheck(JsonArgs(new
+        {
+            filePath = 42,
+            staleRefresh = "false",
+        }));
+        Assert.Null(legacyBadTypes.FilePath);
+        Assert.True(legacyBadTypes.EffectiveStaleRefresh);
+    }
+
+    [Fact]
     public void ReadFromEnvironment_StrictJsonAlias_RemainsStrictAlias()
     {
         const string compatName = "LIFEBLOOD_JSON_COMPAT_TEST";

@@ -113,6 +113,9 @@ internal sealed class WriteToolHandler
     private static bool IsCompactVerbosity(JsonElement? args)
         => string.Equals(GetString(args, "verbosity"), "compact", System.StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsCompactVerbosity(string? verbosity)
+        => string.Equals(verbosity, "compact", System.StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Pure wire-shaping for the preprocessor-symbol envelope field. Verbose
     /// keeps the full list; compact returns the count only and a null list so
@@ -196,8 +199,9 @@ internal sealed class WriteToolHandler
     {
         if (CompilationStateError() is { } error) return error;
 
-        var code = GetString(args, "code");
-        var filePath = GetString(args, "filePath");
+        var toolRequest = ToolRequestBinder.BindCompileCheck(args);
+        var code = toolRequest.Code;
+        var filePath = toolRequest.FilePath;
 
         // BUG-015: accept either inline `code` or a `filePath`. Exactly one
         // is required; both being set is a caller error because the result
@@ -235,13 +239,13 @@ internal sealed class WriteToolHandler
             }
         }
 
-        var moduleName = GetString(args, "moduleName");
+        var moduleName = toolRequest.ModuleName;
 
         // Auto-refresh the workspace if source has been edited since the
         // last analyze. Prevents stale-source errors when a user edits a
         // file then runs compile_check. Opt-out via `staleRefresh:false`
         // for callers that explicitly want the pinned-workspace check.
-        var staleRefresh = GetBool(args, "staleRefresh") ?? true;
+        var staleRefresh = toolRequest.EffectiveStaleRefresh;
         var refreshed = staleRefresh ? _session.MaybeRefreshIfStale() : null;
 
         var request = new CompileCheckRequest
@@ -266,7 +270,7 @@ internal sealed class WriteToolHandler
               "files / refresh the editor, then re-run lifeblood_analyze."
             : null;
 
-        var (definesActiveCount, definesActiveList) = ProjectDefines(result.DefinesActive, IsCompactVerbosity(args));
+        var (definesActiveCount, definesActiveList) = ProjectDefines(result.DefinesActive, IsCompactVerbosity(toolRequest.Verbosity));
 
         var commonShape = new
         {
