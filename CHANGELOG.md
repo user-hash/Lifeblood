@@ -15,6 +15,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **.NET adoption lanes**. Runtime benchmark script now reports expanded workloads (`analyze`, `context`, `incremental-noop`, `cli-help`) with category metadata and parse-duration measurements. Tool-packaging smoke records optional `dotnet tool exec` / `dnx` help checks when available and honest skips otherwise. Runtime Async fixtures now cover diagnose, compile-check file mode, and compile-check snippet mode for `<Features>runtime-async=on</Features>` projects.
 
+- **Tracking ledger SSoT ratchet** (`INV-TRACKING-SSOT-001`). `TrackingLedgerTests` parses `devmemory/lifeblood-tracking.md` entry bodies, keeps status summary anchors honest, pins the active backlog to the `Partially shipped` entries, and requires every partial entry to declare its remaining open work.
+
 ### Fixed
 
 - **`execute` workspace-type runtime-load boundary** (`INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001`, LB-TRACK-20260530-031). Scripts compile against workspace/engine types (injected as Roslyn metadata references) but those assemblies are not loaded into the host runtime, so instantiation / `Unsafe.SizeOf<T>` / reflection over a workspace type threw `FileLoadException` and the executor leaked the raw "Could not load file or assembly" message. `RoslynCodeExecutor` now classifies the exception chain against the known workspace module set and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary. Pinned by `ExecuteRobustnessTests`.
