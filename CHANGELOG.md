@@ -7,6 +7,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+**Release-candidate state (final commit):** 1322 discovered / **1311 passed / 0 failed**
+/ 11 native-clang skips; self-analyze **0 violations / 0 cycles, 4385 symbols / 25092 edges**;
+31 MCP tools, 30 ports, 160 invariants. Authoritative live counts live in `docs/STATUS.md`
+(truth-receipt SSoT) — the per-pass deltas below are historical within this unreleased span,
+not the final-state numbers.
+
 ### Added
 
 - **MCP argument contracts + JSON compatibility modes** (`INV-MCP-TOOL-ARG-CONTRACT-001`, `INV-MCP-STRICT-JSON-001`). `ToolInputContract.FromSchema` projects registered input schemas into typed contract metadata at the handler/composition edge; `ToolArgumentBinder` validates tool arguments under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`. Legacy remains default, warn accepts with `lifeblood.tool.arguments` telemetry, strict rejects invalid arguments with structured diagnostics, and `LIFEBLOOD_STRICT_JSON` remains the strict alias.
