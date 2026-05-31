@@ -36,8 +36,10 @@ class Program
         Console.InputEncoding = System.Text.Encoding.UTF8;
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+        var telemetry = DotNetDiagnosticsTelemetrySink.CreateFromEnvironment("LIFEBLOOD_TELEMETRY");
+        using var telemetryLifetime = telemetry as IDisposable;
         IFileSystem fs = new PhysicalFileSystem();
-        var session = new GraphSession(fs);
+        var session = new GraphSession(fs, telemetry);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
         // Composition root: concrete adapter/connector types are constructed
         // here and injected into ToolHandler as ports. Per hexagonal invariants,
@@ -64,8 +66,6 @@ class Program
         IUnityReachabilityProvider unityReachability = new UnityReachabilityAdapter();
         IDeadCodeAnalyzer deadCode = new LifebloodDeadCodeAnalyzer(unityReachability);
         IPartialViewBuilder partialView = new LifebloodPartialViewBuilder(fs);
-        var telemetry = DotNetDiagnosticsTelemetrySink.CreateFromEnvironment("LIFEBLOOD_TELEMETRY");
-        using var telemetryLifetime = telemetry as IDisposable;
         // Invariant provider parses CLAUDE.md + AGENTS.md + docs/invariants/**.md
         // at the loaded project root. No graph dependency; pure text-in,
         // data-out. Session-scoped so its per-project-root cache persists
@@ -98,8 +98,22 @@ class Program
                 "LIFEBLOOD_FILES_CHANGED_THRESHOLD",
                 StalenessPolicy.Default.FilesChangedWarnThreshold));
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications, stalenessPolicy);
+        var jsonCompatibilityMode = ToolJsonCompatibilityModeReader.ReadFromEnvironment(
+            "LIFEBLOOD_JSON_COMPAT",
+            "LIFEBLOOD_STRICT_JSON");
+        using var sessionGate = new GraphSessionGate();
         var toolHandler = new ToolHandler(
-            session, graphProvider, resolver, searchProvider, deadCode, partialView, invariants, decorator, telemetry: telemetry);
+            session,
+            graphProvider,
+            resolver,
+            searchProvider,
+            deadCode,
+            partialView,
+            invariants,
+            decorator,
+            telemetry: telemetry,
+            jsonCompatibilityMode: jsonCompatibilityMode,
+            sessionGate: sessionGate);
         var dispatcher = new McpDispatcher(session, toolHandler);
 
         // Graceful shutdown on Ctrl+C or SIGTERM (container/process manager signals)
@@ -110,7 +124,7 @@ class Program
         Console.Error.WriteLine("Lifeblood MCP server starting...");
 
         using var reader = new StreamReader(Console.OpenStandardInput());
-        var strictJson = McpJsonRequestParser.ReadStrictJsonFlag("LIFEBLOOD_STRICT_JSON");
+        var strictJson = jsonCompatibilityMode == ToolJsonCompatibilityMode.Strict;
 
         // The read-dispatch-write loop lives in McpServerLoop so its resilience
         // contract is unit-testable. INV-MCP-TRANSPORT-RESILIENCE-001: no single

@@ -46,9 +46,9 @@ Fix shape:
 
 ## Current Snapshot
 
-Latest released Lifeblood tag: **`v0.7.9`**. `main` is now post-release; the
+Latest released Lifeblood tag: **`v0.7.10`**. `main` is now post-release; the
 `[Unreleased]` changelog section is the next-version intake area and is the
-canonical place for post-`v0.7.9` release notes until a release cut is made.
+canonical place for post-`v0.7.10` release notes until a release cut is made.
 
 Current verification anchors live in [`docs/STATUS.md`](../docs/STATUS.md) —
 self-analyze symbols / edges / modules / types, test discovery count,
@@ -265,7 +265,7 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 
-Status: Open
+Status: Partially shipped
 Type: Planning
 Source: legacy-repo review of the .NET platform-feature plan, 2026-05-28
 Workspace: Lifeblood self
@@ -282,6 +282,12 @@ Summary:
   rejection landed first; telemetry baseline then landed on `net8.0` with a
   no-op default and .NET diagnostics adapter. Future order below supersedes the
   initial brainstorm order.
+- 2026-05-31 implementation note: the first architecture-first slice shipped
+  the server-edge tool argument contract/binder, `LIFEBLOOD_JSON_COMPAT`
+  compatibility modes, analyze phase telemetry, a retained-session gate,
+  Runtime Async diagnose/compile-check fixtures, expanded benchmark workloads,
+  and optional packaging checks. Production projects remain on `net8.0`;
+  .NET 10 remains an experimental lane until SDK-backed evidence says otherwise.
 
 Priority order:
 1. Telemetry on `net8.0`: port + no-op + diagnostics adapter + tool/analyze
@@ -308,17 +314,23 @@ Workspace: Lifeblood self
 Verification: local inspection: all C# projects target `net8.0`; `ToolRegistry`
 owns hand-authored anonymous MCP input schemas; baseline shipped in `7123200`
 with `schemas/tools/v1/<tool>.schema.json` snapshots plus opt-in duplicate
-property rejection behind `LIFEBLOOD_STRICT_JSON`. Remaining open work:
-typed DTOs, warn mode, source-generated contexts, unknown/missing-field tests,
-and measured `PipeReader` adoption.
+property rejection behind `LIFEBLOOD_STRICT_JSON`. 2026-05-31 slice adds
+`ToolInputContract` projection, `ToolArgumentBinder`, `LIFEBLOOD_JSON_COMPAT`
+(`legacy` / `warn` / `strict`), the `LIFEBLOOD_STRICT_JSON` strict alias,
+warn-mode argument telemetry, and strict-mode structured tool errors. Pinned by
+`ToolArgumentContractTests` and `ToolHandlerTelemetryTests`. Remaining open
+work: making typed contracts the primary authoring source instead of projecting
+from anonymous schemas, source-generated contexts, and measured `PipeReader`
+adoption.
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
   public MCP wire contracts: schema export/validation, stricter reader behavior,
   duplicate-property rejection, and possible `PipeReader` parsing.
 - Lifeblood now has per-tool `tools/list` input-schema snapshots, but schemas
-  are still authored as anonymous objects in `ToolRegistry`; typed DTOs /
-  schema-builder source remain open.
+  are still authored as anonymous objects in `ToolRegistry`; the typed contract
+  projection and binder now exist at the server edge, while the deeper typed
+  DTO/schema-builder authoring source remains open.
 
 Impact:
 - Schema drift is a high-leverage failure class: clients learn tool arguments
@@ -366,8 +378,12 @@ tool events`): events now cover `lifeblood.tool.success_result`,
 `lifeblood.tool.truncated`, `lifeblood.analyze.result`,
 `lifeblood.analyze.fallback`, and `lifeblood.cache.lookup`. Pinned by
 `ToolHandlerTelemetryTests` and surfaced by `lifeblood_capabilities`
-`featureFlags.operationalTelemetryEvents`. Remaining open work: deeper
-analyze/phase spans and allocation measurements.
+`featureFlags.operationalTelemetryEvents`. 2026-05-31 slice adds
+`lifeblood.tool.arguments`, real `lifeblood.analyze.phase` scopes/events from
+`GraphSession` phase boundaries, and `allocation.bytes` deltas. Invariant cache
+lookup telemetry now emits after releasing the cache lock. Remaining open work:
+cross-process benchmark correlation and broader runtime counters where the host
+supports them.
 
 Summary:
 - Lifeblood has good user-facing analyze receipts, but not a general operational
@@ -400,11 +416,10 @@ Fix shape:
 - Add sink tests proving every MCP tool emits start/stop/error events without
   requiring external OpenTelemetry infrastructure.
 
-Non-blocking follow-up found during 2026-05-29 review:
-- `InvariantParseCache<T>` records `hit` / `stale` / `miss` cache telemetry
-  while holding its private cache lock. The default sink is no-op and the
-  diagnostics sink is fast, so this is not a blocker. Cleaner shape: compute the
-  lookup outcome under lock, then emit telemetry after releasing the lock.
+2026-05-31 closure note:
+- The `InvariantParseCache<T>` lock/telemetry follow-up is closed: the lookup
+  outcome is computed under the private lock, and `lifeblood.cache.lookup` emits
+  after the lock is released.
 
 ## 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 
@@ -417,7 +432,12 @@ pins SDK `8.0.100` with `latestFeature` roll-forward; local machine has 8/9/10
 runtimes but no .NET 11 SDK/runtime; baseline harness shipped in
 `tools/runtime-benchmarks/run-lifeblood-runtime-benchmark.ps1`; local smoke run
 completed `net8.0` self-analyze and captured graph counts, process wall/CPU,
-peak memory, GC collections, and analyze/validate phase timings.
+peak memory, GC collections, and analyze/validate phase timings. 2026-05-31
+slice expands the workload selector beyond self-analyze to analyze/context,
+incremental-noop, and CLI help lanes, adds category metadata plus
+`parseDurationMs` for CLI output parsing, and records the measurement
+availability caveats in the machine-readable report. Pinned by
+`BenchmarkSmokeTests`.
 
 Summary:
 - Newer runtimes may improve JIT, GC, JSON, and async behavior, but Lifeblood
@@ -466,6 +486,9 @@ demoted under Windows PowerShell 5.1 so successful commands are governed by exit
 code instead of `NativeCommandError` wrapping, and the build step serializes
 MSBuild nodes with `-maxcpucount:1` under solution-level `TargetFramework`
 overrides. Validated locally with the net8 lane and the net10 skip path.
+2026-05-31 `DotNetLaneScriptTests` pin the honest skip report and the
+`TargetFramework` override posture so the lane stays report-driven until a
+supporting SDK is installed.
 
 Summary:
 - The production solution remains pinned to `net8.0`; the experimental lane is
@@ -496,7 +519,10 @@ features. Baseline local packaging smoke shipped in
 `tools/dotnet-lanes/run-lifeblood-tool-packaging.ps1`; local run packed both
 tool entry points, installed them from the local package folder, verified
 `lifeblood --help`, and verified `lifeblood-mcp` starts and exits cleanly when
-stdin closes.
+stdin closes. 2026-05-31 slice extends the packaging report with optional
+`dotnet tool exec` and `dnx` help smokes when the local SDK/tooling supports
+those entrypoints; unsupported hosts record honest skipped steps instead of
+failing or pretending coverage. Pinned by `DotNetLaneScriptTests`.
 
 Summary:
 - Lifeblood is a tool product. Runtime retargeting is not enough; packaging,
@@ -527,7 +553,11 @@ multi-client daemon/server work is not yet implemented. Baseline audit shipped
 in `docs/plans/dotnet-concurrency-prep-2026-05-28.md`, backed by Lifeblood
 self analyze plus targeted dependency/file-impact queries on `GraphSession`,
 `WorkspaceSession`, invariant parse cache, metadata reference cache, usage
-probe, and telemetry sink.
+probe, and telemetry sink. 2026-05-31 slice adds `GraphSessionGate` /
+`ISessionGate` in `Lifeblood.Server.Mcp`: read-side calls share a read gate,
+while `lifeblood_analyze` and `lifeblood_compile_check` take the write gate
+because they can replace or refresh the retained session. Pinned by
+`GraphSessionGateTests` and `ToolHandlerTelemetryTests`.
 
 Summary:
 - Newer locking primitives are potentially useful, but only around real shared
@@ -555,6 +585,11 @@ Fix shape:
 - Do not build a shared Lifeblood daemon as part of this entry; remove obvious
   lock-risk and document the future shape.
 
+2026-05-31 closure note:
+- First gate is intentionally at `Lifeblood.Server.Mcp`, not Domain/Application.
+  The daemon remains out of scope. Future work can widen the policy only after
+  a concrete shared-host transport exists.
+
 ## 2026-05-28 - Lifeblood .NET Runtime Async compatibility
 
 Status: Partially shipped
@@ -565,10 +600,11 @@ Verification: local inspection: no .NET 11 SDK/runtime is installed locally;
 Lifeblood production target remains `net8.0`; compatibility awareness shipped
 with csproj `<Features>` discovery, `ModuleInfo.CompilerFeatures`,
 `CSharpParseOptions.WithFeatures` thread-through, profile-clone preservation,
-and focused fixtures in `CsprojCompilationFactsTests`. Remaining open work:
-diagnose/compile-check fixture coverage around feature-bearing projects, an
-opt-in server benchmark lane when a supporting SDK exists, and production
-adoption only after stable evidence.
+and focused fixtures in `CsprojCompilationFactsTests`. 2026-05-31 slice adds
+feature-bearing fixtures for `diagnose`, compile-check file mode, and
+compile-check snippet mode in `CompileCheckParseOptionsParityTests`. Remaining
+open work: an opt-in server benchmark lane when a supporting SDK exists, and
+production adoption only after stable evidence.
 
 Summary:
 - Runtime Async is preview/experimental until the SDK/runtime is available and
@@ -576,8 +612,8 @@ Summary:
   production-server feature.
 - The first Lifeblood requirement is Roslyn parity for projects that opt in:
   analyze, diagnose, and compile-check should not drift because a project carries
-  a new `<Features>` marker. Analyze parse-option preservation is now pinned;
-  diagnose/compile-check compatibility fixtures remain open.
+  a new `<Features>` marker. Analyze parse-option preservation was already
+  pinned; diagnose and compile-check compatibility fixtures are now covered.
 
 Impact:
 - Users may analyze projects that enable Runtime Async before Lifeblood itself
@@ -591,7 +627,7 @@ Fix shape:
   on the csproj-driven compilation-facts seam: discover once, store on
   `ModuleInfo.CompilerFeatures`, preserve through define-profile cloning, and
   pass into `CSharpParseOptions.WithFeatures`.
-- Add the remaining diagnose and compile-check fixtures so replacement/snippet
+- Diagnose and compile-check fixtures are now present so replacement/snippet
   trees also prove feature-bearing project compatibility.
 - Promote those compile-parity traps ahead of enabling Runtime Async in
   Lifeblood itself: user-project analysis compatibility is earlier than server

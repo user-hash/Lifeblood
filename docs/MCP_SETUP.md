@@ -72,14 +72,15 @@ If `lifeblood-mcp` is not found, check that `~/.dotnet/tools` (or the platform e
 
 ## Configuration (environment variables)
 
-The server reads four optional environment variables at startup. All have safe defaults; set them per deployment without a code change. They are honored by both the standalone CLI and the Unity bridge child process.
+The server reads five optional environment variables at startup. All have safe defaults; set them per deployment without a code change. They are honored by both the standalone CLI and the Unity bridge child process.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `LIFEBLOOD_TELEMETRY` | off | Opt-in operational telemetry. Set to `1`, `true`, `yes`, `on`, or `diagnostics` to emit .NET `ActivitySource` / `Meter` events (tool success/error, response-JSON cost, analyze result/fallback, result truncation, invariant-parse cache outcomes). Any other value (or unset) uses the no-op sink. |
+| `LIFEBLOOD_TELEMETRY` | off | Opt-in operational telemetry. Set to `1`, `true`, `yes`, `on`, or `diagnostics` to emit .NET `ActivitySource` / `Meter` events (tool success/error, argument diagnostics, response-JSON cost, analyze result/fallback, analyze phase allocation, result truncation, invariant-parse cache outcomes). Any other value (or unset) uses the no-op sink. |
 | `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` | `3600` | Wall-clock age (seconds) past which a read-side response adds a staleness limitation to its truth envelope. |
 | `LIFEBLOOD_FILES_CHANGED_THRESHOLD` | `10` | File-churn count since the last analyze past which a read-side response adds a files-changed limitation to its truth envelope. |
-| `LIFEBLOOD_STRICT_JSON` | off | When set truthy, the MCP request parser rejects requests containing duplicate JSON properties (`INV-MCP-STRICT-JSON-001`). Off by default for client compatibility. |
+| `LIFEBLOOD_JSON_COMPAT` | `legacy` | Tool-argument compatibility mode: `legacy` accepts today's wire, `warn` accepts but emits `lifeblood.tool.arguments` telemetry for unknown/missing/type-mismatch/duplicate arguments, and `strict` rejects invalid tool arguments. In strict mode the MCP request parser also rejects duplicate JSON properties before binding (`INV-MCP-STRICT-JSON-001`, `INV-MCP-TOOL-ARG-CONTRACT-001`). |
+| `LIFEBLOOD_STRICT_JSON` | off | Backward-compatible strict alias used only when `LIFEBLOOD_JSON_COMPAT` is unset. Truthy values select the same strict behavior as `LIFEBLOOD_JSON_COMPAT=strict`. |
 
 Malformed numeric values fall through to the default (`StalenessPolicy.Default`); they never throw. The live capability surface — including which feature flags and telemetry events are active in the running server — is reported by the `lifeblood_capabilities` tool.
 

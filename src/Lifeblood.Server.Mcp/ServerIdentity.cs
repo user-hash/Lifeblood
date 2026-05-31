@@ -94,10 +94,13 @@ public static class ServerIdentity
                     "lifeblood.tool.exception",
                     "lifeblood.tool.response_json",
                     "lifeblood.tool.truncated",
+                    "lifeblood.tool.arguments",
                     "lifeblood.analyze.result",
                     "lifeblood.analyze.fallback",
                     "lifeblood.cache.lookup",
                 },
+                toolArgumentContracts = true,
+                jsonCompatibilityModes = new[] { "legacy", "warn", "strict" },
                 summarizeCapableTools = summarizeCapable,
             },
             contract = new
