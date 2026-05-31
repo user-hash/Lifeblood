@@ -134,6 +134,23 @@ public class ToolHandlerTests : IDisposable
             .ToArray();
         Assert.Contains("lifeblood.tool.truncated", telemetryEvents);
         Assert.Contains("lifeblood.analyze.fallback", telemetryEvents);
+        var summarizeCapableTools = doc.RootElement
+            .GetProperty("featureFlags")
+            .GetProperty("summarizeCapableTools")
+            .EnumerateArray()
+            .Select(e => e.GetString())
+            .ToArray();
+        var expectedSummarizeCapableTools = ToolRegistry.GetDefinitions()
+            .Where(d =>
+            {
+                var contract = ToolInputContract.FromSchema(d.Name, d.InputSchema);
+                return contract.Arguments.TryGetValue("summarize", out var argument)
+                    && argument.Type == ToolArgumentType.Boolean;
+            })
+            .Select(d => d.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(expectedSummarizeCapableTools, summarizeCapableTools);
         Assert.Contains("schemas", doc.RootElement.GetProperty("contract").GetProperty("schemaSnapshotPath").GetString());
         Assert.Contains("STATUS.md", doc.RootElement.GetProperty("contract").GetProperty("statusDocAnchorPath").GetString());
         Assert.False(doc.RootElement.GetProperty("session").GetProperty("hasGraphLoaded").GetBoolean());
