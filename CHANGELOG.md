@@ -10,8 +10,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 DAWG-dogfood cheap bug-first pass (2026-05-30). Six trust-and-robustness fixes
 surfaced during a DAWG Burst session, reconciled from `IMPROVEMENT_INBOX.md` +
 `devmemory/lifeblood-tracking.md`. Full suite 1258 passed / 0 failed / 11
-native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1307;
-invariants 150 → 159; self symbols 3834 → 4251 / edges 23020 → 24674.
+native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1309;
+invariants 150 → 160; self symbols 3834 → 4297 / edges 23020 → 24815.
 
 ### Added
 
@@ -22,6 +22,7 @@ invariants 150 → 159; self symbols 3834 → 4251 / edges 23020 → 24674.
 - **Enum-aware tool argument contracts.** `ToolInputContract` now preserves declared schema enum values, can regenerate every registered tool input schema byte-stably through the existing canonicalizer, and `ToolArgumentBinder` rejects enum values outside the schema in strict mode.
 - **Typed contract-backed capability flags.** `lifeblood_capabilities.featureFlags.summarizeCapableTools` now derives from `ToolInputContract` argument metadata instead of serializing input schemas and searching for a `"summarize"` token. The existing capabilities wire shape is unchanged; `ToolHandlerTests` pins the flag list against the typed contract SSoT.
 - **Authoritative MCP input contract catalog.** `ToolInputContractCatalog` now owns registered MCP tool argument names, types, required flags, enum values, and descriptions. `ToolDefinition.InputSchema` is generated from the typed contract, and `ToolRegistry` no longer authors anonymous schema objects. Snapshot tests still pin the `tools/list` wire shape byte-stably.
+- **High-risk MCP request-record binding.** `ToolRequestBinder` binds `lifeblood_analyze` and `lifeblood_compile_check` through typed request records, preserving back-compatible handler defaults such as `compile_check.staleRefresh=true` while keeping MCP field names in `Lifeblood.Server.Mcp`. Source-generated request contexts stay in the remaining .NET adoption lane until Lifeblood diagnostic parity supports generator output.
 - **Telemetry event-name SSoT** (`INV-TELEMETRY-002`). `McpTelemetryEvents` centralizes every emitted server-edge event name; `ServerIdentity` advertises it verbatim and the emit sites reference the constants, closing the gap where `lifeblood.analyze.phase` was emitted and documented but missing from the advertised capability list. Pinned by `McpTelemetryEventsTests` and `ToolHandlerTests`.
 
 ### Fixed

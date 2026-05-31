@@ -347,9 +347,17 @@ ratchet across every registered tool. A second local SSoT cleanup routes
 contract metadata instead of schema text searching. A third local SSoT cleanup
 makes `ToolInputContractCatalog` the primary authoring source: `ToolRegistry`
 now owns tool identity/availability/descriptions only, while schemas exposed by
-`tools/list` are generated from typed contract metadata. Remaining open work:
-typed request-record binding for high-risk tools, source-generated contexts,
-and measured `PipeReader` adoption.
+`tools/list` are generated from typed contract metadata. 2026-05-31 follow-up
+adds typed request-record binding for the session-mutating high-risk tools
+(`lifeblood_analyze`, `lifeblood_compile_check`) through `ToolRequestBinder`,
+preserving back-compatible handler defaults such as
+`compile_check.staleRefresh=true`. Source-generated context adoption remains
+open because the first attempt proved a real diagnostic-parity constraint:
+dotnet build runs the System.Text.Json source generator, but Lifeblood's current
+Roslyn diagnose path does not, so production code cannot require generated
+`JsonSerializerContext.Default` members until generator/parity support exists.
+Remaining open work: measured `PipeReader` adoption plus source-generated
+contexts behind benchmark and diagnostic-parity evidence.
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
@@ -363,8 +371,10 @@ Summary:
   source remains open.
 
 Remaining open work:
-- Add typed request-record binding for high-risk tools, source-generated JSON
-  contexts, and measure `PipeReader` before adopting it.
+- Measure `PipeReader` before adopting it, and adopt source-generated JSON
+  contexts only after Lifeblood diagnostic parity can see the generated surface
+  or the production code path is otherwise proven not to depend on generator-only
+  members.
 
 Impact:
 - Schema drift is a high-leverage failure class: clients learn tool arguments

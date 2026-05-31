@@ -215,19 +215,18 @@ public sealed class ToolHandler
 
     private McpToolResult HandleAnalyze(JsonElement? args)
     {
-        var projectPath = WriteToolHandler.GetString(args, "projectPath");
-        var graphPath = WriteToolHandler.GetString(args, "graphPath");
-        var rulesPath = WriteToolHandler.GetString(args, "rulesPath");
-        var incremental = WriteToolHandler.GetBool(args, "incremental") ?? false;
-        var readOnly = WriteToolHandler.GetBool(args, "readOnly") ?? false;
-        // INV-ANALYZE-FALLBACK-001.
-        var allowFullFallback = WriteToolHandler.GetBool(args, "allowFullFallback") ?? false;
-        // INV-MULTI-DEFINE-ANALYZE-001.
-        var defineProfiles = ReadStringArray(args, "defineProfiles");
+        var request = ToolRequestBinder.BindAnalyze(args);
 
         try
         {
-            var result = _session.Load(projectPath, graphPath, rulesPath, incremental, readOnly, allowFullFallback, defineProfiles);
+            var result = _session.Load(
+                request.ProjectPath,
+                request.GraphPath,
+                request.RulesPath,
+                request.Incremental,
+                request.ReadOnly,
+                request.AllowFullFallback,
+                request.DefineProfiles);
             RecordAnalyzeTelemetry(result);
             return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
         }
