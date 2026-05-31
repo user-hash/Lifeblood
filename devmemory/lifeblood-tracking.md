@@ -61,7 +61,7 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 33 --><!-- trackingStatusPartiallyShippedCount: 7 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 34 --><!-- trackingStatusPartiallyShippedCount: 6 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
@@ -70,7 +70,6 @@ Active non-shipped implementation ledger:
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 - 2026-05-28 - Lifeblood .NET 10 experimental target lane
 - 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
-- 2026-05-28 - Lifeblood .NET concurrency prep for shared server
 - 2026-05-28 - Lifeblood .NET Runtime Async compatibility
 <!-- trackingActiveBacklog:end -->
 
@@ -638,7 +637,7 @@ Fix shape:
 
 ## 2026-05-28 - Lifeblood .NET concurrency prep for shared server
 
-Status: Partially shipped
+Status: Shipped
 Type: Improvement
 Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self
@@ -662,9 +661,13 @@ Summary:
   cache transitions, telemetry counters, and future multi-client scheduling.
 - This is preparation work, not permission to build a shared daemon prematurely.
 
-Remaining open work:
-- Revisit host policy only when a concrete shared-server transport exists; no
-  shared daemon is part of this pass.
+Closure:
+- Current-pass concurrency prep is complete: retained-session replacement is
+  gated at `Lifeblood.Server.Mcp`, read-side calls share the read gate,
+  session-mutating calls use the write gate, and stress ratchets pin
+  reader/writer exclusion plus writer serialization. Future shared-server
+  transport work gets a new entry when that transport exists; no shared daemon is
+  part of this pass.
 
 Impact:
 - If Lifeblood grows from per-client stdio processes into a shared server, lock
