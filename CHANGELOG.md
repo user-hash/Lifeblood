@@ -17,6 +17,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **.NET adoption lanes**. Runtime benchmark script now reports expanded workloads (`analyze`, `context`, `incremental-noop`, `cli-help`) with category metadata and parse-duration measurements. Tool-packaging smoke records optional `dotnet tool exec` / `dnx` help checks when available and honest skips otherwise. Runtime Async fixtures now cover diagnose, compile-check file mode, and compile-check snippet mode for `<Features>runtime-async=on</Features>` projects.
 
+- **.NET 10 experimental evidence receipts.** `run-lifeblood-experimental-target.ps1` now records schema snapshot inventory, parses the experimental test summary, runs an experimental CLI self-analyze, and compares test/semantic counts against the production `docs/STATUS.md` anchors before any production TFM migration is considered. The lane also serializes restore, can opt into cached/offline restore via `-RestoreIgnoreFailedSources`, and falls forward to a fresh temp work directory when a previous experimental tree is locked.
+
 - **Tracking ledger SSoT ratchet** (`INV-TRACKING-SSOT-001`). `TrackingLedgerTests` parses `devmemory/lifeblood-tracking.md` entry bodies, keeps status summary anchors honest, pins the active backlog to the `Partially shipped` entries, and requires every partial entry to declare its remaining open work.
 
 - **Enum-aware tool argument contracts.** `ToolInputContract` now preserves declared schema enum values, can regenerate every registered tool input schema byte-stably through the existing canonicalizer, and `ToolArgumentBinder` rejects enum values outside the schema in strict mode.
