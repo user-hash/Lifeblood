@@ -212,10 +212,11 @@ Non-blocking follow-ups found during 2026-05-29 review:
   force the 1500ms timeout, and degrade `dirty`/`state` to unknown. This is
   graceful, not a release blocker. Bulletproof shape: async output/error reads
   or drain-before-wait discipline.
-- `featureFlags.summarizeCapableTools` is discovered by serializing anonymous
-  input schemas and searching for a `"summarize"` property token. It is
-  advisory capability prose, not behavior, but a future typed capability flag or
-  schema-walker would be less fragile.
+- `featureFlags.summarizeCapableTools` used to be discovered by serializing
+  anonymous input schemas and searching for a `"summarize"` property token.
+  Closed by the 2026-05-31 local SSoT cleanup: `ServerIdentity` now reads
+  `ToolInputContract` metadata, and `ToolHandlerTests` pins the capability list
+  against that typed contract source.
 
 ## 2026-05-28 - Lifeblood v0.7.9-1-g4a7a63a - Durable documentation receipts for living-doc baselines
 
@@ -341,9 +342,12 @@ property rejection behind `LIFEBLOOD_STRICT_JSON`. 2026-05-31 slice adds
 warn-mode argument telemetry, and strict-mode structured tool errors. Pinned by
 `ToolArgumentContractTests` and `ToolHandlerTelemetryTests`. Follow-up local
 slice adds enum preservation/enforcement and a typed-contract schema round-trip
-ratchet across every registered tool. Remaining open work: making typed
-contracts the primary authoring source instead of projecting from anonymous
-schemas, source-generated contexts, and measured `PipeReader` adoption.
+ratchet across every registered tool. A second local SSoT cleanup routes
+`lifeblood_capabilities.featureFlags.summarizeCapableTools` through the typed
+contract metadata instead of schema text searching. Remaining open work: making
+typed contracts the primary authoring source instead of projecting from
+anonymous schemas, source-generated contexts, and measured `PipeReader`
+adoption.
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
