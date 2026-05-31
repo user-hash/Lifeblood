@@ -25,6 +25,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **High-risk MCP request-record binding.** `ToolRequestBinder` binds `lifeblood_analyze` and `lifeblood_compile_check` through typed request records, preserving back-compatible handler defaults such as `compile_check.staleRefresh=true` while keeping MCP field names in `Lifeblood.Server.Mcp`. Source-generated request contexts stay in the remaining .NET adoption lane until Lifeblood diagnostic parity supports generator output.
 
+- **Report-only packaging experiments.** `run-lifeblood-tool-packaging.ps1` now validates CLI help output, records opt-in framework-dependent / self-contained / trim / AOT publish experiments under `artifacts/tool-packaging`, and marks unsupported Roslyn-heavy trim/AOT paths as honest skips instead of release gates.
+
 - **Telemetry event-name SSoT** (`INV-TELEMETRY-002`). `McpTelemetryEvents` centralizes every emitted server-edge event name; `ServerIdentity` advertises it verbatim and the emit sites reference the constants, closing the gap where `lifeblood.analyze.phase` was emitted and documented but missing from the advertised capability list. Pinned by `McpTelemetryEventsTests` and `ToolHandlerTests`.
 
 ### Fixed
