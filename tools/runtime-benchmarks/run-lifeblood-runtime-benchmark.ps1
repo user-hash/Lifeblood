@@ -5,6 +5,13 @@ param(
     [string[]]$TargetFrameworks = @("net8.0"),
     [ValidateSet("self-analyze", "analyze", "context", "self-context", "incremental-noop", "cli-help")]
     [string[]]$Workloads = @("self-analyze"),
+    [string]$DotnetExe = "dotnet",
+    [switch]$AllowExperimentalTargets,
+    [switch]$SkipExperimentalTests,
+    [switch]$RestoreIgnoreFailedSources,
+    [string[]]$PackageSources = @(),
+    [string]$DotnetCliHome = "",
+    [string]$WorkDirRoot = "",
     [switch]$SkipPublish,
     [switch]$RuntimeInfoOnly
 )
@@ -37,11 +44,26 @@ function Read-ProjectTargetFrameworks([string]$ProjectPath) {
 }
 
 function Invoke-DotnetLines([string[]]$Arguments) {
-    $output = & dotnet @Arguments 2>&1
+    $output = & $script:DotnetExe @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE.`n$output"
+        throw "$script:DotnetExe $($Arguments -join ' ') failed with exit code $LASTEXITCODE.`n$output"
     }
     return @($output)
+}
+
+function Get-TargetMajor([string]$TargetFramework) {
+    $match = [regex]::Match($TargetFramework, '^net(\d+)\.')
+    if (-not $match.Success) {
+        throw "Unsupported target framework format: $TargetFramework"
+    }
+
+    return [int]$match.Groups[1].Value
+}
+
+function Get-SdkMajor([string]$SdkLine) {
+    $match = [regex]::Match($SdkLine, '^(\d+)\.')
+    if (-not $match.Success) { return $null }
+    return [int]$match.Groups[1].Value
 }
 
 function Parse-Long([string]$Text) {
@@ -180,10 +202,16 @@ if (-not [string]::IsNullOrWhiteSpace($outputDir)) {
 
 $cliProject = Join-Path $repoRoot "src/Lifeblood.CLI/Lifeblood.CLI.csproj"
 $supportedTfms = @(Read-ProjectTargetFrameworks $cliProject)
-$resolvedProject = if ($Workloads -contains "self-analyze") {
-    $repoRoot
+$resolvedProject = (Resolve-Path $Project).Path
+$resolvedDotnetCliHome = if ([string]::IsNullOrWhiteSpace($DotnetCliHome)) {
+    Join-Path $outputDir "dotnet-cli-home"
 } else {
-    (Resolve-Path $Project).Path
+    $DotnetCliHome
+}
+$resolvedWorkDirRoot = if ([string]::IsNullOrWhiteSpace($WorkDirRoot)) {
+    Join-Path $outputDir "runtime-work"
+} else {
+    $WorkDirRoot
 }
 
 $report = [ordered]@{
@@ -192,6 +220,7 @@ $report = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("O")
     repoRoot = $repoRoot
     project = $resolvedProject
+    dotnetExe = $DotnetExe
     host = [ordered]@{
         osDescription = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
         processArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
@@ -213,6 +242,12 @@ $report = [ordered]@{
         resolverIndexTimeMs = "not captured yet"
         mcpDispatchLatencyMs = "captured per retained read-side tool by tools/runtime-benchmarks/run-lifeblood-mcp-gc-benchmark.ps1"
     }
+    experimentalTargets = [ordered]@{
+        enabled = [bool]$AllowExperimentalTargets
+        dotnetCliHome = $resolvedDotnetCliHome
+        workDirRoot = $resolvedWorkDirRoot
+        packageSources = @($PackageSources)
+    }
     targetFrameworks = @()
 }
 
@@ -226,42 +261,106 @@ foreach ($tfm in $TargetFrameworks) {
     $targetResult = [ordered]@{
         targetFramework = $tfm
         supportedByCliProject = $supportedTfms -contains $tfm
+        executionMode = $null
         workloads = @()
     }
 
-    if (-not ($supportedTfms -contains $tfm)) {
-        $targetResult.skipped = "CLI project does not target $tfm. Supported: $($supportedTfms -join ', ')"
+    $runnerDotnetExe = $DotnetExe
+    $runnerRepoRoot = $repoRoot
+    $runnerSelfRoot = $repoRoot
+    $dll = $null
+
+    if ($supportedTfms -contains $tfm) {
+        $targetResult.executionMode = "published-project"
+        $publishDir = Join-Path $repoRoot "artifacts/runtime-benchmarks/publish/$tfm"
+        if (-not $SkipPublish) {
+            Invoke-DotnetLines @(
+                "publish",
+                "src/Lifeblood.CLI/Lifeblood.CLI.csproj",
+                "-c", "Release",
+                "-f", $tfm,
+                "-o", $publishDir,
+                "--nologo",
+                "-v", "q"
+            ) | Out-Null
+        }
+
+        $dll = Join-Path $publishDir "Lifeblood.CLI.dll"
+    } elseif ($AllowExperimentalTargets) {
+        $sdkMajors = @($report.host.dotnetSdks | ForEach-Object { Get-SdkMajor $_ } | Where-Object { $null -ne $_ })
+        $targetMajor = Get-TargetMajor $tfm
+        $highestSdkMajor = if ($sdkMajors.Count -gt 0) { ($sdkMajors | Measure-Object -Maximum).Maximum } else { 0 }
+        if ($highestSdkMajor -lt $targetMajor) {
+            $targetResult.executionMode = "experimental-copy"
+            $targetResult.skipped = "No installed .NET SDK can build $tfm. Highest SDK major: $highestSdkMajor."
+            $report.targetFrameworks += [pscustomobject]$targetResult
+            continue
+        }
+
+        $targetResult.executionMode = "experimental-copy"
+        $experimentalReportPath = Join-Path $outputDir ("lifeblood-runtime-{0}-experimental-target.json" -f ($tfm -replace '[^A-Za-z0-9_.-]', '_'))
+        $experimentalScript = Join-Path $repoRoot "tools/dotnet-lanes/run-lifeblood-experimental-target.ps1"
+        $experimentalArgs = @{
+            TargetFramework = $tfm
+            OutputPath = $experimentalReportPath
+            DotnetExe = $DotnetExe
+            DotnetCliHome = $resolvedDotnetCliHome
+            WorkDirRoot = $resolvedWorkDirRoot
+            PackageSources = $PackageSources
+            SkipPack = $true
+        }
+        if ($SkipExperimentalTests) { $experimentalArgs.SkipTests = $true }
+        if ($RestoreIgnoreFailedSources) { $experimentalArgs.RestoreIgnoreFailedSources = $true }
+
+        $targetResult.experimentalTargetReport = $experimentalReportPath
+        $experimentalError = $null
+        try {
+            & $experimentalScript @experimentalArgs
+        }
+        catch {
+            $experimentalError = $_.Exception.Message
+        }
+
+        if (Test-Path -LiteralPath $experimentalReportPath) {
+            $experimental = Get-Content -LiteralPath $experimentalReportPath -Raw | ConvertFrom-Json
+            $targetResult.experimentalTargetStatus = $experimental.status
+            if ($experimental.sourceRoot) {
+                $runnerSelfRoot = [string]$experimental.sourceRoot
+            }
+        } else {
+            $targetResult.experimentalTargetStatus = "missing-report"
+        }
+
+        if ($experimentalError) {
+            $targetResult.experimentalTargetError = $experimentalError
+        }
+
+        if ($targetResult.experimentalTargetStatus -ne "passed") {
+            $targetResult.skipped = "Experimental target lane did not pass for $tfm; see $experimentalReportPath."
+            $report.targetFrameworks += [pscustomobject]$targetResult
+            continue
+        }
+
+        $dll = Join-Path $runnerSelfRoot "src/Lifeblood.CLI/bin/Release/$tfm/Lifeblood.CLI.dll"
+    } else {
+        $targetResult.skipped = "CLI project does not target $tfm. Supported: $($supportedTfms -join ', '). Pass -AllowExperimentalTargets to run a copied-tree target probe."
         $report.targetFrameworks += [pscustomobject]$targetResult
         continue
     }
 
-    $publishDir = Join-Path $repoRoot "artifacts/runtime-benchmarks/publish/$tfm"
-    if (-not $SkipPublish) {
-        Invoke-DotnetLines @(
-            "publish",
-            "src/Lifeblood.CLI/Lifeblood.CLI.csproj",
-            "-c", "Release",
-            "-f", $tfm,
-            "-o", $publishDir,
-            "--nologo",
-            "-v", "q"
-        ) | Out-Null
-    }
-
     foreach ($workload in $Workloads) {
-        $dll = Join-Path $publishDir "Lifeblood.CLI.dll"
-        $workloadProject = if ($workload -in @("self-analyze", "self-context", "cli-help")) { $repoRoot } else { $resolvedProject }
+        $workloadProject = if ($workload -in @("self-analyze", "self-context", "cli-help")) { $runnerSelfRoot } else { $resolvedProject }
         $arguments = switch ($workload) {
-            "self-analyze" { @($dll, "analyze", "--project", $repoRoot) }
+            "self-analyze" { @($dll, "analyze", "--project", $runnerSelfRoot) }
             "analyze" { @($dll, "analyze", "--project", $workloadProject) }
-            "self-context" { @($dll, "context", "--project", $repoRoot) }
+            "self-context" { @($dll, "context", "--project", $runnerSelfRoot) }
             "context" { @($dll, "context", "--project", $workloadProject) }
             "incremental-noop" { @($dll, "verify", "--incremental", "--project", $workloadProject) }
             "cli-help" { @($dll, "--help") }
             default { throw "Unsupported workload: $workload" }
         }
 
-        $measurement = Invoke-MeasuredProcess "dotnet" $arguments $repoRoot
+        $measurement = Invoke-MeasuredProcess $runnerDotnetExe $arguments $runnerRepoRoot
         $combinedOutput = $measurement.stdout + "`n" + $measurement.stderr
         $parsed = if ($workload -in @("self-analyze", "analyze")) {
             Convert-CliAnalyzeOutput $combinedOutput

@@ -494,14 +494,21 @@ try {
     ) $workDir
 
     if (-not $SkipTests) {
-        Invoke-Step $report "test" @(
-            "test", (Join-Path $experimentalSourceRoot "tests/Lifeblood.Tests/Lifeblood.Tests.csproj"),
-            "-c", $Configuration,
-            "--no-build",
-            "--no-restore",
-            "-nodeReuse:false",
-            "--nologo"
-        ) $workDir
+        $previousExperimentalTarget = [Environment]::GetEnvironmentVariable("LIFEBLOOD_DOTNET_EXPERIMENTAL_TARGET", "Process")
+        [Environment]::SetEnvironmentVariable("LIFEBLOOD_DOTNET_EXPERIMENTAL_TARGET", $TargetFramework, "Process")
+        try {
+            Invoke-Step $report "test" @(
+                "test", (Join-Path $experimentalSourceRoot "tests/Lifeblood.Tests/Lifeblood.Tests.csproj"),
+                "-c", $Configuration,
+                "--no-build",
+                "--no-restore",
+                "-nodeReuse:false",
+                "--nologo"
+            ) $workDir
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable("LIFEBLOOD_DOTNET_EXPERIMENTAL_TARGET", $previousExperimentalTarget, "Process")
+        }
 
         $testStep = Get-LatestStep $report
         $report.evidence.testSummary = Convert-DotnetTestOutput $testStep.output

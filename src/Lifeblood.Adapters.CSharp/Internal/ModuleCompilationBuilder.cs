@@ -379,7 +379,7 @@ internal sealed class ModuleCompilationBuilder
             dedupedReferences,
             compilationOptions);
 
-        return SourceGeneratorRunner.Run(compilation, module.SourceGeneratorAnalyzerPaths);
+        return SourceGeneratorRunner.Run(compilation, module.SourceGeneratorAnalyzerPaths, module);
     }
 
     /// <summary>
