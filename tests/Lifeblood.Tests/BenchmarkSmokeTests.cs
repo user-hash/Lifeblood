@@ -162,7 +162,16 @@ public class BenchmarkSmokeTests
         var refDir = new DirectoryInfo(packRoot)
             .EnumerateDirectories()
             .OrderByDescending(d => d.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(d => Path.Combine(d.FullName, "ref", "net8.0"))
+            .SelectMany(d =>
+            {
+                var refRoot = Path.Combine(d.FullName, "ref");
+                return Directory.Exists(refRoot)
+                    ? new DirectoryInfo(refRoot)
+                        .EnumerateDirectories("net*")
+                        .OrderByDescending(refDir => refDir.Name, StringComparer.OrdinalIgnoreCase)
+                        .Select(refDir => refDir.FullName)
+                    : Enumerable.Empty<string>();
+            })
             .FirstOrDefault(Directory.Exists);
         if (refDir == null)
         {

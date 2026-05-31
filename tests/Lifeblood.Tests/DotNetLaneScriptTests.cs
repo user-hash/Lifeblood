@@ -21,11 +21,20 @@ public class DotNetLaneScriptTests
         Assert.Contains("Set-CopiedProjectTargetFrameworks", script);
         Assert.Contains("retargets only the copied solution projects", script);
         Assert.Contains("omits root global.json", script);
+        Assert.Contains("CompilerFeatures", script);
+        Assert.Contains("Set-CopiedProjectCompilerFeatures", script);
+        Assert.Contains("Optional compiler features are injected only into the copied tree", script);
+        Assert.Contains("DotnetExe", script);
+        Assert.Contains("DOTNET_CLI_TELEMETRY_OPTOUT", script);
+        Assert.Contains("DOTNET_CLI_HOME", script);
+        Assert.Contains("WorkDirRoot", script);
         Assert.Contains("workDirFallbackReason", script);
         Assert.Contains("Could not clean the previous experimental work directory", script);
         Assert.Contains("--disable-parallel", script);
         Assert.Contains("RestoreIgnoreFailedSources", script);
         Assert.Contains("--ignore-failed-sources", script);
+        Assert.Contains("PackageSources", script);
+        Assert.Contains("NuGetAudit=false", script);
         Assert.DoesNotContain("-p:TargetFramework=$TargetFramework", script);
     }
 
@@ -77,6 +86,40 @@ public class DotNetLaneScriptTests
         Assert.Contains("MCP trimming is intentionally skipped", script);
         Assert.Contains("PublishTrimmed=true", script);
         Assert.Contains("PublishAot=true", script);
+    }
+
+    [Fact]
+    public void RuntimeAsyncBenchmarkLane_SkipsHonestlyAndInjectsCompilerFeatureOnlyInCopiedTree()
+    {
+        var script = ReadRepoFile("tools", "runtime-benchmarks", "run-lifeblood-runtime-async-benchmark.ps1");
+
+        Assert.Contains("runtime-async=on", script);
+        Assert.Contains("No installed .NET SDK can build", script);
+        Assert.Contains("FailWhenUnavailable", script);
+        Assert.Contains("DotnetExe", script);
+        Assert.Contains("DOTNET_CLI_TELEMETRY_OPTOUT", script);
+        Assert.Contains("DOTNET_CLI_HOME", script);
+        Assert.Contains("WorkDirRoot", script);
+        Assert.Contains("PackageSources", script);
+        Assert.Contains("run-lifeblood-experimental-target.ps1", script);
+        Assert.Contains("CompilerFeatures =", script);
+        Assert.Contains("Runtime Async is injected only into the temporary copied source tree", script);
+        Assert.Contains("Production projects remain net8.0", script);
+    }
+
+    [Fact]
+    public void RuntimeAsyncBenchmarkLane_CoversCliAndMcpMeasurementSurfaces()
+    {
+        var script = ReadRepoFile("tools", "runtime-benchmarks", "run-lifeblood-runtime-async-benchmark.ps1");
+
+        Assert.Contains("self-analyze", script);
+        Assert.Contains("cli-help", script);
+        Assert.Contains("Invoke-MeasuredProcess", script);
+        Assert.Contains("Convert-CliAnalyzeOutput", script);
+        Assert.Contains("run-lifeblood-mcp-gc-benchmark.ps1", script);
+        Assert.Contains("-DotnetExe", script);
+        Assert.Contains("mcpRetainedReadSideTools", script);
+        Assert.Contains("benchmarkRunId", script);
     }
 
     private static string ReadRepoFile(params string[] parts)
