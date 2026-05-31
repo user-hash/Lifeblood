@@ -480,22 +480,25 @@ Source: DAWG/Lifeblood .NET platform-feature planning session, 2026-05-28
 Workspace: Lifeblood self
 Verification: baseline lane shipped in
 `tools/dotnet-lanes/run-lifeblood-experimental-target.ps1`; local smoke run on
-2026-05-28 skipped honestly because only the .NET 8 SDK is installed locally.
+2026-05-28 skipped honestly because only the .NET 8 SDK was installed locally.
 2026-05-29 release-prep fix shipped in `b6d13c7`: native `dotnet` stderr is
 demoted under Windows PowerShell 5.1 so successful commands are governed by exit
-code instead of `NativeCommandError` wrapping, and the build step serializes
-MSBuild nodes with `-maxcpucount:1` under solution-level `TargetFramework`
-overrides. Validated locally with the net8 lane and the net10 skip path.
-2026-05-31 `DotNetLaneScriptTests` pin the honest skip report and the
-`TargetFramework` override posture so the lane stays report-driven until a
-supporting SDK is installed.
+code instead of `NativeCommandError` wrapping. 2026-05-31 implementation replaced
+the fragile solution-level `TargetFramework` global-property override with a
+temporary copied source tree: the copied solution projects are retargeted to
+`net10.0`, checked-in project files remain `net8.0`, root `global.json` is
+omitted from the copy, and packages are emitted under `artifacts/` for CI
+collection. Verified locally with SDK `10.0.300`: restore, build, full test
+suite, CLI pack, and MCP pack all passed. `DotNetLaneScriptTests` pin the honest
+skip report, temp-copy retargeting, and no `-p:TargetFramework=$TargetFramework`
+override posture.
 
 Summary:
 - The production solution remains pinned to `net8.0`; the experimental lane is
-  an external build/test/package probe that passes `TargetFramework` as an
-  MSBuild property when a matching SDK is installed.
-- The script runs from a temp directory so the repo `global.json` cannot pin it
-  back to the production SDK lane.
+  an external build/test/package probe that retargets a temporary source copy
+  when a matching SDK is installed.
+- The copied tree omits root `global.json` so the repo SDK pin cannot force the
+  experimental lane back to the production SDK.
 
 Fix shape:
 - Keep this lane report-driven and non-production: no project TFM edits, no
