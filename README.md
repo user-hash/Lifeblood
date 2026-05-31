@@ -148,7 +148,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 Self-analysis (symbols, edges, modules, types, violations, cycles), discovered test cases, `[SkippableFact]` opt-in count, typed-invariant audit (total + category coverage, duplicates, parse warnings) — every metric is anchored in [`docs/STATUS.md`](docs/STATUS.md) and ratcheted against the live source on every CI run (see [`tests/Lifeblood.Tests/DocsTests.cs`](tests/Lifeblood.Tests/DocsTests.cs)). Zero regressions, zero parse warnings.
 
-Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242,233 edges, 91 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology, examples, and per-finding history live in [Dogfood Findings](docs/DOGFOOD_FINDINGS.md).
+Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242,233 edges, 91 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology and per-finding history are summarized in [Status](docs/STATUS.md) and the [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -175,7 +175,6 @@ Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
 | [Release checklist](docs/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet single-use-key publish flow |
-| [Dogfood Findings](docs/DOGFOOD_FINDINGS.md) | 50+ bugs found by self-analysis and reviewer dogfood sessions |
 | [CHANGELOG](CHANGELOG.md) | Every release — additions, fixes, known limitations |
 
 ---

@@ -188,5 +188,4 @@ caller. The triage workflow:
 - The architectural invariants live in `docs/invariants/**.md`; every
   tool's behavior is pinned by at least one INV.
 - The deprecation policy for wire shapes is `docs/SCHEMA_DEPRECATION_POLICY.md`.
-- DAWG-specific dogfood findings are in `docs/DOGFOOD_FINDINGS.md`.
 - The full release history is `CHANGELOG.md`.
