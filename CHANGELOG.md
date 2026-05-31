@@ -10,8 +10,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 DAWG-dogfood cheap bug-first pass (2026-05-30). Six trust-and-robustness fixes
 surfaced during a DAWG Burst session, reconciled from `IMPROVEMENT_INBOX.md` +
 `devmemory/lifeblood-tracking.md`. Full suite 1258 passed / 0 failed / 11
-native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1301;
-invariants 150 → 159; self symbols 3834 → 4212 / edges 23020 → 24545.
+native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1307;
+invariants 150 → 159; self symbols 3834 → 4251 / edges 23020 → 24674.
 
 ### Added
 
@@ -21,6 +21,7 @@ invariants 150 → 159; self symbols 3834 → 4212 / edges 23020 → 24545.
 - **Tracking ledger SSoT ratchet** (`INV-TRACKING-SSOT-001`). `TrackingLedgerTests` parses `devmemory/lifeblood-tracking.md` entry bodies, keeps status summary anchors honest, pins the active backlog to the `Partially shipped` entries, and requires every partial entry to declare its remaining open work.
 - **Enum-aware tool argument contracts.** `ToolInputContract` now preserves declared schema enum values, can regenerate every registered tool input schema byte-stably through the existing canonicalizer, and `ToolArgumentBinder` rejects enum values outside the schema in strict mode.
 - **Typed contract-backed capability flags.** `lifeblood_capabilities.featureFlags.summarizeCapableTools` now derives from `ToolInputContract` argument metadata instead of serializing input schemas and searching for a `"summarize"` token. The existing capabilities wire shape is unchanged; `ToolHandlerTests` pins the flag list against the typed contract SSoT.
+- **Authoritative MCP input contract catalog.** `ToolInputContractCatalog` now owns registered MCP tool argument names, types, required flags, enum values, and descriptions. `ToolDefinition.InputSchema` is generated from the typed contract, and `ToolRegistry` no longer authors anonymous schema objects. Snapshot tests still pin the `tools/list` wire shape byte-stably.
 
 ### Fixed
 

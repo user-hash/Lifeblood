@@ -344,10 +344,12 @@ warn-mode argument telemetry, and strict-mode structured tool errors. Pinned by
 slice adds enum preservation/enforcement and a typed-contract schema round-trip
 ratchet across every registered tool. A second local SSoT cleanup routes
 `lifeblood_capabilities.featureFlags.summarizeCapableTools` through the typed
-contract metadata instead of schema text searching. Remaining open work: making
-typed contracts the primary authoring source instead of projecting from
-anonymous schemas, source-generated contexts, and measured `PipeReader`
-adoption.
+contract metadata instead of schema text searching. A third local SSoT cleanup
+makes `ToolInputContractCatalog` the primary authoring source: `ToolRegistry`
+now owns tool identity/availability/descriptions only, while schemas exposed by
+`tools/list` are generated from typed contract metadata. Remaining open work:
+typed request-record binding for high-risk tools, source-generated contexts,
+and measured `PipeReader` adoption.
 
 Summary:
 - Newer `System.Text.Json` capabilities are directly relevant to Lifeblood's
@@ -361,9 +363,8 @@ Summary:
   source remains open.
 
 Remaining open work:
-- Make typed contracts the primary authoring source, generate/validate schemas
-  from that source without projecting from anonymous registry objects, add
-  source-generated JSON contexts, and measure `PipeReader` before adopting it.
+- Add typed request-record binding for high-risk tools, source-generated JSON
+  contexts, and measure `PipeReader` before adopting it.
 
 Impact:
 - Schema drift is a high-leverage failure class: clients learn tool arguments

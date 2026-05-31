@@ -81,18 +81,7 @@ public static class ServerIdentity
                 evidenceReceipts = true,
                 strictJsonDuplicateRejection = true,
                 operationalTelemetry = true,
-                operationalTelemetryEvents = new[]
-                {
-                    "lifeblood.tool.success_result",
-                    "lifeblood.tool.error_result",
-                    "lifeblood.tool.exception",
-                    "lifeblood.tool.response_json",
-                    "lifeblood.tool.truncated",
-                    "lifeblood.tool.arguments",
-                    "lifeblood.analyze.result",
-                    "lifeblood.analyze.fallback",
-                    "lifeblood.cache.lookup",
-                },
+                operationalTelemetryEvents = McpTelemetryEvents.All,
                 toolArgumentContracts = true,
                 jsonCompatibilityModes = new[] { "legacy", "warn", "strict" },
                 summarizeCapableTools = summarizeCapable,
@@ -298,8 +287,7 @@ public static class ServerIdentity
 
     private static bool HasBooleanSummarizeArgument(ToolDefinition definition)
     {
-        var contract = ToolInputContract.FromSchema(definition.Name, definition.InputSchema);
-        return contract.Arguments.TryGetValue("summarize", out var argument)
+        return definition.InputContract.Arguments.TryGetValue("summarize", out var argument)
             && argument.Type == ToolArgumentType.Boolean;
     }
 

@@ -87,13 +87,22 @@ public sealed class ToolHandler
 
     private static ToolArgumentBinder BuildArgumentBinder()
         => new(ToolRegistry.GetDefinitions()
-            .Select(d => ToolInputContract.FromSchema(d.Name, d.InputSchema)));
+            .Select(d => d.InputContract));
 
     public McpToolResult Handle(string toolName, JsonElement? arguments)
         => RequiresExclusiveSessionAccess(toolName)
             ? _sessionGate.Write(() => HandleCore(toolName, arguments))
             : _sessionGate.Read(() => HandleCore(toolName, arguments));
 
+    // Only these two mutate the retained session in place: lifeblood_analyze
+    // replaces it (WorkspaceSession.Clear + Load) and lifeblood_compile_check
+    // can trigger a stale refresh (GraphSession.MaybeRefreshIfStale → Clear +
+    // Load). Every other tool — including the WriteSide find_*/rename/format —
+    // only reads the immutable retained graph/compilations or computes edits it
+    // returns to the client, so they are safe under the shared Read lock. Do not
+    // widen this set to ToolAvailability.WriteSide: that classifies "needs live
+    // compilations", not "mutates session", and serializing read-only queries
+    // under the NoRecursion write lock would regress concurrency for no safety.
     private static bool RequiresExclusiveSessionAccess(string toolName)
         => toolName is "lifeblood_analyze" or "lifeblood_compile_check";
 
@@ -165,14 +174,14 @@ public sealed class ToolHandler
             {
                 operation.SetTag("tool.result", "error");
                 _telemetry.RecordEvent(
-                    "lifeblood.tool.error_result",
+                    McpTelemetryEvents.ToolErrorResult,
                     new TelemetryTag("tool.name", toolName));
             }
             else
             {
                 operation.SetTag("tool.result", "success");
                 _telemetry.RecordEvent(
-                    "lifeblood.tool.success_result",
+                    McpTelemetryEvents.ToolSuccessResult,
                     new TelemetryTag("tool.name", toolName));
             }
 
@@ -182,7 +191,7 @@ public sealed class ToolHandler
         {
             operation.SetError(ex);
             _telemetry.RecordEvent(
-                "lifeblood.tool.exception",
+                McpTelemetryEvents.ToolException,
                 new TelemetryTag("tool.name", toolName),
                 new TelemetryTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name));
             return ErrorResult($"Error: {ex.Message}");
@@ -1257,7 +1266,7 @@ public sealed class ToolHandler
             var profileCount = summary.ValueKind == JsonValueKind.Object ? GetInt(summary, "profileCount") : null;
 
             _telemetry.RecordEvent(
-                "lifeblood.analyze.result",
+                McpTelemetryEvents.AnalyzeResult,
                 new TelemetryTag("tool.name", "lifeblood_analyze"),
                 new TelemetryTag("analyze.mode", mode),
                 new TelemetryTag("analyze.requested_mode", requestedMode),
@@ -1273,7 +1282,7 @@ public sealed class ToolHandler
                 || (!string.IsNullOrEmpty(requestedMode) && !string.Equals(mode, requestedMode, StringComparison.Ordinal)))
             {
                 _telemetry.RecordEvent(
-                    "lifeblood.analyze.fallback",
+                    McpTelemetryEvents.AnalyzeFallback,
                     new TelemetryTag("tool.name", "lifeblood_analyze"),
                     new TelemetryTag("analyze.mode", mode),
                     new TelemetryTag("analyze.requested_mode", requestedMode),
@@ -1299,27 +1308,31 @@ public sealed class ToolHandler
         var missing = 0;
         var typeMismatch = 0;
         var duplicate = 0;
+        var enumMismatch = 0;
         foreach (var diagnostic in binding.Diagnostics)
         {
             switch (diagnostic.Kind)
             {
-                case "unknown":
+                case ToolArgumentDiagnostic.KindUnknown:
                     unknown++;
                     break;
-                case "missingRequired":
+                case ToolArgumentDiagnostic.KindMissingRequired:
                     missing++;
                     break;
-                case "typeMismatch":
+                case ToolArgumentDiagnostic.KindTypeMismatch:
                     typeMismatch++;
                     break;
-                case "duplicate":
+                case ToolArgumentDiagnostic.KindDuplicate:
                     duplicate++;
+                    break;
+                case ToolArgumentDiagnostic.KindEnumMismatch:
+                    enumMismatch++;
                     break;
             }
         }
 
         _telemetry.RecordEvent(
-            "lifeblood.tool.arguments",
+            McpTelemetryEvents.ToolArguments,
             new TelemetryTag("tool.name", toolName),
             new TelemetryTag("json.compat.mode", binding.Mode.ToString()),
             new TelemetryTag("json.compat.accepted", binding.Accepted),
@@ -1327,7 +1340,8 @@ public sealed class ToolHandler
             new TelemetryTag("json.compat.unknown_count", unknown),
             new TelemetryTag("json.compat.missing_count", missing),
             new TelemetryTag("json.compat.type_mismatch_count", typeMismatch),
-            new TelemetryTag("json.compat.duplicate_count", duplicate));
+            new TelemetryTag("json.compat.duplicate_count", duplicate),
+            new TelemetryTag("json.compat.enum_mismatch_count", enumMismatch));
     }
 
     private void RecordTruncationIfAny(
@@ -1353,7 +1367,7 @@ public sealed class ToolHandler
         if (!TelemetryEnabled) return;
 
         _telemetry.RecordEvent(
-            "lifeblood.tool.truncated",
+            McpTelemetryEvents.ToolTruncated,
             new TelemetryTag("tool.name", toolName),
             new TelemetryTag("truncation.dimension", dimension),
             new TelemetryTag("truncation.full_count", fullCount),
@@ -1367,7 +1381,7 @@ public sealed class ToolHandler
         if (!TelemetryEnabled || stopwatch == null) return;
         stopwatch.Stop();
         _telemetry.RecordEvent(
-            "lifeblood.tool.response_json",
+            McpTelemetryEvents.ToolResponseJson,
             new TelemetryTag("tool.name", toolName),
             new TelemetryTag("json.path", path),
             new TelemetryTag("json.bytes", Encoding.UTF8.GetByteCount(json)),

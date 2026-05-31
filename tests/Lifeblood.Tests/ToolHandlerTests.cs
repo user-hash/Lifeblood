@@ -134,6 +134,10 @@ public class ToolHandlerTests : IDisposable
             .ToArray();
         Assert.Contains("lifeblood.tool.truncated", telemetryEvents);
         Assert.Contains("lifeblood.analyze.fallback", telemetryEvents);
+        // INV-TELEMETRY-EVENT-SSOT-001: the advertised surface is exactly the
+        // emitted-event SSoT, so an emitted-but-unadvertised event fails here.
+        Assert.Equal(McpTelemetryEvents.All, telemetryEvents);
+        Assert.Contains("lifeblood.analyze.phase", telemetryEvents);
         var summarizeCapableTools = doc.RootElement
             .GetProperty("featureFlags")
             .GetProperty("summarizeCapableTools")
@@ -143,8 +147,7 @@ public class ToolHandlerTests : IDisposable
         var expectedSummarizeCapableTools = ToolRegistry.GetDefinitions()
             .Where(d =>
             {
-                var contract = ToolInputContract.FromSchema(d.Name, d.InputSchema);
-                return contract.Arguments.TryGetValue("summarize", out var argument)
+                return d.InputContract.Arguments.TryGetValue("summarize", out var argument)
                     && argument.Type == ToolArgumentType.Boolean;
             })
             .Select(d => d.Name)

@@ -737,7 +737,7 @@ public sealed class GraphSession : IDisposable
             _tags = tags;
             _allocatedBytesStart = GC.GetTotalAllocatedBytes(precise: false);
             _operation = telemetry.StartOperation(
-                "lifeblood.analyze.phase",
+                McpTelemetryEvents.AnalyzePhase,
                 new[] { new TelemetryTag("analyze.phase", phaseName) }
                     .Concat(tags)
                     .ToArray());
@@ -754,7 +754,7 @@ public sealed class GraphSession : IDisposable
             var allocatedBytes = GC.GetTotalAllocatedBytes(precise: false) - _allocatedBytesStart;
             _operation.SetTag("allocation.bytes", allocatedBytes);
             _telemetry.RecordEvent(
-                "lifeblood.analyze.phase",
+                McpTelemetryEvents.AnalyzePhase,
                 new[] { new TelemetryTag("analyze.phase", _phaseName), new TelemetryTag("allocation.bytes", allocatedBytes) }
                     .Concat(_tags)
                     .ToArray());
