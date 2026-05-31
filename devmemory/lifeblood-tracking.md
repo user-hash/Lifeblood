@@ -650,6 +650,60 @@ Fix shape:
 - Use this lane as the prerequisite for packaging experiments and runtime/JIT
   benchmarks on newer SDKs.
 
+## 2026-05-31 - .NET 10 lane parity/docs failures are a concurrency artifact (diagnosis correction)
+
+Status: Investigated (no production change)
+Type: Diagnosis correction
+Source: DAWG-session full verification of the pushed tracking-list-hardening chain, 2026-05-31
+Workspace: Lifeblood self (net8 production + net10 copied-tree lane)
+
+The `fa450a9` commit body recorded the net10 limitation as "BuildDiagnosticParityTests
+fails because Lifeblood diagnose does not see `McpJsonSerializerContext.Default` under
+the net10 generated-context shape." Full reproduction shows that diagnosis is wrong.
+Honest finding:
+
+- The net10 System.Text.Json source generator works. An isolated A/B harness (host
+  Roslyn 4.14, net8 `8.0.25` vs net10 `10.0.8` ref pack, identical source) shows BOTH
+  packs emit all five generated sources including `McpJsonSerializerContext.g.cs`,
+  `.Default` resolves, and the updated compilation reports zero errors / no CS0117.
+  `RoslynModuleDiscovery.DiscoverFrameworkSourceGeneratorAnalyzerPaths` also resolves
+  the net10 pack and its six analyzer paths correctly when run under the net10 runtime.
+
+- The real cause is a race in source-generator loading/execution when MULTIPLE
+  analyses run concurrently in one process — i.e. the xunit test suite.
+  `BuildDiagnosticParityTests` and
+  `CsprojCompilationFactsTests.Compilation_RunsFrameworkSourceGenerators_ForJsonSerializerContext`
+  PASS in isolation but FAIL in the full suite, and live self-analyze counts swing
+  run-to-run (4354 / 4349 / 4391 symbols) depending on whether the generated output
+  for `Lifeblood.Server.Mcp` lands. net10's wider assembly-load window exposes the
+  race; net8 reliably wins it (net8 full suite is green and deterministic at
+  4385/25092).
+
+- Production is never affected. The MCP host serializes retained-session analyses via
+  `GraphSessionGate`, and the CLI is one-shot, so concurrent in-process generator
+  execution never occurs on the shipping path. The net10 failures are an
+  experimental-lane test-harness artifact, not a product defect.
+
+- The two `DocsTests.Anchor_MatchesLiveSource` failures (selfAnalyzeSymbols / Edges)
+  are separate and expected: the anchors are net8 production facts, and a net10
+  retarget legitimately yields a small BCL delta (~+1 symbol / +3 edges once the race
+  is removed), so a net10 build cannot match net8-pinned anchors.
+
+Closure:
+- net8 production target verified green this session: build clean, full suite
+  1311 passed / 0 failed / 11 skipped, self-analyze deterministic 4385/25092, external
+  DAWG analyze clean. The fifteen-commit chain is on origin/main `fa450a9`.
+- A speculative shared-loader/Lazy-cache patch was trialled to remove the race; it did
+  not fully close the flake and perturbed net8 counts (+5, unexplained), so it was
+  reverted rather than shipped. net8 stays at 4385/25092.
+
+Fix shape (deferred — its own atom, only when net10 becomes a real target):
+- Isolate framework analyzer loading per analysis (`AssemblyLoadContext`) or serialize
+  the generator-driver run so concurrent in-process analyses cannot race on
+  process-global Roslyn analyzer state.
+- Scope the `DocsTests` self-analyze anchor arms to the production TFM so an
+  experimental retarget does not assert net8 counts against a net10 build.
+
 ## 2026-05-28 - Lifeblood .NET tool packaging/distribution lane
 
 Status: Shipped
