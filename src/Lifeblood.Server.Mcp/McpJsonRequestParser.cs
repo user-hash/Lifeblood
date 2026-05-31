@@ -1,7 +1,5 @@
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -10,10 +8,13 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class McpJsonRequestParser
 {
-    // Strict-mode derived options are cached per source-options instance so
-    // System.Text.Json metadata caching is preserved across requests (the
-    // stdio loop passes one stable options instance for the process lifetime).
-    private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> StrictOptionsCache = new();
+    private static readonly HashSet<string> JsonRpcEnvelopeProperties = new(StringComparer.Ordinal)
+    {
+        "jsonrpc",
+        "id",
+        "method",
+        "params",
+    };
 
     /// <summary>
     /// Parse a JSON-RPC request. When strict mode is enabled, duplicate
@@ -30,20 +31,13 @@ public static class McpJsonRequestParser
     {
         if (!strictJson)
         {
-            return JsonSerializer.Deserialize(json, McpJsonSerializerContext.For(options).JsonRpcRequest);
+            return JsonSerializer.Deserialize(json, McpJsonSerializerContext.Default.JsonRpcRequest);
         }
 
         var utf8 = Encoding.UTF8.GetBytes(json);
-        ThrowIfDuplicateProperties(utf8);
+        ThrowIfInvalidStrictEnvelope(utf8);
 
-        var strictOptions = StrictOptionsCache.GetValue(
-            options,
-            static src => new JsonSerializerOptions(src)
-            {
-                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-            });
-
-        return JsonSerializer.Deserialize(utf8, McpJsonSerializerContext.For(strictOptions).JsonRpcRequest);
+        return JsonSerializer.Deserialize(utf8, McpJsonSerializerContext.Default.JsonRpcRequest);
     }
 
     public static bool ReadStrictJsonFlag(string environmentVariableName)
@@ -61,7 +55,7 @@ public static class McpJsonRequestParser
         };
     }
 
-    private static void ThrowIfDuplicateProperties(ReadOnlySpan<byte> utf8)
+    private static void ThrowIfInvalidStrictEnvelope(ReadOnlySpan<byte> utf8)
     {
         var reader = new Utf8JsonReader(
             utf8,
@@ -97,6 +91,12 @@ public static class McpJsonRequestParser
                     {
                         throw new JsonException(
                             $"Duplicate JSON property '{propertyName}' is not allowed when strict JSON mode is enabled.");
+                    }
+
+                    if (scopes.Count == 1 && !JsonRpcEnvelopeProperties.Contains(propertyName))
+                    {
+                        throw new JsonException(
+                            $"Unknown JSON-RPC envelope property '{propertyName}' is not allowed when strict JSON mode is enabled.");
                     }
 
                     break;

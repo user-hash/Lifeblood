@@ -1,4 +1,5 @@
 using System.Reflection;
+using Lifeblood.Application.Ports.Left;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -16,7 +17,8 @@ internal static class SourceGeneratorRunner
 {
     public static CSharpCompilation Run(
         CSharpCompilation compilation,
-        IReadOnlyList<string> analyzerPaths)
+        IReadOnlyList<string> analyzerPaths,
+        ModuleInfo module)
     {
         if (analyzerPaths.Count == 0)
             return compilation;
@@ -53,7 +55,8 @@ internal static class SourceGeneratorRunner
             .FirstOrDefault();
         var driver = CSharpGeneratorDriver.Create(
             generators,
-            parseOptions: parseOptions);
+            parseOptions: parseOptions,
+            optionsProvider: BuildOptionsProvider(module));
 
         driver.RunGeneratorsAndUpdateCompilation(
             compilation,
@@ -61,6 +64,33 @@ internal static class SourceGeneratorRunner
             out _);
 
         return (CSharpCompilation)updatedCompilation;
+    }
+
+    private static AnalyzerConfigOptionsProvider BuildOptionsProvider(ModuleInfo module)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(module.TargetFramework))
+        {
+            values["build_property.TargetFramework"] = module.TargetFramework;
+            var match = System.Text.RegularExpressions.Regex.Match(module.TargetFramework, @"^net(\d+)\.(\d+)");
+            if (match.Success)
+            {
+                values["build_property.TargetFrameworkIdentifier"] = ".NETCoreApp";
+                values["build_property.TargetFrameworkVersion"] = $"v{match.Groups[1].Value}.{match.Groups[2].Value}";
+                values["build_property.TargetFrameworkMoniker"] =
+                    $".NETCoreApp,Version=v{match.Groups[1].Value}.{match.Groups[2].Value}";
+            }
+        }
+
+        values["build_property.RootNamespace"] = module.Name;
+        values["build_property.AssemblyName"] = module.Name;
+        values["build_property.Nullable"] = string.IsNullOrWhiteSpace(module.NullableContext)
+            ? "disable"
+            : module.NullableContext;
+        values["build_property.ImplicitUsings"] = module.ImplicitUsings ? "enable" : "disable";
+
+        return new ModuleAnalyzerConfigOptionsProvider(values);
     }
 
     private sealed class SourceGeneratorAnalyzerAssemblyLoader : IAnalyzerAssemblyLoader
@@ -85,5 +115,36 @@ internal static class SourceGeneratorRunner
             _loaded[normalized] = assembly;
             return assembly;
         }
+    }
+
+    private sealed class ModuleAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsProvider
+    {
+        private readonly AnalyzerConfigOptions _options;
+
+        public ModuleAnalyzerConfigOptionsProvider(IReadOnlyDictionary<string, string> values)
+        {
+            _options = new ModuleAnalyzerConfigOptions(values);
+        }
+
+        public override AnalyzerConfigOptions GlobalOptions => _options;
+
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _options;
+
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => _options;
+    }
+
+    private sealed class ModuleAnalyzerConfigOptions : AnalyzerConfigOptions
+    {
+        private readonly IReadOnlyDictionary<string, string> _values;
+
+        public ModuleAnalyzerConfigOptions(IReadOnlyDictionary<string, string> values)
+        {
+            _values = values;
+        }
+
+        public override bool TryGetValue(
+            string key,
+            [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? value)
+            => _values.TryGetValue(key, out value);
     }
 }

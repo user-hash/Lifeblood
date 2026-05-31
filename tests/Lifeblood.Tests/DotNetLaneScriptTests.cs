@@ -35,6 +35,7 @@ public class DotNetLaneScriptTests
         Assert.Contains("--ignore-failed-sources", script);
         Assert.Contains("PackageSources", script);
         Assert.Contains("NuGetAudit=false", script);
+        Assert.Contains("LIFEBLOOD_DOTNET_EXPERIMENTAL_TARGET", script);
         Assert.DoesNotContain("-p:TargetFramework=$TargetFramework", script);
     }
 

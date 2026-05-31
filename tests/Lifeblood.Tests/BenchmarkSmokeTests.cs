@@ -56,6 +56,24 @@ public class BenchmarkSmokeTests
         Assert.Contains("schemaVersion = 1", script);
         Assert.Contains("BenchmarkRunId", script);
         Assert.Contains("benchmarkRunId", script);
+        Assert.Contains("DotnetExe", script);
+        Assert.Contains("AllowExperimentalTargets", script);
+        Assert.Contains("SkipExperimentalTests", script);
+        Assert.Contains("RestoreIgnoreFailedSources", script);
+        Assert.Contains("PackageSources", script);
+        Assert.Contains("DotnetCliHome", script);
+        Assert.Contains("WorkDirRoot", script);
+        Assert.Contains("experimentalTargets", script);
+        Assert.Contains("executionMode", script);
+        Assert.Contains("run-lifeblood-experimental-target.ps1", script);
+        Assert.Contains("experimentalTargetReport", script);
+        Assert.Contains("experimentalTargetStatus", script);
+        Assert.Contains("experimentalTargetError", script);
+        Assert.Contains("missing-report", script);
+        Assert.Contains("Pass -AllowExperimentalTargets", script);
+        Assert.Contains("$resolvedProject = (Resolve-Path $Project).Path", script);
+        Assert.Contains("$workloadProject = if ($workload -in @(\"self-analyze\", \"self-context\", \"cli-help\")) { $runnerSelfRoot } else { $resolvedProject }", script);
+        Assert.DoesNotContain("$Workloads -contains \"self-analyze\"", script);
 
         var mcpScript = File.ReadAllText(Path.Combine(
             repoRoot,
