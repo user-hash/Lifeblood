@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-**Release-candidate state (final commit):** 1323 discovered / **1311 passed / 0 failed**
+**Release-candidate state (final commit):** 1323 discovered / **1312 passed / 0 failed**
 / 11 native-clang skips; self-analyze **0 violations / 0 cycles, 4394 symbols / 25106 edges**;
 31 MCP tools, 30 ports, 160 invariants. Authoritative live counts live in `docs/STATUS.md`
 (truth-receipt SSoT) — the per-pass deltas below are historical within this unreleased span,
