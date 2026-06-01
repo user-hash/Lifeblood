@@ -7,10 +7,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-**Release-candidate state (final commit):** 1323 discovered / **1312 passed / 0 failed**
+## [0.7.11] - 2026-06-01
+
+**Final release state:** 1323 discovered / **1312 passed / 0 failed**
 / 11 native-clang skips; self-analyze **0 violations / 0 cycles, 4394 symbols / 25106 edges**;
 31 MCP tools, 30 ports, 160 invariants. Authoritative live counts live in `docs/STATUS.md`
-(truth-receipt SSoT) — the per-pass deltas below are historical within this unreleased span,
+(truth-receipt SSoT) — the per-pass deltas below are historical within this release span,
 not the final-state numbers.
 
 ### Added
@@ -1465,7 +1467,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.10...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.11...HEAD
+[0.7.11]: https://github.com/user-hash/Lifeblood/compare/v0.7.10...v0.7.11
 [0.7.10]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...v0.7.10
 [0.7.9]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...v0.7.9
 [0.7.8]: https://github.com/user-hash/Lifeblood/compare/v0.7.7...v0.7.8
