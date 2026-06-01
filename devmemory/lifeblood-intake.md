@@ -82,6 +82,50 @@ for every cross-module edge assert the source asmdef declares the target in its
 `references` set, else report a directed boundary violation with the offending
 edge + first call site. Pure-static graph query.
 
+## LB-INTAKE-20260601-004 — Vendored/third-party path exclusion for dead_code + analyze
+
+Type: UX / Control · Priority: MEDIUM
+
+What: On the DAWG dead_code pass, ~12% of the first 25 production candidates were
+third-party example code — `TMPro.Examples.TMP_TextInfoDebugTool.DrawSolidRectangle`,
+`DrawDottedRectangle`, `TextConsoleSimulator.RevealWords` (all under
+`Assets/TextMesh Pro/Examples & Extras/`) — all classified `bucket: Production`.
+There is no way to exclude vendored / sample / package paths from `analyze` or
+`dead_code` (analyze takes only `projectPath` / `graphPath` / `rulesPath` /
+`mode` / `defineProfiles`; no exclude glob), and the bucket classifier treats
+vendored example code as Production.
+
+Why it matters: vendored noise pollutes dead_code triage and cycle/metric counts,
+and a path-scoped analyze would also cut the full-analyze cost on large trees.
+
+Fix shape: (a) an `excludePaths`/`vendorGlobs` parameter on `analyze` (and a
+matching `pathExclude` on `dead_code`), and/or (b) extend the bucket classifier to
+recognize known-vendored roots (`*/Examples*`, `*/Samples*`, `Packages/`,
+third-party asset dirs) as a `Vendored` bucket distinct from `Production`.
+
+## LB-INTAKE-20260601-005 — net10 source-generator concurrency isolation (deferred fix)
+
+Type: Bug (latent) / Robustness · Priority: LOW until net10 is a real target
+
+What: Diagnosed + archived 2026-05-31 — net10's wider assembly-load window exposes
+a race in framework source-generator loading/execution when MULTIPLE analyses run
+concurrently in one process (the xunit suite). `BuildDiagnosticParityTests` +
+`CsprojCompilationFactsTests.Compilation_RunsFrameworkSourceGenerators_*` pass in
+isolation, fail in the full suite; self-analyze counts swing run-to-run
+(4354/4349/4391). net8 reliably wins the race (deterministic 4385/25092).
+Production is never affected (MCP serializes via `GraphSessionGate`; CLI is
+one-shot). A speculative shared-loader/Lazy-cache patch was trialled, didn't fully
+close the flake, perturbed net8 counts (+5), and was reverted.
+
+Why it matters: blocks a clean net10 evaluation and is a latent hazard on any
+future concurrent-analysis path; process-global Roslyn analyzer state is shared.
+
+Fix shape (deferred, its own atom): isolate framework-analyzer loading per
+analysis via `AssemblyLoadContext`, OR serialize the generator-driver run so
+concurrent in-process analyses cannot race on process-global analyzer state. Scope
+`DocsTests.Anchor_MatchesLiveSource` self-analyze arms to the production TFM so an
+experimental retarget does not assert net8 counts against a net10 build.
+
 ---
 
 ## Refuted this pass (do not re-investigate)
