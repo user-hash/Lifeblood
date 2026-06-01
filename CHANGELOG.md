@@ -9,49 +9,76 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.7.11] - 2026-06-01
 
-**Final release state:** 1323 discovered / **1312 passed / 0 failed**
-/ 11 native-clang skips; self-analyze **0 violations / 0 cycles, 4394 symbols / 25106 edges**;
-31 MCP tools, 30 ports, 160 invariants. Authoritative live counts live in `docs/STATUS.md`
-(truth-receipt SSoT) — the per-pass deltas below are historical within this release span,
-not the final-state numbers.
+This release is mostly about **honesty and resilience**: when something goes wrong,
+the server now tells you *what* and *where* instead of collapsing into an opaque error.
+Several fixes came directly from dogfooding against a large Unity codebase. Full
+test and self-analysis counts: see [`docs/STATUS.md`](docs/STATUS.md) (truth-receipt SSoT).
 
-DAWG-dogfood cheap bug-first pass (2026-05-30). Six trust-and-robustness fixes
-surfaced during a DAWG Burst session, reconciled from `IMPROVEMENT_INBOX.md` +
-`devmemory/lifeblood-tracking.md`. Full suite 1258 passed / 0 failed / 11
-native-clang skips. Self-analyze 0 violations / 0 cycles. Tests 1228 → 1318;
-invariants 150 → 160; self symbols 3834 → 4309 / edges 23020 → 24854.
+### Fixes that change what you see when things break
 
-### Added
+- **The server no longer crashes itself on a broken pipe.** Previously, if a client
+  disconnected at the wrong moment, the error-handling code tried to log the problem,
+  that log write *also* failed, and the exception escaped and killed the whole process —
+  permanently closing the connection. The request loop was rebuilt so each kind of
+  failure is caught, logged safely, and answered with a proper error response. Error
+  responses now also keep the original request ID, so a client waiting on a specific
+  request finally gets its answer back instead of hanging forever.
+- **Analyze failures now explain themselves.** When a full project analysis hit a problem
+  (typically after a Unity asset re-import shuffled things mid-run), all you got was
+  `Object reference not set to an instance of an object` — no clue which phase, module,
+  or file was at fault. Analysis now tracks where it is as it works, so a failure comes
+  back with the phase, module, file, and profile it died on. Genuinely bad input (like
+  asking for a profile that doesn't exist) still comes back as a plain validation error
+  rather than being dressed up as an internal crash.
+- **Running code that touches engine types gives a clear answer instead of a loader
+  error.** The `execute` tool compiles your snippet against the project's types, but it
+  doesn't load those assemblies into itself — so `Unsafe.SizeOf<T>`, `new SomeEngineType()`,
+  or reflecting over a project type can't return a real value. Before, this leaked a raw
+  `Could not load file or assembly…` message that looked like a tool bug. Now you get a
+  clear explanation: it compiled fine, but this value has to come from the engine's own
+  runtime, and here's the assembly involved.
+- **Compile-check now distinguishes "file doesn't exist" from "file exists but isn't
+  loaded."** These used to share one vague error. They're now separate states, and when a
+  file is on disk but missing from every loaded compilation — usually a freshly-added
+  Unity file whose project metadata hasn't regenerated yet — you get a specific hint
+  telling you to refresh and re-analyze.
+- **Corrected a false claim in the analyze docs.** The tool used to promise that a new
+  `.cs` file on disk would be picked up on the next analyze. It won't — Lifeblood finds
+  files through generated project descriptors, so a file Unity hasn't imported yet stays
+  invisible. The docs now say this plainly and point you at the right way to check.
 
-- **MCP argument contracts + JSON compatibility modes** (`INV-MCP-TOOL-ARG-CONTRACT-001`, `INV-MCP-STRICT-JSON-001`). `ToolInputContract.FromSchema` projects registered input schemas into typed contract metadata at the handler/composition edge; `ToolArgumentBinder` validates tool arguments under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`. Legacy remains default, warn accepts with `lifeblood.tool.arguments` telemetry, strict rejects invalid arguments with structured diagnostics, and `LIFEBLOOD_STRICT_JSON` remains the strict alias.
-- **Analyze phase telemetry and session gate** (`INV-TELEMETRY-001`, `INV-MCP-SESSION-GATE-001`). `GraphSession` records real `lifeblood.analyze.phase` scopes/events with allocation deltas; invariant cache lookup telemetry now emits after the cache lock is released. `GraphSessionGate` keeps retained-session mutation at the MCP host boundary: read-side calls share read access, while analyze and compile-check stale refresh use the write gate.
-- **Runtime diagnostics gauges.** The opt-in .NET diagnostics sink now exports process working-set bytes, private bytes, managed heap bytes, and process thread count as observable gauges, pinned by a real `MeterListener` measurement test.
-- **Session-gate stress ratchets** (`INV-MCP-SESSION-GATE-001`). `GraphSessionGateTests` now pin reader/writer exclusion in both directions plus writer serialization, and `ToolHandlerTelemetryTests` verifies `lifeblood_compile_check` uses the write gate because stale refresh can replace the retained session.
-- **.NET adoption lanes**. Runtime benchmark script now reports expanded workloads (`analyze`, `context`, `incremental-noop`, `cli-help`) with category metadata and parse-duration measurements. The CLI and MCP benchmark reports share a `benchmarkRunId`; the MCP GC benchmark passes it into the child process as `LIFEBLOOD_BENCHMARK_RUN_ID`, then runs retained read-side tools after analyze and records per-tool dispatch latency/response-size completion evidence. A benchmark-only JSON parser harness now compares the current string parser with UTF-8 span and buffered `PipeReader` parser shapes in legacy and strict modes; production MCP transport remains unchanged until the report proves a real win. Tool-packaging smoke records optional `dotnet tool exec` / `dnx` help checks when available and honest skips otherwise. Runtime Async fixtures now cover diagnose, compile-check file mode, and compile-check snippet mode for `<Features>runtime-async=on</Features>` projects; the opt-in Runtime Async benchmark lane injects that compiler feature only into a copied experimental tree. Local .NET 11 preview evidence (`11.0.100-preview.4.26230.115`) restores/builds/tests the copied Runtime Async tree, matches production semantic counts, and completes retained MCP read-side dispatch. The lane also closed the synthetic implicit-global-usings feature-parity defect found by that run.
-- **JSON parser benchmark evidence.** The standalone parser harness now has a local execution receipt, and strict JSON mode reuses the UTF-8 bytes already required for duplicate-property detection when deserializing the envelope. Buffered `PipeReader` remains measurement-only because it is semantically equivalent but allocates more per operation under the current newline-framed stdio transport.
-- **Source-generated JSON parity.** The C# adapter now discovers framework-reference source-generator analyzers from the target framework ref pack and runs them before extraction/diagnostics, so generator-created members are visible to Lifeblood. MCP request parsing adopts a generated `JsonRpcRequest` context without mutating the shared serializer options; dynamic response payloads remain on the existing serializer path.
-- **.NET 10 experimental target evidence.** The experimental target lane now accepts explicit dotnet host, package-source, CLI-home, and workdir controls. Local `net10.0` receipt with SDK `10.0.300` restored, built, ran the full test suite, matched production self-analysis anchors, and packed both CLI and MCP tools from the copied tree without changing production TFMs.
-- **Packaging/distribution evidence.** Local Windows `win-x64` tool-packaging receipt packed and installed both tool entry points, validated CLI help output, smoke-tested MCP closed-stdin startup/shutdown, and ran report-only publish experiments. Framework-dependent and self-contained publish shapes completed where supported; CLI AOT records an honest native-linker-prerequisite skip, and MCP trim/AOT remain intentionally skipped until Roslyn compatibility evidence supports them.
-- **.NET 10 experimental evidence receipts.** `run-lifeblood-experimental-target.ps1` now records schema snapshot inventory, parses the experimental test summary, runs an experimental CLI self-analyze, and compares test/semantic counts against the production `docs/STATUS.md` anchors before any production TFM migration is considered. The lane also serializes restore, can opt into cached/offline restore via `-RestoreIgnoreFailedSources`, and falls forward to a fresh temp work directory when a previous experimental tree is locked.
-- **Tracking ledger SSoT ratchet** (`INV-TRACKING-SSOT-001`). `TrackingLedgerTests` parses `devmemory/lifeblood-tracking.md` entry bodies, keeps status summary anchors honest, pins the active backlog to the `Partially shipped` entries, and requires every partial entry to declare its remaining open work.
-- **Enum-aware tool argument contracts.** `ToolInputContract` now preserves declared schema enum values, can regenerate every registered tool input schema byte-stably through the existing canonicalizer, and `ToolArgumentBinder` rejects enum values outside the schema in strict mode.
-- **Typed contract-backed capability flags.** `lifeblood_capabilities.featureFlags.summarizeCapableTools` now derives from `ToolInputContract` argument metadata instead of serializing input schemas and searching for a `"summarize"` token. The existing capabilities wire shape is unchanged; `ToolHandlerTests` pins the flag list against the typed contract SSoT.
-- **Authoritative MCP input contract catalog.** `ToolInputContractCatalog` now owns registered MCP tool argument names, types, required flags, enum values, and descriptions. `ToolDefinition.InputSchema` is generated from the typed contract, and `ToolRegistry` no longer authors anonymous schema objects. Snapshot tests still pin the `tools/list` wire shape byte-stably.
-- **High-risk MCP request-record binding.** `ToolRequestBinder` binds `lifeblood_analyze` and `lifeblood_compile_check` through typed request records, preserving back-compatible handler defaults such as `compile_check.staleRefresh=true` while keeping MCP field names in `Lifeblood.Server.Mcp`. Source-generated request contexts stay in the remaining .NET adoption lane until Lifeblood diagnostic parity supports generator output.
-- **Report-only packaging experiments.** `run-lifeblood-tool-packaging.ps1` now validates CLI help output, records opt-in framework-dependent / self-contained / trim / AOT publish experiments under `artifacts/tool-packaging`, and marks unsupported Roslyn-heavy trim/AOT paths as honest skips instead of release gates.
-- **Telemetry event-name SSoT** (`INV-TELEMETRY-002`). `McpTelemetryEvents` centralizes every emitted server-edge event name; `ServerIdentity` advertises it verbatim and the emit sites reference the constants, closing the gap where `lifeblood.analyze.phase` was emitted and documented but missing from the advertised capability list. Pinned by `McpTelemetryEventsTests` and `ToolHandlerTests`.
+### New capabilities
 
-### Fixed
+- **Quieter output for tight loops.** `compile_check` and `diagnose` take a `compact`
+  option that drops the long list of active preprocessor symbols (150+ entries under a
+  Unity profile) and just gives you the count. Handy when running the same check
+  repeatedly without drowning in noise.
+- **Stricter, self-describing tool arguments.** Tool inputs now carry full enum metadata
+  and validate against it, so invalid argument values are caught cleanly instead of
+  slipping through. Behaviour is opt-in via `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`.
+- **Source generators run before analysis.** Lifeblood discovers and runs a project's
+  source generators before extracting symbols, so generated code is part of what it sees.
+- **Runtime health gauges.** Optional telemetry for the server's own memory use (working
+  set, private bytes, managed heap) and thread count.
 
-- **`execute` workspace-type runtime-load boundary** (`INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001`, LB-TRACK-20260530-031). Scripts compile against workspace/engine types (injected as Roslyn metadata references) but those assemblies are not loaded into the host runtime, so instantiation / `Unsafe.SizeOf<T>` / reflection over a workspace type threw `FileLoadException` and the executor leaked the raw "Could not load file or assembly" message. `RoslynCodeExecutor` now classifies the exception chain against the known workspace module set and returns a structured compile-against-not-run `targetRuntimeWarnings` boundary. Pinned by `ExecuteRobustnessTests`.
-- **`compile_check` file-resolution states** (`INV-COMPILE-CHECK-FILE-RESOLUTION-001`, LB-TRACK-20260530-028). LB0002 collapsed "pinned-module miss", "matched no loaded compilation", and "resolved" into one opaque message. New typed `CompileCheckResult.FileResolution` enum; the file-mode handler (which proves on-disk presence) surfaces a `staleDescriptorHint` for the on-disk-but-not-in-compilation case. Pinned by `CompileCheckFileResolutionTests`.
-- **full `analyze` structured failure** (`INV-ANALYZE-STRUCTURED-FAILURE-001`, LB-INBOX-012). A pipeline fault (e.g. NullReference after Unity asset-import churn) surfaced as a bare "Object reference not set to an instance of an object.". `RoslynWorkspaceAnalyzer` tracks a phase/module/file/profile cursor and wraps unexpected faults in a new `WorkspaceAnalysisException`; `ToolHandler.HandleAnalyze` serializes the structured context. Validation exceptions (`ArgumentException`) propagate unchanged. Pinned by `WorkspaceAnalysisFailureTests`.
-- **MCP stdio transport resilience** (`INV-MCP-TRANSPORT-RESILIENCE-001`, LB-TRACK-20260530-029). A broken-pipe `IOException` in the loop's own error-path write escaped and terminated the process, closing the transport permanently; error responses also dropped the request id. The read-dispatch-write loop is extracted to a testable `McpServerLoop`: dispatch faults become id-correlated `-32603` responses with a structured recovery `data` envelope, serialization faults still emit an id-correlated error, and broken-pipe writes are logged and swallowed. `JsonRpcError` gains the JSON-RPC 2.0 `data` member. Pinned by `McpServerLoopTests`.
+### Performance
 
-### Changed
+- **Less allocation in JSON parsing.** The request parser reuses a buffer it was already
+  allocating for duplicate-key detection, instead of allocating a second time.
 
-- **`compile_check` / `diagnose` compact verbosity** (`INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001`, LB-TRACK-20260530-030). Additive `verbosity:"compact"` drops the full `definesActive[]` list (150+ entries on a Unity profile) while keeping `definesActiveCount`; default verbose wire shape is byte-stable. `v1` input-schema snapshots updated.
-- **`analyze` tool description honesty** (`INV-UNITY-NEWFILE-DISCOVERY-HONESTY-001`, LB-TRACK-20260530-028). Removed the false "a `.cs` file ... WILL be picked up by the incremental walker" claim — discovery is descriptor-driven (`.csproj` / asmdef membership); a pre-import file needs project-file regeneration. Points at the `compile_check` `staleDescriptorHint` as the pre-import path. Pinned by `AnalyzeDescriptionHonestyTests` (source-text ratchet).
+### Housekeeping
+
+- Added a doc-link checker that fails the build if any internal documentation link points
+  at a missing file — added after a cleanup pass accidentally deleted pages other docs
+  still linked to.
+- Removed internal/downstream identifiers from the public docs.
+- Corrected the test counts quoted in the docs and tied them to a single source so they
+  stop drifting.
+- Landed an experimental .NET 10 benchmarking lane (runtime-async benchmarks, JSON-parser
+  comparison, dispatch measurement) and closed it out — the apparent regression turned out
+  to be a measurement artifact, not a real slowdown.
+- Internal cleanup: centralized the server's contract/capability metadata, added stress
+  and ledger-consistency tests.
 
 ## [0.7.10] - 2026-05-29
 
