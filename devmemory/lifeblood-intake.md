@@ -126,6 +126,48 @@ concurrent in-process analyses cannot race on process-global analyzer state. Sco
 `DocsTests.Anchor_MatchesLiveSource` self-analyze arms to the production TFM so an
 experimental retarget does not assert net8 counts against a net10 build.
 
+## LB-INTAKE-20260602-001 - Retained-session recovery after read-only analyze
+
+Type: UX / Robustness - Priority: MEDIUM
+
+What: During the DAWG Burst WT/FM/PWM dogfood pass, Lifeblood was the backbone for
+safe work on a DAW-sized Unity project: multi-profile analyze scoped the actual
+Editor/Player graph, dependency/reference tools kept patch-surface changes honest,
+file compile checks caught import/descriptor issues before Unity, and grouped
+blast/test/cycle signals let the agent keep moving without guessing. The workflow
+value is high precisely because DAWG is too large and interconnected for grep-only
+reasoning.
+
+Funky bit: after an accidental `lifeblood_analyze(readOnly:true)` full analyze,
+the session retained the DAWG graph but dropped compilation state. A later
+non-read-only incremental analyze still left write-side tools unavailable; the
+2026-06-02 capability receipt showed `hasGraphLoaded: true`,
+`hasCompilationState: false`, `projectRoot: "D:/Projekti/DAWG"`, and
+`retainedProfileNames: ["Editor", "Player"]`.
+
+Why it matters: read-only analyze is the right escape hatch for huge workspaces,
+but recovering from it is easy to fumble during long product work. The current
+state is honest, but the next step is not obvious enough when the agent needs to
+return from read-only triage to `diagnose`, `compile_check`, `find_references`, or
+`rename`.
+
+Fix shape: make the transition explicit and self-healing where safe. Options:
+allow a non-read-only full analyze to reliably restore compilation state after a
+read-only session; reject non-read-only incremental recovery with a precise
+`canRetryFull` suggestion; and surface `hasCompilationState` plus the recovery
+hint directly in write-side tool errors. Nice-to-have: a small
+`lifeblood_session_state` or capabilities subfield that names the currently
+available read/write mode and the exact analyze call needed to switch modes.
+
+Follow-up observed 2026-06-02: after a successful non-read-only incremental
+Editor+Player analyze on DAWG (70,015 symbols, 0 violations) and three successful
+`compile_check(filePath)` calls, the next compile-check closed the MCP transport.
+Subsequent `lifeblood_capabilities` calls in the same Codex session continued to
+fail with `Transport closed`, so the agent had to finish verification with Unity
+compile/tests. This is a stronger recovery/robustness case than "mode is
+unavailable": the session-level tool channel became unusable after normal
+write-side checks.
+
 ---
 
 ## Refuted this pass (do not re-investigate)
@@ -135,9 +177,153 @@ experimental retarget does not assert net8 counts against a net10 build.
   `pitchBendFactor`); overload B is correctly dead. dead_code is accurate on the
   Burst kernel, including pointer/ref-param overload resolution.
 
+---
+
+## 2026-06-08 — DAWG architecture-sealing dogfood (Lifeblood v0.7.11, server 1100895)
+
+Method: full analyze + `defineProfiles:["Editor","Player"]` union; every claim cross-checked
+with `find_references` / `dependants profileFilter` + grep + source read.
+
+## LB-INTAKE-20260608-001 — MonoBehaviour magic-method reachability misses UIBehaviour/Graphic-derived components
+
+Type: Bug · Priority: HIGH (false-positive dead-code on every custom UI component)
+
+What: `dead_code` flagged `VUMeter.Update()`, `WaveformScope.Update()`, `ADSRGraphView.Update()`,
+`WaveformPreview.Update()`, `VUMeter.Reset()` as dead. All extend `UnityEngine.UI.Graphic`
+(→ `UIBehaviour` → `MonoBehaviour`); `Update`/`OnEnable`/`Reset` are Unity magic methods invoked
+by the runtime with no static caller. `IUnityReachabilityProvider` (INV-UNITY-001) excludes magic
+methods on DIRECT MonoBehaviour subclasses but misses components deriving through the
+`UIBehaviour`/`Graphic` chain (UnityEngine.UI.dll). Directly contradicts LB-INTAKE-20260601-001's
+"magic-methods resolve correctly" — true for direct subclasses, false for UI-derived.
+
+Verified: read class declarations (`public class VUMeter : Graphic`, `public class WaveformScope : Graphic`);
+flagged members are instance `Update()`/`Reset()`.
+
+Why it matters: every custom `Graphic`/`Selectable`/`UIBehaviour` component's lifecycle methods read
+as dead → large FP class on any Unity UI project.
+
+Fix shape: change the magic-method exclusion test to "type transitively derives from
+`UnityEngine.MonoBehaviour`" (walk the full base chain incl. UnityEngine.UI assembly), not
+"directly derives". Cover editor magic (`Reset`, `OnValidate`) too.
+
+## LB-INTAKE-20260608-002 — Editor+Player profile pair doesn't cover UNITY_STANDALONE (desktop-guarded call sites invisible)
+
+Type: Improvement · Priority: HIGH (FP class for all desktop-only code paths)
+
+What: `BeatGridShutdownOrchestrator.HandleDesktopFocusLost()`/`HandleFocusReturn()` flagged dead;
+`find_references` AND `dependants profileFilter:["Editor","Player"]` both returned 0. Source shows
+they ARE called from `OnApplicationFocus()` (same file, lines 519/521) but inside
+`#if UNITY_STANDALONE && !UNITY_EDITOR`. The canonical 2-profile MVP (`Editor`,`Player`) does not
+define `UNITY_STANDALONE`, so desktop-standalone-only call sites are invisible under both — the
+union does not help.
+
+Verified: grep found the call sites; read confirmed the `#if UNITY_STANDALONE && !UNITY_EDITOR`
+guard; union `dependants` = 0.
+
+Why it matters: any `#if UNITY_STANDALONE*`/desktop-guarded handler (OS focus, file dialogs, desktop
+input) is a guaranteed dead-code FP even when analyzing both Editor and Player. "Wire vs delete" is
+dangerous — these look identically dead.
+
+Fix shape: add a canonical "Standalone"/"DesktopPlayer" profile (or let `defineProfiles` accept a
+target hint that sets `UNITY_STANDALONE` + `UNITY_STANDALONE_WIN/_OSX/_LINUX`). At minimum, have
+`dead_code`/`find_references` emit a "would-be callers exist only under unanalyzed `#if`" hint when a
+symbol's nearest references are behind inactive defines.
+
+## LB-INTAKE-20260608-003 — dead_code flags intentional reference-free scaffolding types
+
+Type: Improvement · Priority: LOW
+
+What: `dead_code` flagged Types `DawgToolsPackageAssert` (internal static; `[Conditional("UNITY_EDITOR")]`
+methods that exist only to force asmdef package refs to compile) and `AudioCallbackSchedulerInvariant`
+(internal static holding one `const string Id = "INV-…"` documentation anchor). Both are reference-free
+BY DESIGN.
+
+Verified: read both files; confirmed intentional-scaffolding patterns.
+
+Why it matters: minor triage noise; deleting `DawgToolsPackageAssert` would silently drop a deliberate
+compile-time package guard.
+
+Fix shape: optional `bucket: Scaffolding` for types whose members are all `[Conditional]` and/or whose
+body is only `const` id strings; downrank from dead-code candidates. Documentable instead.
+
 ## DAWG-side findings (NOT Lifeblood issues — for the DAWG burst owner)
 
 - `BurstSynthSustainKernel.DrainComb` (Comb.cs:95) — genuinely dead leftover,
   superseded by `DrainCombFilterState`.
 - `ApplyOscDriftIfActive` 5-param overload (OscDrift.cs:172) — dead unused
   convenience overload; only the 6-param overload + `TestOnly_` wrapper are live.
+- (2026-06-08) `MixerScreenAdapter.UpdateChannelWaveformInternal` /
+  `ClearAllChannelWaveformsInternal` (Mixer/MixerScreenAdapter.Controls.cs:97/105) —
+  grep finds ONLY the declarations, zero callers (not HostBindings-wired, not
+  reflection). Genuine wire-or-delete candidate: a mixer per-channel waveform-display
+  capability built but never connected. Verify intended feature before removing.
+
+## LB-INTAKE-20260611-001 — execute: blocked Assembly.Load leaves declared-member-count queries with no lane
+
+Type: Improvement · Priority: MEDIUM
+Source: DAWG session 2026-06-11 (Lifeblood v0.7.11, server `1100895`), ABG member-count ratchet triage
+Workspace: DAWG
+
+What: A DAWG ratchet (`AbgMemberCountRatchetTests`) pins reflection-declared
+member count (GetMethods/Fields/Properties/Events/Ctors, DeclaredOnly,
+CompilerGenerated-filtered) at a ceiling. When the Unity test runner was
+unavailable (editor restart), the natural fallback
+`lifeblood_execute Assembly.LoadFrom(Library/ScriptAssemblies/...)` was
+refused with `Blocked pattern detected: Assembly.Load` (correct per the
+workspace-load boundary). The Graph fallback
+(`Graph.Symbols.Where(s => s.ParentId == abg.Id)`) returns a DIFFERENT count
+(2077 vs reflection's 2051): source-symbol semantics include nested types and
+diverge from reflection's event/ctor/backing-field accounting — unusable for
+the ratchet's number.
+
+Why it matters: declared-member-count ratchets are a common architecture-debt
+gate; today they can only be verified through a live Unity test run. Lifeblood
+is the natural offline gate but neither lane produces the reflection-equivalent
+number.
+
+Fix shape: read-side `lifeblood_member_count(typeId, semantics: "reflectionDeclared" | "sourceSymbols")`
+(or a documented Graph recipe) that reproduces reflection DeclaredOnly counting
+(methods incl. accessors, fields excl. compiler-generated backing for counted
+events, properties, events, ctors; nested types excluded). Honest delta table
+in docs for source-vs-reflection accounting.
+
+## LB-INTAKE-20260611-002 — execute: Symbol API misguesses cost iterations; CS1061 errors carry no member hint
+
+Type: UX · Priority: LOW
+Source: DAWG session 2026-06-11 (Lifeblood v0.7.11), ABG member-count fallback attempt
+Workspace: DAWG
+
+What: First `lifeblood_execute` attempt guessed `s.CanonicalId` /
+`s.ContainingTypeId` on `Symbol` (actual members: `Name`, `Kind`, `ParentId`).
+The failure surfaced as a bare compiler `CS1061` with no nudge toward the
+actual Symbol surface; one extra round-trip to discover the shape by trial.
+
+Why it matters: every execute consumer re-learns the Symbol/Graph object model
+by guessing; canonical-id strings (used everywhere else in the MCP surface)
+don't match the in-script property names, which invites exactly this misguess.
+
+Fix shape: when execute compilation fails with CS1061 on a known Lifeblood
+script-API type (Symbol, Graph, Compilations...), append the type's actual
+public member list (or a one-line `Help` pointer) to the error payload.
+
+## LB-INTAKE-20260611-003 — incremental analyze degrades to full sweep after Unity domain reload (mtime-based change detection)
+
+Type: Optimization · Priority: MEDIUM
+Source: DAWG session 2026-06-11 (Lifeblood v0.7.11), gen-3→gen-4 analyze receipts
+Workspace: DAWG
+
+What: Same-session incremental analyzes touched 431 then 951 changed files
+(10-18s). After a Unity editor restart + several domain reloads, the next
+`incremental:true` analyze reported `changedFileCount: 3741` — every source
+file in the workspace — and took 43.5s wall / 2.2GB peak despite only ~12
+files having real content changes since the prior generation.
+
+Why it matters: Unity touches file metadata wholesale on reimports; an
+mtime-keyed change detector turns routine editor lifecycle events into
+full-graph rebuilds, eating the incremental lane's entire benefit exactly when
+sessions are most active.
+
+Fix shape: content-hash (or size+hash hybrid) change detection for the
+incremental scope decision, with mtime as a cheap pre-filter only (hash check
+on mtime-changed files before counting them as changed). Receipt could then
+report `mtimeTouched` vs `contentChanged` separately.
