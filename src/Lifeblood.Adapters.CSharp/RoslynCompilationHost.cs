@@ -546,6 +546,23 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   }
 
   /// <summary>
+  /// Declared-member count for a type under <c>reflectionDeclared</c> (bit-exact
+  /// System.Reflection DeclaredOnly parity) or <c>sourceSymbols</c> (graph
+  /// child-symbol semantics) — same resolve-from-source gate + thin delegation as
+  /// <see cref="GetStaticTables"/>. Null when the id does not resolve to a source
+  /// type. INV-MEMBER-COUNT-001.
+  /// </summary>
+  public MemberCountReport? GetMemberCount(string typeId, string semantics)
+  {
+    if (string.IsNullOrEmpty(typeId)) return null;
+    var resolved = ResolveFromSource(typeId);
+    if (resolved is not INamedTypeSymbol typeSymbol) return null;
+    return semantics == MemberCountSemantics.SourceSymbols
+        ? RoslynMemberCountExtractor.SourceSymbols(typeId, typeSymbol)
+        : RoslynMemberCountExtractor.ReflectionDeclared(typeId, typeSymbol);
+  }
+
+  /// <summary>
   /// Per-construction-site slot-coverage extraction. Routes through
   /// <see cref="RoslynAssignmentCoverageExtractor"/> — keeps host wiring thin
   /// and isolates the IOperation walker in its own type. Mirrors the

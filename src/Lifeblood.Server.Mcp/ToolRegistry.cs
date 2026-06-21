@@ -404,6 +404,13 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_member_count",
+  Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
+  Description = "Declared-member count for a single type, reproducing the number an offline architecture-debt ratchet needs. `semantics:\"reflectionDeclared\"` (default) is BIT-EXACT `System.Reflection` DeclaredOnly counting — methods (incl. property/event accessors and operators) + constructors + fields + properties + events, with `[CompilerGenerated]` and backing-field members filtered and nested types excluded; the compiler-emitted implicit default constructor COUNTS (it is not compiler-generated). `semantics:\"sourceSymbols\"` counts source-declared member symbols the way the Lifeblood graph does — INCLUDING nested types, EXCLUDING synthesized accessors / backing fields / the implicit ctor — which is why the two numbers differ (the divergence that made the raw graph child-count unusable for a reflection ratchet). Returns `count` + a per-category `breakdown` (methods / constructors / fields / properties / events / nestedTypes / excluded). Parity with real reflection is pinned by an emit-reflect-vs-parse harness. `typeId` accepts canonical (`type:NS.T`), qualified, or short name; returns an error if it does not resolve to a source type. INV-MEMBER-COUNT-001.",
+  },
+  new()
+  {
   Name = "lifeblood_symbol_at_position",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
