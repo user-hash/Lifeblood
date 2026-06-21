@@ -201,6 +201,14 @@ public static class ToolInputContractCatalog
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
         );
 
+        yield return Contract(@"lifeblood_callsite_arguments",
+            Arg(@"symbolId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Canonical (`method:NS.T.M(P)`), qualified, or short name of the target method or constructor whose call sites are reported.", enumValues: Array.Empty<string>()),
+            Arg(@"moduleScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Restrict discovered call sites to this module/asmdef.", enumValues: Array.Empty<string>()),
+            Arg(@"excludeTests", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Drop call sites whose containing symbol is in a Test path bucket. Default false.", enumValues: Array.Empty<string>()),
+            Arg(@"maxSites", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Optional. Cap on call sites returned in `sites[]`; defaults to 256. Zero / negative values clamp to the default. The `parameterSummaries[]` histogram still counts every discovered site.", enumValues: Array.Empty<string>()),
+            Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_symbol_at_position",
             Arg(@"filePath", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Source file path (absolute or relative)", enumValues: Array.Empty<string>()),
             Arg(@"line", ToolArgumentType.Integer, required: true, arrayItemType: null, description: @"Line number (1-based)", enumValues: Array.Empty<string>()),

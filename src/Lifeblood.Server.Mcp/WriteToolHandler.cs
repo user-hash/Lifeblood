@@ -593,6 +593,42 @@ internal sealed class WriteToolHandler
         }, _jsonOpts));
     }
 
+    public McpToolResult HandleCallsiteArguments(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
+
+        var raw = GetString(args, "symbolId");
+        if (string.IsNullOrEmpty(raw))
+            return ErrorResult("symbolId is required");
+
+        var resolved = _resolver.Resolve(_session.Graph!, raw);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+
+        var options = new CallsiteArgumentsOptions
+        {
+            ModuleScope = GetString(args, "moduleScope"),
+            MaxSites = GetInt(args, "maxSites"),
+            ExcludeTests = GetBool(args, "excludeTests") ?? false,
+        };
+
+        var report = _session.CompilationHost!.GetCallsiteArguments(resolved.CanonicalId, options);
+        if (report == null)
+            return ErrorResult($"Not a method or constructor in source: {resolved.CanonicalId}");
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            report.TargetId,
+            report.TargetDisplay,
+            report.CallSiteCount,
+            report.SitesTruncated,
+            report.ParameterSummaries,
+            report.Sites,
+            analyzedUnderProfile = _session.RetainedProfileName,
+        }, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;

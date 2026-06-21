@@ -367,6 +367,7 @@ public class UseCaseTests
         public EnumCoverageReport? GetEnumCoverage(string enumTypeId) => null;
         public StaticTableReport? GetStaticTables(string typeId, StaticTablesOptions options) => null;
         public AssignmentCoverageReport? GetAssignmentCoverage(string targetTypeId, AssignmentCoverageOptions options) => null;
+        public CallsiteArgumentsReport? GetCallsiteArguments(string symbolId, CallsiteArgumentsOptions options) => null;
         public string[] FindImplementations(string symbolId) => Array.Empty<string>();
         public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column) => null;
         public string GetDocumentation(string symbolId) => "";

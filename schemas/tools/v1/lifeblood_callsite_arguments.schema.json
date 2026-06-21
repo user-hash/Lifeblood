@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "required": [
+    "symbolId"
+  ],
+  "properties": {
+    "symbolId": {
+      "type": "string",
+      "description": "Canonical (`method:NS.T.M(P)`), qualified, or short name of the target method or constructor whose call sites are reported."
+    },
+    "moduleScope": {
+      "type": "string",
+      "description": "Optional. Restrict discovered call sites to this module/asmdef."
+    },
+    "excludeTests": {
+      "type": "boolean",
+      "description": "Drop call sites whose containing symbol is in a Test path bucket. Default false."
+    },
+    "maxSites": {
+      "type": "integer",
+      "description": "Optional. Cap on call sites returned in `sites[]`; defaults to 256. Zero / negative values clamp to the default. The `parameterSummaries[]` histogram still counts every discovered site."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}
