@@ -176,6 +176,49 @@ public class DeadCodeTriageFieldsTests
         Assert.Equal(DeadCodeBucket.Generated,  findings.Single(f => f.CanonicalId == "method:Acme.Gen.D()").Bucket);
     }
 
+    [Fact]
+    public void FindDeadCode_PathExclude_DropsVendoredFindingsKeepsProduction()
+    {
+        // One genuinely-dead production method + one in a vendored sample tree.
+        // pathExclude '*/Examples*/*' must fold the vendored finding out while
+        // leaving the production one. INV-DEADCODE-TRIAGE-003.
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Acme.Prod", Name = "Prod", Kind = SymbolKind.Type, FilePath = "src/Prod.cs", Visibility = Visibility.Internal })
+            .AddSymbol(new Symbol { Id = "method:Acme.Prod.A()", Name = "A", Kind = SymbolKind.Method, FilePath = "src/Prod.cs", ParentId = "type:Acme.Prod", Visibility = Visibility.Internal })
+            .AddSymbol(new Symbol { Id = "type:TMPro.Demo", Name = "Demo", Kind = SymbolKind.Type, FilePath = "Assets/TextMesh Pro/Examples & Extras/Demo.cs", Visibility = Visibility.Internal })
+            .AddSymbol(new Symbol { Id = "method:TMPro.Demo.B()", Name = "B", Kind = SymbolKind.Method, FilePath = "Assets/TextMesh Pro/Examples & Extras/Demo.cs", ParentId = "type:TMPro.Demo", Visibility = Visibility.Internal })
+            .AddEdge(ContainsEdge("type:Acme.Prod", "method:Acme.Prod.A()"))
+            .AddEdge(ContainsEdge("type:TMPro.Demo", "method:TMPro.Demo.B()"))
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(IncludeKinds: new[] { SymbolKind.Method },
+                                ExcludePublic: false, ExcludeTests: false,
+                                PathExclude: new[] { "*/Examples*/*" }));
+
+        Assert.Contains(findings, f => f.CanonicalId == "method:Acme.Prod.A()");
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "method:TMPro.Demo.B()");
+    }
+
+    [Fact]
+    public void FindDeadCode_PathExclude_NullOrEmpty_ChangesNothing()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Acme.Prod", Name = "Prod", Kind = SymbolKind.Type, FilePath = "src/Prod.cs", Visibility = Visibility.Internal })
+            .AddSymbol(new Symbol { Id = "method:Acme.Prod.A()", Name = "A", Kind = SymbolKind.Method, FilePath = "src/Prod.cs", ParentId = "type:Acme.Prod", Visibility = Visibility.Internal })
+            .AddEdge(ContainsEdge("type:Acme.Prod", "method:Acme.Prod.A()"))
+            .Build();
+
+        var baseline = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(IncludeKinds: new[] { SymbolKind.Method }, ExcludePublic: false, ExcludeTests: false));
+        var withEmpty = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(IncludeKinds: new[] { SymbolKind.Method }, ExcludePublic: false, ExcludeTests: false,
+                                PathExclude: new[] { "", "   " }));
+
+        Assert.Equal(baseline.Length, withEmpty.Length);
+        Assert.Contains(withEmpty, f => f.CanonicalId == "method:Acme.Prod.A()");
+    }
+
     private static Symbol SymInProduction(string id, string name, SymbolKind kind) => new()
     {
         Id = id, Name = name, Kind = kind,

@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`lifeblood_dead_code` can now exclude vendored / sample paths.** A new
+  `pathExclude` argument takes glob patterns (`*` = any run incl. `/`, `?` = one
+  char, case-insensitive, full-path match) and drops matching findings before
+  analysis — e.g. `pathExclude: ["*/Examples*/*", "*/Samples*/*", "Packages/*"]`
+  folds third-party sample code out of triage. Default behaviour is unchanged.
+  (`INV-DEADCODE-TRIAGE-003`, first half of `LB-INTAKE-20260601-004`.)
 - **`lifeblood_dependants` / `lifeblood_dependencies` can now group and filter
   their caller/callee list.** Asking "are these 21 callers production-live or
   test-only?" used to mean hand-classifying every entry. New optional args

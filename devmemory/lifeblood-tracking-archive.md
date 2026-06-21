@@ -137,6 +137,30 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-21 - Lifeblood v0.7.11+ - dead_code path exclusion (LB-INTAKE-20260601-004 partial)
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan Wave 1, first half of `LB-INTAKE-20260601-004`
+Workspace: Lifeblood self
+Verification: `DeadCodeTriageFieldsTests` pathExclude facts green; regenerated
+`lifeblood_dead_code` schema snapshot; full suite 1328 passed / 0 failed / 11
+native-clang skips / 1339 total.
+
+Summary:
+- ~12% of DAWG dead_code candidates were vendored sample code (TMPro Examples)
+  classified `bucket: Production`, with no way to fold them out of triage.
+
+Fix shape (shipped — first half):
+- `DeadCodeOptions.PathExclude` glob filter + `lifeblood_dead_code pathExclude`
+  arg. Globs: `*` = any run incl. `/`, `?` = one char, case-insensitive, full
+  path. `INV-DEADCODE-TRIAGE-003`, pinned by `DeadCodeTriageFieldsTests`.
+- STATUS anchors refreshed (testCount 1339, invariantCount 163, selfAnalyze
+  4466/25436/468).
+
+Remaining (still in intake `LB-INTAKE-20260601-004`): `analyze`-level
+`excludePaths`, and a first-class `Vendored` bucket (Wave 5).
+
 ## 2026-06-21 - Lifeblood v0.7.11+ - Dependants/dependencies grouping + filters (LB-INTAKE-20260613-003)
 
 Status: Shipped

@@ -25,8 +25,12 @@ all seven proposed new tools (`callsite_arguments`, `wire_audit`,
   `includeBuckets` / `previewPerGroup`) via new `IMcpGraphProvider.ClassifyEdges`
   + `INV-EDGE-GROUP-001`, sharing the blast-radius bucket/module SSoT.
   `LB-INTAKE-20260613-003` promoted. `EdgeGroupingTests` + full suite green
-  (1337). **Remaining in Wave 1:** `dead_code pathExclude` (first half of
-  `LB-INTAKE-20260601-004`).
+  (1337).
+- **Wave 1 (part B) — SHIPPED 2026-06-21.** `lifeblood_dead_code pathExclude`
+  glob filter (`INV-DEADCODE-TRIAGE-003`) — first half of `LB-INTAKE-20260601-004`;
+  that intake entry shrank to its remaining halves (`analyze` excludePaths + a
+  first-class `Vendored` bucket) which land in Wave 5. Full suite green (1339).
+  **Wave 1 complete.**
 
 **Current truth snapshot (2026-06-13):**
 

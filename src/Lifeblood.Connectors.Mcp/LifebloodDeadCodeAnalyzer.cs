@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.PathClassification;
@@ -51,12 +54,15 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             ? new HashSet<SymbolKind>(options.IncludeKinds)
             : new HashSet<SymbolKind>(DefaultKinds);
 
+        var pathExcluders = CompileGlobs(options.PathExclude);
+
         var results = new List<DeadCodeResult>();
         foreach (var sym in graph.Symbols)
         {
             if (!kinds.Contains(sym.Kind)) continue;
             if (options.ExcludePublic && sym.Visibility == Visibility.Public) continue;
             if (options.ExcludeTests && PathBucketClassifier.IsTest(sym.FilePath)) continue;
+            if (MatchesAnyGlob(pathExcluders, sym.FilePath)) continue;
 
             // Liveness check. A method/property implementing an interface
             // member is reachable by definition — that branch ALWAYS short-
@@ -117,6 +123,43 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             .ThenBy(r => r.Line)
             .ThenBy(r => r.CanonicalId, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Compile each non-empty path glob to an anchored, case-insensitive regex.
+    /// <c>*</c> → any run of characters (including <c>/</c>), <c>?</c> → a single
+    /// character; every other character is escaped literally. Globs match the
+    /// FULL normalized POSIX path. INV-DEADCODE-TRIAGE-003.
+    /// </summary>
+    private static List<Regex> CompileGlobs(string[]? globs)
+    {
+        var compiled = new List<Regex>();
+        if (globs == null) return compiled;
+        foreach (var glob in globs)
+        {
+            if (string.IsNullOrWhiteSpace(glob)) continue;
+            var sb = new StringBuilder("^");
+            foreach (var ch in glob.Replace('\\', '/'))
+                sb.Append(ch switch
+                {
+                    '*' => ".*",
+                    '?' => ".",
+                    _ => Regex.Escape(ch.ToString()),
+                });
+            sb.Append('$');
+            compiled.Add(new Regex(sb.ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
+        }
+        return compiled;
+    }
+
+    /// <summary>True iff <paramref name="filePath"/> matches any compiled path glob.</summary>
+    private static bool MatchesAnyGlob(List<Regex> globs, string filePath)
+    {
+        if (globs.Count == 0 || string.IsNullOrEmpty(filePath)) return false;
+        var normalized = filePath.Replace('\\', '/');
+        foreach (var rx in globs)
+            if (rx.IsMatch(normalized)) return true;
+        return false;
     }
 
     /// <summary>

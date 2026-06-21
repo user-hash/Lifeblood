@@ -94,22 +94,29 @@ Type: UX / Control · Priority: MEDIUM
 Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
 Workspace: DAWG
 
+Partial progress: the `dead_code` `pathExclude` half SHIPPED 2026-06-21
+(`INV-DEADCODE-TRIAGE-003`, archived as the 2026-06-21 receipt). This entry now
+tracks only the REMAINING two halves below; promote fully when both land (the
+`Vendored` bucket lands in Wave 5).
+
 What: On the DAWG dead_code pass, ~12% of the first 25 production candidates were
 third-party example code — `TMPro.Examples.TMP_TextInfoDebugTool.DrawSolidRectangle`,
 `DrawDottedRectangle`, `TextConsoleSimulator.RevealWords` (all under
 `Assets/TextMesh Pro/Examples & Extras/`) — all classified `bucket: Production`.
-There is no way to exclude vendored / sample / package paths from `analyze` or
-`dead_code` (analyze takes only `projectPath` / `graphPath` / `rulesPath` /
-`mode` / `defineProfiles`; no exclude glob), and the bucket classifier treats
-vendored example code as Production.
+`dead_code` now has `pathExclude` (shipped), but `analyze` still takes only
+`projectPath` / `graphPath` / `rulesPath` / `mode` / `defineProfiles` (no exclude
+glob), and the bucket classifier still treats vendored example code as Production.
 
-Why it matters: vendored noise pollutes dead_code triage and cycle/metric counts,
-and a path-scoped analyze would also cut the full-analyze cost on large trees.
+Why it matters: vendored noise still pollutes cycle/metric counts and analyze
+cost on large trees; a per-finding `pathExclude` does not scope the analyze pass
+itself, and there is still no first-class `Vendored` bucket.
 
-Fix shape: (a) an `excludePaths`/`vendorGlobs` parameter on `analyze` (and a
-matching `pathExclude` on `dead_code`), and/or (b) extend the bucket classifier to
-recognize known-vendored roots (`*/Examples*`, `*/Samples*`, `Packages/`,
-third-party asset dirs) as a `Vendored` bucket distinct from `Production`.
+Fix shape: (remaining) (a) an `excludePaths`/`vendorGlobs` parameter on `analyze`
+(reuse the `pathExclude` glob grammar from `INV-DEADCODE-TRIAGE-003`), and/or
+(b) extend the bucket classifier to recognize known-vendored roots
+(`*/Examples*`, `*/Samples*`, `Packages/`, third-party asset dirs) as a
+`Vendored` bucket distinct from `Production` (Wave 5, paired with all bucket
+parity tests + wire docs).
 
 ## LB-INTAKE-20260601-005 — net10 source-generator concurrency isolation (deferred fix)
 
