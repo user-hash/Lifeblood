@@ -137,6 +137,31 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-21 - Lifeblood v0.7.11+ - Intake ledger shape ratchet (LB-INTAKE-20260613-005)
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan Wave 0, promoted from `LB-INTAKE-20260613-005`
+Workspace: Lifeblood self
+Verification: `IntakeLedgerTests` (7 facts) + `TrackingLedgerTests` green;
+`DocsTests` 44/44 after anchor refresh; CHANGELOG `[Unreleased]` entry.
+
+Summary:
+- `devmemory/lifeblood-intake.md` is the front door for un-started findings (the
+  living ledger rejects parked Open entries via
+  `TrackingLedger_HasNoPlainOpenOrCandidateEntries`), but its own shape was
+  governed by prose + manual review only — no ratchet.
+
+Fix shape (shipped):
+- New `IntakeLedgerTests` + `INV-INTAKE-SHAPE-001` (governance.md): canonical id
+  `^LB-INTAKE-\d{8}-\d{3}$`, unique ids, required `Type:`/`Priority:`/`Source:`/
+  `Workspace:` metadata + `What:`/`Why it matters:`/`Fix shape:` sections,
+  malformed-`LB-INTAKE`-heading guard, and no-id-in-both-files cross-check.
+- Backfilled the nine pre-2026-06-11 intake entries with `Source:`/`Workspace:`
+  provenance so the full queue conforms.
+- STATUS.md anchors refreshed (testCount 1330, invariantCount 161,
+  invariantCategoryCount 109, selfAnalyze 4415/25150/464).
+
 ## 2026-05-30 - Unity new-file discovery misses pre-meta source — DUPLICATE, see LB-TRACK-20260530-028
 
 Collapsed 2026-05-30 reconciliation: this was a second repro of the same bug now

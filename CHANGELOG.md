@@ -7,6 +7,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The intake backlog now has a shape ratchet.** `devmemory/lifeblood-intake.md`
+  is the front door for un-started dogfood findings (the living tracking ledger
+  rejects parked Open entries), but until now nothing guarded its quality. New
+  `IntakeLedgerTests` (`INV-INTAKE-SHAPE-001`) pins every `LB-INTAKE-…` entry to a
+  canonical id (`LB-INTAKE-YYYYMMDD-NNN`), enforces unique ids, requires the
+  `Type:` / `Priority:` / `Source:` / `Workspace:` metadata plus the
+  `What:` / `Why it matters:` / `Fix shape:` authoring sections, flags any heading
+  that mentions `LB-INTAKE` but is not a canonical id, and forbids an id from
+  living in both intake and the tracking ledger (promotion must move, not copy).
+  The nine pre-2026-06-11 entries were backfilled with their `Source:` /
+  `Workspace:` provenance so the whole 19-entry queue conforms.
+
 ## [0.7.11] - 2026-06-01
 
 This release is mostly about **honesty and resilience**: when something goes wrong,

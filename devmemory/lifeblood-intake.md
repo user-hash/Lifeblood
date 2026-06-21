@@ -17,6 +17,8 @@ unverified claims.
 ## LB-INTAKE-20260601-001 — Unity serialized/UnityEvent wiring invisible to reachability
 
 Type: Improvement · Priority: HIGH (largest real false-positive driver)
+Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: On a real Unity workspace `lifeblood_dead_code summarize` returned 215
 production method candidates. The dominant false-positive class is pointer/event
@@ -44,6 +46,8 @@ values, unsaved Inspector edits.
 ## LB-INTAKE-20260601-002 — Static struct-layout / sizeof tool for unmanaged structs
 
 Type: Improvement · Priority: HIGH (unlocks a ratchet that today requires Unity)
+Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: `lifeblood_execute Unsafe.SizeOf<BurstVoiceState>()` correctly returns the
 structured `INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001` boundary (honest, new in
@@ -66,6 +70,8 @@ Unity.Mathematics types). Exact for blittable; downgrade to `SequentialEquivalen
 ## LB-INTAKE-20260601-003 — asmdef compile-direction boundary check
 
 Type: Improvement · Priority: MEDIUM (cheap; data already loaded)
+Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: `compile_check` ignores per-asmdef boundaries, so a reference that compiles
 in the merged view can still violate an asmdef's declared reference set; the
@@ -85,6 +91,8 @@ edge + first call site. Pure-static graph query.
 ## LB-INTAKE-20260601-004 — Vendored/third-party path exclusion for dead_code + analyze
 
 Type: UX / Control · Priority: MEDIUM
+Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: On the DAWG dead_code pass, ~12% of the first 25 production candidates were
 third-party example code — `TMPro.Examples.TMP_TextInfoDebugTool.DrawSolidRectangle`,
@@ -106,6 +114,8 @@ third-party asset dirs) as a `Vendored` bucket distinct from `Production`.
 ## LB-INTAKE-20260601-005 — net10 source-generator concurrency isolation (deferred fix)
 
 Type: Bug (latent) / Robustness · Priority: LOW until net10 is a real target
+Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895), diagnosed + archived 2026-05-31
+Workspace: Lifeblood self
 
 What: Diagnosed + archived 2026-05-31 — net10's wider assembly-load window exposes
 a race in framework source-generator loading/execution when MULTIPLE analyses run
@@ -120,7 +130,7 @@ close the flake, perturbed net8 counts (+5), and was reverted.
 Why it matters: blocks a clean net10 evaluation and is a latent hazard on any
 future concurrent-analysis path; process-global Roslyn analyzer state is shared.
 
-Fix shape (deferred, its own atom): isolate framework-analyzer loading per
+Fix shape: (deferred, its own atom) isolate framework-analyzer loading per
 analysis via `AssemblyLoadContext`, OR serialize the generator-driver run so
 concurrent in-process analyses cannot race on process-global analyzer state. Scope
 `DocsTests.Anchor_MatchesLiveSource` self-analyze arms to the production TFM so an
@@ -128,7 +138,9 @@ experimental retarget does not assert net8 counts against a net10 build.
 
 ## LB-INTAKE-20260602-001 - Retained-session recovery after read-only analyze
 
-Type: UX / Robustness - Priority: MEDIUM
+Type: UX / Robustness · Priority: MEDIUM
+Source: DAWG Burst WT/FM/PWM dogfood pass 2026-06-02 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: During the DAWG Burst WT/FM/PWM dogfood pass, Lifeblood was the backbone for
 safe work on a DAW-sized Unity project: multi-profile analyze scoped the actual
@@ -187,6 +199,8 @@ with `find_references` / `dependants profileFilter` + grep + source read.
 ## LB-INTAKE-20260608-001 — MonoBehaviour magic-method reachability misses UIBehaviour/Graphic-derived components
 
 Type: Bug · Priority: HIGH (false-positive dead-code on every custom UI component)
+Source: DAWG architecture-sealing dogfood 2026-06-08 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: `dead_code` flagged `VUMeter.Update()`, `WaveformScope.Update()`, `ADSRGraphView.Update()`,
 `WaveformPreview.Update()`, `VUMeter.Reset()` as dead. All extend `UnityEngine.UI.Graphic`
@@ -209,6 +223,8 @@ Fix shape: change the magic-method exclusion test to "type transitively derives 
 ## LB-INTAKE-20260608-002 — Editor+Player profile pair doesn't cover UNITY_STANDALONE (desktop-guarded call sites invisible)
 
 Type: Improvement · Priority: HIGH (FP class for all desktop-only code paths)
+Source: DAWG architecture-sealing dogfood 2026-06-08 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: `BeatGridShutdownOrchestrator.HandleDesktopFocusLost()`/`HandleFocusReturn()` flagged dead;
 `find_references` AND `dependants profileFilter:["Editor","Player"]` both returned 0. Source shows
@@ -232,6 +248,8 @@ symbol's nearest references are behind inactive defines.
 ## LB-INTAKE-20260608-003 — dead_code flags intentional reference-free scaffolding types
 
 Type: Improvement · Priority: LOW
+Source: DAWG architecture-sealing dogfood 2026-06-08 (Lifeblood v0.7.11, server 1100895)
+Workspace: DAWG
 
 What: `dead_code` flagged Types `DawgToolsPackageAssert` (internal static; `[Conditional("UNITY_EDITOR")]`
 methods that exist only to force asmdef package refs to compile) and `AudioCallbackSchedulerInvariant`
@@ -387,3 +405,110 @@ server, triggering a warm incremental with an exact scope; (b) failing that,
 read `Library/ScriptAssemblies` assembly timestamps to bound which asmdefs
 changed and scope the incremental to their source globs. Either kills both the
 stale-first-query and the full-sweep degradation.
+
+## LB-INTAKE-20260613-001 — Call-site argument/default-parameter facts
+
+Type: Improvement · Priority: HIGH
+Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), pattern sustain investigation
+Workspace: DAWG
+
+What: Lifeblood correctly resolved that `PatternGeneratorController.BuildMonoPattern(...)`
+has exactly two callers, `BuildPolyPattern(...)` has exactly five callers, and
+both depend on `GeneratedNote..ctor(int,int,byte,int)`. It did NOT expose the
+critical fact that both call sites omit the optional `lengthSteps` constructor
+argument, so every generated melodic note defaults to one step even though the
+downstream clip path already consumes `GeneratedNote.LengthSteps`. The agent had
+to read `PatternGeneratorController.cs` directly to verify the omitted argument.
+
+Why it matters: API adoption bugs often look exactly like this: a richer model
+or new optional parameter exists, all callers still use the old argument shape,
+and semantic "callee is referenced" checks look green. This is a real planning
+accuracy gap for feature migration work (sustain, new flags, policy params,
+quality knobs).
+
+Fix shape: add `lifeblood_callsite_arguments(symbolId)` or enrich
+`dependencies` / `find_references` with bound argument facts: callee parameter
+name/type/ordinal, supplied vs omitted, default value used, constant/literal vs
+member/reference expression kind, receiver, and call-site span. Include summary
+histograms such as "parameter X omitted by 7/7 call sites" and filters by
+production/test bucket.
+
+## LB-INTAKE-20260613-002 — Dormant feature-switch / static-flag audit
+
+Type: Improvement · Priority: HIGH
+Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), grammar activation check
+Workspace: DAWG
+
+What: `BeatGridPatternEngine.UseGrammarGeneration` is referenced by the live
+pattern generator branches, but defaults to `false`. `SetGrammarMode(bool)` has
+zero semantic callers, while `InitializeGrammarSystem()` is called from bootstrap.
+Lifeblood exposed the individual facts (`dependants` on the field/setter/init),
+but there is no single audit that says "this feature branch is initialized but
+has no live activation authority; the grammar path is dormant."
+
+Why it matters: dormant infrastructure is easy to mislabel as shipped behavior.
+In the pattern pass this distinction changed the plan: grammar became a future
+activation lane behind ratchets, not the current user-facing generator. The same
+shape applies to static feature flags, config toggles, migration gates, and
+compile-time fallback switches across large products.
+
+Fix shape: add a `lifeblood_feature_switch_audit` or `wire_audit` mode for
+static/instance bool fields and properties used in branch conditions. Report
+default/initializer value, assignment sites, public setter/mutator dependants,
+branch-gated methods, production/test bucket breakdown, and a verdict like
+`AlwaysDefaultInGraph`, `TestOnlyActivation`, or `RuntimeMutable`.
+
+## LB-INTAKE-20260613-003 — Dependants/dependencies bucket summaries and filters
+
+Type: UX / Improvement · Priority: MEDIUM
+Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), genre preset authority check
+Workspace: DAWG
+
+What: `BeatGridGenrePresets.GetPatternCharacter(...)` had 21 semantic
+dependants, but they were test/config validation consumers rather than live
+generation authority. The one-hop `dependants` response listed call sites but
+did not summarize by Production/Test/Editor/Generated bucket or allow an
+`excludeTests` filter, so the agent had to manually classify the caller list
+before claiming the method was not production generation authority.
+
+Why it matters: "is this production-live or test-only?" is one of the highest
+frequency planning questions. `blast_radius` already has bucket/module grouping;
+the lower-level one-hop dependency tools should expose the same triage signal so
+large caller lists do not become manual bookkeeping.
+
+Fix shape: add `groupBy:"bucket"|"module"|"both"`, `excludeTests`,
+`excludeGenerated`, `includeBuckets`, and `previewPerGroup` to
+`lifeblood_dependants` and `lifeblood_dependencies`. Keep the existing flat
+shape by default for compatibility, but expose compact grouped summaries for
+planning passes.
+
+## LB-INTAKE-20260613-004 — Authority coverage / negative dependency matrix
+
+Type: Improvement · Priority: MEDIUM
+Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), preset-aware generation check
+Workspace: DAWG
+
+What: The pattern plan needed to know whether random generation actually reads
+current instrument preset state. Lifeblood proved `BeatGridState.InstrumentPresets`
+is real state and has production dependants, and source reads proved
+`PatternGeneratorController` generation methods choose pattern shape by genre
+but not by the selected Bass/Groove/Synth/Electric/Vocal/Guitar/Arp preset.
+There is no direct tool for "given this method family, does every method reach
+one of these authority symbols, and which ones do not?"
+
+Why it matters: architecture bugs are often missing dependencies, not extra
+dependencies: a controller compiles and runs, but ignores the intended authority
+(preset, edition, theme, policy, locale, save state). Manual proof requires
+combining `dependants`, `dependencies`, blast radius, and source reads.
+
+Fix shape: new read-side `lifeblood_authority_coverage`:
+inputs are `subjects[]` (methods/types/files) and `requiredAuthority[]`
+(symbols/types/namespaces/files), optional `allowedAlternatives[]`, max depth,
+and bucket filters. Output a matrix of subject -> reaches authority? direct or
+transitive path preview, missing authorities, and first competing authority
+actually used. This complements `wire_audit`: it catches "wired to the wrong or
+incomplete source of truth" rather than zero wiring.
+
+<!-- LB-INTAKE-20260613-005 (intake ledger shape ratchet) SHIPPED 2026-06-21 →
+     archived as the 2026-06-21 receipt in lifeblood-tracking-archive.md.
+     Do not re-add here; the id must not live in both files. -->
