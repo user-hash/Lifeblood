@@ -375,3 +375,119 @@ Start with the smallest work that reduces future mistakes:
 
 This order is deliberately boring: protect the queue, improve triage visibility,
 surface hidden Roslyn facts, then build higher-level audits out of those facts.
+
+---
+
+# 🔁 SESSION HANDOFF — resume here (last updated 2026-06-21, HEAD `a24af3f`)
+
+Single combined source of truth for resuming the campaign in a fresh session.
+Read top-to-bottom before touching anything.
+
+## Where we are
+- **Repo** `D:/Projekti/Lifeblood`. **Branch** `codex/lifeblood-tracking-complete`,
+  pushed to `origin/codex/lifeblood-tracking-complete` (HEAD `a24af3f`). **`main` is
+  untouched** and awaits the eventual tagged `v0.7.12` — do NOT push to main mid-plan.
+  User owns push + tag; commit freely, push the branch when green.
+- **Goal** burn `devmemory/lifeblood-intake.md` down to shipped, ratcheted features,
+  then cut `v0.7.12`.
+- **Live state** 33 MCP tools (18 read + 15 write), 30 ports, 165 invariants / 112
+  categories, suite **1336 passed / 0 failed / 11 native-clang skips / 1350 total**,
+  self-analyze 0 violations / 0 cycles (4620 sym / 25979 edges / 484 types).
+- **Local dev MCP tool** = global dotnet tool `lifeblood.server.mcp`
+  (`lifeblood-mcp.exe`), reinstalled to `0.7.12-alpha.0.9` from `local-nupkg/`. Reload
+  recipe: DAWG memory `reference-lifeblood-local-mcp-reload` (pack →
+  `dotnet tool update --global lifeblood.server.mcp --add-source local-nupkg --version
+  <ver>` → kill `lifeblood-mcp.exe`/`*Lifeblood.Server.Mcp*` procs → reconnect via
+  Claude Code reload / `/mcp`). After landing more commits, repack + reinstall so live
+  dogfooding tests the latest build.
+
+## Shipped this campaign (10 commits)
+- W0 `IntakeLedgerTests` + `INV-INTAKE-SHAPE-001` (`95d5d11`)
+- W1A grouped/filtered `dependants`/`dependencies` + `IMcpGraphProvider.ClassifyEdges`
+  + `INV-EDGE-GROUP-001` (`23969f7`)
+- W1B `dead_code pathExclude` glob + `INV-DEADCODE-TRIAGE-003` (`a34e79e`)
+- W2.1 tool `lifeblood_callsite_arguments` + `INV-CALLSITE-ARGS-001` (`e538e1d`)
+- live-dogfood fixes: groupBy omits flat array; callsite rawText from source default
+  (`da7f3f7`)
+- W3-MVP tool `lifeblood_wire_audit` passes a+b + `INV-WIRE-AUDIT-001` (`a24af3f`)
+- (+ `b16b198` adopt, `f243d2c` position marker)
+
+## NEXT atoms, in order
+1. **`lifeblood_feature_switch_audit`** (`LB-INTAKE-20260613-002`, HIGH). Same family
+   as wire_audit; reuse `RoslynWireAuditExtractor` read/write machinery. For
+   static/instance bool fields+properties used in branch conditions: report
+   initializer/default, assignment sites, public mutator/setter dependants,
+   branch-gated methods, verdict (`AlwaysDefaultInGraph` / `TestOnlyActivation` /
+   `RuntimeMutable`). Case: DAWG `BeatGridPatternEngine.UseGrammarGeneration` defaults
+   false, `SetGrammarMode` 0 callers → dormant feature looks shipped.
+2. **`lifeblood_wire_audit` passes c+d** (rest of `LB-INTAKE-20260611-004`): (c) events
+   with subscribers but 0 fire sites / vice versa; (d) call sites passing only
+   compile-time-constant degenerate args (build on Wave 2 callsite facts). Fold into
+   the existing wire_audit tool/extractor.
+3. **`lifeblood_member_count(typeId, semantics)`** (`LB-INTAKE-20260611-001`, MED).
+   ⚠️ Whole value is BIT-EXACT `System.Reflection` DeclaredOnly parity. Build a parity
+   HARNESS test: define a fixture type, reflect the REAL compiled fixture for ground
+   truth, parse the same source into a compilation for the tool, assert equal. Subtle:
+   implicit default ctor counts (not CompilerGenerated) but backing fields don't
+   (filter `IsImplicitlyDeclared` on fields only); nested types excluded. Add a
+   `sourceSymbols` semantics matching the graph count + an honest delta-table doc.
+4. **`lifeblood_struct_layout(typeId)`** (`LB-INTAKE-20260601-002`, MED). Roslyn-metadata
+   offset/size/align/total for unmanaged structs (`[StructLayout]`, `Pack`,
+   `[FieldOffset]`, `fixed`, enum underlying, nested, Unity.Mathematics). Exact for
+   blittable; confidence downgrade + reason for reference-bearing/Auto.
+5. **Wave 4 `lifeblood_authority_coverage`** (`LB-INTAKE-20260613-004`) — graph-only
+   `AuthorityCoverageAnalyzer` in `Lifeblood.Analysis`: do subjects[] reach
+   requiredAuthority[]? matrix output.
+6. **Wave 5 Unity FP** (`20260608-001/002/003`, `20260601-001/003`, `20260601-004`
+   Vendored half): transitive MonoBehaviour magic-method (UIBehaviour/Graphic chain) →
+   Standalone define profile → asmdef-direction check → scaffolding downrank →
+   UnityEvent/YAML reachability → Vendored bucket.
+7. **Wave 6** session recovery + content-hash incremental + execute CS1061 hint + Unity
+   sync hook (`20260602-001`, `20260611-002/003/005`).
+8. **Wave 7 (deferred)** net10 sourcegen concurrency (`20260601-005`).
+
+Partials in intake: `20260601-004` (analyze excludePaths + Vendored bucket) and
+`20260611-004` (events + degenerate args). 15 intake entries remain.
+
+## Per-atom DISCIPLINE (non-negotiable — how every atom above shipped)
+1. **Hexagonal:** protocol-neutral DTOs in `Domain.Results`; port on `ICompilationHost`
+   (write-side, retained compilations) or `IMcpGraphProvider` (read-side graph);
+   algorithm in a `Roslyn*Extractor` (`Adapters.CSharp`) or `Lifeblood.Analysis`
+   (graph-only); thin handler dispatch. Extract shared helpers, never duplicate
+   (`RoslynArgumentBinding`, `CreateModuleResolver`/`ShapeGroups`). NO hotpatches.
+2. **New tool wiring, same atom:** `ToolRegistry.cs` (entry + `EnvelopeClassification`),
+   `ToolInputContractCatalog.cs` (args), `ToolHandler.cs` dispatch,
+   `WriteToolHandler.cs` handler, new `schemas/tools/v1/<tool>.schema.json`,
+   `StubCompilationHost` in `UseCaseTests.cs` (if new `ICompilationHost` member), tests,
+   `docs/invariants/tools.md` invariant.
+3. **Schema snapshots** authored raw; `ToolSchemaSnapshotTests` canonicalizes both
+   sides — only property ORDER + text must match the Arg() order.
+4. **Anchor lockstep** (`DocsTests` enforces): update `docs/STATUS.md` hidden anchors +
+   visible prose + self-analyze block: `toolCount`, `testCount`, `invariantCount`,
+   `invariantCategoryCount`, `selfAnalyze{Symbols,Edges,Types}`, the "(N read + M write)"
+   splits, and `docs/MCP_SETUP.md` "18 of the N tools". Novel `INV-FOO` prefix bumps
+   count AND category; reused prefix bumps only count. Run full suite, read live
+   numbers from the failures, set anchors to those.
+5. **Two hardcoded count tests** in `ToolHandlerTests.cs` bump on every tool add
+   (`ToolRegistry_ReturnsNTools` + capabilities read/write split).
+6. **Tracking SSoT:** ship → MOVE intake entry to a Shipped receipt in
+   `lifeblood-tracking-archive.md` + DELETE from `lifeblood-intake.md` (HTML-comment
+   tombstone ok). Partial = SHRINK the intake entry + add receipt. `IntakeLedgerTests`
+   forbids an id in both files + requires `Type:`/`Priority:`/`Source:`/`Workspace:` +
+   `What:`/`Why it matters:`/`Fix shape:` (keep `Fix shape:` literal). `TrackingLedgerTests`
+   keeps the live ledger to Shipped+in-flight only.
+7. **CHANGELOG** `[Unreleased]` entry per atom.
+8. **Verify:** build → focused test → full `dotnet test Lifeblood.sln` green → commit
+   (conventional + `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`)
+   → push branch → repack+reload local tool → live-dogfood the new tool.
+
+## Gotchas banked
+- Live dogfooding finds real bugs (groupBy hub-overflow, callsite cross-module rawText
+  were both caught that way). Reload + dogfood every new tool.
+- `groupBy` on edge tools REPLACES the flat array (overflow-safe); filter-only keeps the
+  narrowed flat list; legacy stays byte-stable.
+- Write-side extractor test harness: `RoslynCompilationHost` test ctor takes
+  `Dictionary<string,CSharpCompilation>` (see `CallsiteArgumentExtractorTests` /
+  `WireAuditExtractorTests`); canonical method ids resolve via truncated-method
+  fallback so `method:NS.T.M` works without full param FQNs.
+- `local-nupkg/` is an untracked build artifact — never commit it.
