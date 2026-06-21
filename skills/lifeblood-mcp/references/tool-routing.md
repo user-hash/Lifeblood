@@ -56,9 +56,22 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Inspect static dispatch/config tables | `lifeblood_static_tables` | Operation-tree extraction; use `summarize:true` for large tables. |
 | Check object-initializer wiring | `lifeblood_assignment_coverage` | Useful for bindings/delegate slots and construction completeness. |
 | Triage unused code candidates | `lifeblood_dead_code` | Advisory; verify before deleting. |
+| Field read but never written / delegate slot never wired? | `lifeblood_wire_audit` | Dead-WIRE complement of dead_code: referenced but structurally unplugged. Advisory. |
+| Boolean feature flag gated but never flipped (dormant)? | `lifeblood_feature_switch_audit` | Verdict `AlwaysDefaultInGraph` / `TestOnlyActivation` / `RuntimeMutable`. Advisory. |
+| Do call sites actually pass the new/optional argument? | `lifeblood_callsite_arguments` | Per-site argument facts + supplied/omitted histogram; the API-adoption gap. |
 | Measure interface/class liveness | `lifeblood_port_health` | Good for ports, facades, and suspiciously wide contracts. |
 | Quantify facade/dispatcher authority | `lifeblood_authority_report` | Use for types that aggregate many subordinates or interfaces. |
 | Search by intent or xmldoc | `lifeblood_search` | Better than grep when names are unknown but docs mention behavior. |
+
+### The wiring family
+
+Three tools answer "is this code actually plugged in?", in escalating subtlety — reach for the right one by what the symbol's reference state is:
+
+- `lifeblood_dead_code` — the symbol is **never referenced**. Classic unused code.
+- `lifeblood_wire_audit` — the symbol **is referenced but structurally unplugged**: a field read with zero writes, a delegate/binding slot nothing assigns.
+- `lifeblood_feature_switch_audit` — the boolean **is referenced, gates a live branch, but is pinned to its default** because no reachable code flips it (e.g. a public setter with zero callers). Looks shipped; never activates.
+
+All three are advisory: reflection, Unity serialized YAML, and runtime/config assignment are invisible to static analysis, so none is deletion authority on its own. Confirm with references, source inspection, and tests.
 
 ## Multi-Profile And Unity
 
