@@ -7,6 +7,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`lifeblood_feature_switch_audit` now models positional-record properties.**
+  Re-dogfooding the census against Lifeblood's own graph surfaced a third
+  false-positive class: option-bag records like
+  `record DeadCodeOptions(bool ExcludePublic = true, …)` reported the wrong
+  `defaultValue` (`false` instead of the parameter default `true`) and a false
+  `AlwaysDefaultInGraph` verdict — a positional-record property's default lives on
+  the constructor parameter, and its writes flow through constructor arguments
+  (`new DeadCodeOptions(includeKinds, excludePublic, …)`), neither of which is a
+  property assignment. The extractor now reads the parameter default and maps each
+  explicitly-supplied constructor argument back to its record property as a write
+  (omitted args stay the default). Records are the canonical option-bag shape, so
+  this removes a large accuracy hole.
+
 ### Added
 
 - **`summarize` on `lifeblood_wire_audit` and `lifeblood_feature_switch_audit`.**
