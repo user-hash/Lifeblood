@@ -137,6 +137,33 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-22 - Lifeblood v0.7.12-alpha - wire_audit passes c+d, closes LB-INTAKE-20260611-004
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan, remaining passes of `LB-INTAKE-20260611-004`
+Workspace: Lifeblood self
+Verification: `WireAuditExtractorTests` (15 facts incl. 7 new c+d); full suite green.
+Batch dogfood pending (committed under the "more waves at once" batch).
+
+Summary:
+- The dead-wire tool shipped a+b (read-without-write fields, never-assigned
+  delegate slots) on 2026-06-21; this lands the remaining two shapes.
+
+Fix shape (shipped — fully closes the intake item):
+- Pass (c) events: `EventSubscribedNeverRaised` (subscribers via `+=`, zero raise
+  sites) + `EventRaisedNeverSubscribed` (raised, zero subscribers). Subscribe vs
+  raise distinguished operation-exactly — `IEventAssignmentOperation` (Adds) vs
+  `IEventReferenceOperation` whose parent is not an event-assignment.
+- Pass (d) `DegenerateConstantCallSites`: private/internal ordinary method (≥1
+  param) whose every call site's explicit args are all compile-time-degenerate
+  (`IDefaultValueOperation` / `ConstantValue.HasValue`) with zero runtime-valued
+  call sites. Field-based sentinels (`Vector2.zero`) are not constants → documented
+  as not detected.
+- New finding kinds + `IncludeEvents` / `IncludeDegenerateConstantCallSites`
+  toggles; candidate model extended to Event + Method; registry/contract/schema +
+  `INV-WIRE-AUDIT-001` updated to five passes / four candidate kinds.
+
 ## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_feature_switch_audit tool (LB-INTAKE-20260613-002)
 
 Status: Shipped

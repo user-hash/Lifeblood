@@ -17,6 +17,14 @@
       "type": "boolean",
       "description": "Run the delegate-slot-never-assigned pass (Func/Action/custom-delegate fields & properties with zero assignment sites). Default true."
     },
+    "includeEvents": {
+      "type": "boolean",
+      "description": "Run the event pass: events subscribed (+=) but never raised, and events raised but never subscribed. Default true."
+    },
+    "includeDegenerateConstantCallSites": {
+      "type": "boolean",
+      "description": "Run the degenerate-call pass: private/internal methods whose every call site passes only compile-time-degenerate args (constant / default / null). Default true."
+    },
     "maxFindings": {
       "type": "integer",
       "description": "Optional. Cap on findings returned; defaults to 200. Zero / negative clamps to the default."

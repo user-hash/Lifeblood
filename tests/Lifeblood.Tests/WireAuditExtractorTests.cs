@@ -123,6 +123,84 @@ public class Builder { public void B() { var x = new Acme.Bindings { Slot = () =
         Assert.Empty(none.Findings);
     }
 
+    private const string Events = @"
+namespace Acme;
+public class Bus
+{
+    public event System.Action OnSubscribedNeverRaised;   // += in ctor, never invoked
+    public event System.Action OnRaisedNeverSubscribed;   // invoked in Raise, never +=
+    public event System.Action OnBoth;
+    public Bus() { OnSubscribedNeverRaised += () => {}; OnBoth += () => {}; }
+    public void Raise() { OnRaisedNeverSubscribed?.Invoke(); OnBoth?.Invoke(); }
+}";
+
+    [Fact]
+    public void WireAudit_EventSubscribedButNeverRaised_Flagged()
+    {
+        var report = HostWith(Events).GetWireAudit(Default);
+        Assert.True(Has(report, WireAuditFindingKind.EventSubscribedNeverRaised, "OnSubscribedNeverRaised"));
+        Assert.False(Has(report, WireAuditFindingKind.EventSubscribedNeverRaised, "OnBoth"));
+    }
+
+    [Fact]
+    public void WireAudit_EventRaisedButNeverSubscribed_Flagged()
+    {
+        var report = HostWith(Events).GetWireAudit(Default);
+        Assert.True(Has(report, WireAuditFindingKind.EventRaisedNeverSubscribed, "OnRaisedNeverSubscribed"));
+        Assert.False(Has(report, WireAuditFindingKind.EventRaisedNeverSubscribed, "OnBoth"));
+    }
+
+    [Fact]
+    public void WireAudit_EventBothSubscribedAndRaised_NotFlagged()
+    {
+        var report = HostWith(Events).GetWireAudit(Default);
+        Assert.DoesNotContain(report.Findings, f => f.MemberName == "OnBoth");
+    }
+
+    private const string Degenerate = @"
+namespace Acme;
+public class Caller
+{
+    public int Sink;
+    private void Send(int x) { Sink = x; }       // only ever called with constants
+    private void Process(int y) { Sink = y; }    // called with a runtime value
+    public void PublicApi(int z) { Sink = z; }   // public -> not a candidate even if const-called
+    public void Run(int v) { Send(0); Send(42); Process(v); PublicApi(0); }
+}";
+
+    [Fact]
+    public void WireAudit_PrivateMethodOnlyCalledWithConstants_Flagged()
+    {
+        var report = HostWith(Degenerate).GetWireAudit(Default);
+        Assert.True(Has(report, WireAuditFindingKind.DegenerateConstantCallSites, "Send"),
+            "private method whose every call site passes constants must be flagged");
+    }
+
+    [Fact]
+    public void WireAudit_MethodCalledWithRuntimeValue_NotFlagged()
+    {
+        var report = HostWith(Degenerate).GetWireAudit(Default);
+        Assert.False(Has(report, WireAuditFindingKind.DegenerateConstantCallSites, "Process"),
+            "a call site passing a runtime value disqualifies the degenerate verdict");
+    }
+
+    [Fact]
+    public void WireAudit_PublicMethodCalledWithConstants_NotACandidate()
+    {
+        var report = HostWith(Degenerate).GetWireAudit(Default);
+        Assert.False(Has(report, WireAuditFindingKind.DegenerateConstantCallSites, "PublicApi"));
+    }
+
+    [Fact]
+    public void WireAudit_EventAndDegeneratePasses_DisabledIndependently()
+    {
+        var noEvents = HostWith(Events).GetWireAudit(new WireAuditOptions { IncludeEvents = false });
+        Assert.DoesNotContain(noEvents.Findings, f => f.MemberKind == "Event");
+
+        var noDegenerate = HostWith(Degenerate).GetWireAudit(new WireAuditOptions { IncludeDegenerateConstantCallSites = false });
+        Assert.DoesNotContain(noDegenerate.Findings, f => f.Kind == WireAuditFindingKind.DegenerateConstantCallSites);
+    }
+
     // 30 private fields each read once, never written -> 30 FieldReadWithoutWrite.
     private static string ManyDeadReads(int n)
     {

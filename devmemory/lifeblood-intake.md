@@ -353,50 +353,12 @@ incremental scope decision, with mtime as a cheap pre-filter only (hash check
 on mtime-changed files before counting them as changed). Receipt could then
 report `mtimeTouched` vs `contentChanged` separately.
 
-## LB-INTAKE-20260611-004 — Dead-WIRE audit: read-without-write fields, never-assigned binding slots, never-fired events
-
-Type: Improvement · Priority: HIGH (today's dominant real-bug class; complements 20260601-001)
-Source: DAWG session 2026-06-11 (Lifeblood v0.7.11), MP polish pass root-causing
-Workspace: DAWG
-
-Partial progress: `lifeblood_wire_audit` SHIPPED 2026-06-21 with passes (a)
-field-read-without-write + (b) delegate-slot-never-assigned (`INV-WIRE-AUDIT-001`,
-archived as the 2026-06-21 receipt). This entry now tracks the REMAINING passes
-(c) events with subscribers but no fire sites (and vice versa) and (d) methods
-whose only call sites pass degenerate constant args (built on Wave 2 callsite
-facts) — both fold into the same `lifeblood_wire_audit` tool. Promote fully when
-(c)+(d) land.
-
-What: Four shipped DAWG bugs in ONE day share a shape that no current tool
-catches: code that compiles green but is structurally unplugged at runtime.
-Receipts (all verified + fixed 2026-06-11):
-- `MultiplayerUI._gridParent` + `_tabIndicatorParent`: private fields READ by
-  guards/usages but with ZERO assignment sites anywhere — the entire in-grid
-  presence layer silently dead since an extraction.
-- `SetMuteCommand`: constructed ONLY inside remote-apply lanes; zero local
-  dispatch sites — the full mute wire existed end-to-end and nothing ever sent.
-- `BeatGridMpClockSync.DrainToInbox`: effectively-empty body (flag clear only)
-  on the consumer end of a complete clock system — free-run drift root cause.
-- `MultiplayerManager.SendCursorUpdate`: only caller passed `Vector2.zero`
-  (constant-argument-only call sites = degenerate use).
-`dead_code` misses all four: every symbol HAS references — the defect is the
-DIRECTION/COMPLETENESS of the wiring, not reachability.
-
-Why it matters: extraction-heavy codebases sever runtime-only wiring while
-compiles + reference counts stay green. This is the recurring DAWG bug class
-(also: TabsContainer eager-null, melodic-trail "0 callers but live" from June
-memories).
-
-Fix shape: new read-side `lifeblood_wire_audit` (or dead_code mode) emitting:
-(a) private/internal fields with ≥1 read site and 0 write sites (excluding
-ctor-default), (b) delegate-typed members (Action/Func fields on *Bindings/
-*Context classes) with 0 assignment sites across all composition roots,
-(c) events with subscribers but 0 fire sites and vice versa, (d) methods whose
-only call sites pass compile-time-constant degenerate args (stretch). (a)-(c)
-are pure Roslyn semantics — no Unity assets needed, unlike 20260601-001.
-`lifeblood_assignment_coverage` already covers per-construction-site slot
-coverage; this generalizes it to a workspace sweep with zero-assignment as the
-red flag.
+<!-- LB-INTAKE-20260611-004 (dead-WIRE audit: read-without-write fields,
+     never-assigned binding slots, never-fired/never-subscribed events,
+     degenerate constant-only call sites) FULLY SHIPPED 2026-06-22 as the five
+     passes of `lifeblood_wire_audit` (a+b 2026-06-21, c+d 2026-06-22) ->
+     archived as the 2026-06-22 receipt in lifeblood-tracking-archive.md.
+     INV-WIRE-AUDIT-001. Do not re-add here; the id must not live in both files. -->
 
 ## LB-INTAKE-20260611-005 — Unity editor sync: domain-reload hook + authoritative changed-set
 
