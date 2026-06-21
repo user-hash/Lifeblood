@@ -231,6 +231,12 @@ public static class ToolInputContractCatalog
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
         );
 
+        yield return Contract(@"lifeblood_member_count",
+            Arg(@"typeId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Canonical (`type:NS.T`), qualified, or short name of the type to count members of.", enumValues: Array.Empty<string>()),
+            Arg(@"semantics", ToolArgumentType.String, required: false, arrayItemType: null, description: @"`reflectionDeclared` (default) = bit-exact System.Reflection DeclaredOnly count (compiler-generated/backing filtered, nested excluded, implicit ctor counted); `sourceSymbols` = graph child-symbol count (nested included, synthesized accessors/backing excluded).", enumValues: new[] { @"reflectionDeclared", @"sourceSymbols" }),
+            Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_symbol_at_position",
             Arg(@"filePath", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Source file path (absolute or relative)", enumValues: Array.Empty<string>()),
             Arg(@"line", ToolArgumentType.Integer, required: true, arrayItemType: null, description: @"Line number (1-based)", enumValues: Array.Empty<string>()),

@@ -53,6 +53,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Need | Tool | Notes |
 |---|---|---|
 | Check enum values produced/consumed | `lifeblood_enum_coverage` | Finds unproduced or unreferenced state-machine-like values. |
+| Count a type's declared members (for a ratchet) | `lifeblood_member_count` | `reflectionDeclared` = bit-exact System.Reflection DeclaredOnly; `sourceSymbols` = graph child count. Offline alternative to a live reflection run. |
 | Inspect static dispatch/config tables | `lifeblood_static_tables` | Operation-tree extraction; use `summarize:true` for large tables. |
 | Check object-initializer wiring | `lifeblood_assignment_coverage` | Useful for bindings/delegate slots and construction completeness. |
 | Triage unused code candidates | `lifeblood_dead_code` | Advisory; verify before deleting. |

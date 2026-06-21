@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "required": [
+    "typeId"
+  ],
+  "properties": {
+    "typeId": {
+      "type": "string",
+      "description": "Canonical (`type:NS.T`), qualified, or short name of the type to count members of."
+    },
+    "semantics": {
+      "type": "string",
+      "description": "`reflectionDeclared` (default) = bit-exact System.Reflection DeclaredOnly count (compiler-generated/backing filtered, nested excluded, implicit ctor counted); `sourceSymbols` = graph child-symbol count (nested included, synthesized accessors/backing excluded).",
+      "enum": [
+        "reflectionDeclared",
+        "sourceSymbols"
+      ]
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}

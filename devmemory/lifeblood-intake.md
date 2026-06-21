@@ -283,34 +283,11 @@ body is only `const` id strings; downrank from dead-code candidates. Documentabl
   reflection). Genuine wire-or-delete candidate: a mixer per-channel waveform-display
   capability built but never connected. Verify intended feature before removing.
 
-## LB-INTAKE-20260611-001 — execute: blocked Assembly.Load leaves declared-member-count queries with no lane
-
-Type: Improvement · Priority: MEDIUM
-Source: DAWG session 2026-06-11 (Lifeblood v0.7.11, server `1100895`), ABG member-count ratchet triage
-Workspace: DAWG
-
-What: A DAWG ratchet (`AbgMemberCountRatchetTests`) pins reflection-declared
-member count (GetMethods/Fields/Properties/Events/Ctors, DeclaredOnly,
-CompilerGenerated-filtered) at a ceiling. When the Unity test runner was
-unavailable (editor restart), the natural fallback
-`lifeblood_execute Assembly.LoadFrom(Library/ScriptAssemblies/...)` was
-refused with `Blocked pattern detected: Assembly.Load` (correct per the
-workspace-load boundary). The Graph fallback
-(`Graph.Symbols.Where(s => s.ParentId == abg.Id)`) returns a DIFFERENT count
-(2077 vs reflection's 2051): source-symbol semantics include nested types and
-diverge from reflection's event/ctor/backing-field accounting — unusable for
-the ratchet's number.
-
-Why it matters: declared-member-count ratchets are a common architecture-debt
-gate; today they can only be verified through a live Unity test run. Lifeblood
-is the natural offline gate but neither lane produces the reflection-equivalent
-number.
-
-Fix shape: read-side `lifeblood_member_count(typeId, semantics: "reflectionDeclared" | "sourceSymbols")`
-(or a documented Graph recipe) that reproduces reflection DeclaredOnly counting
-(methods incl. accessors, fields excl. compiler-generated backing for counted
-events, properties, events, ctors; nested types excluded). Honest delta table
-in docs for source-vs-reflection accounting.
+<!-- LB-INTAKE-20260611-001 (offline declared-member-count lane) SHIPPED
+     2026-06-22 as `lifeblood_member_count` (semantics reflectionDeclared bit-exact
+     System.Reflection parity, pinned by an emit-reflect-vs-parse harness; +
+     sourceSymbols graph-child semantics) -> archived as the 2026-06-22 receipt in
+     lifeblood-tracking-archive.md. INV-MEMBER-COUNT-001. Do not re-add here. -->
 
 ## LB-INTAKE-20260611-002 — execute: Symbol API misguesses cost iterations; CS1061 errors carry no member hint
 

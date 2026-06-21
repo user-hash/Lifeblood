@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **New tool `lifeblood_member_count`.** Reproduces a type's declared-member count
+  offline — the number an architecture-debt ratchet pins — without a live test run.
+  `semantics:"reflectionDeclared"` (default) is BIT-EXACT `System.Reflection`
+  DeclaredOnly counting: methods (incl. accessors / operators) + constructors +
+  fields + properties + events, with `[CompilerGenerated]` / backing-field /
+  synthesized-accessor members filtered and nested types excluded; the implicit
+  default ctor counts. `semantics:"sourceSymbols"` is the Lifeblood graph
+  child-symbol count (nested included, synthesized accessors / backing / implicit
+  ctor excluded) — the two differ precisely by accessors + implicit ctor − nested
+  types. Parity with real reflection is pinned by an emit-reflect-vs-parse harness.
+  35 MCP tools total now. (`INV-MEMBER-COUNT-001`, `LB-INTAKE-20260611-001`.)
 - **`lifeblood_wire_audit` passes (c) events + (d) degenerate call sites.** The
   dead-wire tool now covers two more structurally-unplugged shapes, fully closing
   `LB-INTAKE-20260611-004`: `EventSubscribedNeverRaised` (handlers attached via

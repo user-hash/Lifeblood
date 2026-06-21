@@ -137,6 +137,33 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-22 - Lifeblood v0.7.12-alpha - lifeblood_member_count tool (LB-INTAKE-20260611-001)
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan; DAWG ABG member-count ratchet triage 2026-06-11
+Workspace: Lifeblood self
+Verification: `MemberCountExtractorTests` (5 facts incl. an emit-reflect-vs-parse
+bit-exact parity harness); full suite green. Batch dogfood pending.
+
+Summary:
+- An offline architecture-debt ratchet needs the System.Reflection DeclaredOnly
+  member count, but the reflection lane is blocked (workspace-load boundary) and
+  the raw graph child count diverges (nested types + accessor/backing accounting).
+
+Fix shape (shipped):
+- New write-side tool `lifeblood_member_count` + `ICompilationHost.GetMemberCount`
+  + `RoslynMemberCountExtractor`. `reflectionDeclared` = bit-exact reflection
+  parity; `sourceSymbols` = graph child-symbol semantics. The two differ precisely
+  by (+ accessors + implicit ctor − nested types).
+- The harness compiles one fixture, emits + `Assembly.Load`s it for ground-truth
+  reflection, and feeds the same compilation to the tool — caught the
+  synthesized-accessor subtlety live (reflection marks auto-property AND
+  field-like-event accessors `[CompilerGenerated]`; auto-prop accessors are NOT
+  `IsImplicitlyDeclared` so they are detected by their empty accessor body).
+- `INV-MEMBER-COUNT-001`; registry/contract/schema; tool count 34→35 (18 read + 17
+  write). STATUS anchors set by the batch.
+
 ## 2026-06-22 - Lifeblood v0.7.12-alpha - wire_audit passes c+d, closes LB-INTAKE-20260611-004
 
 Status: Shipped

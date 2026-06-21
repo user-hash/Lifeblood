@@ -713,6 +713,36 @@ internal sealed class WriteToolHandler
         }, _jsonOpts));
     }
 
+    public McpToolResult HandleMemberCount(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
+
+        var rawType = GetString(args, "typeId");
+        if (string.IsNullOrEmpty(rawType))
+            return ErrorResult("typeId is required.");
+        var resolved = _resolver.Resolve(_session.Graph!, rawType);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {rawType}");
+
+        var semantics = GetString(args, "semantics") ?? MemberCountSemantics.ReflectionDeclared;
+        if (semantics != MemberCountSemantics.ReflectionDeclared && semantics != MemberCountSemantics.SourceSymbols)
+            return ErrorResult($"Unknown semantics '{semantics}'. Use '{MemberCountSemantics.ReflectionDeclared}' or '{MemberCountSemantics.SourceSymbols}'.");
+
+        var report = _session.CompilationHost!.GetMemberCount(resolved.CanonicalId, semantics);
+        if (report == null)
+            return ErrorResult($"Not a type in source: {resolved.CanonicalId}");
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            report.TypeId,
+            report.Semantics,
+            report.Count,
+            report.Breakdown,
+            analyzedUnderProfile = _session.RetainedProfileName,
+        }, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;

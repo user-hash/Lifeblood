@@ -164,6 +164,18 @@ public interface ICompilationHost
     /// </summary>
     FeatureSwitchReport GetFeatureSwitchAudit(FeatureSwitchAuditOptions options);
 
+    /// <summary>
+    /// Declared-member count for a single type. <c>semantics</c> selects
+    /// <c>reflectionDeclared</c> (bit-exact System.Reflection DeclaredOnly: methods
+    /// incl. accessors + ctors + fields + properties + events, compiler-generated /
+    /// backing-field filtered, nested types excluded, implicit default ctor counted)
+    /// or <c>sourceSymbols</c> (source-declared member symbols incl. nested types,
+    /// excl. synthesized accessors/backing — the Lifeblood graph child semantics).
+    /// Returns null when the id does not resolve to a source type.
+    /// INV-MEMBER-COUNT-001.
+    /// </summary>
+    MemberCountReport? GetMemberCount(string typeId, string semantics);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 
