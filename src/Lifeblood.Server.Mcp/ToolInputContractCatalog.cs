@@ -209,6 +209,15 @@ public static class ToolInputContractCatalog
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
         );
 
+        yield return Contract(@"lifeblood_wire_audit",
+            Arg(@"typeId", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Restrict findings to members declared on this type (canonical / qualified / short). Read+write counting still scans every loaded compilation.", enumValues: Array.Empty<string>()),
+            Arg(@"moduleScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Restrict findings to members declared in this module/asmdef.", enumValues: Array.Empty<string>()),
+            Arg(@"includeFieldReadWithoutWrite", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Run the field-read-without-write pass (private/internal mutable fields read with zero writes). Default true.", enumValues: Array.Empty<string>()),
+            Arg(@"includeDelegateSlots", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Run the delegate-slot-never-assigned pass (Func/Action/custom-delegate fields & properties with zero assignment sites). Default true.", enumValues: Array.Empty<string>()),
+            Arg(@"maxFindings", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Optional. Cap on findings returned; defaults to 200. Zero / negative clamps to the default.", enumValues: Array.Empty<string>()),
+            Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_symbol_at_position",
             Arg(@"filePath", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Source file path (absolute or relative)", enumValues: Array.Empty<string>()),
             Arg(@"line", ToolArgumentType.Integer, required: true, arrayItemType: null, description: @"Line number (1-based)", enumValues: Array.Empty<string>()),

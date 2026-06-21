@@ -84,6 +84,21 @@ public static class ToolRegistry
     },
   };
 
+  // wire_audit read/write classification is operation-exact against the loaded
+  // source set, but the "unplugged" verdict can be undermined by assignment paths
+  // static analysis cannot see. Semantic/Proven tier + the wire-specific gap named
+  // on the wire. INV-WIRE-AUDIT-001 / INV-ADVISORY-LIMITATIONS-001.
+  private static readonly EnvelopeClassification SemanticProvenWithWireRisk = new()
+  {
+    TruthTier = TruthTier.Semantic,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Semantic",
+    Limitations = new[]
+    {
+      "Assignment paths invisible to static analysis can wire a member this report calls 'unplugged': reflection (FieldInfo/PropertyInfo.SetValue), Unity serialized injection ([SerializeField] / prefab-scene-ScriptableObject YAML / UnityEvent persistent calls), and runtime-procedural assignment. A 'read without write' / 'never assigned' finding is a candidate to verify against those sources, not proof of a bug.",
+    },
+  };
+
   private static readonly EnvelopeClassification DerivedProvenWithTestDiscoveryRisk = new()
   {
     TruthTier = TruthTier.Derived,
@@ -355,6 +370,13 @@ public static class ToolRegistry
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,
   Description = "Per-call-site argument facts for a target method or constructor. Walks every loaded compilation's `IInvocationOperation` / `IObjectCreationOperation`, matches the bound callee against the target by canonical id (extension methods matched via their reduced-from definition), and reports for each site the containing symbol, file/line/column, receiver expression, and a per-argument array: bound parameter `name` + `type` + `ordinal`, `supplied` (author-passed) vs omitted (Roslyn-filled `DefaultValue`), `argumentKind` (`Explicit` / `DefaultValue` / `ParamArray`), classified `valueKind` (`Literal` / `NullLiteral` / `Constant` / `FieldReference` / `PropertyReference` / `LocalReference` / `ParameterReference` / `MethodGroup` / `Lambda` / `ObjectCreation` / `Invocation` / `Other`), `isConstant`, and clipped `rawText`. The `parameterSummaries[]` histogram reports `suppliedCount` / `omittedCount` per parameter across ALL discovered sites (computed before `maxSites` truncation), turning 'is this new optional parameter actually adopted?' into a one-call answer — e.g. `lengthSteps omitted by 7/7 call sites`. Default-value arguments are re-sourced to the parameter's own default expression (shared with `lifeblood_static_tables` cell binding) so `rawText` shows the authored default, not the lowered constant. Operation-tree only — never regex. `symbolId` accepts canonical (`method:NS.T.M(P)`), or a short/qualified name routed through the resolver; must resolve to a method or constructor. Optional `moduleScope` restricts to one module, `excludeTests` drops Test-bucket call sites, `maxSites` (default 256) clamps the returned `sites[]` (histogram still counts all). INV-CALLSITE-ARGS-001.",
+  },
+  new()
+  {
+  Name = "lifeblood_wire_audit",
+  Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProvenWithWireRisk,
+  Description = "Dead-WIRE audit — members that compile green and are REFERENCED but are structurally unplugged at runtime. The complement of `lifeblood_dead_code` (which finds UN-referenced symbols): this catches the opposite failure, the recurring extraction-severed-wiring bug class. One operation-tree pass over every loaded compilation classifies each field/property reference as read or write (assignment target, ++/--, ref/out arg, or declaration initializer = write; else read) and accumulates per-member counts. Two passes: `FieldReadWithoutWrite` = private/internal mutable field READ at >=1 site with zero write sites (no assignment anywhere, no initializer) — 'forgot to wire it'; `DelegateSlotNeverAssigned` = delegate-typed (Func/Action/custom-delegate) mutable field or property with zero assignment sites — a binding/callback slot that nothing ever fills. Each finding carries memberId, memberKind, memberType, declaringTypeId, file:line, readCount, writeCount, and a reason. Response carries `kindBreakdown` + `findingCount` + `truncated`. ADVISORY (Heuristic envelope): a member wired only through reflection, Unity serialized YAML (UnityEvent / [SerializeField]), or runtime-procedural assignment looks unplugged here — verify before acting. Optional `typeId` / `moduleScope` filter the FINDINGS (read/write counting always scans all compilations); `includeFieldReadWithoutWrite` / `includeDelegateSlots` toggle passes; `maxFindings` (default 200) clamps. INV-WIRE-AUDIT-001.",
   },
   new()
   {
