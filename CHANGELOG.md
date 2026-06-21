@@ -7,6 +7,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`lifeblood_wire_audit` passes (c) events + (d) degenerate call sites.** The
+  dead-wire tool now covers two more structurally-unplugged shapes, fully closing
+  `LB-INTAKE-20260611-004`: `EventSubscribedNeverRaised` (handlers attached via
+  `+=` but nothing ever raises the event), `EventRaisedNeverSubscribed` (raised but
+  nobody listens), and `DegenerateConstantCallSites` (a private/internal method
+  whose every call site passes only compile-time-degenerate args — constant /
+  `default` / null — a vestigial parameter or placeholder wire). Subscribe vs raise
+  is distinguished operation-exactly (`IEventAssignmentOperation` vs
+  `IEventReferenceOperation`). Toggles: `includeEvents` /
+  `includeDegenerateConstantCallSites` (both default true). Field-based sentinels
+  like `Vector2.zero` are not compile-time constants and are documented as not
+  detected.
+
 ### Fixed
 
 - **`lifeblood_feature_switch_audit` now models positional-record properties.**

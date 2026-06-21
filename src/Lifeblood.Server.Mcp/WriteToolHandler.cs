@@ -652,6 +652,8 @@ internal sealed class WriteToolHandler
             ModuleScope = GetString(args, "moduleScope"),
             IncludeFieldReadWithoutWrite = GetBool(args, "includeFieldReadWithoutWrite") ?? true,
             IncludeDelegateSlots = GetBool(args, "includeDelegateSlots") ?? true,
+            IncludeEvents = GetBool(args, "includeEvents") ?? true,
+            IncludeDegenerateConstantCallSites = GetBool(args, "includeDegenerateConstantCallSites") ?? true,
             MaxFindings = GetInt(args, "maxFindings"),
             Summarize = GetBool(args, "summarize"),
         };

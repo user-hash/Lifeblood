@@ -38,8 +38,14 @@ internal static class RoslynWireAuditExtractor
         public required string ModuleName { get; init; }
         public required bool IsDelegate { get; init; }
         public required bool IsReadWriteCandidate { get; init; }  // private/internal field
+        public bool IsEvent { get; init; }
+        public bool IsDegenerateCallCandidate { get; init; }      // private/internal method, >=1 parameter
         public int Reads;
         public int Writes;   // seeded to 1 when the declaration has an initializer
+        public int Subscribes;   // event: += sites
+        public int Fires;        // event: raise / delegate-access sites
+        public int RealCalls;        // method: call sites with >=1 non-degenerate explicit arg
+        public int DegenerateCalls;  // method: call sites with >=1 explicit arg, all degenerate
     }
 
     internal static WireAuditReport Extract(
@@ -78,7 +84,33 @@ internal static class RoslynWireAuditExtractor
                 var model = compilation.GetSemanticModel(tree);
                 foreach (var node in tree.GetRoot().DescendantNodes())
                 {
-                    ISymbol? referenced = model.GetOperation(node) switch
+                    var op = model.GetOperation(node);
+                    if (op == null) continue;
+
+                    switch (op)
+                    {
+                        // (c) subscribe / unsubscribe: obj.Evt += / -= handler.
+                        case IEventAssignmentOperation ea
+                            when ea.EventReference is IEventReferenceOperation er
+                                 && members.TryGetValue(buildSymbolId(er.Event.OriginalDefinition), out var evInfo):
+                            if (ea.Adds) evInfo.Subscribes++;
+                            continue;
+                        // (c) raise / delegate-access: an event reference NOT in a +=/-=
+                        // position is a use of the backing delegate (a raise site).
+                        case IEventReferenceOperation er2
+                            when er2.Parent is not IEventAssignmentOperation
+                                 && members.TryGetValue(buildSymbolId(er2.Event.OriginalDefinition), out var evInfo2):
+                            evInfo2.Fires++;
+                            continue;
+                        // (d) classify each call site of a degenerate-call candidate.
+                        case IInvocationOperation inv
+                            when members.TryGetValue(buildSymbolId(inv.TargetMethod.OriginalDefinition), out var mInfo)
+                                 && mInfo.IsDegenerateCallCandidate:
+                            ClassifyCallSite(inv, mInfo);
+                            continue;
+                    }
+
+                    ISymbol? referenced = op switch
                     {
                         IFieldReferenceOperation f => f.Field,
                         IPropertyReferenceOperation p => p.Property,
@@ -88,7 +120,7 @@ internal static class RoslynWireAuditExtractor
                     var id = buildSymbolId(referenced.OriginalDefinition);
                     if (!members.TryGetValue(id, out var info)) continue;
 
-                    if (RoslynOperationFacts.IsWriteContext(model.GetOperation(node)!)) info.Writes++;
+                    if (RoslynOperationFacts.IsWriteContext(op)) info.Writes++;
                     else info.Reads++;
                 }
             }
@@ -108,6 +140,21 @@ internal static class RoslynWireAuditExtractor
             if (options.IncludeDelegateSlots && info.IsDelegate && info.Writes == 0)
                 findings.Add(MakeFinding(info, WireAuditFindingKind.DelegateSlotNeverAssigned,
                     $"delegate-typed {info.MemberKind.ToLowerInvariant()} with zero assignment sites (read at {info.Reads} site(s))"));
+
+            if (options.IncludeEvents && info.IsEvent)
+            {
+                if (info.Subscribes > 0 && info.Fires == 0)
+                    findings.Add(MakeFinding(info, WireAuditFindingKind.EventSubscribedNeverRaised,
+                        $"event subscribed at {info.Subscribes} site(s) with zero raise sites — handlers attached, nothing fires it"));
+                else if (info.Fires > 0 && info.Subscribes == 0)
+                    findings.Add(MakeFinding(info, WireAuditFindingKind.EventRaisedNeverSubscribed,
+                        $"event raised at {info.Fires} site(s) with zero subscribers — fired into the void"));
+            }
+
+            if (options.IncludeDegenerateConstantCallSites && info.IsDegenerateCallCandidate
+                && info.DegenerateCalls > 0 && info.RealCalls == 0)
+                findings.Add(MakeFinding(info, WireAuditFindingKind.DegenerateConstantCallSites,
+                    $"private/internal method whose {info.DegenerateCalls} call site(s) pass only compile-time-degenerate args (constant / default / null); zero call sites pass a runtime value"));
         }
 
         findings = findings
@@ -176,6 +223,50 @@ internal static class RoslynWireAuditExtractor
                 if (!isDelegate) return null;
                 break;
             }
+            case IEventSymbol e:
+            {
+                var loc2 = e.Locations.FirstOrDefault(l => l.IsInSource)?.GetLineSpan();
+                return new MemberInfo
+                {
+                    Id = buildSymbolId(e.OriginalDefinition),
+                    Name = e.Name,
+                    MemberKind = "Event",
+                    MemberType = e.Type.ToDisplayString(),
+                    DeclaringTypeId = buildSymbolId(type.OriginalDefinition),
+                    FilePath = loc2?.Path ?? "",
+                    Line = (loc2?.StartLinePosition.Line ?? 0) + 1,
+                    ModuleName = moduleName,
+                    IsDelegate = false,
+                    IsReadWriteCandidate = false,
+                    IsEvent = true,
+                };
+            }
+            // Degenerate-call candidate: a private/internal ordinary method with >=1
+            // parameter. Public methods are excluded — being called with constants is
+            // normal for public API; the smell is a NON-public helper only ever fed
+            // constants (a vestigial parameter or placeholder wire).
+            case IMethodSymbol mtd when mtd.MethodKind == MethodKind.Ordinary
+                && mtd.Parameters.Length > 0 && !mtd.IsAbstract && !mtd.IsExtern
+                && (mtd.DeclaredAccessibility == Accessibility.Private
+                    || mtd.DeclaredAccessibility == Accessibility.Internal
+                    || mtd.DeclaredAccessibility == Accessibility.ProtectedAndInternal):
+            {
+                var loc3 = mtd.Locations.FirstOrDefault(l => l.IsInSource)?.GetLineSpan();
+                return new MemberInfo
+                {
+                    Id = buildSymbolId(mtd.OriginalDefinition),
+                    Name = mtd.Name,
+                    MemberKind = "Method",
+                    MemberType = mtd.ToDisplayString(),
+                    DeclaringTypeId = buildSymbolId(type.OriginalDefinition),
+                    FilePath = loc3?.Path ?? "",
+                    Line = (loc3?.StartLinePosition.Line ?? 0) + 1,
+                    ModuleName = moduleName,
+                    IsDelegate = false,
+                    IsReadWriteCandidate = false,
+                    IsDegenerateCallCandidate = true,
+                };
+            }
             default:
                 return null;
         }
@@ -206,20 +297,57 @@ internal static class RoslynWireAuditExtractor
         return true;
     }
 
-    private static WireAuditFinding MakeFinding(MemberInfo info, string kind, string reason) => new()
+    private static WireAuditFinding MakeFinding(MemberInfo info, string kind, string reason)
     {
-        Kind = kind,
-        MemberId = info.Id,
-        MemberName = info.Name,
-        MemberKind = info.MemberKind,
-        MemberType = info.MemberType,
-        DeclaringTypeId = info.DeclaringTypeId,
-        FilePath = info.FilePath,
-        Line = info.Line,
-        ReadCount = info.Reads,
-        WriteCount = info.Writes,
-        Reason = reason,
-    };
+        // ReadCount/WriteCount are generic reference tallies whose meaning follows the
+        // member: field/property = reads/writes; event = raise/subscribe sites
+        // (raising reads the backing delegate, subscribing writes it); method = total
+        // call sites / 0.
+        var (read, write) = info switch
+        {
+            { IsEvent: true } => (info.Fires, info.Subscribes),
+            { IsDegenerateCallCandidate: true } => (info.DegenerateCalls + info.RealCalls, 0),
+            _ => (info.Reads, info.Writes),
+        };
+        return new WireAuditFinding
+        {
+            Kind = kind,
+            MemberId = info.Id,
+            MemberName = info.Name,
+            MemberKind = info.MemberKind,
+            MemberType = info.MemberType,
+            DeclaringTypeId = info.DeclaringTypeId,
+            FilePath = info.FilePath,
+            Line = info.Line,
+            ReadCount = read,
+            WriteCount = write,
+            Reason = reason,
+        };
+    }
+
+    /// <summary>
+    /// Classify one call site of a degenerate-call candidate: a site whose explicit
+    /// args are ALL compile-time-degenerate (constant / <c>default</c> / null)
+    /// increments <c>DegenerateCalls</c>; any explicit runtime-valued arg makes it a
+    /// <c>RealCalls</c> site. Sites with no explicit args (all defaulted) are ignored
+    /// — they say nothing about passing constants. Field-based sentinels like
+    /// <c>Vector2.zero</c> are NOT degenerate (they are field references, not
+    /// constants); documented as a known gap on the wire.
+    /// </summary>
+    private static void ClassifyCallSite(IInvocationOperation inv, MemberInfo info)
+    {
+        var explicitArgs = inv.Arguments.Where(a => a.ArgumentKind != ArgumentKind.DefaultValue).ToArray();
+        if (explicitArgs.Length == 0) return;
+        if (explicitArgs.All(a => IsDegenerateArg(a.Value))) info.DegenerateCalls++;
+        else info.RealCalls++;
+    }
+
+    private static bool IsDegenerateArg(IOperation value)
+    {
+        var v = value;
+        while (v is IConversionOperation c && c.Operand != null) v = c.Operand;
+        return v is IDefaultValueOperation || v.ConstantValue.HasValue;
+    }
 
     private static WireAuditReport Empty(WireAuditOptions options) => new()
     {

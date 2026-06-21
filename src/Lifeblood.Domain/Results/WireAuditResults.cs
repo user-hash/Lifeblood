@@ -74,6 +74,15 @@ public static class WireAuditFindingKind
 
     /// <summary>Delegate-typed (Func/Action/custom-delegate) mutable field or property with zero assignment sites. Never-wired slot.</summary>
     public const string DelegateSlotNeverAssigned = "DelegateSlotNeverAssigned";
+
+    /// <summary>Event with ≥1 subscriber (<c>+=</c>) but zero raise sites — handlers attached, nothing ever fires it. Dead event.</summary>
+    public const string EventSubscribedNeverRaised = "EventSubscribedNeverRaised";
+
+    /// <summary>Event raised at ≥1 site but with zero subscribers (<c>+=</c>) anywhere — fired into the void. No-op signal.</summary>
+    public const string EventRaisedNeverSubscribed = "EventRaisedNeverSubscribed";
+
+    /// <summary>Private/internal method whose every call site passes only compile-time-degenerate arguments (constants / default / null) — a vestigial parameter or placeholder wire.</summary>
+    public const string DegenerateConstantCallSites = "DegenerateConstantCallSites";
 }
 
 /// <summary>Per-call options for <c>lifeblood_wire_audit</c>.</summary>
@@ -90,6 +99,12 @@ public sealed class WireAuditOptions
 
     /// <summary>Run the delegate-slot-never-assigned pass. Default true.</summary>
     public bool IncludeDelegateSlots { get; init; } = true;
+
+    /// <summary>Run the event subscribed-never-raised / raised-never-subscribed pass. Default true.</summary>
+    public bool IncludeEvents { get; init; } = true;
+
+    /// <summary>Run the degenerate-constant-call-sites pass (private/internal methods only ever called with constant/default args). Default true.</summary>
+    public bool IncludeDegenerateConstantCallSites { get; init; } = true;
 
     /// <summary>Maximum findings returned. Adapter-side default applies when unset.</summary>
     public int? MaxFindings { get; init; }
