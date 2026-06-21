@@ -7,6 +7,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The intake backlog now has a shape ratchet.**
+
 ## [0.7.11] - 2026-06-01
 
 This release is mostly about **honesty and resilience**: when something goes wrong,
