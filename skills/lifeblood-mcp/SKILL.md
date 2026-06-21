@@ -32,7 +32,7 @@ Common fast paths:
 - Before refactoring a symbol: `lifeblood_blast_radius groupBy:"both"`, then `lifeblood_dependants` or `lifeblood_find_references` for source locations.
 - Before changing a file: `lifeblood_file_impact`, then `lifeblood_test_impact` on the file.
 - After editing C#: `lifeblood_compile_check filePath`, then `lifeblood_diagnose filePath` if the result or project state is unclear.
-- Before deleting code: `lifeblood_dead_code` is advisory only; verify with references, source inspection, and tests.
+- Before deleting code, pick by reference state — the wiring family: `lifeblood_dead_code` (never referenced), `lifeblood_wire_audit` (referenced but unplugged — field read-without-write, never-assigned slot), `lifeblood_feature_switch_audit` (boolean gates a branch but no reachable code flips it off its default). All three are advisory only; verify with references, source inspection, and tests.
 - For architecture rules: `lifeblood_invariant_check mode:"audit"` or `id:"INV-..."`, then read the cited invariant file.
 
 ## Refactor Workflow

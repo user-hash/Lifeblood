@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Public agent skill kept in lockstep with the tool surface.** The shipped
+  `skills/lifeblood-mcp/` skill now documents the full tool surface (the
+  wiring-audit family — `wire_audit`, `feature_switch_audit`, `callsite_arguments`
+  — was missing), and a new ratchet `INV-SKILL-TOOL-PARITY-001` (`SkillToolParityTests`)
+  fails the build if any `ToolRegistry` tool is absent from the skill's
+  `tool-routing.md`, or if the skill references a `lifeblood_*` name that is not a
+  real tool. Adding a tool now requires a routing entry in the same change.
 - **New tool `lifeblood_feature_switch_audit`.** Finds dormant feature switches —
   boolean fields / settable boolean properties that GATE branches but are pinned
   to their default because nothing reachable in the graph flips them. The third
