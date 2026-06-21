@@ -653,6 +653,7 @@ internal sealed class WriteToolHandler
             IncludeFieldReadWithoutWrite = GetBool(args, "includeFieldReadWithoutWrite") ?? true,
             IncludeDelegateSlots = GetBool(args, "includeDelegateSlots") ?? true,
             MaxFindings = GetInt(args, "maxFindings"),
+            Summarize = GetBool(args, "summarize"),
         };
 
         var report = _session.CompilationHost!.GetWireAudit(options);
@@ -693,6 +694,7 @@ internal sealed class WriteToolHandler
             RequireBranchCondition = GetBool(args, "requireBranchCondition") ?? true,
             IncludeProperties = GetBool(args, "includeProperties") ?? true,
             MaxFindings = GetInt(args, "maxFindings"),
+            Summarize = GetBool(args, "summarize"),
         };
 
         var report = _session.CompilationHost!.GetFeatureSwitchAudit(options);

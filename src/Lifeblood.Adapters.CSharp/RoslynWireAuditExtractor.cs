@@ -23,6 +23,9 @@ internal static class RoslynWireAuditExtractor
 {
     internal const int DefaultMaxFindings = 200;
 
+    /// <summary>Compact cap forced by <c>summarize:true</c> — triage shape. INV-LIST-SHAPE-UNIFORM-001.</summary>
+    internal const int SummarizeMaxFindings = 25;
+
     private sealed class MemberInfo
     {
         public required string Id { get; init; }
@@ -44,7 +47,10 @@ internal static class RoslynWireAuditExtractor
         WireAuditOptions options,
         Func<ISymbol, string> buildSymbolId)
     {
-        var maxFindings = options.MaxFindings is { } m && m > 0 ? m : DefaultMaxFindings;
+        // summarize forces the compact cap regardless of caller MaxFindings.
+        var maxFindings = (options.Summarize ?? false)
+            ? SummarizeMaxFindings
+            : (options.MaxFindings is { } m && m > 0 ? m : DefaultMaxFindings);
 
         // 1. Candidate members from SOURCE types (dedup by canonical id).
         var members = new Dictionary<string, MemberInfo>(StringComparer.Ordinal);

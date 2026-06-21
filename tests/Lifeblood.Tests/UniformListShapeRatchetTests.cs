@@ -15,6 +15,8 @@ public class UniformListShapeRatchetTests
         new object[] { "lifeblood_file_impact" },
         new object[] { "lifeblood_static_tables" },
         new object[] { "lifeblood_context" },
+        new object[] { "lifeblood_wire_audit" },
+        new object[] { "lifeblood_feature_switch_audit" },
     };
 
     [Theory]
@@ -40,7 +42,7 @@ public class UniformListShapeRatchetTests
     [MemberData(nameof(ListShapeTools))]
     public void ListShapeTool_HasCapParameterInInputSchema(string toolName)
     {
-        var capNames = new[] { "maxResults", "maxRows", "maxTables", "maxFiles", "maxHotspots", "maxBoundaries", "maxReadingOrder", "maxMatrixEntries", "maxSites", "maxDepth", "limit" };
+        var capNames = new[] { "maxResults", "maxRows", "maxTables", "maxFiles", "maxHotspots", "maxBoundaries", "maxReadingOrder", "maxMatrixEntries", "maxSites", "maxFindings", "maxDepth", "limit" };
 
         var tool = ToolRegistry.GetDefinitions().FirstOrDefault(d => d.Name == toolName);
         Assert.NotNull(tool);

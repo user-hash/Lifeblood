@@ -93,4 +93,7 @@ public sealed class WireAuditOptions
 
     /// <summary>Maximum findings returned. Adapter-side default applies when unset.</summary>
     public int? MaxFindings { get; init; }
+
+    /// <summary>When true, force the compact <c>SummarizeMaxFindings</c> cap regardless of <see cref="MaxFindings"/> — smallest viable triage shape. Same field shape, fewer findings. INV-LIST-SHAPE-UNIFORM-001.</summary>
+    public bool? Summarize { get; init; }
 }

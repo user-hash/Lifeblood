@@ -26,6 +26,9 @@ internal static class RoslynFeatureSwitchExtractor
 {
     internal const int DefaultMaxFindings = 200;
 
+    /// <summary>Compact cap forced by <c>summarize:true</c> — verdict-census triage shape. INV-LIST-SHAPE-UNIFORM-001.</summary>
+    internal const int SummarizeMaxFindings = 25;
+
     private const string ValueTrue = "true";
     private const string ValueFalse = "false";
     private const string ValueUnknown = "Unknown";
@@ -65,7 +68,15 @@ internal static class RoslynFeatureSwitchExtractor
         FeatureSwitchAuditOptions options,
         Func<ISymbol, string> buildSymbolId)
     {
-        var maxFindings = options.MaxFindings is { } m && m > 0 ? m : DefaultMaxFindings;
+        // summarize forces the compact cap regardless of caller MaxFindings —
+        // "compact shape on demand" is a contract, not a soft hint. It ALSO drops
+        // the per-switch evidence arrays (a widely-read flag carries dozens of
+        // gates/mutators, so a count cap alone does not bound response size); the
+        // summary is a verdict census — scalars + bucket breakdown only.
+        var summarize = options.Summarize ?? false;
+        var maxFindings = summarize
+            ? SummarizeMaxFindings
+            : (options.MaxFindings is { } m && m > 0 ? m : DefaultMaxFindings);
 
         // 1. Candidate boolean fields / settable boolean properties from SOURCE types.
         var switches = new Dictionary<string, SwitchInfo>(StringComparer.Ordinal);
@@ -156,7 +167,8 @@ internal static class RoslynFeatureSwitchExtractor
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
 
         var total = results.Count;
-        var clamped = total > maxFindings ? results.Take(maxFindings).ToArray() : results.ToArray();
+        var capped = total > maxFindings ? results.Take(maxFindings) : results;
+        var clamped = (summarize ? capped.Select(Compact) : capped).ToArray();
 
         return new FeatureSwitchReport
         {
@@ -567,6 +579,32 @@ internal static class RoslynFeatureSwitchExtractor
         }
         return false;
     }
+
+    /// <summary>
+    /// Verdict-census projection for <c>summarize</c>: keep the scalar identity +
+    /// verdict + the small assignment-bucket breakdown, drop the per-switch
+    /// evidence arrays (assignments / branch-gated members / mutators) that make a
+    /// widely-read flag's full finding large. The unsummarized per-type query
+    /// returns the dropped evidence.
+    /// </summary>
+    private static FeatureSwitch Compact(FeatureSwitch s) => new()
+    {
+        MemberId = s.MemberId,
+        MemberName = s.MemberName,
+        MemberKind = s.MemberKind,
+        DeclaringTypeId = s.DeclaringTypeId,
+        FilePath = s.FilePath,
+        Line = s.Line,
+        IsStatic = s.IsStatic,
+        DefaultValue = s.DefaultValue,
+        Verdict = s.Verdict,
+        Reason = s.Reason,
+        BranchConditionReadCount = s.BranchConditionReadCount,
+        Assignments = Array.Empty<FeatureSwitchAssignment>(),
+        BranchGatedMembers = Array.Empty<FeatureSwitchGate>(),
+        Mutators = Array.Empty<FeatureSwitchMutator>(),
+        AssignmentBucketBreakdown = s.AssignmentBucketBreakdown,
+    };
 
     private static void Bump(Dictionary<string, int> counts, string key)
         => counts[key] = counts.TryGetValue(key, out var v) ? v + 1 : 1;

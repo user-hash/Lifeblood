@@ -215,6 +215,7 @@ public static class ToolInputContractCatalog
             Arg(@"includeFieldReadWithoutWrite", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Run the field-read-without-write pass (private/internal mutable fields read with zero writes). Default true.", enumValues: Array.Empty<string>()),
             Arg(@"includeDelegateSlots", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Run the delegate-slot-never-assigned pass (Func/Action/custom-delegate fields & properties with zero assignment sites). Default true.", enumValues: Array.Empty<string>()),
             Arg(@"maxFindings", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Optional. Cap on findings returned; defaults to 200. Zero / negative clamps to the default.", enumValues: Array.Empty<string>()),
+            Arg(@"summarize", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"When true, force the compact triage cap (25 findings) regardless of maxFindings; `kindBreakdown` still counts every finding. Default false.", enumValues: Array.Empty<string>()),
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
         );
 
@@ -224,6 +225,7 @@ public static class ToolInputContractCatalog
             Arg(@"requireBranchCondition", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Only audit booleans read in >=1 branch condition (the feature-switch shape). Default true; false widens to every boolean field & settable property.", enumValues: Array.Empty<string>()),
             Arg(@"includeProperties", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Audit settable boolean properties as well as fields. Default true.", enumValues: Array.Empty<string>()),
             Arg(@"maxFindings", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Optional. Cap on switches returned; defaults to 200. Zero / negative clamps to the default.", enumValues: Array.Empty<string>()),
+            Arg(@"summarize", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"When true, return a compact verdict census: cap at 25 switches regardless of maxFindings AND drop each switch's evidence arrays (assignments / branchGatedMembers / mutators) — a widely-read flag carries many, so a count cap alone does not bound size. `verdictBreakdown` still counts every switch; query a specific typeId unsummarized for the evidence. Default false.", enumValues: Array.Empty<string>()),
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
         );
 

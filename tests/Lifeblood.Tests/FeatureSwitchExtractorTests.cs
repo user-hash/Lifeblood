@@ -1,3 +1,4 @@
+using System.Text;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Results;
@@ -247,5 +248,50 @@ public class Boot { public void I(Acme.Engine e) { e.Disable(); } }";
         Assert.Equal("true", sw.DefaultValue);
         Assert.True(Assert.Single(sw.Assignments).FlipsDefault);
         Assert.Equal(FeatureSwitchVerdict.RuntimeMutable, sw.Verdict);
+    }
+
+    // 30 distinct branch-gating booleans on one type.
+    private static string ManyGatedBooleans(int n)
+    {
+        var sb = new StringBuilder("namespace Acme;\npublic class Many\n{\n");
+        for (var i = 0; i < n; i++) sb.Append($"    private bool _f{i};\n");
+        sb.Append("    public int Use() { var r = 0;\n");
+        for (var i = 0; i < n; i++) sb.Append($"        if (_f{i}) r++;\n");
+        sb.Append("        return r; }\n}");
+        return sb.ToString();
+    }
+
+    [Fact]
+    public void FeatureSwitch_SummarizeTrue_ForcesCompactCensus_RegardlessOfCallerMaxFindings()
+    {
+        var report = HostWith(ManyGatedBooleans(30))
+            .GetFeatureSwitchAudit(new FeatureSwitchAuditOptions { Summarize = true, MaxFindings = 100 });
+        Assert.Equal(30, report.SwitchCount);                 // breakdown counts every switch
+        Assert.True(report.Switches.Length <= RoslynFeatureSwitchExtractor.SummarizeMaxFindings);
+        Assert.True(report.Truncated);
+        // Census shape: the per-switch evidence arrays are dropped (a count cap
+        // alone would not bound size — a widely-read flag carries many gates).
+        Assert.All(report.Switches, s =>
+        {
+            Assert.Empty(s.BranchGatedMembers);
+            Assert.Empty(s.Assignments);
+            Assert.Empty(s.Mutators);
+        });
+    }
+
+    [Fact]
+    public void FeatureSwitch_NotSummarized_KeepsEvidenceArrays()
+    {
+        var report = HostWith(ManyGatedBooleans(5)).GetFeatureSwitchAudit(Default);
+        Assert.All(report.Switches, s => Assert.NotEmpty(s.BranchGatedMembers));
+    }
+
+    [Fact]
+    public void FeatureSwitch_SummarizeFalse_HonorsCallerMaxFindings()
+    {
+        var report = HostWith(ManyGatedBooleans(30))
+            .GetFeatureSwitchAudit(new FeatureSwitchAuditOptions { MaxFindings = 30 });
+        Assert.Equal(30, report.Switches.Length);             // summarize must not be sticky
+        Assert.False(report.Truncated);
     }
 }
