@@ -38,7 +38,16 @@ public sealed record DeadCodeOptions(
     SymbolKind[]? IncludeKinds = null,
     bool ExcludePublic = true,
     bool ExcludeTests = true,
-    bool IncludeSameClassOnlyConsumers = false);
+    bool IncludeSameClassOnlyConsumers = false,
+    string[]? PathExclude = null);
+// PathExclude (default null): glob patterns matched against each symbol's
+// normalized POSIX file path; any match drops the symbol. Folds vendored /
+// sample / third-party roots out of dead-code triage (e.g. "*/Examples*/*",
+// "*/Samples*/*", "Packages/*") without a breaking bucket-enum change. Globs
+// support "*" (any run incl. "/") and "?" (one char), are case-insensitive,
+// and must match the FULL path — use "*" liberally for substring intent.
+// INV-DEADCODE-TRIAGE-003 / first half of LB-INTAKE-20260601-004.
+//
 // IncludeSameClassOnlyConsumers (default false): when true, surfaces symbols
 // whose ONLY incoming non-Contains references come from members of the same
 // containing type. Useful for triage of private fields/methods whose

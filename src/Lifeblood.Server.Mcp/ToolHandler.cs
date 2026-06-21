@@ -839,8 +839,9 @@ public sealed class ToolHandler
         var includeKinds = ParseKindsArray(args, "includeKinds");
         var excludePublic = WriteToolHandler.GetBool(args, "excludePublic") ?? true;
         var excludeTests = WriteToolHandler.GetBool(args, "excludeTests") ?? true;
+        var pathExclude = ReadStringArray(args, "pathExclude");
 
-        var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests);
+        var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests, PathExclude: pathExclude);
         var findings = _deadCode.FindDeadCode(_session.Graph!, options);
 
         // Same response-shape pattern as cycles / context.
