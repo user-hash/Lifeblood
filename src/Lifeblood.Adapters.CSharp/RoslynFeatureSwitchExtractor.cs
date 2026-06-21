@@ -44,6 +44,8 @@ internal static class RoslynFeatureSwitchExtractor
         public required string ModuleName { get; init; }
         public required bool IsStatic { get; init; }
         public required string DefaultValue { get; init; }
+        /// <summary>Property generated from a positional record parameter — its writes come through constructor arguments, not property assignments.</summary>
+        public required bool IsRecordPositional { get; init; }
         public int BranchReads;
         public readonly List<RawAssignment> Assignments = new();
         public readonly Dictionary<string, FeatureSwitchGate> Gates = new(StringComparer.Ordinal);
@@ -126,6 +128,9 @@ internal static class RoslynFeatureSwitchExtractor
                         case IUsingOperation or IUsingDeclarationOperation when disposeId != null:
                             Bump(methodCallCounts, disposeId);
                             break;
+                        case IObjectCreationOperation creation:
+                            RecordRecordConstructorWrites(creation, node, model, switches, buildSymbolId);
+                            break;
                     }
 
                     ISymbol? referenced = op switch
@@ -187,6 +192,7 @@ internal static class RoslynFeatureSwitchExtractor
         string memberKind;
         bool isStatic;
         string defaultValue;
+        var isRecordPositional = false;
 
         switch (member)
         {
@@ -203,6 +209,10 @@ internal static class RoslynFeatureSwitchExtractor
             {
                 memberKind = "Property";
                 isStatic = p.IsStatic;
+                // A positional-record property is declared by its primary-constructor
+                // parameter, so its default + writes live on the parameter / ctor args.
+                isRecordPositional = p.DeclaringSyntaxReferences
+                    .Select(r => r.GetSyntax()).OfType<ParameterSyntax>().Any();
                 defaultValue = PropertyDefault(p);
                 break;
             }
@@ -222,6 +232,7 @@ internal static class RoslynFeatureSwitchExtractor
             ModuleName = moduleName,
             IsStatic = isStatic,
             DefaultValue = defaultValue,
+            IsRecordPositional = isRecordPositional,
         };
     }
 
@@ -236,10 +247,11 @@ internal static class RoslynFeatureSwitchExtractor
 
     private static string PropertyDefault(IPropertySymbol p)
     {
-        var init = p.DeclaringSyntaxReferences
-            .Select(r => r.GetSyntax())
-            .OfType<PropertyDeclarationSyntax>()
-            .FirstOrDefault()?.Initializer?.Value;
+        var syntaxes = p.DeclaringSyntaxReferences.Select(r => r.GetSyntax()).ToArray();
+        // Regular auto-property initializer, OR (positional record) the default on
+        // the primary-constructor parameter that generated this property.
+        var init = syntaxes.OfType<PropertyDeclarationSyntax>().FirstOrDefault()?.Initializer?.Value
+                   ?? syntaxes.OfType<ParameterSyntax>().FirstOrDefault()?.Default?.Value;
         return LiteralBool(init) ?? (init == null ? ValueFalse : ValueUnknown);
     }
 
@@ -253,19 +265,49 @@ internal static class RoslynFeatureSwitchExtractor
     private static void RecordWrite(
         SwitchInfo info, IOperation reference, SyntaxNode node, SemanticModel model,
         Func<ISymbol, string> buildSymbolId)
+        => AddAssignment(info, node, model, ClassifyAssignedValue(reference), buildSymbolId);
+
+    /// <summary>
+    /// Positional-record properties are written through CONSTRUCTOR ARGUMENTS, not
+    /// property assignments — <c>new DeadCodeOptions(includeKinds, excludePublic,
+    /// excludeTests, ...)</c> sets <c>ExcludePublic</c> with no IPropertyReference
+    /// write. For each explicitly-supplied argument, map it back to the record
+    /// property it initializes and record a write (omitted args = the default, not a
+    /// write). Without this such options always read as "no writes" → false dormant.
+    /// </summary>
+    private static void RecordRecordConstructorWrites(
+        IObjectCreationOperation creation, SyntaxNode node, SemanticModel model,
+        Dictionary<string, SwitchInfo> switches, Func<ISymbol, string> buildSymbolId)
     {
-        var assigned = ClassifyAssignedValue(reference);
-        var flips = assigned == ValueUnknown || !string.Equals(assigned, info.DefaultValue, StringComparison.Ordinal);
+        if (creation.Type is not INamedTypeSymbol type) return;
+        foreach (var arg in creation.Arguments)
+        {
+            if (arg.ArgumentKind == ArgumentKind.DefaultValue || arg.Parameter is null) continue;
+            var prop = type.GetMembers(arg.Parameter.Name).OfType<IPropertySymbol>().FirstOrDefault();
+            if (prop is null) continue;
+            if (!switches.TryGetValue(buildSymbolId(prop.OriginalDefinition), out var info) || !info.IsRecordPositional)
+                continue;
+            AddAssignment(info, node, model, ClassifyConstantBool(arg.Value), buildSymbolId);
+        }
+    }
+
+    /// <summary>
+    /// Shared write recorder: resolve the enclosing member, compute its dispatch
+    /// aliases (interface/base/property-owner), and append a <see cref="RawAssignment"/>.
+    /// Call sites that reach the member dispatch through the member's id PLUS the
+    /// interface members it implements / base members it overrides — a polymorphic
+    /// call binds to the interface/base, not the concrete implementer.
+    /// </summary>
+    private static void AddAssignment(
+        SwitchInfo info, SyntaxNode node, SemanticModel model, string assignedValue,
+        Func<ISymbol, string> buildSymbolId)
+    {
+        var flips = assignedValue == ValueUnknown || !string.Equals(assignedValue, info.DefaultValue, StringComparison.Ordinal);
 
         var (member, kind) = ResolveContainingMember(model, node);
         var memberId = member != null ? buildSymbolId(member.OriginalDefinition) : "(unknown)";
         var memberName = member?.Name ?? "(unknown)";
 
-        // Call sites that reach this write's containing member dispatch through the
-        // member's id PLUS the interface members it implements / base members it
-        // overrides — a polymorphic call binds to the interface/base, not the
-        // concrete implementer that holds the write. Property accessors alias their
-        // owner property; counting then sums in the matching dictionary.
         string? accessorOwnerId = null;
         IReadOnlyList<string> aliasIds = Array.Empty<string>();
         if (member is IMethodSymbol method)
@@ -285,7 +327,7 @@ internal static class RoslynFeatureSwitchExtractor
         var path = span.Path ?? "";
         info.Assignments.Add(new RawAssignment(
             memberId, memberName, path, span.StartLinePosition.Line + 1,
-            PathBucketClassifier.Classify(path).ToString(), assigned, flips, kind, accessorOwnerId, aliasIds));
+            PathBucketClassifier.Classify(path).ToString(), assignedValue, flips, kind, accessorOwnerId, aliasIds));
     }
 
     private static void RecordBranchRead(
@@ -314,15 +356,15 @@ internal static class RoslynFeatureSwitchExtractor
     /// assignment, ref/out, ++/--). Unknown is treated as "may flip".
     /// </summary>
     private static string ClassifyAssignedValue(IOperation reference)
-    {
-        if (reference.Parent is ISimpleAssignmentOperation a && ReferenceEquals(a.Target, reference))
-        {
-            var value = Unwrap(a.Value);
-            if (value is ILiteralOperation { ConstantValue: { HasValue: true, Value: bool b } })
-                return b ? ValueTrue : ValueFalse;
-        }
-        return ValueUnknown;
-    }
+        => reference.Parent is ISimpleAssignmentOperation a && ReferenceEquals(a.Target, reference)
+            ? ClassifyConstantBool(a.Value)
+            : ValueUnknown;
+
+    /// <summary>Constant boolean literal (through conversions/parens) → <c>"true"</c>/<c>"false"</c>, else <c>"Unknown"</c> (treated as may-flip).</summary>
+    private static string ClassifyConstantBool(IOperation value)
+        => Unwrap(value) is ILiteralOperation { ConstantValue: { HasValue: true, Value: bool b } }
+            ? (b ? ValueTrue : ValueFalse)
+            : ValueUnknown;
 
     private static IOperation Unwrap(IOperation op)
     {

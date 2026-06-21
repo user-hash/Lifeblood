@@ -294,4 +294,41 @@ public class Boot { public void I(Acme.Engine e) { e.Disable(); } }";
         Assert.Equal(30, report.Switches.Length);             // summarize must not be sticky
         Assert.False(report.Truncated);
     }
+
+    [Fact]
+    public void FeatureSwitch_PositionalRecord_DefaultFromParameter_AndConstructorArgIsWrite()
+    {
+        // The DAWG-shape false positive: a positional-record option's default lives
+        // on the parameter (= true), and its writes come through CONSTRUCTOR ARGS
+        // (new Options(false)), not property assignments — both were invisible.
+        var source = @"
+namespace Acme;
+public sealed record Options(bool ExcludePublic = true)
+{
+    public int Use() { if (ExcludePublic) return 1; return 0; }
+}
+public class Boot { public bool Sink; public Boot() { var o = new Acme.Options(false); Sink = o.Use() > 0; } }";
+        var sw = Find(HostWith(source).GetFeatureSwitchAudit(Default), "ExcludePublic")!;
+        Assert.Equal("true", sw.DefaultValue);                        // read off the record parameter
+        Assert.Equal(FeatureSwitchVerdict.RuntimeMutable, sw.Verdict); // constructor-arg write detected
+        Assert.Contains(sw.Assignments, a => a.AssignedValue == "false" && a.FlipsDefault && a.Active);
+    }
+
+    [Fact]
+    public void FeatureSwitch_PositionalRecord_OmittedArg_IsNotAWrite()
+    {
+        // Omitting the arg uses the parameter default — not a write, so a record
+        // option nothing ever sets stays correctly AlwaysDefaultInGraph.
+        var source = @"
+namespace Acme;
+public sealed record Options(bool Flag = false)
+{
+    public int Use() { if (Flag) return 1; return 0; }
+}
+public class Boot { public bool Sink; public Boot() { var o = new Acme.Options(); Sink = o.Use() > 0; } }";
+        var sw = Find(HostWith(source).GetFeatureSwitchAudit(Default), "Flag")!;
+        Assert.Equal("false", sw.DefaultValue);
+        Assert.Equal(FeatureSwitchVerdict.AlwaysDefaultInGraph, sw.Verdict);
+        Assert.Empty(sw.Assignments);
+    }
 }
