@@ -1,5 +1,14 @@
 # Dogfood Intake Execution Masterplan
 
+> ## 📍 CURRENT POSITION (2026-06-21)
+> Branch `codex/lifeblood-tracking-complete`, **NOT pushed / NOT tagged** (user owns push+tag).
+> 6 commits landed: `b16b198` (adopt) → `95d5d11` (W0) → `23969f7` (W1A) → `a34e79e` (W1B) → `e538e1d` (W2.1).
+> Suite **1333 passed / 0 failed / 11 native-clang skips / 1344 total**. **32 tools**, 164 invariants, 0 self-analyze violations.
+> **DONE:** Wave 0, Wave 1 (A grouped dependants/dependencies, B dead_code pathExclude), Wave 2 atom 1 (`lifeblood_callsite_arguments`).
+> **NEXT:** Wave 2 atom 2 `lifeblood_member_count` (`LB-INTAKE-20260611-001`) → atom 3 `lifeblood_struct_layout` (`LB-INTAKE-20260601-002`) → Wave 3 `wire_audit` + `feature_switch_audit`.
+> **Intake: 15 entries remaining.**
+> **Local dev tool:** global `lifeblood.server.mcp` reinstalled to **0.7.12-alpha.0.9** from `local-nupkg/` (this branch build) for live testing. NOT the published NuGet release.
+
 **Status:** ADOPTED 2026-06-21 as the canonical execution recipe for the current
 `devmemory/lifeblood-intake.md` queue, goal **ship intake → v0.7.12**. This
 document is the point-by-point order for turning intake into shipped, ratcheted
