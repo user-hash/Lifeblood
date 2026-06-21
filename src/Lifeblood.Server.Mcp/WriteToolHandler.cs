@@ -704,7 +704,7 @@ internal sealed class WriteToolHandler
             report.Truncated,
             report.VerdictBreakdown,
             report.Switches,
-            warning = "Verdicts reflect ONLY in-graph activation. An 'AlwaysDefaultInGraph' / 'TestOnlyActivation' switch can still be flipped through reflection, Unity serialized (prefab/scene/asset YAML / UnityEvent / [SerializeField]), config or save-state deserialization, or a public mutator called from outside the analyzed compilation set — none visible to static analysis. Reachability uses DIRECT call sites only (plus ctors/initializers), not transitive or entry-point dispatch. Verify before declaring a feature dead.",
+            warning = "Verdicts reflect ONLY in-graph activation. An 'AlwaysDefaultInGraph' / 'TestOnlyActivation' switch can still be flipped through reflection, Unity serialized (prefab/scene/asset YAML / UnityEvent / [SerializeField]), config or save-state deserialization, or a public mutator called from outside the analyzed compilation set — none visible to static analysis. Reachability counts call sites plus dispatch aliases (interface/override/using-disposal) but not transitive or framework entry-point dispatch. Verify before declaring a feature dead.",
             analyzedUnderProfile = _session.RetainedProfileName,
         }, _jsonOpts));
     }

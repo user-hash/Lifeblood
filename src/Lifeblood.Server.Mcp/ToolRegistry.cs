@@ -112,7 +112,7 @@ public static class ToolRegistry
     Limitations = new[]
     {
       "The verdict reflects only in-graph activation. A switch flipped via reflection (FieldInfo/PropertyInfo.SetValue), Unity serialized injection ([SerializeField] / prefab-scene-ScriptableObject YAML / UnityEvent), config/save-state deserialization, or a public mutator called from outside the analyzed compilation set is invisible here — so 'AlwaysDefaultInGraph' / 'TestOnlyActivation' is a candidate to verify against those sources, not proof a feature is dead.",
-      "Reachability of a flipping write is judged by DIRECT call sites of its containing member (plus constructors/initializers), not transitive reachability or entry-point dispatch (Unity messages, DI, event handlers). A mutator reached only transitively can read as having zero callers.",
+      "Reachability of a flipping write counts its containing member's call sites plus dispatch aliases (interface members it implements, base members it overrides, and `using`-statement disposal), but NOT transitive reachability or framework entry-point dispatch (Unity messages, DI containers, event-handler registration). A mutator reached only transitively or wired by a framework can still read as having zero callers.",
     },
   };
 

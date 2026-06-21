@@ -30,8 +30,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   activation-risk caveats (reflection / Unity serialized YAML / config / save-state
   / out-of-graph mutators are invisible; reachability is direct call sites only).
   Shares the `RoslynOperationFacts` read/write + type-enumeration primitive with
-  `wire_audit` — no duplication. 34 MCP tools total now. (`INV-FEATURE-SWITCH-001`,
-  `LB-INTAKE-20260613-002`.)
+  `wire_audit` — no duplication. Reachability credits dispatch aliases — interface
+  members the mutator implements, base members it overrides, and `using`-statement
+  disposal — so a mutator invoked polymorphically (`capture.Stop()` on an
+  interface-typed receiver, `Dispose()` reached via `using`) is not misread as
+  dormant (caught live-dogfooding against Lifeblood's own graph). 34 MCP tools
+  total now. (`INV-FEATURE-SWITCH-001`, `LB-INTAKE-20260613-002`.)
 - **New tool `lifeblood_wire_audit`.** The complement of `dead_code`: instead of
   UN-referenced symbols, it finds members that ARE referenced but structurally
   unplugged — the recurring "compiles green, severed by a refactor" bug class.
