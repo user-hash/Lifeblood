@@ -39,6 +39,12 @@ internal static class RoslynCallsiteArgumentExtractor
         var parameters = target.Parameters;
         var suppliedCounts = new int[parameters.Length];
         var omittedCounts = new int[parameters.Length];
+        // Authored default text per parameter, sourced from the target's own
+        // (source) declaration. Used as the authoritative rawText for omitted
+        // args so a cross-module / metadata call site never shows the call
+        // expression instead of the default. INV-CALLSITE-ARGS-001.
+        var defaultTexts = new string?[parameters.Length];
+        for (int i = 0; i < parameters.Length; i++) defaultTexts[i] = ResolveDefaultText(parameters[i]);
 
         var sites = new List<CallsiteArgumentSite>();
         int total = 0;
@@ -86,7 +92,7 @@ internal static class RoslynCallsiteArgumentExtractor
 
                     total++;
 
-                    var argFacts = BuildArguments(args, parameters, compilation, suppliedCounts, omittedCounts);
+                    var argFacts = BuildArguments(args, parameters, defaultTexts, compilation, suppliedCounts, omittedCounts);
                     if (sites.Count < maxSites)
                         sites.Add(BuildSite(node, moduleName, enclosing, instance, argFacts, buildSymbolId));
                 }
@@ -99,7 +105,7 @@ internal static class RoslynCallsiteArgumentExtractor
             TargetDisplay = target.ToDisplayString(),
             CallSiteCount = total,
             SitesTruncated = total > sites.Count,
-            ParameterSummaries = BuildSummaries(parameters, suppliedCounts, omittedCounts),
+            ParameterSummaries = BuildSummaries(parameters, defaultTexts, suppliedCounts, omittedCounts),
             Sites = sites.ToArray(),
         };
     }
@@ -107,6 +113,7 @@ internal static class RoslynCallsiteArgumentExtractor
     private static CallsiteArgument[] BuildArguments(
         ImmutableArray<IArgumentOperation> args,
         ImmutableArray<IParameterSymbol> parameters,
+        string?[] defaultTexts,
         CSharpCompilation compilation,
         int[] suppliedCounts,
         int[] omittedCounts)
@@ -118,16 +125,24 @@ internal static class RoslynCallsiteArgumentExtractor
         {
             var p = arg.Parameter;
             int ordinal = p?.Ordinal ?? facts.Count;
+            bool inRange = ordinal >= 0 && ordinal < parameters.Length;
             bool supplied = arg.ArgumentKind != ArgumentKind.DefaultValue;
 
-            if (p != null && ordinal >= 0 && ordinal < parameters.Length)
+            if (p != null && inRange)
             {
                 if (supplied) suppliedCounts[ordinal]++;
                 else omittedCounts[ordinal]++;
             }
 
-            var (classifyOp, provenance) = RoslynArgumentBinding.Resolve(arg, compilation);
+            var (classifyOp, _) = RoslynArgumentBinding.Resolve(arg, compilation);
             var unwrapped = Unwrap(classifyOp);
+
+            // Omitted args: rawText is the parameter's authored default (source of
+            // truth), never the call-site syntax — the call site never wrote the
+            // value. Supplied args: rawText is the author-written value expression.
+            string? rawText = supplied
+                ? Clip(unwrapped.Syntax?.ToString())
+                : (inRange ? defaultTexts[ordinal] : null);
 
             facts.Add(new CallsiteArgument
             {
@@ -137,7 +152,7 @@ internal static class RoslynCallsiteArgumentExtractor
                 Supplied = supplied,
                 ArgumentKind = MapArgumentKind(arg.ArgumentKind),
                 ValueKind = ClassifyKind(unwrapped),
-                RawText = Clip((provenance ?? unwrapped.Syntax)?.ToString()),
+                RawText = rawText,
                 IsConstant = unwrapped.ConstantValue.HasValue,
             });
         }
@@ -166,7 +181,7 @@ internal static class RoslynCallsiteArgumentExtractor
     }
 
     private static CallsiteParameterSummary[] BuildSummaries(
-        ImmutableArray<IParameterSymbol> parameters, int[] supplied, int[] omitted)
+        ImmutableArray<IParameterSymbol> parameters, string?[] defaultTexts, int[] supplied, int[] omitted)
     {
         var summaries = new CallsiteParameterSummary[parameters.Length];
         for (int i = 0; i < parameters.Length; i++)
@@ -178,7 +193,7 @@ internal static class RoslynCallsiteArgumentExtractor
                 Type = p.Type.ToDisplayString(),
                 Ordinal = p.Ordinal,
                 IsOptional = p.IsOptional,
-                DefaultValueText = ResolveDefaultText(p),
+                DefaultValueText = defaultTexts[i],
                 SuppliedCount = supplied[i],
                 OmittedCount = omitted[i],
             };

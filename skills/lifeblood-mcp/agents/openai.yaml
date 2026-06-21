@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lifeblood MCP"
+  short_description: "Use Lifeblood semantic MCP tools"
+  default_prompt: "Use $lifeblood-mcp to analyze this codebase semantically before changing it."

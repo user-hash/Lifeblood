@@ -31,10 +31,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   test-only?" used to mean hand-classifying every entry. New optional args
   `groupBy` (`bucket` / `module` / `both`), `excludeTests`, `excludeGenerated`,
   `includeBuckets[]`, and `previewPerGroup` add `byBucket` / `byModule` summaries
-  and narrow the flat list to the buckets you care about. Default behaviour is
-  unchanged — with no grouping/filter arg the response is byte-identical to
-  before. Bucket and module classification reuse the exact same source of truth
-  as `lifeblood_blast_radius` grouping. (`INV-EDGE-GROUP-001`,
+  and narrow the flat list to the buckets you care about. Grouped mode is a
+  summary — like `blast_radius`, it returns the per-group counts/previews and
+  omits the full flat edge array, so it stays bounded on hub types. Default
+  behaviour is unchanged — with no grouping/filter arg the response is
+  byte-identical to before. Bucket and module classification reuse the exact same
+  source of truth as `lifeblood_blast_radius` grouping. (`INV-EDGE-GROUP-001`,
   `LB-INTAKE-20260613-003`.)
 
 - **The intake backlog now has a shape ratchet.** `devmemory/lifeblood-intake.md`

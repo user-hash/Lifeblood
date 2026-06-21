@@ -17,7 +17,7 @@
     },
     "groupBy": {
       "type": "string",
-      "description": "Optional grouping mode for the dependant call sites. 'bucket' = Production/Test/Editor/Generated (answers 'is this production-live or test-only?'); 'module' = per-module/asmdef counts; 'both' = both; 'none' (default) = legacy flat shape with no extra keys. INV-EDGE-GROUP-001.",
+      "description": "Optional grouping mode for the dependant call sites. 'bucket' = Production/Test/Editor/Generated (answers 'is this production-live or test-only?'); 'module' = per-module/asmdef counts; 'both' = both; 'none' (default) = legacy flat shape with no extra keys. Grouped mode is a SUMMARY — it omits the full flat dependants[] array (the per-group previews are the payload; use filters/includeBuckets for a bounded flat list), staying overflow-safe on hub types. INV-EDGE-GROUP-001.",
       "enum": [
         "none",
         "bucket",

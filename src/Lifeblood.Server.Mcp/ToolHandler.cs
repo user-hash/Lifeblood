@@ -412,15 +412,31 @@ public sealed class ToolHandler
                 profileFilter = c.ProfileFilter,
             }));
 
+        // Grouped mode is a SUMMARY — the grouped previews ARE the payload, so
+        // the full per-edge array is omitted (it overflows on hub types). Use
+        // filters / `includeBuckets` for a bounded flat list. INV-EDGE-GROUP-001.
+        if (c.Grouping)
+            return TextResult(WithEnvelope("lifeblood_dependencies", new
+            {
+                symbolId = c.SymbolId,
+                count = c.Edges.Length,
+                totalBeforeFilter = c.TotalBeforeFilter,
+                groupBy = c.GroupBy,
+                byBucket = c.ByBucket,
+                byModule = c.ByModule,
+                excludeTests = c.ExcludeTests,
+                excludeGenerated = c.ExcludeGenerated,
+                includeBuckets = c.IncludeBuckets,
+                profileFilter = c.ProfileFilter,
+            }));
+
+        // Filter-only: the narrowed flat list is the point — return it.
         return TextResult(WithEnvelope("lifeblood_dependencies", new
         {
             symbolId = c.SymbolId,
             count = c.Edges.Length,
             totalBeforeFilter = c.TotalBeforeFilter,
             dependencies = c.Edges.Select(BuildEdgeWire).ToArray(),
-            groupBy = c.GroupBy,
-            byBucket = c.ByBucket,
-            byModule = c.ByModule,
             excludeTests = c.ExcludeTests,
             excludeGenerated = c.ExcludeGenerated,
             includeBuckets = c.IncludeBuckets,
@@ -443,15 +459,31 @@ public sealed class ToolHandler
                 profileFilter = c.ProfileFilter,
             }));
 
+        // Grouped mode is a SUMMARY — the grouped previews ARE the payload, so
+        // the full per-edge array is omitted (it overflows on hub types). Use
+        // filters / `includeBuckets` for a bounded flat list. INV-EDGE-GROUP-001.
+        if (c.Grouping)
+            return TextResult(WithEnvelope("lifeblood_dependants", new
+            {
+                symbolId = c.SymbolId,
+                count = c.Edges.Length,
+                totalBeforeFilter = c.TotalBeforeFilter,
+                groupBy = c.GroupBy,
+                byBucket = c.ByBucket,
+                byModule = c.ByModule,
+                excludeTests = c.ExcludeTests,
+                excludeGenerated = c.ExcludeGenerated,
+                includeBuckets = c.IncludeBuckets,
+                profileFilter = c.ProfileFilter,
+            }));
+
+        // Filter-only: the narrowed flat list is the point — return it.
         return TextResult(WithEnvelope("lifeblood_dependants", new
         {
             symbolId = c.SymbolId,
             count = c.Edges.Length,
             totalBeforeFilter = c.TotalBeforeFilter,
             dependants = c.Edges.Select(BuildEdgeWire).ToArray(),
-            groupBy = c.GroupBy,
-            byBucket = c.ByBucket,
-            byModule = c.ByModule,
             excludeTests = c.ExcludeTests,
             excludeGenerated = c.ExcludeGenerated,
             includeBuckets = c.IncludeBuckets,
@@ -525,6 +557,7 @@ public sealed class ToolHandler
             Edges = grouped.Edges,
             TotalBeforeFilter = grouped.TotalBeforeFilter,
             GroupBy = groupBy,
+            Grouping = groupByBucket || groupByModule,
             ByBucket = ShapeGroupWire(grouped.ByBucket),
             ByModule = ShapeGroupWire(grouped.ByModule),
             ExcludeTests = excludeTests,
@@ -561,6 +594,7 @@ public sealed class ToolHandler
         public required string SymbolId { get; init; }
         public required EdgeDetail[] Edges { get; init; }
         public required bool Extended { get; init; }
+        public bool Grouping { get; init; }
         public string[]? ProfileFilter { get; init; }
         public int TotalBeforeFilter { get; init; }
         public string GroupBy { get; init; } = "none";
