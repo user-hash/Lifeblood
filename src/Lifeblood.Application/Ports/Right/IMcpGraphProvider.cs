@@ -62,6 +62,75 @@ public interface IMcpGraphProvider
     /// <param name="maxResults">Cap on preview entries per bucket / module. 0 = no preview.</param>
     BlastRadiusGroups ClassifyBlastRadius(
         SemanticGraph graph, string symbolId, int maxDepth = 10, int maxResults = 10);
+
+    /// <summary>
+    /// Filter and/or group a one-hop edge list (the result of
+    /// <see cref="GetDependantEdges"/> or <see cref="GetDependencyEdges"/>) by
+    /// path bucket and module so a large caller list becomes triage-ready
+    /// without the caller hand-classifying every endpoint. Filters
+    /// (<see cref="EdgeGroupOptions.ExcludeTests"/> /
+    /// <see cref="EdgeGroupOptions.ExcludeGenerated"/> /
+    /// <see cref="EdgeGroupOptions.IncludeBuckets"/>) reduce the returned flat
+    /// <see cref="EdgeGroupResult.Edges"/>; grouping populates
+    /// <see cref="EdgeGroupResult.ByBucket"/> / <see cref="EdgeGroupResult.ByModule"/>
+    /// over the surviving edges. Bucket + module classification reuse the exact
+    /// same heuristics as <see cref="ClassifyBlastRadius"/> (one SSoT,
+    /// <c>PathBucketClassifier</c> + Parent-chain module walk). The endpoint
+    /// classified is the OTHER end of each edge (<see cref="EdgeDetail.OtherEndId"/>).
+    /// INV-EDGE-GROUP-001.
+    /// </summary>
+    EdgeGroupResult ClassifyEdges(
+        SemanticGraph graph, IReadOnlyList<EdgeDetail> edges, EdgeGroupOptions options);
+}
+
+/// <summary>
+/// Filter + grouping request for <see cref="IMcpGraphProvider.ClassifyEdges"/>.
+/// All defaults are no-op so a caller that sets nothing gets the unfiltered,
+/// ungrouped edge list back (the legacy flat shape). INV-EDGE-GROUP-001.
+/// </summary>
+public sealed class EdgeGroupOptions
+{
+    /// <summary>Drop edges whose endpoint classifies to the <c>Test</c> bucket.</summary>
+    public bool ExcludeTests { get; init; }
+
+    /// <summary>Drop edges whose endpoint classifies to the <c>Generated</c> bucket.</summary>
+    public bool ExcludeGenerated { get; init; }
+
+    /// <summary>
+    /// When non-empty, keep only edges whose endpoint bucket is in this set
+    /// (case-insensitive). Null / empty = no bucket allowlist.
+    /// </summary>
+    public IReadOnlyList<string>? IncludeBuckets { get; init; }
+
+    /// <summary>Populate <see cref="EdgeGroupResult.ByBucket"/>.</summary>
+    public bool GroupByBucket { get; init; }
+
+    /// <summary>Populate <see cref="EdgeGroupResult.ByModule"/>.</summary>
+    public bool GroupByModule { get; init; }
+
+    /// <summary>Cap on preview endpoint-ids per group. 0 = counts only.</summary>
+    public int PreviewPerGroup { get; init; } = 5;
+}
+
+/// <summary>
+/// Result of <see cref="IMcpGraphProvider.ClassifyEdges"/>. <see cref="Edges"/>
+/// is the surviving flat list after filtering (full <see cref="EdgeDetail"/>
+/// fidelity preserved); the grouped maps are null unless the matching
+/// <c>GroupBy*</c> option was set. INV-EDGE-GROUP-001.
+/// </summary>
+public sealed class EdgeGroupResult
+{
+    /// <summary>Edges that survived the filters, in input order.</summary>
+    public required EdgeDetail[] Edges { get; init; }
+
+    /// <summary>Edge count before any filter was applied.</summary>
+    public required int TotalBeforeFilter { get; init; }
+
+    /// <summary>Bucket name → grouped surviving endpoints (null unless grouped by bucket).</summary>
+    public IReadOnlyDictionary<string, GroupedBucket>? ByBucket { get; init; }
+
+    /// <summary>Module name → grouped surviving endpoints (null unless grouped by module).</summary>
+    public IReadOnlyDictionary<string, GroupedBucket>? ByModule { get; init; }
 }
 
 /// <summary>

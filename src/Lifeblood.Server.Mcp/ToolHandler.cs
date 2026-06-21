@@ -398,50 +398,176 @@ public sealed class ToolHandler
 
     private McpToolResult HandleDependencies(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+        var c = ComputeEdgeQuery(args, "lifeblood_dependencies",
+            (g, id) => _provider.GetDependencyEdges(g, id), out var error);
+        if (error != null) return error;
 
-        var raw = WriteToolHandler.GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(raw))
-            return ErrorResult("symbolId is required");
+        if (!c!.Extended)
+            return TextResult(WithEnvelope("lifeblood_dependencies", new
+            {
+                symbolId = c.SymbolId,
+                count = c.Edges.Length,
+                dependencies = c.Edges.Select(BuildEdgeWire).ToArray(),
+                profileFilter = c.ProfileFilter,
+            }));
 
-        var resolved = _resolver.Resolve(_session.Graph!, raw);
-        if (resolved.CanonicalId == null)
-            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
-
-        var profileFilter = ReadStringArray(args, "profileFilter");
-        var edges = ApplyProfileFilter(_provider.GetDependencyEdges(_session.Graph!, resolved.CanonicalId), profileFilter);
         return TextResult(WithEnvelope("lifeblood_dependencies", new
         {
-            symbolId = resolved.CanonicalId,
-            count = edges.Length,
-            dependencies = edges.Select(BuildEdgeWire).ToArray(),
-            profileFilter,
+            symbolId = c.SymbolId,
+            count = c.Edges.Length,
+            totalBeforeFilter = c.TotalBeforeFilter,
+            dependencies = c.Edges.Select(BuildEdgeWire).ToArray(),
+            groupBy = c.GroupBy,
+            byBucket = c.ByBucket,
+            byModule = c.ByModule,
+            excludeTests = c.ExcludeTests,
+            excludeGenerated = c.ExcludeGenerated,
+            includeBuckets = c.IncludeBuckets,
+            profileFilter = c.ProfileFilter,
         }));
     }
 
     private McpToolResult HandleDependants(JsonElement? args)
     {
+        var c = ComputeEdgeQuery(args, "lifeblood_dependants",
+            (g, id) => _provider.GetDependantEdges(g, id), out var error);
+        if (error != null) return error;
+
+        if (!c!.Extended)
+            return TextResult(WithEnvelope("lifeblood_dependants", new
+            {
+                symbolId = c.SymbolId,
+                count = c.Edges.Length,
+                dependants = c.Edges.Select(BuildEdgeWire).ToArray(),
+                profileFilter = c.ProfileFilter,
+            }));
+
+        return TextResult(WithEnvelope("lifeblood_dependants", new
+        {
+            symbolId = c.SymbolId,
+            count = c.Edges.Length,
+            totalBeforeFilter = c.TotalBeforeFilter,
+            dependants = c.Edges.Select(BuildEdgeWire).ToArray(),
+            groupBy = c.GroupBy,
+            byBucket = c.ByBucket,
+            byModule = c.ByModule,
+            excludeTests = c.ExcludeTests,
+            excludeGenerated = c.ExcludeGenerated,
+            includeBuckets = c.IncludeBuckets,
+            profileFilter = c.ProfileFilter,
+        }));
+    }
+
+    /// <summary>
+    /// Shared compute for the dependants / dependencies edge queries. Resolves
+    /// the symbol, applies the profile filter, then — only when the caller asked
+    /// for grouping or filtering — runs <see cref="IMcpGraphProvider.ClassifyEdges"/>.
+    /// The <c>Extended</c> flag lets each direction emit the byte-stable legacy
+    /// flat shape by default (no extra keys) and the richer grouped/filtered
+    /// shape on demand. INV-EDGE-GROUP-001.
+    /// </summary>
+    private EdgeQueryComputation? ComputeEdgeQuery(
+        JsonElement? args, string toolName,
+        Func<SemanticGraph, string, EdgeDetail[]> fetch, out McpToolResult? error)
+    {
         if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+        { error = ErrorResult("No graph loaded. Call lifeblood_analyze first."); return null; }
 
         var raw = WriteToolHandler.GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
-            return ErrorResult("symbolId is required");
+        { error = ErrorResult("symbolId is required"); return null; }
 
         var resolved = _resolver.Resolve(_session.Graph!, raw);
         if (resolved.CanonicalId == null)
-            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
+        { error = ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}"); return null; }
 
+        error = null;
         var profileFilter = ReadStringArray(args, "profileFilter");
-        var edges = ApplyProfileFilter(_provider.GetDependantEdges(_session.Graph!, resolved.CanonicalId), profileFilter);
-        return TextResult(WithEnvelope("lifeblood_dependants", new
+        var edges = ApplyProfileFilter(fetch(_session.Graph!, resolved.CanonicalId), profileFilter);
+
+        var groupBy = (WriteToolHandler.GetString(args, "groupBy") ?? "none").ToLowerInvariant();
+        bool groupByBucket = groupBy is "bucket" or "both";
+        bool groupByModule = groupBy is "module" or "both";
+        var excludeTests = WriteToolHandler.GetBool(args, "excludeTests") ?? false;
+        var excludeGenerated = WriteToolHandler.GetBool(args, "excludeGenerated") ?? false;
+        var includeBuckets = ReadStringArray(args, "includeBuckets");
+        bool filtering = excludeTests || excludeGenerated || (includeBuckets is { Length: > 0 });
+
+        if (!groupByBucket && !groupByModule && !filtering)
+            return new EdgeQueryComputation
+            {
+                SymbolId = resolved.CanonicalId,
+                Edges = edges,
+                ProfileFilter = profileFilter,
+                Extended = false,
+            };
+
+        var previewPerGroup = WriteToolHandler.GetInt(args, "previewPerGroup") ?? 5;
+        if (previewPerGroup < 0) previewPerGroup = 0;
+
+        var grouped = _provider.ClassifyEdges(_session.Graph!, edges, new EdgeGroupOptions
         {
-            symbolId = resolved.CanonicalId,
-            count = edges.Length,
-            dependants = edges.Select(BuildEdgeWire).ToArray(),
-            profileFilter,
-        }));
+            ExcludeTests = excludeTests,
+            ExcludeGenerated = excludeGenerated,
+            IncludeBuckets = includeBuckets,
+            GroupByBucket = groupByBucket,
+            GroupByModule = groupByModule,
+            PreviewPerGroup = previewPerGroup,
+        });
+
+        RecordGroupTruncations(toolName, grouped.ByBucket, previewPerGroup);
+        RecordGroupTruncations(toolName, grouped.ByModule, previewPerGroup);
+
+        return new EdgeQueryComputation
+        {
+            SymbolId = resolved.CanonicalId,
+            Edges = grouped.Edges,
+            TotalBeforeFilter = grouped.TotalBeforeFilter,
+            GroupBy = groupBy,
+            ByBucket = ShapeGroupWire(grouped.ByBucket),
+            ByModule = ShapeGroupWire(grouped.ByModule),
+            ExcludeTests = excludeTests,
+            ExcludeGenerated = excludeGenerated,
+            IncludeBuckets = includeBuckets,
+            ProfileFilter = profileFilter,
+            Extended = true,
+        };
+    }
+
+    /// <summary>Lower-cases the <see cref="GroupedBucket"/> wire shape to match
+    /// the `{ count, preview }` form already published by lifeblood_blast_radius.</summary>
+    private static IReadOnlyDictionary<string, object>? ShapeGroupWire(
+        IReadOnlyDictionary<string, GroupedBucket>? groups)
+        => groups?.ToDictionary(
+            kv => kv.Key,
+            kv => (object)new { count = kv.Value.Count, preview = kv.Value.Preview },
+            StringComparer.Ordinal);
+
+    private void RecordGroupTruncations(
+        string toolName, IReadOnlyDictionary<string, GroupedBucket>? groups, int previewPerGroup)
+    {
+        if (groups == null) return;
+        foreach (var kv in groups)
+            if (kv.Value.Preview.Length < kv.Value.Count)
+                RecordTruncation(toolName, kv.Key, kv.Value.Count, kv.Value.Preview.Length,
+                    summarize: false, maxResults: previewPerGroup);
+    }
+
+    /// <summary>Computed result of <see cref="ComputeEdgeQuery"/>; carries both the
+    /// legacy and extended fields so each direction shapes its own wire.</summary>
+    private sealed class EdgeQueryComputation
+    {
+        public required string SymbolId { get; init; }
+        public required EdgeDetail[] Edges { get; init; }
+        public required bool Extended { get; init; }
+        public string[]? ProfileFilter { get; init; }
+        public int TotalBeforeFilter { get; init; }
+        public string GroupBy { get; init; } = "none";
+        public IReadOnlyDictionary<string, object>? ByBucket { get; init; }
+        public IReadOnlyDictionary<string, object>? ByModule { get; init; }
+        public bool ExcludeTests { get; init; }
+        public bool ExcludeGenerated { get; init; }
+        public string[]? IncludeBuckets { get; init; }
     }
 
     /// <summary>

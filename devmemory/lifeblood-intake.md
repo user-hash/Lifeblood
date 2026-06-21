@@ -458,29 +458,9 @@ default/initializer value, assignment sites, public setter/mutator dependants,
 branch-gated methods, production/test bucket breakdown, and a verdict like
 `AlwaysDefaultInGraph`, `TestOnlyActivation`, or `RuntimeMutable`.
 
-## LB-INTAKE-20260613-003 — Dependants/dependencies bucket summaries and filters
-
-Type: UX / Improvement · Priority: MEDIUM
-Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), genre preset authority check
-Workspace: DAWG
-
-What: `BeatGridGenrePresets.GetPatternCharacter(...)` had 21 semantic
-dependants, but they were test/config validation consumers rather than live
-generation authority. The one-hop `dependants` response listed call sites but
-did not summarize by Production/Test/Editor/Generated bucket or allow an
-`excludeTests` filter, so the agent had to manually classify the caller list
-before claiming the method was not production generation authority.
-
-Why it matters: "is this production-live or test-only?" is one of the highest
-frequency planning questions. `blast_radius` already has bucket/module grouping;
-the lower-level one-hop dependency tools should expose the same triage signal so
-large caller lists do not become manual bookkeeping.
-
-Fix shape: add `groupBy:"bucket"|"module"|"both"`, `excludeTests`,
-`excludeGenerated`, `includeBuckets`, and `previewPerGroup` to
-`lifeblood_dependants` and `lifeblood_dependencies`. Keep the existing flat
-shape by default for compatibility, but expose compact grouped summaries for
-planning passes.
+<!-- LB-INTAKE-20260613-003 (dependants/dependencies grouping + filters) SHIPPED
+     2026-06-21 → archived as the 2026-06-21 receipt in
+     lifeblood-tracking-archive.md. INV-EDGE-GROUP-001. -->
 
 ## LB-INTAKE-20260613-004 — Authority coverage / negative dependency matrix
 

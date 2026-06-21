@@ -20,6 +20,13 @@ all seven proposed new tools (`callsite_arguments`, `wire_audit`,
   landed; nine older intake entries backfilled with `Source:`/`Workspace:`;
   `LB-INTAKE-20260613-005` promoted to the archive; STATUS.md anchors refreshed;
   CHANGELOG `[Unreleased]` updated. Ledger + Docs tests green.
+- **Wave 1 (part A) — SHIPPED 2026-06-21.** Grouped/filtered `dependants` /
+  `dependencies` (`groupBy` / `excludeTests` / `excludeGenerated` /
+  `includeBuckets` / `previewPerGroup`) via new `IMcpGraphProvider.ClassifyEdges`
+  + `INV-EDGE-GROUP-001`, sharing the blast-radius bucket/module SSoT.
+  `LB-INTAKE-20260613-003` promoted. `EdgeGroupingTests` + full suite green
+  (1337). **Remaining in Wave 1:** `dead_code pathExclude` (first half of
+  `LB-INTAKE-20260601-004`).
 
 **Current truth snapshot (2026-06-13):**
 

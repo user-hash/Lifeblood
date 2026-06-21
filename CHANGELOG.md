@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`lifeblood_dependants` / `lifeblood_dependencies` can now group and filter
+  their caller/callee list.** Asking "are these 21 callers production-live or
+  test-only?" used to mean hand-classifying every entry. New optional args
+  `groupBy` (`bucket` / `module` / `both`), `excludeTests`, `excludeGenerated`,
+  `includeBuckets[]`, and `previewPerGroup` add `byBucket` / `byModule` summaries
+  and narrow the flat list to the buckets you care about. Default behaviour is
+  unchanged — with no grouping/filter arg the response is byte-identical to
+  before. Bucket and module classification reuse the exact same source of truth
+  as `lifeblood_blast_radius` grouping. (`INV-EDGE-GROUP-001`,
+  `LB-INTAKE-20260613-003`.)
+
 - **The intake backlog now has a shape ratchet.** `devmemory/lifeblood-intake.md`
   is the front door for un-started dogfood findings (the living tracking ledger
   rejects parked Open entries), but until now nothing guarded its quality. New

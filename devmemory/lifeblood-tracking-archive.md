@@ -137,6 +137,33 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-21 - Lifeblood v0.7.11+ - Dependants/dependencies grouping + filters (LB-INTAKE-20260613-003)
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan Wave 1, promoted from `LB-INTAKE-20260613-003`
+Workspace: Lifeblood self
+Verification: `EdgeGroupingTests` (7 facts) green; regenerated
+`lifeblood_dependants`/`lifeblood_dependencies` schema snapshots; full suite
+1326 passed / 0 failed / 11 native-clang skips / 1337 total.
+
+Summary:
+- One-hop `dependants` / `dependencies` returned a flat caller list with no
+  bucket/module triage, so "production-live or test-only?" required manual
+  classification of every endpoint — the highest-frequency planning question.
+
+Fix shape (shipped):
+- New `IMcpGraphProvider.ClassifyEdges` (port) + `EdgeGroupOptions` /
+  `EdgeGroupResult`; impl in `LifebloodMcpProvider` shares the exact
+  bucket/module SSoT with `ClassifyBlastRadius` via extracted
+  `CreateModuleResolver` / `ShapeGroups` / `NewBucketLists` helpers.
+- `lifeblood_dependants` / `lifeblood_dependencies` gain `groupBy` /
+  `excludeTests` / `excludeGenerated` / `includeBuckets` / `previewPerGroup`;
+  legacy flat shape is byte-stable when none are set. `INV-EDGE-GROUP-001`
+  (tools.md), pinned by `EdgeGroupingTests`.
+- STATUS anchors refreshed (testCount 1337, invariantCount 162,
+  invariantCategoryCount 110, selfAnalyze 4462/25387/468).
+
 ## 2026-06-21 - Lifeblood v0.7.11+ - Intake ledger shape ratchet (LB-INTAKE-20260613-005)
 
 Status: Shipped
