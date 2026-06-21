@@ -413,32 +413,9 @@ read `Library/ScriptAssemblies` assembly timestamps to bound which asmdefs
 changed and scope the incremental to their source globs. Either kills both the
 stale-first-query and the full-sweep degradation.
 
-## LB-INTAKE-20260613-001 — Call-site argument/default-parameter facts
-
-Type: Improvement · Priority: HIGH
-Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), pattern sustain investigation
-Workspace: DAWG
-
-What: Lifeblood correctly resolved that `PatternGeneratorController.BuildMonoPattern(...)`
-has exactly two callers, `BuildPolyPattern(...)` has exactly five callers, and
-both depend on `GeneratedNote..ctor(int,int,byte,int)`. It did NOT expose the
-critical fact that both call sites omit the optional `lengthSteps` constructor
-argument, so every generated melodic note defaults to one step even though the
-downstream clip path already consumes `GeneratedNote.LengthSteps`. The agent had
-to read `PatternGeneratorController.cs` directly to verify the omitted argument.
-
-Why it matters: API adoption bugs often look exactly like this: a richer model
-or new optional parameter exists, all callers still use the old argument shape,
-and semantic "callee is referenced" checks look green. This is a real planning
-accuracy gap for feature migration work (sustain, new flags, policy params,
-quality knobs).
-
-Fix shape: add `lifeblood_callsite_arguments(symbolId)` or enrich
-`dependencies` / `find_references` with bound argument facts: callee parameter
-name/type/ordinal, supplied vs omitted, default value used, constant/literal vs
-member/reference expression kind, receiver, and call-site span. Include summary
-histograms such as "parameter X omitted by 7/7 call sites" and filters by
-production/test bucket.
+<!-- LB-INTAKE-20260613-001 (call-site argument/default-parameter facts) SHIPPED
+     2026-06-21 as the lifeblood_callsite_arguments tool (INV-CALLSITE-ARGS-001)
+     → archived as the 2026-06-21 receipt in lifeblood-tracking-archive.md. -->
 
 ## LB-INTAKE-20260613-002 — Dormant feature-switch / static-flag audit
 

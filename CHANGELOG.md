@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **New tool `lifeblood_callsite_arguments`.** Answers the API-adoption question
+  that "callee is referenced" checks miss: when a richer overload or a new
+  optional parameter exists, do the call sites actually pass it? For a target
+  method or constructor it walks every call site and reports, per argument, the
+  bound parameter, whether it was author-supplied or filled from the default,
+  the classified value kind, and raw text — plus a per-parameter histogram
+  ("`lengthSteps` omitted by 7/7 call sites") computed across all sites. Default
+  values are re-sourced to the parameter's own default expression (shared with
+  `lifeblood_static_tables`). Operation-tree based; write-side (needs retained
+  compilation state). 32 MCP tools total now. (`INV-CALLSITE-ARGS-001`,
+  `LB-INTAKE-20260613-001`.)
 - **`lifeblood_dead_code` can now exclude vendored / sample paths.** A new
   `pathExclude` argument takes glob patterns (`*` = any run incl. `/`, `?` = one
   char, case-insensitive, full-path match) and drops matching findings before

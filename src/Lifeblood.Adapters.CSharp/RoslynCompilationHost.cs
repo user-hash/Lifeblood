@@ -561,6 +561,22 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
     return RoslynAssignmentCoverageExtractor.Extract(_compilations, typeSymbol, targetTypeId, options, BuildSymbolId);
   }
 
+  /// <summary>
+  /// Per-call-site argument extraction for a method / constructor. Routes
+  /// through <see cref="RoslynCallsiteArgumentExtractor"/> — same resolve-from-
+  /// source gate + thin-host delegation shape as <see cref="GetStaticTables"/>
+  /// and <see cref="GetAssignmentCoverage"/>. Resolves to <see cref="IMethodSymbol"/>
+  /// (methods and constructors); returns null for any non-callable target.
+  /// INV-CALLSITE-ARGS-001.
+  /// </summary>
+  public CallsiteArgumentsReport? GetCallsiteArguments(string symbolId, CallsiteArgumentsOptions options)
+  {
+    if (string.IsNullOrEmpty(symbolId)) return null;
+    var resolved = ResolveFromSource(symbolId);
+    if (resolved is not IMethodSymbol methodSymbol) return null;
+    return RoslynCallsiteArgumentExtractor.Extract(_compilations, methodSymbol, BuildSymbolId(methodSymbol), options, BuildSymbolId);
+  }
+
   public string[] FindImplementations(string symbolId)
   {
   // Prefer source-defined symbol for accurate type kind.

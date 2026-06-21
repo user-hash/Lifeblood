@@ -31,6 +31,14 @@ all seven proposed new tools (`callsite_arguments`, `wire_audit`,
   that intake entry shrank to its remaining halves (`analyze` excludePaths + a
   first-class `Vendored` bucket) which land in Wave 5. Full suite green (1339).
   **Wave 1 complete.**
+- **Wave 2 (atom 1) — SHIPPED 2026-06-21.** New write-side tool
+  `lifeblood_callsite_arguments` (`INV-CALLSITE-ARGS-001`) — `ICompilationHost.GetCallsiteArguments`
+  + `RoslynCallsiteArgumentExtractor` + shared `RoslynArgumentBinding` (default-
+  value re-sourcing extracted from the static-table cell binder). Per-site arg
+  facts + supplied/omitted histogram. `LB-INTAKE-20260613-001` promoted; tool
+  count 31→32. Full suite green (1344). **Remaining in Wave 2:**
+  `lifeblood_member_count` (`LB-INTAKE-20260611-001`) + `lifeblood_struct_layout`
+  (`LB-INTAKE-20260601-002`).
 
 **Current truth snapshot (2026-06-13):**
 

@@ -137,6 +137,33 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_callsite_arguments tool (LB-INTAKE-20260613-001)
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan Wave 2, promoted from `LB-INTAKE-20260613-001`
+Workspace: Lifeblood self
+Verification: `CallsiteArgumentExtractorTests` (5 facts) green; new
+`lifeblood_callsite_arguments` schema snapshot; ToolRegistry 31→32; full suite
+1333 passed / 0 failed / 11 native-clang skips / 1344 total.
+
+Summary:
+- "Callee is referenced" checks looked green while every call site omitted a new
+  optional parameter (the DAWG `GeneratedNote.lengthSteps` adoption gap), forcing
+  a manual source read to confirm.
+
+Fix shape (shipped):
+- New write-side tool `lifeblood_callsite_arguments` + `ICompilationHost.GetCallsiteArguments`
+  + `RoslynCallsiteArgumentExtractor`. Per-site argument facts (bound parameter,
+  supplied-vs-omitted, value kind, raw text, receiver, containing symbol) + a
+  per-parameter supplied/omitted histogram computed over all sites before the
+  `maxSites` clamp.
+- Default-value re-sourcing extracted to shared `RoslynArgumentBinding` (one
+  implementation with `RoslynStaticTableExtractor` cell binding).
+- `INV-CALLSITE-ARGS-001` (tools.md), `CallsiteArgumentResults` DTOs.
+- STATUS anchors: toolCount 32 (18 read + 14 write), testCount 1344,
+  invariantCount 164, invariantCategoryCount 111, selfAnalyze 4548/25708/477.
+
 ## 2026-06-21 - Lifeblood v0.7.11+ - dead_code path exclusion (LB-INTAKE-20260601-004 partial)
 
 Status: Shipped

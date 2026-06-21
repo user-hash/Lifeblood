@@ -351,6 +351,13 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_callsite_arguments",
+  Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProven,
+  Description = "Per-call-site argument facts for a target method or constructor. Walks every loaded compilation's `IInvocationOperation` / `IObjectCreationOperation`, matches the bound callee against the target by canonical id (extension methods matched via their reduced-from definition), and reports for each site the containing symbol, file/line/column, receiver expression, and a per-argument array: bound parameter `name` + `type` + `ordinal`, `supplied` (author-passed) vs omitted (Roslyn-filled `DefaultValue`), `argumentKind` (`Explicit` / `DefaultValue` / `ParamArray`), classified `valueKind` (`Literal` / `NullLiteral` / `Constant` / `FieldReference` / `PropertyReference` / `LocalReference` / `ParameterReference` / `MethodGroup` / `Lambda` / `ObjectCreation` / `Invocation` / `Other`), `isConstant`, and clipped `rawText`. The `parameterSummaries[]` histogram reports `suppliedCount` / `omittedCount` per parameter across ALL discovered sites (computed before `maxSites` truncation), turning 'is this new optional parameter actually adopted?' into a one-call answer — e.g. `lengthSteps omitted by 7/7 call sites`. Default-value arguments are re-sourced to the parameter's own default expression (shared with `lifeblood_static_tables` cell binding) so `rawText` shows the authored default, not the lowered constant. Operation-tree only — never regex. `symbolId` accepts canonical (`method:NS.T.M(P)`), or a short/qualified name routed through the resolver; must resolve to a method or constructor. Optional `moduleScope` restricts to one module, `excludeTests` drops Test-bucket call sites, `maxSites` (default 256) clamps the returned `sites[]` (histogram still counts all). INV-CALLSITE-ARGS-001.",
+  },
+  new()
+  {
   Name = "lifeblood_symbol_at_position",
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProven,

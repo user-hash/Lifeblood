@@ -117,6 +117,22 @@ public interface ICompilationHost
     /// </summary>
     AssignmentCoverageReport? GetAssignmentCoverage(string targetTypeId, AssignmentCoverageOptions options);
 
+    /// <summary>
+    /// Per-call-site argument facts for a target method or constructor. Walks
+    /// every loaded compilation's <c>IInvocationOperation</c> /
+    /// <c>IObjectCreationOperation</c>, matches the bound callee against the
+    /// target by canonical id, and reports each argument's bound parameter,
+    /// author-supplied-vs-default-filled status, classified value kind, and raw
+    /// text, plus a per-parameter supplied/omitted histogram across all sites.
+    /// The dogfood case: a new optional parameter or richer overload exists but
+    /// every call site still uses the old argument shape — semantic
+    /// "callee is referenced" checks look green while the parameter is omitted
+    /// by 7/7 sites. Operation-tree only; never regex. Returns null when
+    /// <paramref name="symbolId"/> does not resolve to a method or constructor
+    /// in any loaded compilation. INV-CALLSITE-ARGS-001.
+    /// </summary>
+    CallsiteArgumentsReport? GetCallsiteArguments(string symbolId, CallsiteArgumentsOptions options);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 
