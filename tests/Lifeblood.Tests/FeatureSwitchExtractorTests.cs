@@ -190,6 +190,48 @@ public static class Flags
     }
 
     [Fact]
+    public void FeatureSwitch_MutatorCalledThroughInterface_CountsAsReachable()
+    {
+        // The flipping write lives in a concrete IDisposable-style impl, but every
+        // caller invokes it through the interface — IInvocationOperation.TargetMethod
+        // binds to the interface member, not the concrete. Dispatch aliasing must
+        // credit the concrete so this is RuntimeMutable, not a false dormant.
+        var source = @"
+namespace Acme;
+public interface ICapture { void Stop(); }
+public sealed class Capture : ICapture
+{
+    private bool _stopped;
+    public void Stop() { _stopped = true; }
+    public int Use() { if (_stopped) return 1; return 0; }
+}
+public class Boot { public void I(Acme.ICapture c) { c.Stop(); } }";
+        var sw = Find(HostWith(source).GetFeatureSwitchAudit(Default), "_stopped")!;
+        Assert.Equal(FeatureSwitchVerdict.RuntimeMutable, sw.Verdict);
+        Assert.True(Assert.Single(sw.Assignments).Active, "interface-dispatched mutator must read as reachable");
+        Assert.Equal(1, Assert.Single(sw.Mutators).CallerCount);
+    }
+
+    [Fact]
+    public void FeatureSwitch_DisposeGuardReachedViaUsing_CountsAsReachable()
+    {
+        // _disposed is flipped only in Dispose(); the sole caller is a `using`
+        // statement, which synthesizes IDisposable.Dispose (not an invocation).
+        var source = @"
+namespace Acme;
+public sealed class Res : System.IDisposable
+{
+    private bool _disposed;
+    public void Dispose() { _disposed = true; }
+    public int Work() { if (_disposed) return 1; return 0; }
+}
+public class Boot { public void I() { using (var r = new Acme.Res()) { r.Work(); } } }";
+        var sw = Find(HostWith(source).GetFeatureSwitchAudit(Default), "_disposed")!;
+        Assert.Equal(FeatureSwitchVerdict.RuntimeMutable, sw.Verdict);
+        Assert.True(Assert.Single(sw.Assignments).Active, "using-disposed mutator must read as reachable");
+    }
+
+    [Fact]
     public void FeatureSwitch_DefaultTrueInitializer_FlipToFalseIsFlippingWrite()
     {
         var source = @"

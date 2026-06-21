@@ -55,7 +55,8 @@ internal static class RoslynFeatureSwitchExtractor
         string AssignedValue,
         bool FlipsDefault,
         ContainingMemberKind ContainingKind,
-        string? PropertyAccessorOwnerId);
+        string? PropertyAccessorOwnerId,
+        IReadOnlyList<string> CallSiteAliasIds);
 
     private enum ContainingMemberKind { Method, Constructor, PropertySetAccessor, Initializer }
 
@@ -91,6 +92,10 @@ internal static class RoslynFeatureSwitchExtractor
         var propertyWriteCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var (_, compilation) in compilations)
         {
+            // A `using` statement / declaration synthesizes an IDisposable.Dispose
+            // call that is NOT an IInvocationOperation; credit it so a Dispose()
+            // mutator reached only through `using` is not misread as never-called.
+            var disposeId = ResolveDisposeId(compilation, buildSymbolId);
             foreach (var tree in compilation.SyntaxTrees)
             {
                 var model = compilation.GetSemanticModel(tree);
@@ -106,6 +111,9 @@ internal static class RoslynFeatureSwitchExtractor
                             break;
                         case IPropertyReferenceOperation pw when RoslynOperationFacts.IsWriteContext(pw):
                             Bump(propertyWriteCounts, buildSymbolId(pw.Property.OriginalDefinition));
+                            break;
+                        case IUsingOperation or IUsingDeclarationOperation when disposeId != null:
+                            Bump(methodCallCounts, disposeId);
                             break;
                     }
 
@@ -237,26 +245,50 @@ internal static class RoslynFeatureSwitchExtractor
         var assigned = ClassifyAssignedValue(reference);
         var flips = assigned == ValueUnknown || !string.Equals(assigned, info.DefaultValue, StringComparison.Ordinal);
 
-        var (memberId, memberName, kind, accessorOwnerId) = ResolveContainingMember(model, node, buildSymbolId);
+        var (member, kind) = ResolveContainingMember(model, node);
+        var memberId = member != null ? buildSymbolId(member.OriginalDefinition) : "(unknown)";
+        var memberName = member?.Name ?? "(unknown)";
+
+        // Call sites that reach this write's containing member dispatch through the
+        // member's id PLUS the interface members it implements / base members it
+        // overrides — a polymorphic call binds to the interface/base, not the
+        // concrete implementer that holds the write. Property accessors alias their
+        // owner property; counting then sums in the matching dictionary.
+        string? accessorOwnerId = null;
+        IReadOnlyList<string> aliasIds = Array.Empty<string>();
+        if (member is IMethodSymbol method)
+        {
+            if (kind == ContainingMemberKind.PropertySetAccessor && method.AssociatedSymbol is IPropertySymbol ownerProp)
+            {
+                accessorOwnerId = buildSymbolId(ownerProp.OriginalDefinition);
+                aliasIds = InterfacePropertyAliasIds(ownerProp, buildSymbolId);
+            }
+            else if (kind == ContainingMemberKind.Method)
+            {
+                aliasIds = DispatchAliasIds(method, buildSymbolId);
+            }
+        }
+
         var span = node.GetLocation().GetLineSpan();
         var path = span.Path ?? "";
         info.Assignments.Add(new RawAssignment(
             memberId, memberName, path, span.StartLinePosition.Line + 1,
-            PathBucketClassifier.Classify(path).ToString(), assigned, flips, kind, accessorOwnerId));
+            PathBucketClassifier.Classify(path).ToString(), assigned, flips, kind, accessorOwnerId, aliasIds));
     }
 
     private static void RecordBranchRead(
         SwitchInfo info, SyntaxNode node, SemanticModel model, Func<ISymbol, string> buildSymbolId)
     {
         info.BranchReads++;
-        var (memberId, memberName, _, _) = ResolveContainingMember(model, node, buildSymbolId);
+        var (member, _) = ResolveContainingMember(model, node);
+        var memberId = member != null ? buildSymbolId(member.OriginalDefinition) : "(unknown)";
         if (info.Gates.ContainsKey(memberId)) return;
         var span = node.GetLocation().GetLineSpan();
         var path = span.Path ?? "";
         info.Gates[memberId] = new FeatureSwitchGate
         {
             MemberId = memberId,
-            MemberName = memberName,
+            MemberName = member?.Name ?? "(unknown)",
             FilePath = path,
             Line = span.StartLinePosition.Line + 1,
             Bucket = PathBucketClassifier.Classify(path).ToString(),
@@ -301,8 +333,8 @@ internal static class RoslynFeatureSwitchExtractor
     /// / field-or-property initializer) of a node, skipping lambda and
     /// local-function bodies so a write is attributed to the member it ships in.
     /// </summary>
-    private static (string Id, string Name, ContainingMemberKind Kind, string? AccessorOwnerId) ResolveContainingMember(
-        SemanticModel model, SyntaxNode node, Func<ISymbol, string> buildSymbolId)
+    private static (ISymbol? Member, ContainingMemberKind Kind) ResolveContainingMember(
+        SemanticModel model, SyntaxNode node)
     {
         var sym = model.GetEnclosingSymbol(node.SpanStart);
         while (sym != null)
@@ -313,22 +345,73 @@ internal static class RoslynFeatureSwitchExtractor
                     sym = sym.ContainingSymbol;
                     continue;
                 case IMethodSymbol ms when ms.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor:
-                    return (buildSymbolId(ms.OriginalDefinition), ms.Name, ContainingMemberKind.Constructor, null);
+                    return (ms, ContainingMemberKind.Constructor);
                 case IMethodSymbol ms when ms.MethodKind == MethodKind.PropertySet:
-                    return (buildSymbolId(ms.OriginalDefinition), ms.Name, ContainingMemberKind.PropertySetAccessor,
-                        ms.AssociatedSymbol is { } owner ? buildSymbolId(owner.OriginalDefinition) : null);
+                    return (ms, ContainingMemberKind.PropertySetAccessor);
                 case IMethodSymbol ms:
-                    return (buildSymbolId(ms.OriginalDefinition), ms.Name, ContainingMemberKind.Method, null);
+                    return (ms, ContainingMemberKind.Method);
                 case IFieldSymbol fs:
-                    return (buildSymbolId(fs.OriginalDefinition), fs.Name, ContainingMemberKind.Initializer, null);
+                    return (fs, ContainingMemberKind.Initializer);
                 case IPropertySymbol ps:
-                    return (buildSymbolId(ps.OriginalDefinition), ps.Name, ContainingMemberKind.Initializer, null);
+                    return (ps, ContainingMemberKind.Initializer);
                 default:
                     sym = sym.ContainingSymbol;
                     continue;
             }
         }
-        return ("(unknown)", "(unknown)", ContainingMemberKind.Method, null);
+        return (null, ContainingMemberKind.Method);
+    }
+
+    /// <summary>
+    /// Ids a call dispatches to <paramref name="method"/> through: every interface
+    /// member it implements and every base member it overrides. A call site bound
+    /// to the interface/base member (the static <c>IInvocationOperation.TargetMethod</c>)
+    /// is credited to the concrete implementer here, so a mutator invoked
+    /// polymorphically (e.g. <c>capture.Stop()</c> on an interface-typed receiver)
+    /// is not misread as never-called.
+    /// </summary>
+    private static IReadOnlyList<string> DispatchAliasIds(IMethodSymbol method, Func<ISymbol, string> buildSymbolId)
+    {
+        var aliases = new List<string>();
+        for (var ov = method.OverriddenMethod; ov != null; ov = ov.OverriddenMethod)
+            aliases.Add(buildSymbolId(ov.OriginalDefinition));
+
+        var type = method.ContainingType;
+        if (type != null)
+            foreach (var iface in type.AllInterfaces)
+                foreach (var im in iface.GetMembers().OfType<IMethodSymbol>())
+                {
+                    var impl = type.FindImplementationForInterfaceMember(im);
+                    if (impl != null && SymbolEqualityComparer.Default.Equals(impl.OriginalDefinition, method.OriginalDefinition))
+                        aliases.Add(buildSymbolId(im.OriginalDefinition));
+                }
+        return aliases;
+    }
+
+    /// <summary>Property-side mirror of <see cref="DispatchAliasIds"/>: interface / base properties whose write dispatches to <paramref name="property"/>.</summary>
+    private static IReadOnlyList<string> InterfacePropertyAliasIds(IPropertySymbol property, Func<ISymbol, string> buildSymbolId)
+    {
+        var aliases = new List<string>();
+        for (var ov = property.OverriddenProperty; ov != null; ov = ov.OverriddenProperty)
+            aliases.Add(buildSymbolId(ov.OriginalDefinition));
+
+        var type = property.ContainingType;
+        if (type != null)
+            foreach (var iface in type.AllInterfaces)
+                foreach (var im in iface.GetMembers().OfType<IPropertySymbol>())
+                {
+                    var impl = type.FindImplementationForInterfaceMember(im);
+                    if (impl != null && SymbolEqualityComparer.Default.Equals(impl.OriginalDefinition, property.OriginalDefinition))
+                        aliases.Add(buildSymbolId(im.OriginalDefinition));
+                }
+        return aliases;
+    }
+
+    private static string? ResolveDisposeId(Compilation compilation, Func<ISymbol, string> buildSymbolId)
+    {
+        var dispose = compilation.GetSpecialType(SpecialType.System_IDisposable)
+            .GetMembers("Dispose").OfType<IMethodSymbol>().FirstOrDefault();
+        return dispose != null ? buildSymbolId(dispose.OriginalDefinition) : null;
     }
 
     private static FeatureSwitch Resolve(
@@ -413,9 +496,21 @@ internal static class RoslynFeatureSwitchExtractor
         IReadOnlyDictionary<string, int> methodCallCounts,
         IReadOnlyDictionary<string, int> propertyWriteCounts)
     {
+        // Sum the containing member's own call sites PLUS every dispatch alias
+        // (interface members it implements / base members it overrides), in the
+        // dictionary that matches the member kind. A polymorphic call counted
+        // against the interface/base id then credits the concrete implementer.
         if (raw.ContainingKind == ContainingMemberKind.PropertySetAccessor && raw.PropertyAccessorOwnerId != null)
-            return propertyWriteCounts.TryGetValue(raw.PropertyAccessorOwnerId, out var pw) ? pw : 0;
-        return methodCallCounts.TryGetValue(raw.ContainingMemberId, out var mc) ? mc : 0;
+            return Sum(propertyWriteCounts, raw.PropertyAccessorOwnerId, raw.CallSiteAliasIds);
+        return Sum(methodCallCounts, raw.ContainingMemberId, raw.CallSiteAliasIds);
+    }
+
+    private static int Sum(IReadOnlyDictionary<string, int> counts, string primaryId, IReadOnlyList<string> aliasIds)
+    {
+        var total = counts.TryGetValue(primaryId, out var p) ? p : 0;
+        foreach (var alias in aliasIds)
+            if (counts.TryGetValue(alias, out var c)) total += c;
+        return total;
     }
 
     private static (string Verdict, string Reason) Verdict(SwitchInfo info, List<FeatureSwitchAssignment> assignments)
