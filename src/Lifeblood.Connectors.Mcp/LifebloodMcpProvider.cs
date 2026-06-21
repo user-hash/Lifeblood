@@ -112,71 +112,130 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
         }
         int directDependants = directSources.Count;
 
-        // Module lookup: walk Parent chain to find containing Module symbol.
-        // Maintained as a local cache so a popular module's symbols don't
-        // re-walk the chain N times.
-        var moduleCache = new Dictionary<string, string>(StringComparer.Ordinal);
-        string ModuleOf(string id)
+        var moduleOf = CreateModuleResolver(graph);
+        var bucketLists = NewBucketLists();
+        var moduleLists = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        foreach (var aff in affected)
         {
-            if (moduleCache.TryGetValue(id, out var cached)) return cached;
-            string? cursor = id;
-            int hops = 0;
-            while (cursor != null && hops++ < 16)
-            {
-                var sym = graph.GetSymbol(cursor);
-                if (sym == null) { moduleCache[id] = "(unknown)"; return "(unknown)"; }
-                if (sym.Kind == SymbolKind.Module) { moduleCache[id] = sym.Name; return sym.Name; }
-                cursor = sym.ParentId;
-            }
-            moduleCache[id] = "(unknown)";
-            return "(unknown)";
+            var sym = graph.GetSymbol(aff);
+            bucketLists[ClassifyBucket(sym?.FilePath ?? "")].Add(aff);
+
+            var module = moduleOf(aff);
+            if (!moduleLists.TryGetValue(module, out var list))
+                moduleLists[module] = list = new List<string>();
+            list.Add(aff);
         }
 
-        var bucketLists = new Dictionary<string, List<string>>(StringComparer.Ordinal)
+        return new BlastRadiusGroups
+        {
+            TotalAffected = affected.Length,
+            DirectDependants = directDependants,
+            ByBucket = ShapeGroups(bucketLists, maxResults),
+            ByModule = ShapeGroups(moduleLists, maxResults),
+        };
+    }
+
+    public EdgeGroupResult ClassifyEdges(
+        SemanticGraph graph, IReadOnlyList<EdgeDetail> edges, EdgeGroupOptions options)
+    {
+        var includeBuckets = options.IncludeBuckets is { Count: > 0 }
+            ? new HashSet<string>(options.IncludeBuckets, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        var moduleOf = CreateModuleResolver(graph);
+        var survivors = new List<EdgeDetail>(edges.Count);
+        var bucketLists = NewBucketLists();
+        var moduleLists = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        foreach (var edge in edges)
+        {
+            var sym = graph.GetSymbol(edge.OtherEndId);
+            var bucket = ClassifyBucket(sym?.FilePath ?? "");
+
+            if (options.ExcludeTests && bucket == "Test") continue;
+            if (options.ExcludeGenerated && bucket == "Generated") continue;
+            if (includeBuckets != null && !includeBuckets.Contains(bucket)) continue;
+
+            survivors.Add(edge);
+            if (options.GroupByBucket) bucketLists[bucket].Add(edge.OtherEndId);
+            if (options.GroupByModule)
+            {
+                var module = moduleOf(edge.OtherEndId);
+                if (!moduleLists.TryGetValue(module, out var list))
+                    moduleLists[module] = list = new List<string>();
+                list.Add(edge.OtherEndId);
+            }
+        }
+
+        return new EdgeGroupResult
+        {
+            Edges = survivors.ToArray(),
+            TotalBeforeFilter = edges.Count,
+            ByBucket = options.GroupByBucket ? ShapeGroups(bucketLists, options.PreviewPerGroup) : null,
+            ByModule = options.GroupByModule ? ShapeGroups(moduleLists, options.PreviewPerGroup) : null,
+        };
+    }
+
+    /// <summary>The four canonical path buckets, pre-seeded empty so a bucket
+    /// with zero members is still indexable during the classification pass.</summary>
+    private static Dictionary<string, List<string>> NewBucketLists() =>
+        new(StringComparer.Ordinal)
         {
             ["Production"] = new(),
             ["Test"]       = new(),
             ["Editor"]     = new(),
             ["Generated"]  = new(),
         };
-        var moduleLists = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
-        foreach (var aff in affected)
+    /// <summary>
+    /// Module resolver with a per-call memo: walk a symbol's Parent chain to its
+    /// containing <see cref="SymbolKind.Module"/>, capping at 16 hops. Shared by
+    /// <see cref="ClassifyBlastRadius"/> and <see cref="ClassifyEdges"/> so module
+    /// attribution is one implementation. Unresolvable symbols map to
+    /// <c>"(unknown)"</c>.
+    /// </summary>
+    private static Func<string, string> CreateModuleResolver(SemanticGraph graph)
+    {
+        var cache = new Dictionary<string, string>(StringComparer.Ordinal);
+        return id =>
         {
-            var sym = graph.GetSymbol(aff);
-            var path = sym?.FilePath ?? "";
-            var bucket = ClassifyBucket(path);
-            bucketLists[bucket].Add(aff);
-
-            var module = ModuleOf(aff);
-            if (!moduleLists.TryGetValue(module, out var list))
-                moduleLists[module] = list = new List<string>();
-            list.Add(aff);
-        }
-
-        IReadOnlyDictionary<string, GroupedBucket> Shape(Dictionary<string, List<string>> src) =>
-            src
-                .Where(kv => kv.Value.Count > 0)
-                .OrderByDescending(kv => kv.Value.Count)
-                .ToDictionary(
-                    kv => kv.Key,
-                    kv => new GroupedBucket
-                    {
-                        Count = kv.Value.Count,
-                        Preview = maxResults <= 0
-                            ? System.Array.Empty<string>()
-                            : kv.Value.Take(maxResults).ToArray(),
-                    },
-                    StringComparer.Ordinal);
-
-        return new BlastRadiusGroups
-        {
-            TotalAffected = affected.Length,
-            DirectDependants = directDependants,
-            ByBucket = Shape(bucketLists),
-            ByModule = Shape(moduleLists),
+            if (cache.TryGetValue(id, out var cached)) return cached;
+            string? cursor = id;
+            int hops = 0;
+            while (cursor != null && hops++ < 16)
+            {
+                var sym = graph.GetSymbol(cursor);
+                if (sym == null) break;
+                if (sym.Kind == SymbolKind.Module) { cache[id] = sym.Name; return sym.Name; }
+                cursor = sym.ParentId;
+            }
+            cache[id] = "(unknown)";
+            return "(unknown)";
         };
     }
+
+    /// <summary>
+    /// Shape raw per-group id lists into <see cref="GroupedBucket"/> entries:
+    /// drop empty groups, order by descending count, cap each preview at
+    /// <paramref name="preview"/> (0 = counts only). Shared by both grouping
+    /// queries so the wire shape cannot drift between them.
+    /// </summary>
+    private static IReadOnlyDictionary<string, GroupedBucket> ShapeGroups(
+        Dictionary<string, List<string>> src, int preview) =>
+        src
+            .Where(kv => kv.Value.Count > 0)
+            .OrderByDescending(kv => kv.Value.Count)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => new GroupedBucket
+                {
+                    Count = kv.Value.Count,
+                    Preview = preview <= 0
+                        ? System.Array.Empty<string>()
+                        : kv.Value.Take(preview).ToArray(),
+                },
+                StringComparer.Ordinal);
 
     /// <summary>
     /// Path-heuristic bucket classifier. Mirrors the conventions used by

@@ -13,7 +13,36 @@
       "items": {
         "type": "string"
       },
-      "description": "Optional. Narrow results to edges whose \u0060profiles[]\u0060 intersect this set. Edges with \u0060profiles=null\u0060 (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001."
+      "description": "Optional. Narrow results to edges whose `profiles[]` intersect this set. Edges with `profiles=null` (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001."
+    },
+    "groupBy": {
+      "type": "string",
+      "description": "Optional grouping mode for the dependency endpoints. 'bucket' = Production/Test/Editor/Generated; 'module' = per-module/asmdef counts; 'both' = both; 'none' (default) = legacy flat shape with no extra keys. INV-EDGE-GROUP-001.",
+      "enum": [
+        "none",
+        "bucket",
+        "module",
+        "both"
+      ]
+    },
+    "excludeTests": {
+      "type": "boolean",
+      "description": "Drop edges whose endpoint classifies to the Test bucket (default false). Narrows the flat list AND the grouped view."
+    },
+    "excludeGenerated": {
+      "type": "boolean",
+      "description": "Drop edges whose endpoint classifies to the Generated bucket (default false)."
+    },
+    "includeBuckets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional allowlist of endpoint buckets to keep (case-insensitive): Production / Test / Editor / Generated. Empty / omitted = all buckets."
+    },
+    "previewPerGroup": {
+      "type": "integer",
+      "description": "Cap on preview endpoint-ids per bucket/module when `groupBy` is set. 0 = counts only. Default: 5."
     }
   }
 }

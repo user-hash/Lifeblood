@@ -53,12 +53,22 @@ public static class ToolInputContractCatalog
 
         yield return Contract(@"lifeblood_dependencies",
             Arg(@"symbolId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Symbol ID", enumValues: Array.Empty<string>()),
-            Arg(@"profileFilter", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional. Narrow results to edges whose `profiles[]` intersect this set. Edges with `profiles=null` (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001.", enumValues: Array.Empty<string>())
+            Arg(@"profileFilter", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional. Narrow results to edges whose `profiles[]` intersect this set. Edges with `profiles=null` (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001.", enumValues: Array.Empty<string>()),
+            Arg(@"groupBy", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional grouping mode for the dependency endpoints. 'bucket' = Production/Test/Editor/Generated; 'module' = per-module/asmdef counts; 'both' = both; 'none' (default) = legacy flat shape with no extra keys. INV-EDGE-GROUP-001.", enumValues: new[] { @"none", @"bucket", @"module", @"both" }),
+            Arg(@"excludeTests", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Drop edges whose endpoint classifies to the Test bucket (default false). Narrows the flat list AND the grouped view.", enumValues: Array.Empty<string>()),
+            Arg(@"excludeGenerated", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Drop edges whose endpoint classifies to the Generated bucket (default false).", enumValues: Array.Empty<string>()),
+            Arg(@"includeBuckets", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional allowlist of endpoint buckets to keep (case-insensitive): Production / Test / Editor / Generated. Empty / omitted = all buckets.", enumValues: Array.Empty<string>()),
+            Arg(@"previewPerGroup", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Cap on preview endpoint-ids per bucket/module when `groupBy` is set. 0 = counts only. Default: 5.", enumValues: Array.Empty<string>())
         );
 
         yield return Contract(@"lifeblood_dependants",
             Arg(@"symbolId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Symbol ID", enumValues: Array.Empty<string>()),
-            Arg(@"profileFilter", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional. Narrow results to edges whose `profiles[]` intersect this set. Edges with `profiles=null` (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001.", enumValues: Array.Empty<string>())
+            Arg(@"profileFilter", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional. Narrow results to edges whose `profiles[]` intersect this set. Edges with `profiles=null` (single-profile back-compat) pass every filter. INV-MULTI-DEFINE-WIRE-001.", enumValues: Array.Empty<string>()),
+            Arg(@"groupBy", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional grouping mode for the dependant call sites. 'bucket' = Production/Test/Editor/Generated (answers 'is this production-live or test-only?'); 'module' = per-module/asmdef counts; 'both' = both; 'none' (default) = legacy flat shape with no extra keys. INV-EDGE-GROUP-001.", enumValues: new[] { @"none", @"bucket", @"module", @"both" }),
+            Arg(@"excludeTests", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Drop dependant edges whose source classifies to the Test bucket (default false). Narrows the flat list AND the grouped view — the fast path to 'production-only callers'.", enumValues: Array.Empty<string>()),
+            Arg(@"excludeGenerated", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Drop dependant edges whose source classifies to the Generated bucket (default false).", enumValues: Array.Empty<string>()),
+            Arg(@"includeBuckets", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional allowlist of caller buckets to keep (case-insensitive): Production / Test / Editor / Generated. Empty / omitted = all buckets.", enumValues: Array.Empty<string>()),
+            Arg(@"previewPerGroup", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Cap on preview caller-ids per bucket/module when `groupBy` is set. 0 = counts only. Default: 5.", enumValues: Array.Empty<string>())
         );
 
         yield return Contract(@"lifeblood_blast_radius",
