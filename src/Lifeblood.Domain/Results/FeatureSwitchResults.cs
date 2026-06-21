@@ -177,4 +177,7 @@ public sealed class FeatureSwitchAuditOptions
 
     /// <summary>Maximum switches returned. Adapter-side default applies when unset.</summary>
     public int? MaxFindings { get; init; }
+
+    /// <summary>When true, force the compact <c>SummarizeMaxFindings</c> cap regardless of <see cref="MaxFindings"/> — smallest viable triage shape (verdict census). Same field shape, fewer switches. INV-LIST-SHAPE-UNIFORM-001.</summary>
+    public bool? Summarize { get; init; }
 }

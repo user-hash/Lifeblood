@@ -21,6 +21,10 @@
       "type": "integer",
       "description": "Optional. Cap on findings returned; defaults to 200. Zero / negative clamps to the default."
     },
+    "summarize": {
+      "type": "boolean",
+      "description": "When true, force the compact triage cap (25 findings) regardless of maxFindings; `kindBreakdown` still counts every finding. Default false."
+    },
     "profileScope": {
       "type": "string",
       "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."

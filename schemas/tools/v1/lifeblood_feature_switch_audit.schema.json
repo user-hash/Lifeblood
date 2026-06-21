@@ -21,6 +21,10 @@
       "type": "integer",
       "description": "Optional. Cap on switches returned; defaults to 200. Zero / negative clamps to the default."
     },
+    "summarize": {
+      "type": "boolean",
+      "description": "When true, return a compact verdict census: cap at 25 switches regardless of maxFindings AND drop each switch's evidence arrays (assignments / branchGatedMembers / mutators) — a widely-read flag carries many, so a count cap alone does not bound size. `verdictBreakdown` still counts every switch; query a specific typeId unsummarized for the evidence. Default false."
+    },
     "profileScope": {
       "type": "string",
       "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."

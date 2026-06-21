@@ -9,6 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`summarize` on `lifeblood_wire_audit` and `lifeblood_feature_switch_audit`.**
+  Live-dogfooding the new audit tools showed a workspace-wide run returns the full
+  200-finding detail (118 KB on Lifeblood's own graph), over the tool-result
+  budget. Both tools now accept `summarize:true`. For `wire_audit` (flat findings)
+  it forces the compact 25-finding cap. For `feature_switch_audit` it returns a
+  verdict census — cap 25 AND drop each switch's evidence arrays
+  (assignments / branchGatedMembers / mutators), because a widely-read flag gates
+  dozens of branches so a count cap alone does not bound size (a summarized run was
+  still 104 KB until the arrays were dropped). The
+  `kindBreakdown` / `verdictBreakdown` census is computed over every finding first.
+  Both tools join the `UniformListShapeRatchetTests` whitelist, so they are held to
+  `INV-LIST-SHAPE-UNIFORM-001` (summarize + cap) going forward.
 - **Public agent skill kept in lockstep with the tool surface.** The shipped
   `skills/lifeblood-mcp/` skill now documents the full tool surface (the
   wiring-audit family — `wire_audit`, `feature_switch_audit`, `callsite_arguments`

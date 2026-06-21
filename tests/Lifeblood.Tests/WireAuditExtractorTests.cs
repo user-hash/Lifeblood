@@ -1,3 +1,4 @@
+using System.Text;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Results;
@@ -120,5 +121,33 @@ public class Builder { public void B() { var x = new Acme.Bindings { Slot = () =
 
         var none = HostWith(Reader).GetWireAudit(new WireAuditOptions { TypeId = "type:Acme.DoesNotExist" });
         Assert.Empty(none.Findings);
+    }
+
+    // 30 private fields each read once, never written -> 30 FieldReadWithoutWrite.
+    private static string ManyDeadReads(int n)
+    {
+        var sb = new StringBuilder("namespace Acme;\npublic class Many\n{\n");
+        for (var i = 0; i < n; i++) sb.Append($"    private int _f{i};\n");
+        sb.Append("    public int Read() { var r = 0;\n");
+        for (var i = 0; i < n; i++) sb.Append($"        r += _f{i};\n");
+        sb.Append("        return r; }\n}");
+        return sb.ToString();
+    }
+
+    [Fact]
+    public void WireAudit_SummarizeTrue_ForcesCompactCap_RegardlessOfCallerMaxFindings()
+    {
+        var report = HostWith(ManyDeadReads(30)).GetWireAudit(new WireAuditOptions { Summarize = true, MaxFindings = 100 });
+        Assert.Equal(30, report.FindingCount);                // breakdown counts every finding
+        Assert.True(report.Findings.Length <= RoslynWireAuditExtractor.SummarizeMaxFindings);
+        Assert.True(report.Truncated);
+    }
+
+    [Fact]
+    public void WireAudit_SummarizeFalse_HonorsCallerMaxFindings()
+    {
+        var report = HostWith(ManyDeadReads(30)).GetWireAudit(new WireAuditOptions { MaxFindings = 30 });
+        Assert.Equal(30, report.Findings.Length);             // summarize must not be sticky
+        Assert.False(report.Truncated);
     }
 }
