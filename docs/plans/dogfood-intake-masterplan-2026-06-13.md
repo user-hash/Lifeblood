@@ -4,7 +4,7 @@
 > Branch `codex/lifeblood-tracking-complete`, **NOT pushed / NOT tagged** (user owns push+tag).
 > 6 commits landed: `b16b198` (adopt) → `95d5d11` (W0) → `23969f7` (W1A) → `a34e79e` (W1B) → `e538e1d` (W2.1).
 > Suite **1333 passed / 0 failed / 11 native-clang skips / 1344 total**. **32 tools**, 164 invariants, 0 self-analyze violations.
-> **DONE:** Wave 0; Wave 1 (A grouped dependants/dependencies, B dead_code pathExclude); Wave 2 atom 1 (`lifeblood_callsite_arguments`); Wave 3 (`lifeblood_wire_audit` a+b, `lifeblood_feature_switch_audit`); skill ↔ tool parity ratchet. 34 tools, 167 invariants.
+> **DONE:** Wave 0; Wave 1 (A grouped dependants/dependencies, B dead_code pathExclude); Wave 2 atom 1 (`lifeblood_callsite_arguments`); Wave 3 (`lifeblood_wire_audit` all 5 passes, `lifeblood_feature_switch_audit` + 3 dogfood fixes + summarize, `lifeblood_member_count`); skill ↔ tool parity ratchet. 35 tools, 168 invariants. Closed intake: 20260613-002, 20260611-004, 20260611-001.
 > **NEXT:** `lifeblood_feature_switch_audit` (`LB-INTAKE-20260613-002`) + wire_audit passes c/d → then Wave 2 `lifeblood_member_count` (`LB-INTAKE-20260611-001`, needs a reflection-parity harness) + `lifeblood_struct_layout` (`LB-INTAKE-20260601-002`) → Wave 4 `authority_coverage`.
 > **Intake: 15 entries remaining (3 partials: 20260601-004, 20260611-004 now partial).**
 > **Local dev tool:** global `lifeblood.server.mcp` reinstalled to **0.7.12-alpha.0.9** from `local-nupkg/` (this branch build) for live testing. NOT the published NuGet release.
@@ -385,23 +385,26 @@ Read top-to-bottom before touching anything.
 
 ## Where we are
 - **Repo** `D:/Projekti/Lifeblood`. **Branch** `codex/lifeblood-tracking-complete`,
-  pushed to `origin/codex/lifeblood-tracking-complete` (HEAD `d5b9566`). **`main` is
+  pushed to `origin/codex/lifeblood-tracking-complete` (HEAD `2526c33`). **`main` is
   untouched** and awaits the eventual tagged `v0.7.12` — do NOT push to main mid-plan.
   User owns push + tag; commit freely, push the branch when green.
 - **Goal** burn `devmemory/lifeblood-intake.md` down to shipped, ratcheted features,
   then cut `v0.7.12`.
-- **Live state** 34 MCP tools (18 read + 16 write), 30 ports, 167 invariants / 114
-  categories, suite **1351 passed / 0 failed / 11 native-clang skips / 1362 total**,
-  self-analyze 0 violations / 0 cycles (4753 sym / 26455 edges / 498 types).
+- **Live state** 35 MCP tools (18 read + 17 write), 30 ports, 168 invariants / 115
+  categories, suite **1378 passed / 0 failed / 11 native-clang skips / 1389 total**,
+  self-analyze 0 violations / 0 cycles (4837 sym / 26836 edges / 503 types).
+- **⚠️ Local dev MCP tool is BEHIND HEAD** — last installed `0.7.12-alpha.0.18`
+  (commit `ed0d54e`), but HEAD is `2526c33` (wire_audit c+d + member_count NOT in the
+  running server). REPACK + reinstall before the next live dogfood (recipe below).
 - **Local dev MCP tool** = global dotnet tool `lifeblood.server.mcp`
-  (`lifeblood-mcp.exe`), reinstalled to `0.7.12-alpha.0.15` from `local-nupkg/`. Reload
+  (`lifeblood-mcp.exe`). Reload
   recipe: DAWG memory `reference-lifeblood-local-mcp-reload` (pack →
   `dotnet tool update --global lifeblood.server.mcp --add-source local-nupkg --version
   <ver>` → kill `lifeblood-mcp.exe`/`*Lifeblood.Server.Mcp*` procs → reconnect via
   Claude Code reload / `/mcp`). After landing more commits, repack + reinstall so live
   dogfooding tests the latest build.
 
-## Shipped this campaign (12 commits)
+## Shipped this campaign (18 commits)
 - W0 `IntakeLedgerTests` + `INV-INTAKE-SHAPE-001` (`95d5d11`)
 - W1A grouped/filtered `dependants`/`dependencies` + `IMcpGraphProvider.ClassifyEdges`
   + `INV-EDGE-GROUP-001` (`23969f7`)
@@ -412,44 +415,46 @@ Read top-to-bottom before touching anything.
 - W3-MVP tool `lifeblood_wire_audit` passes a+b + `INV-WIRE-AUDIT-001` (`a24af3f`)
 - W3 tool `lifeblood_feature_switch_audit` + `INV-FEATURE-SWITCH-001` (`02465c8`) —
   shared `RoslynOperationFacts` primitive extracted; wire_audit refactored onto it.
-  Closes `LB-INTAKE-20260613-002`. **NOT YET live-dogfooded** (needs `/mcp` reconnect
-  to the `0.7.12-alpha.0.15` build that is installed but not loaded mid-turn).
-- Public skill ↔ tool-surface parity: `skills/lifeblood-mcp/` documents the wiring
-  family; `INV-SKILL-TOOL-PARITY-001` (`SkillToolParityTests`) (`d5b9566`).
+  Closes `LB-INTAKE-20260613-002`. **LIVE-DOGFOOD VERIFIED** (`_stopped` → RuntimeMutable).
+- Public skill ↔ tool-surface parity ratchet `INV-SKILL-TOOL-PARITY-001` (`d5b9566`).
+- feature_switch dogfood fix: dispatch-alias call sites (interface/override/using) —
+  caught `_stopped`/`_disposed` false-dormant on the real graph (`5b25306`).
+- `summarize` on wire_audit + feature_switch_audit (`INV-LIST-SHAPE-UNIFORM-001`,
+  `05fbb87`) — feature_switch summarize is a verdict CENSUS (drops evidence arrays;
+  a count cap alone was still 104 KB). Both tools in `UniformListShapeRatchetTests`.
+- feature_switch dogfood fix: positional-record properties (`ed0d54e`) — parameter
+  default + constructor-arg writes; `DeadCodeOptions.ExcludePublic` was `false`/dormant,
+  now `true`/RuntimeMutable. LIVE-VERIFIED.
+- W3 `lifeblood_wire_audit` passes c+d (`850897e`) — `EventSubscribedNeverRaised` /
+  `EventRaisedNeverSubscribed` / `DegenerateConstantCallSites`. CLOSES `LB-INTAKE-20260611-004`.
+- W3 tool `lifeblood_member_count` + `INV-MEMBER-COUNT-001` (`2526c33`) — bit-exact
+  reflection parity (emit-reflect-vs-parse harness) + sourceSymbols. CLOSES `LB-INTAKE-20260611-001`.
 - (+ `b16b198` adopt, `f243d2c` position marker)
 
 ## NEXT atoms, in order
-1. **Live-dogfood `lifeblood_feature_switch_audit`** against the Lifeblood graph
-   after `/mcp` reconnect (tool installed, server killed mid-turn). Try the DAWG
-   shape too. Live dogfooding has caught 2 real bugs this campaign — do not skip.
-2. **`lifeblood_wire_audit` passes c+d** (rest of `LB-INTAKE-20260611-004`): (c) events
-   with subscribers but 0 fire sites / vice versa; (d) call sites passing only
-   compile-time-constant degenerate args (build on Wave 2 callsite facts). Fold into
-   the existing wire_audit tool/extractor.
-3. **`lifeblood_member_count(typeId, semantics)`** (`LB-INTAKE-20260611-001`, MED).
-   ⚠️ Whole value is BIT-EXACT `System.Reflection` DeclaredOnly parity. Build a parity
-   HARNESS test: define a fixture type, reflect the REAL compiled fixture for ground
-   truth, parse the same source into a compilation for the tool, assert equal. Subtle:
-   implicit default ctor counts (not CompilerGenerated) but backing fields don't
-   (filter `IsImplicitlyDeclared` on fields only); nested types excluded. Add a
-   `sourceSymbols` semantics matching the graph count + an honest delta-table doc.
-4. **`lifeblood_struct_layout(typeId)`** (`LB-INTAKE-20260601-002`, MED). Roslyn-metadata
+1. **REPACK + reload the local tool** (it is behind HEAD) then live-dogfood the
+   batch since 0.18: wire_audit c (events) + d (degenerate calls) + member_count
+   against the Lifeblood graph. Live dogfooding has caught 3 real bugs this session.
+2. **`lifeblood_struct_layout(typeId)`** (`LB-INTAKE-20260601-002`, MED). Roslyn-metadata
    offset/size/align/total for unmanaged structs (`[StructLayout]`, `Pack`,
    `[FieldOffset]`, `fixed`, enum underlying, nested, Unity.Mathematics). Exact for
-   blittable; confidence downgrade + reason for reference-bearing/Auto.
-5. **Wave 4 `lifeblood_authority_coverage`** (`LB-INTAKE-20260613-004`) — graph-only
+   blittable; confidence downgrade + reason for reference-bearing/Auto. Use the same
+   emit-vs-compute parity HARNESS shape that pinned `member_count` (compile a fixture,
+   `Assembly.Load` for ground-truth `Marshal.SizeOf`/`OffsetOf`, feed the same
+   compilation to the tool, assert equal) — it caught a real subtlety there.
+3. **Wave 4 `lifeblood_authority_coverage`** (`LB-INTAKE-20260613-004`) — graph-only
    `AuthorityCoverageAnalyzer` in `Lifeblood.Analysis`: do subjects[] reach
-   requiredAuthority[]? matrix output.
-6. **Wave 5 Unity FP** (`20260608-001/002/003`, `20260601-001/003`, `20260601-004`
+   requiredAuthority[]? negative-dependency matrix output.
+4. **Wave 5 Unity FP** (`20260608-001/002/003`, `20260601-001/003`, `20260601-004`
    Vendored half): transitive MonoBehaviour magic-method (UIBehaviour/Graphic chain) →
    Standalone define profile → asmdef-direction check → scaffolding downrank →
    UnityEvent/YAML reachability → Vendored bucket.
-7. **Wave 6** session recovery + content-hash incremental + execute CS1061 hint + Unity
+5. **Wave 6** session recovery + content-hash incremental + execute CS1061 hint + Unity
    sync hook (`20260602-001`, `20260611-002/003/005`).
-8. **Wave 7 (deferred)** net10 sourcegen concurrency (`20260601-005`).
+6. **Wave 7 (deferred)** net10 sourcegen concurrency (`20260601-005`).
 
-Partials in intake: `20260601-004` (analyze excludePaths + Vendored bucket) and
-`20260611-004` (events + degenerate args). 14 intake entries remain.
+Partials in intake: `20260601-004` (analyze excludePaths + Vendored bucket) only.
+**12 intake entries remain** (`20260611-004` and `20260611-001` fully shipped + tombstoned this session).
 
 ## Per-atom DISCIPLINE (non-negotiable — how every atom above shipped)
 1. **Hexagonal:** protocol-neutral DTOs in `Domain.Results`; port on `ICompilationHost`
