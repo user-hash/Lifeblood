@@ -577,6 +577,15 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
     return RoslynCallsiteArgumentExtractor.Extract(_compilations, methodSymbol, BuildSymbolId(methodSymbol), options, BuildSymbolId);
   }
 
+  /// <summary>
+  /// Dead-WIRE audit. Routes through <see cref="RoslynWireAuditExtractor"/> —
+  /// one operation-tree pass over every loaded compilation. No single-symbol
+  /// resolve gate (the audit is workspace-scoped; <c>TypeId</c>/<c>ModuleScope</c>
+  /// are output filters applied by canonical id). INV-WIRE-AUDIT-001.
+  /// </summary>
+  public WireAuditReport GetWireAudit(WireAuditOptions options)
+      => RoslynWireAuditExtractor.Extract(_compilations, options, BuildSymbolId);
+
   public string[] FindImplementations(string symbolId)
   {
   // Prefer source-defined symbol for accurate type kind.

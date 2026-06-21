@@ -629,6 +629,46 @@ internal sealed class WriteToolHandler
         }, _jsonOpts));
     }
 
+    public McpToolResult HandleWireAudit(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
+
+        // typeId is an optional output filter — resolve to canonical when set so
+        // a short/qualified name matches the extractor's canonical declaringType.
+        string? typeId = null;
+        var rawType = GetString(args, "typeId");
+        if (!string.IsNullOrEmpty(rawType))
+        {
+            var resolved = _resolver.Resolve(_session.Graph!, rawType);
+            if (resolved.CanonicalId == null)
+                return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {rawType}");
+            typeId = resolved.CanonicalId;
+        }
+
+        var options = new WireAuditOptions
+        {
+            TypeId = typeId,
+            ModuleScope = GetString(args, "moduleScope"),
+            IncludeFieldReadWithoutWrite = GetBool(args, "includeFieldReadWithoutWrite") ?? true,
+            IncludeDelegateSlots = GetBool(args, "includeDelegateSlots") ?? true,
+            MaxFindings = GetInt(args, "maxFindings"),
+        };
+
+        var report = _session.CompilationHost!.GetWireAudit(options);
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            report.Scope,
+            report.FindingCount,
+            report.Truncated,
+            report.KindBreakdown,
+            report.Findings,
+            warning = "Findings are ADVISORY. A 'never assigned' / 'read without write' member can still be wired through reflection, Unity serialized (prefab/scene/asset YAML) UnityEvent or [SerializeField] injection, or runtime-procedural assignment — none visible to static analysis. Verify against those sources before deleting or re-wiring.",
+            analyzedUnderProfile = _session.RetainedProfileName,
+        }, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;

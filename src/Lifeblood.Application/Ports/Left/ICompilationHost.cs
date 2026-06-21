@@ -133,6 +133,20 @@ public interface ICompilationHost
     /// </summary>
     CallsiteArgumentsReport? GetCallsiteArguments(string symbolId, CallsiteArgumentsOptions options);
 
+    /// <summary>
+    /// Dead-WIRE audit: members that are referenced but structurally unplugged.
+    /// One operation-tree pass over every loaded compilation classifies each
+    /// field/property reference as read or write and accumulates per-member
+    /// counts; emits private/internal fields READ with zero writes
+    /// (read-but-never-written) and delegate-typed slots never assigned anywhere
+    /// (never-wired). Complements <c>dead_code</c> (UNreferenced symbols) by
+    /// catching the opposite failure — the recurring extraction-severed-wiring
+    /// bug class. Advisory: reflection / Unity serialized (YAML) / runtime
+    /// assignment is invisible to static analysis. Always returns a report (never
+    /// null); empty findings when nothing qualifies. INV-WIRE-AUDIT-001.
+    /// </summary>
+    WireAuditReport GetWireAudit(WireAuditOptions options);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 

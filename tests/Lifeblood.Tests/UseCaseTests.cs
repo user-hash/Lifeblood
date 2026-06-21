@@ -368,6 +368,8 @@ public class UseCaseTests
         public StaticTableReport? GetStaticTables(string typeId, StaticTablesOptions options) => null;
         public AssignmentCoverageReport? GetAssignmentCoverage(string targetTypeId, AssignmentCoverageOptions options) => null;
         public CallsiteArgumentsReport? GetCallsiteArguments(string symbolId, CallsiteArgumentsOptions options) => null;
+        public WireAuditReport GetWireAudit(WireAuditOptions options)
+            => new() { Scope = "(workspace)", FindingCount = 0, Truncated = false, KindBreakdown = new Dictionary<string, int>(), Findings = Array.Empty<WireAuditFinding>() };
         public string[] FindImplementations(string symbolId) => Array.Empty<string>();
         public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column) => null;
         public string GetDocumentation(string symbolId) => "";

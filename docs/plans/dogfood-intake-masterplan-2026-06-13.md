@@ -4,9 +4,9 @@
 > Branch `codex/lifeblood-tracking-complete`, **NOT pushed / NOT tagged** (user owns push+tag).
 > 6 commits landed: `b16b198` (adopt) → `95d5d11` (W0) → `23969f7` (W1A) → `a34e79e` (W1B) → `e538e1d` (W2.1).
 > Suite **1333 passed / 0 failed / 11 native-clang skips / 1344 total**. **32 tools**, 164 invariants, 0 self-analyze violations.
-> **DONE:** Wave 0, Wave 1 (A grouped dependants/dependencies, B dead_code pathExclude), Wave 2 atom 1 (`lifeblood_callsite_arguments`).
-> **NEXT:** Wave 2 atom 2 `lifeblood_member_count` (`LB-INTAKE-20260611-001`) → atom 3 `lifeblood_struct_layout` (`LB-INTAKE-20260601-002`) → Wave 3 `wire_audit` + `feature_switch_audit`.
-> **Intake: 15 entries remaining.**
+> **DONE:** Wave 0; Wave 1 (A grouped dependants/dependencies, B dead_code pathExclude); Wave 2 atom 1 (`lifeblood_callsite_arguments`); Wave 3 MVP (`lifeblood_wire_audit` passes a+b). 33 tools, 165 invariants.
+> **NEXT:** `lifeblood_feature_switch_audit` (`LB-INTAKE-20260613-002`) + wire_audit passes c/d → then Wave 2 `lifeblood_member_count` (`LB-INTAKE-20260611-001`, needs a reflection-parity harness) + `lifeblood_struct_layout` (`LB-INTAKE-20260601-002`) → Wave 4 `authority_coverage`.
+> **Intake: 15 entries remaining (3 partials: 20260601-004, 20260611-004 now partial).**
 > **Local dev tool:** global `lifeblood.server.mcp` reinstalled to **0.7.12-alpha.0.9** from `local-nupkg/` (this branch build) for live testing. NOT the published NuGet release.
 
 **Status:** ADOPTED 2026-06-21 as the canonical execution recipe for the current
@@ -48,6 +48,13 @@ all seven proposed new tools (`callsite_arguments`, `wire_audit`,
   count 31→32. Full suite green (1344). **Remaining in Wave 2:**
   `lifeblood_member_count` (`LB-INTAKE-20260611-001`) + `lifeblood_struct_layout`
   (`LB-INTAKE-20260601-002`).
+- **Wave 3 (MVP) — SHIPPED 2026-06-21.** New write-side tool `lifeblood_wire_audit`
+  (`INV-WIRE-AUDIT-001`) — `ICompilationHost.GetWireAudit` + `RoslynWireAuditExtractor`,
+  one operation-tree read/write classification pass. Passes (a) field-read-without-write
+  + (b) delegate-slot-never-assigned shipped; `LB-INTAKE-20260611-004` shrank to
+  remaining passes (c) events + (d) degenerate-args. Tool 32→33, 165 invariants.
+  Live-dogfooded after reload. Full suite green (1350). **Remaining Wave 3:**
+  `lifeblood_feature_switch_audit` (`LB-INTAKE-20260613-002`) + wire_audit c/d.
 
 **Current truth snapshot (2026-06-13):**
 

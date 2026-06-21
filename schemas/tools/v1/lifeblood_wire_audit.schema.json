@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "typeId": {
+      "type": "string",
+      "description": "Optional. Restrict findings to members declared on this type (canonical / qualified / short). Read+write counting still scans every loaded compilation."
+    },
+    "moduleScope": {
+      "type": "string",
+      "description": "Optional. Restrict findings to members declared in this module/asmdef."
+    },
+    "includeFieldReadWithoutWrite": {
+      "type": "boolean",
+      "description": "Run the field-read-without-write pass (private/internal mutable fields read with zero writes). Default true."
+    },
+    "includeDelegateSlots": {
+      "type": "boolean",
+      "description": "Run the delegate-slot-never-assigned pass (Func/Action/custom-delegate fields & properties with zero assignment sites). Default true."
+    },
+    "maxFindings": {
+      "type": "integer",
+      "description": "Optional. Cap on findings returned; defaults to 200. Zero / negative clamps to the default."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}

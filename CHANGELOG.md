@@ -9,6 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **New tool `lifeblood_wire_audit`.** The complement of `dead_code`: instead of
+  UN-referenced symbols, it finds members that ARE referenced but structurally
+  unplugged — the recurring "compiles green, severed by a refactor" bug class.
+  One operation-tree pass classifies every field/property reference as read or
+  write and flags `FieldReadWithoutWrite` (private/internal field read with zero
+  writes — "forgot to wire it") and `DelegateSlotNeverAssigned` (a Func/Action
+  slot nothing ever assigns). Semantic/Proven envelope with an explicit wire-risk
+  caveat (reflection / Unity serialized YAML / runtime assignment are invisible).
+  33 MCP tools total now. (`INV-WIRE-AUDIT-001`, `LB-INTAKE-20260611-004` passes
+  a+b; event and degenerate-argument passes still to come.)
 - **New tool `lifeblood_callsite_arguments`.** Answers the API-adoption question
   that "callee is referenced" checks miss: when a richer overload or a new
   optional parameter exists, do the call sites actually pass it? For a target

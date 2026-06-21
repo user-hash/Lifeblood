@@ -137,6 +137,36 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_wire_audit tool, passes a+b (LB-INTAKE-20260611-004 partial)
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan Wave 3 MVP, first two passes of `LB-INTAKE-20260611-004`
+Workspace: Lifeblood self
+Verification: `WireAuditExtractorTests` (6 facts) green; new `lifeblood_wire_audit`
+schema snapshot; ToolRegistry 32→33; full suite 1336 passed / 0 failed / 11
+native-clang skips / 1350 total. Live-dogfooded against the Lifeblood graph after
+reload.
+
+Summary:
+- The dominant DAWG bug class is code that compiles green but is structurally
+  unplugged (read-without-write fields, never-assigned binding slots);
+  `dead_code` misses it because the symbols ARE referenced.
+
+Fix shape (shipped — passes a+b):
+- New write-side tool `lifeblood_wire_audit` + `ICompilationHost.GetWireAudit` +
+  `RoslynWireAuditExtractor`. One operation-tree pass classifies each
+  field/property reference read-vs-write (assignment target / ++-- / ref-out /
+  initializer = write) and flags `FieldReadWithoutWrite` (private/internal field
+  read, zero writes) + `DelegateSlotNeverAssigned` (delegate slot, zero writes).
+- `INV-WIRE-AUDIT-001` (tools.md), `WireAuditResults` DTOs, Semantic/Proven
+  envelope + named wire-risk limitation (`SemanticProvenWithWireRisk`).
+- STATUS anchors: toolCount 33 (18 read + 15 write), testCount 1350,
+  invariantCount 165, invariantCategoryCount 112, selfAnalyze 4620/25979/484.
+
+Remaining (still in intake `LB-INTAKE-20260611-004`): pass (c) events with
+subscribers/no fire sites, pass (d) degenerate-constant-arg call sites.
+
 ## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_callsite_arguments tool (LB-INTAKE-20260613-001)
 
 Status: Shipped

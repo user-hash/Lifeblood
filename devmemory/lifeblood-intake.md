@@ -359,6 +359,14 @@ Type: Improvement · Priority: HIGH (today's dominant real-bug class; complement
 Source: DAWG session 2026-06-11 (Lifeblood v0.7.11), MP polish pass root-causing
 Workspace: DAWG
 
+Partial progress: `lifeblood_wire_audit` SHIPPED 2026-06-21 with passes (a)
+field-read-without-write + (b) delegate-slot-never-assigned (`INV-WIRE-AUDIT-001`,
+archived as the 2026-06-21 receipt). This entry now tracks the REMAINING passes
+(c) events with subscribers but no fire sites (and vice versa) and (d) methods
+whose only call sites pass degenerate constant args (built on Wave 2 callsite
+facts) — both fold into the same `lifeblood_wire_audit` tool. Promote fully when
+(c)+(d) land.
+
 What: Four shipped DAWG bugs in ONE day share a shape that no current tool
 catches: code that compiles green but is structurally unplugged at runtime.
 Receipts (all verified + fixed 2026-06-11):

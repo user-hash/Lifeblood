@@ -123,9 +123,9 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(32, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(33, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
-        Assert.Equal(14, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
+        Assert.Equal(15, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var telemetryEvents = doc.RootElement
             .GetProperty("featureFlags")
             .GetProperty("operationalTelemetryEvents")
@@ -657,13 +657,14 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns32Tools()
+    public void ToolRegistry_Returns33Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(32, tools.Length);
+        Assert.Equal(33, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");
+        Assert.Contains(tools, t => t.Name == "lifeblood_wire_audit");
         Assert.Contains(tools, t => t.Name == "lifeblood_test_impact");
         Assert.Contains(tools, t => t.Name == "lifeblood_enum_coverage");
         Assert.Contains(tools, t => t.Name == "lifeblood_static_tables");
