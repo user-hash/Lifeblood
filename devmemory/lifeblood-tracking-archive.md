@@ -137,6 +137,41 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_feature_switch_audit tool (LB-INTAKE-20260613-002)
+
+Status: Shipped
+Type: Shipped
+Source: dogfood-intake masterplan Wave 3 follow-on; DAWG pattern-engine planning pass 2026-06-13 grammar-activation check
+Workspace: Lifeblood self
+Verification: `FeatureSwitchExtractorTests` (9 facts) green; new
+`lifeblood_feature_switch_audit` schema snapshot; ToolRegistry 33→34; full suite
+1348 passed / 0 failed / 11 native-clang skips / 1359 total. Live-dogfooded against
+the Lifeblood graph after reload.
+
+Summary:
+- Dormant infrastructure is easy to mislabel as shipped: a boolean that gates
+  live branches but whose only mutator has zero callers (DAWG
+  `BeatGridPatternEngine.UseGrammarGeneration` / `SetGrammarMode`) looks active
+  but can never leave its default at runtime. `dependants` exposed the individual
+  facts; no single tool rendered the verdict.
+
+Fix shape (shipped):
+- New write-side tool `lifeblood_feature_switch_audit` +
+  `ICompilationHost.GetFeatureSwitchAudit` + `RoslynFeatureSwitchExtractor`. One
+  operation-tree pass classifies each boolean field / settable property reference
+  as a write or a branch-gating read, records each flipping write's bucket +
+  containing member, and tallies call sites; a flipping write in a production
+  member with zero in-graph callers stays inactive (the dormant signal).
+- Verdicts `AlwaysDefaultInGraph` / `TestOnlyActivation` / `RuntimeMutable`;
+  per switch: defaultValue, assignments[] (bucket/assignedValue/flipsDefault/
+  active), branchGatedMembers[], mutators[] (callerCount), assignmentBucketBreakdown.
+- `INV-FEATURE-SWITCH-001` (tools.md); `FeatureSwitchResults` DTOs; Semantic/Proven
+  envelope + named activation-risk limitations (`SemanticProvenWithActivationRisk`).
+- Extracted `RoslynOperationFacts` (IsWriteContext + source-type enumeration) as
+  the single shared primitive with `wire_audit`; refactored `wire_audit` onto it.
+- STATUS anchors: toolCount 34 (18 read + 16 write), testCount 1359,
+  invariantCount 166, invariantCategoryCount 113, selfAnalyze 4742/26427/497.
+
 ## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_wire_audit tool, passes a+b (LB-INTAKE-20260611-004 partial)
 
 Status: Shipped

@@ -669,6 +669,46 @@ internal sealed class WriteToolHandler
         }, _jsonOpts));
     }
 
+    public McpToolResult HandleFeatureSwitchAudit(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
+
+        // typeId is an optional output filter — resolve to canonical when set so
+        // a short/qualified name matches the extractor's canonical declaringType.
+        string? typeId = null;
+        var rawType = GetString(args, "typeId");
+        if (!string.IsNullOrEmpty(rawType))
+        {
+            var resolved = _resolver.Resolve(_session.Graph!, rawType);
+            if (resolved.CanonicalId == null)
+                return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {rawType}");
+            typeId = resolved.CanonicalId;
+        }
+
+        var options = new FeatureSwitchAuditOptions
+        {
+            TypeId = typeId,
+            ModuleScope = GetString(args, "moduleScope"),
+            RequireBranchCondition = GetBool(args, "requireBranchCondition") ?? true,
+            IncludeProperties = GetBool(args, "includeProperties") ?? true,
+            MaxFindings = GetInt(args, "maxFindings"),
+        };
+
+        var report = _session.CompilationHost!.GetFeatureSwitchAudit(options);
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            report.Scope,
+            report.SwitchCount,
+            report.Truncated,
+            report.VerdictBreakdown,
+            report.Switches,
+            warning = "Verdicts reflect ONLY in-graph activation. An 'AlwaysDefaultInGraph' / 'TestOnlyActivation' switch can still be flipped through reflection, Unity serialized (prefab/scene/asset YAML / UnityEvent / [SerializeField]), config or save-state deserialization, or a public mutator called from outside the analyzed compilation set — none visible to static analysis. Reachability uses DIRECT call sites only (plus ctors/initializers), not transitive or entry-point dispatch. Verify before declaring a feature dead.",
+            analyzedUnderProfile = _session.RetainedProfileName,
+        }, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;

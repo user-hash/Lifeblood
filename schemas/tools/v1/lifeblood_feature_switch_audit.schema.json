@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "typeId": {
+      "type": "string",
+      "description": "Optional. Restrict findings to switches declared on this type (canonical / qualified / short). Read+write counting still scans every loaded compilation."
+    },
+    "moduleScope": {
+      "type": "string",
+      "description": "Optional. Restrict findings to switches declared in this module/asmdef."
+    },
+    "requireBranchCondition": {
+      "type": "boolean",
+      "description": "Only audit booleans read in >=1 branch condition (the feature-switch shape). Default true; false widens to every boolean field & settable property."
+    },
+    "includeProperties": {
+      "type": "boolean",
+      "description": "Audit settable boolean properties as well as fields. Default true."
+    },
+    "maxFindings": {
+      "type": "integer",
+      "description": "Optional. Cap on switches returned; defaults to 200. Zero / negative clamps to the default."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}

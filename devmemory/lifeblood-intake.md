@@ -425,30 +425,10 @@ stale-first-query and the full-sweep degradation.
      2026-06-21 as the lifeblood_callsite_arguments tool (INV-CALLSITE-ARGS-001)
      → archived as the 2026-06-21 receipt in lifeblood-tracking-archive.md. -->
 
-## LB-INTAKE-20260613-002 — Dormant feature-switch / static-flag audit
-
-Type: Improvement · Priority: HIGH
-Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), grammar activation check
-Workspace: DAWG
-
-What: `BeatGridPatternEngine.UseGrammarGeneration` is referenced by the live
-pattern generator branches, but defaults to `false`. `SetGrammarMode(bool)` has
-zero semantic callers, while `InitializeGrammarSystem()` is called from bootstrap.
-Lifeblood exposed the individual facts (`dependants` on the field/setter/init),
-but there is no single audit that says "this feature branch is initialized but
-has no live activation authority; the grammar path is dormant."
-
-Why it matters: dormant infrastructure is easy to mislabel as shipped behavior.
-In the pattern pass this distinction changed the plan: grammar became a future
-activation lane behind ratchets, not the current user-facing generator. The same
-shape applies to static feature flags, config toggles, migration gates, and
-compile-time fallback switches across large products.
-
-Fix shape: add a `lifeblood_feature_switch_audit` or `wire_audit` mode for
-static/instance bool fields and properties used in branch conditions. Report
-default/initializer value, assignment sites, public setter/mutator dependants,
-branch-gated methods, production/test bucket breakdown, and a verdict like
-`AlwaysDefaultInGraph`, `TestOnlyActivation`, or `RuntimeMutable`.
+<!-- LB-INTAKE-20260613-002 (dormant feature-switch / static-flag audit) SHIPPED
+     2026-06-21 as `lifeblood_feature_switch_audit` → archived as the 2026-06-21
+     receipt in lifeblood-tracking-archive.md. INV-FEATURE-SWITCH-001. Do not
+     re-add here; the id must not live in both files. -->
 
 <!-- LB-INTAKE-20260613-003 (dependants/dependencies grouping + filters) SHIPPED
      2026-06-21 → archived as the 2026-06-21 receipt in

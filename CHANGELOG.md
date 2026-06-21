@@ -9,6 +9,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **New tool `lifeblood_feature_switch_audit`.** Finds dormant feature switches —
+  boolean fields / settable boolean properties that GATE branches but are pinned
+  to their default because nothing reachable in the graph flips them. The third
+  member of the wiring family (`dead_code` = unreferenced; `wire_audit` = zero
+  wiring; this = "compiles, read by live `if`/`while`/ternary conditions, looks
+  shipped, never activated"). One operation-tree pass classifies each switch
+  reference as a write or a branch-gating read, records each flipping write's
+  bucket + containing member, and tallies call sites — so a public mutator with
+  zero callers (the DAWG `BeatGridPatternEngine.SetGrammarMode` shape) downgrades
+  the switch to verdict `AlwaysDefaultInGraph`. Verdicts: `AlwaysDefaultInGraph` /
+  `TestOnlyActivation` / `RuntimeMutable`. Semantic/Proven envelope with explicit
+  activation-risk caveats (reflection / Unity serialized YAML / config / save-state
+  / out-of-graph mutators are invisible; reachability is direct call sites only).
+  Shares the `RoslynOperationFacts` read/write + type-enumeration primitive with
+  `wire_audit` — no duplication. 34 MCP tools total now. (`INV-FEATURE-SWITCH-001`,
+  `LB-INTAKE-20260613-002`.)
 - **New tool `lifeblood_wire_audit`.** The complement of `dead_code`: instead of
   UN-referenced symbols, it finds members that ARE referenced but structurally
   unplugged — the recurring "compiles green, severed by a refactor" bug class.

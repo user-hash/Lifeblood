@@ -165,6 +165,7 @@ public sealed class ToolHandler
                 "lifeblood_assignment_coverage" => WrapWriteSide("lifeblood_assignment_coverage", _write.HandleAssignmentCoverage(arguments)),
                 "lifeblood_callsite_arguments" => WrapWriteSide("lifeblood_callsite_arguments", _write.HandleCallsiteArguments(arguments)),
                 "lifeblood_wire_audit" => WrapWriteSide("lifeblood_wire_audit", _write.HandleWireAudit(arguments)),
+                "lifeblood_feature_switch_audit" => WrapWriteSide("lifeblood_feature_switch_audit", _write.HandleFeatureSwitchAudit(arguments)),
                 "lifeblood_symbol_at_position" => WrapWriteSide("lifeblood_symbol_at_position", _write.HandleGetSymbolAtPosition(arguments)),
                 "lifeblood_documentation" => WrapWriteSide("lifeblood_documentation", _write.HandleGetDocumentation(arguments)),
                 "lifeblood_rename" => WrapWriteSide("lifeblood_rename", _write.HandleRename(arguments)),

@@ -99,6 +99,23 @@ public static class ToolRegistry
     },
   };
 
+  // feature_switch_audit read/write classification + call-site tally are
+  // operation-exact, but the verdict turns on activation reachability — and a
+  // switch can be flipped by paths static analysis cannot see. Semantic/Proven
+  // tier + the activation-specific gap named on the wire.
+  // INV-FEATURE-SWITCH-001 / INV-ADVISORY-LIMITATIONS-001.
+  private static readonly EnvelopeClassification SemanticProvenWithActivationRisk = new()
+  {
+    TruthTier = TruthTier.Semantic,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "Semantic",
+    Limitations = new[]
+    {
+      "The verdict reflects only in-graph activation. A switch flipped via reflection (FieldInfo/PropertyInfo.SetValue), Unity serialized injection ([SerializeField] / prefab-scene-ScriptableObject YAML / UnityEvent), config/save-state deserialization, or a public mutator called from outside the analyzed compilation set is invisible here — so 'AlwaysDefaultInGraph' / 'TestOnlyActivation' is a candidate to verify against those sources, not proof a feature is dead.",
+      "Reachability of a flipping write is judged by DIRECT call sites of its containing member (plus constructors/initializers), not transitive reachability or entry-point dispatch (Unity messages, DI, event handlers). A mutator reached only transitively can read as having zero callers.",
+    },
+  };
+
   private static readonly EnvelopeClassification DerivedProvenWithTestDiscoveryRisk = new()
   {
     TruthTier = TruthTier.Derived,
@@ -377,6 +394,13 @@ public static class ToolRegistry
   Availability = ToolAvailability.WriteSide,
   EnvelopeClassification = SemanticProvenWithWireRisk,
   Description = "Dead-WIRE audit — members that compile green and are REFERENCED but are structurally unplugged at runtime. The complement of `lifeblood_dead_code` (which finds UN-referenced symbols): this catches the opposite failure, the recurring extraction-severed-wiring bug class. One operation-tree pass over every loaded compilation classifies each field/property reference as read or write (assignment target, ++/--, ref/out arg, or declaration initializer = write; else read) and accumulates per-member counts. Two passes: `FieldReadWithoutWrite` = private/internal mutable field READ at >=1 site with zero write sites (no assignment anywhere, no initializer) — 'forgot to wire it'; `DelegateSlotNeverAssigned` = delegate-typed (Func/Action/custom-delegate) mutable field or property with zero assignment sites — a binding/callback slot that nothing ever fills. Each finding carries memberId, memberKind, memberType, declaringTypeId, file:line, readCount, writeCount, and a reason. Response carries `kindBreakdown` + `findingCount` + `truncated`. ADVISORY (Heuristic envelope): a member wired only through reflection, Unity serialized YAML (UnityEvent / [SerializeField]), or runtime-procedural assignment looks unplugged here — verify before acting. Optional `typeId` / `moduleScope` filter the FINDINGS (read/write counting always scans all compilations); `includeFieldReadWithoutWrite` / `includeDelegateSlots` toggle passes; `maxFindings` (default 200) clamps. INV-WIRE-AUDIT-001.",
+  },
+  new()
+  {
+  Name = "lifeblood_feature_switch_audit",
+  Availability = ToolAvailability.WriteSide,
+  EnvelopeClassification = SemanticProvenWithActivationRisk,
+  Description = "Dormant feature-switch audit — boolean fields / settable boolean properties that GATE branches but are pinned to their default because nothing reachable in the graph flips them. Catches a feature that compiles, is read by live `if`/`while`/ternary conditions, and looks shipped, yet has no activation authority (its public mutator has zero callers, or every flipping write is in test code). Complements `lifeblood_wire_audit` (zero wiring) and `lifeblood_dead_code` (unreferenced symbols). One operation-tree pass over every loaded compilation classifies each switch reference as a write (assignment target, ++/--, ref/out) or a branch-gating read (flows into an if/while/for/ternary condition through !/&&/|| wrappers), records each assignment's constant value + path bucket + containing member, and tallies call sites for every method + property so a flipping write's containing member resolves to reachable-or-not. Per switch: `defaultValue` (literal initializer or boolean default, or Unknown), `assignments[]` (each with bucket, assignedValue, flipsDefault, active), `branchGatedMembers[]`, `mutators[]` (non-ctor members that flip the default, each with `callerCount` = direct in-graph call sites), `assignmentBucketBreakdown`, and a `verdict`: `AlwaysDefaultInGraph` (no reachable write flips it — the dormant-feature case), `TestOnlyActivation` (flipped only by reachable test/editor code), or `RuntimeMutable` (a reachable production write flips it). Response carries `verdictBreakdown` + `switchCount` + `truncated`. ADVISORY: reflection / Unity serialized YAML / config / save-state / out-of-graph public-mutator activation is invisible — a non-`RuntimeMutable` verdict is a candidate to verify. Optional `typeId` / `moduleScope` filter findings (counting always scans all); `requireBranchCondition` (default true) keeps only branch-gating booleans; `includeProperties` (default true) audits settable properties too; `maxFindings` (default 200) clamps. INV-FEATURE-SWITCH-001.",
   },
   new()
   {
