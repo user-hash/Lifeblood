@@ -218,6 +218,15 @@ public static class ToolInputContractCatalog
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
         );
 
+        yield return Contract(@"lifeblood_feature_switch_audit",
+            Arg(@"typeId", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Restrict findings to switches declared on this type (canonical / qualified / short). Read+write counting still scans every loaded compilation.", enumValues: Array.Empty<string>()),
+            Arg(@"moduleScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Restrict findings to switches declared in this module/asmdef.", enumValues: Array.Empty<string>()),
+            Arg(@"requireBranchCondition", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Only audit booleans read in >=1 branch condition (the feature-switch shape). Default true; false widens to every boolean field & settable property.", enumValues: Array.Empty<string>()),
+            Arg(@"includeProperties", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Audit settable boolean properties as well as fields. Default true.", enumValues: Array.Empty<string>()),
+            Arg(@"maxFindings", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Optional. Cap on switches returned; defaults to 200. Zero / negative clamps to the default.", enumValues: Array.Empty<string>()),
+            Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_symbol_at_position",
             Arg(@"filePath", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Source file path (absolute or relative)", enumValues: Array.Empty<string>()),
             Arg(@"line", ToolArgumentType.Integer, required: true, arrayItemType: null, description: @"Line number (1-based)", enumValues: Array.Empty<string>()),

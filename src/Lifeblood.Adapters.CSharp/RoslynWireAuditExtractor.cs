@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -49,7 +50,7 @@ internal static class RoslynWireAuditExtractor
         var members = new Dictionary<string, MemberInfo>(StringComparer.Ordinal);
         foreach (var (moduleName, compilation) in compilations)
         {
-            foreach (var type in EnumerateTypes(compilation.GlobalNamespace))
+            foreach (var type in RoslynOperationFacts.EnumerateTypes(compilation.GlobalNamespace))
             {
                 if (!type.Locations.Any(l => l.IsInSource)) continue;
                 foreach (var member in type.GetMembers())
@@ -81,7 +82,7 @@ internal static class RoslynWireAuditExtractor
                     var id = buildSymbolId(referenced.OriginalDefinition);
                     if (!members.TryGetValue(id, out var info)) continue;
 
-                    if (IsWriteContext(model.GetOperation(node)!)) info.Writes++;
+                    if (RoslynOperationFacts.IsWriteContext(model.GetOperation(node)!)) info.Writes++;
                     else info.Reads++;
                 }
             }
@@ -190,27 +191,6 @@ internal static class RoslynWireAuditExtractor
         };
     }
 
-    /// <summary>
-    /// True if the reference operation sits in a write position: assignment
-    /// target (simple / compound / coalesce), increment/decrement target, or a
-    /// ref/out argument. Everything else is a read. Compound assignment counts
-    /// as a write (the member IS assigned) even though it also reads.
-    /// </summary>
-    private static bool IsWriteContext(IOperation reference)
-    {
-        switch (reference.Parent)
-        {
-            case IAssignmentOperation a:
-                return ReferenceEquals(a.Target, reference);
-            case IIncrementOrDecrementOperation inc:
-                return ReferenceEquals(inc.Target, reference);
-            case IArgumentOperation arg:
-                return arg.Parameter?.RefKind is RefKind.Ref or RefKind.Out;
-            default:
-                return false;
-        }
-    }
-
     private static bool InScope(MemberInfo info, WireAuditOptions options)
     {
         if (options.TypeId != null && !string.Equals(info.DeclaringTypeId, options.TypeId, StringComparison.Ordinal))
@@ -243,22 +223,4 @@ internal static class RoslynWireAuditExtractor
         KindBreakdown = new Dictionary<string, int>(StringComparer.Ordinal),
         Findings = Array.Empty<WireAuditFinding>(),
     };
-
-    private static IEnumerable<INamedTypeSymbol> EnumerateTypes(INamespaceSymbol ns)
-    {
-        foreach (var member in ns.GetMembers())
-        {
-            if (member is INamespaceSymbol child)
-                foreach (var t in EnumerateTypes(child)) yield return t;
-            else if (member is INamedTypeSymbol type)
-                foreach (var t in EnumerateWithNested(type)) yield return t;
-        }
-    }
-
-    private static IEnumerable<INamedTypeSymbol> EnumerateWithNested(INamedTypeSymbol type)
-    {
-        yield return type;
-        foreach (var nested in type.GetTypeMembers())
-            foreach (var t in EnumerateWithNested(nested)) yield return t;
-    }
 }

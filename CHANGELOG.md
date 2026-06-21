@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **New tool `lifeblood_feature_switch_audit`.**
+
 - **New tool `lifeblood_wire_audit`.** The complement of `dead_code`: instead of
   UN-referenced symbols, it finds members that ARE referenced but structurally
   unplugged — the recurring "compiles green, severed by a refactor" bug class.

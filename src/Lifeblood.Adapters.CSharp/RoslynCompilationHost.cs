@@ -586,6 +586,16 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   public WireAuditReport GetWireAudit(WireAuditOptions options)
       => RoslynWireAuditExtractor.Extract(_compilations, options, BuildSymbolId);
 
+  /// <summary>
+  /// Dormant feature-switch audit. Routes through
+  /// <see cref="RoslynFeatureSwitchExtractor"/> — one operation-tree pass over
+  /// every loaded compilation. No single-symbol resolve gate (workspace-scoped;
+  /// <c>TypeId</c>/<c>ModuleScope</c> are output filters by canonical id).
+  /// INV-FEATURE-SWITCH-001.
+  /// </summary>
+  public FeatureSwitchReport GetFeatureSwitchAudit(FeatureSwitchAuditOptions options)
+      => RoslynFeatureSwitchExtractor.Extract(_compilations, options, BuildSymbolId);
+
   public string[] FindImplementations(string symbolId)
   {
   // Prefer source-defined symbol for accurate type kind.

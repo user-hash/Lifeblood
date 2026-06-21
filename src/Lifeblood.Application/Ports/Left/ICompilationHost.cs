@@ -147,6 +147,23 @@ public interface ICompilationHost
     /// </summary>
     WireAuditReport GetWireAudit(WireAuditOptions options);
 
+    /// <summary>
+    /// Dormant feature-switch audit: boolean fields / settable boolean properties
+    /// that gate branches but whose value is pinned to the default because nothing
+    /// reachable in the graph flips them. One operation-tree pass classifies each
+    /// switch reference read-vs-write, locates the branch conditions it gates,
+    /// records each flipping write's bucket + containing member, and tallies call
+    /// sites so an unreachable mutator (e.g. a public <c>SetGrammarMode</c> with
+    /// zero callers) downgrades the switch to <c>AlwaysDefaultInGraph</c>. Verdicts:
+    /// <c>AlwaysDefaultInGraph</c> / <c>TestOnlyActivation</c> / <c>RuntimeMutable</c>.
+    /// Complements <c>wire_audit</c> (zero wiring) and <c>dead_code</c>
+    /// (unreferenced) by catching "looks shipped, never activated". Advisory:
+    /// reflection / Unity serialized (YAML) / runtime / config-driven assignment is
+    /// invisible to static analysis. Always returns a report (never null); empty
+    /// when nothing qualifies. INV-FEATURE-SWITCH-001.
+    /// </summary>
+    FeatureSwitchReport GetFeatureSwitchAudit(FeatureSwitchAuditOptions options);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 
