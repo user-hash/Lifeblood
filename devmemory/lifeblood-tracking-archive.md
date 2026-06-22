@@ -61,7 +61,7 @@ is retired in favour of the live STATUS.md anchors.
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 39 --><!-- trackingStatusPartiallyShippedCount: 2 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 29 --><!-- trackingStatusPartiallyShippedCount: 2 --><!-- trackingStatusReceiptCount: 18 --><!-- trackingStatusOpenCount: 0 -->
 
 Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
@@ -137,10 +137,219 @@ Primary source reports:
 Legacy unversioned source material has been normalized below. Future reports
 must not be unversioned.
 
+## 2026-06-22 - Lifeblood v0.7.12-alpha - Wave 6/7 session recovery, incremental reliability, execute hints, and source-generator isolation
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
+Source: DAWG dogfood sessions 2026-06-02 / 2026-06-11 plus Lifeblood self net10 concurrency intake
+Workspace: DAWG and Lifeblood self
+Verification: `dotnet test Lifeblood.sln -c Release --no-restore --filter "FullyQualifiedName~IncrementalAnalyzeTests|FullyQualifiedName~AnalyzeWireShapeTests|FullyQualifiedName~ExecuteRobustnessTests|FullyQualifiedName~ToolArgumentContractTests|FullyQualifiedName~CsprojCompilationFactsTests"` passed 85/85 on 2026-06-22. Final local preflight also passed: focused doc/contract ratchets 146/146, full Release suite 1452 total (1441 passed + 11 native-clang skips), `git diff --check`, and direct stdio MCP smoke against local `dist/Lifeblood.Server.Mcp.dll` verifying `tools/list` (38 tools), `authoritativeChangedFiles` schema exposure, read-only recovery rejection/restore, content-hash incremental noop on mtime-only touch, content-change incremental re-extract, and `lifeblood_execute` CS1061 public-member hints. No push, tag, NuGet publish, or release cut.
+
+Summary:
+- Five remaining intake items moved from unstarted backlog into local, ratcheted behavior: `LB-INTAKE-20260601-005`, `LB-INTAKE-20260602-001`, `LB-INTAKE-20260611-002`, `LB-INTAKE-20260611-003`, and `LB-INTAKE-20260611-005`.
+
+Impact:
+- Long DAWG-scale sessions can recover from accidental read-only analysis without guessing the right mode transition.
+- Unity/editor metadata churn no longer forces graph replacement for contentless source touches.
+- Editor/MCP integrations can hand Lifeblood an exact changed-file set for incremental analyze.
+- `lifeblood_execute` no longer leaves users to infer the scripting API shape from bare CS1061 diagnostics.
+- Concurrent in-process source-generator analyses are serialized at the framework-generator seam.
+
+Fix shape:
+- `GraphSession` detects loaded graph/no retained compilation state and rejects non-read-only incremental recovery with `fallbackReason:"compilationStateUnavailable"` plus an exact full non-read-only analyze hint; `allowFullFallback:true` performs that full restore. Capabilities and write-side errors expose the same recovery hint.
+- `AnalysisSnapshot` records source content hashes from the exact text parsed into Roslyn. Incremental analyze reports `mtimeTouchedSourceFiles` and `contentChangedSourceFiles`, updates timestamps on contentless touches, and avoids graph replacement unless the source hash changes.
+- `lifeblood_analyze` accepts `authoritativeChangedFiles` for editor/build-system supplied project-relative or absolute paths. Incremental source scanning is bounded to that set while descriptor drift checks remain independent.
+- `RoslynCodeExecutor` unwraps task-wrapped `CompilationErrorException` instances and appends public member lists plus a `Help` pointer for CS1061 on known scripting-surface types such as `Symbol`, `Edge`, `SemanticGraph`, and `RoslynSemanticView`.
+- `SourceGeneratorRunner` serializes framework analyzer loading and generator-driver execution with a process-local gate. This keeps concurrent test/self-analysis lanes deterministic without changing generated code or production target framework.
+- Pinned by new/updated tests in `AnalyzeWireShapeTests`, `IncrementalAnalyzeTests`, `ExecuteRobustnessTests`, `ToolArgumentContractTests`, and `CsprojCompilationFactsTests`.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - UnityEvent YAML reachability (LB-INTAKE-20260601-001)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
+Source: DAWG dogfood research pass 2026-06-01, promoted by dogfood-intake masterplan Wave 5
+Workspace: DAWG
+Verification: `dotnet test Lifeblood.sln -c Release --no-restore --filter "FullyQualifiedName~UnityReachabilityTests|FullyQualifiedName~PathBucketClassifierTests|FullyQualifiedName~PathBucketParityTests|FullyQualifiedName~DeadCodeTriageFieldsTests|FullyQualifiedName~AnalyzeWireShapeTests|FullyQualifiedName~ToolArgumentContractTests|FullyQualifiedName~CsprojCompilationFactsTests|FullyQualifiedName~ToolSchemaSnapshotTests|FullyQualifiedName~BlastRadiusGroupingTests|FullyQualifiedName~EdgeGroupingTests|FullyQualifiedName~AuthorityCoverageAnalyzerTests"` passed 169/169 on 2026-06-22. Full suite passed 1435/1435 with 11 native-clang skips (1446 total). Reloaded `dist/Lifeblood.Server.Mcp.dll` from the fresh Release publish; DAWG read-only analyze returned 71,261 symbols / 269,064 edges / 94 modules / 0 violations, multi-profile `Editor,Player,Standalone` returned 71,261 symbols / 269,087 edges / 94 modules / 0 violations, and the sequential DAWG dead_code smoke returned 2 type findings / 2 Scaffolding / `truncated:false`.
+
+Summary:
+- UnityEvent/EventTrigger handlers wired only through prefab/scene/asset YAML looked identical to genuinely dead methods because the graph had no serialized-asset reachability roots.
+
+Impact:
+- DAWG-scale dead_code triage had a dominant false-positive class: Inspector-wired handlers returned zero source references and forced manual prefab/scene inspection.
+
+Fix shape:
+- `UnityReachabilityAdapter` now scans Unity asset YAML (`.prefab`, `.unity`, `.asset`) through the injected file system, resolves `m_Script` GUIDs via `.cs.meta` files to source type ids, follows UnityEvent persistent-call target `fileID` / `m_TargetAssemblyTypeName` data, and marks resolved target methods plus host types reachable.
+- The limitation text was narrowed: resolved UnityEvent persistent-call methods are covered; unresolved serialized targets, runtime-procedural assignment, Addressables/Resources-loaded values, unsaved Inspector edits, and serialized enum production remain advisory.
+- Pinned by three new `UnityReachabilityTests` covering direct `m_TargetAssemblyTypeName`, target-fileID/script-GUID resolution, and `dead_code` exclusion for UnityEvent targets/host type.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - analyze excludePaths + Vendored bucket (LB-INTAKE-20260601-004 complete)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
+Source: DAWG dogfood research pass 2026-06-01, promoted by dogfood-intake masterplan Wave 5
+Workspace: DAWG
+Verification: schema/argument contracts passed 22/22; broader Wave 5 focused suite passed 169/169; full suite passed 1435/1435 with 11 native-clang skips (1446 total). Reloaded `dist/Lifeblood.Server.Mcp.dll` from the fresh Release publish; DAWG read-only analyze returned 71,261 symbols / 269,064 edges / 94 modules / 0 violations; DAWG `excludePaths:["Packages/*","Library/PackageCache/*","*/Samples*/*","*/Examples*/*"]` analyze returned 68,468 symbols / 259,972 edges / 94 modules / 0 violations; DAWG multi-profile analyze returned 71,261 symbols / 269,087 edges / 94 modules / 0 violations.
+
+Summary:
+- The first half (`lifeblood_dead_code pathExclude`) was implemented locally 2026-06-21, but vendored/sample code still entered analyze scope and the shared bucket taxonomy still folded package/sample/example paths into Production.
+
+Impact:
+- Vendored noise inflated graph size and planning output, and callers had no first-class bucket for package/sample/example code across grouping tools.
+
+Fix shape:
+- Added `lifeblood_analyze excludePaths` as project-relative POSIX full-path globs applied before Roslyn syntax trees enter compilation. Changing that set on incremental analyze reports `fallbackReason:"analysisScopeChanged"` unless `allowFullFallback:true` is supplied.
+- Extracted shared `PathGlobMatcher` and reused the same glob grammar as `dead_code pathExclude`.
+- Added first-class `Vendored` path bucket to the shared Domain classifier with precedence `Generated > Vendored > Test > Editor > Production`; updated `DeadCodeBucket` parity, edge/blast/authority bucket docs, schemas, and bucket-aware tests.
+- Pinned by `AnalyzeWireShapeTests`, `CsprojCompilationFactsTests`, `ToolArgumentContractTests`, `ToolSchemaSnapshotTests`, `PathBucketClassifierTests`, `PathBucketParityTests`, `DeadCodeTriageFieldsTests`, `BlastRadiusGroupingTests`, `EdgeGroupingTests`, and `AuthorityCoverageAnalyzerTests`.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - dead_code scaffolding downrank (LB-INTAKE-20260608-003)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
+Source: DAWG architecture-sealing dogfood 2026-06-08, Lifeblood v0.7.11 server `1100895`
+Workspace: DAWG
+Verification: `dotnet test Lifeblood.sln -c Release --no-restore --filter "FullyQualifiedName~DeadCodeTriageFieldsTests|FullyQualifiedName~PathBucketParityTests|FullyQualifiedName~RoslynExtractorTests|FullyQualifiedName~SymbolPropertyKeysParityTests"` passed 113/113 on 2026-06-22. Full suite passed 1435/1435 with 11 native-clang skips (1446 total). Reloaded `dist/Lifeblood.Server.Mcp.dll`; sequential DAWG dogfood returned 2 type findings, both `bucket:"Scaffolding"`, `truncated:false`.
+
+Summary:
+- `lifeblood_dead_code` flagged intentional reference-free DAWG scaffolding types such as package-reference compile guards and invariant-ID anchors as ordinary Production dead-code candidates.
+- The flagged shapes were reference-free by design: deleting a compile guard can silently remove an asmdef/package sanity check, and deleting an invariant anchor can remove a documentation ratchet marker.
+
+Impact:
+- Low-severity but recurring triage noise. Agents had to manually distinguish ordinary deletion candidates from intentional scaffold anchors before acting.
+
+Fix shape:
+- Added dead_code-only `bucket:"Scaffolding"` for non-public static types whose direct members are exclusively `[Conditional]` methods and/or static const string anchors, plus those direct members.
+- Kept the shared `PathBucketClassifier` unchanged; `Scaffolding` is a symbol-shape downrank, not a path classification.
+- `RoslynSymbolExtractor` now persists `Properties["constantValue"]` for ordinary const fields as well as enum members; `LifebloodDeadCodeAnalyzer` reads only graph facts (`attributes`, `fieldType`, `constantValue`) and embeds no DAWG type names.
+- Pinned by `DeadCodeTriageFieldsTests`, `RoslynExtractorTests.ExtractSymbols_ConstStringField_PreservesConstantValue`, `SymbolPropertyKeysParityTests`, and updated `PathBucketParityTests`.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - lifeblood_asmdef_check tool (LB-INTAKE-20260601-003)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
+Source: DAWG dogfood research pass 2026-06-01, Lifeblood v0.7.11 server `1100895`
+Workspace: DAWG
+Verification: `dotnet test Lifeblood.sln -c Release --no-restore --filter "DocsTests|SkillToolParityTests|IntakeLedgerTests|TrackingLedgerTests|ToolSchemaSnapshotTests|AllToolsSmokeTests|AsmdefBoundaryAnalyzerTests|ReferenceClosureModeDiscoveryTests"` passed 99/99 on 2026-06-22. Full suite passed 1405/1405 with 11 native-clang skips (1416 total). Reloaded `dist/Lifeblood.Server.Mcp.dll` from the fresh Release publish; direct stdio `tools/list` returned 38 tools and included `lifeblood_asmdef_check`. Dist self-smoke returned 5108 symbols / 28100 edges / 11 modules / 530 types / 0 violations. DAWG read-only dogfood with `defineProfiles:["Editor","Player","Standalone"]` returned 71,261 symbols / 269,091 edges / 94 modules / 0 violations. `lifeblood_asmdef_check summarize:true excludeTests:true excludeGenerated:true maxResults:25` reported `moduleCount:94`, `directOnlyModuleCount:94`, `skippedModuleCount:0`, `checkedCrossModuleEdgeCount:42867`, `violationCount:0`, `returnedViolationCount:0`, `truncated:false`.
+
+Summary:
+- Lifeblood had module dependency facts and cross-module semantic edges, but no first-class tool that answered whether a Unity/old-format asmdef source module declared the target module it was using.
+- The original DAWG concern was a pre-Unity gate: an undeclared cross-asmdef dependency should be visible before relying on the Unity console as the only honest compiler boundary.
+
+Impact:
+- Agents could verify symbol references, blast radius, and file impact while still missing a compile-direction violation that only exists at the asmdef/module boundary.
+- This weakened Lifeblood's value as a pre-Unity boundary checker on large Unity workspaces.
+
+Fix shape:
+- New read-side tool `lifeblood_asmdef_check` plus graph-only `AsmdefBoundaryAnalyzer` in `Lifeblood.Analysis`.
+- `RoslynModuleDiscovery` emits module `Properties["referenceClosure"]` from `ModuleInfo.ReferenceClosure`; the analyzer enforces only `DirectOnly` modules and skips SDK-style/transitive modules honestly.
+- The check derives declared module dependencies from module-level `DependsOn` edges and groups missing direct declarations by source-target module pair, carrying the first offending edge/call site/profile set, declared dependency list, and offending-edge count.
+- Pinned by `AsmdefBoundaryAnalyzerTests`, `ReferenceClosureModeDiscoveryTests`, registry/contract/schema docs, all-tools smoke, skill parity, and DAWG read-only dogfood.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - Unity UI base-chain reachability (LB-INTAKE-20260608-001)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Bug verification log
+Source: DAWG architecture-sealing dogfood 2026-06-08, Lifeblood v0.7.11 server `1100895`
+Workspace: DAWG
+Verification: `dotnet test Lifeblood.sln -c Release --filter "UnityReachabilityTests|SymbolPropertyKeysParityTests|AuthorityReporterTests" --no-restore` passed 48/48 on 2026-06-22. Full suite passed 1398/1398 with 11 native-clang skips. Reloaded `dist/Lifeblood.Server.Mcp.dll` (37 tools) and dogfooded DAWG read-only with `defineProfiles:["Editor","Player"]`: full analyze returned 71,252 symbols / 269,037 edges / 94 modules; `lifeblood_dead_code includeKinds:["Method"] excludePublic:true excludeTests:true maxResults:5000` returned 180 findings, `truncated:false`, and none of `VUMeter.Update`, `VUMeter.Reset`, `WaveformScope.Update`, `ADSRGraphView.Update`, or `WaveformPreview.Update`.
+
+Summary:
+- `dead_code` flagged DAWG UI component lifecycle methods such as `VUMeter.Update()`, `VUMeter.Reset()`, `WaveformScope.Update()`, `ADSRGraphView.Update()`, and `WaveformPreview.Update()` even though their declaring types derive through Unity UI (`Graphic` / `UIBehaviour`) to `UnityEngine.MonoBehaviour`.
+- The root cause was not a missing method-name rule. The graph retained only the direct base FQN (`UnityEngine.UI.Graphic`) for metadata-defined bases, so `UnityReachabilityAdapter` could not see that the resolved Roslyn base chain eventually reached `UnityEngine.MonoBehaviour`.
+
+Impact:
+- Every Unity component whose direct external base was an intermediate framework type could surface lifecycle methods as dead-code candidates, even though Unity dispatches them by name at runtime.
+- Deleting or wiring around those findings would be unsafe on Unity UI projects.
+
+Fix shape:
+- `RoslynSymbolExtractor` now records `SymbolPropertyKeys.BaseTypeChain` as a semicolon-separated, Roslyn-resolved base chain from direct base to non-noisy root.
+- `UnityReachabilityAdapter` consults that chain before falling back to old `baseType` / `Inherits` walking, so intermediate framework types do not need hand-maintained subclass rosters.
+- Existing direct-base behavior stays intact for older graphs and direct `MonoBehaviour` / `ScriptableObject` / Editor roots.
+- Pinned by `UnityReachabilityTests`: extractor records a `Graphic -> UIBehaviour -> MonoBehaviour` chain, and `LifebloodDeadCodeAnalyzer` excludes `Update` / `Reset` while still reporting a plain unused helper on the same type.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - Standalone Unity define profile (LB-INTAKE-20260608-002)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Improvement verification log
+Source: DAWG architecture-sealing dogfood 2026-06-08, Lifeblood v0.7.11 server `1100895`
+Workspace: DAWG
+Verification: `dotnet test Lifeblood.sln -c Release --filter "UnityDefineProfileResolverTests|MultiProfileAnalyzeTests" --no-restore` passed 23/23 on 2026-06-22; full suite passed 1401/1401 with 11 native-clang skips (1412 total). Reloaded `dist/Lifeblood.Server.Mcp.dll` (37 tools) and dogfooded DAWG read-only with `defineProfiles:["Editor","Player","Standalone"]`: full analyze returned 71,255 symbols / 269,044 edges / 94 modules / 0 violations. `lifeblood_dependants profileFilter:["Standalone"]` found `OnApplicationFocus(bool)` callers for both desktop handlers at `BeatGridShutdownOrchestrator.cs:519` and `:521`; `lifeblood_dead_code includeKinds:["Method"] excludePublic:true excludeTests:true maxResults:5000` returned 180 findings, `truncated:false`, and neither handler was present.
+
+Summary:
+- `dead_code` flagged DAWG desktop-focus handlers because their only callers lived behind `#if UNITY_STANDALONE && !UNITY_EDITOR`.
+- The existing Unity profile pair (`Editor`, `Player`) removed editor discriminators but never added `UNITY_STANDALONE`, so those desktop-only callsites were inactive under every analyzed profile.
+
+Impact:
+- Desktop-only Unity code paths could look semantically dead even when their guarded callsites were authored and correct.
+- `Editor` + `Player` union analysis was insufficient for platform-neutral standalone guards.
+
+Fix shape:
+- `UnityDefineProfileResolver` now returns `Editor`, `Player`, and `Standalone` for Unity workspaces.
+- `Standalone` removes the Unity editor discriminator family and adds exactly `UNITY_STANDALONE`, covering platform-neutral desktop guards without guessing OS-specific symbols.
+- OS-specific desktop defines (`UNITY_STANDALONE_WIN`, `UNITY_STANDALONE_OSX`, `UNITY_STANDALONE_LINUX`) remain a separate target-platform profile atom.
+- Pinned by resolver tests plus `MultiProfileAnalyzeTests.UnityStandaloneProfile_ActivatesStandaloneNotEditorCallsites`, which asserts the guarded call edge is tagged `Profiles=["Standalone"]`.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - lifeblood_authority_coverage tool (LB-INTAKE-20260613-004)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
+Source: dogfood-intake masterplan; DAWG pattern-engine preset-authority planning gap 2026-06-13
+Workspace: Lifeblood self
+Verification: `AuthorityCoverageAnalyzerTests` (7 facts: direct reach,
+transitive reach, missing authority, allowed alternative, type expansion, file
+expansion, excludeTests); MCP registry/schema/skill/all-tools smoke ratchets
+green; refreshed `dist/Lifeblood.Server.Mcp.dll` live MCP smoke showed 37 tools,
+self-analyze 5034 symbols / 27695 edges / 11 modules / 524 types / 0 violations,
+and `lifeblood_authority_coverage` returned `RequiredReached` for the
+ToolHandler -> AuthorityCoverageAnalyzer path.
+
+Summary:
+- Planning needed a one-call proof for missing dependencies: given a family of
+  methods/types/files, which ones reach the intended state/policy/preset
+  authority, and which silently route through something else or nothing at all?
+
+Fix shape (shipped):
+- New read-side tool `lifeblood_authority_coverage` + `AuthorityCoverageAnalyzer`
+  in `Lifeblood.Analysis`. Subjects expand from types/files to contained methods;
+  required authorities and allowed alternatives expand to themselves plus
+  descendants; outgoing non-Contains BFS records the first path to each authority.
+- Reports reached required authorities, missing required authorities, shortest
+  path previews, and the first allowed alternative reached. The wire shape is
+  evidence-first and deliberately avoids verdict labels.
+- `INV-AUTHORITY-COVERAGE-001`; registry/contract/schema; tool count 36->37
+  (19 read + 18 write). STATUS anchors set by the batch.
+
+## 2026-06-22 - Lifeblood v0.7.12-alpha - lifeblood_struct_layout tool (LB-INTAKE-20260601-002)
+
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
+Source: dogfood-intake masterplan; DAWG Burst struct-size ratchet gap 2026-06-01
+Workspace: Lifeblood self
+Verification: `StructLayoutExtractorTests` (10 facts incl. an emit-vs-compute
+Marshal.SizeOf / Marshal.OffsetOf parity harness); docs/schema/skill/smoke
+ratchets green. Batch dogfood pending.
+
+Summary:
+- DSP/Burst and interop ratchets need struct field offsets and total size, but
+  the live execution lane cannot instantiate/load workspace types at runtime.
+
+Fix shape (shipped):
+- New write-side tool `lifeblood_struct_layout` + `ICompilationHost.GetStructLayout`
+  + `RoslynStructLayoutExtractor`. Reports layout kind, effective pack, declared
+  size, total size, alignment, pointer size, unmanaged/blittable flags, and field
+  rows with offset / size / alignment / fixed-buffer length.
+- Exact for known blittable Sequential / Explicit structs: primitives, enums via
+  underlying type, nested structs, fixed buffers, pointers/function pointers.
+  Advisory with named limitations for LayoutKind.Auto, reference-bearing fields,
+  non-blittable primitives, recursive/unknown metadata shapes, and missing explicit
+  offsets.
+- `INV-STRUCT-LAYOUT-001`; registry/contract/schema; tool count 35->36 (18 read +
+  18 write). STATUS anchors set by the batch.
+
 ## 2026-06-22 - Lifeblood v0.7.12-alpha - lifeblood_member_count tool (LB-INTAKE-20260611-001)
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan; DAWG ABG member-count ratchet triage 2026-06-11
 Workspace: Lifeblood self
 Verification: `MemberCountExtractorTests` (5 facts incl. an emit-reflect-vs-parse
@@ -166,8 +375,8 @@ Fix shape (shipped):
 
 ## 2026-06-22 - Lifeblood v0.7.12-alpha - wire_audit passes c+d, closes LB-INTAKE-20260611-004
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan, remaining passes of `LB-INTAKE-20260611-004`
 Workspace: Lifeblood self
 Verification: `WireAuditExtractorTests` (15 facts incl. 7 new c+d); full suite green.
@@ -193,8 +402,8 @@ Fix shape (shipped — fully closes the intake item):
 
 ## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_feature_switch_audit tool (LB-INTAKE-20260613-002)
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan Wave 3 follow-on; DAWG pattern-engine planning pass 2026-06-13 grammar-activation check
 Workspace: Lifeblood self
 Verification: `FeatureSwitchExtractorTests` (9 facts) green; new
@@ -228,8 +437,8 @@ Fix shape (shipped):
 
 ## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_wire_audit tool, passes a+b (LB-INTAKE-20260611-004 partial)
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan Wave 3 MVP, first two passes of `LB-INTAKE-20260611-004`
 Workspace: Lifeblood self
 Verification: `WireAuditExtractorTests` (6 facts) green; new `lifeblood_wire_audit`
@@ -258,8 +467,8 @@ subscribers/no fire sites, pass (d) degenerate-constant-arg call sites.
 
 ## 2026-06-21 - Lifeblood v0.7.11+ - lifeblood_callsite_arguments tool (LB-INTAKE-20260613-001)
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan Wave 2, promoted from `LB-INTAKE-20260613-001`
 Workspace: Lifeblood self
 Verification: `CallsiteArgumentExtractorTests` (5 facts) green; new
@@ -285,8 +494,8 @@ Fix shape (shipped):
 
 ## 2026-06-21 - Lifeblood v0.7.11+ - dead_code path exclusion (LB-INTAKE-20260601-004 partial)
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan Wave 1, first half of `LB-INTAKE-20260601-004`
 Workspace: Lifeblood self
 Verification: `DeadCodeTriageFieldsTests` pathExclude facts green; regenerated
@@ -309,8 +518,8 @@ Remaining (still in intake `LB-INTAKE-20260601-004`): `analyze`-level
 
 ## 2026-06-21 - Lifeblood v0.7.11+ - Dependants/dependencies grouping + filters (LB-INTAKE-20260613-003)
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan Wave 1, promoted from `LB-INTAKE-20260613-003`
 Workspace: Lifeblood self
 Verification: `EdgeGroupingTests` (7 facts) green; regenerated
@@ -336,8 +545,8 @@ Fix shape (shipped):
 
 ## 2026-06-21 - Lifeblood v0.7.11+ - Intake ledger shape ratchet (LB-INTAKE-20260613-005)
 
-Status: Shipped
-Type: Shipped
+Status: Receipt (local implementation, untagged; public handoff pending)
+Type: Verification log
 Source: dogfood-intake masterplan Wave 0, promoted from `LB-INTAKE-20260613-005`
 Workspace: Lifeblood self
 Verification: `IntakeLedgerTests` (7 facts) + `TrackingLedgerTests` green;

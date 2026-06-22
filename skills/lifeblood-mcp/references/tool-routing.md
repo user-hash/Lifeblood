@@ -7,8 +7,8 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Need | Tool | Notes |
 |---|---|---|
 | Inspect live server/tool surface | `lifeblood_capabilities` | Call first when available; catches local-doc drift and reports session state. |
-| Load a project | `lifeblood_analyze` | Use `projectPath` for C# / Unity, `graphPath` for JSON graph input. |
-| Fast re-load after edits | `lifeblood_analyze incremental:true` | On rejected fallback, retry with `allowFullFallback:true` only when wider scope is acceptable. |
+| Load a project | `lifeblood_analyze` | Use `projectPath` for C# / Unity, `graphPath` for JSON graph input. Use `excludePaths` to drop vendored/sample sources before compilation. |
+| Fast re-load after edits | `lifeblood_analyze incremental:true` | Source mtimes are a prefilter and content hashes decide actual re-extraction. Pass `authoritativeChangedFiles` when the editor/watcher has exact changed paths. On rejected fallback, retry with `allowFullFallback:true` only when wider scope is acceptable. Changing `excludePaths` reports `analysisScopeChanged`; read-only-to-retained recovery reports `compilationStateUnavailable`. |
 | Small context pack | `lifeblood_context summarize:true` | Good first read for unfamiliar repos or when handing off to another agent. |
 | Architecture invariant audit | `lifeblood_invariant_check mode:"audit"` | Use before architecture-sensitive changes; fetch specific ids as needed. |
 
@@ -31,6 +31,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | "Who uses this symbol?" | `lifeblood_dependants` | Incoming graph edges; group/filter by bucket or module for triage. |
 | "What breaks if I change this symbol?" | `lifeblood_blast_radius` | Use `groupBy:"both"` for production/test/module split. |
 | "What breaks if I change this file?" | `lifeblood_file_impact` | File-level impact derived from symbol edges. |
+| "Does this Unity asmdef declare its cross-module dependency?" | `lifeblood_asmdef_check` | Graph-only DirectOnly module boundary check; reports first offending edge/call site per source-target pair. |
 | "Which tests should I run?" | `lifeblood_test_impact` | Works on symbol ids or file paths; use recommended filters. |
 | "Are there dependency cycles?" | `lifeblood_cycles summarize:true` | Inspect `bucketBreakdown`; prioritize `LikelyRealLoop`. |
 
@@ -46,7 +47,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Find implementers/overrides | `lifeblood_find_implementations` | Use for interface and virtual-method changes. |
 | Preview rename edits | `lifeblood_rename` | Returns edits only; caller applies them deliberately. |
 | Format C# | `lifeblood_format` | Roslyn formatting for generated or replaced code. |
-| Execute C# against workspace state | `lifeblood_execute` | Use for semantic inspection; do not rely on runtime instantiation of workspace types unless supported. |
+| Execute C# against workspace state | `lifeblood_execute` | Use for semantic inspection; CS1061 diagnostics include scripting-surface hints when possible. Do not rely on runtime instantiation of workspace types unless supported. |
 
 ## Specialized Analysis
 
@@ -54,14 +55,16 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 |---|---|---|
 | Check enum values produced/consumed | `lifeblood_enum_coverage` | Finds unproduced or unreferenced state-machine-like values. |
 | Count a type's declared members (for a ratchet) | `lifeblood_member_count` | `reflectionDeclared` = bit-exact System.Reflection DeclaredOnly; `sourceSymbols` = graph child count. Offline alternative to a live reflection run. |
+| Compute struct offsets/sizes | `lifeblood_struct_layout` | Field offsets, size, alignment, pack, fixed buffers. Exact for known blittable Sequential/Explicit structs; Advisory with limitations for Auto/reference/non-blittable shapes. |
 | Inspect static dispatch/config tables | `lifeblood_static_tables` | Operation-tree extraction; use `summarize:true` for large tables. |
 | Check object-initializer wiring | `lifeblood_assignment_coverage` | Useful for bindings/delegate slots and construction completeness. |
-| Triage unused code candidates | `lifeblood_dead_code` | Advisory; verify before deleting. |
+| Triage unused code candidates | `lifeblood_dead_code` | Advisory; verify before deleting. Fold `bucket:"Vendored"` and `bucket:"Scaffolding"` separately from ordinary Production findings. |
 | Field read but never written / delegate slot never wired? | `lifeblood_wire_audit` | Dead-WIRE complement of dead_code: referenced but structurally unplugged. Advisory. |
 | Boolean feature flag gated but never flipped (dormant)? | `lifeblood_feature_switch_audit` | Verdict `AlwaysDefaultInGraph` / `TestOnlyActivation` / `RuntimeMutable`. Advisory. |
 | Do call sites actually pass the new/optional argument? | `lifeblood_callsite_arguments` | Per-site argument facts + supplied/omitted histogram; the API-adoption gap. |
 | Measure interface/class liveness | `lifeblood_port_health` | Good for ports, facades, and suspiciously wide contracts. |
 | Quantify facade/dispatcher authority | `lifeblood_authority_report` | Use for types that aggregate many subordinates or interfaces. |
+| Check source-of-truth authority reachability | `lifeblood_authority_coverage` | Matrix of subjects vs required authorities; reports missing authorities, shortest paths, and allowed alternatives. |
 | Search by intent or xmldoc | `lifeblood_search` | Better than grep when names are unknown but docs mention behavior. |
 
 ### The wiring family
@@ -72,11 +75,11 @@ Three tools answer "is this code actually plugged in?", in escalating subtlety �
 - `lifeblood_wire_audit` — the symbol **is referenced but structurally unplugged**: a field read with zero writes, a delegate/binding slot nothing assigns.
 - `lifeblood_feature_switch_audit` — the boolean **is referenced, gates a live branch, but is pinned to its default** because no reachable code flips it (e.g. a public setter with zero callers). Looks shipped; never activates.
 
-All three are advisory: reflection, Unity serialized YAML, and runtime/config assignment are invisible to static analysis, so none is deletion authority on its own. Confirm with references, source inspection, and tests.
+All three are advisory: resolved UnityEvent persistent calls are modeled, but unresolved serialized targets, reflection, and runtime/config assignment are still invisible to static analysis, so none is deletion authority on its own. Confirm with references, source inspection, and tests.
 
 ## Multi-Profile And Unity
 
-- For Unity Editor/Player differences, analyze with `defineProfiles:["Editor","Player"]` when possible.
+- For Unity Editor/Player/Desktop differences, analyze with `defineProfiles:["Editor","Player","Standalone"]` when possible; `Standalone` covers platform-neutral `UNITY_STANDALONE && !UNITY_EDITOR` callsites.
 - Use graph-side `dependants` and `dependencies` with `profileFilter` for union-profile dependency questions.
 - Treat write-side Roslyn tools as retained-profile scoped. Check `analyzedUnderProfile` and `limitations`.
 - New Unity files need Unity import/project descriptor regeneration before Lifeblood can include them.

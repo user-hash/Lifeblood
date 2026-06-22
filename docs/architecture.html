@@ -204,11 +204,12 @@
   <div class="pills">
   <div class="pill">11 assemblies + 3 standalone adapters</div>
   <div class="pill">Self-analyze graph (live counts in STATUS.md)</div>
-  <div class="pill">1,191 tests / CI green (37 [SkippableFact] runtime-gated)</div>
+  <div class="pill">1,421 test cases / 37 [SkippableFact] runtime-gated</div>
   <div class="pill">C# + C + TypeScript + Python</div>
   <div class="pill">Cross-module: Proven</div>
   <div class="pill">Every port wired</div>
   <div class="pill">Incremental re-analyze (file + csproj + asmdef)</div>
+  <div class="pill">Asmdef DirectOnly boundary check</div>
   <div class="pill">File-level edges</div>
   <div class="pill">MCP tools — read + write side</div>
   <div class="pill">Truth envelope</div>
@@ -310,12 +311,12 @@
 
   <div class="signal-card">
   <strong>Lifeblood.Analysis (optional addon)</strong>
-  <span>CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, RuleValidator. All stateless. Depends only on Domain.</span>
+  <span>CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, AuthorityCoverageAnalyzer, AsmdefBoundaryAnalyzer, RuleValidator. All stateless. Depends only on Domain.</span>
   </div>
 
   <div class="signal-card">
   <strong>Enforced invariants (tested AND queryable via lifeblood_invariant_check)</strong>
-  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. Live test / tool / port / invariant / self-analyze counts in STATUS.md. CI jobs: build, TypeScript adapter, Python adapter, dogfood. Golden repos and fixtures for all 4 adapters (C# via Roslyn golden repos, C via native-clang fixtures, TypeScript golden repo, Python golden repo). Incremental re-analyze (file + csproj + asmdef, INV-UNITY-002). Caller-owned scope policy on incremental analyze: rejects on detected drift unless allowFullFallback is opted in; wire shape carries mode + requestedMode + fallbackReason + canRetryFull + suggestedRetry (INV-ANALYZE-FALLBACK-001). File-level edges. Enum members are first-class graph symbols with constantValue (INV-EXTRACT-ENUMMEMBER-001). BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler with kind correction (INV-RESOLVER-001..006); Rule 4 short-name fallback never crosses containing types or kinds for member-kind inputs (INV-RESOLVER-007). SearchResult.MatchKind structurally reports which scoring bucket drove the rank (INV-SEARCH-MATCHKIND-001). RoslynSemanticView shared by reference (INV-VIEW-001..003). Truth envelope on every read-side response (INV-ENVELOPE-001). Unity reachability port (INV-UNITY-001) with full Editor reflection roster + type-via-child propagation. Authority report + forwarder classifier (INV-AUTHORITY-001, INV-FORWARDER-001). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). Typed architectural invariants under docs/invariants/ tree, aggregated dynamically by IInvariantProvider (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes (INV-DEADCODE-001).</span>
+  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. Live test / tool / port / invariant / self-analyze counts in STATUS.md. CI jobs: build, TypeScript adapter, Python adapter, dogfood. Golden repos and fixtures for all 4 adapters (C# via Roslyn golden repos, C via native-clang fixtures, TypeScript golden repo, Python golden repo). Incremental re-analyze (file + csproj + asmdef, INV-UNITY-002). Caller-owned scope policy on incremental analyze: rejects on detected drift unless allowFullFallback is opted in; wire shape carries mode + requestedMode + fallbackReason + canRetryFull + suggestedRetry (INV-ANALYZE-FALLBACK-001). Multi-profile Unity analyze exposes Editor, Player, and Standalone profile provenance (INV-MULTI-DEFINE-UNITY-RESOLVER-001). Asmdef DirectOnly boundary checks report cross-module edges missing declared asmdef references (INV-ASMDEF-CHECK-001). File-level edges. Enum members are first-class graph symbols with constantValue (INV-EXTRACT-ENUMMEMBER-001). BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler with kind correction (INV-RESOLVER-001..006); Rule 4 short-name fallback never crosses containing types or kinds for member-kind inputs (INV-RESOLVER-007). SearchResult.MatchKind structurally reports which scoring bucket drove the rank (INV-SEARCH-MATCHKIND-001). RoslynSemanticView shared by reference (INV-VIEW-001..003). Truth envelope on every read-side response (INV-ENVELOPE-001). Unity reachability port (INV-UNITY-001) with full Editor reflection roster + resolved base-chain dispatch + type-via-child propagation. Authority report + forwarder classifier (INV-AUTHORITY-001, INV-FORWARDER-001). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). Typed architectural invariants under docs/invariants/ tree, aggregated dynamically by IInvariantProvider (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes plus a dead-code-only Scaffolding downrank for intentional anchor types (INV-DEADCODE-001, INV-DEADCODE-SCAFFOLDING-001).</span>
   </div>
   </div>
 
@@ -332,13 +333,13 @@
   <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius, file impact, short-name resolution.</small></div>
   <div class="item"><strong>LifebloodSymbolResolver</strong><small>Reference ISymbolResolver implementation. Routes every read-side handler through canonical → truncated method → bare short name → extracted short name from qualified input (wrong-namespace fallback, v0.6.3). Deterministic primary file path picker for partial types.</small></div>
   <div class="item"><strong>LifebloodSemanticSearchProvider</strong><small>Ranked search over symbol names, qualified names, and xmldoc summaries. Tokenized ranked-OR (v0.6.3).</small></div>
-  <div class="item"><strong>LifebloodInvariantProvider</strong><small>Tree-walking runtime parser. Aggregates &lt;root&gt;/CLAUDE.md + &lt;root&gt;/AGENTS.md + every *.md under docs/invariants/. Five authoring shapes recognised (A/B/C/D/E). Exposes 90 architectural invariants as queryable structured data via lifeblood_invariant_check (INV-INVARIANT-001).</small></div>
+  <div class="item"><strong>LifebloodInvariantProvider</strong><small>Tree-walking runtime parser. Aggregates &lt;root&gt;/CLAUDE.md + &lt;root&gt;/AGENTS.md + every *.md under docs/invariants/. Five authoring shapes recognised (A/B/C/D/E). Exposes the live invariant tree as queryable structured data via lifeblood_invariant_check (INV-INVARIANT-001); current count is anchored in docs/STATUS.md.</small></div>
   <div class="item"><strong>LifebloodPartialViewBuilder</strong><small>Combined source view across every partial declaration of a type.</small></div>
   <div class="item"><strong>LifebloodAuthorityReporter</strong><small>Single graph walk produces implementedInterfaceCount, ownedPublicSurface, per-interface usage, forwarderRatio. Powers lifeblood_authority_report + lifeblood_port_health (INV-AUTHORITY-001, INV-FORWARDER-001).</small></div>
   <div class="item"><strong>LifebloodResponseDecorator</strong><small>Builds the truth envelope on every read-side response. Per-tool classification table sourced from ToolRegistry (INV-ENVELOPE-001).</small></div>
-  <div class="item"><strong>UnityReachabilityAdapter</strong><small>MonoBehaviour magic methods + full Unity Editor reflection roster (RuntimeInitializeOnLoadMethod, MenuItem, SettingsProvider, Shortcut, BurstCompile, NUnit lifecycle, ...) + type-via-child propagation (INV-UNITY-001, INV-UNITY-002).</small></div>
+  <div class="item"><strong>UnityReachabilityAdapter</strong><small>MonoBehaviour magic methods via resolved base chains + full Unity Editor reflection roster + type-via-child propagation + resolved UnityEvent persistent calls from prefab/scene/asset YAML (INV-UNITY-001, INV-UNITYEVENT-REACHABILITY-001).</small></div>
   <div class="item"><strong>UnityAssemblyResolver</strong><small>Probes Library/ScriptAssemblies, Library/Bee/artifacts, Library/PackageCache for execute-time DLL injection so scripts can touch UnityEngine types (INV-EXECUTE-001).</small></div>
-  <div class="item"><strong>LifebloodDeadCodeAnalyzer</strong><small>v0.6.4: five extractor false-positive classes fixed. v0.6.5: three more (ctor, field-initializer, accessor). v0.6.7: Unity reachability injection cuts MonoBehaviour-magic FPs 97% on real Unity workspaces. v0.7.0+: LB-FP-003 Editor reflection roster. summarize/maxResults pagination via LB-FR-024. See INV-DEADCODE-001.</small></div>
+  <div class="item"><strong>LifebloodDeadCodeAnalyzer</strong><small>v0.6.4: five extractor false-positive classes fixed. v0.6.5: three more (ctor, field-initializer, accessor). v0.6.7: Unity reachability injection cuts MonoBehaviour-magic FPs 97% on real Unity workspaces; current extractor records baseTypeChain for metadata-only intermediate bases. v0.7.0+: LB-FP-003 Editor reflection roster. summarize/maxResults pagination via LB-FR-024. See INV-DEADCODE-001.</small></div>
   <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. Read + write tool surface (live counts in STATUS.md). Bidirectional Roslyn. Connect from Claude Code or any MCP client.</small></div>
   <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services. Not yet started.</small></div>
   </div>
@@ -353,6 +354,7 @@
   <div class="item"><strong>CLI analysis report</strong><span>symbols, edges, violations, cycles</span></div>
   <div class="item"><strong>Code execution</strong><span>CSharpScript.RunAsync via MCP</span></div>
   <div class="item"><strong>Diagnostics + compile check</strong><span>Roslyn compiler-as-a-service</span></div>
+  <div class="item"><strong>Asmdef boundary audit</strong><span>DirectOnly module dependency violations</span></div>
   <div class="item"><strong>Find references + rename</strong><span>workspace-aware refactoring</span></div>
   </div>
 
@@ -375,7 +377,7 @@
   <div class="footer">
   Solid = implemented and dogfood-verified. Dashed/faded = planned.
   Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-  → Self-analyze graph metrics, port count, MCP tool count, queryable invariant count, category coverage — all anchored in docs/STATUS.md, ratcheted against the live source every CI run. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response.
+  → Self-analyze graph metrics, port count, MCP tool count, queryable invariant count, category coverage — all anchored in docs/STATUS.md, ratcheted against the live source every CI run. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Asmdef DirectOnly boundary checks. Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response.
   </div>
   </div>
 </body>

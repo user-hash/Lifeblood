@@ -7,8 +7,81 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Incremental analyze uses source content hashes and accepts editor-scoped change sets.**
+  `lifeblood_analyze` now reports `mtimeTouchedSourceFiles` separately from
+  `contentChangedSourceFiles`, so contentless Unity/IDE metadata touches do not
+  force graph replacement. Incremental calls can also pass
+  `authoritativeChangedFiles` (project-relative or absolute paths) to bound the
+  source scan to an editor/build-system supplied changed-file set while still
+  using content hashes before replacing graph facts. Descriptor drift checks
+  remain independent. (`LB-INTAKE-20260611-003`,
+  `LB-INTAKE-20260611-005`.)
+- **Read-only session recovery is explicit.** After a `readOnly:true` analyze,
+  a non-read-only incremental request now rejects with
+  `fallbackReason:"compilationStateUnavailable"` and an exact full
+  non-read-only recovery hint unless `allowFullFallback:true` is supplied, in
+  which case the session performs a full analyze and restores retained Roslyn
+  compilation state. Capabilities and write-side tool errors expose the same
+  recovery hint. (`LB-INTAKE-20260602-001`.)
+- **`lifeblood_dead_code` scaffolding downrank.** Intentional reference-free
+  scaffolding now reports as `bucket:"Scaffolding"` instead of ordinary
+  Production deletion work when a non-public static type's direct members are
+  exclusively `[Conditional]` methods and/or static const string anchors. The
+  downrank is graph-only and structural: `RoslynSymbolExtractor` now persists
+  `constantValue` for ordinary const fields, and `LifebloodDeadCodeAnalyzer`
+  reads `attributes`, `fieldType`, and `constantValue` graph facts without
+  project-specific type names. (`INV-DEADCODE-SCAFFOLDING-001`,
+  `LB-INTAKE-20260608-003`.)
+- **UnityEvent YAML reachability.** Unity asset reachability now scans
+  `.prefab` / `.unity` / `.asset` YAML, resolves `m_Script` GUIDs through
+  `.cs.meta`, and marks resolved UnityEvent persistent-call methods plus host
+  types reachable. The advisory boundary is now narrower: unresolved serialized
+  targets, runtime-procedural assignment, Addressables/Resources-loaded values,
+  unsaved Inspector edits, and serialized enum production remain outside the
+  static proof. (`INV-UNITYEVENT-REACHABILITY-001`, `LB-INTAKE-20260601-001`.)
+- **Analyze path control and Vendored bucketing.** `lifeblood_analyze` now
+  accepts `excludePaths` project-relative POSIX globs and applies them before
+  Roslyn compilation. Changing the exclude set on an incremental analyze returns
+  `fallbackReason:"analysisScopeChanged"` unless full fallback is allowed. The
+  shared path classifier now includes `Vendored` with precedence
+  `Generated > Vendored > Test > Editor > Production`, so package/sample/example
+  code can be folded separately from first-party Production findings.
+  (`INV-ANALYZE-EXCLUDEPATHS-001`, `INV-PATHBUCKET-SHARED-001`,
+  `LB-INTAKE-20260601-004`.)
+
 ### Added
 
+- **New tool `lifeblood_asmdef_check`.** Reports Unity/old-format
+  direct-reference module boundary violations from the loaded graph: for every
+  cross-module source edge whose source module is `referenceClosure=DirectOnly`,
+  the tool verifies that the source module declares a direct dependency on the
+  target module. The response groups by source-target module pair and includes
+  the first offending edge, call site, profile set, declared dependency list,
+  and offending-edge count. SDK-style/transitive modules are skipped honestly.
+  Current MCP tool count: 38. (`INV-ASMDEF-CHECK-001`,
+  `LB-INTAKE-20260601-003`.)
+- **New tool `lifeblood_authority_coverage`.** Reports whether a subject set
+  reaches required source-of-truth authority symbols through the graph. Subjects
+  can be methods, types, or files; types/files expand to contained methods before
+  walking. Required authorities and allowed alternatives expand to themselves plus
+  contained descendants. The response is a matrix of subject -> reached required
+  authorities, missing authorities, shortest path previews, and first allowed
+  alternative reached. This closes the missing-dependency planning gap ("does this
+  generator/controller actually read the intended preset/policy/state authority?")
+  without turning Lifeblood into a verdict engine. MCP tool count when implemented: 37.
+  (`INV-AUTHORITY-COVERAGE-001`, `LB-INTAKE-20260613-004`.)
+- **New tool `lifeblood_struct_layout`.** Computes struct metadata layout offline:
+  layout kind, effective pack, declared size, total size, alignment, pointer size,
+  unmanaged/blittable flags, and per-field offset / size / alignment /
+  fixed-buffer length. Exact for known blittable Sequential / Explicit structs
+  (numeric primitives, enums, nested structs, fixed buffers, pointers); Advisory
+  with named `limitations[]` for LayoutKind.Auto, reference-bearing fields,
+  non-blittable primitives, recursive/unknown metadata shapes, or missing explicit
+  offsets. Parity with real runtime layout is pinned by an emit-vs-compute
+  `Marshal.SizeOf` / `Marshal.OffsetOf` harness. MCP tool count when implemented: 36.
+  (`INV-STRUCT-LAYOUT-001`, `LB-INTAKE-20260601-002`.)
 - **New tool `lifeblood_member_count`.** Reproduces a type's declared-member count
   offline — the number an architecture-debt ratchet pins — without a live test run.
   `semantics:"reflectionDeclared"` (default) is BIT-EXACT `System.Reflection`
@@ -19,7 +92,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   child-symbol count (nested included, synthesized accessors / backing / implicit
   ctor excluded) — the two differ precisely by accessors + implicit ctor − nested
   types. Parity with real reflection is pinned by an emit-reflect-vs-parse harness.
-  35 MCP tools total now. (`INV-MEMBER-COUNT-001`, `LB-INTAKE-20260611-001`.)
+  This brought the surface to 35 MCP tools when it landed.
+  (`INV-MEMBER-COUNT-001`, `LB-INTAKE-20260611-001`.)
 - **`lifeblood_wire_audit` passes (c) events + (d) degenerate call sites.** The
   dead-wire tool now covers two more structurally-unplugged shapes, fully closing
   `LB-INTAKE-20260611-004`: `EventSubscribedNeverRaised` (handlers attached via
@@ -35,6 +109,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`lifeblood_execute` CS1061 diagnostics now include scripting-surface hints.**
+  Task-wrapped script compilation errors are unwrapped, and CS1061 on known
+  Lifeblood scripting API types appends the actual public member list plus a
+  `Help` pointer. This covers the common `Symbol.CanonicalId` /
+  `Symbol.ContainingTypeId` misguess. (`LB-INTAKE-20260611-002`.)
+- **Concurrent framework source-generator analyses are serialized at the runner
+  boundary.** `SourceGeneratorRunner` now guards analyzer loading and
+  generator-driver execution with a process-local gate, closing the latent
+  net10/full-suite race without changing generated-code semantics or the
+  production target framework. (`LB-INTAKE-20260601-005`.)
+- **Unity `UNITY_STANDALONE && !UNITY_EDITOR` callsites are visible under a documented profile.**
+  `UnityDefineProfileResolver` now returns a third Unity profile, `Standalone`,
+  alongside `Editor` and `Player`. `Standalone` removes the Unity editor
+  discriminator family and adds the platform-neutral `UNITY_STANDALONE` symbol,
+  so desktop-only guarded calls are present in union graphs without source-text
+  heuristics or DAWG-specific handling. OS-specific desktop symbols
+  (`UNITY_STANDALONE_WIN` / `OSX` / `LINUX`) remain a separate target-platform
+  profile atom. (`INV-MULTI-DEFINE-UNITY-RESOLVER-001`,
+  `LB-INTAKE-20260608-002`.)
+- **Unity UI-derived magic methods no longer surface as dead-code candidates.**
+  The C# extractor now records a Roslyn-resolved `baseTypeChain` property for
+  every source type, and `UnityReachabilityAdapter` consults that chain before
+  falling back to direct `baseType` / `Inherits` walking. DAWG's false-positive
+  class (`VUMeter : Graphic`, `WaveformScope : Graphic`, etc.) is fixed because
+  the recorded chain reaches `UnityEngine.MonoBehaviour`; Lifeblood does not
+  maintain a growing list of Unity UI subclasses. (`INV-UNITY-001`,
+  `LB-INTAKE-20260608-001`.)
 - **`lifeblood_feature_switch_audit` now models positional-record properties.**
   Re-dogfooding the census against Lifeblood's own graph surfaced a third
   false-positive class: option-bag records like
@@ -97,7 +198,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   writes — "forgot to wire it") and `DelegateSlotNeverAssigned` (a Func/Action
   slot nothing ever assigns). Semantic/Proven envelope with an explicit wire-risk
   caveat (reflection / Unity serialized YAML / runtime assignment are invisible).
-  33 MCP tools total now. (`INV-WIRE-AUDIT-001`, `LB-INTAKE-20260611-004` passes
+  MCP tool count when implemented: 33. (`INV-WIRE-AUDIT-001`, `LB-INTAKE-20260611-004` passes
   a+b; event and degenerate-argument passes still to come.)
 - **New tool `lifeblood_callsite_arguments`.** Answers the API-adoption question
   that "callee is referenced" checks miss: when a richer overload or a new
@@ -108,7 +209,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ("`lengthSteps` omitted by 7/7 call sites") computed across all sites. Default
   values are re-sourced to the parameter's own default expression (shared with
   `lifeblood_static_tables`). Operation-tree based; write-side (needs retained
-  compilation state). 32 MCP tools total now. (`INV-CALLSITE-ARGS-001`,
+  compilation state). MCP tool count when implemented: 32. (`INV-CALLSITE-ARGS-001`,
   `LB-INTAKE-20260613-001`.)
 - **`lifeblood_dead_code` can now exclude vendored / sample paths.** A new
   `pathExclude` argument takes glob patterns (`*` = any run incl. `/`, `?` = one

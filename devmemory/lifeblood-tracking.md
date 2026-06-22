@@ -8,7 +8,8 @@ This is the clean canonical tracker for Lifeblood-only bugs, improvements,
 optimizations, and shipped follow-through. DAWG architecture findings belong in
 DAWG audit docs unless they expose a Lifeblood product issue.
 
-Closed/shipped history (39 Shipped + 1 Receipt entries through v0.7.11) lives in
+Closed history (29 Shipped + 18 Receipt + 2 Partially shipped entries,
+including local v0.7.12-alpha implementation receipts) lives in
 [`lifeblood-tracking-archive.md`](lifeblood-tracking-archive.md). This live file
 carries only the active backlog and new intake so the working surface stays small.
 

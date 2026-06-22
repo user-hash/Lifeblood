@@ -1,16 +1,16 @@
 # Dogfood Intake Execution Masterplan
 
-> ## 📍 CURRENT POSITION (2026-06-21)
+> ## 📍 CURRENT POSITION (2026-06-22)
 > Branch `codex/lifeblood-tracking-complete`, **NOT pushed / NOT tagged** (user owns push+tag).
-> 6 commits landed: `b16b198` (adopt) → `95d5d11` (W0) → `23969f7` (W1A) → `a34e79e` (W1B) → `e538e1d` (W2.1).
-> Suite **1333 passed / 0 failed / 11 native-clang skips / 1344 total**. **32 tools**, 164 invariants, 0 self-analyze violations.
-> **DONE:** Wave 0; Wave 1 (A grouped dependants/dependencies, B dead_code pathExclude); Wave 2 atom 1 (`lifeblood_callsite_arguments`); Wave 3 (`lifeblood_wire_audit` all 5 passes, `lifeblood_feature_switch_audit` + 3 dogfood fixes + summarize, `lifeblood_member_count`); skill ↔ tool parity ratchet. 35 tools, 168 invariants. Closed intake: 20260613-002, 20260611-004, 20260611-001.
-> **NEXT:** `lifeblood_feature_switch_audit` (`LB-INTAKE-20260613-002`) + wire_audit passes c/d → then Wave 2 `lifeblood_member_count` (`LB-INTAKE-20260611-001`, needs a reflection-parity harness) + `lifeblood_struct_layout` (`LB-INTAKE-20260601-002`) → Wave 4 `authority_coverage`.
-> **Intake: 15 entries remaining (3 partials: 20260601-004, 20260611-004 now partial).**
-> **Local dev tool:** global `lifeblood.server.mcp` reinstalled to **0.7.12-alpha.0.9** from `local-nupkg/` (this branch build) for live testing. NOT the published NuGet release.
+> 21 branch commits plus current uncommitted local implementation cover the full intake queue through Wave 7.
+> Last full-suite receipt before the final five was **1435 passed / 0 failed / 11 native-clang skips / 1446 total**. The focused W6/W7 suite passed 85/85, and the rebuilt local MCP server passed direct stdio behavior smokes. Final full-suite/docs preflight is still required before any public handoff.
+> **IMPLEMENTED LOCALLY:** Wave 0; Wave 1 (A grouped dependants/dependencies, B dead_code pathExclude); Wave 2 (`lifeblood_callsite_arguments`, `lifeblood_struct_layout`); Wave 3 (`lifeblood_wire_audit` all 5 passes, `lifeblood_feature_switch_audit` + 3 dogfood fixes + summarize, `lifeblood_member_count`); Wave 4 authority coverage (`lifeblood_authority_coverage`); Wave 5 Unity false-positive/boundary atoms; Wave 6 session recovery + content-hash incremental + execute CS1061 hint + authoritative changed-set; Wave 7 source-generator concurrency isolation; skill parity ratchet.
+> **PREFLIGHT PASSED LOCALLY:** focused doc/contract ratchets, full Release suite, direct local MCP smoke against `dist`, and `git diff --check`. No push, tag, NuGet publish, or release cut.
+> **Intake: 0 entries remaining (0 partials).**
+> **Local dev tool:** standalone `dist/Lifeblood.Server.Mcp.dll` rebuilt from Release publish output and direct-stdio smoke-tested locally. NOT the NuGet release.
 
 **Status:** ADOPTED 2026-06-21 as the canonical execution recipe for the current
-`devmemory/lifeblood-intake.md` queue, goal **ship intake → v0.7.12**. This
+`devmemory/lifeblood-intake.md` queue, goal **complete and verify the intake plan locally**. This
 document is the point-by-point order for turning intake into shipped, ratcheted
 Lifeblood work.
 
@@ -25,43 +25,92 @@ all seven proposed new tools (`callsite_arguments`, `wire_audit`,
 `asmdef_check`) are un-started; `IntakeLedgerTests` was absent.
 
 **Progress:**
-- **Wave 0 — SHIPPED 2026-06-21.** `IntakeLedgerTests` + `INV-INTAKE-SHAPE-001`
+- **Wave 0 — IMPLEMENTED LOCALLY 2026-06-21.** `IntakeLedgerTests` + `INV-INTAKE-SHAPE-001`
   landed; nine older intake entries backfilled with `Source:`/`Workspace:`;
   `LB-INTAKE-20260613-005` promoted to the archive; STATUS.md anchors refreshed;
   CHANGELOG `[Unreleased]` updated. Ledger + Docs tests green.
-- **Wave 1 (part A) — SHIPPED 2026-06-21.** Grouped/filtered `dependants` /
+- **Wave 1 (part A) — IMPLEMENTED LOCALLY 2026-06-21.** Grouped/filtered `dependants` /
   `dependencies` (`groupBy` / `excludeTests` / `excludeGenerated` /
   `includeBuckets` / `previewPerGroup`) via new `IMcpGraphProvider.ClassifyEdges`
   + `INV-EDGE-GROUP-001`, sharing the blast-radius bucket/module SSoT.
   `LB-INTAKE-20260613-003` promoted. `EdgeGroupingTests` + full suite green
   (1337).
-- **Wave 1 (part B) — SHIPPED 2026-06-21.** `lifeblood_dead_code pathExclude`
+- **Wave 1 (part B) — IMPLEMENTED LOCALLY 2026-06-21.** `lifeblood_dead_code pathExclude`
   glob filter (`INV-DEADCODE-TRIAGE-003`) — first half of `LB-INTAKE-20260601-004`;
   that intake entry shrank to its remaining halves (`analyze` excludePaths + a
   first-class `Vendored` bucket) which land in Wave 5. Full suite green (1339).
   **Wave 1 complete.**
-- **Wave 2 (atom 1) — SHIPPED 2026-06-21.** New write-side tool
+- **Wave 2 (atom 1) — IMPLEMENTED LOCALLY 2026-06-21.** New write-side tool
   `lifeblood_callsite_arguments` (`INV-CALLSITE-ARGS-001`) — `ICompilationHost.GetCallsiteArguments`
   + `RoslynCallsiteArgumentExtractor` + shared `RoslynArgumentBinding` (default-
   value re-sourcing extracted from the static-table cell binder). Per-site arg
   facts + supplied/omitted histogram. `LB-INTAKE-20260613-001` promoted; tool
-  count 31→32. Full suite green (1344). **Remaining in Wave 2:**
+  count 31→32. Full suite green (1344). **Wave 2 remaining atoms now implemented locally:**
   `lifeblood_member_count` (`LB-INTAKE-20260611-001`) + `lifeblood_struct_layout`
   (`LB-INTAKE-20260601-002`).
-- **Wave 3 (MVP) — SHIPPED 2026-06-21.** New write-side tool `lifeblood_wire_audit`
+- **Wave 3 (MVP) — IMPLEMENTED LOCALLY 2026-06-21.** New write-side tool `lifeblood_wire_audit`
   (`INV-WIRE-AUDIT-001`) — `ICompilationHost.GetWireAudit` + `RoslynWireAuditExtractor`,
   one operation-tree read/write classification pass. Passes (a) field-read-without-write
   + (b) delegate-slot-never-assigned shipped; `LB-INTAKE-20260611-004` shrank to
   remaining passes (c) events + (d) degenerate-args. Tool 32→33, 165 invariants.
   Live-dogfooded after reload. Full suite green (1350). **Remaining Wave 3:**
   `lifeblood_feature_switch_audit` (`LB-INTAKE-20260613-002`) + wire_audit c/d.
+- **Wave 4 — IMPLEMENTED LOCALLY 2026-06-22.** New read-side graph-only tool
+  `lifeblood_authority_coverage` (`INV-AUTHORITY-COVERAGE-001`) — subject vs
+  authority reachability matrix with type/file expansion, required-authority
+  expansion, shortest path previews, allowed-alternative evidence, and shared
+  bucket filters. `LB-INTAKE-20260613-004` promoted.
+- **Wave 5 (atom 1) - IMPLEMENTED LOCALLY 2026-06-22.** Unity magic-method reachability now
+  consumes the Roslyn-resolved `baseTypeChain`, so DAWG-style
+  `Graphic -> UIBehaviour -> MonoBehaviour` components do not need a hardcoded
+  intermediate subclass roster and `Update` / `Reset` no longer surface as
+  dead-code candidates after re-analyze. DAWG read-only dogfood on the reloaded
+  local server returned 180 method findings, `truncated:false`, with none of
+  the target UI lifecycle methods present. `LB-INTAKE-20260608-001` promoted.
+- **Wave 5 (atom 2) - IMPLEMENTED LOCALLY 2026-06-22.** Unity define profiles now include
+  `Standalone`, which strips editor discriminators and adds `UNITY_STANDALONE`
+  so platform-neutral desktop guarded callsites are present in the semantic
+  graph. `LB-INTAKE-20260608-002` promoted.
+- **Wave 5 (atom 3) - IMPLEMENTED LOCALLY 2026-06-22.** New read-side graph-only tool
+  `lifeblood_asmdef_check` (`INV-ASMDEF-CHECK-001`) audits DirectOnly module
+  compile-direction boundaries from module `DependsOn` edges and first offending
+  cross-module source edges. Reloaded `dist` DAWG dogfood checked 42,867
+  cross-module source edges across 94 DirectOnly modules and found 0 violations.
+  `LB-INTAKE-20260601-003` promoted.
+- **Wave 5 (atom 4) - IMPLEMENTED LOCALLY 2026-06-22.** `lifeblood_dead_code` now downranks
+  intentional reference-free scaffolding as `bucket:"Scaffolding"`: non-public
+  static types whose direct members are exclusively `[Conditional]` methods
+  and/or static const string anchors, plus those direct members. Shared path
+  buckets remain unchanged. `LB-INTAKE-20260608-003` promoted.
+- **Wave 5 (atom 5) - IMPLEMENTED LOCALLY 2026-06-22.** Unity asset reachability now scans
+  `.prefab` / `.unity` / `.asset` YAML, resolves `m_Script` GUIDs through
+  `.cs.meta`, and marks resolved UnityEvent persistent-call method targets plus
+  host types reachable. Closed `LB-INTAKE-20260601-001` for UnityEvent method
+  reachability; serialized enum production remains a documented advisory
+  boundary.
+- **Wave 5 (atom 6) - IMPLEMENTED LOCALLY 2026-06-22.** `lifeblood_analyze excludePaths`
+  excludes project-relative POSIX glob matches before Roslyn compilation, with
+  `analysisScopeChanged` incremental fallback on scope drift. The shared path
+  classifier now includes `Vendored` (`Generated > Vendored > Test > Editor >
+  Production`) and all bucket-aware wire docs include it. Closed the remaining
+  halves of `LB-INTAKE-20260601-004`.
+- **Wave 6 - IMPLEMENTED LOCALLY 2026-06-22.** Read-only recovery now returns
+  `fallbackReason:"compilationStateUnavailable"` with exact restore guidance;
+  content-hash incremental distinguishes mtime touches from real content changes;
+  `lifeblood_analyze authoritativeChangedFiles` bounds editor-supplied changed
+  sets; `lifeblood_execute` CS1061 diagnostics name public scripting-surface
+  members and point at `Help`.
+- **Wave 7 - IMPLEMENTED LOCALLY 2026-06-22.** `SourceGeneratorRunner` serializes
+  framework analyzer loading and generator-driver execution at the process-local
+  runner boundary, with deterministic concurrent-analysis coverage.
 
-**Current truth snapshot (2026-06-13):**
+**Current truth snapshot (2026-06-22):**
 
-- Lifeblood self-analyze on this repo is clean: 0 violations, 0 cycles.
+- Lifeblood self-analyze on this repo is clean on rules: 0 violations, 1 existing cycle.
   Symbol/edge totals are intentionally not plan gates; `docs/STATUS.md` owns
   ratcheted repository counts.
-- Current intake queue: 18 entries (was 19; `LB-INTAKE-20260613-005` shipped in Wave 0).
+- Current intake queue: 0 entries remain after Wave 6/7 local implementation; no partial
+  intake entries remain.
 - Fresh DAWG-derived planning-friction entries: `LB-INTAKE-20260613-001` through
   `LB-INTAKE-20260613-004`.
 - Fresh Lifeblood self-audit entry: `LB-INTAKE-20260613-005`.
@@ -269,23 +318,24 @@ Recipe:
 1. First fix transitive Unity magic reachability:
    `MonoBehaviour` magic-method detection must walk the full base chain, so
    `UIBehaviour` / `Graphic` subclasses are covered.
-2. Add a `Standalone` or `DesktopPlayer` define profile before adding source
-   text heuristics. The real bug is missing active preprocessor symbols for
+2. DONE 2026-06-22: add the `Standalone` define profile before adding source
+   text heuristics. The real bug was missing active preprocessor symbols for
    `UNITY_STANDALONE && !UNITY_EDITOR`.
 3. Add an inactive-define hint only after profile coverage exists. It should
    say "nearest references exist only under unanalyzed defines" and include the
    relevant define expression.
-4. Add scaffolding downrank for all-`Conditional` / const-anchor-only internal
+4. DONE 2026-06-22: add scaffolding downrank for all-`Conditional` / const-anchor-only internal
    types. Keep it a bucket/downrank, not a deletion recommendation.
-5. Implement asmdef compile-direction checking as a static graph/asmdef query:
+5. DONE 2026-06-22: implement asmdef compile-direction checking as a static graph/asmdef query:
    for every cross-module edge, compare the source asmdef's declared references
    to the target asmdef. Report the first offending call site.
-6. Add Unity serialized/YAML reachability last. Build it behind a port that can
+6. DONE 2026-06-22: add Unity serialized/YAML reachability behind a port that can
    parse `.prefab`, `.unity`, and `.asset` files, resolve script GUIDs through
-   `.meta`, and feed UnityEvent method targets plus serialized enum values as
-   reachability/production roots.
-7. Add vendored/sample path control in two layers: path filters first, optional
-   `Vendored` bucket only if all bucket parity tests and wire docs are updated.
+   `.meta`, and feed UnityEvent method targets as reachability roots. Serialized
+   enum production remains advisory/deferred.
+7. DONE 2026-06-22: add vendored/sample path control in two layers: `analyze`
+   `excludePaths` before compilation, plus a first-class `Vendored` bucket with
+   bucket parity tests and wire docs updated.
 
 Done when:
 
@@ -294,6 +344,8 @@ Done when:
 - Desktop-only guarded calls are visible under a documented profile.
 - UnityEvent-wired methods no longer look identical to genuinely dead methods.
 - asmdef violations can be caught before Unity compile.
+- Vendored/sample code can be excluded from analyze scope or folded out via a
+  first-class bucket.
 
 ## Wave 6 - Session Recovery, Incremental Reliability, And Execute UX
 
@@ -378,33 +430,28 @@ surface hidden Roslyn facts, then build higher-level audits out of those facts.
 
 ---
 
-# 🔁 SESSION HANDOFF — resume here (last updated 2026-06-21, HEAD `a24af3f`)
+# 🔁 SESSION HANDOFF — resume here (last updated 2026-06-22, branch `codex/lifeblood-tracking-complete`)
 
 Single combined source of truth for resuming the campaign in a fresh session.
 Read top-to-bottom before touching anything.
 
 ## Where we are
 - **Repo** `D:/Projekti/Lifeblood`. **Branch** `codex/lifeblood-tracking-complete`,
-  pushed to `origin/codex/lifeblood-tracking-complete` (HEAD `2526c33`). **`main` is
-  untouched** and awaits the eventual tagged `v0.7.12` — do NOT push to main mid-plan.
-  User owns push + tag; commit freely, push the branch when green.
-- **Goal** burn `devmemory/lifeblood-intake.md` down to shipped, ratcheted features,
-  then cut `v0.7.12`.
-- **Live state** 35 MCP tools (18 read + 17 write), 30 ports, 168 invariants / 115
-  categories, suite **1378 passed / 0 failed / 11 native-clang skips / 1389 total**,
-  self-analyze 0 violations / 0 cycles (4837 sym / 26836 edges / 503 types).
-- **⚠️ Local dev MCP tool is BEHIND HEAD** — last installed `0.7.12-alpha.0.18`
-  (commit `ed0d54e`), but HEAD is `2526c33` (wire_audit c+d + member_count NOT in the
-  running server). REPACK + reinstall before the next live dogfood (recipe below).
-- **Local dev MCP tool** = global dotnet tool `lifeblood.server.mcp`
-  (`lifeblood-mcp.exe`). Reload
-  recipe: DAWG memory `reference-lifeblood-local-mcp-reload` (pack →
-  `dotnet tool update --global lifeblood.server.mcp --add-source local-nupkg --version
-  <ver>` → kill `lifeblood-mcp.exe`/`*Lifeblood.Server.Mcp*` procs → reconnect via
-  Claude Code reload / `/mcp`). After landing more commits, repack + reinstall so live
-  dogfooding tests the latest build.
+  local worktree contains the full intake implementation through W7. **`main` is
+  untouched**; do NOT push or tag mid-plan. User owns any push + tag.
+- **Goal** burn `devmemory/lifeblood-intake.md` down to locally implemented, ratcheted features
+  with local verification. No push, tag, NuGet publish, or release cut in this run.
+- **Live state** 38 MCP tools (20 read + 18 write), 30 ports. Final local
+  preflight on 2026-06-22 is green: focused doc/contract ratchets 146/146,
+  full Release suite **1441 passed / 0 failed / 11 native-clang skips / 1452 total**,
+  `git diff --check`, and direct local MCP smoke against `dist`.
+- **Local dev MCP tool** = standalone server at `dist/Lifeblood.Server.Mcp.dll`.
+  Reload recipe for this branch: local Release staging build → stop
+  `lifeblood-mcp.exe` / `*Lifeblood.Server.Mcp*` processes → copy staging into
+  `dist/` via `redeploy-watcher.ps1` → reconnect the MCP client. No push, tag, or
+  external package publication is part of the reload.
 
-## Shipped this campaign (18 commits)
+## Implemented this campaign (18 commits plus current local worktree)
 - W0 `IntakeLedgerTests` + `INV-INTAKE-SHAPE-001` (`95d5d11`)
 - W1A grouped/filtered `dependants`/`dependencies` + `IMcpGraphProvider.ClassifyEdges`
   + `INV-EDGE-GROUP-001` (`23969f7`)
@@ -429,34 +476,60 @@ Read top-to-bottom before touching anything.
   `EventRaisedNeverSubscribed` / `DegenerateConstantCallSites`. CLOSES `LB-INTAKE-20260611-004`.
 - W3 tool `lifeblood_member_count` + `INV-MEMBER-COUNT-001` (`2526c33`) — bit-exact
   reflection parity (emit-reflect-vs-parse harness) + sourceSymbols. CLOSES `LB-INTAKE-20260611-001`.
+- W2 tool lifeblood_struct_layout + INV-STRUCT-LAYOUT-001 (local worktree) -
+  field offsets/sizes/alignment/pack/total, fixed buffers, Exact vs Advisory confidence;
+  emit-vs-compute Marshal.SizeOf/OffsetOf harness. CLOSES LB-INTAKE-20260601-002.
+- W4 tool lifeblood_authority_coverage + INV-AUTHORITY-COVERAGE-001 (local worktree) -
+  graph-only subject-vs-authority reachability matrix with shortest path previews
+  and allowed-alternative evidence. CLOSES LB-INTAKE-20260613-004.
+- W5 atom 1 resolved base-chain Unity reachability + INV-UNITY-001 (local worktree) -
+  `baseTypeChain` records Roslyn's full base walk, so Unity UI `Graphic` /
+  `UIBehaviour` lifecycle methods reach `MonoBehaviour` without hardcoded
+  intermediate subclass rosters. CLOSES LB-INTAKE-20260608-001.
+- W5 atom 2 Standalone define profile + INV-MULTI-DEFINE-UNITY-RESOLVER-001
+  (local worktree) - `UnityDefineProfileResolver` now exposes Editor + Player
+  + Standalone. Standalone removes editor discriminators and adds
+  `UNITY_STANDALONE`, so `UNITY_STANDALONE && !UNITY_EDITOR` callsites are
+  semantically present without source-text heuristics. CLOSES
+  LB-INTAKE-20260608-002.
+- W5 atom 3 `lifeblood_asmdef_check` + INV-ASMDEF-CHECK-001 (local worktree) -
+  graph-only DirectOnly module boundary audit, grouped by source-target module
+  pair with first offending edge/call site/profile set and declared dependency
+  list. Reloaded `dist` DAWG dogfood: 94 DirectOnly modules, 42,867 checked
+  cross-module source edges, 0 asmdef violations. CLOSES
+  LB-INTAKE-20260601-003.
+- W5 atom 4 dead_code scaffolding downrank + INV-DEADCODE-SCAFFOLDING-001
+  (local worktree) - `bucket:"Scaffolding"` for non-public static conditional
+  guard / const-string anchor types and their direct members; shared path buckets
+  unchanged. CLOSES LB-INTAKE-20260608-003.
+- W5 atom 5 UnityEvent YAML reachability + INV-UNITYEVENT-REACHABILITY-001
+  (local worktree) - resolved UnityEvent persistent calls from `.prefab` /
+  `.unity` / `.asset` YAML now mark target methods and host types reachable.
+  CLOSES LB-INTAKE-20260601-001.
+- W5 atom 6 analyze `excludePaths` + Vendored path bucket
+  (local worktree) - source-scope glob exclusion before Roslyn compilation plus
+  shared `Vendored` bucket parity. CLOSES LB-INTAKE-20260601-004.
+- W6 read-only recovery/content-hash incremental/execute hints/authoritative
+  changed-set (local worktree) - `compilationStateUnavailable`, content-hash
+  noop, `authoritativeChangedFiles`, and CS1061 public-member hints. CLOSES
+  LB-INTAKE-20260602-001 and LB-INTAKE-20260611-002/003/005.
+- W7 source-generator concurrency isolation (local worktree) -
+  `SourceGeneratorRunner` serializes framework analyzer loading and generator
+  driver execution. CLOSES LB-INTAKE-20260601-005.
 - (+ `b16b198` adopt, `f243d2c` position marker)
 
 ## NEXT atoms, in order
-1. **REPACK + reload the local tool** (it is behind HEAD) then live-dogfood the
-   batch since 0.18: wire_audit c (events) + d (degenerate calls) + member_count
-   against the Lifeblood graph. Live dogfooding has caught 3 real bugs this session.
-2. **`lifeblood_struct_layout(typeId)`** (`LB-INTAKE-20260601-002`, MED). Roslyn-metadata
-   offset/size/align/total for unmanaged structs (`[StructLayout]`, `Pack`,
-   `[FieldOffset]`, `fixed`, enum underlying, nested, Unity.Mathematics). Exact for
-   blittable; confidence downgrade + reason for reference-bearing/Auto. Use the same
-   emit-vs-compute parity HARNESS shape that pinned `member_count` (compile a fixture,
-   `Assembly.Load` for ground-truth `Marshal.SizeOf`/`OffsetOf`, feed the same
-   compilation to the tool, assert equal) — it caught a real subtlety there.
-3. **Wave 4 `lifeblood_authority_coverage`** (`LB-INTAKE-20260613-004`) — graph-only
-   `AuthorityCoverageAnalyzer` in `Lifeblood.Analysis`: do subjects[] reach
-   requiredAuthority[]? negative-dependency matrix output.
-4. **Wave 5 Unity FP** (`20260608-001/002/003`, `20260601-001/003`, `20260601-004`
-   Vendored half): transitive MonoBehaviour magic-method (UIBehaviour/Graphic chain) →
-   Standalone define profile → asmdef-direction check → scaffolding downrank →
-   UnityEvent/YAML reachability → Vendored bucket.
-5. **Wave 6** session recovery + content-hash incremental + execute CS1061 hint + Unity
-   sync hook (`20260602-001`, `20260611-002/003/005`).
-6. **Wave 7 (deferred)** net10 sourcegen concurrency (`20260601-005`).
+1. **Final preflight**: full suite, docs/status anchors, direct local MCP smoke,
+   and `git diff --check`.
+2. **Public handoff remains blocked** until the user explicitly asks for push,
+   tag, NuGet publish, or release work.
 
-Partials in intake: `20260601-004` (analyze excludePaths + Vendored bucket) only.
-**12 intake entries remain** (`20260611-004` and `20260611-001` fully shipped + tombstoned this session).
+Partials in intake: none.
+**0 intake entries remain.** All intake ids are tombstoned in
+`devmemory/lifeblood-intake.md` and recorded as local receipts in
+`devmemory/lifeblood-tracking-archive.md`.
 
-## Per-atom DISCIPLINE (non-negotiable — how every atom above shipped)
+## Per-atom DISCIPLINE (non-negotiable — how every atom above was implemented)
 1. **Hexagonal:** protocol-neutral DTOs in `Domain.Results`; port on `ICompilationHost`
    (write-side, retained compilations) or `IMcpGraphProvider` (read-side graph);
    algorithm in a `Roslyn*Extractor` (`Adapters.CSharp`) or `Lifeblood.Analysis`
@@ -477,16 +550,17 @@ Partials in intake: `20260601-004` (analyze excludePaths + Vendored bucket) only
    numbers from the failures, set anchors to those.
 5. **Two hardcoded count tests** in `ToolHandlerTests.cs` bump on every tool add
    (`ToolRegistry_ReturnsNTools` + capabilities read/write split).
-6. **Tracking SSoT:** ship → MOVE intake entry to a Shipped receipt in
-   `lifeblood-tracking-archive.md` + DELETE from `lifeblood-intake.md` (HTML-comment
-   tombstone ok). Partial = SHRINK the intake entry + add receipt. `IntakeLedgerTests`
+6. **Tracking SSoT:** implementation completion -> MOVE intake entry to a local
+   receipt in `lifeblood-tracking-archive.md` + DELETE from `lifeblood-intake.md`
+   (HTML-comment tombstone ok). Partial = SHRINK the intake entry + add receipt. `IntakeLedgerTests`
    forbids an id in both files + requires `Type:`/`Priority:`/`Source:`/`Workspace:` +
    `What:`/`Why it matters:`/`Fix shape:` (keep `Fix shape:` literal). `TrackingLedgerTests`
    keeps the live ledger to Shipped+in-flight only.
 7. **CHANGELOG** `[Unreleased]` entry per atom.
-8. **Verify:** build → focused test → full `dotnet test Lifeblood.sln` green → commit
-   (conventional + `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`)
-   → push branch → repack+reload local tool → live-dogfood the new tool.
+8. **Verify:** build -> focused test -> full `dotnet test Lifeblood.sln` green ->
+   commit only when requested/appropriate -> repack+reload local tool ->
+   live-dogfood the new tool. No push, tag, NuGet publish, or release cut without
+   an explicit user instruction.
 
 ## Gotchas banked
 - Live dogfooding finds real bugs (groupBy hub-overflow, callsite cross-module rawText

@@ -40,6 +40,7 @@ See [MCP Setup Guide](docs/MCP_SETUP.md) for Claude Desktop, VS Code, Cursor, an
 
 ```
 lifeblood_analyze projectPath="/path/to/your/project"   → load semantic graph
+lifeblood_analyze projectPath="/path" excludePaths=["Packages/*","*/Samples*/*"] → drop vendored/sample source before compilation
 lifeblood_blast_radius symbolId="type:MyApp.AuthService" → what breaks if I change this?
 lifeblood_file_impact filePath="src/AuthService.cs"      → what files are affected?
 lifeblood_find_references symbolId="type:MyApp.IRepo"    → every caller, every consumer
@@ -90,8 +91,8 @@ Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface*
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Capabilities, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Resolve Short Name, Resolve Member, Search, Dead Code, Partial View, Invariant Check, Authority Report, Port Health, Cycles, Test Impact |
-| **Write** | Execute, Diagnose, Compile-check, Enum Coverage, Static Tables, Assignment Coverage, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
+| **Read** | Analyze, Capabilities, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Asmdef Check, Resolve Short Name, Resolve Member, Search, Dead Code, Partial View, Invariant Check, Authority Report, Authority Coverage, Port Health, Cycles, Test Impact |
+| **Write** | Execute, Diagnose, Compile-check, Enum Coverage, Static Tables, Assignment Coverage, Callsite Arguments, Wire Audit, Feature-switch Audit, Member Count, Struct Layout, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
@@ -138,7 +139,7 @@ All port interfaces wired. Boundaries enforced by [architecture invariant tests]
 
 ## Unity
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). Every MCP tool available in the Unity Editor via `[McpForUnityTool]` discovery — separate process, no assembly conflicts, no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation). `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
+Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). The Unity bridge exposes a curated in-Editor subset of the MCP tool surface via `[McpForUnityTool]` discovery; the standalone `lifeblood-mcp` server exposes the full surface. The sidecar runs as a separate process, with no assembly conflicts and no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation) and resolved UnityEvent persistent calls from prefab/scene/asset YAML. `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
 
 [Unity setup guide](docs/UNITY.md)
 
@@ -148,7 +149,7 @@ Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/M
 
 Self-analysis (symbols, edges, modules, types, violations, cycles), discovered test cases, `[SkippableFact]` opt-in count, typed-invariant audit (total + category coverage, duplicates, parse warnings) — every metric is anchored in [`docs/STATUS.md`](docs/STATUS.md) and ratcheted against the live source on every CI run (see [`tests/Lifeblood.Tests/DocsTests.cs`](tests/Lifeblood.Tests/DocsTests.cs)). Zero regressions, zero parse warnings.
 
-Production-verified on a 90-module 400k LOC Unity workspace: 65,940 symbols, 242,233 edges, 91 SCCs. Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. Memory profiles, throughput numbers, and the full dogfood story live in [Status](docs/STATUS.md). 50+ real bugs surfaced through dogfooding — methodology and per-finding history are summarized in [Status](docs/STATUS.md) and the [CHANGELOG](CHANGELOG.md).
+Production-verified on large Unity workspaces; current dogfood counts and memory profiles live in [Status](docs/STATUS.md). Authority report classifies methods across the full surface and identifies forwarder candidates for any host-with-many-subordinates triage (partial-class hosts, dispatchers, facades, ports). Edge count grew +18% over the prior baseline because enum-member references the dangling-edge filter was silently dropping (R2-3) now resolve. 50+ real bugs surfaced through dogfooding — methodology and per-finding history are summarized in [Status](docs/STATUS.md) and the [CHANGELOG](CHANGELOG.md).
 
 ---
 

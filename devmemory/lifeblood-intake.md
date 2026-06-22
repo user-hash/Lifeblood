@@ -14,178 +14,56 @@ unverified claims.
 
 ---
 
-## LB-INTAKE-20260601-001 — Unity serialized/UnityEvent wiring invisible to reachability
+<!-- LB-INTAKE-20260601-001 (Unity serialized/UnityEvent wiring invisible to
+     reachability) IMPLEMENTED LOCALLY 2026-06-22: `UnityReachabilityAdapter` now scans
+     `.prefab` / `.unity` / `.asset` YAML, resolves script GUIDs through `.meta`
+     files, and marks resolved UnityEvent persistent-call method targets plus
+     host types reachable. Residual boundary (documented on-wire): unresolved
+     serialized targets, runtime-procedural assignment, Addressables/Resources-
+     loaded values, unsaved Inspector edits, and serialized enum production.
+     INV-UNITYEVENT-REACHABILITY-001. Recorded in lifeblood-tracking-archive.md.
+     Do not re-add here. -->
+<!-- LB-INTAKE-20260601-002 (static struct-layout / sizeof tool) IMPLEMENTED LOCALLY
+     2026-06-22 as `lifeblood_struct_layout` (field offsets/sizes/alignment,
+     pack, total size, fixed buffers; Exact for known blittable Sequential /
+     Explicit structs, Advisory with limitations for Auto/reference/non-blittable
+     shapes) -> recorded as the 2026-06-22 receipt in
+     lifeblood-tracking-archive.md. INV-STRUCT-LAYOUT-001. Do not re-add here. -->
+<!-- LB-INTAKE-20260601-003 (asmdef compile-direction boundary check) IMPLEMENTED LOCALLY
+     2026-06-22 as `lifeblood_asmdef_check` (graph-only DirectOnly module
+     dependency audit; reports first offending edge/call site/profile set per
+     source-target module pair, skips SDK-style transitive modules honestly) ->
+     recorded as the 2026-06-22 receipt in lifeblood-tracking-archive.md.
+     INV-ASMDEF-CHECK-001. Do not re-add here. -->
 
-Type: Improvement · Priority: HIGH (largest real false-positive driver)
-Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
+<!-- LB-INTAKE-20260601-004 (Vendored/third-party path exclusion for dead_code
+     + analyze) IMPLEMENTED LOCALLY 2026-06-22: first half (`dead_code pathExclude`)
+     implemented 2026-06-21; remaining halves now implemented as `lifeblood_analyze
+     excludePaths` with `analysisScopeChanged` incremental fallback, shared
+     `PathGlobMatcher`, and first-class `Vendored` path bucket
+     (Generated > Vendored > Test > Editor > Production). Pinned by analyze
+     wire-shape, csproj compilation, bucket parity, grouping, schema, and DAWG
+     dogfood receipts. INV-ANALYZE-EXCLUDEPATHS-001 /
+     INV-PATHBUCKET-SHARED-001. Recorded in lifeblood-tracking-archive.md. Do
+     not re-add here. -->
 
-What: On a real Unity workspace `lifeblood_dead_code summarize` returned 215
-production method candidates. The dominant false-positive class is pointer/event
-handlers (`OnPadPointerDown`, `OnSamplerPadClick`, …): `find_references` = 0 AND
-no `= OnPadPointerDown` delegate assignment exists in any `.cs` — they are wired
-through prefab/scene `EventTrigger` UnityEvents (YAML on disk), invisible to
-static analysis. Same root makes `enum_coverage` flag serialized-enum production
-as candidate-only (`isUnproduced` not proof).
+<!-- LB-INTAKE-20260601-005 (net10 source-generator concurrency isolation)
+     IMPLEMENTED LOCALLY 2026-06-22. `SourceGeneratorRunner` now serializes framework
+     analyzer loading and generator-driver execution behind a process-local
+     gate, closing the concurrent in-process race without changing production
+     TFM or generated-code semantics. Pinned by
+     `CsprojCompilationFactsTests.Compilation_RunsFrameworkSourceGenerators_ConcurrentAnalyses_AreDeterministic`.
+     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
 
-Verified accurate (NOT false positives): `BurstSynthSustainKernel.DrainComb` and
-`ApplyOscDriftIfActive` 5-param overload are genuinely dead (grep +
-overload-resolution read). Magic-methods (`IUnityReachabilityProvider`),
-`[BurstCompile]`, and `unsafe` pointer-param overloads all resolve correctly.
-
-Why it matters: forces manual triage of the whole dead_code list on Unity
-projects; an Inspector-wired method reads identically to a genuinely-dead one.
-
-Fix shape: new Unity-asset adapter behind a port — parse `.prefab`/`.unity`/
-`.asset` YAML, resolve `m_Script: {guid}` → `.meta` GUID → C# type, extract
-UnityEvent `m_PersistentCalls` method targets + serialized enum field values;
-feed as reachability roots / produced-enum values. Honest residual boundary
-(still invisible): runtime-procedural assignment, Addressables/Resources-loaded
-values, unsaved Inspector edits.
-
-## LB-INTAKE-20260601-002 — Static struct-layout / sizeof tool for unmanaged structs
-
-Type: Improvement · Priority: HIGH (unlocks a ratchet that today requires Unity)
-Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
-
-What: `lifeblood_execute Unsafe.SizeOf<BurstVoiceState>()` correctly returns the
-structured `INV-EXECUTE-WORKSPACE-LOAD-BOUNDARY-001` boundary (honest, new in
-v0.7.11) — but the value is still unobtainable. DAWG ratchets
-`sizeof(BurstVoiceState) = 1280B` against a 64KB/call stack watchpoint and must
-round-trip to Unity to measure it. For `unmanaged`/blittable structs (all Burst
-state) layout is fully determined by Roslyn metadata + ECMA-335 packing — no
-runtime load needed.
-
-Why it matters: struct-size / stack-frame invariants can't be ratcheted by
-Lifeblood; the only gate is Unity `sizeof`.
-
-Fix shape: new read-side `lifeblood_struct_layout(typeId)` (or extend
-`lifeblood_static_tables`): walk the Roslyn type, compute per-field offset + size
-+ alignment + total for unmanaged structs (honor `[StructLayout]`, `Pack`,
-`[FieldOffset]`, `fixed` buffers, enum underlying types, nested structs,
-Unity.Mathematics types). Exact for blittable; downgrade to `SequentialEquivalent`
-+ confidence drop + named reason for reference-bearing `LayoutKind.Auto` structs.
-
-## LB-INTAKE-20260601-003 — asmdef compile-direction boundary check
-
-Type: Improvement · Priority: MEDIUM (cheap; data already loaded)
-Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
-
-What: `compile_check` ignores per-asmdef boundaries, so a reference that compiles
-in the merged view can still violate an asmdef's declared reference set; the
-Unity console is the only current honest gate (DAWG `feedback_asmdef_direction_check`).
-Lifeblood already loads the 90-module map (= asmdefs) and the `.asmdef`
-`references[]` are on disk.
-
-Why it matters: illegal back-references / undeclared dependencies are invisible
-to Lifeblood; they only surface at Unity compile time, defeating the pre-Unity
-gate value.
-
-Fix shape: extend `lifeblood_invariant_check` (or new `lifeblood_asmdef_check`):
-for every cross-module edge assert the source asmdef declares the target in its
-`references` set, else report a directed boundary violation with the offending
-edge + first call site. Pure-static graph query.
-
-## LB-INTAKE-20260601-004 — Vendored/third-party path exclusion for dead_code + analyze
-
-Type: UX / Control · Priority: MEDIUM
-Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
-
-Partial progress: the `dead_code` `pathExclude` half SHIPPED 2026-06-21
-(`INV-DEADCODE-TRIAGE-003`, archived as the 2026-06-21 receipt). This entry now
-tracks only the REMAINING two halves below; promote fully when both land (the
-`Vendored` bucket lands in Wave 5).
-
-What: On the DAWG dead_code pass, ~12% of the first 25 production candidates were
-third-party example code — `TMPro.Examples.TMP_TextInfoDebugTool.DrawSolidRectangle`,
-`DrawDottedRectangle`, `TextConsoleSimulator.RevealWords` (all under
-`Assets/TextMesh Pro/Examples & Extras/`) — all classified `bucket: Production`.
-`dead_code` now has `pathExclude` (shipped), but `analyze` still takes only
-`projectPath` / `graphPath` / `rulesPath` / `mode` / `defineProfiles` (no exclude
-glob), and the bucket classifier still treats vendored example code as Production.
-
-Why it matters: vendored noise still pollutes cycle/metric counts and analyze
-cost on large trees; a per-finding `pathExclude` does not scope the analyze pass
-itself, and there is still no first-class `Vendored` bucket.
-
-Fix shape: (remaining) (a) an `excludePaths`/`vendorGlobs` parameter on `analyze`
-(reuse the `pathExclude` glob grammar from `INV-DEADCODE-TRIAGE-003`), and/or
-(b) extend the bucket classifier to recognize known-vendored roots
-(`*/Examples*`, `*/Samples*`, `Packages/`, third-party asset dirs) as a
-`Vendored` bucket distinct from `Production` (Wave 5, paired with all bucket
-parity tests + wire docs).
-
-## LB-INTAKE-20260601-005 — net10 source-generator concurrency isolation (deferred fix)
-
-Type: Bug (latent) / Robustness · Priority: LOW until net10 is a real target
-Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server 1100895), diagnosed + archived 2026-05-31
-Workspace: Lifeblood self
-
-What: Diagnosed + archived 2026-05-31 — net10's wider assembly-load window exposes
-a race in framework source-generator loading/execution when MULTIPLE analyses run
-concurrently in one process (the xunit suite). `BuildDiagnosticParityTests` +
-`CsprojCompilationFactsTests.Compilation_RunsFrameworkSourceGenerators_*` pass in
-isolation, fail in the full suite; self-analyze counts swing run-to-run
-(4354/4349/4391). net8 reliably wins the race (deterministic 4385/25092).
-Production is never affected (MCP serializes via `GraphSessionGate`; CLI is
-one-shot). A speculative shared-loader/Lazy-cache patch was trialled, didn't fully
-close the flake, perturbed net8 counts (+5), and was reverted.
-
-Why it matters: blocks a clean net10 evaluation and is a latent hazard on any
-future concurrent-analysis path; process-global Roslyn analyzer state is shared.
-
-Fix shape: (deferred, its own atom) isolate framework-analyzer loading per
-analysis via `AssemblyLoadContext`, OR serialize the generator-driver run so
-concurrent in-process analyses cannot race on process-global analyzer state. Scope
-`DocsTests.Anchor_MatchesLiveSource` self-analyze arms to the production TFM so an
-experimental retarget does not assert net8 counts against a net10 build.
-
-## LB-INTAKE-20260602-001 - Retained-session recovery after read-only analyze
-
-Type: UX / Robustness · Priority: MEDIUM
-Source: DAWG Burst WT/FM/PWM dogfood pass 2026-06-02 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
-
-What: During the DAWG Burst WT/FM/PWM dogfood pass, Lifeblood was the backbone for
-safe work on a DAW-sized Unity project: multi-profile analyze scoped the actual
-Editor/Player graph, dependency/reference tools kept patch-surface changes honest,
-file compile checks caught import/descriptor issues before Unity, and grouped
-blast/test/cycle signals let the agent keep moving without guessing. The workflow
-value is high precisely because DAWG is too large and interconnected for grep-only
-reasoning.
-
-Funky bit: after an accidental `lifeblood_analyze(readOnly:true)` full analyze,
-the session retained the DAWG graph but dropped compilation state. A later
-non-read-only incremental analyze still left write-side tools unavailable; the
-2026-06-02 capability receipt showed `hasGraphLoaded: true`,
-`hasCompilationState: false`, `projectRoot: "D:/Projekti/DAWG"`, and
-`retainedProfileNames: ["Editor", "Player"]`.
-
-Why it matters: read-only analyze is the right escape hatch for huge workspaces,
-but recovering from it is easy to fumble during long product work. The current
-state is honest, but the next step is not obvious enough when the agent needs to
-return from read-only triage to `diagnose`, `compile_check`, `find_references`, or
-`rename`.
-
-Fix shape: make the transition explicit and self-healing where safe. Options:
-allow a non-read-only full analyze to reliably restore compilation state after a
-read-only session; reject non-read-only incremental recovery with a precise
-`canRetryFull` suggestion; and surface `hasCompilationState` plus the recovery
-hint directly in write-side tool errors. Nice-to-have: a small
-`lifeblood_session_state` or capabilities subfield that names the currently
-available read/write mode and the exact analyze call needed to switch modes.
-
-Follow-up observed 2026-06-02: after a successful non-read-only incremental
-Editor+Player analyze on DAWG (70,015 symbols, 0 violations) and three successful
-`compile_check(filePath)` calls, the next compile-check closed the MCP transport.
-Subsequent `lifeblood_capabilities` calls in the same Codex session continued to
-fail with `Transport closed`, so the agent had to finish verification with Unity
-compile/tests. This is a stronger recovery/robustness case than "mode is
-unavailable": the session-level tool channel became unusable after normal
-write-side checks.
+<!-- LB-INTAKE-20260602-001 (retained-session recovery after read-only analyze)
+     IMPLEMENTED LOCALLY 2026-06-22. `GraphSession` now rejects non-read-only incremental
+     recovery from a read-only/no-compilation-state session with
+     `fallbackReason:"compilationStateUnavailable"` and an exact
+     `incremental:false, readOnly:false` recovery hint, or performs a full
+     restore when `allowFullFallback:true` is supplied. Write-side errors and
+     capabilities expose the same recovery hint. Pinned by
+     `AnalyzeWireShapeTests.Load_ReadOnlyThenWriteSideIncremental_*`. Recorded in
+     lifeblood-tracking-archive.md. Do not re-add here. -->
 
 ---
 
@@ -203,73 +81,27 @@ write-side checks.
 Method: full analyze + `defineProfiles:["Editor","Player"]` union; every claim cross-checked
 with `find_references` / `dependants profileFilter` + grep + source read.
 
-## LB-INTAKE-20260608-001 — MonoBehaviour magic-method reachability misses UIBehaviour/Graphic-derived components
+<!-- LB-INTAKE-20260608-001 (MonoBehaviour magic-method reachability misses
+     Unity UI-derived components) IMPLEMENTED LOCALLY 2026-06-22. The C# extractor now
+     records SymbolPropertyKeys.BaseTypeChain, and UnityReachabilityAdapter
+     consumes the resolved chain so Graphic/UIBehaviour-derived components reach
+     UnityEngine.MonoBehaviour without hand-maintaining intermediate subclass
+     rosters. Recorded in lifeblood-tracking-archive.md. INV-UNITY-001. -->
+<!-- LB-INTAKE-20260608-002 (Editor+Player profile pair misses
+     UNITY_STANDALONE desktop-guarded callsites) IMPLEMENTED LOCALLY 2026-06-22.
+     UnityDefineProfileResolver now exposes a Standalone profile that strips
+     Unity editor discriminators and adds UNITY_STANDALONE, making
+     UNITY_STANDALONE && !UNITY_EDITOR edges visible through the semantic
+     multi-profile graph without source-text heuristics. Recorded in
+     lifeblood-tracking-archive.md. INV-MULTI-DEFINE-UNITY-RESOLVER-001. -->
 
-Type: Bug · Priority: HIGH (false-positive dead-code on every custom UI component)
-Source: DAWG architecture-sealing dogfood 2026-06-08 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
-
-What: `dead_code` flagged `VUMeter.Update()`, `WaveformScope.Update()`, `ADSRGraphView.Update()`,
-`WaveformPreview.Update()`, `VUMeter.Reset()` as dead. All extend `UnityEngine.UI.Graphic`
-(→ `UIBehaviour` → `MonoBehaviour`); `Update`/`OnEnable`/`Reset` are Unity magic methods invoked
-by the runtime with no static caller. `IUnityReachabilityProvider` (INV-UNITY-001) excludes magic
-methods on DIRECT MonoBehaviour subclasses but misses components deriving through the
-`UIBehaviour`/`Graphic` chain (UnityEngine.UI.dll). Directly contradicts LB-INTAKE-20260601-001's
-"magic-methods resolve correctly" — true for direct subclasses, false for UI-derived.
-
-Verified: read class declarations (`public class VUMeter : Graphic`, `public class WaveformScope : Graphic`);
-flagged members are instance `Update()`/`Reset()`.
-
-Why it matters: every custom `Graphic`/`Selectable`/`UIBehaviour` component's lifecycle methods read
-as dead → large FP class on any Unity UI project.
-
-Fix shape: change the magic-method exclusion test to "type transitively derives from
-`UnityEngine.MonoBehaviour`" (walk the full base chain incl. UnityEngine.UI assembly), not
-"directly derives". Cover editor magic (`Reset`, `OnValidate`) too.
-
-## LB-INTAKE-20260608-002 — Editor+Player profile pair doesn't cover UNITY_STANDALONE (desktop-guarded call sites invisible)
-
-Type: Improvement · Priority: HIGH (FP class for all desktop-only code paths)
-Source: DAWG architecture-sealing dogfood 2026-06-08 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
-
-What: `BeatGridShutdownOrchestrator.HandleDesktopFocusLost()`/`HandleFocusReturn()` flagged dead;
-`find_references` AND `dependants profileFilter:["Editor","Player"]` both returned 0. Source shows
-they ARE called from `OnApplicationFocus()` (same file, lines 519/521) but inside
-`#if UNITY_STANDALONE && !UNITY_EDITOR`. The canonical 2-profile MVP (`Editor`,`Player`) does not
-define `UNITY_STANDALONE`, so desktop-standalone-only call sites are invisible under both — the
-union does not help.
-
-Verified: grep found the call sites; read confirmed the `#if UNITY_STANDALONE && !UNITY_EDITOR`
-guard; union `dependants` = 0.
-
-Why it matters: any `#if UNITY_STANDALONE*`/desktop-guarded handler (OS focus, file dialogs, desktop
-input) is a guaranteed dead-code FP even when analyzing both Editor and Player. "Wire vs delete" is
-dangerous — these look identically dead.
-
-Fix shape: add a canonical "Standalone"/"DesktopPlayer" profile (or let `defineProfiles` accept a
-target hint that sets `UNITY_STANDALONE` + `UNITY_STANDALONE_WIN/_OSX/_LINUX`). At minimum, have
-`dead_code`/`find_references` emit a "would-be callers exist only under unanalyzed `#if`" hint when a
-symbol's nearest references are behind inactive defines.
-
-## LB-INTAKE-20260608-003 — dead_code flags intentional reference-free scaffolding types
-
-Type: Improvement · Priority: LOW
-Source: DAWG architecture-sealing dogfood 2026-06-08 (Lifeblood v0.7.11, server 1100895)
-Workspace: DAWG
-
-What: `dead_code` flagged Types `DawgToolsPackageAssert` (internal static; `[Conditional("UNITY_EDITOR")]`
-methods that exist only to force asmdef package refs to compile) and `AudioCallbackSchedulerInvariant`
-(internal static holding one `const string Id = "INV-…"` documentation anchor). Both are reference-free
-BY DESIGN.
-
-Verified: read both files; confirmed intentional-scaffolding patterns.
-
-Why it matters: minor triage noise; deleting `DawgToolsPackageAssert` would silently drop a deliberate
-compile-time package guard.
-
-Fix shape: optional `bucket: Scaffolding` for types whose members are all `[Conditional]` and/or whose
-body is only `const` id strings; downrank from dead-code candidates. Documentable instead.
+<!-- LB-INTAKE-20260608-003 (dead_code intentional scaffolding downrank)
+     IMPLEMENTED LOCALLY 2026-06-22. `lifeblood_dead_code` now reports non-public static
+     types whose direct members are exclusively `[Conditional]` methods and/or
+     static const string anchors, plus those direct members, as
+     `bucket:"Scaffolding"` instead of ordinary Production deletion work.
+     Recorded in lifeblood-tracking-archive.md. INV-DEADCODE-SCAFFOLDING-001.
+     Do not re-add here. -->
 
 ## DAWG-side findings (NOT Lifeblood issues — for the DAWG burst owner)
 
@@ -283,123 +115,63 @@ body is only `const` id strings; downrank from dead-code candidates. Documentabl
   reflection). Genuine wire-or-delete candidate: a mixer per-channel waveform-display
   capability built but never connected. Verify intended feature before removing.
 
-<!-- LB-INTAKE-20260611-001 (offline declared-member-count lane) SHIPPED
+<!-- LB-INTAKE-20260611-001 (offline declared-member-count lane) IMPLEMENTED LOCALLY
      2026-06-22 as `lifeblood_member_count` (semantics reflectionDeclared bit-exact
      System.Reflection parity, pinned by an emit-reflect-vs-parse harness; +
-     sourceSymbols graph-child semantics) -> archived as the 2026-06-22 receipt in
+     sourceSymbols graph-child semantics) -> recorded as the 2026-06-22 receipt in
      lifeblood-tracking-archive.md. INV-MEMBER-COUNT-001. Do not re-add here. -->
 
-## LB-INTAKE-20260611-002 — execute: Symbol API misguesses cost iterations; CS1061 errors carry no member hint
+<!-- LB-INTAKE-20260611-002 (execute CS1061 scripting-surface hints) IMPLEMENTED LOCALLY
+     2026-06-22. `RoslynCodeExecutor` now unwraps task-wrapped script
+     compilation errors and appends public member lists plus a `Help` pointer
+     when CS1061 hits a known Lifeblood scripting-surface type. Pinned by
+     `ExecuteRobustnessTests.Executor_Cs1061OnKnownScriptingSurface_AppendsPublicMemberHint`.
+     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
 
-Type: UX · Priority: LOW
-Source: DAWG session 2026-06-11 (Lifeblood v0.7.11), ABG member-count fallback attempt
-Workspace: DAWG
-
-What: First `lifeblood_execute` attempt guessed `s.CanonicalId` /
-`s.ContainingTypeId` on `Symbol` (actual members: `Name`, `Kind`, `ParentId`).
-The failure surfaced as a bare compiler `CS1061` with no nudge toward the
-actual Symbol surface; one extra round-trip to discover the shape by trial.
-
-Why it matters: every execute consumer re-learns the Symbol/Graph object model
-by guessing; canonical-id strings (used everywhere else in the MCP surface)
-don't match the in-script property names, which invites exactly this misguess.
-
-Fix shape: when execute compilation fails with CS1061 on a known Lifeblood
-script-API type (Symbol, Graph, Compilations...), append the type's actual
-public member list (or a one-line `Help` pointer) to the error payload.
-
-## LB-INTAKE-20260611-003 — incremental analyze degrades to full sweep after Unity domain reload (mtime-based change detection)
-
-Type: Optimization · Priority: MEDIUM
-Source: DAWG session 2026-06-11 (Lifeblood v0.7.11), gen-3→gen-4 analyze receipts
-Workspace: DAWG
-
-What: Same-session incremental analyzes touched 431 then 951 changed files
-(10-18s). After a Unity editor restart + several domain reloads, the next
-`incremental:true` analyze reported `changedFileCount: 3741` — every source
-file in the workspace — and took 43.5s wall / 2.2GB peak despite only ~12
-files having real content changes since the prior generation.
-
-Why it matters: Unity touches file metadata wholesale on reimports; an
-mtime-keyed change detector turns routine editor lifecycle events into
-full-graph rebuilds, eating the incremental lane's entire benefit exactly when
-sessions are most active.
-
-Fix shape: content-hash (or size+hash hybrid) change detection for the
-incremental scope decision, with mtime as a cheap pre-filter only (hash check
-on mtime-changed files before counting them as changed). Receipt could then
-report `mtimeTouched` vs `contentChanged` separately.
+<!-- LB-INTAKE-20260611-003 (content-hash incremental reliability) IMPLEMENTED LOCALLY
+     2026-06-22. Incremental analyze now records source text hashes for the
+     parsed files, treats mtime as a pre-filter, updates timestamps on
+     contentless touches without graph replacement, and reports
+     `mtimeTouchedSourceFiles` vs `contentChangedSourceFiles`. Pinned by
+     `IncrementalAnalyzeTests.IncrementalAnalyze_ContentlessTouch_ReportsMtimeTouchWithoutReextracting`.
+     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
 
 <!-- LB-INTAKE-20260611-004 (dead-WIRE audit: read-without-write fields,
      never-assigned binding slots, never-fired/never-subscribed events,
-     degenerate constant-only call sites) FULLY SHIPPED 2026-06-22 as the five
+     degenerate constant-only call sites) IMPLEMENTED LOCALLY 2026-06-22 as the five
      passes of `lifeblood_wire_audit` (a+b 2026-06-21, c+d 2026-06-22) ->
-     archived as the 2026-06-22 receipt in lifeblood-tracking-archive.md.
+     recorded as the 2026-06-22 receipt in lifeblood-tracking-archive.md.
      INV-WIRE-AUDIT-001. Do not re-add here; the id must not live in both files. -->
 
-## LB-INTAKE-20260611-005 — Unity editor sync: domain-reload hook + authoritative changed-set
+<!-- LB-INTAKE-20260611-005 (Unity editor sync authoritative changed-set)
+     IMPLEMENTED LOCALLY 2026-06-22 at the Lifeblood MCP boundary. `lifeblood_analyze`
+     accepts `authoritativeChangedFiles` for incremental analyze; the adapter
+     bounds the source scan to that editor/build-system supplied set and still
+     uses content hashes before replacing graph facts. Descriptor drift checks
+     remain independent. Pinned by
+     `IncrementalAnalyzeTests.IncrementalAnalyze_AuthoritativeChangedFiles_BoundsSourceScanToListedFiles`
+     and `ToolArgumentContractTests.ToolRequestBinder_BindsAnalyzeRequestRecord`.
+     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
 
-Type: Improvement · Priority: MEDIUM (pairs with 20260611-003)
-Source: DAWG session 2026-06-11 (Lifeblood v0.7.11), repeated stale-graph cycles
-Workspace: DAWG
-
-What: Lifeblood and the Unity editor compile independently; after every Unity
-domain reload the graph is stale and the first query in an active session pays
-either a staleness-warning round-trip or (post-restart) the 43.5s mtime
-full-sweep from 20260611-003. The session cadence today was
-edit → refresh_unity → query → manual re-analyze, many times.
-
-Why it matters: in an MCP-driven workflow Unity already KNOWS the
-authoritative changed-set (its compilation pipeline inputs); Lifeblood
-re-derives it badly from mtimes.
-
-Fix shape: (a) an optional Unity-side hook (editor package or MCP custom tool)
-that posts "compilation finished + changed source list" to the Lifeblood
-server, triggering a warm incremental with an exact scope; (b) failing that,
-read `Library/ScriptAssemblies` assembly timestamps to bound which asmdefs
-changed and scope the incremental to their source globs. Either kills both the
-stale-first-query and the full-sweep degradation.
-
-<!-- LB-INTAKE-20260613-001 (call-site argument/default-parameter facts) SHIPPED
+<!-- LB-INTAKE-20260613-001 (call-site argument/default-parameter facts) IMPLEMENTED LOCALLY
      2026-06-21 as the lifeblood_callsite_arguments tool (INV-CALLSITE-ARGS-001)
-     → archived as the 2026-06-21 receipt in lifeblood-tracking-archive.md. -->
+     → recorded as the 2026-06-21 receipt in lifeblood-tracking-archive.md. -->
 
-<!-- LB-INTAKE-20260613-002 (dormant feature-switch / static-flag audit) SHIPPED
-     2026-06-21 as `lifeblood_feature_switch_audit` → archived as the 2026-06-21
+<!-- LB-INTAKE-20260613-002 (dormant feature-switch / static-flag audit) IMPLEMENTED LOCALLY
+     2026-06-21 as `lifeblood_feature_switch_audit` → recorded as the 2026-06-21
      receipt in lifeblood-tracking-archive.md. INV-FEATURE-SWITCH-001. Do not
      re-add here; the id must not live in both files. -->
 
-<!-- LB-INTAKE-20260613-003 (dependants/dependencies grouping + filters) SHIPPED
-     2026-06-21 → archived as the 2026-06-21 receipt in
+<!-- LB-INTAKE-20260613-003 (dependants/dependencies grouping + filters) IMPLEMENTED LOCALLY
+     2026-06-21 → recorded as the 2026-06-21 receipt in
      lifeblood-tracking-archive.md. INV-EDGE-GROUP-001. -->
 
-## LB-INTAKE-20260613-004 — Authority coverage / negative dependency matrix
+<!-- LB-INTAKE-20260613-004 (authority coverage / negative dependency matrix)
+     IMPLEMENTED LOCALLY 2026-06-22 as `lifeblood_authority_coverage` (graph-only
+     subject-vs-authority reachability matrix) -> recorded as the 2026-06-22
+     receipt in lifeblood-tracking-archive.md. INV-AUTHORITY-COVERAGE-001. Do not
+     re-add here; the id must not live in both files. -->
 
-Type: Improvement · Priority: MEDIUM
-Source: DAWG pattern-engine planning pass 2026-06-13 (Lifeblood v0.7.11+1100895), preset-aware generation check
-Workspace: DAWG
-
-What: The pattern plan needed to know whether random generation actually reads
-current instrument preset state. Lifeblood proved `BeatGridState.InstrumentPresets`
-is real state and has production dependants, and source reads proved
-`PatternGeneratorController` generation methods choose pattern shape by genre
-but not by the selected Bass/Groove/Synth/Electric/Vocal/Guitar/Arp preset.
-There is no direct tool for "given this method family, does every method reach
-one of these authority symbols, and which ones do not?"
-
-Why it matters: architecture bugs are often missing dependencies, not extra
-dependencies: a controller compiles and runs, but ignores the intended authority
-(preset, edition, theme, policy, locale, save state). Manual proof requires
-combining `dependants`, `dependencies`, blast radius, and source reads.
-
-Fix shape: new read-side `lifeblood_authority_coverage`:
-inputs are `subjects[]` (methods/types/files) and `requiredAuthority[]`
-(symbols/types/namespaces/files), optional `allowedAlternatives[]`, max depth,
-and bucket filters. Output a matrix of subject -> reaches authority? direct or
-transitive path preview, missing authorities, and first competing authority
-actually used. This complements `wire_audit`: it catches "wired to the wrong or
-incomplete source of truth" rather than zero wiring.
-
-<!-- LB-INTAKE-20260613-005 (intake ledger shape ratchet) SHIPPED 2026-06-21 →
-     archived as the 2026-06-21 receipt in lifeblood-tracking-archive.md.
+<!-- LB-INTAKE-20260613-005 (intake ledger shape ratchet) IMPLEMENTED LOCALLY 2026-06-21 →
+     recorded as the 2026-06-21 receipt in lifeblood-tracking-archive.md.
      Do not re-add here; the id must not live in both files. -->

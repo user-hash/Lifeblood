@@ -17,9 +17,10 @@ Prefer Lifeblood answers over text search when correctness depends on compiler k
 2. Load the workspace with `lifeblood_analyze`.
    - For a normal first load, pass `projectPath`.
    - For a prebuilt JSON graph, pass `graphPath`.
-   - For large read-only triage, consider `readOnly:true`; remember write-side Roslyn tools will then be unavailable.
-   - For Unity cross-define questions, prefer `defineProfiles:["Editor","Player"]` when the server supports it.
-3. After source edits, use `lifeblood_analyze` with `incremental:true`. If the response is `mode:"rejected"` with `canRetryFull:true`, retry with the provided `suggestedRetry` or with `allowFullFallback:true` if widening is acceptable.
+   - For large read-only triage, consider `readOnly:true`; remember write-side Roslyn tools will then be unavailable until a retained full analyze is run.
+   - For Unity cross-define questions, prefer `defineProfiles:["Editor","Player","Standalone"]` when the server supports it; include `Standalone` for desktop guards such as `UNITY_STANDALONE && !UNITY_EDITOR`.
+   - For vendored/sample-heavy workspaces, use `excludePaths` (for example `["Packages/*","*/Samples*/*","*/Examples*/*"]`) when you want those sources excluded before compilation.
+3. After source edits, use `lifeblood_analyze` with `incremental:true`. If your editor or watcher supplies exact changed paths, pass them as `authoritativeChangedFiles` to narrow source scanning. Content hashes decide whether touched files actually re-extract; mtime-only touches can return `mode:"incremental-noop"` with `mtimeTouchedSourceFiles > 0` and `contentChangedSourceFiles == 0`. If the response is `mode:"rejected"` with `canRetryFull:true`, retry with the provided `suggestedRetry` or with `allowFullFallback:true` if widening is acceptable. `fallbackReason:"compilationStateUnavailable"` means a previous `readOnly:true` analysis left no retained Roslyn compilations; run a full retained analyze or allow full fallback before using write-side tools.
 4. Treat read-side `envelope` metadata as part of the answer. Staleness, changed files, confidence, and limitations can change whether an answer is safe to act on.
 
 ## Tool Routing
@@ -32,14 +33,15 @@ Common fast paths:
 - Before refactoring a symbol: `lifeblood_blast_radius groupBy:"both"`, then `lifeblood_dependants` or `lifeblood_find_references` for source locations.
 - Before changing a file: `lifeblood_file_impact`, then `lifeblood_test_impact` on the file.
 - After editing C#: `lifeblood_compile_check filePath`, then `lifeblood_diagnose filePath` if the result or project state is unclear.
-- Before deleting code, pick by reference state — the wiring family: `lifeblood_dead_code` (never referenced), `lifeblood_wire_audit` (referenced but unplugged — field read-without-write, never-assigned slot), `lifeblood_feature_switch_audit` (boolean gates a branch but no reachable code flips it off its default). All three are advisory only; verify with references, source inspection, and tests.
+- Before deleting code, pick by reference state — the wiring family: `lifeblood_dead_code` (never referenced), `lifeblood_wire_audit` (referenced but unplugged — field read-without-write, never-assigned slot), `lifeblood_feature_switch_audit` (boolean gates a branch but no reachable code flips it off its default). All three are advisory only; verify with references, source inspection, and tests. In `dead_code`, fold `bucket:"Vendored"` and `bucket:"Scaffolding"` separately from ordinary Production findings; Scaffolding marks intentional conditional/const-string anchor shapes, not normal deletion work.
+- For Unity/old-format asmdef compile-direction checks: `lifeblood_asmdef_check summarize:true` after a fresh analyze.
 - For architecture rules: `lifeblood_invariant_check mode:"audit"` or `id:"INV-..."`, then read the cited invariant file.
 
 ## Refactor Workflow
 
 1. Identify the target using `resolve_short_name`, `resolve_member`, `symbol_at_position`, or source reading.
 2. Inspect the target with `lookup`, `documentation`, and direct file reads.
-3. Estimate risk with `blast_radius` for symbols or `file_impact` for files. Use grouping to separate Production, Test, Editor, and Generated callers.
+3. Estimate risk with `blast_radius` for symbols or `file_impact` for files. Use grouping to separate Production, Test, Editor, Generated, and Vendored callers.
 4. Find concrete edit sites with `dependants`, `dependencies`, `find_references`, or `partial_view`.
 5. Check applicable invariants with `invariant_check`; read the relevant `docs/invariants/*.md` file before changing an area with pinned architecture rules.
 6. Make the code edit using the repo's normal editing tools.
@@ -52,11 +54,12 @@ Use the Unity bridge tools when working inside Unity MCP, but keep the same sema
 - `lifeblood_analyze_project` is the Unity-side convenience wrapper for project analysis.
 - New `.cs` files are only included after Unity imports them and regenerates project descriptors. If compile-check reports `NotInAnyCompilation` or `NotInModule`, refresh/regenerate Unity project files, then re-analyze.
 - Prefer multi-profile analysis for `#if UNITY_EDITOR` / player-only paths when the task depends on runtime/editor differences.
-- Unity dead-code results account for known MonoBehaviour and Editor reflection entry points, but reflection and message-based dispatch still require manual verification.
+- Use `lifeblood_asmdef_check` when a Unity module may compile only because an undeclared dependency leaked through a merged or stale view.
+- Unity dead-code results account for known MonoBehaviour and Editor reflection entry points plus resolved UnityEvent persistent calls from YAML, but unresolved serialized targets, reflection, and message-based dispatch still require manual verification.
 
 ## Limits And Honesty
 
 - Do not cite stale docs as live truth when `lifeblood_capabilities` or schemas disagree.
 - Do not treat heuristic/advisory tools as deletion authority by themselves.
-- Do not use write-side tools after `readOnly:true` analysis unless the server reports they are available.
+- Do not use write-side tools after `readOnly:true` analysis unless the server reports they are available; recover with a full retained analyze when needed.
 - Do not assume `find_references`, `rename`, or other write-side Roslyn tools cover every define profile in a multi-profile snapshot. They operate on the retained profile and report limitations; use graph-side `dependants` / `dependencies` with `profileFilter` for union-graph questions.

@@ -58,7 +58,7 @@ Assets/Editor/LifebloodBridge.meta
 
 ### Step 4: Verify
 
-Open Unity. The bridge auto-discovers via `[McpForUnityTool]` attributes. All 25 Lifeblood tools should appear alongside Unity MCP's built-in tools.
+Open Unity. The bridge auto-discovers via `[McpForUnityTool]` attributes. The Unity bridge surfaces a curated in-Editor subset of the Lifeblood tools alongside Unity MCP's built-in tools; the standalone `lifeblood-mcp` server exposes the full tool surface.
 
 ## Server Discovery
 
@@ -89,12 +89,12 @@ Streaming compilation with downgrading keeps memory bounded:
 
 | Project size | Peak memory (CLI streaming) | Peak memory (MCP retained) | Graph |
 |---|---|---|---|
-| ~11 modules (Lifeblood itself) | ~220 MB | ~3.5 GB | 2,513 symbols, 12,446 edges (~2 s wall) |
+| ~11 modules (Lifeblood itself) | see `STATUS.md` | see `STATUS.md` | current live counts in `STATUS.md` |
 | ~90 modules (400k LOC Unity project) | ~570 MB | ~3.7 GB | 62,134 symbols, 219,548 edges (~48 s wall) |
 
-Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction (peak stays under 600 MB on a 75-module Unity workspace). The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively, which pushes peak to ~2.5 GB on the same workspace. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools.
+Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction. The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools. To regain write-side tools after a read-only session, run a full retained analyze or retry a `fallbackReason:"compilationStateUnavailable"` incremental rejection with `allowFullFallback:true`.
 
-Measured on AMD Ryzen 9 5950X (16 cores / 32 threads). Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Older docs cited ~4 GB peak - that figure was almost certainly measured against the MCP retained path without noting the distinction, and is closer to the 2.5 GB MCP peak than to the CLI 571 MB peak.
+Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Prefer live receipts in `STATUS.md` over copying old workstation-specific numbers into this setup guide.
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
 
@@ -109,16 +109,48 @@ Each module is compiled, extracted, then downgraded to a lightweight PE metadata
 Lifeblood detects Unity's framework dispatch automatically. `lifeblood_dead_code` does NOT flag:
 
 - **Unity Editor reflection attributes (full roster):** `RuntimeInitializeOnLoadMethod`, `InitializeOnLoad`, `InitializeOnLoadMethod`, `InitializeOnEnterPlayMode`, `DidReloadScripts`, `MenuItem`, `ContextMenu`, `ContextMenuItem`, `CustomEditor`, `CustomPropertyDrawer`, `PropertyDrawer`, `PostProcessBuild`, `PostProcessScene`, `ScriptedImporter`, `OnOpenAsset`, `SettingsProvider`, `SettingsProviderGroup`, `Shortcut`, `Preserve`. Plus native interop: `BurstCompile`, `MonoPInvokeCallback`. Plus the full NUnit / Unity Test Framework lifecycle: `Test`, `TestCase`, `TestCaseSource`, `TestFixture`, `TestFixtureSource`, `Theory`, `SetUp`, `TearDown`, `OneTimeSetUp`, `OneTimeTearDown`, `UnityTest`, `UnitySetUp`, `UnityTearDown`.
-- **MonoBehaviour magic methods:** `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnGUI`, `OnTriggerEnter` and variants, `OnCollisionEnter` and variants, `OnAudioFilterRead`, `OnRenderImage`, `OnDrawGizmos` and variants, full Unity message catalog. Only flagged when the containing type's transitive inheritance chain reaches a Unity message-receiver base: `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, `UnityEngine.StateMachineBehaviour`.
+- **MonoBehaviour magic methods:** `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `Reset`, `OnValidate`, `OnGUI`, `OnTriggerEnter` and variants, `OnCollisionEnter` and variants, `OnAudioFilterRead`, `OnRenderImage`, `OnDrawGizmos` and variants, full Unity message catalog. Only flagged when the containing type's transitive inheritance chain reaches a Unity message-receiver root: `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, `UnityEngine.StateMachineBehaviour`. The chain is Roslyn-resolved, so components deriving through metadata-only framework bases such as Unity UI `Graphic -> UIBehaviour -> MonoBehaviour` are covered without a hardcoded subclass list.
 - **Type-via-child propagation (`LB-FP-003`):** a type is reachable if ANY of its directly-contained members carries an entrypoint attribute. Closes the standard Unity pattern of `[SettingsProvider]` (or any other Unity reflection attr) on a static method inside a host type that otherwise has no incoming references — pre-fix the method became reachable while the host type surfaced as a dead candidate.
 
-The chain walk uses `Symbol.Properties["baseType"]` (set by the C# extractor) so types that inherit directly from `UnityEngine.MonoBehaviour` still resolve - even though the engine DLL itself isn't analyzed source.
+The chain walk uses `Symbol.Properties["baseTypeChain"]` plus the older direct-base `Symbol.Properties["baseType"]` fallback (set by the C# extractor), so types that inherit directly or indirectly from `UnityEngine.MonoBehaviour` still resolve even though the engine DLL itself isn't analyzed source.
 
 **Dogfood vs the consumer workspace (87-module Unity workspace):** dead-code findings 1,095 → 729 (-33%) post-`INV-UNITY-001`, MonoBehaviour-magic FPs 378 → 13 (-97%). Type-level findings 6 → 4 post-`LB-FP-003` (`XRaySettingsProvider` and `MpServiceResets` cleared via the new `[SettingsProvider]` + type-via-child rules). Remaining advisory candidates are structural — UI Toolkit `VisualElement` subclasses with magic-named methods, audio callbacks on non-MonoBehaviour bases, reflection-based dispatch via `Type.GetType` + `MethodInfo.Invoke` — that future tightening can target via custom adapter rosters.
 
 ## Asmdef Edits (`INV-UNITY-002`)
 
 Editing an asmdef without forcing Unity to regenerate the on-disk csproj used to leave the analyzer running against stale module facts. `RoslynWorkspaceAnalyzer.IncrementalAnalyze` now scans every `*.asmdef` under the project root on every incremental call; any addition / removal / mtime change triggers a full re-analyze that round.
+
+## Asmdef Boundary Check (`INV-ASMDEF-CHECK-001`)
+
+`lifeblood_asmdef_check` audits the loaded graph for compile-direction boundary
+violations on Unity/old-format modules. For every cross-module source edge whose
+source module is marked `referenceClosure=DirectOnly`, it checks that the source
+module declares a direct dependency on the target module through the module-level
+`DependsOn` graph edges produced from project discovery.
+
+The response groups violations by source-target module pair and includes the
+first offending source symbol, target symbol, edge kind, call site when present,
+profile set when present, declared dependency list, and offending-edge count.
+SDK-style/transitive modules are skipped because transitive ProjectReference
+closure is valid for those projects. Re-run `lifeblood_analyze` after Unity
+regenerates project descriptors so the module map and references are current.
+
+## Unity Define Profiles (`INV-MULTI-DEFINE-UNITY-RESOLVER-001`)
+
+On Unity workspaces (`Library/` exists at the project root),
+`UnityDefineProfileResolver` exposes three canonical profiles:
+
+- `Editor`: identity profile. Uses the csproj baseline defines.
+- `Player`: removes the Unity editor discriminator family so
+  `#if !UNITY_EDITOR` callsites become active.
+- `Standalone`: removes the same editor discriminators and adds
+  `UNITY_STANDALONE`, covering platform-neutral desktop guards such as
+  `#if UNITY_STANDALONE && !UNITY_EDITOR`.
+
+Use `defineProfiles:["Editor","Player","Standalone"]` for Unity dead-code or
+dependency work when desktop-only guarded code matters. `Standalone` does not
+pretend to be Windows, macOS, or Linux specifically; OS-specific desktop symbols
+belong in a future target-platform profile atom.
 
 ## Execute Robustness on Unity (`INV-EXECUTE-001`)
 
