@@ -7,14 +7,14 @@ name: Release Verification
 # artifacts. Pre-release and hotfix verifications must go through
 # workflow_dispatch (manual) so the operator consciously opts in.
 #
-# NOTE: this workflow VERIFIES a release tag (build + test + dogfood + pack +
-# semver guard) but does NOT push to NuGet. The actual `dotnet nuget push`
-# happens from the maintainer's local machine using a short-lived API key
-# they hold directly. This avoids storing a long-lived publish key as a
-# GitHub Actions secret, which is the canonical attack surface for supply-
-# chain compromise of NuGet packages. The packed .nupkg artifacts are
-# uploaded so the maintainer (or a reviewer) can download them, inspect,
-# and either confirm a local publish or push manually from a trusted host.
+# NOTE: on a pure-semver TAG push this workflow verifies (build + test + dogfood
+# + semver guard), packs, and publishes to NuGet via Trusted Publishing — no
+# stored API key. `NuGet/login` exchanges the job's OIDC id-token for a
+# short-lived key (requires `id-token: write` + a NuGet Trusted Publisher policy
+# matching this repo + workflow file). No long-lived publish secret lives in
+# GitHub, which is the canonical supply-chain attack surface. The push runs only
+# for tag pushes; workflow_dispatch stays verify-only. The packed .nupkg are
+# still uploaded as artifacts for inspection / audit.
 on:
   push:
     tags:
@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write  # OIDC token for NuGet Trusted Publishing (NuGet/login)
     steps:
       - name: Guard — refuse manual run without explicit confirmation
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'verify'
@@ -84,7 +85,22 @@ jobs:
           done
           echo "Pack guard passed — all artifacts are pure semver."
 
-      - name: Upload .nupkg artifacts (for manual publish from a trusted host)
+      - name: NuGet trusted-publish login (OIDC -> short-lived key)
+        if: github.event_name == 'push'
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push packages to NuGet
+        if: github.event_name == 'push'
+        run: >
+          dotnet nuget push ./artifacts/*.nupkg
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+      - name: Upload .nupkg artifacts (for inspection / audit)
         uses: actions/upload-artifact@v4
         with:
           name: lifeblood-${{ github.ref_name }}-nupkg
