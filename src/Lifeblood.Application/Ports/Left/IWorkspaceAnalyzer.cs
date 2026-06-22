@@ -18,6 +18,24 @@ public sealed class AnalysisConfig
     public string[] ExcludePatterns { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Optional anchored glob filters matched against project-relative POSIX
+    /// paths before a source file enters Roslyn compilation. Grammar mirrors
+    /// <c>lifeblood_dead_code pathExclude</c>: <c>*</c> matches any run
+    /// including <c>/</c>, <c>?</c> matches one character, all other
+    /// characters are literal. INV-ANALYZE-EXCLUDEPATHS-001.
+    /// </summary>
+    public string[] ExcludePathGlobs { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Optional authoritative changed-file set supplied by an editor/build
+    /// integration. When non-null, incremental analyze bounds its source-file
+    /// scan to these project-relative or absolute paths instead of deriving
+    /// candidates from every tracked file's mtime. Content hashes still decide
+    /// whether a listed source file actually needs graph replacement.
+    /// </summary>
+    public string[]? AuthoritativeChangedFiles { get; init; }
+
+    /// <summary>
     /// When true, the adapter retains full CSharpCompilation objects after graph extraction.
     /// Required for write-side tools (FindReferences, Rename, Execute, CompileCheck).
     /// When false (default), compilations are downgraded to lightweight metadata references

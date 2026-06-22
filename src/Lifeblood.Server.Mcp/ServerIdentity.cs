@@ -100,6 +100,7 @@ public static class ServerIdentity
                 projectRoot = session.ProjectRoot,
                 retainedProfileName = session.RetainedProfileName,
                 retainedProfileNames = session.RetainedProfileNames,
+                compilationStateRecoveryHint = session.CompilationStateRecoveryHint,
             },
         };
     }
@@ -306,4 +307,5 @@ public sealed record ServerSessionInfo(
     long AnalysisGeneration,
     string ProjectRoot,
     string? RetainedProfileName,
-    string[] RetainedProfileNames);
+    string[] RetainedProfileNames,
+    string? CompilationStateRecoveryHint);

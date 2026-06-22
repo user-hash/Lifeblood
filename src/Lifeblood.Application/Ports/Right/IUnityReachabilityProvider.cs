@@ -15,7 +15,7 @@ namespace Lifeblood.Application.Ports.Right;
 /// hold session state, never mutate the graph, and may consult the
 /// symbol's <see cref="Symbol.Properties"/> dictionary for
 /// extractor-recorded metadata (the C# adapter records
-/// <c>Properties["attributes"]</c> on every method and type for this
+/// <c>Properties["attributes"]</c> and base-chain facts for this
 /// purpose).
 /// </summary>
 public interface IUnityReachabilityProvider

@@ -41,6 +41,20 @@ public sealed record IncrementalAnalyzeResult
     /// For <see cref="IncrementalMode.Rejected"/> this is 0.</summary>
     public int ChangedFileCount { get; init; }
 
+    /// <summary>
+    /// Number of tracked source files whose filesystem mtime changed since
+    /// the prior snapshot. This can be larger than <see cref="ChangedFileCount"/>
+    /// when the file text hash is unchanged (Unity/IDE metadata churn).
+    /// </summary>
+    public int MtimeTouchedFileCount { get; init; }
+
+    /// <summary>
+    /// Number of source files whose content hash changed. Descriptor-triggered
+    /// recompiles can make <see cref="ChangedFileCount"/> positive while this
+    /// remains zero.
+    /// </summary>
+    public int ContentChangedFileCount { get; init; }
+
     /// <summary>Why incremental was downgraded. Populated when
     /// <see cref="Mode"/> is <see cref="IncrementalMode.FullFallback"/>
     /// or <see cref="IncrementalMode.Rejected"/>. Null on the happy path.</summary>
@@ -110,4 +124,21 @@ public enum FallbackReason
     /// adapter-specific descriptor kind (e.g. <c>"asmdef"</c>,
     /// <c>"csproj"</c>).</summary>
     ModuleDescriptorChanged,
+
+    /// <summary>The caller changed analysis-scope inputs that decide which
+    /// files enter the graph, such as <c>excludePaths</c>. Incremental
+    /// replacement cannot safely add or remove cached files under a changed
+    /// scope; the caller must accept a full re-analyze or keep the previous
+    /// scope.</summary>
+    AnalysisScopeChanged,
+
+    /// <summary>
+    /// A previous analyze loaded a graph snapshot but did not retain Roslyn
+    /// compilation state, usually because it was requested with
+    /// <c>readOnly:true</c>. Incremental graph refresh can still be possible,
+    /// but write-side recovery requires a full non-read-only analyze so the
+    /// live compilations, semantic view, executor, and refactoring workspace
+    /// are rebuilt.
+    /// </summary>
+    CompilationStateUnavailable,
 }

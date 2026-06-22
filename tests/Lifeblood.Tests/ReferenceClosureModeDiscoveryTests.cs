@@ -1,5 +1,6 @@
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Graph;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -57,6 +58,7 @@ public class ReferenceClosureModeDiscoveryTests
 
         Assert.Single(modules);
         Assert.Equal(ReferenceClosureMode.DirectOnly, modules[0].ReferenceClosure);
+        Assert.Equal("DirectOnly", modules[0].Properties[SymbolPropertyKeys.ReferenceClosure]);
     }
 
     [Fact]
@@ -76,6 +78,7 @@ public class ReferenceClosureModeDiscoveryTests
 
         Assert.Single(modules);
         Assert.Equal(ReferenceClosureMode.Transitive, modules[0].ReferenceClosure);
+        Assert.Equal("Transitive", modules[0].Properties[SymbolPropertyKeys.ReferenceClosure]);
     }
 
     [Fact]

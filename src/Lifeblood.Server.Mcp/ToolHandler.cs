@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.Ports.Right.Invariants;
@@ -140,6 +141,7 @@ public sealed class ToolHandler
                 "lifeblood_dependants" => HandleDependants(arguments),
                 "lifeblood_blast_radius" => HandleBlastRadius(arguments),
                 "lifeblood_file_impact" => HandleFileImpact(arguments),
+                "lifeblood_asmdef_check" => HandleAsmdefCheck(arguments),
                 "lifeblood_resolve_short_name" => HandleResolveShortName(arguments),
                 "lifeblood_resolve_member" => HandleResolveMember(arguments),
                 "lifeblood_search" => HandleSearch(arguments),
@@ -147,6 +149,7 @@ public sealed class ToolHandler
                 "lifeblood_partial_view" => HandlePartialView(arguments),
                 "lifeblood_invariant_check" => HandleInvariantCheck(arguments),
                 "lifeblood_authority_report" => HandleAuthorityReport(arguments),
+                "lifeblood_authority_coverage" => HandleAuthorityCoverage(arguments),
                 "lifeblood_port_health" => HandlePortHealth(arguments),
                 "lifeblood_cycles" => HandleCycles(arguments),
                 "lifeblood_test_impact" => HandleTestImpact(arguments),
@@ -167,6 +170,7 @@ public sealed class ToolHandler
                 "lifeblood_wire_audit" => WrapWriteSide("lifeblood_wire_audit", _write.HandleWireAudit(arguments)),
                 "lifeblood_feature_switch_audit" => WrapWriteSide("lifeblood_feature_switch_audit", _write.HandleFeatureSwitchAudit(arguments)),
                 "lifeblood_member_count" => WrapWriteSide("lifeblood_member_count", _write.HandleMemberCount(arguments)),
+                "lifeblood_struct_layout" => WrapWriteSide("lifeblood_struct_layout", _write.HandleStructLayout(arguments)),
                 "lifeblood_symbol_at_position" => WrapWriteSide("lifeblood_symbol_at_position", _write.HandleGetSymbolAtPosition(arguments)),
                 "lifeblood_documentation" => WrapWriteSide("lifeblood_documentation", _write.HandleGetDocumentation(arguments)),
                 "lifeblood_rename" => WrapWriteSide("lifeblood_rename", _write.HandleRename(arguments)),
@@ -212,7 +216,8 @@ public sealed class ToolHandler
             AnalysisGeneration: _session.AnalysisGeneration,
             ProjectRoot: _session.ProjectRoot,
             RetainedProfileName: _session.RetainedProfileName,
-            RetainedProfileNames: _session.RetainedProfileNames.ToArray());
+            RetainedProfileNames: _session.RetainedProfileNames.ToArray(),
+            CompilationStateRecoveryHint: _session.CompilationStateRecoveryHint);
 
         return TextResult(WithEnvelope("lifeblood_capabilities", ServerIdentity.BuildCapabilities(sessionInfo)));
     }
@@ -230,7 +235,9 @@ public sealed class ToolHandler
                 request.Incremental,
                 request.ReadOnly,
                 request.AllowFullFallback,
-                request.DefineProfiles);
+                request.DefineProfiles,
+                request.ExcludePaths,
+                request.AuthoritativeChangedFiles);
             RecordAnalyzeTelemetry(result);
             return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
         }
@@ -909,9 +916,9 @@ public sealed class ToolHandler
             kindBreakdown[key] = c + 1;
         }
 
-        // Per-bucket breakdown — Production / Test / Editor / Generated
-        // counts in one map so a caller can fold the giant Editor or
-        // Generated tail in one pass instead of post-processing the
+        // Per-bucket breakdown — Production / Test / Editor / Generated / Vendored / Scaffolding
+        // counts in one map so a caller can fold non-production tails in
+        // one pass instead of post-processing the
         // findings array. INV-DEADCODE-TRIAGE-001.
         var bucketBreakdown = new Dictionary<string, int>(System.StringComparer.Ordinal);
         foreach (var f in findings)
@@ -1191,6 +1198,151 @@ public sealed class ToolHandler
         var report = _authority.Analyze(_session.Graph!, resolved.CanonicalId);
         return TextResult(WithEnvelope("lifeblood_authority_report", report));
     }
+
+    private McpToolResult HandleAuthorityCoverage(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var subjectInputs = ReadStringArray(args, "subjects");
+        if (subjectInputs == null || subjectInputs.Length == 0)
+            return ErrorResult("subjects is required (non-empty string array)");
+
+        var requiredInputs = ReadStringArray(args, "requiredAuthority");
+        if (requiredInputs == null || requiredInputs.Length == 0)
+            return ErrorResult("requiredAuthority is required (non-empty string array)");
+
+        var subjects = ResolveAuthorityCoverageInputs(subjectInputs, "subjects", out var subjectError);
+        if (subjectError != null) return subjectError;
+
+        var required = ResolveAuthorityCoverageInputs(requiredInputs, "requiredAuthority", out var requiredError);
+        if (requiredError != null) return requiredError;
+
+        var alternativeInputs = ReadStringArray(args, "allowedAlternatives") ?? Array.Empty<string>();
+        var alternatives = ResolveAuthorityCoverageInputs(alternativeInputs, "allowedAlternatives", out var alternativeError);
+        if (alternativeError != null) return alternativeError;
+
+        var maxDepth = WriteToolHandler.GetInt(args, "maxDepth") ?? 6;
+        if (maxDepth < 0) maxDepth = 0;
+
+        var options = new AuthorityCoverageOptions
+        {
+            Subjects = subjects!,
+            RequiredAuthorities = required!,
+            AllowedAlternatives = alternatives ?? Array.Empty<AuthorityCoverageInput>(),
+            MaxDepth = maxDepth,
+            ExcludeTests = WriteToolHandler.GetBool(args, "excludeTests") ?? false,
+            ExcludeGenerated = WriteToolHandler.GetBool(args, "excludeGenerated") ?? false,
+            IncludeBuckets = ReadStringArray(args, "includeBuckets"),
+        };
+
+        var report = AuthorityCoverageAnalyzer.Analyze(_session.Graph!, options);
+        return TextResult(WithEnvelope("lifeblood_authority_coverage", report));
+    }
+
+    private McpToolResult HandleAsmdefCheck(JsonElement? args)
+    {
+        if (!_session.IsLoaded)
+            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
+
+        var report = AsmdefBoundaryAnalyzer.Analyze(_session.Graph!, new AsmdefBoundaryOptions
+        {
+            Summarize = WriteToolHandler.GetBool(args, "summarize") ?? false,
+            MaxResults = WriteToolHandler.GetInt(args, "maxResults") ?? AsmdefBoundaryOptions.DefaultMaxResults,
+            ExcludeTests = WriteToolHandler.GetBool(args, "excludeTests") ?? false,
+            ExcludeGenerated = WriteToolHandler.GetBool(args, "excludeGenerated") ?? false,
+        });
+
+        return TextResult(WithEnvelope("lifeblood_asmdef_check", report));
+    }
+
+    private AuthorityCoverageInput[]? ResolveAuthorityCoverageInputs(
+        string[] inputs,
+        string argumentName,
+        out McpToolResult? error)
+    {
+        var resolvedInputs = new List<AuthorityCoverageInput>(inputs.Length);
+        foreach (var input in inputs)
+        {
+            if (string.IsNullOrWhiteSpace(input)) continue;
+            var raw = input.Trim();
+
+            var resolved = _resolver.Resolve(_session.Graph!, raw);
+            if (resolved.CanonicalId != null)
+            {
+                var sym = resolved.Symbol ?? _session.Graph!.GetSymbol(resolved.CanonicalId);
+                resolvedInputs.Add(new AuthorityCoverageInput
+                {
+                    Input = raw,
+                    Id = resolved.CanonicalId,
+                    Kind = sym?.Kind.ToString() ?? AuthorityCoverageInputKind.Symbol,
+                    FilePath = sym?.FilePath ?? "",
+                });
+                continue;
+            }
+
+            if (TryResolveAuthorityFileInput(raw, out var fileInput))
+            {
+                resolvedInputs.Add(fileInput);
+                continue;
+            }
+
+            error = ErrorResult($"{argumentName} entry not found: {raw}. Pass a canonical/qualified/short symbol id or a file path.");
+            return null;
+        }
+
+        error = null;
+        return resolvedInputs.ToArray();
+    }
+
+    private bool TryResolveAuthorityFileInput(string raw, out AuthorityCoverageInput input)
+    {
+        var filePath = raw.StartsWith("file:", StringComparison.Ordinal)
+            ? raw.Substring("file:".Length)
+            : raw;
+
+        var normalized = NormalizeCoveragePath(filePath);
+        var fileSymbol = _session.Graph!.Symbols
+            .FirstOrDefault(s => s.Kind == SymbolKind.File
+                && NormalizeCoveragePath(s.FilePath) == normalized);
+        if (fileSymbol != null)
+        {
+            input = new AuthorityCoverageInput
+            {
+                Input = raw,
+                Id = fileSymbol.Id,
+                Kind = AuthorityCoverageInputKind.File,
+                FilePath = fileSymbol.FilePath,
+            };
+            return true;
+        }
+
+        var hasAnySymbolInFile = _session.Graph!.Symbols
+            .Any(s => NormalizeCoveragePath(s.FilePath) == normalized);
+        if (hasAnySymbolInFile || LooksPathish(raw))
+        {
+            input = new AuthorityCoverageInput
+            {
+                Input = raw,
+                Id = filePath,
+                Kind = AuthorityCoverageInputKind.File,
+                FilePath = filePath,
+            };
+            return true;
+        }
+
+        input = null!;
+        return false;
+    }
+
+    private static bool LooksPathish(string raw)
+        => raw.StartsWith("file:", StringComparison.Ordinal)
+            || raw.Contains('/')
+            || raw.Contains('\\')
+            || raw.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeCoveragePath(string path)
+        => path.Replace('\\', '/').TrimStart('/').ToLowerInvariant();
 
     private McpToolResult HandlePortHealth(JsonElement? args)
     {

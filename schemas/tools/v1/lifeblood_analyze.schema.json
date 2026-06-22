@@ -15,7 +15,7 @@
     },
     "incremental": {
       "type": "boolean",
-      "description": "When true, only recompiles modules with changed files since the last analysis. Much faster for iterative work. If the adapter detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited), the response is REJECTED unless \u0060allowFullFallback\u0060 is also true. Caller-owned scope policy. Default: false."
+      "description": "When true, only recompiles modules with changed files since the last analysis. Much faster for iterative work. If the adapter detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited, analysis-scope excludePath set changed), the response is REJECTED unless \u0060allowFullFallback\u0060 is also true. Caller-owned scope policy. Default: false."
     },
     "readOnly": {
       "type": "boolean",
@@ -30,7 +30,21 @@
       "items": {
         "type": "string"
       },
-      "description": "Optional. Define-profile names to analyze under. Null / empty = single-profile back-compat (default Editor identity, wire shape byte-stable with pre-Wave-6). Non-empty = multi-profile union analyze: the adapter compiles every module once per active profile and unions edges. On Unity workspaces (\u0060Library/\u0060 exists) the canonical 2-profile MVP is \u0060[\u0022Editor\u0022, \u0022Player\u0022]\u0060 \u2014 Player flips \u0060#if !UNITY_EDITOR\u0060 callsites from inactive to active. Unknown profile names throw eagerly. Response summary carries \u0060profileCount\u0060 \u002B \u0060activeProfiles\u0060 \u002B \u0060perProfileEdgeCounts\u0060; edges in dependants/dependencies responses carry \u0060profiles[]\u0060. INV-MULTI-DEFINE-ANALYZE-001."
+      "description": "Optional. Define-profile names to analyze under. Null / empty = single-profile back-compat (default Editor identity, wire shape byte-stable with pre-Wave-6). Non-empty = multi-profile union analyze: the adapter compiles every module once per active profile and unions edges. On Unity workspaces (\u0060Library/\u0060 exists) the canonical profile vocabulary is \u0060[\u0022Editor\u0022, \u0022Player\u0022, \u0022Standalone\u0022]\u0060: Player flips \u0060#if !UNITY_EDITOR\u0060 callsites; Standalone also adds \u0060UNITY_STANDALONE\u0060 for platform-neutral desktop guards such as \u0060#if UNITY_STANDALONE \u0026\u0026 !UNITY_EDITOR\u0060. Unknown profile names throw eagerly. Response summary carries \u0060profileCount\u0060 \u002B \u0060activeProfiles\u0060 \u002B \u0060perProfileEdgeCounts\u0060; edges in dependants/dependencies responses carry \u0060profiles[]\u0060. INV-MULTI-DEFINE-ANALYZE-001."
+    },
+    "excludePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional. Project-relative POSIX path globs to exclude before source files enter Roslyn compilation (for vendored/sample trees such as \u0060*/Examples*/*\u0060, \u0060*/Samples*/*\u0060, or \u0060Packages/*\u0060). Globs are anchored to the full project-relative path; \u0060*\u0060 matches any run including \u0060/\u0060, \u0060?\u0060 matches one character. Changing this set on an incremental analyze returns \u0060fallbackReason:\u0027analysisScopeChanged\u0027\u0060 unless \u0060allowFullFallback:true\u0060 is supplied. INV-ANALYZE-EXCLUDEPATHS-001."
+    },
+    "authoritativeChangedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional. For incremental analyze, an editor/build-system-provided set of project-relative or absolute changed source paths. When supplied, Lifeblood bounds the source-file scan to this set while still using content hashes to decide whether listed files actually need graph replacement. Descriptor drift checks still run independently."
     }
   }
 }

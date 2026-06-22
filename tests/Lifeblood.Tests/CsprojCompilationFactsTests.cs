@@ -433,4 +433,119 @@ public class CsprojCompilationFactsTests
         }
         finally { Directory.Delete(tempDir, true); }
     }
+
+    [Fact]
+    public void Compilation_RunsFrameworkSourceGenerators_ConcurrentAnalyses_AreDeterministic()
+    {
+        var roots = Enumerable.Range(0, 3)
+            .Select(_ => CreateJsonContextProject())
+            .ToArray();
+
+        try
+        {
+            var failures = new System.Collections.Concurrent.ConcurrentBag<string>();
+            Parallel.ForEach(roots, root =>
+            {
+                try
+                {
+                    var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem());
+                    analyzer.AnalyzeWorkspace(root, new AnalysisConfig { RetainCompilations = true });
+                    var compilation = analyzer.Compilations!["Test"];
+                    var context = compilation.GetTypeByMetadataName("Test.MyContext");
+                    if (context == null || context.GetMembers("Payload").Length == 0)
+                        failures.Add("Generated Payload metadata missing.");
+
+                    foreach (var diagnostic in compilation.GetDiagnostics()
+                        .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error))
+                    {
+                        failures.Add(diagnostic.ToString());
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failures.Add(ex.ToString());
+                }
+            });
+
+            Assert.Empty(failures);
+        }
+        finally
+        {
+            foreach (var root in roots)
+                try { Directory.Delete(root, true); } catch { }
+        }
+
+        static string CreateJsonContextProject()
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-sg-conc-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDir);
+            File.WriteAllText(Path.Combine(tempDir, "Program.cs"), """
+                using System.Text.Json.Serialization;
+
+                namespace Test;
+
+                public sealed record Payload(int Id);
+
+                [JsonSerializable(typeof(Payload))]
+                public partial class MyContext : JsonSerializerContext
+                {
+                }
+                """);
+            File.WriteAllText(Path.Combine(tempDir, "Test.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <AssemblyName>Test</AssemblyName>
+    <TargetFramework>" + CurrentTestTargetFramework() + @"</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>");
+            return tempDir;
+        }
+    }
+
+    [Fact]
+    public void Compilation_ExcludePathGlobs_DropsMatchingSourceBeforeGraphExtraction()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-exclude-paths-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "Keep.cs"), """
+                namespace Test;
+                public class Keep { }
+                """);
+
+            var vendoredDir = Path.Combine(tempDir, "Assets", "TextMesh Pro", "Examples & Extras");
+            Directory.CreateDirectory(vendoredDir);
+            var vendoredPath = Path.Combine(vendoredDir, "Demo.cs");
+            File.WriteAllText(vendoredPath, """
+                namespace Test;
+                public class VendoredDemo { }
+                """);
+
+            File.WriteAllText(Path.Combine(tempDir, "Test.csproj"), @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <AssemblyName>Test</AssemblyName>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+</Project>");
+
+            var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem());
+            var graph = analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig
+            {
+                RetainCompilations = true,
+                ExcludePathGlobs = new[] { "*/Examples*/*" },
+            });
+
+            Assert.Contains(graph.Symbols, s => s.Kind == Lifeblood.Domain.Graph.SymbolKind.Type && s.Id == "type:Test.Keep");
+            Assert.DoesNotContain(graph.Symbols, s => s.Id == "type:Test.VendoredDemo");
+
+            var compilation = analyzer.Compilations!["Test"];
+            Assert.DoesNotContain(compilation.SyntaxTrees, tree =>
+                string.Equals(tree.FilePath, vendoredPath, StringComparison.OrdinalIgnoreCase));
+        }
+        finally { Directory.Delete(tempDir, true); }
+    }
 }

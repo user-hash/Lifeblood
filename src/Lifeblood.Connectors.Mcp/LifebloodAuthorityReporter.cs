@@ -60,7 +60,7 @@ public sealed class LifebloodAuthorityReporter : IAuthorityReporter
             {
                 totalMethodCount++;
                 if (member.Properties != null
-                    && member.Properties.TryGetValue("classification", out var cls))
+                    && member.Properties.TryGetValue(SymbolPropertyKeys.Classification, out var cls))
                 {
                     sawAnyClassification = true;
                     if (string.Equals(cls, "PureForwarder", System.StringComparison.Ordinal))

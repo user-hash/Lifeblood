@@ -18,7 +18,7 @@ public interface IDefineProfileResolver
 /// </summary>
 public sealed class DefineProfile
 {
-    /// <summary>Canonical profile name. e.g. "Editor", "Player".</summary>
+    /// <summary>Canonical profile name. e.g. "Editor", "Player", "Standalone".</summary>
     public required string Name { get; init; }
 
     /// <summary>Symbols added relative to baseline.</summary>

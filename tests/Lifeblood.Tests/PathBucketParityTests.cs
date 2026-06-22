@@ -34,18 +34,23 @@ public class PathBucketParityTests
         => Assert.Equal((int)PathBucket.Generated, (int)DeadCodeBucket.Generated);
 
     [Fact]
-    public void MemberCount_Matches()
+    public void Vendored_IntegerValues_Match()
+        => Assert.Equal((int)PathBucket.Vendored, (int)DeadCodeBucket.Vendored);
+
+    [Fact]
+    public void DeadCodeBucket_HasOneAdditionalScaffoldingBucket()
     {
-        // Both enums must have the same number of members so any new bucket
-        // added to one forces the other to follow. Off-by-one drift is the
-        // most common parity break.
+        // DeadCodeBucket mirrors every shared path bucket, then adds one
+        // dead_code-specific symbol-shape bucket. Scaffolding is not a path
+        // classification and must not leak into PathBucketClassifier.
         var pathBucketCount = System.Enum.GetValues(typeof(PathBucket)).Length;
         var deadCodeBucketCount = System.Enum.GetValues(typeof(DeadCodeBucket)).Length;
-        Assert.Equal(pathBucketCount, deadCodeBucketCount);
+        Assert.Equal(pathBucketCount + 1, deadCodeBucketCount);
+        Assert.Equal(5, (int)DeadCodeBucket.Scaffolding);
     }
 
     [Fact]
-    public void NameSet_Matches()
+    public void SharedPathNameSet_IsContainedInDeadCodeBucket()
     {
         // Defensive: also pin member NAMES so a future rename on one side
         // (e.g. "Test" → "TestCode") flags as a parity break instead of
@@ -55,8 +60,9 @@ public class PathBucketParityTests
         // starts emitting strings DeadCodeBucket no longer recognizes.
         var pathNames = System.Enum.GetNames(typeof(PathBucket));
         var deadCodeNames = System.Enum.GetNames(typeof(DeadCodeBucket));
-        System.Array.Sort(pathNames);
-        System.Array.Sort(deadCodeNames);
-        Assert.Equal(pathNames, deadCodeNames);
+        foreach (var name in pathNames)
+            Assert.Contains(name, deadCodeNames);
+
+        Assert.Contains(nameof(DeadCodeBucket.Scaffolding), deadCodeNames);
     }
 }

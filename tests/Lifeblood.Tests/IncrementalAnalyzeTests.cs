@@ -135,6 +135,65 @@ public class IncrementalAnalyzeTests : IDisposable
     }
 
     [Fact]
+    public void IncrementalAnalyze_ContentlessTouch_ReportsMtimeTouchWithoutReextracting()
+    {
+        var filePath = WriteSingleFileProject("public class Foo { public void Keep() { } }");
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        var graph1 = analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        Thread.Sleep(50);
+        File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow.AddSeconds(2));
+
+        var r = analyzer.IncrementalAnalyze(_config);
+
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.Equal(0, r.ChangedFileCount);
+        Assert.Equal(1, r.MtimeTouchedFileCount);
+        Assert.Equal(0, r.ContentChangedFileCount);
+        Assert.NotNull(r.Graph);
+        Assert.Equal(graph1.Symbols.Count, r.Graph!.Symbols.Count);
+        Assert.Contains(r.Graph.Symbols, s => s.Name == "Keep" && s.Kind == SymbolKind.Method);
+    }
+
+    [Fact]
+    public void IncrementalAnalyze_AuthoritativeChangedFiles_BoundsSourceScanToListedFiles()
+    {
+        WriteTwoFileProject(
+            "public class Stable { public void Keep() { } }",
+            "public class Dynamic { }");
+
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        var dynamicPath = Path.Combine(_tempDir, "Dynamic.cs");
+        Thread.Sleep(50);
+        File.WriteAllText(dynamicPath, "public class Dynamic { public int Added { get; set; } }");
+
+        var wrongSet = new AnalysisConfig
+        {
+            RetainCompilations = true,
+            AuthoritativeChangedFiles = new[] { "Stable.cs" },
+        };
+        var ignored = analyzer.IncrementalAnalyze(wrongSet);
+
+        Assert.Equal(IncrementalMode.Incremental, ignored.Mode);
+        Assert.Equal(0, ignored.ChangedFileCount);
+        Assert.DoesNotContain(ignored.Graph!.Symbols, s => s.Name == "Added");
+
+        var correctSet = new AnalysisConfig
+        {
+            RetainCompilations = true,
+            AuthoritativeChangedFiles = new[] { dynamicPath },
+        };
+        var detected = analyzer.IncrementalAnalyze(correctSet);
+
+        Assert.Equal(IncrementalMode.Incremental, detected.Mode);
+        Assert.Equal(1, detected.ChangedFileCount);
+        Assert.Equal(1, detected.ContentChangedFileCount);
+        Assert.Contains(detected.Graph!.Symbols, s => s.Name == "Added" && s.Kind == SymbolKind.Property);
+    }
+
+    [Fact]
     public void IncrementalAnalyze_FileEdgesUpdated()
     {
         // Initial: Foo references Bar

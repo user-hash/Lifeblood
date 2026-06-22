@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Adapters.CSharp;
@@ -406,6 +407,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 Properties = new Dictionary<string, string>
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),
+                    [SymbolPropertyKeys.ReferenceClosure] = referenceClosure.ToString(),
                 },
             };
         }

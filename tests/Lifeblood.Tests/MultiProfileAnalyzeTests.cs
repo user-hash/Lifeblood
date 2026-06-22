@@ -231,4 +231,54 @@ public class MultiProfileAnalyzeTests
             Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public void UnityStandaloneProfile_ActivatesStandaloneNotEditorCallsites()
+    {
+        var fs = new PhysicalFileSystem();
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-standalone-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        Directory.CreateDirectory(Path.Combine(tempDir, "Library"));
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "Standalone.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net8.0</TargetFramework>
+                    <DefineConstants>UNITY_EDITOR;UNITY_EDITOR_WIN;UNITY_2023</DefineConstants>
+                  </PropertyGroup>
+                </Project>
+                """);
+            File.WriteAllText(Path.Combine(tempDir, "DesktopFocus.cs"), """
+                namespace App;
+                public sealed class DesktopFocus
+                {
+                    public void OnApplicationFocus()
+                    {
+                #if UNITY_STANDALONE && !UNITY_EDITOR
+                        HandleDesktopFocusLost();
+                #endif
+                    }
+
+                    private void HandleDesktopFocusLost() { }
+                }
+                """);
+
+            var analyzer = new RoslynWorkspaceAnalyzer(fs, new UnityDefineProfileResolver(fs));
+            var graph = analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig
+            {
+                DefineProfiles = new[] { "Editor", "Standalone" },
+            });
+
+            var edge = graph.Edges.Single(e =>
+                e.Kind == EdgeKind.Calls
+                && e.SourceId == "method:App.DesktopFocus.OnApplicationFocus()"
+                && e.TargetId == "method:App.DesktopFocus.HandleDesktopFocusLost()");
+            Assert.Equal(new[] { "Standalone" }, edge.Profiles);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }

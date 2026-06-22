@@ -180,7 +180,7 @@ public class UnityReachabilityTests
                 Kind = DomainSymbolKind.Type,
                 Properties = new System.Collections.Generic.Dictionary<string, string>
                 {
-                    ["baseType"] = "UnityEngine.MonoBehaviour",
+                    [SymbolPropertyKeys.BaseType] = "UnityEngine.MonoBehaviour",
                 },
             })
             .AddSymbol(new Symbol
@@ -213,7 +213,7 @@ public class UnityReachabilityTests
                 Kind = DomainSymbolKind.Type,
                 Properties = new System.Collections.Generic.Dictionary<string, string>
                 {
-                    ["baseType"] = "UnityEngine.MonoBehaviour",
+                    [SymbolPropertyKeys.BaseType] = "UnityEngine.MonoBehaviour",
                 },
             })
             .AddSymbol(new Symbol
@@ -224,7 +224,7 @@ public class UnityReachabilityTests
                 Kind = DomainSymbolKind.Type,
                 Properties = new System.Collections.Generic.Dictionary<string, string>
                 {
-                    ["baseType"] = "App.Character",
+                    [SymbolPropertyKeys.BaseType] = "App.Character",
                 },
             })
             .AddSymbol(new Symbol
@@ -242,18 +242,21 @@ public class UnityReachabilityTests
     }
 
     [Fact]
-    public void Extractor_RecordsBaseTypeFqn_OnPropertiesDictionary()
+    public void Extractor_RecordsResolvedBaseTypeChain_OnPropertiesDictionary()
     {
         var (model, root) = Compile(@"
-namespace App;
-public class Animal { }
-public class Dog : Animal { }");
+namespace UnityEngine { public class MonoBehaviour { } }
+namespace UnityEngine.EventSystems { public class UIBehaviour : UnityEngine.MonoBehaviour { } }
+namespace UnityEngine.UI { public class Graphic : UnityEngine.EventSystems.UIBehaviour { } }
+namespace App { public class VUMeter : UnityEngine.UI.Graphic { } }");
 
         var symbols = new RoslynSymbolExtractor().Extract(model, root, "Pet.cs", "file:Pet.cs");
-        var dog = symbols.FirstOrDefault(s => s.Name == "Dog" && s.Kind == DomainSymbolKind.Type);
-        Assert.NotNull(dog);
-        Assert.True(dog!.Properties.TryGetValue("baseType", out var b));
-        Assert.Equal("App.Animal", b);
+        var vumeter = symbols.FirstOrDefault(s => s.Name == "VUMeter" && s.Kind == DomainSymbolKind.Type);
+        Assert.NotNull(vumeter);
+        Assert.True(vumeter!.Properties.TryGetValue(SymbolPropertyKeys.BaseType, out var b));
+        Assert.Equal("UnityEngine.UI.Graphic", b);
+        Assert.True(vumeter.Properties.TryGetValue(SymbolPropertyKeys.BaseTypeChain, out var chain));
+        Assert.Equal("UnityEngine.UI.Graphic;UnityEngine.EventSystems.UIBehaviour;UnityEngine.MonoBehaviour", chain);
     }
 
     [Fact]
@@ -266,7 +269,7 @@ public class Plain { }");
         var symbols = new RoslynSymbolExtractor().Extract(model, root, "Plain.cs", "file:Plain.cs");
         var t = symbols.FirstOrDefault(s => s.Name == "Plain" && s.Kind == DomainSymbolKind.Type);
         Assert.NotNull(t);
-        Assert.False(t!.Properties.ContainsKey("baseType"),
+        Assert.False(t!.Properties.ContainsKey(SymbolPropertyKeys.BaseType),
             "System.Object should not be recorded — every class derives from it, would be noise.");
     }
 
@@ -347,6 +350,59 @@ public class Plain { }");
     }
 
     [Fact]
+    public void DeadCodeAnalyzer_WithUnityProvider_ExcludesUnityUiMagicMethods()
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:App.VUMeter",
+                Name = "VUMeter",
+                QualifiedName = "App.VUMeter",
+                Kind = DomainSymbolKind.Type,
+                Properties = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    [SymbolPropertyKeys.BaseType] = "UnityEngine.UI.Graphic",
+                    [SymbolPropertyKeys.BaseTypeChain] = "UnityEngine.UI.Graphic;UnityEngine.EventSystems.UIBehaviour;UnityEngine.MonoBehaviour",
+                },
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:App.VUMeter.Update()",
+                Name = "Update",
+                Kind = DomainSymbolKind.Method,
+                ParentId = "type:App.VUMeter",
+                Visibility = Visibility.Internal,
+                FilePath = "VUMeter.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:App.VUMeter.Reset()",
+                Name = "Reset",
+                Kind = DomainSymbolKind.Method,
+                ParentId = "type:App.VUMeter",
+                Visibility = Visibility.Internal,
+                FilePath = "VUMeter.cs",
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:App.VUMeter.Helper()",
+                Name = "Helper",
+                Kind = DomainSymbolKind.Method,
+                ParentId = "type:App.VUMeter",
+                Visibility = Visibility.Internal,
+                FilePath = "VUMeter.cs",
+            })
+            .Build();
+
+        var analyzer = new LifebloodDeadCodeAnalyzer(new UnityReachabilityAdapter());
+        var findings = analyzer.FindDeadCode(graph, new DeadCodeOptions());
+
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "method:App.VUMeter.Update()");
+        Assert.DoesNotContain(findings, f => f.CanonicalId == "method:App.VUMeter.Reset()");
+        Assert.Contains(findings, f => f.CanonicalId == "method:App.VUMeter.Helper()");
+    }
+
+    [Fact]
     public void DeadCodeAnalyzer_WithoutUnityProvider_StillFlagsMagicMethodsAsDead()
     {
         // No provider injected — analyzer behaves as it did pre-P3.
@@ -368,6 +424,112 @@ public class Plain { }");
         var analyzer = new LifebloodDeadCodeAnalyzer();
         var findings = analyzer.FindDeadCode(graph, new DeadCodeOptions());
         Assert.Contains(findings, f => f.CanonicalId == "method:App.Player.Update()");
+    }
+
+    [Fact]
+    public void Adapter_UnityEventPersistentCall_WithAssemblyTypeName_FlaggedAsReachable()
+    {
+        var (root, scriptPath) = CreateUnityAssetFixture(
+            prefabBody: @"
+--- !u!1 &1000
+GameObject:
+  m_Name: Button
+--- !u!114 &2000
+MonoBehaviour:
+  m_Script: {fileID: 11500000, guid: abcdef1234567890abcdef1234567890, type: 3}
+  onClick:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2000}
+        m_TargetAssemblyTypeName: App.ClickHandler, Assembly-CSharp
+        m_MethodName: OnClicked
+        m_Mode: 1
+");
+        try
+        {
+            var graph = UnityEventGraph(scriptPath);
+            var sym = graph.GetSymbol("method:App.ClickHandler.OnClicked()")!;
+
+            var hit = new UnityReachabilityAdapter(new PhysicalFileSystem())
+                .IsRuntimeReachable(graph, sym, out var reason);
+
+            Assert.True(hit, reason);
+            Assert.Contains("UnityEvent", reason);
+            Assert.Contains("Assets/Prefabs/Button.prefab", reason);
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Adapter_UnityEventPersistentCall_ResolvesTargetFileIdThroughScriptGuid()
+    {
+        var (root, scriptPath) = CreateUnityAssetFixture(
+            prefabBody: @"
+--- !u!1 &1000
+GameObject:
+  m_Name: Button
+--- !u!114 &2000
+MonoBehaviour:
+  m_Script: {fileID: 11500000, guid: abcdef1234567890abcdef1234567890, type: 3}
+  callback:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2000}
+        m_TargetAssemblyTypeName:
+        m_MethodName: OnClicked
+        m_Mode: 1
+");
+        try
+        {
+            var graph = UnityEventGraph(scriptPath);
+            var sym = graph.GetSymbol("method:App.ClickHandler.OnClicked()")!;
+
+            var hit = new UnityReachabilityAdapter(new PhysicalFileSystem())
+                .IsRuntimeReachable(graph, sym, out var reason);
+
+            Assert.True(hit, reason);
+            Assert.Contains("UnityEvent", reason);
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DeadCodeAnalyzer_WithUnityProvider_ExcludesUnityEventTargetsAndHostType()
+    {
+        var (root, scriptPath) = CreateUnityAssetFixture(
+            prefabBody: @"
+--- !u!114 &2000
+MonoBehaviour:
+  m_Script: {fileID: 11500000, guid: abcdef1234567890abcdef1234567890, type: 3}
+  callback:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2000}
+        m_TargetAssemblyTypeName: App.ClickHandler, Assembly-CSharp
+        m_MethodName: OnClicked
+        m_Mode: 1
+");
+        try
+        {
+            var graph = UnityEventGraph(scriptPath);
+            var analyzer = new LifebloodDeadCodeAnalyzer(new UnityReachabilityAdapter(new PhysicalFileSystem()));
+
+            var findings = analyzer.FindDeadCode(graph, new DeadCodeOptions());
+
+            Assert.DoesNotContain(findings, f => f.CanonicalId == "type:App.ClickHandler");
+            Assert.DoesNotContain(findings, f => f.CanonicalId == "method:App.ClickHandler.OnClicked()");
+            Assert.Contains(findings, f => f.CanonicalId == "method:App.ClickHandler.Unused()");
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -416,6 +578,57 @@ public class Config { }");
             new[] { tree }, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         return (compilation.GetSemanticModel(tree), tree.GetRoot());
+    }
+
+    private static (string Root, string ScriptPath) CreateUnityAssetFixture(string prefabBody)
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"lifeblood-unityevent-{System.Guid.NewGuid():N}");
+        var scripts = System.IO.Path.Combine(root, "Assets", "Scripts");
+        var prefabs = System.IO.Path.Combine(root, "Assets", "Prefabs");
+        System.IO.Directory.CreateDirectory(scripts);
+        System.IO.Directory.CreateDirectory(prefabs);
+
+        var scriptPath = System.IO.Path.Combine(scripts, "ClickHandler.cs");
+        System.IO.File.WriteAllText(scriptPath, "namespace App { internal class ClickHandler { private void OnClicked() { } private void Unused() { } } }");
+        System.IO.File.WriteAllText(scriptPath + ".meta", "fileFormatVersion: 2\nguid: abcdef1234567890abcdef1234567890\nMonoImporter:\n  externalObjects: {}\n");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(prefabs, "Button.prefab"), prefabBody);
+
+        return (root, scriptPath);
+    }
+
+    private static SemanticGraph UnityEventGraph(string scriptPath)
+    {
+        return new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = "type:App.ClickHandler",
+                Name = "ClickHandler",
+                QualifiedName = "App.ClickHandler",
+                Kind = DomainSymbolKind.Type,
+                Visibility = Visibility.Internal,
+                FilePath = scriptPath,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:App.ClickHandler.OnClicked()",
+                Name = "OnClicked",
+                Kind = DomainSymbolKind.Method,
+                ParentId = "type:App.ClickHandler",
+                Visibility = Visibility.Private,
+                FilePath = scriptPath,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = "method:App.ClickHandler.Unused()",
+                Name = "Unused",
+                Kind = DomainSymbolKind.Method,
+                ParentId = "type:App.ClickHandler",
+                Visibility = Visibility.Private,
+                FilePath = scriptPath,
+            })
+            .AddEdge(new Edge { SourceId = "type:App.ClickHandler", TargetId = "method:App.ClickHandler.OnClicked()", Kind = EdgeKind.Contains, Evidence = Ev })
+            .AddEdge(new Edge { SourceId = "type:App.ClickHandler", TargetId = "method:App.ClickHandler.Unused()", Kind = EdgeKind.Contains, Evidence = Ev })
+            .Build();
     }
 
     // ──────────────────────────────────────────────────────────────────

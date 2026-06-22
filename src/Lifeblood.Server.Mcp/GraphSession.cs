@@ -30,6 +30,7 @@ public sealed class GraphSession : IDisposable
     private RoslynWorkspaceAnalyzer? _roslynAdapter;
     private string? _lastProjectPath;
     private string? _lastRulesPath;
+    private string[] _lastExcludePaths = Array.Empty<string>();
     private DateTime? _analyzedAtUtc;
 
     public GraphSession(IFileSystem fs, ITelemetrySink? telemetry = null)
@@ -81,6 +82,7 @@ public sealed class GraphSession : IDisposable
     public ICodeExecutor? CodeExecutor => _session.CodeExecutor;
     public IWorkspaceRefactoring? Refactoring => _session.Refactoring;
     public bool HasCompilationState => _session.HasCompilationState;
+    public string? CompilationStateRecoveryHint => BuildCompilationStateRecoveryHint();
 
     /// <summary>INV-MULTI-DEFINE-IOP-001. Name of the retained profile.</summary>
     public string? RetainedProfileName => _roslynAdapter?.RetainedProfileName;
@@ -132,6 +134,7 @@ public sealed class GraphSession : IDisposable
             {
                 RetainCompilations = true,
                 AllowFullFallback = true,
+                ExcludePathGlobs = _lastExcludePaths,
             };
             IncrementalAnalyzeResult incremental;
             using (TelemetryPhase("auto-refresh.incremental"))
@@ -195,8 +198,14 @@ public sealed class GraphSession : IDisposable
     public string Load(string? projectPath, string? graphPath, string? rulesPath,
                        bool incremental = false, bool readOnly = false,
                        bool allowFullFallback = false,
-                       string[]? defineProfiles = null)
+                       string[]? defineProfiles = null,
+                       string[]? excludePaths = null,
+                       string[]? authoritativeChangedFiles = null)
     {
+        var fullRequestedMode = "full";
+        FallbackReason? fullFallbackReason = null;
+        string? fullFallbackDetail = null;
+
         // Incremental path: reuse existing adapter, only recompile changed modules.
         // INV-ANALYZE-FALLBACK-001: caller's allowFullFallback flag flows through
         // to the adapter's policy gate. Default false = fail-loud (Rejected),
@@ -210,7 +219,34 @@ public sealed class GraphSession : IDisposable
 
             if (canIncrementalThisProject)
             {
-                return LoadIncremental(projectPath, rulesPath, allowFullFallback);
+                if (!readOnly && !HasCompilationState)
+                {
+                    var detail = BuildCompilationStateRecoveryDetail(projectPath);
+                    if (!allowFullFallback)
+                    {
+                        return BuildLoadResult(
+                            mode: "rejected",
+                            graph: null,
+                            analysis: null,
+                            usage: null,
+                            changedFileCount: 0,
+                            skipped: _roslynAdapter?.SkippedFiles,
+                            requestedMode: "incremental",
+                            fallbackReason: FallbackReason.CompilationStateUnavailable,
+                            fallbackDetail: detail,
+                            canRetryFull: true,
+                            projectPath: projectPath,
+                            rulesPath: rulesPath);
+                    }
+
+                    fullRequestedMode = "incremental";
+                    fullFallbackReason = FallbackReason.CompilationStateUnavailable;
+                    fullFallbackDetail = detail;
+                }
+                else
+                {
+                    return LoadIncremental(projectPath, rulesPath, allowFullFallback, excludePaths, authoritativeChangedFiles);
+                }
             }
 
             // No prior snapshot (first call) OR snapshot is for a different
@@ -280,6 +316,7 @@ public sealed class GraphSession : IDisposable
 
             _roslynAdapter = null;
             _lastProjectPath = null;
+            _lastExcludePaths = Array.Empty<string>();
         }
         else if (!string.IsNullOrEmpty(projectPath))
         {
@@ -292,6 +329,7 @@ public sealed class GraphSession : IDisposable
             // Editor identity on non-Unity — safe injection everywhere.
             var adapter = new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
             var retainCompilations = !readOnly;
+            var effectiveExcludePaths = NormalizePathGlobs(excludePaths);
             var progress = new StderrProgressSink();
             adapter.OnModuleProgress = (name, i, total) =>
                 Console.Error.WriteLine($"[{i}/{total}] Compiling {name}");
@@ -305,6 +343,8 @@ public sealed class GraphSession : IDisposable
                     {
                         RetainCompilations = retainCompilations,
                         DefineProfiles = defineProfiles,
+                        ExcludePathGlobs = effectiveExcludePaths,
+                        AuthoritativeChangedFiles = authoritativeChangedFiles,
                     });
             }
             graph = result.Graph;
@@ -342,6 +382,7 @@ public sealed class GraphSession : IDisposable
             // Retain adapter for incremental re-analyze
             _roslynAdapter = adapter;
             _lastProjectPath = projectPath;
+            _lastExcludePaths = effectiveExcludePaths;
         }
         else
         {
@@ -375,14 +416,21 @@ public sealed class GraphSession : IDisposable
             usage: usage,
             changedFileCount: null,
             skipped: _roslynAdapter?.SkippedFiles,
-            requestedMode: "full",
+            requestedMode: fullRequestedMode,
+            fallbackReason: fullFallbackReason,
+            fallbackDetail: fullFallbackDetail,
             activeProfiles: defineProfiles,
             projectPath: projectPath,
             graphPath: graphPath,
             rulesPath: rulesPath);
     }
 
-    private string LoadIncremental(string projectPath, string? rulesPath, bool allowFullFallback)
+    private string LoadIncremental(
+        string projectPath,
+        string? rulesPath,
+        bool allowFullFallback,
+        string[]? excludePaths,
+        string[]? authoritativeChangedFiles)
     {
         var capture = UsageProbe.Start();
         AnalysisUsage? usage = null;
@@ -392,6 +440,8 @@ public sealed class GraphSession : IDisposable
         {
             RetainCompilations = true,
             AllowFullFallback = allowFullFallback,
+            ExcludePathGlobs = excludePaths == null ? _lastExcludePaths : NormalizePathGlobs(excludePaths),
+            AuthoritativeChangedFiles = authoritativeChangedFiles,
         };
         IncrementalAnalyzeResult incremental;
         using (TelemetryPhase("incremental-analyze",
@@ -423,6 +473,8 @@ public sealed class GraphSession : IDisposable
                 analysis: null,
                 usage: usage,
                 changedFileCount: 0,
+                mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
+                contentChangedFileCount: incremental.ContentChangedFileCount,
                 skipped: _roslynAdapter?.SkippedFiles,
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
@@ -452,6 +504,8 @@ public sealed class GraphSession : IDisposable
                 analysis: _session.Analysis,
                 usage: usage,
                 changedFileCount: 0,
+                mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
+                contentChangedFileCount: incremental.ContentChangedFileCount,
                 skipped: _roslynAdapter?.SkippedFiles,
                 requestedMode: "incremental",
                 activeProfiles: incrActiveProfiles,
@@ -507,6 +561,7 @@ public sealed class GraphSession : IDisposable
             if (newCompilationHost != null)
                 _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
             _analyzedAtUtc = DateTime.UtcNow;
+            _lastExcludePaths = config.ExcludePathGlobs;
         }
 
         usage = capture.Stop();
@@ -522,6 +577,8 @@ public sealed class GraphSession : IDisposable
             analysis: analysis,
             usage: usage,
             changedFileCount: changedFileCount,
+            mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
+            contentChangedFileCount: incremental.ContentChangedFileCount,
             skipped: _roslynAdapter?.SkippedFiles,
             requestedMode: "incremental",
             fallbackReason: incremental.Reason,
@@ -551,6 +608,8 @@ public sealed class GraphSession : IDisposable
         Lifeblood.Domain.Results.AnalysisResult? analysis,
         AnalysisUsage? usage,
         int? changedFileCount,
+        int? mtimeTouchedFileCount = null,
+        int? contentChangedFileCount = null,
         IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null,
         string? requestedMode = null,
         FallbackReason? fallbackReason = null,
@@ -628,6 +687,8 @@ public sealed class GraphSession : IDisposable
             changedFileCount,
             changedSourceFiles = changedFileCount,
             touchedGraphFiles = changedFileCount,
+            mtimeTouchedSourceFiles = mtimeTouchedFileCount,
+            contentChangedSourceFiles = contentChangedFileCount,
             skipped = skippedField,
             evidenceReceipt = ServerIdentity.BuildAnalyzeEvidenceReceipt(
                 mode,
@@ -690,8 +751,31 @@ public sealed class GraphSession : IDisposable
         FallbackReason.NoPriorAnalysis         => "noPriorAnalysis",
         FallbackReason.ModuleSetChanged        => "moduleSetChanged",
         FallbackReason.ModuleDescriptorChanged => "moduleDescriptorChanged",
+        FallbackReason.AnalysisScopeChanged    => "analysisScopeChanged",
+        FallbackReason.CompilationStateUnavailable => "compilationStateUnavailable",
         _ => reason.ToString(),
     };
+
+    private string? BuildCompilationStateRecoveryHint()
+    {
+        if (HasCompilationState) return null;
+        if (!IsLoaded)
+            return "Write-side tools require lifeblood_analyze with projectPath and readOnly:false.";
+        if (!string.IsNullOrEmpty(_lastProjectPath))
+            return BuildCompilationStateRecoveryDetail(_lastProjectPath);
+        return "Loaded graph has no retained Roslyn compilation state. Write-side tools require lifeblood_analyze with projectPath and readOnly:false.";
+    }
+
+    private static string BuildCompilationStateRecoveryDetail(string projectPath)
+        => "Current graph has no retained Roslyn compilation state, likely because it was loaded with readOnly:true. "
+           + $"Recovery: call lifeblood_analyze with projectPath:'{projectPath}', incremental:false, readOnly:false.";
+
+    private static string[] NormalizePathGlobs(string[]? globs)
+        => globs?
+            .Where(g => !string.IsNullOrWhiteSpace(g))
+            .Select(g => g.Trim().Replace('\\', '/'))
+            .ToArray()
+           ?? Array.Empty<string>();
 
     private ArchitectureRule[]? ResolveRules(string? rulesPath)
     {
