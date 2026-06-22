@@ -282,6 +282,14 @@ class Program
             return 0;
         }
         Console.Error.WriteLine($"DRIFT DETECTED — symbols Δ={incSymbols - fullSymbols}, edges Δ={incEdges - fullEdges}.");
+        var incIds = new HashSet<string>(incremental.Graph.Symbols.Select(s => s.Id));
+        var droppedSymbols = fullGraph.Symbols.Where(s => !incIds.Contains(s.Id)).ToList();
+        if (droppedSymbols.Count > 0)
+        {
+            Console.Error.WriteLine($"  Symbols present in FULL but missing from INCREMENTAL ({droppedSymbols.Count}):");
+            foreach (var s in droppedSymbols.Take(50))
+                Console.Error.WriteLine($"    {s.Kind} {s.Id}  [{s.FilePath}]");
+        }
         Console.Error.WriteLine("This indicates an INV-INCREMENTAL-XREF-001 regression. File a bug.");
         return 1;
     }
