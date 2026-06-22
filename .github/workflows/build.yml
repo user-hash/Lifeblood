@@ -148,6 +148,13 @@ jobs:
       - name: C# self-analysis with built-in rules
         run: dotnet run --project src/Lifeblood.CLI --configuration Release -- analyze --project . --rules lifeblood
 
+      # Runs on every push/PR (not just release tags) so an incremental-analyze
+      # cross-ref regression — e.g. source-generated symbols pruned as phantom
+      # deleted files — fails CI here, not silently at tag time.
+      # INV-INCREMENTAL-XREF-001.
+      - name: Verify — full vs incremental edge integrity (INV-INCREMENTAL-XREF-001)
+        run: dotnet run --project src/Lifeblood.CLI --configuration Release -- verify --incremental --project .
+
       - name: Generate context pack
         run: dotnet run --project src/Lifeblood.CLI --configuration Release -- context --project . > context-pack.json
 
