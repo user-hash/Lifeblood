@@ -43,7 +43,7 @@ public sealed record DeadCodeOptions(
 // PathExclude (default null): glob patterns matched against each symbol's
 // normalized POSIX file path; any match drops the symbol. Folds vendored /
 // sample / third-party roots out of dead-code triage (e.g. "*/Examples*/*",
-// "*/Samples*/*", "Packages/*") without a breaking bucket-enum change. Globs
+// "*/Samples*/*", "Packages/*"). Globs
 // support "*" (any run incl. "/") and "?" (one char), are case-insensitive,
 // and must match the FULL path — use "*" liberally for substring intent.
 // INV-DEADCODE-TRIAGE-003 / first half of LB-INTAKE-20260601-004.
@@ -63,6 +63,11 @@ public sealed record DeadCodeOptions(
 /// rules as <c>blast_radius groupBy=bucket</c>. Lets consumers triage
 /// findings by the part of the codebase they live in without re-parsing
 /// paths. INV-DEADCODE-TRIAGE-001.
+/// Dead-code also has one non-path triage bucket:
+/// <see cref="Scaffolding"/> for intentional reference-free anchor types
+/// whose direct members are exclusively conditional compile guards and/or
+/// const-string anchors. That bucket belongs to dead_code's advisory surface,
+/// not the shared path classifier.
 ///
 /// Classification is segment-aware (not substring): the normalized
 /// POSIX path is split on <c>/</c> and matched as whole segments, so
@@ -70,11 +75,12 @@ public sealed record DeadCodeOptions(
 /// to a nested <c>/obj/</c>, and a filename containing the word "test"
 /// does not accidentally trigger the Test bucket.
 ///
-/// Precedence (most authoritative signal wins): Generated → Test →
-/// Editor → Production. Integer values mirror
-/// <c>Lifeblood.Domain.PathClassification.PathBucket</c> — the canonical
-/// classifier — so the analyzer casts the result directly. Drift caught
-/// by <c>PathBucketParityTests</c>.
+/// Precedence for the path buckets (most authoritative signal wins):
+/// Generated → Vendored → Test → Editor → Production. The shared path-bucket
+/// integer values mirror
+/// <c>Lifeblood.Domain.PathClassification.PathBucket</c>; <see cref="Scaffolding"/>
+/// is the one dead-code-only extension. Drift caught by
+/// <c>PathBucketParityTests</c>.
 /// </summary>
 public enum DeadCodeBucket
 {
@@ -109,6 +115,24 @@ public enum DeadCodeBucket
     /// wins over every other signal.
     /// </summary>
     Generated = 3,
+
+    /// <summary>
+    /// Common third-party, package, sample, or example roots such as
+    /// <c>Packages</c>, <c>PackageCache</c>, <c>Samples~</c>,
+    /// <c>Examples*</c>, <c>ThirdParty</c>, <c>External</c>, or
+    /// <c>Vendor</c>. Usually a triage/folding target rather than
+    /// first-party deletion work.
+    /// </summary>
+    Vendored = 4,
+
+    /// <summary>
+    /// Intentional reference-free scaffolding: a non-public static type
+    /// whose direct members are all <c>[Conditional]</c> methods and/or
+    /// static const string anchors, plus those direct members. These are
+    /// not ordinary deletion candidates; callers should document or fold
+    /// them separately from Production findings.
+    /// </summary>
+    Scaffolding = 5,
 }
 
 /// <summary>
@@ -124,7 +148,7 @@ public enum DeadCodeBucket
 ///     reachable-only-via-Override, etc.) where the count would surface
 ///     the "barely reachable" class.
 ///   <see cref="Bucket"/> — path-prefix classification; lets a caller
-///     filter to Production-only or fold the giant Editor/Generated tail
+///     filter to Production-only or fold the giant Editor/Generated/Vendored/Scaffolding tail
 ///     in one pass instead of re-parsing the path string.
 ///   <see cref="DeclarationOnly"/> — true iff the underlying symbol is
 ///     abstract (interface method, abstract method, abstract type,

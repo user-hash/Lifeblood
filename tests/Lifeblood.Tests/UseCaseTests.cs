@@ -373,6 +373,7 @@ public class UseCaseTests
         public FeatureSwitchReport GetFeatureSwitchAudit(FeatureSwitchAuditOptions options)
             => new() { Scope = "(workspace)", SwitchCount = 0, Truncated = false, VerdictBreakdown = new Dictionary<string, int>(), Switches = Array.Empty<FeatureSwitch>() };
         public MemberCountReport? GetMemberCount(string typeId, string semantics) => null;
+        public StructLayoutReport? GetStructLayout(string typeId) => null;
         public string[] FindImplementations(string symbolId) => Array.Empty<string>();
         public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column) => null;
         public string GetDocumentation(string symbolId) => "";

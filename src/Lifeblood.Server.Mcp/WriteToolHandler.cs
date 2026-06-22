@@ -743,6 +743,41 @@ internal sealed class WriteToolHandler
         }, _jsonOpts));
     }
 
+    public McpToolResult HandleStructLayout(JsonElement? args)
+    {
+        if (CompilationStateError() is { } error) return error;
+        if (CheckProfileScope(args) is { } scopeError) return scopeError;
+
+        var rawType = GetString(args, "typeId");
+        if (string.IsNullOrEmpty(rawType))
+            return ErrorResult("typeId is required.");
+        var resolved = _resolver.Resolve(_session.Graph!, rawType);
+        if (resolved.CanonicalId == null)
+            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {rawType}");
+
+        var report = _session.CompilationHost!.GetStructLayout(resolved.CanonicalId);
+        if (report == null)
+            return ErrorResult($"Not a struct in source: {resolved.CanonicalId}");
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            report.TypeId,
+            report.TypeName,
+            report.LayoutKind,
+            report.Pack,
+            report.DeclaredSize,
+            report.Size,
+            report.Alignment,
+            report.PointerSize,
+            report.IsUnmanaged,
+            report.IsBlittable,
+            report.Confidence,
+            report.Limitations,
+            report.Fields,
+            analyzedUnderProfile = _session.RetainedProfileName,
+        }, _jsonOpts));
+    }
+
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
         if (CompilationStateError() is { } error) return error;
@@ -781,7 +816,8 @@ internal sealed class WriteToolHandler
     private McpToolResult? CompilationStateError()
     {
         if (_session.HasCompilationState) return null;
-        return ErrorResult("Write-side tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first.");
+        return ErrorResult(_session.CompilationStateRecoveryHint
+            ?? "Write-side tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first.");
     }
 
     internal static string? GetString(JsonElement? args, string key)

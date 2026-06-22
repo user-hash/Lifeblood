@@ -15,6 +15,8 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 /// </summary>
 internal static class SourceGeneratorRunner
 {
+    private static readonly object GeneratorDriverGate = new();
+
     public static CSharpCompilation Run(
         CSharpCompilation compilation,
         IReadOnlyList<string> analyzerPaths,
@@ -23,47 +25,50 @@ internal static class SourceGeneratorRunner
         if (analyzerPaths.Count == 0)
             return compilation;
 
-        var loader = new SourceGeneratorAnalyzerAssemblyLoader();
-        var generators = new List<ISourceGenerator>();
-
-        foreach (var path in analyzerPaths)
+        lock (GeneratorDriverGate)
         {
-            if (!File.Exists(path))
-                continue;
+            var loader = new SourceGeneratorAnalyzerAssemblyLoader();
+            var generators = new List<ISourceGenerator>();
 
-            loader.AddDependencyLocation(path);
-            try
+            foreach (var path in analyzerPaths)
             {
-                var reference = new AnalyzerFileReference(path, loader);
-                generators.AddRange(reference.GetGeneratorsForAllLanguages());
+                if (!File.Exists(path))
+                    continue;
+
+                loader.AddDependencyLocation(path);
+                try
+                {
+                    var reference = new AnalyzerFileReference(path, loader);
+                    generators.AddRange(reference.GetGeneratorsForAllLanguages());
+                }
+                catch (Exception ex) when (ex is IOException or BadImageFormatException or FileLoadException)
+                {
+                    // Analyzer load failures should not make the whole workspace
+                    // unanalyzable. The compilation will surface any unresolved
+                    // generated members as diagnostics, exactly as pre-generator
+                    // Lifeblood did.
+                }
             }
-            catch (Exception ex) when (ex is IOException or BadImageFormatException or FileLoadException)
-            {
-                // Analyzer load failures should not make the whole workspace
-                // unanalyzable. The compilation will surface any unresolved
-                // generated members as diagnostics, exactly as pre-generator
-                // Lifeblood did.
-            }
+
+            if (generators.Count == 0)
+                return compilation;
+
+            var parseOptions = compilation.SyntaxTrees
+                .Select(tree => tree.Options)
+                .OfType<CSharpParseOptions>()
+                .FirstOrDefault();
+            var driver = CSharpGeneratorDriver.Create(
+                generators,
+                parseOptions: parseOptions,
+                optionsProvider: BuildOptionsProvider(module));
+
+            driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var updatedCompilation,
+                out _);
+
+            return (CSharpCompilation)updatedCompilation;
         }
-
-        if (generators.Count == 0)
-            return compilation;
-
-        var parseOptions = compilation.SyntaxTrees
-            .Select(tree => tree.Options)
-            .OfType<CSharpParseOptions>()
-            .FirstOrDefault();
-        var driver = CSharpGeneratorDriver.Create(
-            generators,
-            parseOptions: parseOptions,
-            optionsProvider: BuildOptionsProvider(module));
-
-        driver.RunGeneratorsAndUpdateCompilation(
-            compilation,
-            out var updatedCompilation,
-            out _);
-
-        return (CSharpCompilation)updatedCompilation;
     }
 
     private static AnalyzerConfigOptionsProvider BuildOptionsProvider(ModuleInfo module)

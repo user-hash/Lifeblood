@@ -138,6 +138,22 @@ public class ExecuteRobustnessTests
     }
 
     [Fact]
+    public void Executor_Cs1061OnKnownScriptingSurface_AppendsPublicMemberHint()
+    {
+        var view = MakeMinimalView();
+        var exec = new RoslynCodeExecutor(view);
+
+        var result = exec.Execute("new Symbol { Id = \"type:Demo\" }.CanonicalId");
+
+        Assert.False(result.Success);
+        Assert.Contains("CS1061", result.Error);
+        Assert.Contains("Symbol public members", result.Error);
+        Assert.Contains("Id", result.Error);
+        Assert.Contains("ParentId", result.Error);
+        Assert.Contains("Help global", result.Error);
+    }
+
+    [Fact]
     public void Executor_PassesRuntimeAssemblyDiagnostics_ThroughOnSuccess()
     {
         var view = MakeMinimalView();

@@ -122,6 +122,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         {
             ProjectRoot = projectRoot,
             Modules = modules,
+            ExcludePathGlobs = NormalizeExcludePathGlobs(config.ExcludePathGlobs),
         };
 
         // Record csproj file timestamps so incremental re-analyze can detect
@@ -221,6 +222,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 : new AnalysisConfig
                 {
                     ExcludePatterns = config.ExcludePatterns,
+                    ExcludePathGlobs = config.ExcludePathGlobs,
+                    AuthoritativeChangedFiles = config.AuthoritativeChangedFiles,
                     AllowFullFallback = config.AllowFullFallback,
                     DefineProfiles = config.DefineProfiles,
                     RetainCompilations = false,
@@ -284,7 +287,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                             snapshot.AppendProfileEdges(fileId, taggedEdges);
                         }
                     }
-                });
+                },
+                contentHashCollector: isFirstProfile
+                    ? (path, hash) => snapshot.FileContentHashes[path] = hash
+                    : null);
 
             if (isFirstProfile) _compilations = profileCompilations;
         }
@@ -379,6 +385,16 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
         var projectRoot = _snapshot.ProjectRoot;
 
+        var requestedExcludePathGlobs = NormalizeExcludePathGlobs(config.ExcludePathGlobs);
+        if (!SameExcludePathGlobs(_snapshot.ExcludePathGlobs, requestedExcludePathGlobs))
+        {
+            return HandleFallback(
+                config,
+                projectRoot,
+                FallbackReason.AnalysisScopeChanged,
+                detail: "Analysis excludePath glob set changed; full re-analyze required to add/remove files from the cached graph scope.");
+        }
+
         // Rediscover modules — cheap, just XML parsing
         var currentModules = _discovery.DiscoverModules(projectRoot);
 
@@ -416,10 +432,16 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 detail: "Unity asmdef edit/add/remove detected (descriptorKind=asmdef).");
         }
 
-        // Detect changed files by timestamp comparison
+        // Detect changed files by timestamp + content-hash comparison.
+        // An editor/build integration can pass an authoritative changed-file
+        // set to bound the source walk; descriptor-triggered recompiles still
+        // win because they change module facts rather than source text.
         var changedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // absolute paths
         var changedModules = new HashSet<string>(StringComparer.Ordinal); // module names
-        var moduleByFile = BuildModuleFileIndex(currentModules);
+        var previousModuleByFile = BuildModuleFileIndex(_snapshot.Modules);
+        var authoritativeChangedFiles = NormalizeAuthoritativeChangedFiles(projectRoot, config.AuthoritativeChangedFiles);
+        var mtimeTouchedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var contentChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // INV-BCL-005: csproj edits change discovered module facts (BclOwnership,
         // ExternalDllPaths, Dependencies) and require re-discovery + recompile —
@@ -459,32 +481,63 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
                 if (csprojForcedRecompile)
                 {
+                    TrackSourceTouch(filePath, mtimeTouchedFiles, contentChangedFiles);
                     changedFiles.Add(filePath);
                     changedModules.Add(module.Name);
                     continue;
                 }
 
-                var currentTimestamp = _fs.GetLastWriteTimeUtc(filePath);
-                if (_snapshot.FileTimestamps.TryGetValue(filePath, out var prevTimestamp)
-                    && currentTimestamp == prevTimestamp)
+                if (authoritativeChangedFiles != null
+                    && !authoritativeChangedFiles.Contains(filePath))
+                {
                     continue;
+                }
 
-                changedFiles.Add(filePath);
-                changedModules.Add(module.Name);
+                var currentTimestamp = _fs.GetLastWriteTimeUtc(filePath);
+                var timestampChanged = !_snapshot.FileTimestamps.TryGetValue(filePath, out var prevTimestamp)
+                    || currentTimestamp != prevTimestamp;
+
+                if (!timestampChanged
+                    && authoritativeChangedFiles == null
+                    && _snapshot.FileContentHashes.ContainsKey(filePath))
+                {
+                    continue;
+                }
+
+                if (timestampChanged)
+                    mtimeTouchedFiles.Add(filePath);
+
+                if (HasSourceContentChanged(filePath, out var currentHash))
+                {
+                    contentChangedFiles.Add(filePath);
+                    changedFiles.Add(filePath);
+                    changedModules.Add(module.Name);
+                }
+                else
+                {
+                    _snapshot.FileTimestamps[filePath] = currentTimestamp;
+                    if (currentHash != null)
+                        _snapshot.FileContentHashes[filePath] = currentHash;
+                }
             }
         }
 
         // Also check for deleted files (in previous snapshot but not in current modules)
         var currentFilePaths = new HashSet<string>(
             currentModules.SelectMany(m => m.FilePaths), StringComparer.OrdinalIgnoreCase);
-        foreach (var prevFile in _snapshot.FileTimestamps.Keys)
+        var deletedFileCount = 0;
+        foreach (var prevFile in _snapshot.FileTimestamps.Keys.ToArray())
         {
             if (!currentFilePaths.Contains(prevFile))
             {
                 var relPath = Path.GetRelativePath(projectRoot, prevFile).Replace('\\', '/');
                 var fileId = SymbolIds.File(relPath);
+                if (previousModuleByFile.TryGetValue(prevFile, out var moduleName))
+                    changedModules.Add(moduleName);
                 _snapshot.RemoveFile(fileId);
                 _snapshot.FileTimestamps.Remove(prevFile);
+                _snapshot.FileContentHashes.Remove(prevFile);
+                deletedFileCount++;
             }
         }
 
@@ -495,12 +548,14 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         // handled by the same gate. Defensive sanity check would only fire
         // if the invariant above broke. INV-INCREMENTAL-XREF-001.
 
-        if (changedFiles.Count == 0)
+        if (changedFiles.Count == 0 && deletedFileCount == 0)
             return new IncrementalAnalyzeResult
             {
                 Mode = IncrementalMode.Incremental,
                 Graph = _snapshot.RebuildGraph(),
                 ChangedFileCount = 0,
+                MtimeTouchedFileCount = mtimeTouchedFiles.Count,
+                ContentChangedFileCount = contentChangedFiles.Count,
             };
 
         // Recompile only changed modules
@@ -562,6 +617,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 : new AnalysisConfig
                 {
                     ExcludePatterns = config.ExcludePatterns,
+                    ExcludePathGlobs = config.ExcludePathGlobs,
+                    AuthoritativeChangedFiles = config.AuthoritativeChangedFiles,
                     AllowFullFallback = config.AllowFullFallback,
                     DefineProfiles = config.DefineProfiles,
                     RetainCompilations = false,
@@ -621,7 +678,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                             _snapshot.AppendProfileEdges(fileId, taggedEdges);
                         }
                     }
-                });
+                },
+                contentHashCollector: isFirstProfile
+                    ? (path, hash) => _snapshot.FileContentHashes[path] = hash
+                    : null);
 
             if (isFirstProfile) newCompilations = profileCompilations;
         }
@@ -682,7 +742,9 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         {
             Mode = IncrementalMode.Incremental,
             Graph = _snapshot.RebuildGraph(),
-            ChangedFileCount = changedFiles.Count,
+            ChangedFileCount = changedFiles.Count + deletedFileCount,
+            MtimeTouchedFileCount = mtimeTouchedFiles.Count,
+            ContentChangedFileCount = contentChangedFiles.Count,
         };
     }
 
@@ -706,6 +768,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 Mode = IncrementalMode.FullFallback,
                 Graph = graph,
                 ChangedFileCount = _snapshot!.FileTimestamps.Count,
+                MtimeTouchedFileCount = _snapshot!.FileTimestamps.Count,
+                ContentChangedFileCount = _snapshot!.FileTimestamps.Count,
                 Reason = reason,
                 Detail = detail,
             };
@@ -716,6 +780,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             Mode = IncrementalMode.Rejected,
             Graph = null,
             ChangedFileCount = 0,
+            MtimeTouchedFileCount = 0,
+            ContentChangedFileCount = 0,
             Reason = reason,
             Detail = detail,
         };
@@ -780,6 +846,90 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         for (var i = 0; i < modules.Length; i++)
             result[i] = DefineProfileApplier.WithProfileDefines(modules[i], profile);
         return result;
+    }
+
+    private static string[] NormalizeExcludePathGlobs(string[]? globs)
+        => globs?
+            .Where(g => !string.IsNullOrWhiteSpace(g))
+            .Select(g => g.Trim().Replace('\\', '/'))
+            .ToArray()
+           ?? Array.Empty<string>();
+
+    private static bool SameExcludePathGlobs(string[] left, string[] right)
+        => new HashSet<string>(left, StringComparer.OrdinalIgnoreCase)
+            .SetEquals(right);
+
+    private static HashSet<string>? NormalizeAuthoritativeChangedFiles(
+        string projectRoot,
+        string[]? changedFiles)
+    {
+        if (changedFiles == null) return null;
+
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in changedFiles)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+
+            var trimmed = raw.Trim();
+            string fullPath;
+            try
+            {
+                fullPath = Path.IsPathRooted(trimmed)
+                    ? Path.GetFullPath(trimmed)
+                    : Path.GetFullPath(Path.Combine(projectRoot, trimmed));
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                continue;
+            }
+
+            normalized.Add(fullPath);
+        }
+
+        return normalized;
+    }
+
+    private void TrackSourceTouch(
+        string filePath,
+        HashSet<string> mtimeTouchedFiles,
+        HashSet<string> contentChangedFiles)
+    {
+        try
+        {
+            var currentTimestamp = _fs.GetLastWriteTimeUtc(filePath);
+            if (_snapshot == null
+                || !_snapshot.FileTimestamps.TryGetValue(filePath, out var prevTimestamp)
+                || currentTimestamp != prevTimestamp)
+            {
+                mtimeTouchedFiles.Add(filePath);
+            }
+        }
+        catch
+        {
+            // A file that cannot be statted is still recompilation-worthy
+            // when the caller reached this path through descriptor drift.
+        }
+
+        if (HasSourceContentChanged(filePath, out _))
+            contentChangedFiles.Add(filePath);
+    }
+
+    private bool HasSourceContentChanged(string filePath, out string? currentHash)
+    {
+        currentHash = null;
+        if (_snapshot == null) return true;
+
+        try
+        {
+            currentHash = SourceContentHasher.HashText(_fs.ReadAllText(filePath));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+
+        return !_snapshot.FileContentHashes.TryGetValue(filePath, out var previousHash)
+            || !string.Equals(previousHash, currentHash, StringComparison.Ordinal);
     }
 
     private static Dictionary<string, string> BuildModuleFileIndex(ModuleInfo[] modules)

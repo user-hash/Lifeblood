@@ -149,7 +149,7 @@ public sealed class BlastRadiusGroups
     public required int DirectDependants { get; init; }
 
     /// <summary>
-    /// Bucket name (Production / Test / Editor / Generated) → grouped entries.
+    /// Bucket name (Production / Test / Editor / Generated / Vendored) → grouped entries.
     /// </summary>
     public IReadOnlyDictionary<string, GroupedBucket> ByBucket { get; init; }
         = new Dictionary<string, GroupedBucket>();

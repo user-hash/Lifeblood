@@ -563,6 +563,20 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   }
 
   /// <summary>
+  /// Struct metadata layout calculator. Same resolve-from-source gate + thin
+  /// delegation shape as <see cref="GetMemberCount"/>; Roslyn-specific layout
+  /// logic lives in <see cref="RoslynStructLayoutExtractor"/>.
+  /// INV-STRUCT-LAYOUT-001.
+  /// </summary>
+  public StructLayoutReport? GetStructLayout(string typeId)
+  {
+    if (string.IsNullOrEmpty(typeId)) return null;
+    var resolved = ResolveFromSource(typeId);
+    if (resolved is not INamedTypeSymbol typeSymbol) return null;
+    return RoslynStructLayoutExtractor.Extract(typeId, typeSymbol);
+  }
+
+  /// <summary>
   /// Per-construction-site slot-coverage extraction. Routes through
   /// <see cref="RoslynAssignmentCoverageExtractor"/> — keeps host wiring thin
   /// and isolates the IOperation walker in its own type. Mirrors the

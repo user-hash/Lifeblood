@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "required": [
+    "subjects",
+    "requiredAuthority"
+  ],
+  "properties": {
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Subject methods/types/files to audit. Symbols resolve through the standard resolver; path-like unresolved values are treated as file paths. Types/files expand to contained methods before traversal."
+    },
+    "requiredAuthority": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Authority symbols/types/namespaces/files that each subject should reach by outgoing non-Contains graph paths. Authority types/files expand to their contained symbols."
+    },
+    "allowedAlternatives": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional authority symbols/types/namespaces/files that are acceptable competing sources of truth. Reaching one is reported as evidence, but does not remove missing required-authority rows."
+    },
+    "maxDepth": {
+      "type": "integer",
+      "description": "Maximum outgoing dependency traversal depth from each expanded subject seed. Default: 6."
+    },
+    "excludeTests": {
+      "type": "boolean",
+      "description": "Drop expanded subject seeds whose declaration path classifies to the Test bucket. Default false."
+    },
+    "excludeGenerated": {
+      "type": "boolean",
+      "description": "Drop expanded subject seeds whose declaration path classifies to the Generated bucket. Default false."
+    },
+    "includeBuckets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional allowlist of subject seed buckets to keep (case-insensitive): Production / Test / Editor / Generated / Vendored. Empty / omitted = all buckets."
+    }
+  }
+}

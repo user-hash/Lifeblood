@@ -1,5 +1,6 @@
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.PathClassification;
 using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -80,7 +81,8 @@ internal sealed class ModuleCompilationBuilder
         CompilationProcessor processor,
         Action<string, int, int>? onModuleProgress = null,
         List<SkippedFile>? skippedCollector = null,
-        Dictionary<string, MetadataReference>? carryDowngraded = null)
+        Dictionary<string, MetadataReference>? carryDowngraded = null,
+        Action<string, string>? contentHashCollector = null)
     {
         var sorted = TopologicalSort(modules);
         var moduleLookup = modules.ToDictionary(m => m.Name, StringComparer.Ordinal);
@@ -139,7 +141,7 @@ internal sealed class ModuleCompilationBuilder
                 .Select(d => downgraded[d])
                 .ToArray();
 
-            var compilation = CreateCompilation(module, projectRoot, config, depRefs, skippedCollector);
+            var compilation = CreateCompilation(module, projectRoot, config, depRefs, skippedCollector, contentHashCollector);
             if (compilation == null) continue;
 
             // Invoke the processor (symbol/edge extraction happens here).
@@ -200,7 +202,8 @@ internal sealed class ModuleCompilationBuilder
     private CSharpCompilation? CreateCompilation(
         ModuleInfo module, string projectRoot, AnalysisConfig config,
         MetadataReference[] dependencyRefs,
-        List<SkippedFile>? skippedCollector)
+        List<SkippedFile>? skippedCollector,
+        Action<string, string>? contentHashCollector)
     {
         // Surface every file the adapter declines to process so consumers
         // can show users exactly what was dropped and why.
@@ -246,6 +249,16 @@ internal sealed class ModuleCompilationBuilder
             });
         }
 
+        var excludePathGlobs = PathGlobMatcher.Compile(config.ExcludePathGlobs);
+        if (excludePathGlobs.Length > 0)
+        {
+            sourceFiles = sourceFiles.Where(f =>
+            {
+                var rel = Path.GetRelativePath(projectRoot, f).Replace('\\', '/');
+                return !PathGlobMatcher.MatchesAny(excludePathGlobs, rel);
+            });
+        }
+
         // Preprocessor symbols are a discovered module fact (INV-COMPFACT-001..003
         // + INV-DIAGNOSTIC-ENVELOPE-DEFINES-001). When the csproj declares
         // <DefineConstants>X;Y</DefineConstants>, every #if-guarded block whose
@@ -287,7 +300,12 @@ internal sealed class ModuleCompilationBuilder
         var trees = sourceFiles
             .Select(f =>
             {
-                try { return CSharpSyntaxTree.ParseText(_fs.ReadAllText(f), parseOptions, path: f); }
+                try
+                {
+                    var text = _fs.ReadAllText(f);
+                    contentHashCollector?.Invoke(f, SourceContentHasher.HashText(text));
+                    return CSharpSyntaxTree.ParseText(text, parseOptions, path: f);
+                }
                 catch (IOException) { return null; }
             })
             .Where(t => t != null)

@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": [
+    "typeId"
+  ],
+  "properties": {
+    "typeId": {
+      "type": "string",
+      "description": "Canonical (`type:NS.T`), qualified, or short name of the struct to compute layout for."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional. Define profile to scope extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001."
+    }
+  }
+}

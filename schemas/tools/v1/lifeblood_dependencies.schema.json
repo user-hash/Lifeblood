@@ -17,7 +17,7 @@
     },
     "groupBy": {
       "type": "string",
-      "description": "Optional grouping mode for the dependency endpoints. 'bucket' = Production/Test/Editor/Generated; 'module' = per-module/asmdef counts; 'both' = both; 'none' (default) = legacy flat shape with no extra keys. Grouped mode is a SUMMARY — it omits the full flat dependencies[] array (the per-group previews are the payload; use filters/includeBuckets for a bounded flat list), staying overflow-safe on hub types. INV-EDGE-GROUP-001.",
+      "description": "Optional grouping mode for the dependency endpoints. 'bucket' = Production/Test/Editor/Generated/Vendored; 'module' = per-module/asmdef counts; 'both' = both; 'none' (default) = legacy flat shape with no extra keys. Grouped mode is a SUMMARY — it omits the full flat dependencies[] array (the per-group previews are the payload; use filters/includeBuckets for a bounded flat list), staying overflow-safe on hub types. INV-EDGE-GROUP-001.",
       "enum": [
         "none",
         "bucket",
@@ -38,7 +38,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Optional allowlist of endpoint buckets to keep (case-insensitive): Production / Test / Editor / Generated. Empty / omitted = all buckets."
+      "description": "Optional allowlist of endpoint buckets to keep (case-insensitive): Production / Test / Editor / Generated / Vendored. Empty / omitted = all buckets."
     },
     "previewPerGroup": {
       "type": "integer",

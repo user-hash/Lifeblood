@@ -194,7 +194,7 @@ public sealed class RoslynSymbolExtractor
             var memberProps = new Dictionary<string, string>
             {
                 ["fieldKind"] = "enumMember",
-                ["fieldType"] = enumFqn,
+                [SymbolPropertyKeys.FieldType] = enumFqn,
             };
             var constantValue = memberSym.ConstantValue;
             if (constantValue != null)
@@ -405,8 +405,10 @@ public sealed class RoslynSymbolExtractor
             var typeName = ExtractTypeFromId(containingTypeId);
             var fieldProps = new Dictionary<string, string>
             {
-                ["fieldType"] = sym.Type.ToDisplayString(),
+                [SymbolPropertyKeys.FieldType] = sym.Type.ToDisplayString(),
             };
+            if (sym.ConstantValue != null)
+                fieldProps[SymbolPropertyKeys.ConstantValue] = sym.ConstantValue.ToString() ?? "";
             AttachXmlDocSummary(fieldProps, sym);
             symbols.Add(new Symbol
             {
@@ -633,33 +635,44 @@ public sealed class RoslynSymbolExtractor
     }
 
     /// <summary>
-    /// Record the qualified name of the type's direct base on its
-    /// <c>Properties["baseType"]</c>. Lets downstream analysis walk the
-    /// inheritance chain even into types that live outside the loaded
-    /// workspace (UnityEngine.MonoBehaviour, System.Attribute, ASP.NET
-    /// ControllerBase, etc.) where the C# adapter would otherwise drop
-    /// the Inherits edge as dangling. Skips System.Object /
-    /// System.ValueType / System.Enum / System.Delegate because every
-    /// type ultimately derives from one of those and recording it would
-    /// just be noise.
+    /// Record the qualified name of the type's direct base and the
+    /// Roslyn-resolved base chain. This lets downstream analysis walk
+    /// inheritance even through metadata-only framework types where the
+    /// graph would otherwise have no source node for an Inherits edge.
+    /// Skips System.Object / System.ValueType / System.Enum /
+    /// System.Delegate because every type ultimately derives from one
+    /// of those and recording them would just be noise.
     /// </summary>
     private static void AttachBaseTypeFqn(IDictionary<string, string> props, INamedTypeSymbol typeSymbol)
     {
         var b = typeSymbol.BaseType;
-        if (b == null) return;
-        switch (b.SpecialType)
-        {
-            case SpecialType.System_Object:
-            case SpecialType.System_ValueType:
-            case SpecialType.System_Enum:
-            case SpecialType.System_Delegate:
-            case SpecialType.System_MulticastDelegate:
-                return;
-        }
+        if (b == null || IsNoisyBaseType(b)) return;
+
         var fqn = CanonicalSymbolFormat.GetFullName(b);
         if (!string.IsNullOrEmpty(fqn))
-            props["baseType"] = fqn;
+            props[SymbolPropertyKeys.BaseType] = fqn;
+
+        var chain = new List<string>();
+        for (var current = b; current != null && !IsNoisyBaseType(current) && chain.Count < 64; current = current.BaseType)
+        {
+            var currentFqn = CanonicalSymbolFormat.GetFullName(current);
+            if (!string.IsNullOrEmpty(currentFqn))
+                chain.Add(currentFqn);
+        }
+
+        if (chain.Count > 0)
+            props[SymbolPropertyKeys.BaseTypeChain] = string.Join(";", chain);
     }
+
+    private static bool IsNoisyBaseType(INamedTypeSymbol type) => type.SpecialType switch
+    {
+        SpecialType.System_Object => true,
+        SpecialType.System_ValueType => true,
+        SpecialType.System_Enum => true,
+        SpecialType.System_Delegate => true,
+        SpecialType.System_MulticastDelegate => true,
+        _ => false,
+    };
 
     /// <summary>
     /// Classify the method body by shape so authority / forwarder
@@ -692,11 +705,11 @@ public sealed class RoslynSymbolExtractor
             var expr = methodDecl.ExpressionBody.Expression;
             if (expr is InvocationExpressionSyntax)
             {
-                props["classification"] = "PureForwarder";
+                props[SymbolPropertyKeys.Classification] = "PureForwarder";
                 return;
             }
             int invCount = expr.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>().Count();
-            props["classification"] = invCount == 1 ? "ThinWrapper" : "RealLogic";
+            props[SymbolPropertyKeys.Classification] = invCount == 1 ? "ThinWrapper" : "RealLogic";
             return;
         }
 
@@ -706,7 +719,7 @@ public sealed class RoslynSymbolExtractor
         var stmts = body.Statements;
         if (stmts.Count == 0)
         {
-            props["classification"] = "RealLogic"; // empty {}; treat as not a forwarder
+            props[SymbolPropertyKeys.Classification] = "RealLogic"; // empty {}; treat as not a forwarder
             return;
         }
 
@@ -717,12 +730,12 @@ public sealed class RoslynSymbolExtractor
             var only = stmts[0];
             if (only is ExpressionStatementSyntax es && es.Expression is InvocationExpressionSyntax)
             {
-                props["classification"] = "PureForwarder";
+                props[SymbolPropertyKeys.Classification] = "PureForwarder";
                 return;
             }
             if (only is ReturnStatementSyntax rs && rs.Expression is InvocationExpressionSyntax)
             {
-                props["classification"] = "PureForwarder";
+                props[SymbolPropertyKeys.Classification] = "PureForwarder";
                 return;
             }
         }
@@ -733,12 +746,12 @@ public sealed class RoslynSymbolExtractor
             int invCount = body.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>().Count();
             if (invCount == 1)
             {
-                props["classification"] = "ThinWrapper";
+                props[SymbolPropertyKeys.Classification] = "ThinWrapper";
                 return;
             }
         }
 
-        props["classification"] = "RealLogic";
+        props[SymbolPropertyKeys.Classification] = "RealLogic";
     }
 
     /// <summary>

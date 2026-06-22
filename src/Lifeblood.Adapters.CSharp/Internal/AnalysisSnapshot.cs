@@ -21,6 +21,14 @@ internal sealed class AnalysisSnapshot
     public ModuleInfo[] Modules { get; set; } = Array.Empty<ModuleInfo>();
 
     /// <summary>
+    /// Project-relative path globs excluded from compilation when this
+    /// snapshot was built. Changing this set changes the graph scope, so
+    /// incremental analyze must reject or widen to full before files are
+    /// added to or removed from the cached snapshot. INV-ANALYZE-EXCLUDEPATHS-001.
+    /// </summary>
+    public string[] ExcludePathGlobs { get; set; } = Array.Empty<string>();
+
+    /// <summary>
     /// INV-MULTI-DEFINE-INCREMENTAL-001. Profile set this snapshot was built under.
     /// Snapshot is the SSoT for which profiles the graph is under; incremental MUST
     /// replay the same set. Count == 1 keeps <c>Edge.Profiles</c> null; Count >= 2
@@ -30,6 +38,14 @@ internal sealed class AnalysisSnapshot
 
     /// <summary>Absolute file path → last-write-time-UTC at analysis time.</summary>
     public Dictionary<string, DateTime> FileTimestamps { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Absolute file path to stable hash of the source text parsed for the
+    /// cached file facts. Incremental analyze uses this as the second-stage
+    /// check after an mtime touch, so Unity/IDE metadata churn does not force
+    /// graph replacement when the file text is unchanged.
+    /// </summary>
+    public Dictionary<string, string> FileContentHashes { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Absolute csproj file path → last-write-time-UTC at analysis time.

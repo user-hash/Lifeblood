@@ -121,6 +121,70 @@ public class AnalyzeWireShapeTests : IDisposable
     }
 
     [Fact]
+    public void Load_ReadOnlyThenWriteSideIncremental_RejectsWithCompilationStateRecovery()
+    {
+        WriteSingleFileProject("public class Foo { }");
+        var session = new GraphSession(_fs);
+        session.Load(_tempDir, graphPath: null, rulesPath: null, incremental: false, readOnly: true);
+
+        Assert.True(session.IsLoaded);
+        Assert.False(session.HasCompilationState);
+
+        var json = session.Load(_tempDir, graphPath: null, rulesPath: null,
+                                incremental: true,
+                                readOnly: false,
+                                allowFullFallback: false);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("rejected", doc.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("compilationStateUnavailable", doc.RootElement.GetProperty("fallbackReason").GetString());
+        Assert.Contains("readOnly:true", doc.RootElement.GetProperty("fallbackDetail").GetString());
+        Assert.Contains("incremental:false", doc.RootElement.GetProperty("fallbackDetail").GetString());
+        Assert.True(doc.RootElement.GetProperty("canRetryFull").GetBoolean());
+        Assert.False(session.HasCompilationState);
+    }
+
+    [Fact]
+    public void Load_ReadOnlyThenWriteSideIncremental_AllowFullFallbackRestoresCompilationState()
+    {
+        WriteSingleFileProject("public class Foo { }");
+        var session = new GraphSession(_fs);
+        session.Load(_tempDir, graphPath: null, rulesPath: null, incremental: false, readOnly: true);
+
+        Assert.False(session.HasCompilationState);
+
+        var json = session.Load(_tempDir, graphPath: null, rulesPath: null,
+                                incremental: true,
+                                readOnly: false,
+                                allowFullFallback: true);
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("full", doc.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("compilationStateUnavailable", doc.RootElement.GetProperty("fallbackReason").GetString());
+        Assert.NotEqual(JsonValueKind.Null, doc.RootElement.GetProperty("summary").ValueKind);
+        Assert.True(session.HasCompilationState);
+    }
+
+    [Fact]
+    public void Load_FullAnalyze_ExcludePaths_DropsMatchingSourceFromGraph()
+    {
+        WriteProjectWithVendoredExample();
+        var session = new GraphSession(_fs);
+
+        var json = session.Load(_tempDir, graphPath: null, rulesPath: null,
+                                incremental: false,
+                                excludePaths: new[] { "*/Examples*/*" });
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("full", doc.RootElement.GetProperty("mode").GetString());
+        Assert.NotNull(session.Graph);
+        Assert.Contains(session.Graph!.Symbols, s => s.Id == "type:Test.Keep");
+        Assert.DoesNotContain(session.Graph.Symbols, s => s.Id == "type:Test.VendoredDemo");
+    }
+
+    [Fact]
     public void Load_IncrementalNoEdits_WireCarriesIncrementalNoopAndRequestedIncremental()
     {
         WriteSingleFileProject("public class Foo { }");
@@ -137,6 +201,27 @@ public class AnalyzeWireShapeTests : IDisposable
         Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
         AssertNullProperty(doc.RootElement, "fallbackReason");
         AssertNullProperty(doc.RootElement, "canRetryFull");
+    }
+
+    [Fact]
+    public void Load_IncrementalWithChangedExcludePaths_RejectsWithAnalysisScopeChanged()
+    {
+        WriteSingleFileProject("public class Foo { }");
+        var session = new GraphSession(_fs);
+        session.Load(_tempDir, graphPath: null, rulesPath: null, incremental: false);
+
+        var json = session.Load(_tempDir, graphPath: null, rulesPath: null,
+                                incremental: true,
+                                allowFullFallback: false,
+                                excludePaths: new[] { "src/*" });
+        var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("rejected", doc.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("analysisScopeChanged", doc.RootElement.GetProperty("fallbackReason").GetString());
+        Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("fallbackDetail").GetString()));
+        Assert.True(doc.RootElement.GetProperty("canRetryFull").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("summary").ValueKind);
     }
 
     [Fact]
@@ -247,5 +332,16 @@ public class AnalyzeWireShapeTests : IDisposable
         File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "ModuleB.csproj"), csproj);
         File.WriteAllText(Path.Combine(_tempDir, "ModuleA", "A.cs"), "namespace A; public class ATypeA { }");
         File.WriteAllText(Path.Combine(_tempDir, "ModuleB", "B.cs"), "namespace B; public class BTypeB { }");
+    }
+
+    private void WriteProjectWithVendoredExample()
+    {
+        var csproj = @"<Project Sdk=""Microsoft.NET.Sdk""><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>";
+        File.WriteAllText(Path.Combine(_tempDir, "TestProject.csproj"), csproj);
+        File.WriteAllText(Path.Combine(_tempDir, "Keep.cs"), "namespace Test; public class Keep { }");
+
+        var examplesDir = Path.Combine(_tempDir, "Assets", "TextMesh Pro", "Examples & Extras");
+        Directory.CreateDirectory(examplesDir);
+        File.WriteAllText(Path.Combine(examplesDir, "Demo.cs"), "namespace Test; public class VendoredDemo { }");
     }
 }

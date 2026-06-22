@@ -22,7 +22,7 @@
     },
     "groupBy": {
       "type": "string",
-      "description": "Optional grouping mode. \u0027bucket\u0027 = Production/Test/Editor/Generated; \u0027module\u0027 = per-module/asmdef counts; \u0027both\u0027 = both groupings populated; \u0027none\u0027 (default) = legacy flat shape. INV-BLAST-RADIUS-GROUP-001.",
+      "description": "Optional grouping mode. \u0027bucket\u0027 = Production/Test/Editor/Generated/Vendored; \u0027module\u0027 = per-module/asmdef counts; \u0027both\u0027 = both groupings populated; \u0027none\u0027 (default) = legacy flat shape. INV-BLAST-RADIUS-GROUP-001.",
       "enum": [
         "none",
         "bucket",

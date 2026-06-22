@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "summarize": {
+      "type": "boolean",
+      "description": "Optional. When true, forces the compact violation cap (25) regardless of caller-passed maxResults. Defaults to false."
+    },
+    "maxResults": {
+      "type": "integer",
+      "description": "Maximum number of source-target module violation rows embedded in the response. Default 200 normal mode / 25 summarize mode."
+    },
+    "excludeTests": {
+      "type": "boolean",
+      "description": "Drop source edges whose source symbol path classifies to the Test bucket. Default false."
+    },
+    "excludeGenerated": {
+      "type": "boolean",
+      "description": "Drop source edges whose source symbol path classifies to the Generated bucket. Default false."
+    }
+  }
+}

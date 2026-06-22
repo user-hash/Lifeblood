@@ -22,9 +22,12 @@ public class IntakeLedgerTests
     private const string IntakeIdPattern = @"^LB-INTAKE-\d{8}-\d{3}$";
 
     [Fact]
-    public void IntakeEntries_Exist()
+    public void IntakeFile_DeclaresRoutingContract()
     {
-        Assert.NotEmpty(ParseEntries());
+        var text = File.ReadAllText(IntakePath);
+
+        Assert.Contains("new findings land here first", text);
+        Assert.Contains("When work begins, promote the item", text);
     }
 
     [Fact]

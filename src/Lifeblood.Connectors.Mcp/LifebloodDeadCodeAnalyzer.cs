@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.PathClassification;
@@ -54,7 +52,7 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             ? new HashSet<SymbolKind>(options.IncludeKinds)
             : new HashSet<SymbolKind>(DefaultKinds);
 
-        var pathExcluders = CompileGlobs(options.PathExclude);
+        var pathExcluders = PathGlobMatcher.Compile(options.PathExclude);
 
         var results = new List<DeadCodeResult>();
         foreach (var sym in graph.Symbols)
@@ -62,7 +60,7 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             if (!kinds.Contains(sym.Kind)) continue;
             if (options.ExcludePublic && sym.Visibility == Visibility.Public) continue;
             if (options.ExcludeTests && PathBucketClassifier.IsTest(sym.FilePath)) continue;
-            if (MatchesAnyGlob(pathExcluders, sym.FilePath)) continue;
+            if (PathGlobMatcher.MatchesAny(pathExcluders, sym.FilePath)) continue;
 
             // Liveness check. A method/property implementing an interface
             // member is reachable by definition — that branch ALWAYS short-
@@ -104,16 +102,17 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
                 continue;
 
             int sameClassConsumers = CountSameClassConsumers(graph, sym);
+            var bucket = ClassifyDeadCodeBucket(graph, sym);
             results.Add(new DeadCodeResult(
                 CanonicalId: sym.Id,
                 Kind: sym.Kind,
                 Name: sym.Name,
                 FilePath: sym.FilePath,
                 Line: sym.Line,
-                Reason: BuildReason(sym, options, sameClassConsumers))
+                Reason: BuildReason(sym, options, sameClassConsumers, bucket))
             {
                 DirectDependants = CountDirectDependants(graph, sym.Id),
-                Bucket = (DeadCodeBucket)PathBucketClassifier.Classify(sym.FilePath),
+                Bucket = bucket,
                 DeclarationOnly = sym.IsAbstract,
                 SameClassConsumerCount = sameClassConsumers,
             });
@@ -126,41 +125,82 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
     }
 
     /// <summary>
-    /// Compile each non-empty path glob to an anchored, case-insensitive regex.
-    /// <c>*</c> → any run of characters (including <c>/</c>), <c>?</c> → a single
-    /// character; every other character is escaped literally. Globs match the
-    /// FULL normalized POSIX path. INV-DEADCODE-TRIAGE-003.
+    /// Dead-code mostly mirrors the shared path buckets, with one advisory
+    /// downrank for intentional reference-free scaffolding. This deliberately
+    /// lives here (not in PathBucketClassifier) because Scaffolding is a
+    /// symbol-shape fact, not a file-path fact. INV-DEADCODE-SCAFFOLDING-001.
     /// </summary>
-    private static List<Regex> CompileGlobs(string[]? globs)
+    private static DeadCodeBucket ClassifyDeadCodeBucket(SemanticGraph graph, Symbol sym)
     {
-        var compiled = new List<Regex>();
-        if (globs == null) return compiled;
-        foreach (var glob in globs)
-        {
-            if (string.IsNullOrWhiteSpace(glob)) continue;
-            var sb = new StringBuilder("^");
-            foreach (var ch in glob.Replace('\\', '/'))
-                sb.Append(ch switch
-                {
-                    '*' => ".*",
-                    '?' => ".",
-                    _ => Regex.Escape(ch.ToString()),
-                });
-            sb.Append('$');
-            compiled.Add(new Regex(sb.ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
-        }
-        return compiled;
+        if (IsScaffoldingSymbol(graph, sym)) return DeadCodeBucket.Scaffolding;
+        return (DeadCodeBucket)PathBucketClassifier.Classify(sym.FilePath);
     }
 
-    /// <summary>True iff <paramref name="filePath"/> matches any compiled path glob.</summary>
-    private static bool MatchesAnyGlob(List<Regex> globs, string filePath)
+    private static bool IsScaffoldingSymbol(SemanticGraph graph, Symbol sym)
     {
-        if (globs.Count == 0 || string.IsNullOrEmpty(filePath)) return false;
-        var normalized = filePath.Replace('\\', '/');
-        foreach (var rx in globs)
-            if (rx.IsMatch(normalized)) return true;
-        return false;
+        if (IsScaffoldingType(graph, sym)) return true;
+        if (string.IsNullOrEmpty(sym.ParentId)) return false;
+
+        var parent = graph.GetSymbol(sym.ParentId);
+        return parent != null && IsScaffoldingType(graph, parent);
     }
+
+    private static bool IsScaffoldingType(SemanticGraph graph, Symbol sym)
+    {
+        if (sym.Kind != SymbolKind.Type) return false;
+        if (!sym.IsStatic) return false;
+        if (sym.Visibility == Visibility.Public) return false;
+
+        var members = GetDirectMembers(graph, sym.Id).ToArray();
+        if (members.Length == 0) return false;
+
+        bool sawScaffoldingMember = false;
+        foreach (var member in members)
+        {
+            if (IsConditionalMethod(member) || IsConstStringAnchor(member))
+            {
+                sawScaffoldingMember = true;
+                continue;
+            }
+
+            return false;
+        }
+
+        return sawScaffoldingMember;
+    }
+
+    private static List<Symbol> GetDirectMembers(SemanticGraph graph, string typeId)
+    {
+        var members = new List<Symbol>();
+        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
+        {
+            var edge = graph.Edges[idx];
+            if (edge.Kind != EdgeKind.Contains) continue;
+            var child = graph.GetSymbol(edge.TargetId);
+            if (child != null) members.Add(child);
+        }
+        return members;
+    }
+
+    private static bool IsConditionalMethod(Symbol sym)
+    {
+        if (sym.Kind != SymbolKind.Method) return false;
+        if (!sym.Properties.TryGetValue(SymbolPropertyKeys.Attributes, out var attrs)) return false;
+        return attrs.Split(';').Any(a => string.Equals(a, "Conditional", StringComparison.Ordinal));
+    }
+
+    private static bool IsConstStringAnchor(Symbol sym)
+    {
+        if (sym.Kind != SymbolKind.Field) return false;
+        if (!sym.IsStatic) return false;
+        if (!sym.Properties.TryGetValue(SymbolPropertyKeys.FieldType, out var fieldType)) return false;
+        if (!IsStringType(fieldType)) return false;
+        return sym.Properties.ContainsKey(SymbolPropertyKeys.ConstantValue);
+    }
+
+    private static bool IsStringType(string fieldType)
+        => string.Equals(fieldType, "string", StringComparison.Ordinal)
+           || string.Equals(fieldType, "System.String", StringComparison.Ordinal);
 
     /// <summary>
     /// True if the symbol has at least one incoming non-Contains edge.
@@ -214,10 +254,12 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
         return anyRef;
     }
 
-    private static string BuildReason(Symbol sym, DeadCodeOptions options, int sameClassConsumers)
+    private static string BuildReason(Symbol sym, DeadCodeOptions options, int sameClassConsumers, DeadCodeBucket bucket)
     {
         var scope = options.ExcludePublic ? "non-public " : "";
         var kindStr = sym.Kind.ToString().ToLowerInvariant();
+        if (bucket == DeadCodeBucket.Scaffolding)
+            return $"{scope}{kindStr} scaffolding with no incoming semantic references";
         return sameClassConsumers > 0
             ? $"{scope}{kindStr} with only same-class consumers ({sameClassConsumers})"
             : $"{scope}{kindStr} with no incoming semantic references";

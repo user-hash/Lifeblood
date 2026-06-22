@@ -25,4 +25,54 @@ public static class SymbolPropertyKeys
     /// <c>UnityReachabilityAdapter</c> (runtime-entrypoint detection).
     /// </summary>
     public const string Attributes = "attributes";
+
+    /// <summary>
+    /// Fully-qualified direct base type name for source types when the
+    /// base is more specific than <c>object</c> / <c>ValueType</c> /
+    /// <c>Enum</c> / <c>Delegate</c>. Written by
+    /// <c>RoslynSymbolExtractor</c>; read by
+    /// <c>UnityReachabilityAdapter</c> to walk Unity runtime-dispatch
+    /// inheritance chains even when the base lives outside the graph.
+    /// </summary>
+    public const string BaseType = "baseType";
+
+    /// <summary>
+    /// Semicolon-separated fully-qualified base type chain from direct
+    /// base to root, excluding universal framework roots such as
+    /// <c>object</c>. Written by <c>RoslynSymbolExtractor</c>; read by
+    /// <c>UnityReachabilityAdapter</c> so framework-dispatch checks can
+    /// follow metadata-defined inheritance chains without maintaining
+    /// every intermediate framework subclass by hand.
+    /// </summary>
+    public const string BaseTypeChain = "baseTypeChain";
+
+    /// <summary>
+    /// Method-body shape classification written by
+    /// <c>RoslynSymbolExtractor</c> and read by
+    /// <c>LifebloodAuthorityReporter</c> for forwarder-ratio evidence.
+    /// </summary>
+    public const string Classification = "classification";
+
+    /// <summary>
+    /// Source field type display string written by <c>RoslynSymbolExtractor</c>.
+    /// Read by graph-only analyzers that need field-shape facts without
+    /// reopening a Roslyn compilation.
+    /// </summary>
+    public const string FieldType = "fieldType";
+
+    /// <summary>
+    /// Compile-time constant value written for fields whose source symbol has
+    /// a constant value. Enum members have always carried this key; ordinary
+    /// const fields also carry it so graph-only analyzers can recognize
+    /// constant-anchor shapes without re-opening a Roslyn compilation.
+    /// </summary>
+    public const string ConstantValue = "constantValue";
+
+    /// <summary>
+    /// Module reference-closure mode written by
+    /// <c>RoslynModuleDiscovery</c> on module symbols and read by
+    /// <c>AsmdefBoundaryAnalyzer</c>. Values mirror
+    /// <c>ReferenceClosureMode</c> names.
+    /// </summary>
+    public const string ReferenceClosure = "referenceClosure";
 }

@@ -34,6 +34,8 @@ public class DeadCodeTriageFieldsTests
     [InlineData("Assets/Generated/Schema.cs",                  DeadCodeBucket.Generated)]
     [InlineData("obj/Debug/net8.0/Foo.cs",                     DeadCodeBucket.Generated)]
     [InlineData("bin/Release/Bar.cs",                          DeadCodeBucket.Generated)]
+    [InlineData("Packages/com.vendor.tool/Runtime/Foo.cs",     DeadCodeBucket.Vendored)]
+    [InlineData("Assets/TextMesh Pro/Examples & Extras/Demo.cs", DeadCodeBucket.Vendored)]
     [InlineData("",                                            DeadCodeBucket.Production)]
     public void ClassifyBucket_PathPrefix_PicksMostSpecificSignal(string filePath, DeadCodeBucket expected)
     {
@@ -160,10 +162,13 @@ public class DeadCodeTriageFieldsTests
             .AddSymbol(SymInEditor("method:Acme.Tool.C()", "C", SymbolKind.Method))
             .AddSymbol(SymInGenerated("type:Acme.Gen", "Gen", SymbolKind.Type))
             .AddSymbol(SymInGenerated("method:Acme.Gen.D()", "D", SymbolKind.Method))
+            .AddSymbol(SymInVendored("type:Acme.Vendor", "Vendor", SymbolKind.Type))
+            .AddSymbol(SymInVendored("method:Acme.Vendor.E()", "E", SymbolKind.Method))
             .AddEdge(ContainsEdge("type:Acme.Prod",  "method:Acme.Prod.A()"))
             .AddEdge(ContainsEdge("type:Acme.Spec",  "method:Acme.Spec.B()"))
             .AddEdge(ContainsEdge("type:Acme.Tool",  "method:Acme.Tool.C()"))
             .AddEdge(ContainsEdge("type:Acme.Gen",   "method:Acme.Gen.D()"))
+            .AddEdge(ContainsEdge("type:Acme.Vendor", "method:Acme.Vendor.E()"))
             .Build();
 
         var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
@@ -174,6 +179,102 @@ public class DeadCodeTriageFieldsTests
         Assert.Equal(DeadCodeBucket.Test,       findings.Single(f => f.CanonicalId == "method:Acme.Spec.B()").Bucket);
         Assert.Equal(DeadCodeBucket.Editor,     findings.Single(f => f.CanonicalId == "method:Acme.Tool.C()").Bucket);
         Assert.Equal(DeadCodeBucket.Generated,  findings.Single(f => f.CanonicalId == "method:Acme.Gen.D()").Bucket);
+        Assert.Equal(DeadCodeBucket.Vendored,   findings.Single(f => f.CanonicalId == "method:Acme.Vendor.E()").Bucket);
+    }
+
+    [Fact]
+    public void FindDeadCode_InternalStaticConditionalOnlyType_BucketsScaffolding()
+    {
+        var typeId = "type:Acme.PackageAssert";
+        var methodId = "method:Acme.PackageAssert.VerifyPackage()";
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = typeId, Name = "PackageAssert", Kind = SymbolKind.Type,
+                FilePath = "src/PackageAssert.cs", Visibility = Visibility.Internal,
+                IsStatic = true,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = methodId, Name = "VerifyPackage", Kind = SymbolKind.Method,
+                FilePath = "src/PackageAssert.cs", ParentId = typeId,
+                Visibility = Visibility.Internal, IsStatic = true,
+                Properties = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    [SymbolPropertyKeys.Attributes] = "Conditional",
+                },
+            })
+            .AddEdge(ContainsEdge(typeId, methodId))
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+
+        Assert.Equal(DeadCodeBucket.Scaffolding, findings.Single(f => f.CanonicalId == typeId).Bucket);
+        var method = findings.Single(f => f.CanonicalId == methodId);
+        Assert.Equal(DeadCodeBucket.Scaffolding, method.Bucket);
+        Assert.Contains("scaffolding", method.Reason);
+    }
+
+    [Fact]
+    public void FindDeadCode_InternalStaticConstStringOnlyType_BucketsScaffolding()
+    {
+        var typeId = "type:Acme.AudioCallbackSchedulerInvariant";
+        var fieldId = "field:Acme.AudioCallbackSchedulerInvariant.Id";
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = typeId, Name = "AudioCallbackSchedulerInvariant", Kind = SymbolKind.Type,
+                FilePath = "src/AudioCallbackSchedulerInvariant.cs", Visibility = Visibility.Internal,
+                IsStatic = true,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = fieldId, Name = "Id", Kind = SymbolKind.Field,
+                FilePath = "src/AudioCallbackSchedulerInvariant.cs", ParentId = typeId,
+                Visibility = Visibility.Internal, IsStatic = true,
+                Properties = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    [SymbolPropertyKeys.FieldType] = "string",
+                    [SymbolPropertyKeys.ConstantValue] = "INV-AUDIO-CALLBACK-SCHEDULER-001",
+                },
+            })
+            .AddEdge(ContainsEdge(typeId, fieldId))
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+
+        Assert.Equal(DeadCodeBucket.Scaffolding, findings.Single(f => f.CanonicalId == typeId).Bucket);
+        Assert.Equal(DeadCodeBucket.Scaffolding, findings.Single(f => f.CanonicalId == fieldId).Bucket);
+    }
+
+    [Fact]
+    public void FindDeadCode_InternalStaticTypeWithRealMethod_RemainsProduction()
+    {
+        var typeId = "type:Acme.RealUtility";
+        var methodId = "method:Acme.RealUtility.Run()";
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol
+            {
+                Id = typeId, Name = "RealUtility", Kind = SymbolKind.Type,
+                FilePath = "src/RealUtility.cs", Visibility = Visibility.Internal,
+                IsStatic = true,
+            })
+            .AddSymbol(new Symbol
+            {
+                Id = methodId, Name = "Run", Kind = SymbolKind.Method,
+                FilePath = "src/RealUtility.cs", ParentId = typeId,
+                Visibility = Visibility.Internal, IsStatic = true,
+            })
+            .AddEdge(ContainsEdge(typeId, methodId))
+            .Build();
+
+        var findings = new LifebloodDeadCodeAnalyzer().FindDeadCode(graph,
+            new DeadCodeOptions(ExcludePublic: false, ExcludeTests: false));
+
+        Assert.Equal(DeadCodeBucket.Production, findings.Single(f => f.CanonicalId == typeId).Bucket);
+        Assert.Equal(DeadCodeBucket.Production, findings.Single(f => f.CanonicalId == methodId).Bucket);
     }
 
     [Fact]
@@ -245,6 +346,13 @@ public class DeadCodeTriageFieldsTests
         Id = id, Name = name, Kind = kind,
         FilePath = "Assets/Foo.Generated.cs",
         ParentId = id.StartsWith("method:") ? "type:Acme.Gen" : "",
+        Visibility = Visibility.Internal,
+    };
+    private static Symbol SymInVendored(string id, string name, SymbolKind kind) => new()
+    {
+        Id = id, Name = name, Kind = kind,
+        FilePath = "Assets/TextMesh Pro/Examples & Extras/Demo.cs",
+        ParentId = id.StartsWith("method:") ? "type:Acme.Vendor" : "",
         Visibility = Visibility.Internal,
     };
     private static Edge ContainsEdge(string parent, string child) => new()

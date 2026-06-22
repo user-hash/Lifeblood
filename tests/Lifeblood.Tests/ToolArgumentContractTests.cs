@@ -180,6 +180,8 @@ public class ToolArgumentContractTests
             incremental = true,
             allowFullFallback = true,
             defineProfiles = new[] { "Editor", "", " Player " },
+            excludePaths = new[] { "*/Examples*/*", "", " Packages/* " },
+            authoritativeChangedFiles = new[] { "Assets/Foo.cs", "", " Packages/Bar.cs " },
         }));
 
         Assert.Equal("D:/repo", request.ProjectPath);
@@ -187,6 +189,8 @@ public class ToolArgumentContractTests
         Assert.True(request.Incremental);
         Assert.True(request.AllowFullFallback);
         Assert.Equal(new[] { "Editor", "Player" }, request.DefineProfiles);
+        Assert.Equal(new[] { "*/Examples*/*", "Packages/*" }, request.ExcludePaths);
+        Assert.Equal(new[] { "Assets/Foo.cs", "Packages/Bar.cs" }, request.AuthoritativeChangedFiles);
         Assert.Same(AnalyzeToolRequest.Empty, ToolRequestBinder.BindAnalyze(null));
 
         var legacyBadTypes = ToolRequestBinder.BindAnalyze(JsonArgs(new
@@ -194,10 +198,14 @@ public class ToolArgumentContractTests
             projectPath = 42,
             incremental = "true",
             defineProfiles = new object[] { 42, " Editor " },
+            excludePaths = new object[] { 42, " */Samples*/* " },
+            authoritativeChangedFiles = new object[] { 42, " Assets/Changed.cs " },
         }));
         Assert.Null(legacyBadTypes.ProjectPath);
         Assert.False(legacyBadTypes.Incremental);
         Assert.Equal(new[] { "Editor" }, legacyBadTypes.DefineProfiles);
+        Assert.Equal(new[] { "*/Samples*/*" }, legacyBadTypes.ExcludePaths);
+        Assert.Equal(new[] { "Assets/Changed.cs" }, legacyBadTypes.AuthoritativeChangedFiles);
     }
 
     [Fact]

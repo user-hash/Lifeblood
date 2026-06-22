@@ -123,9 +123,9 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(35, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
-        Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
-        Assert.Equal(17, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
+        Assert.Equal(38, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(20, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
+        Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var telemetryEvents = doc.RootElement
             .GetProperty("featureFlags")
             .GetProperty("operationalTelemetryEvents")
@@ -657,16 +657,18 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns35Tools()
+    public void ToolRegistry_Returns38Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(35, tools.Length);
+        Assert.Equal(38, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");
         Assert.Contains(tools, t => t.Name == "lifeblood_wire_audit");
         Assert.Contains(tools, t => t.Name == "lifeblood_feature_switch_audit");
         Assert.Contains(tools, t => t.Name == "lifeblood_member_count");
+        Assert.Contains(tools, t => t.Name == "lifeblood_struct_layout");
+        Assert.Contains(tools, t => t.Name == "lifeblood_authority_coverage");
         Assert.Contains(tools, t => t.Name == "lifeblood_test_impact");
         Assert.Contains(tools, t => t.Name == "lifeblood_enum_coverage");
         Assert.Contains(tools, t => t.Name == "lifeblood_static_tables");
@@ -679,6 +681,7 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains(tools, t => t.Name == "lifeblood_dependants");
         Assert.Contains(tools, t => t.Name == "lifeblood_blast_radius");
         Assert.Contains(tools, t => t.Name == "lifeblood_file_impact");
+        Assert.Contains(tools, t => t.Name == "lifeblood_asmdef_check");
         Assert.Contains(tools, t => t.Name == "lifeblood_resolve_short_name");
         Assert.Contains(tools, t => t.Name == "lifeblood_invariant_check");
         Assert.Contains(tools, t => t.Name == "lifeblood_authority_report");

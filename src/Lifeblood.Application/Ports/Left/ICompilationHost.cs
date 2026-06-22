@@ -176,6 +176,16 @@ public interface ICompilationHost
     /// </summary>
     MemberCountReport? GetMemberCount(string typeId, string semantics);
 
+    /// <summary>
+    /// Computes metadata layout for a struct: field offsets, sizes, alignment,
+    /// packing, and total size. Exact for known blittable Sequential / Explicit
+    /// structs; downgraded to Advisory with limitations for Auto layout,
+    /// reference-bearing fields, and non-blittable primitive marshal shapes.
+    /// Returns null when the id does not resolve to a source struct.
+    /// INV-STRUCT-LAYOUT-001.
+    /// </summary>
+    StructLayoutReport? GetStructLayout(string typeId);
+
     /// <summary>Find all types that implement an interface or override a virtual member.</summary>
     string[] FindImplementations(string symbolId);
 

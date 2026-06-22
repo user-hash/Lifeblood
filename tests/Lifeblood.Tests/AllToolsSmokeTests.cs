@@ -57,6 +57,12 @@ public class Helper
 }
 
 public enum Mode { Idle, Active, Done }
+
+public struct SampleLayout
+{
+    public byte A;
+    public int B;
+}
 ");
         _handler = CreateHandler();
 
@@ -86,6 +92,7 @@ public enum Mode { Idle, Active, Done }
     [InlineData("lifeblood_partial_view",           "type:Smoke.ServiceImpl", "symbolId")]
     [InlineData("lifeblood_authority_report",       "type:Smoke.ServiceImpl", "symbolId")]
     [InlineData("lifeblood_port_health",            "type:Smoke.IService", "symbolId")]
+    [InlineData("lifeblood_struct_layout",          "type:Smoke.SampleLayout", "typeId")]
     public void Tool_HappyPath_ResolvesSymbolWithoutError(
         string toolName, string symbolValue, string symbolKey)
     {
@@ -121,6 +128,35 @@ public enum Mode { Idle, Active, Done }
         Assert.True(results.GetArrayLength() > 0);
         Assert.True(results[0].TryGetProperty("matchKind", out _),
             "MatchKind field missing from search wire shape.");
+    }
+
+    [Fact]
+    public void Tool_AuthorityCoverage_ReportsRequiredAuthorityReach()
+    {
+        var result = _handler.Handle("lifeblood_authority_coverage",
+            JsonArgs(new
+            {
+                subjects = new[] { "method:Smoke.ServiceImpl.Run()" },
+                requiredAuthority = new[] { "method:Smoke.Helper.Help()" },
+            }));
+
+        AssertNotError("lifeblood_authority_coverage", result);
+        var doc = JsonDocument.Parse(ExtractText(result));
+        var row = doc.RootElement.GetProperty("rows")[0];
+        Assert.True(row.GetProperty("hasAllRequiredAuthority").GetBoolean());
+        Assert.Equal("RequiredReached", row.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void Tool_AsmdefCheck_RespondsWithStructuredShape()
+    {
+        var result = _handler.Handle("lifeblood_asmdef_check",
+            JsonArgs(new { summarize = true }));
+
+        AssertNotError("lifeblood_asmdef_check", result);
+        var doc = JsonDocument.Parse(ExtractText(result));
+        Assert.True(doc.RootElement.TryGetProperty("violationCount", out _));
+        Assert.True(doc.RootElement.TryGetProperty("directOnlyModuleCount", out _));
     }
 
     [Fact]

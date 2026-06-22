@@ -45,6 +45,13 @@ public class SymbolPropertyKeysParityTests
     }
 
     [Fact]
+    public void FieldShapeKeys_ConstantValues_AreStable()
+    {
+        Assert.Equal("fieldType", SymbolPropertyKeys.FieldType);
+        Assert.Equal("constantValue", SymbolPropertyKeys.ConstantValue);
+    }
+
+    [Fact]
     public void AttributesKey_AllThreeReaders_RecognizeExtractorPayload()
     {
         // Build one minimal graph using SymbolPropertyKeys.Attributes

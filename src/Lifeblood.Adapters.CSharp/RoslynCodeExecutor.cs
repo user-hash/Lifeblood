@@ -1,6 +1,8 @@
 using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
@@ -80,6 +82,15 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
         "System.Text",
         "System.IO",
     };
+
+    private static readonly IReadOnlyDictionary<string, Type> ScriptSurfaceHintTypes =
+        new Dictionary<string, Type>(StringComparer.Ordinal)
+        {
+            ["Edge"] = typeof(Edge),
+            ["SemanticGraph"] = typeof(SemanticGraph),
+            ["Symbol"] = typeof(Symbol),
+            ["RoslynSemanticView"] = typeof(RoslynSemanticView),
+        };
 
     /// <summary>
     /// Construct an executor over a typed read-only view of the loaded
@@ -261,7 +272,7 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
             return new CodeExecutionResult
             {
                 Success = false,
-                Error = string.Join("\n", ex.Diagnostics.Select(d => d.ToString())),
+                Error = FormatCompilationDiagnostics(ex.Diagnostics),
                 ElapsedMs = Math.Round(elapsed, 1),
                 RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
                 TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
@@ -281,6 +292,16 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
         catch (Exception ex)
         {
             var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            if (TryFindCompilationError(ex, out var compilationError))
+                return new CodeExecutionResult
+                {
+                    Success = false,
+                    Error = FormatCompilationDiagnostics(compilationError.Diagnostics),
+                    ElapsedMs = Math.Round(elapsed, 1),
+                    RuntimeAssemblyWarnings = referenceSet.RuntimeAssemblyWarnings,
+                    TargetRuntimeWarnings = referenceSet.TargetRuntimeWarnings,
+                };
+
             if (TryClassifyWorkspaceLoadBoundary(ex, out var assemblyName))
                 return new CodeExecutionResult
                 {
@@ -311,6 +332,102 @@ public sealed class RoslynCodeExecutor : ICodeExecutor
             };
         }
     }
+
+    private static bool TryFindCompilationError(
+        Exception ex,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out CompilationErrorException? compilationError)
+    {
+        compilationError = Flatten(ex).OfType<CompilationErrorException>().FirstOrDefault();
+        return compilationError != null;
+    }
+
+    private static string FormatCompilationDiagnostics(IEnumerable<Diagnostic> diagnostics)
+    {
+        var diagnosticArray = diagnostics.ToArray();
+        var text = string.Join("\n", diagnosticArray.Select(d => d.ToString()));
+        var cs1061Hint = BuildCs1061Hint(diagnosticArray);
+        return string.IsNullOrEmpty(cs1061Hint)
+            ? text
+            : text + "\n\n" + cs1061Hint;
+    }
+
+    private static string BuildCs1061Hint(IEnumerable<Diagnostic> diagnostics)
+    {
+        var receiverTypes = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var diagnostic in diagnostics)
+        {
+            var diagnosticText = diagnostic.ToString();
+            if (!string.Equals(diagnostic.Id, "CS1061", StringComparison.Ordinal)
+                && !diagnosticText.Contains("CS1061", StringComparison.Ordinal))
+                continue;
+
+            var message = diagnostic.GetMessage();
+            var receiverTypeName = ExtractQuotedReceiverTypeName(message)
+                ?? ExtractQuotedReceiverTypeName(diagnosticText);
+            var scriptingSurfaceName = ShortTypeName(receiverTypeName);
+            if (scriptingSurfaceName != null && ScriptSurfaceHintTypes.ContainsKey(scriptingSurfaceName))
+            {
+                receiverTypes.Add(scriptingSurfaceName);
+                continue;
+            }
+
+            foreach (var knownTypeName in ScriptSurfaceHintTypes.Keys)
+            {
+                if (message.Contains($"'{knownTypeName}'", StringComparison.Ordinal)
+                    || message.Contains($".{knownTypeName}'", StringComparison.Ordinal)
+                    || diagnosticText.Contains($"'{knownTypeName}'", StringComparison.Ordinal)
+                    || diagnosticText.Contains($".{knownTypeName}'", StringComparison.Ordinal))
+                {
+                    receiverTypes.Add(knownTypeName);
+                }
+            }
+        }
+
+        if (receiverTypes.Count == 0) return "";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("lifeblood_execute hint: CS1061 means the script referenced a member that is not on the Lifeblood scripting surface.");
+        foreach (var receiverType in receiverTypes)
+        {
+            var members = PublicSurfaceMembers(ScriptSurfaceHintTypes[receiverType]);
+            sb.Append(receiverType)
+                .Append(" public members: ")
+                .AppendLine(string.Join(", ", members));
+        }
+        sb.Append("Use the Help global for script examples and the Graph/Compilations/ModuleDependencies globals for workspace facts.");
+        return sb.ToString();
+    }
+
+    private static string? ExtractQuotedReceiverTypeName(string message)
+    {
+        var start = message.IndexOf('\'');
+        if (start < 0) return null;
+        var end = message.IndexOf('\'', start + 1);
+        if (end <= start + 1) return null;
+        return message[(start + 1)..end];
+    }
+
+    private static string? ShortTypeName(string? typeName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName)) return null;
+        var tick = typeName.IndexOf('`');
+        if (tick >= 0)
+            typeName = typeName[..tick];
+        var dot = typeName.LastIndexOf('.');
+        return dot >= 0 ? typeName[(dot + 1)..] : typeName;
+    }
+
+    private static string[] PublicSurfaceMembers(Type type)
+        => type.GetMembers(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(m => m.DeclaringType != typeof(object))
+            .Where(m => m.MemberType is System.Reflection.MemberTypes.Property
+                or System.Reflection.MemberTypes.Field
+                or System.Reflection.MemberTypes.Method)
+            .Where(m => m is not System.Reflection.MethodInfo method || !method.IsSpecialName)
+            .Select(m => m.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(m => m, StringComparer.Ordinal)
+            .ToArray();
 
     /// <summary>
     /// Detects the compile-against-but-not-run boundary

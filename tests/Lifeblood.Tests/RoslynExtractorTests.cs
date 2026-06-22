@@ -151,6 +151,23 @@ public enum Status { Idle = 0, Loading = 5, Ready = 10, Failed = 99 }");
     }
 
     [Fact]
+    public void ExtractSymbols_ConstStringField_PreservesConstantValue()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+internal static class InvariantAnchor
+{
+    internal const string Id = ""INV-AUDIO-CALLBACK-001"";
+}");
+
+        var symbols = new RoslynSymbolExtractor().Extract(model, root, "InvariantAnchor.cs", "file:InvariantAnchor.cs");
+
+        var id = Assert.Single(symbols, s => s.Id == "field:App.InvariantAnchor.Id");
+        Assert.Equal("string", id.Properties[SymbolPropertyKeys.FieldType]);
+        Assert.Equal("INV-AUDIO-CALLBACK-001", id.Properties[SymbolPropertyKeys.ConstantValue]);
+    }
+
+    [Fact]
     public void ExtractSymbols_EnumMembers_FlagsBitfieldPreserved()
     {
         var (model, root) = Compile(@"

@@ -19,6 +19,8 @@ public static class ToolRequestBinder
     private static readonly string AnalyzeReadOnly = ArgumentName(AnalyzeToolName, "readOnly");
     private static readonly string AnalyzeAllowFullFallback = ArgumentName(AnalyzeToolName, "allowFullFallback");
     private static readonly string AnalyzeDefineProfiles = ArgumentName(AnalyzeToolName, "defineProfiles");
+    private static readonly string AnalyzeExcludePaths = ArgumentName(AnalyzeToolName, "excludePaths");
+    private static readonly string AnalyzeAuthoritativeChangedFiles = ArgumentName(AnalyzeToolName, "authoritativeChangedFiles");
 
     private static readonly string CompileCheckCode = ArgumentName(CompileCheckToolName, "code");
     private static readonly string CompileCheckFilePath = ArgumentName(CompileCheckToolName, "filePath");
@@ -42,6 +44,8 @@ public static class ToolRequestBinder
             ReadOnly = ReadBool(root, AnalyzeReadOnly) ?? false,
             AllowFullFallback = ReadBool(root, AnalyzeAllowFullFallback) ?? false,
             DefineProfiles = ReadStringArray(root, AnalyzeDefineProfiles),
+            ExcludePaths = ReadStringArray(root, AnalyzeExcludePaths),
+            AuthoritativeChangedFiles = ReadStringArray(root, AnalyzeAuthoritativeChangedFiles),
         };
     }
 
@@ -124,6 +128,8 @@ public sealed record AnalyzeToolRequest
     public bool ReadOnly { get; init; }
     public bool AllowFullFallback { get; init; }
     public string[]? DefineProfiles { get; init; }
+    public string[]? ExcludePaths { get; init; }
+    public string[]? AuthoritativeChangedFiles { get; init; }
 }
 
 public sealed record CompileCheckToolRequest
