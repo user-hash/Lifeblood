@@ -37,11 +37,15 @@ The difference: the AI agent doesn't guess what your code does. It **asks the co
 
 - **Static-table delegate references** — `INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001` + `INV-EXTRACT-SYNTHESIZED-CTOR-001` (`LB-INBOX-011`). Dispatch-table cells emit through the regular identifier walkers; synthesized `.cctor` / `.ctor()` surface as Symbols so `GraphBuilder`'s dangling-edge filter no longer drops the initializer-derived edges.
 
+- **Intentional scaffolding downrank** — `INV-DEADCODE-SCAFFOLDING-001` (`LB-INTAKE-20260608-003`). Non-public static types whose direct members are exclusively `[Conditional]` methods and/or static const string anchors, plus those direct members, are still reported but bucketed as `Scaffolding` instead of ordinary Production deletion candidates.
+
+- **Resolved UnityEvent persistent calls** — `INV-UNITYEVENT-REACHABILITY-001` (`LB-INTAKE-20260601-001`). The Unity reachability adapter scans `.prefab` / `.unity` / `.asset` YAML, resolves `m_Script` GUIDs through `.cs.meta`, and marks resolved UnityEvent target methods plus host types reachable.
+
 **Remaining false-positive classes (structural; not closed by the extractor):**
 - Runtime entry points (Program.Main, composition-root entries).
 - UI Toolkit `VisualElement` subclasses with magic-named methods (Awake/Update on a non-MonoBehaviour base).
 - Audio callbacks (`OnAudioFilterRead`) on bases not in the standard MonoBehaviour message-receiver set.
-- Reflection-based dispatch invisible to static analysis (`Type.GetType` + `MethodInfo.Invoke`, Unity `SendMessage`-dispatched handlers).
+- Unresolved Unity serialized callbacks/asset references, serialized enum production, and reflection-based dispatch invisible to static analysis (`Type.GetType` + `MethodInfo.Invoke`, Unity `SendMessage`-dispatched handlers).
 
 **Consumer guidance:**
 - Findings are advisory. Every response carries the `envelope.confidence = "Advisory"` band and a `limitations[]` entry naming the FP classes.
@@ -73,26 +77,27 @@ If you don't know the canonical id, ask `lifeblood_resolve_short_name MyType` an
 
 ## Incremental Re-Analyze
 
-After the first `lifeblood_analyze`, subsequent calls with `incremental: true` only recompile modules whose source files changed since the last analysis. File changes are detected via filesystem timestamps, and csproj timestamp changes (`INV-BCL-005`) also trigger per-module re-discovery so a `<Nullable>` or `<AllowUnsafeBlocks>` toggle doesn't leave stale compilation facts behind.
+After the first `lifeblood_analyze`, subsequent calls with `incremental: true` only recompile modules whose source content changed since the last analysis. Filesystem mtimes are the cheap candidate prefilter; source content hashes decide whether a touched file actually re-extracts. Responses report `mtimeTouchedSourceFiles`, `contentChangedSourceFiles`, and `changedSourceFiles` so save-without-content-change is visible as an `incremental-noop`. Csproj timestamp changes (`INV-BCL-005`) and asmdef changes (`INV-UNITY-002`) still trigger per-module re-discovery so compilation facts do not go stale.
 
 ```
-lifeblood_analyze projectPath="/my/project"                    → full analysis (~14-34 s depending on workspace size)
-lifeblood_analyze projectPath="/my/project" incremental=true   → seconds when nothing changed, else re-analyze only the dirty modules
+lifeblood_analyze projectPath="/my/project"                    -> full analysis (~14-34 s depending on workspace size)
+lifeblood_analyze projectPath="/my/project" incremental=true   -> seconds when nothing changed; dirty source modules re-analyze by content hash
 ```
 
 ### Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`)
 
 `lifeblood_analyze` does not silently widen scope when it detects drift. The
 adapter classifies the drift into a typed `fallbackReason`
-(`noPriorAnalysis` / `moduleSetChanged` / `moduleDescriptorChanged` —
-asmdef edits, csproj structural changes, etc.) and the caller decides
+(`noPriorAnalysis` / `moduleSetChanged` / `moduleDescriptorChanged` /
+`analysisScopeChanged` / `compilationStateUnavailable` - asmdef edits, csproj structural changes, analyze
+`excludePaths` scope changes, read-only-to-retained recovery, etc.) and the caller decides
 what to do.
 
 | Caller setting | Adapter behaviour |
 |---------------|-------------------|
 | `incremental: false` | Always full analyze. `mode: "full"`, `requestedMode: "full"`. |
-| `incremental: true`, `allowFullFallback: false` (default) | Cheap path on success. On detected drift: REJECT — `mode: "rejected"`, `requestedMode: "incremental"`, `fallbackReason` + `fallbackDetail` populated, `canRetryFull: true`, plus a `suggestedRetry: { incremental: true, allowFullFallback: true }` block. No work done; caller decides. |
-| `incremental: true`, `allowFullFallback: true` | Cheap path on success. On detected drift: silently widen to full and report both — `mode: "full"`, `requestedMode: "incremental"`, `fallbackReason` populated so the cache miss stays visible, work succeeded with summary populated. |
+| `incremental: true`, `allowFullFallback: false` (default) | Cheap path on success. On detected drift: REJECT - `mode: "rejected"`, `requestedMode: "incremental"`, `fallbackReason` + `fallbackDetail` populated, `canRetryFull: true`, plus a `suggestedRetry: { incremental: true, allowFullFallback: true }` block. No work done; caller decides. |
+| `incremental: true`, `allowFullFallback: true` | Cheap path on success. On detected drift: silently widen to full and report both - `mode: "full"`, `requestedMode: "incremental"`, `fallbackReason` populated so the cache miss stays visible, work succeeded with summary populated. |
 
 Rejection is a NORMAL structured result, not a transport / tool error.
 The `suggestedRetry` block is exactly the args needed to retry — pass it

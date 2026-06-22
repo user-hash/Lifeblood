@@ -61,7 +61,7 @@ The domain is pure. No Roslyn, no JSON, no System.IO.
 
 - **SemanticGraph.** The immutable graph with thread-safe lazy indexes.
 
-- **AnalysisSnapshot** (adapter-level). Caches per-file extraction results for incremental re-analyze. Tracks csproj timestamps so `<Nullable>` / `<AllowUnsafeBlocks>` / `<Reference>` edits trigger per-module re-discovery (`INV-BCL-005`).
+- **AnalysisSnapshot** (adapter-level). Caches per-file extraction results for incremental re-analyze. Tracks source content hashes so mtime-only touches do not replace graph slices, and tracks csproj timestamps so `<Nullable>` / `<AllowUnsafeBlocks>` / `<Reference>` edits trigger per-module re-discovery (`INV-BCL-005`).
 
 Properties are `IReadOnlyDictionary` on the public surface. The graph is read-only after construction.
 
@@ -92,7 +92,7 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 - `IResponseDecorator`. Builds the truth envelope on every read-side response: truth tier, confidence band, evidence source, wall-clock staleness, files-changed-since-analyze count, per-tool limitations. Classification table is sourced from the host's tool registry at construction (`INV-ENVELOPE-001`).
 - `ISemanticSearchProvider`. Ranked search over symbol names, qualified names, and persisted xmldoc summaries. Tokenizes on whitespace with ranked-OR scoring.
 - `IDeadCodeAnalyzer`. Finds symbols with no incoming semantic references. Optional `IUnityReachabilityProvider` injection downgrades MonoBehaviour magic methods + Unity entrypoint attributes from 'flagged' to 'live by runtime dispatch' (`INV-UNITY-001`). See `INV-DEADCODE-001`.
-- `IUnityReachabilityProvider`. Returns true when a symbol is reachable through Unity runtime dispatch (entrypoint attribute or MonoBehaviour magic method on a Unity-message-receiver-derived type). Walks the inheritance chain via `Properties["baseType"]` so external bases (UnityEngine.dll) still resolve.
+- `IUnityReachabilityProvider`. Returns true when a symbol is reachable through Unity runtime dispatch (entrypoint attribute or MonoBehaviour magic method on a Unity-message-receiver-derived type). Walks the inheritance chain via `Properties["baseTypeChain"]` plus the older direct-base `Properties["baseType"]` fallback so metadata-only framework bases (UnityEngine.UI / UnityEngine.dll) still resolve.
 - `IAuthorityReporter`. Single graph walk produces an `AuthorityReport`: implementedInterfaceCount, ownedPublicSurface, per-interface usage (member count + consumer count), forwarderRatio (`INV-AUTHORITY-001`).
 - `IPortHealthAnalyzer`. Classifies a single interface's health from the graph — member walk + liveness rule (incoming non-`Contains` edge OR outgoing `Implements`) into verdict bands (`empty` / `healthy` ≥0.75 / `mixed` ≥0.25 / `vestigial`). `lifeblood_port_health` runs entirely behind this port; the algorithm body does not live in `ToolHandler` (`INV-PORT-HEALTH-ANALYZER-SEAM-001`).
 - `IPartialViewBuilder`. Combines every partial declaration of a type into one view with file headers.
@@ -116,13 +116,13 @@ Current Roslyn adapter capabilities:
 
 ## Incremental Re-Analyze
 
-After a full analysis, subsequent calls with `incremental: true` only recompile modules whose source files changed. The `AnalysisSnapshot` caches per-file extraction results (symbols, edges, timestamps). Changed files are detected via filesystem timestamps and surgically replaced. Csproj timestamp changes trigger per-module re-discovery so compilation facts (`BclOwnership`, `AllowUnsafeCode`, etc.) never go stale.
+After a full analysis, subsequent calls with `incremental: true` only recompile modules whose source content changed. The `AnalysisSnapshot` caches per-file extraction results plus source content hashes. Filesystem mtimes identify touched candidates; content hashes decide whether those candidates actually re-extract. Calls may pass `authoritativeChangedFiles` when an editor/build-system supplies an exact changed-file set; the hint narrows source scanning only and never suppresses descriptor drift checks. Csproj timestamp changes trigger per-module re-discovery so compilation facts (`BclOwnership`, `AllowUnsafeCode`, etc.) never go stale.
 
-**Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`).** The adapter does not silently widen scope when it detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited). It returns a typed `IncrementalAnalyzeResult { Mode, Graph?, ChangedFileCount, Reason?, Detail? }` and the caller chooses what to do via `AnalysisConfig.AllowFullFallback`:
+**Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`).** The adapter does not silently widen scope when it detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited, analysis-scope changed, or retained compilation state missing after read-only analysis). It returns a typed `IncrementalAnalyzeResult { Mode, Graph?, ChangedFileCount, Reason?, Detail? }` and the caller chooses what to do via `AnalysisConfig.AllowFullFallback`:
 - `false` (default) → adapter returns `Mode = Rejected, Graph = null, Reason = ...`. Caller decides next step.
 - `true` → adapter widens to full and returns `Mode = FullFallback, Graph = ..., Reason = ...` so the result lands and the cache miss stays visible.
 
-`FallbackReason` taxonomy is adapter-agnostic (`NoPriorAnalysis` / `ModuleSetChanged` / `ModuleDescriptorChanged`); adapter-specific descriptor names (asmdef, csproj, pyproject, package.json) live in `Detail`. Internal best-effort callers (`GraphSession.MaybeRefreshIfStale`) deliberately set `AllowFullFallback = true` because their contract is "make state fresh"; user-facing callers preserve the user's flag unchanged.
+`FallbackReason` taxonomy is adapter-agnostic (`NoPriorAnalysis` / `ModuleSetChanged` / `ModuleDescriptorChanged` / `AnalysisScopeChanged` / `CompilationStateUnavailable`); adapter-specific descriptor names (asmdef, csproj, pyproject, package.json), scope names (`excludePaths`), or retained-state details live in `Detail`. Internal best-effort callers (`GraphSession.MaybeRefreshIfStale`) deliberately set `AllowFullFallback = true` because their contract is "make state fresh"; user-facing callers preserve the user's flag unchanged.
 
 The MCP wire shape carries `mode` (what the adapter DID) + `requestedMode` (what the caller ASKED) + `fallbackReason` + `fallbackDetail`. Rejection responses additionally carry `canRetryFull: true` and a `suggestedRetry` block — the next move is self-documenting.
 
@@ -130,7 +130,7 @@ v1 limitation: does not cascade to dependent modules when an API surface changes
 
 ## Unity Bridge
 
-The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes every MCP tool to Unity MCP. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
+The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes a curated in-Editor subset of the MCP tool surface to Unity MCP; the standalone `lifeblood-mcp` server exposes every tool. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
 
 ```
 Unity Editor ──→ Unity MCP (scenes, GameObjects, assets)
@@ -161,9 +161,9 @@ The invariant register lives under [`docs/invariants/`](../docs/invariants/INDEX
 
 **Seam 7. Truth envelope (registry-driven).** Every read-side MCP tool response carries a top-level `envelope` field. Per-tool classification (truth tier, confidence band, evidence source, limitations) is declared on `ToolDefinition.EnvelopeClassification` in the registry; the composition root projects that table into `LifebloodResponseDecorator` at startup. Adding a new read-side tool without a classification triggers the registry ratchet (`Registry_EveryReadSideTool_DeclaresEnvelopeClassification`). Staleness is computed from `GraphSession.AnalyzedAtUtc` plus an `IFileSystem` mtime scan over the graph's File symbols, capped at 256 files per call. Invariant: `INV-ENVELOPE-001`.
 
-**Seam 8. Runtime-dispatch reachability.** `IUnityReachabilityProvider` is the right-side port for framework-dispatch detection. The C# reference adapter (`UnityReachabilityAdapter`) handles Unity entrypoint attributes and MonoBehaviour magic methods, walking the inheritance chain via `Properties["baseType"]` so external Unity bases resolve. `LifebloodDeadCodeAnalyzer` consults the provider when injected. Future framework adapters (ASP.NET attribute routing, MAUI handlers, MEF) plug into the same port. Invariant: `INV-UNITY-001`.
+**Seam 8. Runtime-dispatch reachability.** `IUnityReachabilityProvider` is the right-side port for framework-dispatch detection. The C# reference adapter (`UnityReachabilityAdapter`) handles Unity entrypoint attributes and MonoBehaviour magic methods, walking the Roslyn-resolved inheritance chain via `Properties["baseTypeChain"]` plus direct-base fallback so external Unity bases resolve. `LifebloodDeadCodeAnalyzer` consults the provider when injected. Future framework adapters (ASP.NET attribute routing, MAUI handlers, MEF) plug into the same port. Invariant: `INV-UNITY-001`.
 
-**Seam 9. Authority + forwarder analysis.** `IAuthorityReporter` produces a single-walk report (`implementedInterfaceCount`, `ownedPublicSurface`, per-interface usage, `forwarderRatio`). The forwarder ratio is read off `Symbol.Properties["classification"]`, set at extraction time by `RoslynSymbolExtractor.AttachMethodClassification` (`PureForwarder` / `ThinWrapper` / `RealLogic`). `lifeblood_authority_report` and `lifeblood_port_health` consume the report directly. Invariants: `INV-AUTHORITY-001`, `INV-FORWARDER-001`.
+**Seam 9. Authority + forwarder analysis.** `IAuthorityReporter` produces a single-walk report (`implementedInterfaceCount`, `ownedPublicSurface`, per-interface usage, `forwarderRatio`). `AuthorityCoverageAnalyzer` separately computes graph-only source-of-truth reachability for `lifeblood_authority_coverage`. The forwarder ratio is read off `Symbol.Properties["classification"]`, set at extraction time by `RoslynSymbolExtractor.AttachMethodClassification` (`PureForwarder` / `ThinWrapper` / `RealLogic`). `lifeblood_authority_report`, `lifeblood_authority_coverage`, and `lifeblood_port_health` consume graph evidence directly. Invariants: `INV-AUTHORITY-001`, `INV-AUTHORITY-COVERAGE-001`, `INV-FORWARDER-001`.
 
 ## Invariant Enforcement
 
