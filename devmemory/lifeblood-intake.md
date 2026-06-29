@@ -1,177 +1,182 @@
-# Lifeblood Intake — un-started findings & feature requests
+# Lifeblood Intake - un-started findings and feature requests
 
 Un-prioritized intake. Items here are NOT yet started. The ratcheted ledger
 [`lifeblood-tracking.md`](lifeblood-tracking.md) holds only Shipped + in-flight
 work (`TrackingLedger_HasNoPlainOpenOrCandidateEntries` forbids parked Open
 items), so new findings land here first. When work begins, promote the item:
-ship it and record it directly in the ledger as Shipped (or Partially shipped
-with a `Remaining open work:` line), then delete it from this intake.
+ship it and record it directly in the ledger as Shipped, or Partially shipped
+with a `Remaining open work:` line, then delete it from this intake.
 
-Source: DAWG dogfood research pass 2026-06-01 (Lifeblood v0.7.11, server `1100895`).
-Method: exercised v0.7.11 against the DAWG graph (69,350 symbols), verified every
-candidate with `find_references` + grep + source read before filing — no
-unverified claims.
+Live file hygiene:
+- Keep only active product feedback here.
+- Do not park shipped receipt comments in this file; use
+  [`lifeblood-tracking-archive.md`](lifeblood-tracking-archive.md).
+- Do not log DAWG architecture debt unless it exposes a Lifeblood product gap.
+- Every entry should be usable by someone who was not present for the dogfood
+  session.
 
----
-
-<!-- LB-INTAKE-20260601-001 (Unity serialized/UnityEvent wiring invisible to
-     reachability) IMPLEMENTED LOCALLY 2026-06-22: `UnityReachabilityAdapter` now scans
-     `.prefab` / `.unity` / `.asset` YAML, resolves script GUIDs through `.meta`
-     files, and marks resolved UnityEvent persistent-call method targets plus
-     host types reachable. Residual boundary (documented on-wire): unresolved
-     serialized targets, runtime-procedural assignment, Addressables/Resources-
-     loaded values, unsaved Inspector edits, and serialized enum production.
-     INV-UNITYEVENT-REACHABILITY-001. Recorded in lifeblood-tracking-archive.md.
-     Do not re-add here. -->
-<!-- LB-INTAKE-20260601-002 (static struct-layout / sizeof tool) IMPLEMENTED LOCALLY
-     2026-06-22 as `lifeblood_struct_layout` (field offsets/sizes/alignment,
-     pack, total size, fixed buffers; Exact for known blittable Sequential /
-     Explicit structs, Advisory with limitations for Auto/reference/non-blittable
-     shapes) -> recorded as the 2026-06-22 receipt in
-     lifeblood-tracking-archive.md. INV-STRUCT-LAYOUT-001. Do not re-add here. -->
-<!-- LB-INTAKE-20260601-003 (asmdef compile-direction boundary check) IMPLEMENTED LOCALLY
-     2026-06-22 as `lifeblood_asmdef_check` (graph-only DirectOnly module
-     dependency audit; reports first offending edge/call site/profile set per
-     source-target module pair, skips SDK-style transitive modules honestly) ->
-     recorded as the 2026-06-22 receipt in lifeblood-tracking-archive.md.
-     INV-ASMDEF-CHECK-001. Do not re-add here. -->
-
-<!-- LB-INTAKE-20260601-004 (Vendored/third-party path exclusion for dead_code
-     + analyze) IMPLEMENTED LOCALLY 2026-06-22: first half (`dead_code pathExclude`)
-     implemented 2026-06-21; remaining halves now implemented as `lifeblood_analyze
-     excludePaths` with `analysisScopeChanged` incremental fallback, shared
-     `PathGlobMatcher`, and first-class `Vendored` path bucket
-     (Generated > Vendored > Test > Editor > Production). Pinned by analyze
-     wire-shape, csproj compilation, bucket parity, grouping, schema, and DAWG
-     dogfood receipts. INV-ANALYZE-EXCLUDEPATHS-001 /
-     INV-PATHBUCKET-SHARED-001. Recorded in lifeblood-tracking-archive.md. Do
-     not re-add here. -->
-
-<!-- LB-INTAKE-20260601-005 (net10 source-generator concurrency isolation)
-     IMPLEMENTED LOCALLY 2026-06-22. `SourceGeneratorRunner` now serializes framework
-     analyzer loading and generator-driver execution behind a process-local
-     gate, closing the concurrent in-process race without changing production
-     TFM or generated-code semantics. Pinned by
-     `CsprojCompilationFactsTests.Compilation_RunsFrameworkSourceGenerators_ConcurrentAnalyses_AreDeterministic`.
-     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
-
-<!-- LB-INTAKE-20260602-001 (retained-session recovery after read-only analyze)
-     IMPLEMENTED LOCALLY 2026-06-22. `GraphSession` now rejects non-read-only incremental
-     recovery from a read-only/no-compilation-state session with
-     `fallbackReason:"compilationStateUnavailable"` and an exact
-     `incremental:false, readOnly:false` recovery hint, or performs a full
-     restore when `allowFullFallback:true` is supplied. Write-side errors and
-     capabilities expose the same recovery hint. Pinned by
-     `AnalyzeWireShapeTests.Load_ReadOnlyThenWriteSideIncremental_*`. Recorded in
-     lifeblood-tracking-archive.md. Do not re-add here. -->
+Current dogfood rating for DAWG/Burst work: **8.5/10**. Lifeblood is now strong
+for structural truth, dependency tracing, file compile checks, and large Unity
+workspace baselining. The remaining pain is not correctness of the existing
+answers; it is missing first-class workflows for value-domain DSP/math audits,
+multi-file verification, and source-comment drift.
 
 ---
 
-## Refuted this pass (do not re-investigate)
+## LB-INTAKE-20260629-001 - Semantic contract-pattern query for unchecked control math
 
-- **No `unsafe` pointer-param extraction gap.** `ApplyOscDriftIfActive(BurstPatch*, …)`
-  overload A is correctly seen live (called by RenderMono/Stereo with
-  `pitchBendFactor`); overload B is correctly dead. dead_code is accurate on the
-  Burst kernel, including pointer/ref-param overload resolution.
+Type: Feature request
+Priority: High
+Source: DAWG Burst DSP dogfood, 2026-06-27 to 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
 
----
+What:
+- DAWG's Burst bug hunts repeatedly needed the same question: "which consumers
+  feed a bounded control value into trig, gain, pan, filter, or direct DSP math
+  without a local clamp or domain conversion?"
+- Lifeblood could prove symbols, edges, compile state, and graph structure, but
+  this value-domain search still fell back to manual source reads plus `rg`
+  sweeps over `DspMath.Sin`, `DspMath.Cos`, pan formulas, and gain consumers.
 
-## 2026-06-08 — DAWG architecture-sealing dogfood (Lifeblood v0.7.11, server 1100895)
+Why it matters:
+- The production failures were not broad architecture failures; they were small
+  contract breaks at math seams. A semantic operation-pattern query would catch
+  siblings of that bug class faster and with less hotpatch risk.
+- This matters for any real-time DSP, game physics, animation, serialization, or
+  UI-control system where caller values must be clamped, normalized, converted,
+  or otherwise proven before reaching sensitive math.
 
-Method: full analyze + `defineProfiles:["Editor","Player"]` union; every claim cross-checked
-with `find_references` / `dependants profileFilter` + grep + source read.
+Fix shape:
+- Add a first-class operation-pattern tool, or extend `lifeblood_execute` with a
+  documented recipe, that can search IOperation trees by callee, argument source,
+  field/parameter flow, and required guard shapes.
+- Minimum useful predicates: called method name/id, containing module/bucket,
+  argument originates from field/parameter/property, argument passes through
+  `math.clamp` or a named clamp helper, argument is compared against constants,
+  and result feeds assignment/multiply/trig/filter calls.
+- Response should group by declaring type/file and include compact evidence:
+  callsite span, callee, argument expression, detected guard or missing guard,
+  and profile scope.
 
-<!-- LB-INTAKE-20260608-001 (MonoBehaviour magic-method reachability misses
-     Unity UI-derived components) IMPLEMENTED LOCALLY 2026-06-22. The C# extractor now
-     records SymbolPropertyKeys.BaseTypeChain, and UnityReachabilityAdapter
-     consumes the resolved chain so Graphic/UIBehaviour-derived components reach
-     UnityEngine.MonoBehaviour without hand-maintaining intermediate subclass
-     rosters. Recorded in lifeblood-tracking-archive.md. INV-UNITY-001. -->
-<!-- LB-INTAKE-20260608-002 (Editor+Player profile pair misses
-     UNITY_STANDALONE desktop-guarded callsites) IMPLEMENTED LOCALLY 2026-06-22.
-     UnityDefineProfileResolver now exposes a Standalone profile that strips
-     Unity editor discriminators and adds UNITY_STANDALONE, making
-     UNITY_STANDALONE && !UNITY_EDITOR edges visible through the semantic
-     multi-profile graph without source-text heuristics. Recorded in
-     lifeblood-tracking-archive.md. INV-MULTI-DEFINE-UNITY-RESOLVER-001. -->
+## LB-INTAKE-20260629-002 - Batch compile-check for changed file sets
 
-<!-- LB-INTAKE-20260608-003 (dead_code intentional scaffolding downrank)
-     IMPLEMENTED LOCALLY 2026-06-22. `lifeblood_dead_code` now reports non-public static
-     types whose direct members are exclusively `[Conditional]` methods and/or
-     static const string anchors, plus those direct members, as
-     `bucket:"Scaffolding"` instead of ordinary Production deletion work.
-     Recorded in lifeblood-tracking-archive.md. INV-DEADCODE-SCAFFOLDING-001.
-     Do not re-add here. -->
+Type: Optimization
+Priority: Medium
+Source: DAWG Burst and tuning dogfood sessions, 2026-06-27 to 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
+Workspace: DAWG
+Rating for DAWG work: 8/10 value if shipped
 
-## DAWG-side findings (NOT Lifeblood issues — for the DAWG burst owner)
+What:
+- `lifeblood_compile_check` currently accepts one `code` snippet or one
+  `filePath`. During DAWG sessions, natural verification atoms often touched a
+  small set of related files and tests; each file needed a separate compile
+  check or a Unity compile loop.
+- The current single-file shape is precise, but it makes repeated verification
+  slower and easier to under-run when an edit spans kernel, dispatch, tests, and
+  documentation guard files.
 
-- `BurstSynthSustainKernel.DrainComb` (Comb.cs:95) — genuinely dead leftover,
-  superseded by `DrainCombFilterState`.
-- `ApplyOscDriftIfActive` 5-param overload (OscDrift.cs:172) — dead unused
-  convenience overload; only the 6-param overload + `TestOnly_` wrapper are live.
-- (2026-06-08) `MixerScreenAdapter.UpdateChannelWaveformInternal` /
-  `ClearAllChannelWaveformsInternal` (Mixer/MixerScreenAdapter.Controls.cs:97/105) —
-  grep finds ONLY the declarations, zero callers (not HostBindings-wired, not
-  reflection). Genuine wire-or-delete candidate: a mixer per-channel waveform-display
-  capability built but never connected. Verify intended feature before removing.
+Why it matters:
+- Lifeblood already owns the loaded compilation and stale-refresh contract. A
+  batch shape would amortize workspace refresh cost, reduce agent/tool chatter,
+  and make "verify every touched C# file" a single auditable receipt.
+- For DAWG, this is especially useful when Unity is open or MCP is unavailable
+  and batchmode test execution would collide with the editor.
 
-<!-- LB-INTAKE-20260611-001 (offline declared-member-count lane) IMPLEMENTED LOCALLY
-     2026-06-22 as `lifeblood_member_count` (semantics reflectionDeclared bit-exact
-     System.Reflection parity, pinned by an emit-reflect-vs-parse harness; +
-     sourceSymbols graph-child semantics) -> recorded as the 2026-06-22 receipt in
-     lifeblood-tracking-archive.md. INV-MEMBER-COUNT-001. Do not re-add here. -->
+Fix shape:
+- Extend `lifeblood_compile_check` with `filePaths: string[]`, or add a sibling
+  `lifeblood_compile_check_batch`.
+- Return an aggregate status plus one result per file: owning module, profile
+  scope, diagnostics, stale-refresh mode, and any file that could not be mapped
+  to a compilation.
+- Keep the existing single-file response stable; batch mode can be an additive
+  shape.
 
-<!-- LB-INTAKE-20260611-002 (execute CS1061 scripting-surface hints) IMPLEMENTED LOCALLY
-     2026-06-22. `RoslynCodeExecutor` now unwraps task-wrapped script
-     compilation errors and appends public member lists plus a `Help` pointer
-     when CS1061 hits a known Lifeblood scripting-surface type. Pinned by
-     `ExecuteRobustnessTests.Executor_Cs1061OnKnownScriptingSurface_AppendsPublicMemberHint`.
-     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
+## LB-INTAKE-20260629-003 - Operation-walking tools need multi-profile support
 
-<!-- LB-INTAKE-20260611-003 (content-hash incremental reliability) IMPLEMENTED LOCALLY
-     2026-06-22. Incremental analyze now records source text hashes for the
-     parsed files, treats mtime as a pre-filter, updates timestamps on
-     contentless touches without graph replacement, and reports
-     `mtimeTouchedSourceFiles` vs `contentChangedSourceFiles`. Pinned by
-     `IncrementalAnalyzeTests.IncrementalAnalyze_ContentlessTouch_ReportsMtimeTouchWithoutReextracting`.
-     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
+Type: Improvement
+Priority: High
+Source: DAWG Unity/Burst dogfood, 2026-06-29; schema review of `lifeblood_wire_audit` and `lifeblood_static_tables`
+Workspace: DAWG
+Rating for DAWG work: 8/10 value if shipped
 
-<!-- LB-INTAKE-20260611-004 (dead-WIRE audit: read-without-write fields,
-     never-assigned binding slots, never-fired/never-subscribed events,
-     degenerate constant-only call sites) IMPLEMENTED LOCALLY 2026-06-22 as the five
-     passes of `lifeblood_wire_audit` (a+b 2026-06-21, c+d 2026-06-22) ->
-     recorded as the 2026-06-22 receipt in lifeblood-tracking-archive.md.
-     INV-WIRE-AUDIT-001. Do not re-add here; the id must not live in both files. -->
+What:
+- Lifeblood's operation-walking tools document that `profileScope` must match
+  the retained profile from the most recent analyze. In a Unity workspace,
+  DAWG usually analyzes `Editor` and `Player` together, but operation-level
+  audits cannot freely ask the same question against Player-only code without
+  changing the retained profile.
 
-<!-- LB-INTAKE-20260611-005 (Unity editor sync authoritative changed-set)
-     IMPLEMENTED LOCALLY 2026-06-22 at the Lifeblood MCP boundary. `lifeblood_analyze`
-     accepts `authoritativeChangedFiles` for incremental analyze; the adapter
-     bounds the source scan to that editor/build-system supplied set and still
-     uses content hashes before replacing graph facts. Descriptor drift checks
-     remain independent. Pinned by
-     `IncrementalAnalyzeTests.IncrementalAnalyze_AuthoritativeChangedFiles_BoundsSourceScanToListedFiles`
-     and `ToolArgumentContractTests.ToolRequestBinder_BindsAnalyzeRequestRecord`.
-     Recorded in lifeblood-tracking-archive.md. Do not re-add here. -->
+Why it matters:
+- Burst and runtime-only bugs often live behind Player or platform define sets.
+  Graph-level multi-profile analysis is useful, but operation-exact tools are
+  where value-domain and wiring bugs become actionable.
+- The current limit is honest and safe; it is still a workflow gap for Unity
+  dogfood because the user thinks in "Editor plus Player" while the operation
+  tool answers one retained compilation profile.
 
-<!-- LB-INTAKE-20260613-001 (call-site argument/default-parameter facts) IMPLEMENTED LOCALLY
-     2026-06-21 as the lifeblood_callsite_arguments tool (INV-CALLSITE-ARGS-001)
-     → recorded as the 2026-06-21 receipt in lifeblood-tracking-archive.md. -->
+Fix shape:
+- Allow operation-walking tools to run against any loaded define profile from
+  the retained session, or expose a fast profile-switch/re-analyze path that is
+  explicit in the response.
+- Responses should include `profileScope`, `availableProfiles`, and clear
+  failure guidance when a requested profile was not retained.
 
-<!-- LB-INTAKE-20260613-002 (dormant feature-switch / static-flag audit) IMPLEMENTED LOCALLY
-     2026-06-21 as `lifeblood_feature_switch_audit` → recorded as the 2026-06-21
-     receipt in lifeblood-tracking-archive.md. INV-FEATURE-SWITCH-001. Do not
-     re-add here; the id must not live in both files. -->
+## LB-INTAKE-20260629-004 - Source-comment drift audit for retired authority prose
 
-<!-- LB-INTAKE-20260613-003 (dependants/dependencies grouping + filters) IMPLEMENTED LOCALLY
-     2026-06-21 → recorded as the 2026-06-21 receipt in
-     lifeblood-tracking-archive.md. INV-EDGE-GROUP-001. -->
+Type: Feature request
+Priority: Medium
+Source: DAWG Burst migration dogfood, 2026-06-27 to 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
+Workspace: DAWG
+Rating for DAWG work: 7/10 value if shipped
 
-<!-- LB-INTAKE-20260613-004 (authority coverage / negative dependency matrix)
-     IMPLEMENTED LOCALLY 2026-06-22 as `lifeblood_authority_coverage` (graph-only
-     subject-vs-authority reachability matrix) -> recorded as the 2026-06-22
-     receipt in lifeblood-tracking-archive.md. INV-AUTHORITY-COVERAGE-001. Do not
-     re-add here; the id must not live in both files. -->
+What:
+- DAWG's Burst work exposed stale source prose and comments that still described
+  managed DSP mirror/parity ideas after Burst had become the production DSP
+  authority. Lifeblood can inspect symbols and docs/invariants, but there is no
+  focused tool for finding source comments whose authority wording is stale,
+  retired, or inconsistent with the current invariant tree.
 
-<!-- LB-INTAKE-20260613-005 (intake ledger shape ratchet) IMPLEMENTED LOCALLY 2026-06-21 →
-     recorded as the 2026-06-21 receipt in lifeblood-tracking-archive.md.
-     Do not re-add here; the id must not live in both files. -->
+Why it matters:
+- Stale comments changed investigation behavior. They did not break compiled
+  code, but they pulled attention toward retired managed-DSP comparisons and
+  away from the Burst math contract that mattered.
+- This is a product-level Lifeblood opportunity because it joins semantic code
+  evidence with the instruction/invariant corpus Lifeblood already parses.
+
+Fix shape:
+- Add a comment/prose drift audit that scans source comments and XML docs for
+  forbidden or retired terms supplied by the caller or invariant tree.
+- Useful outputs: file/line, matched phrase, nearby symbol, referenced invariant
+  or rule, confidence, and suggested action category: delete, update authority,
+  or keep because the seam still exists.
+- Keep it advisory. The tool should not claim a comment is wrong without either
+  a caller-supplied retired-term list or a resolved invariant/rule conflict.
+
+## LB-INTAKE-20260629-005 - Dogfood feedback capture command
+
+Type: UX
+Priority: Low
+Source: DAWG + Lifeblood maintenance session, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
+Workspace: DAWG and Lifeblood self
+Rating for DAWG work: 6/10 value if shipped
+
+What:
+- Valuable tool feedback currently lands by manually editing
+  `devmemory/lifeblood-intake.md`. That keeps the repo simple, but it is easy to
+  leave behind stale shipped comments, mix DAWG debt with Lifeblood product
+  feedback, or forget a rating/source/version while moving fast.
+
+Why it matters:
+- Lifeblood is being improved through heavy dogfood loops. A small capture lane
+  would preserve provenance without turning every observation into an immediate
+  engineering task.
+- This would also keep the strict tracking ledger clean while making intake
+  maintenance less manual.
+
+Fix shape:
+- Add a CLI or script command that appends a valid intake entry from structured
+  prompts or arguments: type, priority, source, workspace, rating, what, why,
+  fix shape.
+- The command should reject duplicate IDs, keep entries ASCII/Markdown-clean,
+  and optionally run `IntakeLedgerTests` after writing.
