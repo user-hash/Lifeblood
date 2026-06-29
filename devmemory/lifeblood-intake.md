@@ -749,3 +749,173 @@ Fix shape:
   thread scheduling, and event-list iteration without stable ordering.
 - Return a route-level report with hazards, evidence spans, detected seed or
   ordering controls, and suggested contract hooks for tests/probes.
+
+## LB-INTAKE-20260629-024 - Embedded Unity package source visibility report
+
+Type: Improvement
+Priority: High
+Source: DAWG Unity MCP/package dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- DAWG package-side investigations exposed a visibility class that is different
+  from the already-logged "new file not yet imported" case: Unity can compile an
+  embedded package source file, while Lifeblood reports the file as outside the
+  loaded project descriptors.
+- The package source is not a raw disk orphan. It lives under `Packages/`, has
+  package/asmdef ownership, and Unity can load the resulting editor assembly.
+  The missing bit is Lifeblood's explicit report of which package sources are
+  included, excluded, or intentionally unsupported by the current analyze scope.
+
+Why it matters:
+- Tooling and test-job code often lives in embedded packages. If those files are
+  outside the semantic graph, agents can accidentally treat a clean analyze as
+  covering code that Lifeblood did not actually inspect.
+- This is generic for Unity packages, vendored SDKs, source generators, local
+  package references, samples promoted to packages, and any project where the
+  build tool compiles code that does not appear in the primary solution graph.
+
+Fix shape:
+- Add a package/source-visibility section to `lifeblood_analyze` and
+  `lifeblood_compile_check` for Unity workspaces.
+- Report package roots from `manifest.json` / `packages-lock.json`, discovered
+  package asmdefs, files included in Roslyn compilations, files excluded by
+  `excludePaths`, and files Unity appears to compile but Lifeblood cannot bind.
+- When `compile_check(filePath)` hits package source outside the loaded
+  compilation, return a package-specific resolution with the owner package,
+  expected assembly, exclusion reason, and a concrete remedy such as include
+  packages, route to Unity compile, or regenerate project descriptors.
+
+## LB-INTAKE-20260629-025 - Sibling implementation parity audit
+
+Type: Feature request
+Priority: High
+Source: DAWG DSP/Burst dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- DSP and math code often has sibling implementations that are meant to stay
+  behaviorally aligned: mono/stereo, scalar/vectorized, managed/Burst,
+  editor/player, fast/high-quality, dry/wet, or preview/production paths.
+- Lifeblood can show each path's dependencies, but it does not yet compare two
+  sibling algorithms for asymmetric calls, constants, clamps, branches, state
+  resets, or table lookups.
+
+Why it matters:
+- Many real audio/math failures are "same contract, different branch" bugs. The
+  graph can be fully wired and tests can pass a single branch while another
+  sibling silently drifts.
+- The same class appears outside audio in physics integrators, animation curves,
+  camera rigs, networking serializers, validation code, and platform-specific
+  math shims.
+
+Fix shape:
+- Add a parity audit where callers pass two or more root symbols, or where
+  Lifeblood suggests pairs by naming/signature patterns.
+- Compare operation shapes, call graphs, numeric literals, named constants,
+  guards, clamps, allocations, state writes, table access, and exception/logging
+  paths.
+- Return symmetric and asymmetric facts with callsite spans, plus optional test
+  hints naming branches that have no direct test coverage.
+
+## LB-INTAKE-20260629-026 - Ownership and handoff contract audit
+
+Type: Feature request
+Priority: High
+Source: DAWG sync/audio-thread dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- Sync-heavy systems need to know who owns a value at each point in the route:
+  UI thread, Unity main thread, audio callback, job, network receive loop,
+  scheduler, queue consumer, or persistence layer.
+- Lifeblood can expose dependencies and dependants, but it does not yet classify
+  write sites by execution lane or flag direct mutation that bypasses the
+  intended handoff boundary.
+
+Why it matters:
+- Many "miscommunication" bugs are not missing references. They are direct
+  writes to a value that should only move through a command queue, snapshot,
+  adapter, ring buffer, or owner-owned apply method.
+- This is generic for DSP, Burst jobs, realtime simulation, multiplayer sync,
+  UI-model handoff, editor tooling, and background indexing.
+
+Fix shape:
+- Add an ownership/handoff audit where callers provide owner manifests, naming
+  patterns, attributes, route roots, or framework-known execution contexts.
+- Classify reads and writes by likely lane: Unity main thread, audio callback,
+  job/Burst path, async/task path, network/event callback, or plain synchronous
+  call.
+- Flag writes from the wrong lane, direct field/property mutation around a
+  configured queue/adapter, mixed lock-free and lock-based access, missing
+  volatile/interlocked/ring-buffer contracts, and tests that only exercise one
+  side of the handoff.
+
+## LB-INTAKE-20260629-027 - Invariant-to-test coverage mapper
+
+Type: Feature request
+Priority: Medium
+Source: DAWG invariant/test dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 8/10 value if shipped
+
+What:
+- DAWG uses invariant IDs as a contract language for DSP, Burst, UI, architecture,
+  and test rules. Lifeblood can parse/check invariant docs, but it does not yet
+  answer which tests and source symbols actively cover each invariant.
+- Existing graph tools can find references one symbol at a time. The missing
+  report is an invariant-centered coverage view: invariant id -> owning docs ->
+  source symbols -> tests -> gaps/stale claims.
+
+Why it matters:
+- Agents can otherwise say "covered" because an invariant exists in prose or a
+  test mentions nearby words, even when no executable test asserts the contract.
+- This is useful beyond DAWG for any repo that keeps architecture, safety,
+  runtime, or API contracts in living docs and wants tests to enforce them
+  without hardcoding one-off checks.
+
+Fix shape:
+- Add an invariant coverage command that starts from parsed invariant IDs and
+  joins doc mentions, source comments, symbol references, test names, and
+  test-impact routes.
+- Report covered, prose-only, source-only, test-only, stale-reference, and
+  orphan states with evidence spans.
+- Let callers configure required coverage depth per invariant family, such as
+  one architecture ratchet, one compile check, one generated probe, or one
+  runtime fixture.
+
+## LB-INTAKE-20260629-028 - Analyze evidence receipt should resolve analyzed git root
+
+Type: Bug
+Priority: Medium
+Source: DAWG Lifeblood analyze dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 7/10 value if shipped
+
+What:
+- A full read-only `lifeblood_analyze(projectPath:"D:/Projekti/DAWG",
+  defineProfiles:["Editor","Player"])` returned a valid semantic snapshot, but
+  the evidence receipt reported `sourceControl.repositoryRoot:""`,
+  `state:"unknown"`, and `source:"repositoryNotFound"`.
+- A direct shell check from the same workspace resolves DAWG's git root as
+  `D:/Projekti/DAWG`, and the repo has local dirty files that would be useful
+  provenance on the receipt.
+
+Why it matters:
+- The evidence receipt is what makes Lifeblood output citation-safe. If source
+  control provenance is rooted at the server process instead of the analyzed
+  project path, the receipt loses commit/dirty context exactly when agents need
+  to distinguish proven facts from stale workspace state.
+- This applies to any external project analyzed by a long-running MCP server,
+  especially when the server binary lives outside the target repository.
+
+Fix shape:
+- Resolve source control from the analyzed `projectPath` or `graphPath` first,
+  falling back to the server process root only when no analyzed path exists.
+- Include repository root, commit hash, short hash, dirty state, and a bounded
+  dirty-file count or capped sample.
+- If git metadata cannot be read, report the attempted root and failure reason
+  so callers can tell "not a repo" from "wrong lookup root" from "git failed".
