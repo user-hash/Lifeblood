@@ -54,9 +54,12 @@ Fix shape:
 
 ## Current Snapshot
 
-Latest released Lifeblood tag: **`v0.7.11`** (changelog rewritten human-readable
-2026-06-01; GitHub Release cut + tag re-pointed to `5fd1c45`). `main` is
-post-release; the `[Unreleased]` changelog section is the next-version intake.
+Latest release tracked in the changelog: **`v0.7.11`** (changelog rewritten
+human-readable 2026-06-01; GitHub Release cut + tag re-pointed to `5fd1c45`).
+Local repo note from 2026-06-29: a `v0.7.12` tag exists at `dbfd871`, but the
+top-level changelog links still compare `[Unreleased]` from `v0.7.11` and no
+`[0.7.12]` section/link is present; release-metadata cleanup is logged in intake
+instead of mutating historical release claims here.
 
 Current verification anchors live in [`docs/STATUS.md`](../docs/STATUS.md) —
 self-analyze symbols / edges / modules / types, test discovery count,

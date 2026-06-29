@@ -524,3 +524,228 @@ Fix shape:
   presence.
 - Return scores by category plus concrete missing-evidence links. Avoid a
   global quality number; make it a triage aid with named evidence gaps.
+
+## LB-INTAKE-20260629-017 - Multi-profile analyze fallback must preserve requested profiles
+
+Type: Bug
+Priority: High
+Source: DAWG tuning/Burst dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- During a DAWG edit session, `lifeblood_analyze` was called with
+  `defineProfiles:["Editor","Player"]`, `incremental:true`, and
+  `allowFullFallback:true`.
+- The request widened to `mode:"full"` because of
+  `fallbackReason:"moduleDescriptorChanged"`, but the response reported
+  `profileCount:1` and `activeProfiles:null` instead of preserving the
+  requested Editor+Player profile set.
+
+Why it matters:
+- A fallback from incremental to full should widen analysis scope, not silently
+  narrow preprocessor coverage. For Unity/Burst work, Player-only callsites and
+  runtime-only failures are exactly the reason agents request multi-profile
+  analysis.
+- If the response says the analysis is `full` and clean but profile coverage
+  collapsed, an agent can over-trust structural evidence for release/runtime
+  code.
+
+Fix shape:
+- Preserve `AnalysisConfig.DefineProfiles` through every fallback path, including
+  descriptor drift and asmdef/csproj drift.
+- If a fallback cannot honor the requested profiles, reject loudly or return an
+  explicit limitation that names `requestedProfiles` and `effectiveProfiles`.
+- Add a regression test where incremental multi-profile analyze falls back to
+  full because of descriptor drift and still reports the same active profiles.
+
+## LB-INTAKE-20260629-018 - File-scope diagnose should resolve newly imported Unity files without explicit moduleName
+
+Type: UX
+Priority: Medium
+Source: DAWG tuning UI ratchet session, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 7/10 value if shipped
+
+What:
+- A new Unity EditMode test file had a `.meta` file and appeared in
+  `Nebulae.Tests.Editor.Audio.csproj`.
+- `lifeblood_diagnose(filePath:"Assets/Tests/Editor/Audio/TuningFxTonePresentationRatchetTests.cs")`
+  returned no diagnostics but `resolvedModule:null`.
+- The same file diagnosed with `moduleName:"Nebulae.Tests.Editor.Audio"`
+  resolved correctly to that module.
+
+Why it matters:
+- Agents commonly add a test/source file, let Unity import it, then ask
+  Lifeblood to diagnose the file by path. If the file is present in the generated
+  project descriptor, the user should not need to know the exact asmdef module.
+- A null module with no diagnostic can look harmless while still weakening the
+  evidence receipt: the caller cannot tell whether Lifeblood checked the real
+  owning compilation, a fallback parse, or an ambiguous path.
+
+Fix shape:
+- Strengthen file-path ownership resolution so a file included in exactly one
+  compilation resolves that module automatically after descriptors include it.
+- If multiple compilations match, return an ambiguity list with candidate
+  modules and require `moduleName`.
+- If no compilation matches, keep the existing stale-descriptor guidance, but
+  make the reason explicit in `resolvedModule`/`limitations` instead of only
+  returning clean diagnostics.
+
+## LB-INTAKE-20260629-019 - Analyze changed-file accounting is hard to interpret under bounded incremental requests
+
+Type: UX
+Priority: Medium
+Source: DAWG tuning UI ratchet session, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 7/10 value if shipped
+
+What:
+- A bounded analyze call supplied three `authoritativeChangedFiles`, but the
+  response reported `changedFileCount:199` / `changedSourceFiles:199` while
+  also reporting `mtimeTouchedSourceFiles:1` and `contentChangedSourceFiles:1`.
+- The numbers may be internally correct if descriptor/module fan-out widened the
+  touched graph, but they are hard for an agent to explain as an evidence
+  receipt.
+
+Why it matters:
+- In commit-as-you-go workflows, users care whether Lifeblood rechecked exactly
+  the files in the current atom or silently widened to a much larger source set.
+- Confusing changed-file counters make it harder to distinguish "only one file
+  content changed", "199 files were re-extracted", and "199 files were considered
+  because a descriptor changed".
+
+Fix shape:
+- Split response counts into distinct names: caller-supplied path count,
+  resolved changed path count, descriptor/module fan-out file count, actual
+  content-changed source count, and graph entries rebuilt.
+- When `authoritativeChangedFiles` is supplied, echo the normalized accepted and
+  rejected paths in compact form.
+- Add a short `changeAccounting` explanation string or enum so the evidence
+  receipt is readable without interpreting five counters by hand.
+
+## LB-INTAKE-20260629-020 - Release metadata drift between local tag and changelog snapshot
+
+Type: Docs
+Priority: Medium
+Source: Lifeblood tracker maintenance, 2026-06-29; local repo inspection
+Workspace: Lifeblood self
+Rating for DAWG work: 5/10 value if shipped
+
+What:
+- The local Lifeblood repo has tag `v0.7.12` at `dbfd871`, but
+  `CHANGELOG.md` still links `[Unreleased]` as `v0.7.11...HEAD` and has no
+  `[0.7.12]` section/link reference.
+- `devmemory/lifeblood-tracking.md` was also still naming `v0.7.11` as the
+  latest release snapshot before this maintenance pass clarified the local tag
+  mismatch.
+
+Why it matters:
+- The tracker is used as dogfood provenance. If release metadata drifts, agents
+  can cite the wrong version under test or miss that a local tag contains fixes
+  not described in the changelog.
+- This is especially risky for Lifeblood because tool behavior often changes
+  through additive wire contracts and invariant IDs; version provenance matters.
+
+Fix shape:
+- Add a release-metadata ratchet that compares the latest semantic version tag
+  against `CHANGELOG.md` headings and link references.
+- Optionally ratchet the tracker snapshot to mention the latest tagged version
+  or explicitly mark it as "latest changelog-tracked release".
+- Keep the release checklist, but make drift visible in tests rather than relying
+  on manual release hygiene.
+
+## LB-INTAKE-20260629-021 - Realtime allocation and forbidden-API audit for hot paths
+
+Type: Feature request
+Priority: High
+Source: DAWG Burst/DSP dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- DSP/Burst-style code needs a generic way to ask whether a caller-selected hot
+  path allocates, logs, formats strings, throws exceptions, uses LINQ/delegates,
+  touches Unity APIs, or calls other APIs that are unsafe for realtime work.
+- Lifeblood can show dependencies, but it does not yet classify realtime
+  unsafety as a first-class audit over operation trees.
+
+Why it matters:
+- Audio glitches can come from GC pressure, logging, exception paths, or hidden
+  managed work even when the math is correct.
+- The same audit applies to physics loops, render loops, jobs, game networking,
+  robotics, and embedded-style control loops. It should be caller-configured,
+  not DAWG-specific.
+
+Fix shape:
+- Add a hot-path audit where callers provide root symbols, attributes, or naming
+  patterns such as `Burst`, `Job`, `Audio`, `Render`, `Update`, or custom method
+  IDs.
+- Use semantic operation walking to flag object/array/delegate creation,
+  closures, string interpolation/formatting, LINQ, reflection, exceptions,
+  logging, locks, async waits, and caller-supplied forbidden APIs.
+- Return grouped findings by hot root with callsite, operation kind, callee,
+  allocation/forbidden category, and whether the path is direct or transitive.
+
+## LB-INTAKE-20260629-022 - Hot-math constant provenance audit
+
+Type: Feature request
+Priority: Medium
+Source: DAWG DSP/Burst dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 8/10 value if shipped
+
+What:
+- DAWG audio work regularly depends on constants for thresholds, smoothing,
+  denormal floors, cutoff mapping, time conversion, oversampling, release gates,
+  and discontinuity boundaries.
+- Lifeblood can find symbol references, but it does not yet distinguish a
+  policy-owned constant from a magic literal embedded directly in hot math.
+
+Why it matters:
+- Small magic constants in DSP/math code can encode undocumented policy. If the
+  same threshold is duplicated with slightly different values, behavior can
+  drift while every symbol remains wired and compiling.
+- This is generic for animation, physics, camera motion, filters, schedulers,
+  networking timeouts, and numeric validation code.
+
+Fix shape:
+- Add an audit over caller-selected hot methods/modules that extracts numeric
+  literals and groups them by value, unit-like name context, and operation type.
+- Classify each literal as named-constant, static-table cell, config/manifest
+  read, local derivation, or raw magic literal.
+- Flag repeated near-equal constants, threshold pairs with no named owner,
+  literals inside branches that reset or bypass state, and constants whose
+  inferred unit/domain disagrees with neighboring values.
+
+## LB-INTAKE-20260629-023 - Determinism and replay contract audit
+
+Type: Feature request
+Priority: High
+Source: DAWG sync/DSP dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- Sync and DSP investigations need to know whether a path is replay-safe:
+  seeded randomness, time source, floating state, event order, buffer cursor,
+  and global mutable state must all be deterministic under repeated runs.
+- Lifeblood has dependency and operation facts, but no audit that names
+  determinism hazards along a chosen route.
+
+Why it matters:
+- Non-determinism can masquerade as an audio bug, a multiplayer desync, a flaky
+  test, or a bad scheduler. The code may be structurally correct and still fail
+  because a path reads `Time`, `DateTime`, random state, static counters, or
+  unordered collections.
+- This is useful far beyond DAWG: simulations, netcode, procedural generation,
+  replay systems, physics tests, and cache invalidation all need the same
+  visibility.
+
+Fix shape:
+- Add a determinism audit where callers provide root symbols or route manifests.
+- Detect reads from wall-clock/time APIs, unseeded random sources, static mutable
+  counters, unordered collections, floating accumulation across frames, IO,
+  thread scheduling, and event-list iteration without stable ordering.
+- Return a route-level report with hazards, evidence spans, detected seed or
+  ordering controls, and suggested contract hooks for tests/probes.
