@@ -6,7 +6,8 @@ Status: Wave 0 process foundation implemented; repeated DAWG memory receipt is
 waiting for a quiescent workspace; path provenance and Wave 1 tool-behavior
 source of truth implemented; Wave 2 explicit workspace context, failure-
 isolated candidates, one-reference publication, and reference-counted read
-leases with deferred disposal are implemented; stable snapshot identity is next
+leases with deferred disposal are implemented; Wave 4 typed host identity and
+canonical workspace admission are implemented; stable snapshot identity is next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -152,14 +153,14 @@ property.
 
 | Priority | Issue | Evidence | Required resolution |
 |---|---|---|---|
-| P0 | No transport contract tests | No test references `SharedMcpTransport` or `McpServerHost`; current green tests cover only the in-process gate and handler. | Real proxy/daemon integration harness, concurrent requests, disconnects, faults, and cleanup. |
-| P0 | Daemon identity is trusted by pipe name | The proxy performs no version, build, workspace-root, or protocol handshake. | Typed handshake before MCP forwarding; reject incompatible reuse without killing unknown processes. |
+| Resolved in Wave 0 and extended in Wave 4 | No transport contract tests | Nine black-box `SharedMcpTransportProcessTests` now cover sharing, isolation, malformed frames, duplicate ownership, crash/restart, protocol/build/workspace identity, and bound-workspace rejection with owned process cleanup. | Complete for the shipped identity atom; persistent connection, lease, and idle-eviction cases land with their lifecycle implementation. |
+| Resolved in Wave 4 identity atom | Daemon identity was trusted by pipe name | Every connection now performs a typed protocol/server-version/module-MVID/workspace handshake, and both sides verify the complete identity before MCP forwarding. | Complete; incompatible reuse returns a correlated error without killing the unknown daemon. |
 | P0 | Daemon lifetime is unbounded | Daemon exits only on process cancellation; proxy EOF has no client lease or idle eviction. | Persistent client leases, heartbeat/activity, idle drain, deterministic session disposal, and clean exit. |
 | P0 | The proxy cannot model a client lifetime | It opens a new pipe connection for each JSON-RPC frame. | Persistent proxy/daemon connection or explicit client identity on every control/request frame. |
 | Resolved in Wave 2 | Candidate publication was not a single state transaction | `WorkspaceSnapshot` owns graph, analysis, capability, context, timestamp, generation, and the all-or-none compilation ports. `GraphSession` wraps it with adapter/rules/excludes and publishes that complete host state through one reference exchange; failure tests assert the old snapshot reference itself survives. | Complete, including read leases and deferred old-generation disposal. |
-| P0 | Workspace identity is implicit | Default shared key is the process working directory; the daemon's singleton session can load any requested project path. | Canonical workspace binding in the handshake and analyze precondition; reject cross-workspace reuse. |
+| Resolved in Wave 4 identity atom | Workspace identity was implicit | Default keys now converge on the nearest Git worktree root, the handshake carries that canonical root, and shared-daemon analyze admission rejects a different project root or an out-of-root graph before `GraphSession.Load`. | Complete; rejection preserves the exact last good generation. |
 | P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
-| Partially resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` now flows from the committed project-backed `GraphSession` through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Move the context into the immutable committed snapshot object with the remaining session fields; route any future workspace-sensitive provider through the same value. |
+| Resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` is part of immutable `WorkspaceSnapshot` publication and flows through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Complete; future workspace-sensitive providers must consume the same committed context. |
 | P1 | Identical analyses serialize but do not coalesce | `GraphSessionGate` queues exclusive analyses; a second identical request can repeat the entire analysis. | In-flight registry keyed by the complete `AnalysisKey`. |
 | P1 | Multi-call reads can mix generations | Individual envelopes report generation, but callers cannot require one or lease it across a batch. | `expectedSnapshot`/generation precondition and a read-only pinned batch surface. |
 | Resolved before Wave 2 | `tools/list` read session state outside the session gate | `McpDispatcher.HandleToolsList` read `HasCompilationState` directly while analyze could replace the session. | `McpDispatcher` no longer owns `GraphSession`; `ToolHandler.GetTools` evaluates registry availability under the shared session gate. Snapshot leases replace this gate read in Wave 2 without changing the dispatcher boundary. |
@@ -444,11 +445,12 @@ analyzer once and publish once; non-identical requests never join.
 
 Purpose: make the shared host safe to leave enabled.
 
-1. Add persistent proxy connections and the identity handshake.
+1. Add the identity handshake (complete); replace per-frame connections with
+   one persistent proxy connection (pending).
 2. Add client leases, activity/heartbeat, fake-clock idle eviction, drain, and
    explicit maintenance shutdown.
 3. Bind the daemon to its canonical workspace key and reject analyze calls for
-   another root.
+   another root (complete).
 4. Add structured status: build/protocol identity, process start, client count,
    active workspace, snapshot id/generation/profiles, in-flight analyses,
    memory, activity, and idle deadline.
@@ -457,6 +459,12 @@ Purpose: make the shared host safe to leave enabled.
 Exit gate: the last client releases the retained heap and daemon after the
 configured idle period, and a stale daemon can never silently serve a new
 client build.
+
+Implementation status: typed protocol/version/module-MVID/workspace identity,
+canonical worktree keying, and analyze admission are process-tested under
+`INV-SHARED-HOST-IDENTITY-001` and `INV-WORKSPACE-BINDING-001`. Persistent
+connections, client leases, idle drain/eviction, structured status, and the
+old-binary/new-proxy rollout receipt remain.
 
 ### Wave 5 - Snapshot-Pinned Reads And Batches
 

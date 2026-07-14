@@ -17,6 +17,8 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 internal static class SharedMcpTransport
 {
+    private const string HandshakeKind = "lifeblood.shared.handshake";
+    private const int SharedProtocolVersion = 1;
     private const string SharedFlag = "--shared";
     private const string SharedDaemonFlag = "--shared-daemon";
     private const string SharedKeyFlag = "--shared-key";
@@ -34,8 +36,15 @@ internal static class SharedMcpTransport
     public static bool IsSharedDaemon(string[] args)
         => args.Length >= 2 && string.Equals(args[0], SharedDaemonFlag, StringComparison.Ordinal);
 
-    public static string ReadDaemonPipeName(string[] args)
-        => args.Length >= 2 ? args[1] : throw new ArgumentException("Missing shared daemon pipe name.");
+    public static SharedHostIdentity ResolveDaemonIdentity(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            throw new ArgumentException("Missing shared daemon pipe name.");
+        }
+
+        return ResolveHostIdentity(args, args[1]);
+    }
 
     public static async Task RunProxyAsync(
         string[] args,
@@ -46,9 +55,11 @@ internal static class SharedMcpTransport
         CancellationToken cancellationToken,
         Action<string>? logError = null)
     {
-        var pipeName = ResolvePipeName(args);
-        await EnsureDaemonAsync(pipeName, cancellationToken, logError);
-        logError?.Invoke($"Lifeblood MCP shared proxy attached to daemon pipe '{pipeName}'.");
+        var identity = ResolveHostIdentity(args);
+        await EnsureDaemonAsync(identity, cancellationToken, logError);
+        logError?.Invoke(
+            $"Lifeblood MCP shared proxy found daemon pipe '{identity.PipeName}' " +
+            $"for workspace '{identity.WorkspaceRoot}'.");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -84,7 +95,7 @@ internal static class SharedMcpTransport
             TraceProxyFrame(canonicalFrame);
             try
             {
-                var responseLine = await ForwardFrameAsync(pipeName, canonicalFrame, expectsResponse, cancellationToken);
+                var responseLine = await ForwardFrameAsync(identity, canonicalFrame, expectsResponse, jsonOpts, cancellationToken);
                 if (expectsResponse && !string.IsNullOrWhiteSpace(responseLine))
                 {
                     output.WriteLine(responseLine);
@@ -98,7 +109,7 @@ internal static class SharedMcpTransport
                 Exception reportedFailure = ex;
                 try
                 {
-                    await EnsureDaemonAsync(pipeName, cancellationToken, logError);
+                    await EnsureDaemonAsync(identity, cancellationToken, logError);
                 }
                 catch (Exception recoveryEx) when (recoveryEx is IOException
                     or TimeoutException
@@ -119,13 +130,14 @@ internal static class SharedMcpTransport
     }
 
     public static async Task RunDaemonAsync(
-        string pipeName,
+        SharedHostIdentity identity,
         JsonSerializerOptions jsonOpts,
         bool strictJson,
         ToolJsonCompatibilityMode jsonCompatibilityMode,
         CancellationToken cancellationToken,
         Action<string>? logError = null)
     {
+        var pipeName = identity.PipeName;
         using var mutex = new Mutex(initiallyOwned: true, MutexName(pipeName), out var ownsMutex);
         if (!ownsMutex)
         {
@@ -133,7 +145,7 @@ internal static class SharedMcpTransport
             return;
         }
 
-        using var host = McpServerHost.Create(jsonCompatibilityMode);
+        using var host = McpServerHost.Create(jsonCompatibilityMode, identity.WorkspaceRoot);
         logError?.Invoke($"Lifeblood MCP shared daemon listening on pipe '{pipeName}'.");
 
         var clientTasks = new List<Task>();
@@ -164,7 +176,14 @@ internal static class SharedMcpTransport
 
             clientTasks.RemoveAll(t => t.IsCompleted);
             clientTasks.Add(Task.Run(
-                () => HandleDaemonClientAsync(pipe, host.Dispatcher.Dispatch, jsonOpts, strictJson, cancellationToken, logError),
+                () => HandleDaemonClientAsync(
+                    pipe,
+                    identity,
+                    host.Dispatcher.Dispatch,
+                    jsonOpts,
+                    strictJson,
+                    cancellationToken,
+                    logError),
                 cancellationToken));
         }
 
@@ -180,6 +199,7 @@ internal static class SharedMcpTransport
 
     private static async Task HandleDaemonClientAsync(
         NamedPipeServerStream pipe,
+        SharedHostIdentity identity,
         Func<JsonRpcRequest, JsonRpcResponse?> dispatch,
         JsonSerializerOptions jsonOpts,
         bool strictJson,
@@ -193,19 +213,25 @@ internal static class SharedMcpTransport
             AutoFlush = true,
         })
         {
+            if (!await AcceptHandshakeAsync(reader, writer, identity, jsonOpts, cancellationToken, logError))
+            {
+                return;
+            }
+
             await McpServerLoop.RunAsync(reader, writer, dispatch, jsonOpts, strictJson, cancellationToken, logError);
         }
     }
 
     private static async Task<string?> ForwardFrameAsync(
-        string pipeName,
+        SharedHostIdentity identity,
         string line,
         bool expectsResponse,
+        JsonSerializerOptions jsonOpts,
         CancellationToken cancellationToken)
     {
         await using var pipe = new NamedPipeClientStream(
             ".",
-            pipeName,
+            identity.PipeName,
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
 
@@ -216,6 +242,7 @@ internal static class SharedMcpTransport
             AutoFlush = true,
         };
 
+        await PerformClientHandshakeAsync(reader, writer, identity, jsonOpts, cancellationToken);
         await writer.WriteLineAsync(line.AsMemory(), cancellationToken);
         await writer.FlushAsync(cancellationToken);
 
@@ -236,10 +263,11 @@ internal static class SharedMcpTransport
     }
 
     private static async Task EnsureDaemonAsync(
-        string pipeName,
+        SharedHostIdentity identity,
         CancellationToken cancellationToken,
         Action<string>? logError)
     {
+        var pipeName = identity.PipeName;
         if (CanConnect(pipeName, timeoutMs: 100))
         {
             return;
@@ -251,7 +279,7 @@ internal static class SharedMcpTransport
                 $"Shared Lifeblood daemon '{pipeName}' is unavailable and automatic startup is disabled.");
         }
 
-        StartDaemonProcess(pipeName, logError);
+        StartDaemonProcess(identity, logError);
 
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
@@ -267,7 +295,7 @@ internal static class SharedMcpTransport
         throw new TimeoutException($"Timed out waiting for shared Lifeblood daemon '{pipeName}' to start.");
     }
 
-    private static void StartDaemonProcess(string pipeName, Action<string>? logError)
+    private static void StartDaemonProcess(SharedHostIdentity identity, Action<string>? logError)
     {
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(processPath))
@@ -284,7 +312,9 @@ internal static class SharedMcpTransport
         }
 
         daemonArgs.Add(SharedDaemonFlag);
-        daemonArgs.Add(pipeName);
+        daemonArgs.Add(identity.PipeName);
+        daemonArgs.Add(SharedKeyFlag);
+        daemonArgs.Add(identity.WorkspaceRoot);
 
         var psi = new ProcessStartInfo
         {
@@ -367,7 +397,22 @@ internal static class SharedMcpTransport
         }
     }
 
-    private static string ResolvePipeName(string[] args)
+    private static SharedHostIdentity ResolveHostIdentity(string[] args, string? daemonPipeName = null)
+    {
+        var workspaceRoot = ResolveWorkspaceRoot(args);
+        var pipeName = daemonPipeName == null
+            ? ResolvePipeName(args, workspaceRoot)
+            : SanitizePipeName(daemonPipeName);
+        var assembly = typeof(SharedMcpTransport).Assembly;
+        return new SharedHostIdentity(
+            ProtocolVersion: SharedProtocolVersion,
+            ServerVersion: ServerIdentity.ResolveServerVersion(),
+            BuildIdentity: assembly.ManifestModule.ModuleVersionId.ToString("N"),
+            WorkspaceRoot: workspaceRoot,
+            PipeName: pipeName);
+    }
+
+    private static string ResolvePipeName(string[] args, string workspaceRoot)
     {
         var explicitPipe = ReadArgValue(args, SharedPipeFlag)
             ?? Environment.GetEnvironmentVariable(SharedPipeNameEnv);
@@ -376,13 +421,170 @@ internal static class SharedMcpTransport
             return SanitizePipeName(explicitPipe);
         }
 
+        var hashKey = OperatingSystem.IsWindows() ? workspaceRoot.ToUpperInvariant() : workspaceRoot;
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashKey)))[..24];
+        return $"lifeblood-mcp-{hash}";
+    }
+
+    private static string ResolveWorkspaceRoot(string[] args)
+    {
         var key = ReadArgValue(args, SharedKeyFlag)
             ?? Environment.GetEnvironmentVariable(SharedSessionKeyEnv)
             ?? Directory.GetCurrentDirectory();
-        var normalizedKey = Path.GetFullPath(key).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey.ToUpperInvariant())))[..24];
-        return $"lifeblood-mcp-{hash}";
+        return WorkspacePathIdentity.ResolveWorkspaceRoot(key);
     }
+
+    private static async Task PerformClientHandshakeAsync(
+        StreamReader reader,
+        StreamWriter writer,
+        SharedHostIdentity identity,
+        JsonSerializerOptions jsonOpts,
+        CancellationToken cancellationToken)
+    {
+        var request = SharedHandshakeRequest.From(identity);
+        await writer.WriteLineAsync(
+            JsonSerializer.Serialize(request, jsonOpts).AsMemory(),
+            cancellationToken);
+        await writer.FlushAsync(cancellationToken);
+
+        var line = await reader.ReadLineAsync(cancellationToken)
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+        if (line == null)
+        {
+            throw new IOException("Shared daemon closed the pipe during identity handshake.");
+        }
+
+        SharedHandshakeResponse? response;
+        try
+        {
+            response = JsonSerializer.Deserialize<SharedHandshakeResponse>(line, jsonOpts);
+        }
+        catch (JsonException ex)
+        {
+            throw new IOException("Shared daemon returned an invalid identity handshake.", ex);
+        }
+
+        if (response == null || !string.Equals(response.Kind, HandshakeKind, StringComparison.Ordinal))
+        {
+            throw new IOException("Shared daemon did not return a Lifeblood identity handshake.");
+        }
+
+        if (!response.Accepted)
+        {
+            throw new IOException(response.Error ?? "Shared daemon rejected the identity handshake.");
+        }
+
+        if (response.ProtocolVersion != identity.ProtocolVersion
+            || !string.Equals(response.ServerVersion, identity.ServerVersion, StringComparison.Ordinal)
+            || !string.Equals(response.BuildIdentity, identity.BuildIdentity, StringComparison.Ordinal)
+            || !WorkspaceRootsEqual(response.WorkspaceRoot, identity.WorkspaceRoot))
+        {
+            throw new IOException("Shared daemon accepted the handshake with a different identity.");
+        }
+    }
+
+    private static async Task<bool> AcceptHandshakeAsync(
+        StreamReader reader,
+        StreamWriter writer,
+        SharedHostIdentity identity,
+        JsonSerializerOptions jsonOpts,
+        CancellationToken cancellationToken,
+        Action<string>? logError)
+    {
+        string? line;
+        try
+        {
+            line = await reader.ReadLineAsync(cancellationToken)
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or OperationCanceledException)
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                logError?.Invoke($"Shared handshake read failed: {ex.Message}");
+            }
+            return false;
+        }
+
+        if (line == null)
+        {
+            return false;
+        }
+
+        SharedHandshakeRequest? request;
+        try
+        {
+            request = JsonSerializer.Deserialize<SharedHandshakeRequest>(line, jsonOpts);
+        }
+        catch (JsonException ex)
+        {
+            await WriteHandshakeResponseAsync(
+                writer,
+                SharedHandshakeResponse.Rejected(identity, "Invalid shared transport handshake JSON."),
+                jsonOpts,
+                cancellationToken);
+            logError?.Invoke($"Shared handshake parse failed: {ex.Message}");
+            return false;
+        }
+
+        var rejection = ValidateHandshake(request, identity);
+        var response = rejection == null
+            ? SharedHandshakeResponse.AcceptedIdentity(identity)
+            : SharedHandshakeResponse.Rejected(identity, rejection);
+        await WriteHandshakeResponseAsync(writer, response, jsonOpts, cancellationToken);
+        if (rejection != null)
+        {
+            logError?.Invoke($"Shared handshake rejected: {rejection}");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string? ValidateHandshake(SharedHandshakeRequest? request, SharedHostIdentity identity)
+    {
+        if (request == null || !string.Equals(request.Kind, HandshakeKind, StringComparison.Ordinal))
+        {
+            return "Connection did not begin with a Lifeblood shared transport handshake.";
+        }
+
+        if (request.ProtocolVersion != identity.ProtocolVersion)
+        {
+            return $"Shared transport protocol mismatch: client {request.ProtocolVersion}, daemon {identity.ProtocolVersion}.";
+        }
+
+        if (!string.Equals(request.ServerVersion, identity.ServerVersion, StringComparison.Ordinal)
+            || !string.Equals(request.BuildIdentity, identity.BuildIdentity, StringComparison.Ordinal))
+        {
+            return $"Shared daemon build mismatch: client {request.ServerVersion}/{request.BuildIdentity}, " +
+                   $"daemon {identity.ServerVersion}/{identity.BuildIdentity}.";
+        }
+
+        if (!WorkspaceRootsEqual(request.WorkspaceRoot, identity.WorkspaceRoot))
+        {
+            return $"Shared daemon workspace mismatch: client '{request.WorkspaceRoot}', " +
+                   $"daemon '{identity.WorkspaceRoot}'.";
+        }
+
+        return null;
+    }
+
+    private static async Task WriteHandshakeResponseAsync(
+        StreamWriter writer,
+        SharedHandshakeResponse response,
+        JsonSerializerOptions jsonOpts,
+        CancellationToken cancellationToken)
+    {
+        await writer.WriteLineAsync(
+            JsonSerializer.Serialize(response, jsonOpts).AsMemory(),
+            cancellationToken);
+        await writer.FlushAsync(cancellationToken);
+    }
+
+    private static bool WorkspaceRootsEqual(string? left, string right)
+        => WorkspacePathIdentity.Equal(left, right);
 
     private static string SanitizePipeName(string raw)
     {
@@ -443,5 +645,57 @@ internal static class SharedMcpTransport
         {
             // Trace is diagnostic-only; never alter MCP behavior.
         }
+    }
+
+    internal sealed record SharedHostIdentity(
+        int ProtocolVersion,
+        string ServerVersion,
+        string BuildIdentity,
+        string WorkspaceRoot,
+        string PipeName);
+
+    private sealed record SharedHandshakeRequest(
+        string Kind,
+        int ProtocolVersion,
+        string ServerVersion,
+        string BuildIdentity,
+        string WorkspaceRoot)
+    {
+        public static SharedHandshakeRequest From(SharedHostIdentity identity)
+            => new(
+                HandshakeKind,
+                identity.ProtocolVersion,
+                identity.ServerVersion,
+                identity.BuildIdentity,
+                identity.WorkspaceRoot);
+    }
+
+    private sealed record SharedHandshakeResponse(
+        string Kind,
+        bool Accepted,
+        int ProtocolVersion,
+        string ServerVersion,
+        string BuildIdentity,
+        string WorkspaceRoot,
+        string? Error)
+    {
+        public static SharedHandshakeResponse AcceptedIdentity(SharedHostIdentity identity)
+            => From(identity, accepted: true, error: null);
+
+        public static SharedHandshakeResponse Rejected(SharedHostIdentity identity, string error)
+            => From(identity, accepted: false, error);
+
+        private static SharedHandshakeResponse From(
+            SharedHostIdentity identity,
+            bool accepted,
+            string? error)
+            => new(
+                HandshakeKind,
+                accepted,
+                identity.ProtocolVersion,
+                identity.ServerVersion,
+                identity.BuildIdentity,
+                identity.WorkspaceRoot,
+                error);
     }
 }

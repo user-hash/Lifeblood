@@ -37,7 +37,9 @@ internal sealed class McpServerHost : IDisposable
 
     public McpDispatcher Dispatcher { get; }
 
-    public static McpServerHost Create(ToolJsonCompatibilityMode jsonCompatibilityMode)
+    public static McpServerHost Create(
+        ToolJsonCompatibilityMode jsonCompatibilityMode,
+        string? boundWorkspaceRoot = null)
     {
         var telemetry = DotNetDiagnosticsTelemetrySink.CreateFromEnvironment("LIFEBLOOD_TELEMETRY");
         var telemetryLifetime = telemetry as IDisposable;
@@ -77,7 +79,8 @@ internal sealed class McpServerHost : IDisposable
             decorator,
             telemetry: telemetry,
             jsonCompatibilityMode: jsonCompatibilityMode,
-            sessionGate: sessionGate);
+            sessionGate: sessionGate,
+            boundWorkspaceRoot: boundWorkspaceRoot);
         var dispatcher = new McpDispatcher(toolHandler);
 
         return new McpServerHost(session, dispatcher, telemetryLifetime, sessionGate);

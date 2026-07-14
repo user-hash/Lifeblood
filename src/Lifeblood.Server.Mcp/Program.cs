@@ -48,7 +48,7 @@ class Program
             Console.SetOut(TextWriter.Null);
             Console.SetError(TextWriter.Null);
             await SharedMcpTransport.RunDaemonAsync(
-                SharedMcpTransport.ReadDaemonPipeName(args),
+                SharedMcpTransport.ResolveDaemonIdentity(args),
                 JsonOpts,
                 strictJson,
                 jsonCompatibilityMode,

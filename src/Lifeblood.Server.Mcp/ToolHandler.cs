@@ -39,6 +39,7 @@ public sealed class ToolHandler
     private readonly ToolArgumentBinder _argumentBinder;
     private readonly ToolJsonCompatibilityMode _jsonCompatibilityMode;
     private readonly ISessionGate _sessionGate;
+    private readonly WorkspaceBindingPolicy? _workspaceBinding;
 
     private bool TelemetryEnabled => !ReferenceEquals(_telemetry, NoOpTelemetrySink.Instance);
 
@@ -68,7 +69,8 @@ public sealed class ToolHandler
         ITelemetrySink? telemetry = null,
         ToolArgumentBinder? argumentBinder = null,
         ToolJsonCompatibilityMode jsonCompatibilityMode = ToolJsonCompatibilityMode.Legacy,
-        ISessionGate? sessionGate = null)
+        ISessionGate? sessionGate = null,
+        string? boundWorkspaceRoot = null)
     {
         _session = session;
         _provider = provider;
@@ -84,6 +86,9 @@ public sealed class ToolHandler
         _argumentBinder = argumentBinder ?? BuildArgumentBinder();
         _jsonCompatibilityMode = jsonCompatibilityMode;
         _sessionGate = sessionGate ?? new GraphSessionGate(session);
+        _workspaceBinding = string.IsNullOrWhiteSpace(boundWorkspaceRoot)
+            ? null
+            : new WorkspaceBindingPolicy(boundWorkspaceRoot);
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -262,6 +267,7 @@ public sealed class ToolHandler
 
         try
         {
+            request = _workspaceBinding?.Bind(request) ?? request;
             var result = _session.Load(
                 request.ProjectPath,
                 request.GraphPath,
@@ -274,6 +280,17 @@ public sealed class ToolHandler
                 request.AuthoritativeChangedFiles);
             RecordAnalyzeTelemetry(result);
             return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
+        }
+        catch (WorkspaceBindingException ex)
+        {
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = "lifeblood_analyze",
+                failure = "workspace-binding",
+                workspaceRoot = _workspaceBinding?.WorkspaceRoot,
+                message = ex.Message,
+            }, JsonOpts));
         }
         catch (Lifeblood.Application.Ports.Left.WorkspaceAnalysisException ex)
         {
