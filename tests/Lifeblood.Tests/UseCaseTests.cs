@@ -372,6 +372,7 @@ public class UseCaseTests
         var executor = new StubCodeExecutor();
         var refactoring = new StubRefactoring();
         session.AttachCompilationServices(host, executor, refactoring);
+        var lease = session.Current.AcquireLease();
 
         session.Clear();
 
@@ -379,6 +380,12 @@ public class UseCaseTests
         Assert.False(session.HasCompilationState);
         Assert.Null(session.Graph);
         Assert.False(session.WorkspaceOps.CanExecute);
+        Assert.False(host.Disposed);
+        Assert.False(executor.Disposed);
+        Assert.False(refactoring.Disposed);
+
+        lease.Dispose();
+
         Assert.True(host.Disposed);
         Assert.True(executor.Disposed);
         Assert.True(refactoring.Disposed);

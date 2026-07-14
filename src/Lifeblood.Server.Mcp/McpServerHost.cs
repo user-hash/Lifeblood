@@ -65,7 +65,7 @@ internal sealed class McpServerHost : IDisposable
                 "LIFEBLOOD_FILES_CHANGED_THRESHOLD",
                 StalenessPolicy.Default.FilesChangedWarnThreshold));
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications, stalenessPolicy);
-        var sessionGate = new GraphSessionGate();
+        var sessionGate = new GraphSessionGate(session);
         var toolHandler = new ToolHandler(
             session,
             graphProvider,

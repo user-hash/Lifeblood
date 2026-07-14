@@ -38,7 +38,7 @@ public class GraphSessionGateTests
     }
 
     [Fact]
-    public async Task Write_WaitsForActiveReader()
+    public async Task Write_DoesNotWaitForActiveReader()
     {
         using var gate = new GraphSessionGate();
         using var readerEntered = new ManualResetEventSlim(false);
@@ -59,8 +59,9 @@ public class GraphSessionGateTests
             return 1;
         }));
 
-        Thread.Sleep(100);
-        Assert.Equal(0, Volatile.Read(ref writeEntered));
+        Assert.True(SpinWait.SpinUntil(
+            () => Volatile.Read(ref writeEntered) == 1,
+            TimeSpan.FromSeconds(5)));
 
         releaseReader.Set();
         await Task.WhenAll(read, write);
@@ -68,7 +69,7 @@ public class GraphSessionGateTests
     }
 
     [Fact]
-    public async Task Read_WaitsForActiveWriter()
+    public async Task Read_DoesNotWaitForActiveWriter()
     {
         using var gate = new GraphSessionGate();
         using var writerEntered = new ManualResetEventSlim(false);
@@ -89,8 +90,9 @@ public class GraphSessionGateTests
             return 1;
         }));
 
-        Thread.Sleep(100);
-        Assert.Equal(0, Volatile.Read(ref readEntered));
+        Assert.True(SpinWait.SpinUntil(
+            () => Volatile.Read(ref readEntered) == 1,
+            TimeSpan.FromSeconds(5)));
 
         releaseWriter.Set();
         await Task.WhenAll(read, write);
@@ -128,6 +130,48 @@ public class GraphSessionGateTests
         Assert.Equal(1, maxInside);
     }
 
+    [Fact]
+    public async Task Read_PinsOneSnapshotWhileWriterPublishesNextGeneration()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "lifeblood-lease-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var firstRoot = CreateProject(temp, "First");
+            var secondRoot = CreateProject(temp, "Second");
+            using var session = new GraphSession(new Lifeblood.Adapters.CSharp.PhysicalFileSystem());
+            _ = session.Load(firstRoot, graphPath: null, rulesPath: null);
+            using var gate = new GraphSessionGate(session);
+            using var readerEntered = new ManualResetEventSlim(false);
+            using var writerCompleted = new ManualResetEventSlim(false);
+            var firstSnapshot = session.CurrentSnapshot;
+
+            var read = Task.Run(() => gate.Read(() =>
+            {
+                Assert.Same(firstSnapshot, session.CurrentSnapshot);
+                readerEntered.Set();
+                Assert.True(writerCompleted.Wait(TimeSpan.FromSeconds(10)));
+                Assert.Same(firstSnapshot, session.CurrentSnapshot);
+                return session.AnalysisGeneration;
+            }));
+
+            Assert.True(readerEntered.Wait(TimeSpan.FromSeconds(5)));
+            var write = Task.Run(() => gate.Write(() =>
+                session.Load(secondRoot, graphPath: null, rulesPath: null)));
+            await write;
+            writerCompleted.Set();
+
+            var leasedGeneration = await read;
+            Assert.Equal(firstSnapshot.AnalysisGeneration, leasedGeneration);
+            Assert.NotSame(firstSnapshot, session.CurrentSnapshot);
+            Assert.Equal(firstSnapshot.AnalysisGeneration + 1, session.AnalysisGeneration);
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
     private static void UpdateMax(ref int target, int candidate)
     {
         int current;
@@ -140,5 +184,15 @@ public class GraphSessionGateTests
             }
         }
         while (Interlocked.CompareExchange(ref target, candidate, current) != current);
+    }
+
+    private static string CreateProject(string parent, string name)
+    {
+        var root = Path.Combine(parent, name);
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, $"{name}.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(root, $"{name}.cs"), $"namespace {name}; public class Marker {{ }}");
+        return root;
     }
 }
