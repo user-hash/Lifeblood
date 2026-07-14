@@ -262,7 +262,7 @@ public class McpProtocolSourceOfTruthTests
             .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
         var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView, invariants, decorator);
-        return new McpDispatcher(session, handler);
+        return new McpDispatcher(handler);
     }
 
     private static JsonRpcRequest MakeRequest(string method, int? id = 1)

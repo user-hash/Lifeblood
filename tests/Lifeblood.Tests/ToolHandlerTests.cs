@@ -13,7 +13,7 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Tests for MCP ToolHandler — all 6 tools, error paths, and tool registry.
+/// Tests for MCP ToolHandler behavior, error paths, and the complete registry.
 /// </summary>
 public class ToolHandlerTests : IDisposable
 {
@@ -69,7 +69,7 @@ public class ToolHandlerTests : IDisposable
             => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
     }
 
-    private static ToolHandler CreateHandler()
+    private static ToolHandler CreateHandler(ISessionGate? sessionGate = null)
     {
         IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
         ISymbolResolver resolver = new LifebloodSymbolResolver();
@@ -82,7 +82,16 @@ public class ToolHandlerTests : IDisposable
             .Where(d => d.EnvelopeClassification != null)
             .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
-        return new ToolHandler(new GraphSession(Fs), provider, resolver, search, deadCode, partialView, invariants, decorator);
+        return new ToolHandler(
+            new GraphSession(Fs),
+            provider,
+            resolver,
+            search,
+            deadCode,
+            partialView,
+            invariants,
+            decorator,
+            sessionGate: sessionGate);
     }
 
     private static JsonElement? MakeArgs(object obj)
@@ -126,6 +135,25 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal(38, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
         Assert.Equal(20, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
+        var toolCapabilities = doc.RootElement.GetProperty("tools");
+        Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
+        Assert.Equal(2, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
+        Assert.Equal(17, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
+        Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
+        Assert.Equal(18, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
+        Assert.Equal(33, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
+        Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("RefreshWorkspace").GetInt32());
+        Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ExecuteCode").GetInt32());
+        Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("PreviewChanges").GetInt32());
+        Assert.Equal(36, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
+        Assert.Equal(2, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
+        var behaviorContracts = toolCapabilities.GetProperty("behaviorContracts");
+        Assert.Equal(38, behaviorContracts.GetArrayLength());
+        var analyzeContract = behaviorContracts.EnumerateArray()
+            .Single(e => e.GetProperty("name").GetString() == "lifeblood_analyze");
+        Assert.Equal("None", analyzeContract.GetProperty("sessionRequirement").GetString());
+        Assert.Equal("RefreshWorkspace", analyzeContract.GetProperty("effect").GetString());
+        Assert.Equal("Exclusive", analyzeContract.GetProperty("sessionAccess").GetString());
         var telemetryEvents = doc.RootElement
             .GetProperty("featureFlags")
             .GetProperty("operationalTelemetryEvents")
@@ -734,6 +762,73 @@ public class ToolHandlerTests : IDisposable
     {
         var tools = ToolRegistry.GetTools(hasCompilationState: true);
         Assert.All(tools, t => Assert.DoesNotContain("[Unavailable", t.Description));
+    }
+
+    [Fact]
+    public void Handle_AllRegisteredTools_UseRegistryDeclaredSessionAccess()
+    {
+        var gate = new RecordingSessionGate();
+        var handler = CreateHandler(gate);
+
+        foreach (var definition in ToolRegistry.GetDefinitions())
+        {
+            gate.Reset();
+            var result = handler.Handle(definition.Name, null);
+
+            if (definition.Behavior.SessionAccess == ToolSessionAccess.Exclusive)
+            {
+                Assert.Equal(0, gate.ReadCount);
+                Assert.Equal(1, gate.WriteCount);
+            }
+            else
+            {
+                Assert.Equal(1, gate.ReadCount);
+                Assert.Equal(0, gate.WriteCount);
+            }
+
+            if (definition.Behavior.SessionRequirement != ToolSessionRequirement.None)
+            {
+                Assert.True(result.IsError, $"{definition.Name} must reject an unsatisfied session requirement.");
+                Assert.Contains("lifeblood_analyze", result.Content[0].Text);
+            }
+        }
+    }
+
+    [Fact]
+    public void GetTools_ReadsLiveAvailabilityThroughSessionGate()
+    {
+        var gate = new RecordingSessionGate();
+        var handler = CreateHandler(gate);
+
+        var tools = handler.GetTools();
+
+        Assert.Equal(38, tools.Length);
+        Assert.Equal(1, gate.ReadCount);
+        Assert.Equal(0, gate.WriteCount);
+    }
+
+    private sealed class RecordingSessionGate : ISessionGate
+    {
+        public int ReadCount { get; private set; }
+        public int WriteCount { get; private set; }
+
+        public T Read<T>(Func<T> action)
+        {
+            ReadCount++;
+            return action();
+        }
+
+        public T Write<T>(Func<T> action)
+        {
+            WriteCount++;
+            return action();
+        }
+
+        public void Reset()
+        {
+            ReadCount = 0;
+            WriteCount = 0;
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────

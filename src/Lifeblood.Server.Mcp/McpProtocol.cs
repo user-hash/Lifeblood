@@ -57,15 +57,10 @@ public sealed class JsonRpcError
 }
 
 /// <summary>
-/// Classification of an MCP tool by whether it requires a loaded compilation
-/// state. ReadSide tools work off the in-memory semantic graph and are always
-/// available once a project (or a graph.json file) has been analyzed.
-/// WriteSide tools require live Roslyn compilations retained from the last
-/// analyze and are marked unavailable when the session is empty.
-///
-/// INV-TOOLREG-001: every McpToolInfo sets Availability explicitly at
-/// registration. The GetTools(hasCompilationState) guard filters on this
-/// field. Never on tool name prefixes.
+/// Legacy compatibility projection for the original MCP tool split. New
+/// policy must consume <see cref="ToolBehavior"/> instead: "write side" means
+/// only that retained Roslyn compilations are required; it says nothing about
+/// whether a tool mutates the session or returns proposed edits.
 /// </summary>
 public enum ToolAvailability
 {
@@ -74,15 +69,75 @@ public enum ToolAvailability
 }
 
 /// <summary>
+/// Minimum retained state a tool needs before its handler can run.
+/// </summary>
+public enum ToolSessionRequirement
+{
+  None,
+  AnalyzedWorkspace,
+  WorkspaceRoot,
+  RetainedCompilation,
+}
+
+/// <summary>
+/// Externally meaningful effect of a tool call. This is independent from the
+/// lock used to protect the retained session.
+/// </summary>
+public enum ToolEffect
+{
+  Observe,
+  RefreshWorkspace,
+  ExecuteCode,
+  PreviewChanges,
+}
+
+/// <summary>
+/// Host-edge access required while a tool consumes the retained session.
+/// </summary>
+public enum ToolSessionAccess
+{
+  SharedRead,
+  Exclusive,
+}
+
+/// <summary>
+/// Immutable per-tool policy contract. Keeping the three axes together makes
+/// the registry the single source for availability, dispatch locking, and
+/// agent-facing capability metadata without conflating those concerns.
+/// </summary>
+public sealed record ToolBehavior(
+  ToolSessionRequirement SessionRequirement,
+  ToolEffect Effect,
+  ToolSessionAccess SessionAccess);
+
+/// <summary>
+/// Process-local session facts used to evaluate a <see cref="ToolBehavior"/>.
+/// </summary>
+public readonly record struct ToolSessionState(
+  bool HasAnalyzedWorkspace,
+  bool HasWorkspaceRoot,
+  bool HasRetainedCompilation)
+{
+  public bool Satisfies(ToolSessionRequirement requirement) => requirement switch
+  {
+    ToolSessionRequirement.None => true,
+    ToolSessionRequirement.AnalyzedWorkspace => HasAnalyzedWorkspace,
+    ToolSessionRequirement.WorkspaceRoot => HasAnalyzedWorkspace && HasWorkspaceRoot,
+    ToolSessionRequirement.RetainedCompilation => HasAnalyzedWorkspace && HasRetainedCompilation,
+    _ => false,
+  };
+}
+
+/// <summary>
 /// Wire-format DTO for the MCP <c>tools/list</c> response. Pure JSON
 /// serialization shape — name, description, input schema. No internal
 /// concerns. See <see cref="ToolDefinition"/> for the internal registry
-/// record that carries compile-time availability metadata.
+/// record that carries compile-time behavior metadata.
 ///
 /// <para>
 /// INV-TOOLREG-001 rationale for the split: the original design used a
 /// single <c>McpToolInfo</c> type for BOTH the internal registry record
-/// (where <c>required ToolAvailability</c> gives compile-time enforcement)
+/// (where <c>required ToolBehavior</c> gives compile-time enforcement)
 /// AND the wire payload for <c>tools/list</c> (where System.Text.Json
 /// serialization happens). System.Text.Json in .NET 8 has a latent bug
 /// where <c>[JsonIgnore]</c> on a <c>required init</c> property is NOT
@@ -109,32 +164,39 @@ public sealed class McpToolInfo
 
 /// <summary>
 /// Internal registry record for a Lifeblood MCP tool. Pairs the wire
-/// shape (name, description, input schema) with compile-time classification
-/// metadata (<see cref="Availability"/>). Lives only inside the server;
+/// shape (name, description, input schema) with compile-time behavior
+/// metadata (<see cref="Behavior"/>). Lives only inside the server;
 /// projected to <see cref="McpToolInfo"/> at <c>tools/list</c> time.
 ///
 /// <para>
-/// <b>INV-TOOLREG-001:</b> every <c>ToolDefinition</c> sets
-/// <see cref="Availability"/> explicitly at registration. The property is
-/// <c>required</c>, so omitting it is a compile error — not a runtime
-/// default-0 bug. <c>ToolRegistry.GetTools(bool)</c> filters on this
-/// field to decide which tools receive the "[Unavailable. Load a project
-/// with lifeblood_analyze first]" decoration in their wire descriptions.
+/// <b>INV-TOOLREG-001:</b> every <c>ToolDefinition</c> sets one immutable
+/// <see cref="ToolBehavior"/> explicitly at registration. The property is
+/// required, so omitting the state/effect/access contract is a compile error.
+/// Availability decoration, prerequisite checks, session locking, and
+/// capability reporting all derive from that same contract.
 /// </para>
 /// </summary>
 public sealed class ToolDefinition
 {
   public required string Name { get; init; }
   public required string Description { get; init; }
-  public required ToolAvailability Availability { get; init; }
+  public required ToolBehavior Behavior { get; init; }
+
+  /// <summary>
+  /// Backward-compatible read/write projection. This is derived, never
+  /// registered independently, so it cannot drift from the retained-state
+  /// requirement that the old labels represented.
+  /// </summary>
+  public ToolAvailability Availability =>
+    Behavior.SessionRequirement == ToolSessionRequirement.RetainedCompilation
+      ? ToolAvailability.WriteSide
+      : ToolAvailability.ReadSide;
   public ToolInputContract InputContract => ToolInputContractCatalog.Get(Name);
   public object InputSchema => InputContract.ToInputSchema();
 
   /// <summary>
   /// Truth-envelope classification carried by every successful response
-  /// from this tool. Required for every <see cref="ToolAvailability.ReadSide"/>
-  /// tool (INV-ENVELOPE-001); ignored for write-side tools, whose
-  /// responses do not carry envelopes today. Single source of truth: the
+  /// from this tool. Required for every tool (INV-ENVELOPE-001). Single source of truth: the
   /// envelope decorator reads this field directly off <c>ToolRegistry</c>
   /// at decoration time, so the per-tool tier / confidence / evidence /
   /// limitations cannot drift between the registry and the decorator.

@@ -3,7 +3,8 @@
 Date: 2026-07-14
 
 Status: Wave 0 process foundation implemented; repeated DAWG memory receipt is
-waiting for a quiescent workspace; pre-Wave-1 path-provenance defect fixed
+waiting for a quiescent workspace; path provenance and Wave 1 tool-behavior
+source of truth implemented
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -159,8 +160,8 @@ property.
 | P0 | Unity asset reachability also infers project root through ambient CWD | `UnityReachabilityAdapter.TryInferUnityProjectRoot` calls `Path.GetFullPath` on graph-relative `Assets/...` paths without a workspace context. It works only when server CWD happens to be the analyzed Unity root. | Move workspace root into the committed snapshot context and bind workspace-sensitive providers through that context in Wave 2; add a non-CWD-root UnityEvent regression before rollout. |
 | P1 | Identical analyses serialize but do not coalesce | `GraphSessionGate` queues exclusive analyses; a second identical request can repeat the entire analysis. | In-flight registry keyed by the complete `AnalysisKey`. |
 | P1 | Multi-call reads can mix generations | Individual envelopes report generation, but callers cannot require one or lease it across a batch. | `expectedSnapshot`/generation precondition and a read-only pinned batch surface. |
-| P1 | `tools/list` reads session state outside the session gate | `McpDispatcher.HandleToolsList` reads `HasCompilationState` directly while analyze may replace the session. | Route all state-derived wire surfaces through the same snapshot lease. |
-| P1 | Tool labels conflate state and effects | `WriteSide` currently means retained compilation required, even for observation or returned edits; only analyze and compile-check take exclusive access. | One typed registry with independent required-state, effect, retention, and session-access dimensions. |
+| Resolved before Wave 2 | `tools/list` read session state outside the session gate | `McpDispatcher.HandleToolsList` read `HasCompilationState` directly while analyze could replace the session. | `McpDispatcher` no longer owns `GraphSession`; `ToolHandler.GetTools` evaluates registry availability under the shared session gate. Snapshot leases replace this gate read in Wave 2 without changing the dispatcher boundary. |
+| Resolved in Wave 1 | Tool labels conflated state and effects | `WriteSide` meant retained compilation required, even for observation or returned edits; only analyze and compile-check needed exclusive access. | Every tool now declares one immutable `ToolBehavior`: hierarchical `sessionRequirement` (including retained compilation), independent `effect`, and independent `sessionAccess`. Legacy read/write fields are derived compatibility aliases. |
 | P1 | Incremental acceptance is not explainable enough | DAWG reported 310 changed source files without an itemized/fingerprinted receipt in the response. | Bounded changed-set provenance, descriptor/scope/source fingerprint, and summarize/detail controls. |
 | P1 | Shared capability is advertised too broadly | The uncommitted feature flag reports shared transport support without proving the active transport mode or lifecycle contract. | Report actual mode, protocol version, daemon identity, lease state, and capability version. |
 | P2 | One active graph cannot represent named investigation lanes | Editor/Player and platform-specific lanes overwrite the singleton session. | Bounded snapshot catalog; graph-only historical pins by default, explicit cost for extra semantic bases. |
@@ -226,9 +227,11 @@ stdio proxy ---- client lease + identity handshake ---- workspace daemon
 
 ### Single-source-of-truth rules
 
-1. Tool registration stores `requiredState`, `effect`, `retentionRequirement`,
-   and `sessionAccess` once. Availability, `tools/list`, capabilities, gate
-   routing, and error wording derive from it.
+1. Tool registration stores one immutable `ToolBehavior`: hierarchical
+   `sessionRequirement` (where `RetainedCompilation` is the retention
+   requirement), independent `effect`, and independent `sessionAccess`.
+   Availability, `tools/list`, capabilities, gate routing, and error wording
+   derive from it.
 2. `AnalysisSpec` canonicalization is shared by the request binder, fingerprint
    builder, coalescing key, snapshot id, and status surface.
 3. `WorkspaceSnapshot` is the one committed state object. Graph, analysis,
@@ -373,15 +376,23 @@ and cleanup without relying on manual process inspection.
 
 Purpose: make scheduling and availability derive from accurate metadata.
 
-1. Replace `ToolAvailability.ReadSide/WriteSide` internally with typed
-   `requiredState`, `effect`, `retentionRequirement`, and `sessionAccess`.
+Implementation status: complete locally. All 38 tools are ratcheted against an
+exact behavior matrix; prerequisite rejection and gate routing consume the
+registry; capabilities publish the replacement fields while retaining the
+20/18 legacy projection; and `tools/list` now reads live state through the
+same gate as tool calls.
+
+1. Replace independently registered `ToolAvailability.ReadSide/WriteSide`
+   internally with typed `sessionRequirement`, `effect`, and
+   `sessionAccess`; retained compilation is a requirement value rather than a
+   redundant fourth axis.
 2. Classify every registered tool and ratchet the complete registry.
 3. Derive gate routing, availability, capabilities, and missing-prerequisite
    errors from the classification.
 4. Preserve current wire behavior additively; deprecate read/write terminology
    only after consumers have the replacement fields.
-5. Route `tools/list` and all state-derived capability surfaces through a
-   snapshot lease.
+5. Route `tools/list` and all state-derived capability surfaces through the
+   current session gate; Wave 2 substitutes a snapshot lease at that same seam.
 
 Exit gate: no independent name list or handler branch can disagree about a
 tool's required state, effect, or concurrency access.

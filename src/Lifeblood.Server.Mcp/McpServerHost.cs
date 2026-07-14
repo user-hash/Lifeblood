@@ -78,7 +78,7 @@ internal sealed class McpServerHost : IDisposable
             telemetry: telemetry,
             jsonCompatibilityMode: jsonCompatibilityMode,
             sessionGate: sessionGate);
-        var dispatcher = new McpDispatcher(session, toolHandler);
+        var dispatcher = new McpDispatcher(toolHandler);
 
         return new McpServerHost(session, dispatcher, telemetryLifetime, sessionGate);
     }
