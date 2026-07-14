@@ -4,6 +4,7 @@ using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Connectors.Mcp;
+using Lifeblood.Server.Mcp;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -274,10 +275,9 @@ public class DocsTests
     var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
     var status = File.ReadAllText(statusPath);
 
-    var registryPath = Path.Combine(RepoRoot, "src", "Lifeblood.Server.Mcp", "ToolRegistry.cs");
-    var registry = File.ReadAllText(registryPath);
-    var liveRead = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.ReadSide").Count;
-    var liveWrite = Regex.Matches(registry, @"Availability\s*=\s*ToolAvailability\.WriteSide").Count;
+    var definitions = ToolRegistry.GetDefinitions();
+    var liveRead = definitions.Count(d => d.Availability == ToolAvailability.ReadSide);
+    var liveWrite = definitions.Count(d => d.Availability == ToolAvailability.WriteSide);
 
     var prose = Regex.Matches(status, @"\(\s*(\d+)\s+read(?:-side)?\s*\+\s*(\d+)\s+write(?:-side)?\s*\)");
     foreach (Match m in prose)

@@ -21,7 +21,7 @@ namespace Lifeblood.Tests;
 /// Invariants pinned:
 /// INV-MCP-001. Initialize response always carries protocolVersion and capabilities.
 /// INV-MCP-002. Notifications never receive a response body.
-/// INV-TOOLREG-001. Tool availability dispatch is by typed enum, not name prefix.
+/// INV-TOOLREG-001. Tool behavior dispatch is typed, not name-based.
 /// </summary>
 public class McpProtocolTests
 {
@@ -54,7 +54,7 @@ public class McpProtocolTests
       .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
   IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
   var handler = new ToolHandler(session, provider, resolver, search, deadCode, partialView, invariants, decorator);
-  return new McpDispatcher(session, handler);
+  return new McpDispatcher(handler);
   }
 
   private static JsonRpcRequest MakeRequest(string method, int? id = 1, object? @params = null)
@@ -185,24 +185,73 @@ public class McpProtocolTests
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // INV-TOOLREG-001: availability dispatch is by typed enum
+  // INV-TOOLREG-001: one typed behavior contract owns tool policy
   // ──────────────────────────────────────────────────────────────────
 
   [Fact]
-  public void ToolRegistry_EveryToolHasExplicitAvailability()
+  public void ToolRegistry_EveryToolHasExpectedBehaviorContract()
   {
-  // C#'s required modifier on ToolDefinition.Availability makes this
-  // impossible to omit at declaration. Verifying here belt-and-braces
-  // that every registered tool comes back with a definite enum value.
-  // Neither default (0) by accident nor an undocumented extra. Availability
-  // lives on ToolDefinition (internal) — GetDefinitions is the seam.
+  var noneObserve = new ToolBehavior(ToolSessionRequirement.None, ToolEffect.Observe, ToolSessionAccess.SharedRead);
+  var refresh = new ToolBehavior(ToolSessionRequirement.None, ToolEffect.RefreshWorkspace, ToolSessionAccess.Exclusive);
+  var graphObserve = new ToolBehavior(ToolSessionRequirement.AnalyzedWorkspace, ToolEffect.Observe, ToolSessionAccess.SharedRead);
+  var workspaceRootObserve = new ToolBehavior(ToolSessionRequirement.WorkspaceRoot, ToolEffect.Observe, ToolSessionAccess.SharedRead);
+  var compilationObserve = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.Observe, ToolSessionAccess.SharedRead);
+  var compilationRefresh = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.RefreshWorkspace, ToolSessionAccess.Exclusive);
+  var execute = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.ExecuteCode, ToolSessionAccess.SharedRead);
+  var preview = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.PreviewChanges, ToolSessionAccess.SharedRead);
+  var expected = new Dictionary<string, ToolBehavior>(StringComparer.Ordinal)
+  {
+  ["lifeblood_capabilities"] = noneObserve,
+  ["lifeblood_analyze"] = refresh,
+  ["lifeblood_context"] = graphObserve,
+  ["lifeblood_lookup"] = graphObserve,
+  ["lifeblood_dependencies"] = graphObserve,
+  ["lifeblood_dependants"] = graphObserve,
+  ["lifeblood_blast_radius"] = graphObserve,
+  ["lifeblood_file_impact"] = graphObserve,
+  ["lifeblood_asmdef_check"] = graphObserve,
+  ["lifeblood_resolve_member"] = graphObserve,
+  ["lifeblood_resolve_short_name"] = graphObserve,
+  ["lifeblood_dead_code"] = graphObserve,
+  ["lifeblood_partial_view"] = graphObserve,
+  ["lifeblood_invariant_check"] = workspaceRootObserve,
+  ["lifeblood_authority_report"] = graphObserve,
+  ["lifeblood_authority_coverage"] = graphObserve,
+  ["lifeblood_port_health"] = graphObserve,
+  ["lifeblood_cycles"] = graphObserve,
+  ["lifeblood_test_impact"] = graphObserve,
+  ["lifeblood_search"] = graphObserve,
+  ["lifeblood_execute"] = execute,
+  ["lifeblood_diagnose"] = compilationObserve,
+  ["lifeblood_compile_check"] = compilationRefresh,
+  ["lifeblood_find_references"] = compilationObserve,
+  ["lifeblood_find_definition"] = compilationObserve,
+  ["lifeblood_find_implementations"] = compilationObserve,
+  ["lifeblood_enum_coverage"] = compilationObserve,
+  ["lifeblood_static_tables"] = compilationObserve,
+  ["lifeblood_assignment_coverage"] = compilationObserve,
+  ["lifeblood_callsite_arguments"] = compilationObserve,
+  ["lifeblood_wire_audit"] = compilationObserve,
+  ["lifeblood_feature_switch_audit"] = compilationObserve,
+  ["lifeblood_member_count"] = compilationObserve,
+  ["lifeblood_struct_layout"] = compilationObserve,
+  ["lifeblood_symbol_at_position"] = compilationObserve,
+  ["lifeblood_documentation"] = compilationObserve,
+  ["lifeblood_rename"] = preview,
+  ["lifeblood_format"] = preview,
+  };
+
   var definitions = ToolRegistry.GetDefinitions();
-  Assert.NotEmpty(definitions);
+  Assert.Equal(expected.Count, definitions.Length);
   foreach (var def in definitions)
   {
-  Assert.True(
-  def.Availability == ToolAvailability.ReadSide || def.Availability == ToolAvailability.WriteSide,
-  $"Tool {def.Name} has unexpected Availability: {def.Availability}");
+  Assert.True(expected.ContainsKey(def.Name), $"Unexpected registered tool: {def.Name}");
+  var behavior = expected[def.Name];
+  Assert.Equal(behavior, def.Behavior);
+  var expectedLegacy = behavior.SessionRequirement == ToolSessionRequirement.RetainedCompilation
+    ? ToolAvailability.WriteSide
+    : ToolAvailability.ReadSide;
+  Assert.Equal(expectedLegacy, def.Availability);
   }
   }
 
@@ -213,7 +262,7 @@ public class McpProtocolTests
   // decorated description lives on the wire payload.
   var definitions = ToolRegistry.GetDefinitions();
   var writeSideNames = definitions
-  .Where(d => d.Availability == ToolAvailability.WriteSide)
+  .Where(d => d.Behavior.SessionRequirement == ToolSessionRequirement.RetainedCompilation)
   .Select(d => d.Name)
   .ToHashSet();
 
@@ -232,7 +281,7 @@ public class McpProtocolTests
   // They must never carry the unavailable decoration.
   var definitions = ToolRegistry.GetDefinitions();
   var readSideNames = definitions
-  .Where(d => d.Availability == ToolAvailability.ReadSide)
+  .Where(d => d.Behavior.SessionRequirement != ToolSessionRequirement.RetainedCompilation)
   .Select(d => d.Name)
   .ToHashSet();
 
@@ -245,16 +294,45 @@ public class McpProtocolTests
   }
 
   [Fact]
-  public void ToolRegistry_ResolveShortName_IsClassifiedReadSide()
+  public void ToolRegistry_ResolveShortName_IsGraphObservation()
   {
   // Pin the classification decision from FINDING-005. The previous
   // prefix-based guard silently misclassified this tool because its
   // name did not match any of the 8 hard-coded prefixes. The typed
-  // ToolDefinition.Availability field makes the decision explicit and
-  // test-enforced.
+  // ToolDefinition.Behavior makes the state/effect/access decision explicit
+  // and test-enforced.
   var definitions = ToolRegistry.GetDefinitions();
   var resolver = definitions.Single(d => d.Name == "lifeblood_resolve_short_name");
-  Assert.Equal(ToolAvailability.ReadSide, resolver.Availability);
+  Assert.Equal(ToolSessionRequirement.AnalyzedWorkspace, resolver.Behavior.SessionRequirement);
+  Assert.Equal(ToolEffect.Observe, resolver.Behavior.Effect);
+  Assert.Equal(ToolSessionAccess.SharedRead, resolver.Behavior.SessionAccess);
+  }
+
+  [Fact]
+  public void ToolRegistry_EmptySession_MarksEveryStatefulToolUnavailable()
+  {
+  var wire = ToolRegistry.GetTools(new ToolSessionState(
+    HasAnalyzedWorkspace: false,
+    HasWorkspaceRoot: false,
+    HasRetainedCompilation: false));
+  var definitions = ToolRegistry.GetDefinitions().ToDictionary(d => d.Name, StringComparer.Ordinal);
+
+  foreach (var tool in wire)
+  {
+  var requiresState = definitions[tool.Name].Behavior.SessionRequirement != ToolSessionRequirement.None;
+  Assert.Equal(requiresState, tool.Description.StartsWith("[Unavailable", StringComparison.Ordinal));
+  }
+
+  Assert.DoesNotContain("[Unavailable", wire.Single(t => t.Name == "lifeblood_capabilities").Description);
+  Assert.DoesNotContain("[Unavailable", wire.Single(t => t.Name == "lifeblood_analyze").Description);
+  Assert.StartsWith("[Unavailable", wire.Single(t => t.Name == "lifeblood_lookup").Description);
+  Assert.StartsWith("[Unavailable", wire.Single(t => t.Name == "lifeblood_compile_check").Description);
+
+  var inconsistent = ToolRegistry.GetTools(new ToolSessionState(
+    HasAnalyzedWorkspace: false,
+    HasWorkspaceRoot: true,
+    HasRetainedCompilation: true));
+  Assert.StartsWith("[Unavailable", inconsistent.Single(t => t.Name == "lifeblood_compile_check").Description);
   }
 
   [Fact]

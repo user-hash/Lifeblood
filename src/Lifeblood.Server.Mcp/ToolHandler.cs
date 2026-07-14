@@ -13,7 +13,8 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
-/// Dispatches MCP tool calls. Read-side handled inline, write-side delegated to WriteToolHandler.
+/// Dispatches MCP tool calls. Graph queries are handled inline; retained-
+/// compilation operations are delegated to <see cref="WriteToolHandler"/>.
 ///
 /// Read-side handlers that take a <c>symbolId</c> parameter route the input
 /// through <see cref="ISymbolResolver"/> first (Plan v4 Seam #1, INV-RESOLVER-001).
@@ -90,22 +91,23 @@ public sealed class ToolHandler
         => new(ToolRegistry.GetDefinitions()
             .Select(d => d.InputContract));
 
+    /// <summary>
+    /// Returns the live tool catalog while holding the same session gate used
+    /// by tool calls. This keeps <c>tools/list</c> availability coherent with
+    /// analyze/refresh transitions.
+    /// </summary>
+    public McpToolInfo[] GetTools()
+        => _sessionGate.Read(() => ToolRegistry.GetTools(CurrentSessionState()));
+
     public McpToolResult Handle(string toolName, JsonElement? arguments)
-        => RequiresExclusiveSessionAccess(toolName)
+        => ToolRegistry.FindDefinition(toolName)?.Behavior.SessionAccess == ToolSessionAccess.Exclusive
             ? _sessionGate.Write(() => HandleCore(toolName, arguments))
             : _sessionGate.Read(() => HandleCore(toolName, arguments));
 
-    // Only these two mutate the retained session in place: lifeblood_analyze
-    // replaces it (WorkspaceSession.Clear + Load) and lifeblood_compile_check
-    // can trigger a stale refresh (GraphSession.MaybeRefreshIfStale → Clear +
-    // Load). Every other tool — including the WriteSide find_*/rename/format —
-    // only reads the immutable retained graph/compilations or computes edits it
-    // returns to the client, so they are safe under the shared Read lock. Do not
-    // widen this set to ToolAvailability.WriteSide: that classifies "needs live
-    // compilations", not "mutates session", and serializing read-only queries
-    // under the NoRecursion write lock would regress concurrency for no safety.
-    private static bool RequiresExclusiveSessionAccess(string toolName)
-        => toolName is "lifeblood_analyze" or "lifeblood_compile_check";
+    private ToolSessionState CurrentSessionState() => new(
+        HasAnalyzedWorkspace: _session.IsLoaded,
+        HasWorkspaceRoot: !string.IsNullOrEmpty(_session.ProjectRoot),
+        HasRetainedCompilation: _session.HasCompilationState);
 
     private McpToolResult HandleCore(string toolName, JsonElement? arguments)
     {
@@ -128,6 +130,16 @@ public sealed class ToolHandler
                     mode = binding.Mode.ToString(),
                     diagnostics = binding.Diagnostics,
                 }, JsonOpts));
+            }
+
+            var definition = ToolRegistry.FindDefinition(toolName);
+            if (definition != null && SessionRequirementError(definition) is { } stateError)
+            {
+                operation.SetTag("tool.result", "session_state_error");
+                _telemetry.RecordEvent(
+                    McpTelemetryEvents.ToolErrorResult,
+                    new TelemetryTag("tool.name", toolName));
+                return stateError;
             }
 
             var result = toolName switch
@@ -206,6 +218,28 @@ public sealed class ToolHandler
         }
     }
 
+    private McpToolResult? SessionRequirementError(ToolDefinition definition)
+    {
+        if (CurrentSessionState().Satisfies(definition.Behavior.SessionRequirement))
+        {
+            return null;
+        }
+
+        return definition.Behavior.SessionRequirement switch
+        {
+            ToolSessionRequirement.AnalyzedWorkspace =>
+                ErrorResult("No graph loaded. Call lifeblood_analyze first."),
+            ToolSessionRequirement.WorkspaceRoot =>
+                ErrorResult(
+                    "No workspace loaded. Call lifeblood_analyze with a projectPath first so " +
+                    "the invariant provider can locate CLAUDE.md."),
+            ToolSessionRequirement.RetainedCompilation =>
+                ErrorResult(_session.CompilationStateRecoveryHint
+                    ?? "Compilation-backed tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first."),
+            _ => null,
+        };
+    }
+
     // ── Read-side handlers ──
 
     private McpToolResult HandleCapabilities(JsonElement? args)
@@ -280,9 +314,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleContext(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var useCase = new GenerateContextUseCase(new AgentContextGenerator());
         var pack = useCase.Execute(_session.Graph!, _session.Analysis!);
 
@@ -372,9 +403,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleLookup(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var raw = WriteToolHandler.GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
@@ -513,9 +541,6 @@ public sealed class ToolHandler
         JsonElement? args, string toolName,
         Func<SemanticGraph, string, EdgeDetail[]> fetch, out McpToolResult? error)
     {
-        if (!_session.IsLoaded)
-        { error = ErrorResult("No graph loaded. Call lifeblood_analyze first."); return null; }
-
         var raw = WriteToolHandler.GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
         { error = ErrorResult("symbolId is required"); return null; }
@@ -659,9 +684,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleBlastRadius(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var raw = WriteToolHandler.GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
@@ -764,9 +786,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleResolveShortName(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var name = WriteToolHandler.GetString(args, "name");
         if (string.IsNullOrEmpty(name))
             return ErrorResult("name is required");
@@ -786,9 +805,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleResolveMember(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var typeName = WriteToolHandler.GetString(args, "typeName");
         if (string.IsNullOrEmpty(typeName))
             return ErrorResult("typeName is required");
@@ -857,9 +873,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleSearch(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var query = WriteToolHandler.GetString(args, "query");
         if (string.IsNullOrEmpty(query))
             return ErrorResult("query is required");
@@ -878,9 +891,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleDeadCode(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var includeKinds = ParseKindsArray(args, "includeKinds");
         var excludePublic = WriteToolHandler.GetBool(args, "excludePublic") ?? true;
         var excludeTests = WriteToolHandler.GetBool(args, "excludeTests") ?? true;
@@ -973,9 +983,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandlePartialView(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var raw = WriteToolHandler.GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
@@ -1011,13 +1018,6 @@ public sealed class ToolHandler
     /// </summary>
     private McpToolResult HandleInvariantCheck(JsonElement? args)
     {
-        if (!_session.IsLoaded || string.IsNullOrEmpty(_session.ProjectRoot))
-        {
-            return ErrorResult(
-                "No workspace loaded. Call lifeblood_analyze with a projectPath first so " +
-                "the invariant provider can locate CLAUDE.md.");
-        }
-
         var projectRoot = _session.ProjectRoot;
         var id = WriteToolHandler.GetString(args, "id");
         var mode = WriteToolHandler.GetString(args, "mode");
@@ -1131,9 +1131,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleFileImpact(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var filePath = WriteToolHandler.GetString(args, "filePath");
         if (string.IsNullOrEmpty(filePath))
             return ErrorResult("filePath is required");
@@ -1184,9 +1181,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleAuthorityReport(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var raw = WriteToolHandler.GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
@@ -1201,9 +1195,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleAuthorityCoverage(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var subjectInputs = ReadStringArray(args, "subjects");
         if (subjectInputs == null || subjectInputs.Length == 0)
             return ErrorResult("subjects is required (non-empty string array)");
@@ -1242,9 +1233,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleAsmdefCheck(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var report = AsmdefBoundaryAnalyzer.Analyze(_session.Graph!, new AsmdefBoundaryOptions
         {
             Summarize = WriteToolHandler.GetBool(args, "summarize") ?? false,
@@ -1346,9 +1334,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandlePortHealth(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var raw = WriteToolHandler.GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
@@ -1385,9 +1370,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleCycles(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         // Classified detection. Each descriptor is { symbols, bucket }.
         // INV-CYCLE-TAXONOMY-001 — caller can fold the Generated + Partial
         // noise tail without re-walking the cycle members.
@@ -1454,9 +1436,6 @@ public sealed class ToolHandler
 
     private McpToolResult HandleTestImpact(JsonElement? args)
     {
-        if (!_session.IsLoaded)
-            return ErrorResult("No graph loaded. Call lifeblood_analyze first.");
-
         var raw = WriteToolHandler.GetString(args, "target");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("target is required (a symbol id or file path)");

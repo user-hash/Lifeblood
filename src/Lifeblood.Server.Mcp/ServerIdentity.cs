@@ -54,6 +54,22 @@ public static class ServerIdentity
         var definitions = ToolRegistry.GetDefinitions();
         var readSide = definitions.Where(d => d.Availability == ToolAvailability.ReadSide).Select(d => d.Name).ToArray();
         var writeSide = definitions.Where(d => d.Availability == ToolAvailability.WriteSide).Select(d => d.Name).ToArray();
+        var behaviorContracts = definitions.Select(d => new
+        {
+            name = d.Name,
+            sessionRequirement = d.Behavior.SessionRequirement.ToString(),
+            effect = d.Behavior.Effect.ToString(),
+            sessionAccess = d.Behavior.SessionAccess.ToString(),
+        }).ToArray();
+        var sessionRequirementCounts = definitions
+            .GroupBy(d => d.Behavior.SessionRequirement)
+            .ToDictionary(g => g.Key.ToString(), g => g.Count(), StringComparer.Ordinal);
+        var effectCounts = definitions
+            .GroupBy(d => d.Behavior.Effect)
+            .ToDictionary(g => g.Key.ToString(), g => g.Count(), StringComparer.Ordinal);
+        var sessionAccessCounts = definitions
+            .GroupBy(d => d.Behavior.SessionAccess)
+            .ToDictionary(g => g.Key.ToString(), g => g.Count(), StringComparer.Ordinal);
         var summarizeCapable = definitions
             .Where(HasBooleanSummarizeArgument)
             .Select(d => d.Name)
@@ -72,6 +88,11 @@ public static class ServerIdentity
                 writeSideCount = writeSide.Length,
                 readSide,
                 writeSide,
+                compatibilityNote = "readSide/writeSide are legacy projections of sessionRequirement; use behaviorContracts for policy.",
+                sessionRequirementCounts,
+                effectCounts,
+                sessionAccessCounts,
+                behaviorContracts,
             },
             featureFlags = new
             {

@@ -5,7 +5,9 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
-/// Handles write-side MCP tool calls (require compilation state).
+/// Handles compilation-backed MCP tool calls. The outer
+/// <see cref="ToolHandler"/> enforces the registry-owned session requirement
+/// before dispatch reaches this class.
 /// Execute, Diagnose, CompileCheck, FindReferences, Rename, Format.
 ///
 /// Symbol-id-bearing handlers (FindReferences, FindDefinition, FindImplementations,
@@ -28,8 +30,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleExecute(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
-
         var code = GetString(args, "code");
         if (string.IsNullOrEmpty(code))
             return ErrorResult("code is required");
@@ -53,8 +53,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleDiagnose(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
-
         var moduleName = GetString(args, "moduleName");
         var filePath = GetString(args, "filePath");
 
@@ -197,8 +195,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleCompileCheck(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
-
         var toolRequest = ToolRequestBinder.BindCompileCheck(args);
         var code = toolRequest.Code;
         var filePath = toolRequest.FilePath;
@@ -328,7 +324,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleFindReferences(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
@@ -361,7 +356,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleRename(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
@@ -387,8 +381,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleFormat(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
-
         var code = GetString(args, "code");
         if (string.IsNullOrEmpty(code))
             return ErrorResult("code is required");
@@ -399,7 +391,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleFindDefinition(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
@@ -426,7 +417,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleFindImplementations(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
@@ -496,7 +486,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleEnumCoverage(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "enumTypeId");
@@ -525,7 +514,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleStaticTables(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "typeId");
@@ -559,7 +547,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleAssignmentCoverage(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "targetTypeId");
@@ -595,7 +582,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleCallsiteArguments(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var raw = GetString(args, "symbolId");
@@ -631,7 +617,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleWireAudit(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         // typeId is an optional output filter — resolve to canonical when set so
@@ -674,7 +659,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleFeatureSwitchAudit(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         // typeId is an optional output filter — resolve to canonical when set so
@@ -715,7 +699,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleMemberCount(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var rawType = GetString(args, "typeId");
@@ -745,7 +728,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleStructLayout(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
         var rawType = GetString(args, "typeId");
@@ -780,8 +762,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleGetSymbolAtPosition(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
-
         var filePath = GetString(args, "filePath");
         var line = GetInt(args, "line");
         var column = GetInt(args, "column");
@@ -797,8 +777,6 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleGetDocumentation(JsonElement? args)
     {
-        if (CompilationStateError() is { } error) return error;
-
         var raw = GetString(args, "symbolId");
         if (string.IsNullOrEmpty(raw))
             return ErrorResult("symbolId is required");
@@ -811,13 +789,6 @@ internal sealed class WriteToolHandler
         return TextResult(string.IsNullOrEmpty(doc)
             ? $"No documentation found for {resolved.CanonicalId}"
             : doc);
-    }
-
-    private McpToolResult? CompilationStateError()
-    {
-        if (_session.HasCompilationState) return null;
-        return ErrorResult(_session.CompilationStateRecoveryHint
-            ?? "Write-side tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first.");
     }
 
     internal static string? GetString(JsonElement? args, string key)

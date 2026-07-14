@@ -47,13 +47,11 @@ public sealed class McpDispatcher
   private static readonly HashSet<string> KnownNotifications =
     new(McpProtocolSpec.AllKnownNotifications, StringComparer.Ordinal);
 
-  private readonly GraphSession _session;
   private readonly ToolHandler _toolHandler;
   private readonly string _serverVersion;
 
-  public McpDispatcher(GraphSession session, ToolHandler toolHandler)
+  public McpDispatcher(ToolHandler toolHandler)
   {
-  _session = session;
   _toolHandler = toolHandler;
   _serverVersion = ServerIdentity.ResolveServerVersion();
   }
@@ -131,7 +129,7 @@ public sealed class McpDispatcher
   return new JsonRpcResponse
   {
   Id = request.Id,
-  Result = new { tools = ToolRegistry.GetTools(_session.HasCompilationState) },
+  Result = new { tools = _toolHandler.GetTools() },
   };
   }
 

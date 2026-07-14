@@ -34,7 +34,7 @@ public class ToolHandlerTelemetryTests
         var operation = Assert.Single(telemetry.Operations);
         Assert.Equal("lifeblood.tool", operation.Name);
         Assert.Equal("lifeblood_lookup", operation.Tags["tool.name"]);
-        Assert.Equal("error", operation.Tags["tool.result"]);
+        Assert.Equal("session_state_error", operation.Tags["tool.result"]);
         Assert.True(operation.Disposed);
 
         var evt = Assert.Single(telemetry.Events);
