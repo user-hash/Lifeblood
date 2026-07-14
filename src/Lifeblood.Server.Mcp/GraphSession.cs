@@ -145,10 +145,11 @@ public sealed class GraphSession : IDisposable
                 AllowFullFallback = true,
                 ExcludePathGlobs = _lastExcludePaths,
             };
+            var candidateAdapter = _roslynAdapter.ForkForIncrementalCandidate();
             IncrementalAnalyzeResult incremental;
             using (TelemetryPhase("auto-refresh.incremental"))
             {
-                incremental = _roslynAdapter.IncrementalAnalyze(config);
+                incremental = candidateAdapter.IncrementalAnalyze(config);
             }
             // Mode==Rejected only happens here when the snapshot disappeared
             // mid-run (CanIncremental gated above) — degrade silently per
@@ -157,7 +158,11 @@ public sealed class GraphSession : IDisposable
                 return null;
             var graph = incremental.Graph;
             var changedFileCount = incremental.ChangedFileCount;
-            if (changedFileCount == 0) return null;
+            if (changedFileCount == 0)
+            {
+                _roslynAdapter = candidateAdapter;
+                return null;
+            }
 
             // Source changed — rebuild the session view. This mirrors the
             // LoadIncremental happy path but skips the response-building.
@@ -170,26 +175,27 @@ public sealed class GraphSession : IDisposable
             ICompilationHost? newCompilationHost = null;
             ICodeExecutor? newCodeExecutor = null;
             IWorkspaceRefactoring? newRefactoring = null;
-            if (_roslynAdapter.Compilations is { Count: > 0 })
+            if (candidateAdapter.Compilations is { Count: > 0 })
             {
                 var view = new RoslynSemanticView(
-                    _roslynAdapter.Compilations,
+                    candidateAdapter.Compilations,
                     graph,
-                    _roslynAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
-                newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
+                    candidateAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
+                newCompilationHost = new RoslynCompilationHost(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
                 var unityResolver = LooksLikeUnityWorkspace(_lastProjectPath)
                     ? new UnityAssemblyResolver(_fs, _lastProjectPath!)
                     : null;
                 newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
-                newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
+                newRefactoring = new RoslynWorkspaceRefactoring(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
             }
 
             using (TelemetryPhase("auto-refresh.commit"))
             {
                 _session.Clear();
-                _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
+                _session.Load(graph, analysis, candidateAdapter.Capability, "csharp");
                 if (newCompilationHost != null)
                     _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+                _roslynAdapter = candidateAdapter;
                 _analyzedAtUtc = DateTime.UtcNow;
             }
 
@@ -455,11 +461,12 @@ public sealed class GraphSession : IDisposable
             ExcludePathGlobs = excludePaths == null ? _lastExcludePaths : NormalizePathGlobs(excludePaths),
             AuthoritativeChangedFiles = authoritativeChangedFiles,
         };
+        var candidateAdapter = _roslynAdapter!.ForkForIncrementalCandidate();
         IncrementalAnalyzeResult incremental;
         using (TelemetryPhase("incremental-analyze",
             new TelemetryTag("analyze.allow_full_fallback", allowFullFallback)))
         {
-            incremental = _roslynAdapter!.IncrementalAnalyze(config);
+            incremental = candidateAdapter.IncrementalAnalyze(config);
         }
         capture.MarkPhase("incremental");
 
@@ -468,7 +475,7 @@ public sealed class GraphSession : IDisposable
         // fallback). Count == 1 collapses to null per BuildLoadResult contract —
         // single-profile back-compat byte-stable. _roslynAdapter is non-null
         // here per the CanIncremental gate at the public Load entry.
-        var incrActiveProfiles = _roslynAdapter!.RetainedProfileNames is { Count: > 1 } names
+        var incrActiveProfiles = candidateAdapter.RetainedProfileNames is { Count: > 1 } names
             ? names.ToArray()
             : null;
 
@@ -503,6 +510,7 @@ public sealed class GraphSession : IDisposable
 
         if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0)
         {
+            _roslynAdapter = candidateAdapter;
             usage = capture.Stop();
             // Graph is unchanged on noop — reuse the prior session analysis
             // so the response surfaces real modules/types/files/violations/cycles
@@ -518,7 +526,7 @@ public sealed class GraphSession : IDisposable
                 changedFileCount: 0,
                 mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
                 contentChangedFileCount: incremental.ContentChangedFileCount,
-                skipped: _roslynAdapter?.SkippedFiles,
+                skipped: candidateAdapter.SkippedFiles,
                 requestedMode: "incremental",
                 activeProfiles: incrActiveProfiles,
                 projectPath: projectPath,
@@ -542,20 +550,20 @@ public sealed class GraphSession : IDisposable
         ICodeExecutor? newCodeExecutor = null;
         IWorkspaceRefactoring? newRefactoring = null;
 
-        if (_roslynAdapter.Compilations is { Count: > 0 })
+        if (candidateAdapter.Compilations is { Count: > 0 })
         {
             // Plan v4 Seam #3 — same view construction as the full-load path.
             var view = new RoslynSemanticView(
-                _roslynAdapter.Compilations,
+                candidateAdapter.Compilations,
                 graph,
-                _roslynAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
+                candidateAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
 
-            newCompilationHost = new RoslynCompilationHost(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
+            newCompilationHost = new RoslynCompilationHost(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
             var unityResolver = LooksLikeUnityWorkspace(_lastProjectPath)
                 ? new UnityAssemblyResolver(_fs, _lastProjectPath!)
                 : null;
             newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
-            newRefactoring = new RoslynWorkspaceRefactoring(_roslynAdapter.Compilations, _roslynAdapter.ModuleDependencies);
+            newRefactoring = new RoslynWorkspaceRefactoring(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
         }
 
         ArchitectureRule[]? rules = ResolveRules(rulesPath ?? _lastRulesPath);
@@ -569,9 +577,10 @@ public sealed class GraphSession : IDisposable
         using (TelemetryPhase("incremental-session-commit"))
         {
             _session.Clear();
-            _session.Load(graph, analysis, _roslynAdapter.Capability, "csharp");
+            _session.Load(graph, analysis, candidateAdapter.Capability, "csharp");
             if (newCompilationHost != null)
                 _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+            _roslynAdapter = candidateAdapter;
             _analyzedAtUtc = DateTime.UtcNow;
             _lastExcludePaths = config.ExcludePathGlobs;
         }
@@ -591,7 +600,7 @@ public sealed class GraphSession : IDisposable
             changedFileCount: changedFileCount,
             mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
             contentChangedFileCount: incremental.ContentChangedFileCount,
-            skipped: _roslynAdapter?.SkippedFiles,
+            skipped: candidateAdapter.SkippedFiles,
             requestedMode: "incremental",
             fallbackReason: incremental.Reason,
             fallbackDetail: incremental.Detail,

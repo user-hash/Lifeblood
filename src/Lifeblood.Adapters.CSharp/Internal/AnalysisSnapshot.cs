@@ -132,6 +132,54 @@ internal sealed class AnalysisSnapshot
     public List<SkippedFile> SkippedFiles { get; } = new();
 
     /// <summary>
+    /// Fork the mutable incremental cache for candidate construction. Domain
+    /// symbols, edges, module descriptors, profiles, skipped-file receipts,
+    /// and Roslyn metadata references are immutable after extraction and may
+    /// be shared; every collection the incremental path mutates is copied.
+    /// </summary>
+    public AnalysisSnapshot ForkForCandidate()
+    {
+        var candidate = new AnalysisSnapshot
+        {
+            ProjectRoot = ProjectRoot,
+            Modules = Modules.ToArray(),
+            ExcludePathGlobs = ExcludePathGlobs.ToArray(),
+            ActiveProfiles = ActiveProfiles.ToArray(),
+        };
+
+        CopyDictionary(FileTimestamps, candidate.FileTimestamps);
+        CopyDictionary(FileContentHashes, candidate.FileContentHashes);
+        CopyDictionary(CsprojTimestamps, candidate.CsprojTimestamps);
+        CopyDictionary(AsmdefTimestamps, candidate.AsmdefTimestamps);
+
+        foreach (var (fileId, symbols) in SymbolsByFile)
+            candidate.SymbolsByFile[fileId] = new List<Symbol>(symbols);
+        foreach (var (fileId, edges) in EdgesByFile)
+            candidate.EdgesByFile[fileId] = new List<Edge>(edges);
+
+        candidate.ModuleSymbols.AddRange(ModuleSymbols);
+        candidate.ModuleEdges.AddRange(ModuleEdges);
+        candidate.SkippedFiles.AddRange(SkippedFiles);
+
+        foreach (var (profileName, references) in DowngradedRefsByProfile)
+        {
+            candidate.DowngradedRefsByProfile[profileName] =
+                new Dictionary<string, MetadataReference>(references, StringComparer.Ordinal);
+        }
+
+        return candidate;
+    }
+
+    private static void CopyDictionary<TKey, TValue>(
+        Dictionary<TKey, TValue> source,
+        Dictionary<TKey, TValue> destination)
+        where TKey : notnull
+    {
+        foreach (var (key, value) in source)
+            destination[key] = value;
+    }
+
+    /// <summary>
     /// Rebuild the full graph from cached per-file data + module data.
     /// </summary>
     public SemanticGraph RebuildGraph()

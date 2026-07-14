@@ -4,8 +4,9 @@ Date: 2026-07-14
 
 Status: Wave 0 process foundation implemented; repeated DAWG memory receipt is
 waiting for a quiescent workspace; path provenance and Wave 1 tool-behavior
-source of truth implemented; Wave 2 explicit workspace context and full-
-candidate publication ratchets are in progress
+source of truth implemented; Wave 2 explicit workspace context plus failure-
+isolated full and incremental candidates implemented; one-reference committed
+snapshot publication and read leases are next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -155,7 +156,7 @@ property.
 | P0 | Daemon identity is trusted by pipe name | The proxy performs no version, build, workspace-root, or protocol handshake. | Typed handshake before MCP forwarding; reject incompatible reuse without killing unknown processes. |
 | P0 | Daemon lifetime is unbounded | Daemon exits only on process cancellation; proxy EOF has no client lease or idle eviction. | Persistent client leases, heartbeat/activity, idle drain, deterministic session disposal, and clean exit. |
 | P0 | The proxy cannot model a client lifetime | It opens a new pipe connection for each JSON-RPC frame. | Persistent proxy/daemon connection or explicit client identity on every control/request frame. |
-| P0 | Candidate publication is not a single state transaction | `GraphSession` assigns the new Roslyn adapter/path state before rules analysis and the final `WorkspaceSession` clear/load. Incremental analysis mutates retained adapter state before graph validation and publication. | Build a complete candidate object, validate it, then swap one committed reference; failure leaves every old field consistent. |
+| Partially resolved in Wave 2 | Candidate publication is not yet a single state transaction | Full analysis keeps adapter/path/scope/rules as candidate locals, and incremental analysis runs against a fork of every mutable extraction, compilation, and dependency cache; rule-phase failures leave the committed graph, adapter, services, generation, and retry base unchanged. `WorkspaceSession` and the remaining `GraphSession` publication fields are still assigned separately. | Replace the remaining field sequence with one committed snapshot reference; add read leases and deferred disposal so old generations remain coherent during refresh. |
 | P0 | Workspace identity is implicit | Default shared key is the process working directory; the daemon's singleton session can load any requested project path. | Canonical workspace binding in the handshake and analyze precondition; reject cross-workspace reuse. |
 | P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
 | Partially resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` now flows from the committed project-backed `GraphSession` through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Move the context into the immutable committed snapshot object with the remaining session fields; route any future workspace-sensitive provider through the same value. |
@@ -416,6 +417,11 @@ Purpose: eliminate split-brain session fields and make refresh failure-safe.
 
 Exit gate: every injected failure leaves the prior graph, profiles, compilation
 services, fingerprint, path, and generation mutually consistent and usable.
+
+Implementation status: step 1 is pinned by explicit `WorkspaceContext`; step 3
+is pinned for both full and incremental paths by
+`INV-SNAPSHOT-ATOMIC-PUBLISH-001`. Step 2 is the next implementation slice,
+followed immediately by the lease/disposal work in step 4.
 
 ### Wave 3 - Fingerprinted Refresh And Analyze Coalescing
 
