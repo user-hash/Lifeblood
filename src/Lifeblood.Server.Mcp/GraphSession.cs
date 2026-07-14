@@ -7,6 +7,7 @@ using Lifeblood.Application.UseCases;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Lifeblood.Domain.Rules;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -47,6 +48,14 @@ public sealed class GraphSession : IDisposable
     /// <c>lifeblood_partial_view</c>, which reads source off disk.
     /// </summary>
     public string ProjectRoot => _lastProjectPath ?? "";
+
+    /// <summary>
+    /// Explicit context for providers that resolve graph-relative paths on
+    /// disk. Null for JSON imports and empty sessions; never inferred from the
+    /// server process current directory.
+    /// </summary>
+    public WorkspaceContext? CurrentWorkspaceContext =>
+        string.IsNullOrEmpty(_lastProjectPath) ? null : new WorkspaceContext(_lastProjectPath);
 
     /// <summary>Exposed file-system port for tool handlers that need disk access (partial view, compile_check auto-refresh).</summary>
     public IFileSystem FileSystem => _fs;
@@ -288,6 +297,9 @@ public sealed class GraphSession : IDisposable
         ICompilationHost? newCompilationHost = null;
         ICodeExecutor? newCodeExecutor = null;
         IWorkspaceRefactoring? newRefactoring = null;
+        RoslynWorkspaceAnalyzer? candidateRoslynAdapter = null;
+        string? candidateProjectPath = null;
+        var candidateExcludePaths = Array.Empty<string>();
 
         if (!string.IsNullOrEmpty(graphPath))
         {
@@ -314,9 +326,6 @@ public sealed class GraphSession : IDisposable
             if (errors.Length > 0)
                 return $"Graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
 
-            _roslynAdapter = null;
-            _lastProjectPath = null;
-            _lastExcludePaths = Array.Empty<string>();
         }
         else if (!string.IsNullOrEmpty(projectPath))
         {
@@ -379,10 +388,11 @@ public sealed class GraphSession : IDisposable
                 newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations, adapter.ModuleDependencies);
             }
 
-            // Retain adapter for incremental re-analyze
-            _roslynAdapter = adapter;
-            _lastProjectPath = projectPath;
-            _lastExcludePaths = effectiveExcludePaths;
+            // Candidate-only until graph validation, rule analysis, and
+            // compilation-service construction have all succeeded.
+            candidateRoslynAdapter = adapter;
+            candidateProjectPath = projectPath;
+            candidateExcludePaths = effectiveExcludePaths;
         }
         else
         {
@@ -391,8 +401,6 @@ public sealed class GraphSession : IDisposable
 
         // Analyze (rules are optional — resolve built-in name first, then file path)
         ArchitectureRule[]? rules = ResolveRules(rulesPath);
-        _lastRulesPath = rulesPath;
-
         AnalysisResult analysis;
         using (TelemetryPhase("rules-analyze"))
         {
@@ -406,6 +414,10 @@ public sealed class GraphSession : IDisposable
             _session.Load(graph, analysis, capability, language);
             if (newCompilationHost != null)
                 _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
+            _roslynAdapter = candidateRoslynAdapter;
+            _lastProjectPath = candidateProjectPath;
+            _lastExcludePaths = candidateExcludePaths;
+            _lastRulesPath = rulesPath;
             _analyzedAtUtc = DateTime.UtcNow;
         }
 

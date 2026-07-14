@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Adapters.CSharp;
 
@@ -154,6 +155,13 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
     };
 
     public bool IsRuntimeReachable(SemanticGraph graph, Symbol sym, out string reason)
+        => IsRuntimeReachable(graph, sym, workspaceContext: null, out reason);
+
+    public bool IsRuntimeReachable(
+        SemanticGraph graph,
+        Symbol sym,
+        WorkspaceContext? workspaceContext,
+        out string reason)
     {
         reason = "";
 
@@ -203,7 +211,7 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
         //    are runtime-reachable even with zero semantic incoming edges.
         //    The index is built lazily per graph and cached weakly so repeated
         //    dead_code checks do not re-scan the Unity asset tree.
-        var assetIndex = GetAssetReachabilityIndex(graph, sym);
+        var assetIndex = GetAssetReachabilityIndex(graph, sym, workspaceContext);
         if (assetIndex.TryGetReason(sym.Id, out var assetReason))
         {
             reason = assetReason;
@@ -324,9 +332,12 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
     private static string StripTypePrefix(string id)
         => id.StartsWith("type:", System.StringComparison.Ordinal) ? id.Substring(5) : id;
 
-    private UnityAssetReachabilityIndex GetAssetReachabilityIndex(SemanticGraph graph, Symbol sym)
+    private UnityAssetReachabilityIndex GetAssetReachabilityIndex(
+        SemanticGraph graph,
+        Symbol sym,
+        WorkspaceContext? workspaceContext)
     {
-        if (!TryInferUnityProjectRoot(sym.FilePath, out var projectRoot))
+        if (!TryResolveUnityProjectRoot(workspaceContext, sym.FilePath, out var projectRoot))
             return UnityAssetReachabilityIndex.Empty;
 
         return _assetIndexes.GetValue(graph, _ => BuildAssetReachabilityIndex(graph, projectRoot));
@@ -354,7 +365,7 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
 
                 if (!string.IsNullOrEmpty(symbol.FilePath))
                 {
-                    var abs = System.IO.Path.GetFullPath(symbol.FilePath);
+                    var abs = ResolveWorkspacePath(projectRoot, symbol.FilePath);
                     if (!typeSymbolsByFile.TryGetValue(abs, out var byFile))
                     {
                         byFile = new List<Symbol>();
@@ -494,10 +505,26 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
         }
     }
 
-    private static bool TryInferUnityProjectRoot(string filePath, out string projectRoot)
+    private static bool TryResolveUnityProjectRoot(
+        WorkspaceContext? workspaceContext,
+        string filePath,
+        out string projectRoot)
     {
         projectRoot = "";
         if (string.IsNullOrEmpty(filePath)) return false;
+
+        if (workspaceContext != null)
+        {
+            projectRoot = System.IO.Path.GetFullPath(workspaceContext.RootPath);
+            return IsUnderAssets(projectRoot, filePath);
+        }
+
+        // Imported legacy graphs may carry absolute paths and can therefore
+        // identify their own Unity root. Relative graph paths require an
+        // explicit WorkspaceContext; resolving them against process CWD would
+        // couple results to whichever repository launched the server.
+        if (!System.IO.Path.IsPathRooted(filePath)) return false;
+
         var full = System.IO.Path.GetFullPath(filePath).Replace('\\', '/');
         var marker = "/Assets/";
         var idx = full.IndexOf(marker, System.StringComparison.OrdinalIgnoreCase);
@@ -509,10 +536,15 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
     private static bool IsUnderAssets(string projectRoot, string filePath)
     {
         if (string.IsNullOrEmpty(filePath)) return false;
-        var full = System.IO.Path.GetFullPath(filePath).Replace('\\', '/');
+        var full = ResolveWorkspacePath(projectRoot, filePath).Replace('\\', '/');
         var root = System.IO.Path.GetFullPath(projectRoot).Replace('\\', '/').TrimEnd('/');
         return full.StartsWith(root + "/Assets/", System.StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string ResolveWorkspacePath(string projectRoot, string filePath)
+        => System.IO.Path.GetFullPath(System.IO.Path.IsPathRooted(filePath)
+            ? filePath
+            : System.IO.Path.Combine(projectRoot, filePath));
 
     private static string ExtractGuid(string metaText)
     {

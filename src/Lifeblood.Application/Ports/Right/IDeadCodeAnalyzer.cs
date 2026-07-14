@@ -1,4 +1,5 @@
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Application.Ports.Right;
 
@@ -14,7 +15,10 @@ namespace Lifeblood.Application.Ports.Right;
 /// </summary>
 public interface IDeadCodeAnalyzer
 {
-    DeadCodeResult[] FindDeadCode(SemanticGraph graph, DeadCodeOptions options);
+    DeadCodeResult[] FindDeadCode(
+        SemanticGraph graph,
+        DeadCodeOptions options,
+        WorkspaceContext? workspaceContext = null);
 }
 
 /// <summary>

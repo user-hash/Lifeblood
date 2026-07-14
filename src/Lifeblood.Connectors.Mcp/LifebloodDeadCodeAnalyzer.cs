@@ -4,6 +4,7 @@ using System.Linq;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.PathClassification;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Connectors.Mcp;
 
@@ -46,7 +47,10 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
         _runtimeReachability = runtimeReachability;
     }
 
-    public DeadCodeResult[] FindDeadCode(SemanticGraph graph, DeadCodeOptions options)
+    public DeadCodeResult[] FindDeadCode(
+        SemanticGraph graph,
+        DeadCodeOptions options,
+        WorkspaceContext? workspaceContext = null)
     {
         var kinds = options.IncludeKinds != null && options.IncludeKinds.Length > 0
             ? new HashSet<SymbolKind>(options.IncludeKinds)
@@ -98,7 +102,7 @@ public sealed class LifebloodDeadCodeAnalyzer : IDeadCodeAnalyzer
             // that no static call site reaches. The provider is optional;
             // when unset, the analyzer behaves exactly as it did before P3.
             if (_runtimeReachability != null
-                && _runtimeReachability.IsRuntimeReachable(graph, sym, out _))
+                && _runtimeReachability.IsRuntimeReachable(graph, sym, workspaceContext, out _))
                 continue;
 
             int sameClassConsumers = CountSameClassConsumers(graph, sym);
