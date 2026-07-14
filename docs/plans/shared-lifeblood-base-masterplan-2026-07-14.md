@@ -2,7 +2,8 @@
 
 Date: 2026-07-14
 
-Status: Investigation complete; implementation awaits approval
+Status: Wave 0 process foundation implemented; repeated DAWG memory receipt is
+waiting for a quiescent workspace; pre-Wave-1 path-provenance defect fixed
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -154,6 +155,8 @@ property.
 | P0 | The proxy cannot model a client lifetime | It opens a new pipe connection for each JSON-RPC frame. | Persistent proxy/daemon connection or explicit client identity on every control/request frame. |
 | P0 | Candidate publication is not a single state transaction | `GraphSession` assigns the new Roslyn adapter/path state before rules analysis and the final `WorkspaceSession` clear/load. Incremental analysis mutates retained adapter state before graph validation and publication. | Build a complete candidate object, validate it, then swap one committed reference; failure leaves every old field consistent. |
 | P0 | Workspace identity is implicit | Default shared key is the process working directory; the daemon's singleton session can load any requested project path. | Canonical workspace binding in the handshake and analyze precondition; reject cross-workspace reuse. |
+| P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
+| P0 | Unity asset reachability also infers project root through ambient CWD | `UnityReachabilityAdapter.TryInferUnityProjectRoot` calls `Path.GetFullPath` on graph-relative `Assets/...` paths without a workspace context. It works only when server CWD happens to be the analyzed Unity root. | Move workspace root into the committed snapshot context and bind workspace-sensitive providers through that context in Wave 2; add a non-CWD-root UnityEvent regression before rollout. |
 | P1 | Identical analyses serialize but do not coalesce | `GraphSessionGate` queues exclusive analyses; a second identical request can repeat the entire analysis. | In-flight registry keyed by the complete `AnalysisKey`. |
 | P1 | Multi-call reads can mix generations | Individual envelopes report generation, but callers cannot require one or lease it across a batch. | `expectedSnapshot`/generation precondition and a read-only pinned batch surface. |
 | P1 | `tools/list` reads session state outside the session gate | `McpDispatcher.HandleToolsList` reads `HasCompilationState` directly while analyze may replace the session. | Route all state-derived wire surfaces through the same snapshot lease. |
@@ -387,8 +390,9 @@ tool's required state, effect, or concurrency access.
 
 Purpose: eliminate split-brain session fields and make refresh failure-safe.
 
-1. Introduce the language-neutral snapshot descriptor and Application
-   coordinator ports.
+1. Introduce the language-neutral snapshot descriptor, explicit workspace
+   context, and Application coordinator ports; no provider may reconstruct the
+   workspace root from `Environment.CurrentDirectory`.
 2. Replace independently mutable `WorkspaceSession`/`GraphSession` publication
    with one committed snapshot object.
 3. Make full and incremental adapter paths return complete candidates without

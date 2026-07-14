@@ -259,7 +259,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                         if (tree.FilePath.StartsWith("<")) continue;
 
                         var model = compilation.GetSemanticModel(tree);
-                        var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
+                        var pathIdentity = SyntaxTreePathIdentity.Resolve(
+                            projectRoot,
+                            module.Name,
+                            tree.FilePath);
+                        var relPath = pathIdentity.GraphPath;
                         cursorFile = relPath;
 
                         var fileId = SymbolIds.File(relPath);
@@ -284,7 +288,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                             // FileTimestamps makes the incremental deleted-file prune treat
                             // them as removed every run (they are never in module.FilePaths),
                             // silently dropping every generated symbol. INV-INCREMENTAL-XREF-001.
-                            if (_fs.FileExists(tree.FilePath))
+                            if (!pathIdentity.IsGenerated && _fs.FileExists(tree.FilePath))
                                 snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
                         }
                         else
@@ -652,15 +656,20 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                         if (string.IsNullOrEmpty(tree.FilePath)) continue;
                         if (tree.FilePath.StartsWith("<")) continue;
 
+                        var pathIdentity = SyntaxTreePathIdentity.Resolve(
+                            projectRoot,
+                            module.Name,
+                            tree.FilePath);
+
                         // Re-extract changed disk files AND every source-generated tree
                         // (no on-disk file) of this recompiling module: generated output
                         // can shift with any source edit and is not tracked per disk-file,
                         // so it must be rebuilt whenever its module recompiles, never pruned
                         // as a phantom deleted file. INV-INCREMENTAL-XREF-001.
-                        if (!changedFiles.Contains(tree.FilePath) && _fs.FileExists(tree.FilePath)) continue;
+                        if (!pathIdentity.IsGenerated && !changedFiles.Contains(tree.FilePath)) continue;
 
                         var model = compilation.GetSemanticModel(tree);
-                        var relPath = Path.GetRelativePath(projectRoot, tree.FilePath).Replace('\\', '/');
+                        var relPath = pathIdentity.GraphPath;
 
                         var fileId = SymbolIds.File(relPath);
                         var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
@@ -682,7 +691,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                             _snapshot.ReplaceFile(fileId, fileSymbol, symbols, taggedEdges);
                             // Same disk-file-lifecycle guard as the full path: never track a
                             // source-generated tree's timestamp. INV-INCREMENTAL-XREF-001.
-                            if (_fs.FileExists(tree.FilePath))
+                            if (!pathIdentity.IsGenerated && _fs.FileExists(tree.FilePath))
                                 _snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
                         }
                         else
