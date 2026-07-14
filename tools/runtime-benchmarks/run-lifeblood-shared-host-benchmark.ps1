@@ -295,19 +295,41 @@ function Get-Capabilities($Owner, [object[]]$SampleOwners, $MemoryState, [long]$
     return ($response.result.content[0].text | ConvertFrom-Json)
 }
 
+function Get-AnalysisSummary($Payload) {
+    return [pscustomobject]@{
+        symbols = [long]$Payload.summary.symbols
+        edges = [long]$Payload.summary.edges
+        modules = [long]$Payload.summary.modules
+        types = [long]$Payload.summary.types
+        files = [long]$Payload.summary.files
+        profileCount = [long]$Payload.summary.profileCount
+        activeProfiles = @($Payload.summary.activeProfiles)
+    }
+}
+
+function Assert-AnalysisSummaryEqual($Expected, $Actual, [string]$Context) {
+    $expectedJson = (Get-AnalysisSummary $Expected) | ConvertTo-Json -Depth 10 -Compress
+    $actualJson = (Get-AnalysisSummary $Actual) | ConvertTo-Json -Depth 10 -Compress
+    if ($expectedJson -cne $actualJson) {
+        throw "$Context analyzed a different semantic graph. Expected $expectedJson; actual $actualJson."
+    }
+}
+
 function New-TopologyResult(
     [string]$Name,
     [object[]]$Owners,
     $State,
     $Steady,
     [long]$Generation,
-    [long]$AnalyzeWallTimeMs) {
+    [long]$AnalyzeWallTimeMs,
+    $AnalysisPayload) {
 
     return [pscustomobject]@{
         topology = $Name
         processCount = $Owners.Count
         processIds = @($Owners | ForEach-Object { $_.Process.Id })
         analysisGeneration = $Generation
+        analysisSummary = Get-AnalysisSummary $AnalysisPayload
         analyzeWallTimeMs = $AnalyzeWallTimeMs
         peakCombinedWorkingSetMb = [Math]::Round($State.PeakWorkingSetBytes / 1MB, 1)
         peakCombinedPrivateBytesMb = [Math]::Round($State.PeakPrivateBytes / 1MB, 1)
@@ -329,7 +351,7 @@ function Invoke-BenchmarkRun([int]$RunNumber) {
         $privateOneAnalyze = Invoke-Analyze $privateOne @($privateOne) $privateOneState
         $sw.Stop()
         $privateOneSteady = Measure-SteadyState @($privateOne) $privateOneState
-        $privateResults += New-TopologyResult "private-one" @($privateOne) $privateOneState $privateOneSteady ([long]$privateOneAnalyze.envelope.analysisGeneration) ([long]$sw.ElapsedMilliseconds)
+        $privateResults += New-TopologyResult "private-one" @($privateOne) $privateOneState $privateOneSteady ([long]$privateOneAnalyze.envelope.analysisGeneration) ([long]$sw.ElapsedMilliseconds) $privateOneAnalyze
 
         $privateTwo = Start-McpProcess @() $repoRoot
         [void]$privateOwners.Add($privateTwo)
@@ -338,13 +360,14 @@ function Invoke-BenchmarkRun([int]$RunNumber) {
         $sw.Restart()
         $privateTwoAnalyze = Invoke-Analyze $privateTwo @($privateOwners) $privateTwoState
         $sw.Stop()
+        Assert-AnalysisSummaryEqual $privateOneAnalyze $privateTwoAnalyze "Second private client"
         $privateTwoSteady = Measure-SteadyState @($privateOwners) $privateTwoState
         $privateOneCapabilities = Get-Capabilities $privateOne @($privateOwners) $privateTwoState 3
         if ([long]$privateOneCapabilities.session.analysisGeneration -ne 1 -or
             [long]$privateTwoAnalyze.envelope.analysisGeneration -ne 1) {
             throw "Private servers did not retain independent generation-1 sessions."
         }
-        $privateResults += New-TopologyResult "private-two" @($privateOwners) $privateTwoState $privateTwoSteady ([long]$privateTwoAnalyze.envelope.analysisGeneration) ([long]$sw.ElapsedMilliseconds)
+        $privateResults += New-TopologyResult "private-two" @($privateOwners) $privateTwoState $privateTwoSteady ([long]$privateTwoAnalyze.envelope.analysisGeneration) ([long]$sw.ElapsedMilliseconds) $privateTwoAnalyze
     }
     finally {
         Stop-McpProcesses $privateOwners
@@ -366,8 +389,9 @@ function Invoke-BenchmarkRun([int]$RunNumber) {
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $sharedAnalyze = Invoke-Analyze $sharedOne @($sharedOwners) $sharedOneState
         $sw.Stop()
+        Assert-AnalysisSummaryEqual $privateOneAnalyze $sharedAnalyze "Shared daemon"
         $sharedOneSteady = Measure-SteadyState @($sharedOwners) $sharedOneState
-        $sharedResults += New-TopologyResult "shared-one" @($sharedOwners) $sharedOneState $sharedOneSteady ([long]$sharedAnalyze.envelope.analysisGeneration) ([long]$sw.ElapsedMilliseconds)
+        $sharedResults += New-TopologyResult "shared-one" @($sharedOwners) $sharedOneState $sharedOneSteady ([long]$sharedAnalyze.envelope.analysisGeneration) ([long]$sw.ElapsedMilliseconds) $sharedAnalyze
 
         $sharedTwo = Start-McpProcess @("--shared", "--shared-pipe", $pipeName) $repoRoot
         [void]$sharedOwners.Add($sharedTwo)
@@ -379,7 +403,7 @@ function Invoke-BenchmarkRun([int]$RunNumber) {
             [long]$sharedAnalyze.envelope.analysisGeneration) {
             throw "Second shared client did not observe the daemon's committed generation."
         }
-        $sharedResults += New-TopologyResult "shared-two" @($sharedOwners) $sharedTwoState $sharedTwoSteady ([long]$sharedCapabilities.session.analysisGeneration) 0
+        $sharedResults += New-TopologyResult "shared-two" @($sharedOwners) $sharedTwoState $sharedTwoSteady ([long]$sharedCapabilities.session.analysisGeneration) 0 $sharedAnalyze
     }
     finally {
         Stop-McpProcesses $sharedOwners
@@ -475,6 +499,8 @@ $report = [ordered]@{
         path = $serverDllFull
         sha256 = (Get-FileHash -LiteralPath $serverDllFull -Algorithm SHA256).Hash
         assemblyVersion = [System.Reflection.AssemblyName]::GetAssemblyName($serverDllFull).Version.ToString()
+        fileVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($serverDllFull).FileVersion
+        informationalVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($serverDllFull).ProductVersion
         sourceControl = Get-GitReceipt $repoRoot
     }
     workspace = [ordered]@{
