@@ -24,6 +24,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
         using var session = new GraphSession(new PhysicalFileSystem());
 
         _ = session.Load(firstRoot, graphPath: null, rulesPath: null);
+        var committedSnapshot = session.CurrentSnapshot;
         var committedGraph = session.Graph;
         var committedGeneration = session.AnalysisGeneration;
 
@@ -31,6 +32,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
             session.Load(candidateRoot, graphPath: null, rulesPath: invalidRules));
 
         Assert.Same(committedGraph, session.Graph);
+        Assert.Same(committedSnapshot, session.CurrentSnapshot);
         Assert.Equal(committedGeneration, session.AnalysisGeneration);
         Assert.Equal(firstRoot, session.ProjectRoot);
         Assert.Equal(firstRoot, session.CurrentWorkspaceContext?.RootPath);
@@ -48,6 +50,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
         using var session = new GraphSession(new PhysicalFileSystem());
 
         _ = session.Load(root, graphPath: null, rulesPath: null);
+        var committedSnapshot = session.CurrentSnapshot;
         var committedGraph = session.Graph;
         var committedGeneration = session.AnalysisGeneration;
 
@@ -60,6 +63,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
             authoritativeChangedFiles: new[] { sourcePath }));
 
         Assert.Same(committedGraph, session.Graph);
+        Assert.Same(committedSnapshot, session.CurrentSnapshot);
         Assert.Equal(committedGeneration, session.AnalysisGeneration);
         Assert.NotNull(session.Graph?.GetSymbol("type:Incremental.Stable"));
         Assert.Null(session.Graph?.GetSymbol("type:Incremental.Refreshed"));

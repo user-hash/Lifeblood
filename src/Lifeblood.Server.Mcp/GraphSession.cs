@@ -12,8 +12,8 @@ using Lifeblood.Domain.Workspaces;
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
-/// MCP-specific session wrapper. Delegates state to WorkspaceSession.
-/// Owns the load orchestration: parse args → build graph → validate → analyze → attach services.
+/// MCP-specific session wrapper. Owns the load orchestration and publishes one
+/// immutable committed state after graph, rules, and semantic ports succeed.
 /// </summary>
 public sealed class GraphSession : IDisposable
 {
@@ -27,12 +27,9 @@ public sealed class GraphSession : IDisposable
 
     private readonly IFileSystem _fs;
     private readonly ITelemetrySink _telemetry;
-    private readonly WorkspaceSession _session = new();
-    private RoslynWorkspaceAnalyzer? _roslynAdapter;
-    private string? _lastProjectPath;
-    private string? _lastRulesPath;
-    private string[] _lastExcludePaths = Array.Empty<string>();
-    private DateTime? _analyzedAtUtc;
+    private CommittedGraphSessionState _current = CommittedGraphSessionState.Empty;
+
+    private CommittedGraphSessionState Current => Volatile.Read(ref _current);
 
     public GraphSession(IFileSystem fs, ITelemetrySink? telemetry = null)
     {
@@ -47,15 +44,14 @@ public sealed class GraphSession : IDisposable
     /// resolve relative file paths for features like
     /// <c>lifeblood_partial_view</c>, which reads source off disk.
     /// </summary>
-    public string ProjectRoot => _lastProjectPath ?? "";
+    public string ProjectRoot => Current.Workspace.Context?.RootPath ?? "";
 
     /// <summary>
     /// Explicit context for providers that resolve graph-relative paths on
     /// disk. Null for JSON imports and empty sessions; never inferred from the
     /// server process current directory.
     /// </summary>
-    public WorkspaceContext? CurrentWorkspaceContext =>
-        string.IsNullOrEmpty(_lastProjectPath) ? null : new WorkspaceContext(_lastProjectPath);
+    public WorkspaceContext? CurrentWorkspaceContext => Current.Workspace.Context;
 
     /// <summary>Exposed file-system port for tool handlers that need disk access (partial view, compile_check auto-refresh).</summary>
     public IFileSystem FileSystem => _fs;
@@ -67,7 +63,7 @@ public sealed class GraphSession : IDisposable
     /// tool response. JSON-graph imports set this to the import time so a
     /// caller still sees a non-zero (but small) staleness signal.
     /// </summary>
-    public DateTime? AnalyzedAtUtc => _analyzedAtUtc;
+    public DateTime? AnalyzedAtUtc => Current.Workspace.AnalyzedAtUtc;
 
     /// <summary>
     /// True when the project root looks like a Unity workspace —
@@ -82,19 +78,60 @@ public sealed class GraphSession : IDisposable
         return _fs.DirectoryExists(System.IO.Path.Combine(projectRoot, "Library"));
     }
 
-    // Delegate all state queries to the unified session
-    public SemanticGraph? Graph => _session.Graph;
-    public AnalysisResult? Analysis => _session.Analysis;
-    public Domain.Capabilities.AdapterCapability? AdapterCapability => _session.Capability;
-    public bool IsLoaded => _session.IsLoaded;
-    public ICompilationHost? CompilationHost => _session.CompilationHost;
-    public ICodeExecutor? CodeExecutor => _session.CodeExecutor;
-    public IWorkspaceRefactoring? Refactoring => _session.Refactoring;
-    public bool HasCompilationState => _session.HasCompilationState;
+    private (ICompilationHost? Host, ICodeExecutor? Executor, IWorkspaceRefactoring? Refactoring)
+        CreateCompilationServices(
+            RoslynWorkspaceAnalyzer adapter,
+            SemanticGraph graph,
+            string? projectRoot)
+    {
+        if (adapter.Compilations is not { Count: > 0 } compilations)
+            return (null, null, null);
+
+        // INV-VIEW-002: build the typed semantic view once and share it with
+        // every service created for this candidate. Construction happens only
+        // after graph validation and rule analysis have succeeded.
+        RoslynCompilationHost? compilationHost = null;
+        RoslynWorkspaceRefactoring? refactoring = null;
+        try
+        {
+            var view = new RoslynSemanticView(
+                compilations,
+                graph,
+                adapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
+            compilationHost = new RoslynCompilationHost(compilations, adapter.ModuleDependencies);
+            var unityResolver = LooksLikeUnityWorkspace(projectRoot)
+                ? new UnityAssemblyResolver(_fs, projectRoot!)
+                : null;
+            var codeExecutor = new RoslynCodeExecutor(view, unityResolver);
+            refactoring = new RoslynWorkspaceRefactoring(compilations, adapter.ModuleDependencies);
+            return (compilationHost, codeExecutor, refactoring);
+        }
+        catch
+        {
+            compilationHost?.Dispose();
+            refactoring?.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Capture one coherent Application snapshot. Callers that need several
+    /// fields from the same generation should read through this value.
+    /// </summary>
+    public WorkspaceSnapshot CurrentSnapshot => Current.Workspace;
+
+    public SemanticGraph? Graph => Current.Workspace.Graph;
+    public AnalysisResult? Analysis => Current.Workspace.Analysis;
+    public Domain.Capabilities.AdapterCapability? AdapterCapability => Current.Workspace.Capability;
+    public bool IsLoaded => Current.Workspace.IsLoaded;
+    public ICompilationHost? CompilationHost => Current.Workspace.CompilationHost;
+    public ICodeExecutor? CodeExecutor => Current.Workspace.CodeExecutor;
+    public IWorkspaceRefactoring? Refactoring => Current.Workspace.Refactoring;
+    public bool HasCompilationState => Current.Workspace.HasCompilationState;
     public string? CompilationStateRecoveryHint => BuildCompilationStateRecoveryHint();
 
     /// <summary>INV-MULTI-DEFINE-IOP-001. Name of the retained profile.</summary>
-    public string? RetainedProfileName => _roslynAdapter?.RetainedProfileName;
+    public string? RetainedProfileName => Current.RoslynAdapter?.RetainedProfileName;
 
     /// <summary>
     /// INV-MULTI-DEFINE-IOP-001 / INV-MULTI-DEFINE-WRITESIDE-001. Active
@@ -105,7 +142,7 @@ public sealed class GraphSession : IDisposable
     /// Empty when no profile-aware analyze has run.
     /// </summary>
     public IReadOnlyList<string> RetainedProfileNames =>
-        _roslynAdapter?.RetainedProfileNames ?? System.Array.Empty<string>();
+        Current.RoslynAdapter?.RetainedProfileNames ?? System.Array.Empty<string>();
 
     /// <summary>
     /// Monotonic workspace generation. Bumped on every Load / incremental
@@ -113,10 +150,10 @@ public sealed class GraphSession : IDisposable
     /// read-side response carries the generation that produced it.
     /// INV-DIAGNOSE-FRESHNESS-001.
     /// </summary>
-    public long AnalysisGeneration => _session.AnalysisGeneration;
+    public long AnalysisGeneration => Current.Workspace.AnalysisGeneration;
 
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
-    public bool CanIncremental => _roslynAdapter?.HasSnapshot == true;
+    public bool CanIncremental => Current.RoslynAdapter?.HasSnapshot == true;
 
     /// <summary>
     /// Refresh the session if any tracked file has changed on disk since
@@ -130,7 +167,10 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     public int? MaybeRefreshIfStale()
     {
-        if (_roslynAdapter == null || !CanIncremental || string.IsNullOrEmpty(_lastProjectPath))
+        var committed = Current;
+        var adapter = committed.RoslynAdapter;
+        var projectPath = committed.Workspace.Context?.RootPath;
+        if (adapter == null || !adapter.HasSnapshot || string.IsNullOrEmpty(projectPath))
             return null;
         try
         {
@@ -143,9 +183,9 @@ public sealed class GraphSession : IDisposable
             {
                 RetainCompilations = true,
                 AllowFullFallback = true,
-                ExcludePathGlobs = _lastExcludePaths,
+                ExcludePathGlobs = committed.ExcludePaths,
             };
-            var candidateAdapter = _roslynAdapter.ForkForIncrementalCandidate();
+            var candidateAdapter = adapter.ForkForIncrementalCandidate();
             IncrementalAnalyzeResult incremental;
             using (TelemetryPhase("auto-refresh.incremental"))
             {
@@ -160,7 +200,7 @@ public sealed class GraphSession : IDisposable
             var changedFileCount = incremental.ChangedFileCount;
             if (changedFileCount == 0)
             {
-                _roslynAdapter = candidateAdapter;
+                Commit(committed.WithRoslynAdapter(candidateAdapter));
                 return null;
             }
 
@@ -172,31 +212,27 @@ public sealed class GraphSession : IDisposable
                 analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, null);
             }
 
-            ICompilationHost? newCompilationHost = null;
-            ICodeExecutor? newCodeExecutor = null;
-            IWorkspaceRefactoring? newRefactoring = null;
-            if (candidateAdapter.Compilations is { Count: > 0 })
-            {
-                var view = new RoslynSemanticView(
-                    candidateAdapter.Compilations,
-                    graph,
-                    candidateAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
-                newCompilationHost = new RoslynCompilationHost(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
-                var unityResolver = LooksLikeUnityWorkspace(_lastProjectPath)
-                    ? new UnityAssemblyResolver(_fs, _lastProjectPath!)
-                    : null;
-                newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
-                newRefactoring = new RoslynWorkspaceRefactoring(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
-            }
+            var (newCompilationHost, newCodeExecutor, newRefactoring) =
+                CreateCompilationServices(candidateAdapter, graph, projectPath);
 
             using (TelemetryPhase("auto-refresh.commit"))
             {
-                _session.Clear();
-                _session.Load(graph, analysis, candidateAdapter.Capability, "csharp");
-                if (newCompilationHost != null)
-                    _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
-                _roslynAdapter = candidateAdapter;
-                _analyzedAtUtc = DateTime.UtcNow;
+                var workspace = WorkspaceSnapshot.Create(
+                    graph,
+                    analysis,
+                    candidateAdapter.Capability,
+                    "csharp",
+                    committed.Workspace.Context,
+                    DateTime.UtcNow,
+                    checked(committed.Workspace.AnalysisGeneration + 1),
+                    newCompilationHost,
+                    newCodeExecutor,
+                    newRefactoring);
+                Commit(new CommittedGraphSessionState(
+                    workspace,
+                    candidateAdapter,
+                    committed.RulesPath,
+                    committed.ExcludePaths));
             }
 
             return changedFileCount;
@@ -217,6 +253,7 @@ public sealed class GraphSession : IDisposable
                        string[]? excludePaths = null,
                        string[]? authoritativeChangedFiles = null)
     {
+        var committed = Current;
         var fullRequestedMode = "full";
         FallbackReason? fullFallbackReason = null;
         string? fullFallbackDetail = null;
@@ -229,12 +266,14 @@ public sealed class GraphSession : IDisposable
         // suggestedRetry on the response.
         if (incremental && !string.IsNullOrEmpty(projectPath))
         {
-            var canIncrementalThisProject = CanIncremental
-                && string.Equals(projectPath, _lastProjectPath, StringComparison.OrdinalIgnoreCase);
+            var committedAdapter = committed.RoslynAdapter;
+            var committedProjectPath = committed.Workspace.Context?.RootPath;
+            var canIncrementalThisProject = committedAdapter?.HasSnapshot == true
+                && string.Equals(projectPath, committedProjectPath, StringComparison.OrdinalIgnoreCase);
 
             if (canIncrementalThisProject)
             {
-                if (!readOnly && !HasCompilationState)
+                if (!readOnly && !committed.Workspace.HasCompilationState)
                 {
                     var detail = BuildCompilationStateRecoveryDetail(projectPath);
                     if (!allowFullFallback)
@@ -245,7 +284,7 @@ public sealed class GraphSession : IDisposable
                             analysis: null,
                             usage: null,
                             changedFileCount: 0,
-                            skipped: _roslynAdapter?.SkippedFiles,
+                            skipped: committedAdapter?.SkippedFiles,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.CompilationStateUnavailable,
                             fallbackDetail: detail,
@@ -260,7 +299,13 @@ public sealed class GraphSession : IDisposable
                 }
                 else
                 {
-                    return LoadIncremental(projectPath, rulesPath, allowFullFallback, excludePaths, authoritativeChangedFiles);
+                    return LoadIncremental(
+                        committed,
+                        projectPath,
+                        rulesPath,
+                        allowFullFallback,
+                        excludePaths,
+                        authoritativeChangedFiles);
                 }
             }
 
@@ -275,9 +320,9 @@ public sealed class GraphSession : IDisposable
             // by a slow full re-analyze.
             if (!allowFullFallback)
             {
-                var detail = !CanIncremental
+                var detail = committedAdapter?.HasSnapshot != true
                     ? "No previous analysis snapshot. Call lifeblood_analyze first (without incremental:true)."
-                    : $"Previous analysis was for a different project ('{_lastProjectPath}'); current request is for '{projectPath}'.";
+                    : $"Previous analysis was for a different project ('{committedProjectPath}'); current request is for '{projectPath}'.";
 
                 return BuildLoadResult(
                     mode: "rejected",
@@ -367,33 +412,6 @@ public sealed class GraphSession : IDisposable
             language = "csharp";
             usage = result.Usage;
 
-            // Wire write-side Roslyn capabilities from retained compilations.
-            // Uses in-process RoslynCodeExecutor (trusted-local sandbox).
-            // For process-isolated execution, swap to ProcessIsolatedCodeExecutor.
-            if (adapter.Compilations is { Count: > 0 })
-            {
-                // Plan v4 Seam #3 / INV-VIEW-002: build the typed read-only view
-                // ONCE and share it by reference across consumers. Today the only
-                // consumer is the script host (RoslynCodeExecutor); future
-                // consumers (debuggers, visualizers, custom linters) reuse the
-                // same view via dependency injection from this construction site.
-                var view = new RoslynSemanticView(
-                    adapter.Compilations,
-                    graph,
-                    adapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
-
-                newCompilationHost = new RoslynCompilationHost(adapter.Compilations, adapter.ModuleDependencies);
-                // When the project root looks Unity-shaped (Library/ exists),
-                // inject the Unity assembly resolver so executed scripts can
-                // touch UnityEngine types. Non-Unity workspaces get a null
-                // resolver and identical behavior. INV-EXECUTE-001.
-                var unityResolver = LooksLikeUnityWorkspace(projectPath)
-                    ? new UnityAssemblyResolver(_fs, projectPath)
-                    : null;
-                newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
-                newRefactoring = new RoslynWorkspaceRefactoring(adapter.Compilations, adapter.ModuleDependencies);
-            }
-
             // Candidate-only until graph validation, rule analysis, and
             // compilation-service construction have all succeeded.
             candidateRoslynAdapter = adapter;
@@ -413,18 +431,34 @@ public sealed class GraphSession : IDisposable
             analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
         }
 
-        // Commit atomically via WorkspaceSession
+        if (candidateRoslynAdapter != null)
+        {
+            (newCompilationHost, newCodeExecutor, newRefactoring) =
+                CreateCompilationServices(candidateRoslynAdapter, graph, candidateProjectPath);
+        }
+
+        // Publish the complete host + Application state through one reference.
         using (TelemetryPhase("session-commit"))
         {
-            _session.Clear();
-            _session.Load(graph, analysis, capability, language);
-            if (newCompilationHost != null)
-                _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
-            _roslynAdapter = candidateRoslynAdapter;
-            _lastProjectPath = candidateProjectPath;
-            _lastExcludePaths = candidateExcludePaths;
-            _lastRulesPath = rulesPath;
-            _analyzedAtUtc = DateTime.UtcNow;
+            var context = string.IsNullOrEmpty(candidateProjectPath)
+                ? null
+                : new WorkspaceContext(candidateProjectPath);
+            var workspace = WorkspaceSnapshot.Create(
+                graph,
+                analysis,
+                capability,
+                language,
+                context,
+                DateTime.UtcNow,
+                checked(committed.Workspace.AnalysisGeneration + 1),
+                newCompilationHost,
+                newCodeExecutor,
+                newRefactoring);
+            Commit(new CommittedGraphSessionState(
+                workspace,
+                candidateRoslynAdapter,
+                rulesPath,
+                candidateExcludePaths));
         }
 
         return BuildLoadResult(
@@ -433,7 +467,7 @@ public sealed class GraphSession : IDisposable
             analysis: analysis,
             usage: usage,
             changedFileCount: null,
-            skipped: _roslynAdapter?.SkippedFiles,
+            skipped: candidateRoslynAdapter?.SkippedFiles,
             requestedMode: fullRequestedMode,
             fallbackReason: fullFallbackReason,
             fallbackDetail: fullFallbackDetail,
@@ -444,6 +478,7 @@ public sealed class GraphSession : IDisposable
     }
 
     private string LoadIncremental(
+        CommittedGraphSessionState committed,
         string projectPath,
         string? rulesPath,
         bool allowFullFallback,
@@ -458,10 +493,10 @@ public sealed class GraphSession : IDisposable
         {
             RetainCompilations = true,
             AllowFullFallback = allowFullFallback,
-            ExcludePathGlobs = excludePaths == null ? _lastExcludePaths : NormalizePathGlobs(excludePaths),
+            ExcludePathGlobs = excludePaths == null ? committed.ExcludePaths : NormalizePathGlobs(excludePaths),
             AuthoritativeChangedFiles = authoritativeChangedFiles,
         };
-        var candidateAdapter = _roslynAdapter!.ForkForIncrementalCandidate();
+        var candidateAdapter = committed.RoslynAdapter!.ForkForIncrementalCandidate();
         IncrementalAnalyzeResult incremental;
         using (TelemetryPhase("incremental-analyze",
             new TelemetryTag("analyze.allow_full_fallback", allowFullFallback)))
@@ -473,7 +508,7 @@ public sealed class GraphSession : IDisposable
         // INV-MULTI-DEFINE-INCREMENTAL-001. Snapshot's retained profile set echoed
         // on every incremental wire path (rejected / noop / incremental / full
         // fallback). Count == 1 collapses to null per BuildLoadResult contract —
-        // single-profile back-compat byte-stable. _roslynAdapter is non-null
+        // single-profile back-compat byte-stable. The committed adapter is non-null
         // here per the CanIncremental gate at the public Load entry.
         var incrActiveProfiles = candidateAdapter.RetainedProfileNames is { Count: > 1 } names
             ? names.ToArray()
@@ -494,14 +529,14 @@ public sealed class GraphSession : IDisposable
                 changedFileCount: 0,
                 mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
                 contentChangedFileCount: incremental.ContentChangedFileCount,
-                skipped: _roslynAdapter?.SkippedFiles,
+                skipped: committed.RoslynAdapter?.SkippedFiles,
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
                 fallbackDetail: incremental.Detail,
                 canRetryFull: true,
                 activeProfiles: incrActiveProfiles,
                 projectPath: projectPath,
-                rulesPath: rulesPath ?? _lastRulesPath);
+                rulesPath: rulesPath ?? committed.RulesPath);
         }
 
         // From here on Graph is non-null (Incremental or FullFallback).
@@ -510,7 +545,7 @@ public sealed class GraphSession : IDisposable
 
         if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0)
         {
-            _roslynAdapter = candidateAdapter;
+            Commit(committed.WithRoslynAdapter(candidateAdapter));
             usage = capture.Stop();
             // Graph is unchanged on noop — reuse the prior session analysis
             // so the response surfaces real modules/types/files/violations/cycles
@@ -521,7 +556,7 @@ public sealed class GraphSession : IDisposable
             return BuildLoadResult(
                 mode: "incremental-noop",
                 graph: graph,
-                analysis: _session.Analysis,
+                analysis: committed.Workspace.Analysis,
                 usage: usage,
                 changedFileCount: 0,
                 mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
@@ -530,7 +565,7 @@ public sealed class GraphSession : IDisposable
                 requestedMode: "incremental",
                 activeProfiles: incrActiveProfiles,
                 projectPath: projectPath,
-                rulesPath: rulesPath ?? _lastRulesPath);
+                rulesPath: rulesPath ?? committed.RulesPath);
         }
 
         // Validate the rebuilt graph
@@ -545,28 +580,8 @@ public sealed class GraphSession : IDisposable
             return $"Incremental graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
         }
 
-        // Rebuild write-side services from updated compilations
-        ICompilationHost? newCompilationHost = null;
-        ICodeExecutor? newCodeExecutor = null;
-        IWorkspaceRefactoring? newRefactoring = null;
-
-        if (candidateAdapter.Compilations is { Count: > 0 })
-        {
-            // Plan v4 Seam #3 — same view construction as the full-load path.
-            var view = new RoslynSemanticView(
-                candidateAdapter.Compilations,
-                graph,
-                candidateAdapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
-
-            newCompilationHost = new RoslynCompilationHost(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
-            var unityResolver = LooksLikeUnityWorkspace(_lastProjectPath)
-                ? new UnityAssemblyResolver(_fs, _lastProjectPath!)
-                : null;
-            newCodeExecutor = new RoslynCodeExecutor(view, unityResolver);
-            newRefactoring = new RoslynWorkspaceRefactoring(candidateAdapter.Compilations, candidateAdapter.ModuleDependencies);
-        }
-
-        ArchitectureRule[]? rules = ResolveRules(rulesPath ?? _lastRulesPath);
+        var effectiveRulesPath = rulesPath ?? committed.RulesPath;
+        ArchitectureRule[]? rules = ResolveRules(effectiveRulesPath);
         AnalysisResult analysis;
         using (TelemetryPhase("incremental-rules-analyze"))
         {
@@ -574,15 +589,27 @@ public sealed class GraphSession : IDisposable
         }
         capture.MarkPhase("validate-analyze");
 
+        var (newCompilationHost, newCodeExecutor, newRefactoring) =
+            CreateCompilationServices(candidateAdapter, graph, projectPath);
+
         using (TelemetryPhase("incremental-session-commit"))
         {
-            _session.Clear();
-            _session.Load(graph, analysis, candidateAdapter.Capability, "csharp");
-            if (newCompilationHost != null)
-                _session.AttachCompilationServices(newCompilationHost!, newCodeExecutor!, newRefactoring!);
-            _roslynAdapter = candidateAdapter;
-            _analyzedAtUtc = DateTime.UtcNow;
-            _lastExcludePaths = config.ExcludePathGlobs;
+            var workspace = WorkspaceSnapshot.Create(
+                graph,
+                analysis,
+                candidateAdapter.Capability,
+                "csharp",
+                committed.Workspace.Context,
+                DateTime.UtcNow,
+                checked(committed.Workspace.AnalysisGeneration + 1),
+                newCompilationHost,
+                newCodeExecutor,
+                newRefactoring);
+            Commit(new CommittedGraphSessionState(
+                workspace,
+                candidateAdapter,
+                effectiveRulesPath,
+                config.ExcludePathGlobs));
         }
 
         usage = capture.Stop();
@@ -606,7 +633,7 @@ public sealed class GraphSession : IDisposable
             fallbackDetail: incremental.Detail,
             activeProfiles: incrActiveProfiles,
             projectPath: projectPath,
-            rulesPath: rulesPath ?? _lastRulesPath);
+            rulesPath: effectiveRulesPath);
         }
         catch
         {
@@ -779,11 +806,13 @@ public sealed class GraphSession : IDisposable
 
     private string? BuildCompilationStateRecoveryHint()
     {
-        if (HasCompilationState) return null;
-        if (!IsLoaded)
+        var committed = Current;
+        if (committed.Workspace.HasCompilationState) return null;
+        if (!committed.Workspace.IsLoaded)
             return "Write-side tools require lifeblood_analyze with projectPath and readOnly:false.";
-        if (!string.IsNullOrEmpty(_lastProjectPath))
-            return BuildCompilationStateRecoveryDetail(_lastProjectPath);
+        var projectPath = committed.Workspace.Context?.RootPath;
+        if (!string.IsNullOrEmpty(projectPath))
+            return BuildCompilationStateRecoveryDetail(projectPath);
         return "Loaded graph has no retained Roslyn compilation state. Write-side tools require lifeblood_analyze with projectPath and readOnly:false.";
     }
 
@@ -821,7 +850,54 @@ public sealed class GraphSession : IDisposable
             OverrideResolution = Domain.Capabilities.ConfidenceLevel.None,
         };
 
-    public void Dispose() => _session.Clear();
+    public void Dispose()
+    {
+        var current = Current;
+        Commit(new CommittedGraphSessionState(
+            WorkspaceSnapshot.Empty(current.Workspace.AnalysisGeneration),
+            roslynAdapter: null,
+            rulesPath: null,
+            Array.Empty<string>()));
+    }
+
+    private void Commit(CommittedGraphSessionState candidate)
+    {
+        var replaced = Interlocked.Exchange(ref _current, candidate);
+        if (!ReferenceEquals(replaced.Workspace, candidate.Workspace))
+            replaced.Workspace.Dispose();
+    }
+
+    private sealed class CommittedGraphSessionState
+    {
+        public static readonly CommittedGraphSessionState Empty = new(
+            WorkspaceSnapshot.Empty(),
+            roslynAdapter: null,
+            rulesPath: null,
+            Array.Empty<string>());
+
+        public CommittedGraphSessionState(
+            WorkspaceSnapshot workspace,
+            RoslynWorkspaceAnalyzer? roslynAdapter,
+            string? rulesPath,
+            IReadOnlyList<string> excludePaths)
+        {
+            Workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
+            RoslynAdapter = roslynAdapter;
+            RulesPath = rulesPath;
+            ExcludePaths = excludePaths.ToArray();
+        }
+
+        public WorkspaceSnapshot Workspace { get; }
+
+        public RoslynWorkspaceAnalyzer? RoslynAdapter { get; }
+
+        public string? RulesPath { get; }
+
+        public string[] ExcludePaths { get; }
+
+        public CommittedGraphSessionState WithRoslynAdapter(RoslynWorkspaceAnalyzer roslynAdapter)
+            => new(Workspace, roslynAdapter, RulesPath, ExcludePaths);
+    }
 
     private TelemetryPhaseScope TelemetryPhase(string phaseName, params TelemetryTag[] tags)
         => new(_telemetry, phaseName, tags);

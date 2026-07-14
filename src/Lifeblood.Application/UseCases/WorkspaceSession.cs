@@ -2,21 +2,28 @@ using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Application.UseCases;
 
 /// <summary>
-/// Holds the loaded workspace state: graph, analysis, and optional write-side capabilities.
-/// Composition roots create adapters and attach them here. Application code queries through ports.
-/// This is the single orchestration point — both CLI and Server.Mcp consume this.
+/// Publishes the loaded workspace as one immutable reference. Composition
+/// roots create adapters and ports; Application consumers observe a coherent
+/// <see cref="WorkspaceSnapshot"/> rather than independently mutable fields.
 /// </summary>
 public sealed class WorkspaceSession
 {
-    public SemanticGraph? Graph { get; private set; }
-    public AnalysisResult? Analysis { get; private set; }
-    public AdapterCapability? Capability { get; private set; }
-    public WorkspaceCapability WorkspaceOps { get; private set; } = WorkspaceCapability.None;
-    public string? Language { get; private set; }
+    private WorkspaceSnapshot _current = WorkspaceSnapshot.Empty();
+
+    public WorkspaceSnapshot Current => Volatile.Read(ref _current);
+
+    public SemanticGraph? Graph => Current.Graph;
+    public AnalysisResult? Analysis => Current.Analysis;
+    public AdapterCapability? Capability => Current.Capability;
+    public WorkspaceCapability WorkspaceOps => Current.WorkspaceOps;
+    public string? Language => Current.Language;
+    public WorkspaceContext? Context => Current.Context;
+    public DateTime? AnalyzedAtUtc => Current.AnalyzedAtUtc;
 
     /// <summary>
     /// Monotonic counter incremented every time <see cref="Load"/> is
@@ -27,15 +34,15 @@ public sealed class WorkspaceSession
     /// <see cref="Lifeblood.Application.Ports.Right.EnvelopeContext.AnalysisGeneration"/>
     /// onto every read-side response. INV-DIAGNOSE-FRESHNESS-001.
     /// </summary>
-    public long AnalysisGeneration { get; private set; }
+    public long AnalysisGeneration => Current.AnalysisGeneration;
 
-    public bool IsLoaded => Graph != null;
+    public bool IsLoaded => Current.IsLoaded;
 
     /// <summary>Write-side ports. Null when loaded from JSON graph (no compilation state).</summary>
-    public ICompilationHost? CompilationHost { get; private set; }
-    public ICodeExecutor? CodeExecutor { get; private set; }
-    public IWorkspaceRefactoring? Refactoring { get; private set; }
-    public bool HasCompilationState => CompilationHost != null;
+    public ICompilationHost? CompilationHost => Current.CompilationHost;
+    public ICodeExecutor? CodeExecutor => Current.CodeExecutor;
+    public IWorkspaceRefactoring? Refactoring => Current.Refactoring;
+    public bool HasCompilationState => Current.HasCompilationState;
 
     /// <summary>
     /// Load a validated graph and optional analysis into the session.
@@ -44,11 +51,15 @@ public sealed class WorkspaceSession
     public void Load(SemanticGraph graph, AnalysisResult analysis,
         AdapterCapability? capability, string? language)
     {
-        Graph = graph;
-        Analysis = analysis;
-        Capability = capability;
-        Language = language;
-        AnalysisGeneration++;
+        var current = Current;
+        Replace(WorkspaceSnapshot.Create(
+            graph,
+            analysis,
+            capability,
+            language,
+            context: null,
+            analyzedAtUtc: DateTime.UtcNow,
+            analysisGeneration: checked(current.AnalysisGeneration + 1)));
     }
 
     /// <summary>
@@ -61,10 +72,24 @@ public sealed class WorkspaceSession
         IWorkspaceRefactoring refactoring,
         WorkspaceCapability? workspaceOps = null)
     {
-        CompilationHost = compilationHost;
-        CodeExecutor = codeExecutor;
-        Refactoring = refactoring;
-        WorkspaceOps = workspaceOps ?? WorkspaceCapability.RoslynFull;
+        var current = Current;
+        if (!current.IsLoaded || current.Graph == null || current.Analysis == null)
+            throw new InvalidOperationException("Load a workspace before attaching compilation services.");
+        if (current.HasCompilationState)
+            throw new InvalidOperationException("Compilation services are already attached to the current snapshot.");
+
+        Replace(WorkspaceSnapshot.Create(
+            current.Graph,
+            current.Analysis,
+            current.Capability,
+            current.Language,
+            current.Context,
+            current.AnalyzedAtUtc ?? DateTime.UtcNow,
+            current.AnalysisGeneration,
+            compilationHost,
+            codeExecutor,
+            refactoring,
+            workspaceOps));
     }
 
     /// <summary>
@@ -74,16 +99,14 @@ public sealed class WorkspaceSession
     /// </summary>
     public void Clear()
     {
-        (CompilationHost as IDisposable)?.Dispose();
-        (CodeExecutor as IDisposable)?.Dispose();
-        (Refactoring as IDisposable)?.Dispose();
-        Graph = null;
-        Analysis = null;
-        Capability = null;
-        Language = null;
-        CompilationHost = null;
-        CodeExecutor = null;
-        Refactoring = null;
-        WorkspaceOps = WorkspaceCapability.None;
+        var current = Current;
+        Replace(WorkspaceSnapshot.Empty(current.AnalysisGeneration));
+    }
+
+    private void Replace(WorkspaceSnapshot candidate)
+    {
+        var replaced = Interlocked.Exchange(ref _current, candidate);
+        if (!ReferenceEquals(replaced, candidate))
+            replaced.Dispose();
     }
 }

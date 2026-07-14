@@ -4,9 +4,9 @@ Date: 2026-07-14
 
 Status: Wave 0 process foundation implemented; repeated DAWG memory receipt is
 waiting for a quiescent workspace; path provenance and Wave 1 tool-behavior
-source of truth implemented; Wave 2 explicit workspace context plus failure-
-isolated full and incremental candidates implemented; one-reference committed
-snapshot publication and read leases are next
+source of truth implemented; Wave 2 explicit workspace context, failure-
+isolated candidates, and one-reference committed snapshot publication are
+implemented; reference-counted read leases are next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -156,7 +156,7 @@ property.
 | P0 | Daemon identity is trusted by pipe name | The proxy performs no version, build, workspace-root, or protocol handshake. | Typed handshake before MCP forwarding; reject incompatible reuse without killing unknown processes. |
 | P0 | Daemon lifetime is unbounded | Daemon exits only on process cancellation; proxy EOF has no client lease or idle eviction. | Persistent client leases, heartbeat/activity, idle drain, deterministic session disposal, and clean exit. |
 | P0 | The proxy cannot model a client lifetime | It opens a new pipe connection for each JSON-RPC frame. | Persistent proxy/daemon connection or explicit client identity on every control/request frame. |
-| Partially resolved in Wave 2 | Candidate publication is not yet a single state transaction | Full analysis keeps adapter/path/scope/rules as candidate locals, and incremental analysis runs against a fork of every mutable extraction, compilation, and dependency cache; rule-phase failures leave the committed graph, adapter, services, generation, and retry base unchanged. `WorkspaceSession` and the remaining `GraphSession` publication fields are still assigned separately. | Replace the remaining field sequence with one committed snapshot reference; add read leases and deferred disposal so old generations remain coherent during refresh. |
+| Resolved in Wave 2 | Candidate publication was not a single state transaction | `WorkspaceSnapshot` now owns graph, analysis, capability, context, timestamp, generation, and the all-or-none compilation ports. `GraphSession` wraps it with adapter/rules/excludes and publishes that complete host state through one reference exchange; failure tests assert the old snapshot reference itself survives. | Complete. Reference-counted leases and deferred disposal remain the separate next lifecycle step. |
 | P0 | Workspace identity is implicit | Default shared key is the process working directory; the daemon's singleton session can load any requested project path. | Canonical workspace binding in the handshake and analyze precondition; reject cross-workspace reuse. |
 | P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
 | Partially resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` now flows from the committed project-backed `GraphSession` through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Move the context into the immutable committed snapshot object with the remaining session fields; route any future workspace-sensitive provider through the same value. |
@@ -165,6 +165,7 @@ property.
 | Resolved before Wave 2 | `tools/list` read session state outside the session gate | `McpDispatcher.HandleToolsList` read `HasCompilationState` directly while analyze could replace the session. | `McpDispatcher` no longer owns `GraphSession`; `ToolHandler.GetTools` evaluates registry availability under the shared session gate. Snapshot leases replace this gate read in Wave 2 without changing the dispatcher boundary. |
 | Resolved in Wave 1 | Tool labels conflated state and effects | `WriteSide` meant retained compilation required, even for observation or returned edits; only analyze and compile-check needed exclusive access. | Every tool now declares one immutable `ToolBehavior`: hierarchical `sessionRequirement` (including retained compilation), independent `effect`, and independent `sessionAccess`. Legacy read/write fields are derived compatibility aliases. |
 | P1 | Incremental acceptance is not explainable enough | DAWG reported 310 changed source files without an itemized/fingerprinted receipt in the response. | Bounded changed-set provenance, descriptor/scope/source fingerprint, and summarize/detail controls. |
+| P1 | Rule identity is not refresh-aware | Incremental no-op reuses the prior `AnalysisResult` even when a different `rulesPath` is requested, and stale auto-refresh currently analyzes with no rules. | Put normalized rule identity/content hash in `AnalysisSpec` and `AnalysisKey`; a rule change must rerun rule analysis and publish a new generation without recompiling unchanged source. |
 | P1 | Shared capability is advertised too broadly | The uncommitted feature flag reports shared transport support without proving the active transport mode or lifecycle contract. | Report actual mode, protocol version, daemon identity, lease state, and capability version. |
 | P2 | One active graph cannot represent named investigation lanes | Editor/Player and platform-specific lanes overwrite the singleton session. | Bounded snapshot catalog; graph-only historical pins by default, explicit cost for extra semantic bases. |
 | P2 | Cross-workspace process consolidation is undecided | Current daemon is one singleton workspace session. | First ship one daemon per workspace key; add a multi-workspace supervisor only after correctness and process/memory evidence justify it. |
@@ -418,10 +419,10 @@ Purpose: eliminate split-brain session fields and make refresh failure-safe.
 Exit gate: every injected failure leaves the prior graph, profiles, compilation
 services, fingerprint, path, and generation mutually consistent and usable.
 
-Implementation status: step 1 is pinned by explicit `WorkspaceContext`; step 3
-is pinned for both full and incremental paths by
-`INV-SNAPSHOT-ATOMIC-PUBLISH-001`. Step 2 is the next implementation slice,
-followed immediately by the lease/disposal work in step 4.
+Implementation status: steps 1-3 are pinned by explicit `WorkspaceContext`,
+immutable `WorkspaceSnapshot`, the one-reference server committed state, and
+full/incremental failure rollback under `INV-SNAPSHOT-ATOMIC-PUBLISH-001`.
+Step 4 reference-counted leases and deferred disposal is next.
 
 ### Wave 3 - Fingerprinted Refresh And Analyze Coalescing
 
