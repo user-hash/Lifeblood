@@ -151,6 +151,48 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         Assert.False(session.HasGraphLoaded);
     }
 
+    [SkippableFact]
+    public async Task CrashedDaemon_ProxySurvivesAndReplacementStartsWithDisposedSession()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        var pipeName = UniquePipeName();
+        await using var owner = await StartDaemonAsync(dll, pipeName);
+        var environment = new Dictionary<string, string?>
+        {
+            ["LIFEBLOOD_SHARED_DAEMON_AUTOSTART"] = "0",
+        };
+        await using var proxy = McpProcessTestClient.Start(
+            dll,
+            environment,
+            "--shared",
+            "--shared-pipe",
+            pipeName);
+
+        using var initialize = await proxy.InitializeAsync();
+        await AnalyzeGraphAsync(proxy, _firstGraphPath);
+        var beforeCrash = await ReadSessionAsync(proxy);
+        Assert.True(beforeCrash.HasGraphLoaded);
+        Assert.Equal(1, beforeCrash.AnalysisGeneration);
+
+        await owner.TerminateAsync();
+
+        using var unavailable = await proxy.CallToolAsync("lifeblood_capabilities");
+        var error = unavailable.RootElement.GetProperty("error");
+        Assert.Equal(-32603, error.GetProperty("code").GetInt32());
+        Assert.Equal("shared-proxy", error.GetProperty("data").GetProperty("phase").GetString());
+        Assert.Contains("automatic startup is disabled", error.GetProperty("message").GetString());
+        Assert.False(proxy.HasExited);
+
+        await using var replacement = await StartDaemonAsync(dll, pipeName);
+        var afterRestart = await ReadSessionAsync(proxy);
+        Assert.False(afterRestart.HasGraphLoaded);
+        Assert.Equal(0, afterRestart.AnalysisGeneration);
+        Assert.NotEqual(owner.ProcessId, replacement.ProcessId);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))

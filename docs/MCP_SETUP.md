@@ -86,6 +86,7 @@ The server reads five optional environment variables at startup. All have safe d
 | `LIFEBLOOD_SHARED_SESSION` | off | Experimental. Truthy values make this process a stdio proxy to a workspace-keyed shared daemon instead of owning a private in-process `GraphSession`. Equivalent to passing `--shared`. |
 | `LIFEBLOOD_SHARED_SESSION_KEY` | current working directory | Key used to derive the shared daemon pipe name. Set this when several agents launch from different directories but should share one scan. |
 | `LIFEBLOOD_SHARED_PIPE_NAME` | derived from key | Explicit named-pipe name. Use only when you need exact interop with a supervisor; otherwise prefer the key. |
+| `LIFEBLOOD_SHARED_DAEMON_AUTOSTART` | on | Experimental. Set false only when an external supervisor owns the daemon lifecycle. A missing daemon then returns a recoverable proxy error and the proxy remains attached for a later replacement instead of spawning a detached process. |
 
 Malformed numeric values fall through to the default (`StalenessPolicy.Default`); they never throw. The live capability surface — including which feature flags and telemetry events are active in the running server — is reported by the `lifeblood_capabilities` tool.
 

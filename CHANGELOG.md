@@ -60,7 +60,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   process harness now owns real daemon/proxy children, validates JSON-RPC stdout,
   and guarantees process-tree cleanup. Black-box tests cover two-client refresh
   propagation, pipe isolation, malformed proxy-frame recovery, and duplicate
-  daemon refusal. This remains opt-in until identity handshakes, workspace
+  daemon refusal. Daemon-crash coverage proves the proxy survives a failed
+  supervisor-managed restart and a replacement daemon begins with a disposed,
+  empty generation-0 session. This remains opt-in until identity handshakes, workspace
   binding, client leases, idle eviction, and analyze coalescing ship.
   (`INV-MCP-SHARED-BASE-001`.)
 - **New tool `lifeblood_asmdef_check`.** Reports Unity/old-format
