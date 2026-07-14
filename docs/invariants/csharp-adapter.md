@@ -112,6 +112,8 @@ csproj-driven option follows the same shape.
 
 - **INV-SOURCEGEN-SERIAL-001. Framework source-generator execution is serialized at the adapter seam.** `SourceGeneratorRunner` is the only code path that loads analyzer DLLs and runs Roslyn generator drivers discovered from framework compilation facts. Concurrent module compilation may call into the adapter, but analyzer assembly loading and generator-driver execution must pass through the runner's process-wide gate so non-thread-safe generator or analyzer static initialization cannot crash or corrupt the retained workspace. The gate is deliberately scoped to generator execution, not to ordinary C# compilation or graph extraction, so the fix removes the race class without turning analysis into a global single-threaded pipeline. Pinned by `CsprojCompilationFactsTests` source-generator parity coverage and focused source-generator concurrency regression tests.
 
+- **INV-SOURCEGEN-PATH-PROVENANCE-001. Source-generator hint paths are virtual identities and never resolve through the process working directory.**
+
 ## Diagnostic Parity Wall
 
 Lifeblood's `diagnose` output on a workspace `dotnet build` calls clean
