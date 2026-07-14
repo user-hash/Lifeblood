@@ -1290,3 +1290,157 @@ Fix shape:
 - Add lifecycle controls for pin/unpin/evict so parallel agent work can keep
   two or three active evidence lanes without turning the MCP host into an
   unbounded cache.
+
+## LB-INTAKE-20260714-038 - Shared daemon needs leases, idle eviction, and an identity handshake
+
+Type: Optimization
+Priority: High
+Source: Lifeblood shared-session implementation review, 2026-07-14; worktree based on `v0.7.12-5-g37513d4`
+Workspace: Lifeblood self and DAWG
+Rating for DAWG work: 10/10 value if shipped
+
+What:
+- The shared transport starts a hidden workspace-keyed daemon that owns one
+  retained `GraphSession` and deliberately outlives the proxy that spawned it.
+  The daemon accept loop ends only through process cancellation; proxy EOF does
+  not release a client lease, start an idle timer, or request session eviction.
+- A later proxy connects to any process answering on the derived pipe name.
+  There is no handshake covering server version/build hash, workspace root,
+  analyze contract version, or daemon start time before the proxy trusts and
+  reuses that retained state.
+- DAWG-scale retained analyses have multi-gigabyte process cost. Shared mode
+  correctly avoids multiplying that heap while agents are active, but the
+  current lifecycle can keep the heap and an old binary alive after all agents
+  have left.
+
+Why it matters:
+- Parallel efficiency must include teardown. Saving three concurrent Roslyn
+  heaps but retaining one indefinitely moves the cost instead of bounding it.
+- A daemon surviving an install/rebuild can serve a newer client from an older
+  binary. `lifeblood_capabilities` can reveal the mismatch after attachment,
+  but the transport has already accepted the session and offers no structured
+  rotate/restart path.
+- This is distinct from named-snapshot pin/unpin/evict. Snapshot lifecycle
+  governs graphs inside a live host; this item governs the host process,
+  attached-client ownership, and release of the final retained heap.
+
+Fix shape:
+- Introduce explicit client leases with client id, attach time, heartbeat/last
+  activity, and disconnect handling. When the last lease disappears, start a
+  configurable idle timeout, then dispose the session and exit cleanly unless a
+  new client attaches.
+- Add a proxy/daemon handshake before forwarding normal MCP traffic: protocol
+  version, Lifeblood semver/build hash, workspace key/root, process id/start
+  time, and supported shared-session capabilities. Reject incompatible reuse
+  with a structured restart/rotate instruction; never silently kill an unknown
+  process.
+- Surface daemon status through capabilities or a focused session-status tool:
+  active client count, last activity, idle deadline, loaded generation/profiles,
+  retained-state mode, process memory, and server identity.
+- Add an explicit workspace-scoped shutdown/evict command for maintenance, with
+  refusal while other leases are active unless the caller opts into a
+  coordinated drain.
+- Ratchet last-client disconnect, idle reattach, idle exit, version mismatch,
+  and graceful session disposal. Use short injectable timeouts in tests; do not
+  make lifecycle tests sleep on production-scale intervals.
+
+## LB-INTAKE-20260714-039 - Coalesce identical analyze work across shared clients
+
+Type: Optimization
+Priority: High
+Source: DAWG parallel-agent dogfood and Lifeblood shared-session implementation review, 2026-07-14; live server `v0.7.12+dbfd871`
+Workspace: DAWG and Lifeblood self
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- The shared daemon accepts clients concurrently and `GraphSessionGate`
+  correctly serializes session-replacing analyzes. It does not coalesce them:
+  two clients issuing the same full analyze can queue two complete Roslyn
+  analyses, and the second starts after the first has already produced the
+  state it requested.
+- DAWG full analyzes observed in recent dogfood runs cost roughly 72-120
+  seconds. Parallel tasks currently need out-of-band coordination to decide who
+  analyzes first and when the others may reuse the result. There is no
+  in-flight request id, waiter receipt, or caller-visible "join this analyze"
+  state.
+
+Why it matters:
+- The shared host removes duplicate retained heaps, but duplicate queued
+  analysis still burns CPU, allocation bandwidth, and wall time while Unity or
+  device-profiling work is competing for the same machine.
+- This is distinct from snapshot-pinned batches and named retained snapshots.
+  Those make completed evidence stable and addressable; coalescing prevents
+  identical work before the next snapshot exists.
+
+Fix shape:
+- Define an analyze work key from canonical workspace root, requested profiles,
+  rules, exclude paths, analysis/descriptor options, read-only/retention mode,
+  and an authoritative repository/descriptor/source fingerprint. Never merge
+  requests whose scope or dirty fingerprint differs.
+- Register one in-flight analyze per work key. Later identical callers should
+  await the same operation or receive a structured job handle rather than queue
+  another full analysis.
+- Return coordination evidence such as `analysisRequestId`, `coalesced`,
+  `waiterCount`, requested/effective mode, source fingerprint, and the committed
+  analysis generation. Expose bounded progress/phase state so another agent can
+  wait intentionally instead of probing or launching a duplicate.
+- Make cancellation lease-aware: one waiter cancelling must not abort work
+  still required by other waiters; the underlying analyze may cancel only when
+  its owner policy permits and no waiters remain.
+- Ratchet concurrent identical full requests to one analyzer invocation and one
+  committed generation, while different profiles/options/fingerprints remain
+  separate. Also test failure fan-out so every waiter gets the same structured
+  failure without poisoning the next request.
+
+## LB-INTAKE-20260714-040 - Replace read/write tool labels with capability and effect dimensions
+
+Type: UX
+Priority: High
+Source: DAWG performance dogfood, 2026-07-14; live server `v0.7.12+dbfd871` and Lifeblood source review at `v0.7.12-5-g37513d4`
+Workspace: DAWG and Lifeblood self
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- `ToolAvailability.WriteSide` currently means "requires retained live Roslyn
+  compilations," not "mutates the workspace or retained session." The source
+  concurrency contract explicitly distinguishes those meanings: only analyze
+  and compile-check take exclusive session access, while diagnose,
+  find-references, symbol/documentation queries, audits, rename, and format read
+  retained state or return proposed edits.
+- The public `readOnly:true` analyze description and unavailable-tool errors use
+  the same read/write language. In DAWG dogfood, a graph-only analyze succeeded
+  and the observational `lifeblood_diagnose` call then failed with "Write-side
+  tools require ... readOnly:false," forcing the caller to reinterpret
+  "read-only" as a memory-retention mode rather than an effect/safety promise.
+
+Why it matters:
+- The current labels collapse three independent questions: what state a tool
+  requires, what effect it can have, and how much analysis state must be
+  retained. Agents can choose the low-memory mode expecting diagnostics to
+  remain available, or avoid safe observational tools because they are called
+  write-side.
+- The shipped `compilationStateUnavailable` recovery is not duplicated here.
+  Recovery tells callers how to rebuild state after the mismatch; this request
+  makes the capability contract accurate before they choose a mode or tool.
+
+Fix shape:
+- Replace the single availability split internally with orthogonal typed
+  dimensions, for example `requiredState: Graph|Compilation|Workspace`,
+  `effect: Observe|ReturnEdits|ExecuteCode|MutateSession`, and
+  `sessionAccess: Shared|Exclusive`. Names are advisory; the separation is the
+  contract.
+- Expose those dimensions structurally through `tools/list` and
+  `lifeblood_capabilities`, together with current availability and the exact
+  missing prerequisite. Do not rely on a description prefix as the only
+  machine-readable signal.
+- Add an explicit analyze retention mode such as
+  `retention:"graphOnly"|"semantic"`; keep `readOnly` as a deprecated alias
+  until schema policy permits removal. Report estimated/observed memory class
+  and which capability families each mode enables.
+- Preserve the existing structured read-only recovery, but word failures in
+  terms of missing retained compilation state rather than implying that
+  observational diagnostics mutate user code.
+- Ratchet every registered tool against all dimensions and prove that session
+  gate routing derives from `sessionAccess`, tool availability derives from
+  `requiredState`, and edit-returning tools never gain mutation authority by
+  classification alone.
