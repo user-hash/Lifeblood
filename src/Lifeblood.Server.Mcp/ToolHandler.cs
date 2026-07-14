@@ -897,7 +897,10 @@ public sealed class ToolHandler
         var pathExclude = ReadStringArray(args, "pathExclude");
 
         var options = new DeadCodeOptions(includeKinds, excludePublic, excludeTests, PathExclude: pathExclude);
-        var findings = _deadCode.FindDeadCode(_session.Graph!, options);
+        var findings = _deadCode.FindDeadCode(
+            _session.Graph!,
+            options,
+            _session.CurrentWorkspaceContext);
 
         // Same response-shape pattern as cycles / context.
         // Large workspaces (53k+ symbols, default kinds) produce 286KB+ payloads that

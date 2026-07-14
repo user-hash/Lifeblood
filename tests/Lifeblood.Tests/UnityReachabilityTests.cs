@@ -3,6 +3,7 @@ using Lifeblood.Application.Ports.Right;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Workspaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
@@ -492,6 +493,46 @@ MonoBehaviour:
 
             Assert.True(hit, reason);
             Assert.Contains("UnityEvent", reason);
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Adapter_UnityEventPersistentCall_RelativeGraphPathRequiresExplicitWorkspaceContext()
+    {
+        var (root, scriptPath) = CreateUnityAssetFixture(
+            prefabBody: @"
+--- !u!114 &2000
+MonoBehaviour:
+  m_Script: {fileID: 11500000, guid: abcdef1234567890abcdef1234567890, type: 3}
+  callback:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 2000}
+        m_TargetAssemblyTypeName: App.ClickHandler, Assembly-CSharp
+        m_MethodName: OnClicked
+        m_Mode: 1
+");
+        try
+        {
+            var relativeScriptPath = Path.GetRelativePath(root, scriptPath).Replace('\\', '/');
+            var graph = UnityEventGraph(relativeScriptPath);
+            var sym = graph.GetSymbol("method:App.ClickHandler.OnClicked()")!;
+            var adapter = new UnityReachabilityAdapter(new PhysicalFileSystem());
+
+            Assert.False(adapter.IsRuntimeReachable(graph, sym, out _));
+
+            var hit = adapter.IsRuntimeReachable(
+                graph,
+                sym,
+                new WorkspaceContext(root),
+                out var reason);
+
+            Assert.True(hit, reason);
+            Assert.Contains("Assets/Prefabs/Button.prefab", reason);
         }
         finally
         {

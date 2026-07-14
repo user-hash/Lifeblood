@@ -1,4 +1,5 @@
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Application.Ports.Right;
 
@@ -11,12 +12,11 @@ namespace Lifeblood.Application.Ports.Right;
 /// stories (ASP.NET attribute routing, MAUI handlers, MEF imports)
 /// without touching the dead-code analyzer's signature.
 ///
-/// Implementations are pure functions of (graph, symbol). They never
-/// hold session state, never mutate the graph, and may consult the
-/// symbol's <see cref="Symbol.Properties"/> dictionary for
-/// extractor-recorded metadata (the C# adapter records
-/// <c>Properties["attributes"]</c> and base-chain facts for this
-/// purpose).
+/// Implementations are pure functions of graph, symbol, and an optional
+/// explicit workspace context. They never infer relative paths from process
+/// current-directory state, never mutate the graph, and may consult the
+/// symbol's <see cref="Symbol.Properties"/> dictionary for extractor-recorded
+/// metadata.
 /// </summary>
 public interface IUnityReachabilityProvider
 {
@@ -29,5 +29,9 @@ public interface IUnityReachabilityProvider
     /// has no opinion about — the caller is expected to combine
     /// multiple reachability providers if needed.
     /// </summary>
-    bool IsRuntimeReachable(SemanticGraph graph, Symbol sym, out string reason);
+    bool IsRuntimeReachable(
+        SemanticGraph graph,
+        Symbol sym,
+        WorkspaceContext? workspaceContext,
+        out string reason);
 }
