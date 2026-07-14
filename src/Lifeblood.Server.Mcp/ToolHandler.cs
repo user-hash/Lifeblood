@@ -83,7 +83,7 @@ public sealed class ToolHandler
         _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
         _argumentBinder = argumentBinder ?? BuildArgumentBinder();
         _jsonCompatibilityMode = jsonCompatibilityMode;
-        _sessionGate = sessionGate ?? new GraphSessionGate();
+        _sessionGate = sessionGate ?? new GraphSessionGate(session);
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 

@@ -13,7 +13,9 @@ namespace Lifeblood.Application.UseCases;
 /// </summary>
 public sealed class WorkspaceSnapshot : IDisposable
 {
-    private int _disposed;
+    private int _retired;
+    private int _portsDisposed;
+    private int _leaseCount;
 
     private WorkspaceSnapshot(
         SemanticGraph? graph,
@@ -127,9 +129,57 @@ public sealed class WorkspaceSnapshot : IDisposable
             refactoring: null);
     }
 
+    /// <summary>
+    /// Pin this committed generation until the returned lease is disposed.
+    /// A retired snapshot rejects new leases but existing leases remain valid.
+    /// </summary>
+    public WorkspaceSnapshotLease AcquireLease()
+    {
+        if (TryAcquireLease(out var lease))
+            return lease;
+
+        throw new ObjectDisposedException(nameof(WorkspaceSnapshot), "The snapshot has already been retired.");
+    }
+
+    public bool TryAcquireLease(out WorkspaceSnapshotLease lease)
+    {
+        lease = null!;
+        if (Volatile.Read(ref _retired) != 0)
+            return false;
+
+        Interlocked.Increment(ref _leaseCount);
+        if (Volatile.Read(ref _retired) == 0)
+        {
+            lease = new WorkspaceSnapshotLease(this);
+            return true;
+        }
+
+        ReleaseLease();
+        return false;
+    }
+
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (Interlocked.Exchange(ref _retired, 1) != 0)
+            return;
+
+        TryDisposePorts();
+    }
+
+    internal void ReleaseLease()
+    {
+        var remaining = Interlocked.Decrement(ref _leaseCount);
+        if (remaining < 0)
+            throw new InvalidOperationException("Workspace snapshot lease count became negative.");
+        if (remaining == 0)
+            TryDisposePorts();
+    }
+
+    private void TryDisposePorts()
+    {
+        if (Volatile.Read(ref _retired) == 0 || Volatile.Read(ref _leaseCount) != 0)
+            return;
+        if (Interlocked.Exchange(ref _portsDisposed, 1) != 0)
             return;
 
         var disposed = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -142,5 +192,23 @@ public sealed class WorkspaceSnapshot : IDisposable
     {
         if (value is IDisposable disposable && disposed.Add(value))
             disposable.Dispose();
+    }
+}
+
+public sealed class WorkspaceSnapshotLease : IDisposable
+{
+    private WorkspaceSnapshot? _owner;
+
+    internal WorkspaceSnapshotLease(WorkspaceSnapshot owner)
+    {
+        _owner = owner;
+        Snapshot = owner;
+    }
+
+    public WorkspaceSnapshot Snapshot { get; }
+
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref _owner, null)?.ReleaseLease();
     }
 }

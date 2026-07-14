@@ -27,9 +27,11 @@ public sealed class GraphSession : IDisposable
 
     private readonly IFileSystem _fs;
     private readonly ITelemetrySink _telemetry;
-    private CommittedGraphSessionState _current = CommittedGraphSessionState.Empty;
+    private readonly AsyncLocal<CommittedGraphSessionState?> _leasedState = new();
+    private CommittedGraphSessionState _current = CommittedGraphSessionState.CreateEmpty();
 
-    private CommittedGraphSessionState Current => Volatile.Read(ref _current);
+    private CommittedGraphSessionState Current =>
+        _leasedState.Value ?? Volatile.Read(ref _current);
 
     public GraphSession(IFileSystem fs, ITelemetrySink? telemetry = null)
     {
@@ -119,6 +121,30 @@ public sealed class GraphSession : IDisposable
     /// fields from the same generation should read through this value.
     /// </summary>
     public WorkspaceSnapshot CurrentSnapshot => Current.Workspace;
+
+    /// <summary>
+    /// Pin one complete host/Application generation for the current execution
+    /// context. Publication may continue concurrently; all session properties
+    /// resolve through the leased state until the scope is disposed.
+    /// </summary>
+    public IDisposable AcquireReadLease()
+    {
+        if (_leasedState.Value != null)
+            return NestedReadLease.Instance;
+
+        while (true)
+        {
+            var state = Volatile.Read(ref _current);
+            if (!state.Workspace.TryAcquireLease(out var snapshotLease))
+            {
+                Thread.Yield();
+                continue;
+            }
+
+            _leasedState.Value = state;
+            return new GraphSessionReadLease(this, state, snapshotLease);
+        }
+    }
 
     public SemanticGraph? Graph => Current.Workspace.Graph;
     public AnalysisResult? Analysis => Current.Workspace.Analysis;
@@ -852,12 +878,8 @@ public sealed class GraphSession : IDisposable
 
     public void Dispose()
     {
-        var current = Current;
-        Commit(new CommittedGraphSessionState(
-            WorkspaceSnapshot.Empty(current.Workspace.AnalysisGeneration),
-            roslynAdapter: null,
-            rulesPath: null,
-            Array.Empty<string>()));
+        var current = Volatile.Read(ref _current);
+        Commit(CommittedGraphSessionState.CreateEmpty(current.Workspace.AnalysisGeneration));
     }
 
     private void Commit(CommittedGraphSessionState candidate)
@@ -869,11 +891,12 @@ public sealed class GraphSession : IDisposable
 
     private sealed class CommittedGraphSessionState
     {
-        public static readonly CommittedGraphSessionState Empty = new(
-            WorkspaceSnapshot.Empty(),
-            roslynAdapter: null,
-            rulesPath: null,
-            Array.Empty<string>());
+        public static CommittedGraphSessionState CreateEmpty(long analysisGeneration = 0)
+            => new(
+                WorkspaceSnapshot.Empty(analysisGeneration),
+                roslynAdapter: null,
+                rulesPath: null,
+                Array.Empty<string>());
 
         public CommittedGraphSessionState(
             WorkspaceSnapshot workspace,
@@ -897,6 +920,43 @@ public sealed class GraphSession : IDisposable
 
         public CommittedGraphSessionState WithRoslynAdapter(RoslynWorkspaceAnalyzer roslynAdapter)
             => new(Workspace, roslynAdapter, RulesPath, ExcludePaths);
+    }
+
+    private sealed class GraphSessionReadLease : IDisposable
+    {
+        private GraphSession? _owner;
+        private readonly CommittedGraphSessionState _state;
+        private readonly WorkspaceSnapshotLease _snapshotLease;
+
+        public GraphSessionReadLease(
+            GraphSession owner,
+            CommittedGraphSessionState state,
+            WorkspaceSnapshotLease snapshotLease)
+        {
+            _owner = owner;
+            _state = state;
+            _snapshotLease = snapshotLease;
+        }
+
+        public void Dispose()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null);
+            if (owner == null)
+                return;
+
+            if (ReferenceEquals(owner._leasedState.Value, _state))
+                owner._leasedState.Value = null;
+            _snapshotLease.Dispose();
+        }
+    }
+
+    private sealed class NestedReadLease : IDisposable
+    {
+        public static readonly NestedReadLease Instance = new();
+
+        public void Dispose()
+        {
+        }
     }
 
     private TelemetryPhaseScope TelemetryPhase(string phaseName, params TelemetryTag[] tags)

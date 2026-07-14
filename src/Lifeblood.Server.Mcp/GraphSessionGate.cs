@@ -1,8 +1,8 @@
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
-/// Host-edge session concurrency policy. Keeps future shared-server safety at
-/// the MCP boundary instead of leaking locks into Domain/Application objects.
+/// Host-edge session concurrency policy. Writers are single-flight; readers
+/// lease immutable committed snapshots and do not block candidate construction.
 /// </summary>
 public interface ISessionGate
 {
@@ -13,33 +13,37 @@ public interface ISessionGate
 
 public sealed class GraphSessionGate : ISessionGate, IDisposable
 {
-    private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.NoRecursion);
+    private readonly object _writeSync = new();
+    private readonly GraphSession? _session;
+    private int _disposed;
+
+    public GraphSessionGate(GraphSession? session = null)
+    {
+        _session = session;
+    }
 
     public T Read<T>(Func<T> action)
     {
-        _lock.EnterReadLock();
-        try
-        {
-            return action();
-        }
-        finally
-        {
-            _lock.ExitReadLock();
-        }
+        ThrowIfDisposed();
+        using var lease = _session?.AcquireReadLease();
+        return action();
     }
 
     public T Write<T>(Func<T> action)
     {
-        _lock.EnterWriteLock();
-        try
+        ThrowIfDisposed();
+        lock (_writeSync)
         {
+            ThrowIfDisposed();
             return action();
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
         }
     }
 
-    public void Dispose() => _lock.Dispose();
+    public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
+
+    private void ThrowIfDisposed()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            throw new ObjectDisposedException(nameof(GraphSessionGate));
+    }
 }

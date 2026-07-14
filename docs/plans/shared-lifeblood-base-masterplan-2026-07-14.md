@@ -5,8 +5,8 @@ Date: 2026-07-14
 Status: Wave 0 process foundation implemented; repeated DAWG memory receipt is
 waiting for a quiescent workspace; path provenance and Wave 1 tool-behavior
 source of truth implemented; Wave 2 explicit workspace context, failure-
-isolated candidates, and one-reference committed snapshot publication are
-implemented; reference-counted read leases are next
+isolated candidates, one-reference publication, and reference-counted read
+leases with deferred disposal are implemented; stable snapshot identity is next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -156,7 +156,7 @@ property.
 | P0 | Daemon identity is trusted by pipe name | The proxy performs no version, build, workspace-root, or protocol handshake. | Typed handshake before MCP forwarding; reject incompatible reuse without killing unknown processes. |
 | P0 | Daemon lifetime is unbounded | Daemon exits only on process cancellation; proxy EOF has no client lease or idle eviction. | Persistent client leases, heartbeat/activity, idle drain, deterministic session disposal, and clean exit. |
 | P0 | The proxy cannot model a client lifetime | It opens a new pipe connection for each JSON-RPC frame. | Persistent proxy/daemon connection or explicit client identity on every control/request frame. |
-| Resolved in Wave 2 | Candidate publication was not a single state transaction | `WorkspaceSnapshot` now owns graph, analysis, capability, context, timestamp, generation, and the all-or-none compilation ports. `GraphSession` wraps it with adapter/rules/excludes and publishes that complete host state through one reference exchange; failure tests assert the old snapshot reference itself survives. | Complete. Reference-counted leases and deferred disposal remain the separate next lifecycle step. |
+| Resolved in Wave 2 | Candidate publication was not a single state transaction | `WorkspaceSnapshot` owns graph, analysis, capability, context, timestamp, generation, and the all-or-none compilation ports. `GraphSession` wraps it with adapter/rules/excludes and publishes that complete host state through one reference exchange; failure tests assert the old snapshot reference itself survives. | Complete, including read leases and deferred old-generation disposal. |
 | P0 | Workspace identity is implicit | Default shared key is the process working directory; the daemon's singleton session can load any requested project path. | Canonical workspace binding in the handshake and analyze precondition; reject cross-workspace reuse. |
 | P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
 | Partially resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` now flows from the committed project-backed `GraphSession` through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Move the context into the immutable committed snapshot object with the remaining session fields; route any future workspace-sensitive provider through the same value. |
@@ -419,10 +419,11 @@ Purpose: eliminate split-brain session fields and make refresh failure-safe.
 Exit gate: every injected failure leaves the prior graph, profiles, compilation
 services, fingerprint, path, and generation mutually consistent and usable.
 
-Implementation status: steps 1-3 are pinned by explicit `WorkspaceContext`,
-immutable `WorkspaceSnapshot`, the one-reference server committed state, and
-full/incremental failure rollback under `INV-SNAPSHOT-ATOMIC-PUBLISH-001`.
-Step 4 reference-counted leases and deferred disposal is next.
+Implementation status: steps 1-4 are pinned by explicit `WorkspaceContext`,
+immutable `WorkspaceSnapshot`, one-reference server publication,
+full/incremental failure rollback, non-blocking read leases, serialized writers,
+and deferred disposal under `INV-SNAPSHOT-ATOMIC-PUBLISH-001` and
+`INV-SNAPSHOT-LEASE-001`. Stable `SnapshotId` in step 5 is next.
 
 ### Wave 3 - Fingerprinted Refresh And Analyze Coalescing
 
