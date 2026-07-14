@@ -79,6 +79,8 @@ public static class ServerIdentity
                 assignmentCoverage = definitions.Any(d => d.Name == "lifeblood_assignment_coverage"),
                 writeSideProfileScope = true,
                 evidenceReceipts = true,
+                sharedSessionTransport = true,
+                sharedSessionTransportMaturity = "experimental",
                 strictJsonDuplicateRejection = true,
                 operationalTelemetry = true,
                 operationalTelemetryEvents = McpTelemetryEvents.All,

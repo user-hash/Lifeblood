@@ -25,9 +25,11 @@ Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents the full MCP tool surfa
                                              └──────────────────────────┘
 ```
 
-**Lifecycle.** The client spawns `lifeblood-mcp` once per session. The server starts empty, with no graph loaded. The first call to `lifeblood_analyze` walks the project's csproj files, discovers modules, decides per-module BCL ownership from `<Reference>` elements, parses sources with Roslyn, builds the semantic graph, and caches the workspace and graph in memory. Every subsequent tool call shares that loaded state by reference. There is no per-call recompile, no domain reload, no IDE round-trip.
+**Lifecycle.** The client spawns `lifeblood-mcp` once per session. The server starts empty, with no graph loaded. The first call to `lifeblood_analyze` walks the project's csproj files, discovers modules, decides per-module BCL ownership from `<Reference>` elements, parses sources with Roslyn, builds the semantic graph, and caches the workspace and graph in memory. Every subsequent tool call in that process shares that loaded state by reference. There is no per-call recompile, no domain reload, no IDE round-trip.
 
-**Memory.** Streaming compilation with downgrading compiles, extracts, then downgrades each module to a lightweight PE metadata reference (around 10 to 100 KB), so only one full Roslyn `Compilation` is held at once on the streaming path. Retained MCP sessions keep compilations in memory for write-side tools. Use the `usage` block on every `lifeblood_analyze` response, and the current receipts in [`STATUS.md`](STATUS.md), as the source of truth for a workspace's actual memory profile.
+**Experimental shared multi-agent mode.** For controlled testing with multiple agents attached to the same workspace, start `lifeblood-mcp` with `--shared` or set `LIFEBLOOD_SHARED_SESSION=1`. Each MCP client still gets a stdio process, but that process becomes a thin proxy to one workspace-keyed named-pipe daemon. The daemon owns the single `GraphSession`, so the first agent to run `lifeblood_analyze` refreshes the state that every other attached agent sees via `lifeblood_capabilities`, graph queries, and write-side tools. The default key is the process working directory; override it with `--shared-key <path-or-name>`, `LIFEBLOOD_SHARED_SESSION_KEY`, `--shared-pipe <name>`, or `LIFEBLOOD_SHARED_PIPE_NAME` when a client launches from an unusual directory. Wave 0 process tests pin same-pipe sharing and different-pipe isolation, but the current prototype does not yet have an identity handshake, client leases, idle eviction, workspace-root binding, or analyze coalescing. Keep ordinary stdio as the default until those contracts ship.
+
+**Memory.** Streaming compilation with downgrading compiles, extracts, then downgrades each module to a lightweight PE metadata reference (around 10 to 100 KB), so only one full Roslyn `Compilation` is held at once on the streaming path. Retained MCP sessions keep compilations in memory for write-side tools. With ordinary stdio, every MCP client has its own retained heap. With shared mode, those clients converge on one daemon-owned retained heap per workspace key. Use the `usage` block on every `lifeblood_analyze` response, and the current receipts in [`STATUS.md`](STATUS.md), as the source of truth for a workspace's actual memory profile.
 
 **Read vs write side.** Twenty tools are read-side: graph queries, namely `analyze`, `capabilities`, `lookup`, `dependencies`, `dependants`, `blast_radius`, `file_impact`, `asmdef_check`, `context`, `resolve_short_name`, `resolve_member`, `search`, `dead_code`, `partial_view`, `invariant_check`, `authority_report`, `authority_coverage`, `port_health`, `cycles`, and `test_impact`. Eighteen tools are write-side: Roslyn-backed compiler operations, namely `execute`, `diagnose`, `compile_check`, `find_references`, `find_definition`, `find_implementations`, `enum_coverage`, `static_tables`, `assignment_coverage`, `callsite_arguments`, `wire_audit`, `feature_switch_audit`, `member_count`, `struct_layout`, `symbol_at_position`, `documentation`, `rename`, and `format`. The split matters because write-side tools require a real Roslyn workspace and become unavailable in `readOnly` analysis mode. The authoritative live split is reported by `lifeblood_capabilities` and tracked in [`STATUS.md`](STATUS.md).
 
@@ -81,6 +83,9 @@ The server reads five optional environment variables at startup. All have safe d
 | `LIFEBLOOD_FILES_CHANGED_THRESHOLD` | `10` | File-churn count since the last analyze past which a read-side response adds a files-changed limitation to its truth envelope. |
 | `LIFEBLOOD_JSON_COMPAT` | `legacy` | Tool-argument compatibility mode: `legacy` accepts today's wire, `warn` accepts but emits `lifeblood.tool.arguments` telemetry for unknown/missing/type-mismatch/duplicate arguments, and `strict` rejects invalid tool arguments. In strict mode the MCP request parser also rejects duplicate JSON properties before binding (`INV-MCP-STRICT-JSON-001`, `INV-MCP-TOOL-ARG-CONTRACT-001`). |
 | `LIFEBLOOD_STRICT_JSON` | off | Backward-compatible strict alias used only when `LIFEBLOOD_JSON_COMPAT` is unset. Truthy values select the same strict behavior as `LIFEBLOOD_JSON_COMPAT=strict`. |
+| `LIFEBLOOD_SHARED_SESSION` | off | Experimental. Truthy values make this process a stdio proxy to a workspace-keyed shared daemon instead of owning a private in-process `GraphSession`. Equivalent to passing `--shared`. |
+| `LIFEBLOOD_SHARED_SESSION_KEY` | current working directory | Key used to derive the shared daemon pipe name. Set this when several agents launch from different directories but should share one scan. |
+| `LIFEBLOOD_SHARED_PIPE_NAME` | derived from key | Explicit named-pipe name. Use only when you need exact interop with a supervisor; otherwise prefer the key. |
 
 Malformed numeric values fall through to the default (`StalenessPolicy.Default`); they never throw. The live capability surface — including which feature flags and telemetry events are active in the running server — is reported by the `lifeblood_capabilities` tool.
 
@@ -96,6 +101,19 @@ Add to `.mcp.json` in your project root (or `~/.claude/.mcp.json` for global). T
     "lifeblood": {
       "command": "lifeblood-mcp",
       "args": []
+    }
+  }
+}
+```
+
+Experimental shared multi-agent form (not yet recommended as the default):
+
+```json
+{
+  "mcpServers": {
+    "lifeblood": {
+      "command": "lifeblood-mcp",
+      "args": ["--shared"]
     }
   }
 }
@@ -339,7 +357,7 @@ If none resolve, the bridge logs an error to the Unity console and tool calls re
 - **Use the bridge** when you want Lifeblood semantic queries available to an AI agent inside the Unity Editor, in the same connection as Coplay's scene/asset tools, with no separate MCP client wiring.
 - **Use a standalone client** (Claude Code, Cursor) connected directly to `lifeblood-mcp` when you want Lifeblood without the Unity Editor running, or when you want the lowest-latency path with no Coplay layer in between.
 
-You can run both at the same time. Each is its own `lifeblood-mcp` process; nothing is shared between them.
+You can run both at the same time. In ordinary stdio mode each is its own `lifeblood-mcp` process and nothing is shared between them. In experimental shared mode (`--shared` / `LIFEBLOOD_SHARED_SESSION=1`) clients with the same shared key attach to one daemon-owned session, so one analyze refreshes the graph every attached agent sees. Do not make this the default deployment until the lifecycle and identity limitations above are closed.
 
 ---
 

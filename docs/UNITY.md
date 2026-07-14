@@ -94,6 +94,8 @@ Streaming compilation with downgrading keeps memory bounded:
 
 Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction. The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools. To regain write-side tools after a read-only session, run a full retained analyze or retry a `fallbackReason:"compilationStateUnavailable"` incremental rejection with `allowFullFallback:true`.
 
+For controlled multi-agent testing, experimental shared mode (`lifeblood-mcp --shared` or `LIFEBLOOD_SHARED_SESSION=1`) lets agents attach to one daemon-owned `GraphSession` instead of each retaining a private Unity Roslyn workspace. The first agent to re-analyze refreshes the graph and retained compilations that the other attached agents see. Keep ordinary stdio as the default until daemon identity, workspace binding, client leases, idle eviction, and analyze coalescing are implemented and DAWG-scale verified.
+
 Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Prefer live receipts in `STATUS.md` over copying old workstation-specific numbers into this setup guide.
 
 Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.

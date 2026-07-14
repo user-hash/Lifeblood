@@ -53,6 +53,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Experimental shared MCP transport foundation.** `lifeblood-mcp --shared`
+  runs each client as a thin stdio proxy to one explicit-pipe daemon-owned
+  `McpServerHost`, so same-pipe clients observe the same retained graph and
+  newest analysis generation while different pipes remain isolated. A reusable
+  process harness now owns real daemon/proxy children, validates JSON-RPC stdout,
+  and guarantees process-tree cleanup. Black-box tests cover two-client refresh
+  propagation, pipe isolation, malformed proxy-frame recovery, and duplicate
+  daemon refusal. This remains opt-in until identity handshakes, workspace
+  binding, client leases, idle eviction, and analyze coalescing ship.
+  (`INV-MCP-SHARED-BASE-001`.)
 - **New tool `lifeblood_asmdef_check`.** Reports Unity/old-format
   direct-reference module boundary violations from the loaded graph: for every
   cross-module source edge whose source module is `referenceClosure=DirectOnly`,

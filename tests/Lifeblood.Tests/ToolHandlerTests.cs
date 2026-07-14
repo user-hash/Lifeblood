@@ -134,6 +134,10 @@ public class ToolHandlerTests : IDisposable
             .ToArray();
         Assert.Contains("lifeblood.tool.truncated", telemetryEvents);
         Assert.Contains("lifeblood.analyze.fallback", telemetryEvents);
+        Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransport").GetBoolean());
+        Assert.Equal(
+            "experimental",
+            doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportMaturity").GetString());
         // INV-TELEMETRY-002: the advertised surface is exactly the
         // emitted-event SSoT, so an emitted-but-unadvertised event fails here.
         Assert.Equal(McpTelemetryEvents.All, telemetryEvents);
