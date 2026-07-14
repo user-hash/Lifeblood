@@ -305,6 +305,7 @@ public class UseCaseTests
     public void WorkspaceSession_Load_SetsState()
     {
         var session = new WorkspaceSession();
+        var empty = session.Current;
         var graph = BuildTestGraph();
         var analysis = new AnalysisResult();
         var cap = new AdapterCapability { Language = "test" };
@@ -315,6 +316,8 @@ public class UseCaseTests
         Assert.Same(graph, session.Graph);
         Assert.Same(analysis, session.Analysis);
         Assert.Equal("test", session.Language);
+        Assert.NotSame(empty, session.Current);
+        Assert.Equal(1, session.Current.AnalysisGeneration);
     }
 
     [Fact]
@@ -326,15 +329,38 @@ public class UseCaseTests
         var host = new StubCompilationHost();
         var executor = new StubCodeExecutor();
         var refactoring = new StubRefactoring();
+        var loaded = session.Current;
 
         session.AttachCompilationServices(host, executor, refactoring);
 
+        var published = session.Current;
+        Assert.NotSame(loaded, published);
+        Assert.Equal(loaded.AnalysisGeneration, published.AnalysisGeneration);
         Assert.True(session.HasCompilationState);
         Assert.Same(host, session.CompilationHost);
         Assert.Same(executor, session.CodeExecutor);
         Assert.Same(refactoring, session.Refactoring);
+        Assert.Same(host, published.CompilationHost);
+        Assert.Same(executor, published.CodeExecutor);
+        Assert.Same(refactoring, published.Refactoring);
         Assert.True(session.WorkspaceOps.CanExecute);
         Assert.Equal("trusted-local", session.WorkspaceOps.ExecutionTrustLevel);
+    }
+
+    [Fact]
+    public void WorkspaceSnapshot_Create_RejectsPartialCompilationPortPublication()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => WorkspaceSnapshot.Create(
+            BuildTestGraph(),
+            new AnalysisResult(),
+            capability: null,
+            language: "test",
+            context: null,
+            analyzedAtUtc: DateTime.UtcNow,
+            analysisGeneration: 1,
+            compilationHost: new StubCompilationHost()));
+
+        Assert.Contains("must be published together", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -342,7 +368,10 @@ public class UseCaseTests
     {
         var session = new WorkspaceSession();
         session.Load(BuildTestGraph(), new AnalysisResult(), null, "test");
-        session.AttachCompilationServices(new StubCompilationHost(), new StubCodeExecutor(), new StubRefactoring());
+        var host = new StubCompilationHost();
+        var executor = new StubCodeExecutor();
+        var refactoring = new StubRefactoring();
+        session.AttachCompilationServices(host, executor, refactoring);
 
         session.Clear();
 
@@ -350,10 +379,15 @@ public class UseCaseTests
         Assert.False(session.HasCompilationState);
         Assert.Null(session.Graph);
         Assert.False(session.WorkspaceOps.CanExecute);
+        Assert.True(host.Disposed);
+        Assert.True(executor.Disposed);
+        Assert.True(refactoring.Disposed);
     }
 
-    private sealed class StubCompilationHost : ICompilationHost
+    private sealed class StubCompilationHost : ICompilationHost, IDisposable
     {
+        public bool Disposed { get; private set; }
+
         public bool IsAvailable => true;
         public DiagnosticInfo[] GetDiagnostics(string? moduleName = null) => Array.Empty<DiagnosticInfo>();
         public DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request) => Array.Empty<DiagnosticInfo>();
@@ -377,19 +411,28 @@ public class UseCaseTests
         public string[] FindImplementations(string symbolId) => Array.Empty<string>();
         public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column) => null;
         public string GetDocumentation(string symbolId) => "";
+
+        public void Dispose() => Disposed = true;
     }
 
-    private sealed class StubCodeExecutor : ICodeExecutor
+    private sealed class StubCodeExecutor : ICodeExecutor, IDisposable
     {
+        public bool Disposed { get; private set; }
+
         public CodeExecutionResult Execute(string code, string[]? imports = null, int timeoutMs = 5000)
             => new() { Success = true };
         public CodeExecutionResult Execute(CodeExecutionRequest request)
             => new() { Success = true };
+
+        public void Dispose() => Disposed = true;
     }
 
-    private sealed class StubRefactoring : IWorkspaceRefactoring
+    private sealed class StubRefactoring : IWorkspaceRefactoring, IDisposable
     {
+        public bool Disposed { get; private set; }
+
         public TextEdit[] Rename(string symbolId, string newName) => Array.Empty<TextEdit>();
         public string Format(string code) => code;
+        public void Dispose() => Disposed = true;
     }
 }
