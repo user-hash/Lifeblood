@@ -38,6 +38,47 @@ public sealed class GraphSessionPublicationTests : IDisposable
         Assert.True(session.HasCompilationState);
     }
 
+    [Fact]
+    public void Load_IncrementalCandidateRuleFailure_LeavesCommittedAdapterRetryable()
+    {
+        var root = CreateProject("Incremental", "namespace Incremental; public class Stable { }");
+        var sourcePath = Path.Combine(root, "Incremental.cs");
+        var invalidRules = Path.Combine(_tempDir, "invalid-incremental-rules.json");
+        File.WriteAllText(invalidRules, "{");
+        using var session = new GraphSession(new PhysicalFileSystem());
+
+        _ = session.Load(root, graphPath: null, rulesPath: null);
+        var committedGraph = session.Graph;
+        var committedGeneration = session.AnalysisGeneration;
+
+        File.WriteAllText(sourcePath, "namespace Incremental; public class Refreshed { }");
+        Assert.Throws<JsonException>(() => session.Load(
+            root,
+            graphPath: null,
+            rulesPath: invalidRules,
+            incremental: true,
+            authoritativeChangedFiles: new[] { sourcePath }));
+
+        Assert.Same(committedGraph, session.Graph);
+        Assert.Equal(committedGeneration, session.AnalysisGeneration);
+        Assert.NotNull(session.Graph?.GetSymbol("type:Incremental.Stable"));
+        Assert.Null(session.Graph?.GetSymbol("type:Incremental.Refreshed"));
+
+        var retryJson = session.Load(
+            root,
+            graphPath: null,
+            rulesPath: null,
+            incremental: true,
+            authoritativeChangedFiles: new[] { sourcePath });
+        using var retry = JsonDocument.Parse(retryJson);
+
+        Assert.Equal("incremental", retry.RootElement.GetProperty("mode").GetString());
+        Assert.Equal(1, retry.RootElement.GetProperty("changedSourceFiles").GetInt32());
+        Assert.Equal(committedGeneration + 1, session.AnalysisGeneration);
+        Assert.Null(session.Graph?.GetSymbol("type:Incremental.Stable"));
+        Assert.NotNull(session.Graph?.GetSymbol("type:Incremental.Refreshed"));
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_tempDir, recursive: true); }

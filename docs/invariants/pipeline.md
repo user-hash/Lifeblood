@@ -22,7 +22,7 @@ the MCP server.
 
 ## Incremental Re-Analyze
 
-- **INV-SNAPSHOT-ATOMIC-PUBLISH-001. A full-analysis candidate cannot publish adapter, workspace-path, scope, rules, or generation state before graph extraction, validation, rule analysis, and compilation-service construction succeed.** `GraphSession.Load` keeps the new `RoslynWorkspaceAnalyzer`, project root, exclude set, and rules path in candidate locals and assigns them only in the same commit block that replaces the visible graph/session. A pre-commit failure therefore leaves the prior graph, generation, incremental adapter, retained compilation services, project root, and workspace context mutually consistent and usable. This is the first Wave 2 publication ratchet; incremental analysis still requires a forked adapter candidate before this invariant covers every refresh path. Pinned by `GraphSessionPublicationTests.Load_FullCandidateRuleFailure_DoesNotPublishAdapterOrWorkspaceFields`.
+- **INV-SNAPSHOT-ATOMIC-PUBLISH-001. Full and incremental candidates cannot publish adapter, workspace-path, scope, rules, or generation state before graph extraction, validation, rule analysis, and compilation-service construction succeed.**
 
 - **INV-INCR-001**: Incremental re-analyze (`lifeblood_analyze` with `incremental: true`) only recompiles modules whose source content changed since the last analysis. Per-file extraction results are cached in `AnalysisSnapshot`. Filesystem mtimes are a cheap prefilter only; source content hashes decide whether a touched file actually re-extracts. v1 limitation: does not cascade to dependent modules when API surface changes.
 

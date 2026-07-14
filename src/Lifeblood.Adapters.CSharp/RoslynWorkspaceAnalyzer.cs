@@ -103,6 +103,34 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     /// <summary>Optional per-module progress callback. Set before calling AnalyzeWorkspace.</summary>
     public Action<string, int, int>? OnModuleProgress { get; set; }
 
+    /// <summary>
+    /// Create an isolated incremental candidate. Roslyn compilations and
+    /// metadata references are immutable and shared by value; every mutable
+    /// dictionary/cache that an incremental pass can replace is copied.
+    /// Publishing or discarding the returned analyzer therefore cannot mutate
+    /// this committed analyzer.
+    /// </summary>
+    public RoslynWorkspaceAnalyzer ForkForIncrementalCandidate()
+    {
+        if (_snapshot == null)
+            throw new InvalidOperationException("Cannot fork before the first successful workspace analysis.");
+
+        return new RoslynWorkspaceAnalyzer(_fs, _profileResolver)
+        {
+            _snapshot = _snapshot.ForkForCandidate(),
+            _compilations = _compilations == null
+                ? null
+                : new Dictionary<string, CSharpCompilation>(_compilations, StringComparer.Ordinal),
+            _moduleDependencies = _moduleDependencies?.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ToArray(),
+                StringComparer.Ordinal),
+            RetainedProfileName = RetainedProfileName,
+            RetainedProfileNames = RetainedProfileNames.ToArray(),
+            OnModuleProgress = OnModuleProgress,
+        };
+    }
+
     public SemanticGraph AnalyzeWorkspace(string projectRoot, AnalysisConfig config)
     {
         // INV-ANALYZE-STRUCTURED-FAILURE-001: track a coarse progress cursor so
