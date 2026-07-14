@@ -197,6 +197,11 @@ What:
 - Lifeblood can show call edges, but it does not yet infer or check that values
   keep the same numeric domain across fields, parameters, DTOs, dispatchers,
   kernels, tests, and UI controls.
+- 2026-07-14 DAWG ADSR/LFO follow-up added two sharper shapes: non-finite
+  fallback policy can be musical for one domain and dangerous for another
+  (`+Infinity` to max is reasonable for an envelope ceiling but unsafe for
+  gain/headroom), and normalized authoring depth can be silently confused with
+  destination units such as cents, octaves, percent, or drive amount.
 
 Why it matters:
 - This is the class of bug that looks like "the code is wired" while audio is
@@ -211,6 +216,9 @@ Fix shape:
   manifests, and caller-supplied contract maps.
 - Report domain crossings where no explicit conversion helper, clamp, scale, or
   documented adapter exists.
+- Treat non-finite handling as a domain contract, not a generic clamp rule:
+  surface NaN/Infinity callsites and classify whether the target domain's
+  fallback should be min, max, neutral/default, reject, or caller-owned.
 - Output should include source symbol, target symbol, inferred source/target
   domain, confidence, evidence, and the conversion point if one was found.
 - Keep inference advisory; allow projects to promote inferred domains into a
@@ -390,6 +398,11 @@ What:
   tuning snapshots, dispatch DTOs, and Burst kernels. A slider may show percent,
   a snapshot may store normalized, a kernel may expect Hz, and tests may only
   verify that fields exist.
+- 2026-07-14 ADSR/LFO fader work sharpened the same class: musical control
+  law depends on start/end values, log vs linear progression, sentinel storage
+  values such as disabled-rate zero, and fader resolution. A value can be
+  correctly wired but still musically wrong because the UI range, persistence
+  sanitizer, formatter, and engine consumer disagree.
 
 Why it matters:
 - This is exactly where "not hardcoded" matters: the same Lifeblood feature
@@ -405,6 +418,9 @@ Fix shape:
 - Highlight missing hops, multiple incompatible conversions, bypass lanes,
   tests that assert existence but not value behavior, and docs/comments that
   state a different domain from the code.
+- Include fader-resolution evidence when a range is UI-driven: min/max, curve
+  kind, active vs storage range, disabled/sentinel values, formatter units, and
+  effective resolution near the musical working area.
 - Make contracts project-authored through a manifest so Lifeblood stays generic.
 
 ## LB-INTAKE-20260629-013 - Generated DSP/math probe recipe
@@ -421,6 +437,10 @@ What:
   checking wiring.
 - Lifeblood can compile-check and execute C# snippets, but it does not yet guide
   agents toward a reusable generated-probe pattern for math/DSP systems.
+- 2026-07-14 tuning work showed that endpoint and resolution probes should be
+  generated from the same mapping/range table agents inspect manually. The
+  useful sweep is not "try insane extremes"; it is "sample the declared musical
+  range, active range, storage sentinel, and default/neutral values."
 
 Why it matters:
 - The best fix loop combines static analysis with measured output. A generic
@@ -435,6 +455,10 @@ Fix shape:
   continuity, silence-window noise floor, static-vs-swept high-band delta,
   no denormals/NaN/Inf, no output after declared tail, and deterministic
   repeated-run output.
+- When a contract/range table is available, generate representative cases from
+  default, neutral, musical min/max, midpoint, active zero/sentinel, and one or
+  two high-resolution neighborhoods instead of blindly testing arbitrary global
+  extremes.
 - Keep execution in the user's test framework/project; Lifeblood should produce
   scaffolding and structural checks, not own audio playback.
 
@@ -919,3 +943,350 @@ Fix shape:
   dirty-file count or capped sample.
 - If git metadata cannot be read, report the attempted root and failure reason
   so callers can tell "not a repo" from "wrong lookup root" from "git failed".
+
+## LB-INTAKE-20260714-029 - Diff-scoped diagnostic ownership report
+
+Type: Feature request
+Priority: High
+Source: DAWG ADSR/LFO/genre follow-up, 2026-07-14; Lifeblood local `v0.7.12-4-gd2cfe30-dirty`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- DAWG verification needed "check Unity/Lifeblood errors and only fix yours."
+  A project-wide diagnostic run can return hundreds of existing warnings while
+  the actionable set is only diagnostics introduced by the current diff or the
+  files touched in the current atom.
+- In the latest pass, the useful signal was a single warning in a newly touched
+  DSP policy file among a much larger baseline. Lifeblood can diagnose, but it
+  does not yet classify diagnostics by ownership against git diff, staged files,
+  commit range, or caller-supplied touched paths.
+
+Why it matters:
+- Commit-as-you-go workflows need a clean way to avoid laundering old warnings
+  into the current task while still catching new regressions immediately.
+- This is not DAWG-specific. Any large repo with a warning baseline needs to
+  know "new in my change", "pre-existing in touched file", and "unrelated
+  baseline" before deciding what to fix.
+
+Fix shape:
+- Add a diagnostic ownership mode to `lifeblood_diagnose` or a sibling report
+  that accepts `sinceCommit`, `stagedOnly`, `workingTreeOnly`, or explicit
+  `touchedFiles`.
+- Return diagnostics grouped as `introducedByDiff`, `preExistingTouchedFile`,
+  `preExistingUnrelated`, and `unknownOwnership`, with file/line spans and
+  source-control provenance.
+- For warnings without stable line history, use a conservative fallback: same
+  diagnostic id/message/file before the diff means pre-existing; changed lines
+  or new files mean current-change-owned.
+
+## LB-INTAKE-20260714-030 - First-class evidence baseline drift check
+
+Type: Improvement
+Priority: Medium
+Source: DAWG ADSR/LFO/genre checkup, 2026-07-14; Lifeblood local `v0.7.12-4-gd2cfe30-dirty`
+Workspace: DAWG and Lifeblood self
+Rating for DAWG work: 8/10 value if shipped
+
+What:
+- DAWG uses generated evidence baselines for symbols, edges, modules, cycles,
+  invariants, and profile counts. The current workflow relies on an external
+  Codex skill to compare live Lifeblood counts against the committed
+  `EVIDENCE.generated.md` stamp and decide whether drift is within tolerance.
+- Lifeblood already produces the live facts, but it does not expose a single
+  product-level "baseline current / stale / refresh recommended" verdict
+  against a repo-owned evidence file.
+
+Why it matters:
+- Agents need to cite semantic counts without over-trusting a stale generated
+  doc. A small drift can be acceptable; a large drift means refresh evidence
+  before using the docs as authority.
+- Putting the check inside Lifeblood keeps the evidence loop close to the
+  semantic source of truth and avoids per-repo helper scripts drifting in their
+  tolerance rules.
+
+Fix shape:
+- Add `lifeblood_evidence_drift` or extend `lifeblood_analyze` with an optional
+  `baselinePath` and tolerance policy.
+- Parse the baseline counts, compare them to the retained live graph and
+  invariant audit, and return deltas, percent drift, commit stamp if present,
+  verdict, and a refresh recommendation.
+- Keep this read-only. If a caller wants mutation, pair it with a separate
+  explicit refresh command that rewrites the generated evidence file.
+
+## LB-INTAKE-20260714-031 - Snapshot-pinned read batches for parallel agent work
+
+Type: Improvement
+Priority: High
+Source: DAWG root-cause and evidence-refresh session, 2026-07-11 to 2026-07-14; live Lifeblood server `v0.7.12+dbfd871`
+Workspace: DAWG and Lifeblood self
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- Refreshing DAWG's semantic evidence required a full multi-profile analyze,
+  two `lifeblood_execute` queries, `lifeblood_cycles`,
+  `lifeblood_invariant_check`, and `lifeblood_authority_report`. Each call
+  returned an `analysisGeneration`, but no read call could declare "run only
+  against generation N" and there was no way to execute the independent reads
+  under one retained-snapshot lease.
+- This is safe in one strictly serial client only if no other client or host
+  action replaces the retained session between calls. Parallel agents can
+  otherwise compose a report from individually valid answers produced by
+  different graph generations.
+
+Why it matters:
+- Evidence refreshes, architecture audits, and planning reports are joins over
+  several tools. A mixed-generation join can be internally inconsistent even
+  though every response is truthful in isolation.
+- This is distinct from the shipped parallel compile-check transport fix and
+  the existing reader/writer gate. Those protect process/session integrity;
+  they do not give callers optimistic concurrency or a snapshot-consistent
+  multi-query receipt.
+
+Fix shape:
+- Add an optional `expectedAnalysisGeneration` precondition to graph and
+  semantic read tools. On mismatch, return a structured recoverable result with
+  expected/actual generation and a retry hint; never silently read the newer
+  snapshot.
+- Add an optional read-only batch/query-plan surface that accepts registered
+  read-tool calls, rejects every write-side/session-mutating tool, acquires one
+  read lease, and returns a common snapshot envelope plus per-call results.
+- Keep execution serial by default under the lease. Internal parallel execution
+  should be enabled only for tools proven read-only and thread-safe, with stable
+  output ordering and per-call payload caps.
+- Ratchet both shapes with a session replacement between calls: ordinary reads
+  may move to the new generation, pinned reads must reject, and a pinned batch
+  must remain byte-consistent on one generation.
+
+## LB-INTAKE-20260714-032 - Compact invariant audit without duplicated zero-source ledgers
+
+Type: Optimization
+Priority: Medium
+Source: DAWG evidence-refresh session, 2026-07-11; live Lifeblood server `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 8/10 value if shipped
+
+What:
+- `lifeblood_invariant_check(mode:"audit")` on DAWG discovered 56 candidate
+  sources but only one source declared parser-recognized invariants. The result
+  repeated the full `sourcePaths` and `sourceCounts` ledgers at the top level
+  and inside `evidenceReceipt`, including every zero-count source.
+- The response exceeded seven thousand tool-output tokens and was truncated by
+  the client even though the actionable result was small: two unique
+  invariants, two declarations, zero duplicates, and zero parse warnings.
+
+Why it matters:
+- Full source provenance is valuable for parser/discovery debugging, but it is
+  expensive as the invariant tree grows and obscures duplicates or warnings - the
+  fields an audit caller needs first.
+- This is distinct from the shipped docs-safe evidence receipt. The receipt
+  made audit evidence citable; this request keeps that contract while removing
+  redundant wire payload and giving agents an intentional compact path.
+
+Fix shape:
+- Add `summarize:true` and/or a source projection such as
+  `sourceMode:"nonzero"|"all"`. Compact mode should retain totals,
+  category counts, duplicate IDs with occurrences, parse warnings, non-zero
+  source counts, `discoveredSourceCount`, and `zeroDeclarationSourceCount`.
+- Avoid serializing identical source ledgers twice. The receipt can carry a
+  digest/reference to the top-level provenance, or the top level can reference
+  the self-contained receipt, while the default full response stays backward
+  compatible.
+- Surface `truncated` and full pre-truncation counts if any source or occurrence
+  list is capped. Add a DAWG-sized fixture where compact mode remains bounded
+  and still exposes a duplicate and a parse warning from zero-heavy discovery.
+
+## LB-INTAKE-20260714-033 - Retained-session memory telemetry needs start/end and peak delta
+
+Type: Optimization
+Priority: Medium
+Source: DAWG multi-profile analyze and evidence-refresh session, 2026-07-11; live Lifeblood server `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 8/10 value if shipped
+
+What:
+- A full Editor+Player analyze of DAWG reported 86,010 symbols, 331,980 edges,
+  71.8 seconds wall time, 4.94 GB peak working set, and 5.10 GB peak private
+  bytes. A subsequent authoritative one-file incremental update completed in
+  6.7 seconds but reported 5.79 GB peak working set and 5.93 GB peak private
+  bytes.
+- `ProcessUsageProbe` correctly samples an isolated maximum during each call,
+  but `AnalysisUsage` exposes only absolute peaks. It does not report the
+  retained process baseline at call start, the end state, or peak growth above
+  baseline, so the receipt cannot distinguish retained graph cost from
+  transient incremental rebuild cost.
+
+Why it matters:
+- On large Roslyn workspaces, wall-time improvement alone is not enough. Agents
+  and benchmark tooling need to know whether incremental analysis reuses the
+  retained session efficiently or temporarily holds old and replacement
+  compilation state at once.
+- This is distinct from the active runtime/JIT benchmark lane. That lane
+  compares target runtimes and workloads; this request makes the per-request
+  telemetry itself capable of explaining memory behavior on any runtime.
+
+Fix shape:
+- Add working-set and private-byte samples for start, end, absolute peak, and
+  `peakAboveStart` to `AnalysisUsage`. Keep existing peak fields as backward-
+  compatible aliases/absolute values.
+- Optionally record memory at analyze phase boundaries so module discovery,
+  compilation, graph extraction, validation, and session commit can be
+  attributed without requiring an external profiler.
+- Add a retained-session benchmark that runs full, incremental-noop, one-file
+  incremental, and descriptor-fallback analyzes in one process and reports
+  start/end/delta plus semantic-count parity. Treat the observed DAWG numbers as
+  a measurement lead, not proof of a leak, until the delta fields exist.
+
+## LB-INTAKE-20260714-034 - Runtime profiler trace import and code correlation
+
+Type: Feature request
+Priority: High
+Source: DAWG mobile performance dogfood, 2026-07-12 to 2026-07-14; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 10/10 value if shipped
+
+What:
+- DAWG performance work depended on Unity Profiler captures for CPU, GPU,
+  rendering, memory, audio DSP, and custom DAWG-side markers. Lifeblood could
+  prove static call structure, but it could not ingest a profiler capture and
+  join hot markers back to symbols, files, invariants, or recent commits.
+- The manual loop was still too easy to misread: `GfxDeviceVK.Present` could
+  mean GPU backpressure or frame pacing; Unity "Audio Voices: 3" did not expose
+  DAWG's true tab/note/worker workload; and custom marker names had to be
+  interpreted outside the semantic graph.
+
+Why it matters:
+- Performance debugging needs the static truth and runtime truth in one receipt.
+  A static graph can show where `FunctionPointer.Invoke` is called, but the
+  profiler proves whether that host bridge is a real frame or callback cost.
+- The same feature applies to Unity, game engines, servers, desktop apps, and
+  any runtime with trace events: agents need to route runtime hotspots to source
+  ownership without guessing from screenshots.
+
+Fix shape:
+- Add a profiler/trace import lane that accepts Unity Profiler exports or a
+  generic event JSON/CSV schema with frame index, marker name, duration,
+  thread/category, counters, device metadata, build id, and scenario id.
+- Map marker names to source symbols through attributes, generated marker
+  manifests, string literal ownership, or caller-supplied aliases.
+- Return a correlation report: hottest markers, owning symbol/file/module,
+  recent code owners, related invariants/tests, missing marker aliases, and
+  ambiguity when a marker cannot be safely mapped.
+- Keep runtime data separate from static facts. Lifeblood should say "this
+  profiler marker correlates with this source route" instead of pretending the
+  graph alone proves runtime cost.
+
+## LB-INTAKE-20260714-035 - Cross-device performance evidence comparator
+
+Type: UX
+Priority: High
+Source: DAWG S20/S23/S8/PC performance dogfood, 2026-07-12 to 2026-07-14; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- DAWG collected repeated captures across Galaxy S20, S23, S8, and PC editor
+  while changing graphics API, profile tier, buffer size, shader quality,
+  workload density, and scenario stage. Lifeblood could analyze source, but it
+  did not help decide whether two runtime captures were comparable.
+- Several investigation branches were only trustworthy after manually checking
+  scenario identity, app version, graphics API, sample rate, callback frames,
+  target frame rate, active profiles, device model, GPU, and workload counters.
+
+Why it matters:
+- Cross-device optimization can easily compare unlike workloads and invent a
+  false root cause. A DAW-grade investigation needs the tool to reject bad
+  comparisons before the human optimizes the wrong thing.
+- This is a product-level evidence problem, not a DAWG architecture issue:
+  Lifeblood already wants to be the source of citation-safe investigation
+  receipts.
+
+Fix shape:
+- Add a comparison report for multiple analyze/profiler/test receipts keyed by
+  scenario id and build id.
+- Validate comparability before ranking differences: app version, git commit,
+  dirty state, define profiles, platform/API, device class, sample rate, buffer
+  frames, target frame rate, workload fingerprint, and enabled feature flags.
+- Return "comparable", "partially comparable", or "reject comparison" with exact
+  mismatched fields, then show normalized deltas for CPU, GPU, audio callback,
+  workers, allocations, batches, SetPass, and memory.
+- Let callers attach domain counters such as active tabs, active notes, synth
+  voices, worker count, and shader tier so runtime captures explain themselves.
+
+## LB-INTAKE-20260714-036 - External API cost annotation for hot-path audits
+
+Type: Improvement
+Priority: High
+Source: DAWG Burst host-cost dogfood, 2026-07-14; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG
+Rating for DAWG work: 9/10 value if shipped
+
+What:
+- DAWG found a credible hot-path risk in Unity Burst `FunctionPointer<T>.Invoke`:
+  the source package implements the property by resolving a delegate from the
+  raw function pointer, while Unity's own package docs recommend caching the
+  delegate for regular C# calls. Lifeblood could show callsites, but it had no
+  way to know this property carries a documented host-side cost.
+- The existing hot-path allocation/forbidden-API idea covers generic operations,
+  but this case needs project- or package-supplied API cost knowledge for calls
+  whose expense is not obvious from the caller's operation tree.
+
+Why it matters:
+- Real hot-path regressions often hide inside external APIs, properties, or
+  package helpers that look cheap at the callsite. Static analysis needs a way
+  to import "this member is expensive unless cached" knowledge without
+  hardcoding Unity or Burst into Lifeblood.
+- This helps any project that depends on engine, framework, SDK, crypto,
+  graphics, ML, database, or interop APIs with documented hot-path caveats.
+
+Fix shape:
+- Add an API cost manifest or annotation file that maps external symbol ids or
+  documentation anchors to cost categories such as allocation, reflection,
+  marshal, lock, IO, main-thread-only, GPU sync, or cache-required.
+- Let hot-path audits join semantic callsites against those annotations and
+  report repeated calls inside loops, callbacks, jobs, render paths, or
+  caller-marked realtime routes.
+- Include evidence: matched external symbol, annotation source, callsite,
+  surrounding loop/callback context, and suggested contract such as "cache once
+  per kernel pointer" or "move outside render/audio callback".
+- Keep annotations consumer-authored and versioned so Lifeblood stays generic
+  and does not bake Unity-specific rules into Domain/Application.
+
+## LB-INTAKE-20260714-037 - Named retained snapshots for parallel investigation lanes
+
+Type: Improvement
+Priority: Medium
+Source: DAWG multi-device performance dogfood, 2026-07-14; Lifeblood local `v0.7.12+dbfd871`
+Workspace: DAWG and Lifeblood self
+Rating for DAWG work: 8/10 value if shipped
+
+What:
+- Long DAWG sessions naturally split into lanes: Android Player graph,
+  Editor/Player graph, profiler capture interpretation, dirty working tree
+  checks, and focused compile diagnostics. Lifeblood's retained MCP session is
+  strong for one active graph, but parallel investigation still depends on
+  humans remembering which profile/workspace state the retained session
+  currently represents.
+- Prior concurrency work protected the process from corruption, but it does not
+  yet make parallel evidence lanes first-class or easy to name, compare, and
+  revisit.
+
+Why it matters:
+- Parallel work is safer when every read-side answer names the snapshot it came
+  from. Without that, agents can accidentally compare a Player-only graph with
+  an Editor graph, or overwrite the retained session while another lane still
+  needs its evidence.
+- This is especially useful for large Unity workspaces, but the shape is generic
+  for any repo where multiple platform/profile/build variants matter.
+
+Fix shape:
+- Add named retained snapshots keyed by workspace, define profiles, git commit,
+  dirty fingerprint, analyze options, and optional scenario label.
+- Let read-side tools accept `snapshotId` while defaulting to the latest active
+  snapshot for backwards compatibility.
+- Provide a `lifeblood_snapshots` inventory that reports snapshot id, workspace,
+  profiles, graph counts, age, source-control receipt, memory cost, and whether
+  the underlying files have drifted.
+- Add lifecycle controls for pin/unpin/evict so parallel agent work can keep
+  two or three active evidence lanes without turning the MCP host into an
+  unbounded cache.
