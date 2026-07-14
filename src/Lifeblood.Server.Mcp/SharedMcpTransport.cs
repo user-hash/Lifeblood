@@ -25,6 +25,7 @@ internal static class SharedMcpTransport
     private const string SharedSessionKeyEnv = "LIFEBLOOD_SHARED_SESSION_KEY";
     private const string SharedPipeNameEnv = "LIFEBLOOD_SHARED_PIPE_NAME";
     private const string SharedProxyTraceEnv = "LIFEBLOOD_SHARED_PROXY_TRACE";
+    private const string SharedDaemonAutostartEnv = "LIFEBLOOD_SHARED_DAEMON_AUTOSTART";
 
     public static bool IsSharedProxyRequested(string[] args)
         => args.Any(a => string.Equals(a, SharedFlag, StringComparison.Ordinal))
@@ -94,10 +95,24 @@ internal static class SharedMcpTransport
             {
                 if (cancellationToken.IsCancellationRequested) break;
                 logError?.Invoke($"Shared daemon forward failed: {ex.Message}");
-                await EnsureDaemonAsync(pipeName, cancellationToken, logError);
+                Exception reportedFailure = ex;
+                try
+                {
+                    await EnsureDaemonAsync(pipeName, cancellationToken, logError);
+                }
+                catch (Exception recoveryEx) when (recoveryEx is IOException
+                    or TimeoutException
+                    or InvalidOperationException
+                    or System.ComponentModel.Win32Exception
+                    or OperationCanceledException)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+                    reportedFailure = recoveryEx;
+                    logError?.Invoke($"Shared daemon recovery failed: {recoveryEx.Message}");
+                }
                 if (expectsResponse)
                 {
-                    WriteResponse(output, BuildProxyError(request.Id, ex), jsonOpts, logError);
+                    WriteResponse(output, BuildProxyError(request.Id, reportedFailure), jsonOpts, logError);
                 }
             }
         }
@@ -228,6 +243,12 @@ internal static class SharedMcpTransport
         if (CanConnect(pipeName, timeoutMs: 100))
         {
             return;
+        }
+
+        if (!ReadFlag(SharedDaemonAutostartEnv, defaultValue: true))
+        {
+            throw new IOException(
+                $"Shared Lifeblood daemon '{pipeName}' is unavailable and automatic startup is disabled.");
         }
 
         StartDaemonProcess(pipeName, logError);
@@ -390,18 +411,19 @@ internal static class SharedMcpTransport
         return null;
     }
 
-    private static bool ReadFlag(string environmentVariableName)
+    private static bool ReadFlag(string environmentVariableName, bool defaultValue = false)
     {
         var raw = Environment.GetEnvironmentVariable(environmentVariableName);
         if (string.IsNullOrWhiteSpace(raw))
         {
-            return false;
+            return defaultValue;
         }
 
         return raw.Trim().ToLowerInvariant() switch
         {
             "1" or "true" or "yes" or "on" or "shared" => true,
-            _ => false,
+            "0" or "false" or "no" or "off" => false,
+            _ => defaultValue,
         };
     }
 

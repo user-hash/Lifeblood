@@ -47,6 +47,12 @@ internal sealed class McpProcessTestClient : IAsyncDisposable
         => Path.Combine(AppContext.BaseDirectory, "Lifeblood.Server.Mcp.dll");
 
     public static McpProcessTestClient Start(string dllPath, params string[] arguments)
+        => Start(dllPath, environment: null, arguments);
+
+    public static McpProcessTestClient Start(
+        string dllPath,
+        IReadOnlyDictionary<string, string?>? environment,
+        params string[] arguments)
     {
         var dotnetHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
         if (string.IsNullOrWhiteSpace(dotnetHost))
@@ -70,6 +76,20 @@ internal sealed class McpProcessTestClient : IAsyncDisposable
         foreach (var argument in arguments)
         {
             start.ArgumentList.Add(argument);
+        }
+        if (environment != null)
+        {
+            foreach (var pair in environment)
+            {
+                if (pair.Value == null)
+                {
+                    start.Environment.Remove(pair.Key);
+                }
+                else
+                {
+                    start.Environment[pair.Key] = pair.Value;
+                }
+            }
         }
 
         var process = Process.Start(start)
