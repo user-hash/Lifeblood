@@ -24,6 +24,7 @@ public sealed class WorkspaceSession
     public string? Language => Current.Language;
     public WorkspaceContext? Context => Current.Context;
     public DateTime? AnalyzedAtUtc => Current.AnalyzedAtUtc;
+    public SnapshotId SnapshotId => Current.SnapshotId;
 
     /// <summary>
     /// Monotonic counter incremented every time <see cref="Load"/> is
@@ -89,7 +90,8 @@ public sealed class WorkspaceSession
             compilationHost,
             codeExecutor,
             refactoring,
-            workspaceOps));
+            workspaceOps,
+            snapshotId: current.SnapshotId));
     }
 
     /// <summary>

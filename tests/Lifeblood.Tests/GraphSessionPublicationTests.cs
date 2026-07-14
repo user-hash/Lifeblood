@@ -27,6 +27,15 @@ public sealed class GraphSessionPublicationTests : IDisposable
         var committedSnapshot = session.CurrentSnapshot;
         var committedGraph = session.Graph;
         var committedGeneration = session.AnalysisGeneration;
+        var committedSnapshotId = session.SnapshotId;
+
+        var noOpJson = session.Load(firstRoot, graphPath: null, rulesPath: null, incremental: true);
+        using (var noOp = JsonDocument.Parse(noOpJson))
+        {
+            Assert.Equal("incremental-noop", noOp.RootElement.GetProperty("mode").GetString());
+        }
+        Assert.Same(committedSnapshot, session.CurrentSnapshot);
+        Assert.Equal(committedSnapshotId, session.SnapshotId);
 
         Assert.Throws<JsonException>(() =>
             session.Load(candidateRoot, graphPath: null, rulesPath: invalidRules));
@@ -34,6 +43,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
         Assert.Same(committedGraph, session.Graph);
         Assert.Same(committedSnapshot, session.CurrentSnapshot);
         Assert.Equal(committedGeneration, session.AnalysisGeneration);
+        Assert.Equal(committedSnapshotId, session.SnapshotId);
         Assert.Equal(firstRoot, session.ProjectRoot);
         Assert.Equal(firstRoot, session.CurrentWorkspaceContext?.RootPath);
         Assert.True(session.CanIncremental);
@@ -53,6 +63,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
         var committedSnapshot = session.CurrentSnapshot;
         var committedGraph = session.Graph;
         var committedGeneration = session.AnalysisGeneration;
+        var committedSnapshotId = session.SnapshotId;
 
         File.WriteAllText(sourcePath, "namespace Incremental; public class Refreshed { }");
         Assert.Throws<JsonException>(() => session.Load(
@@ -65,6 +76,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
         Assert.Same(committedGraph, session.Graph);
         Assert.Same(committedSnapshot, session.CurrentSnapshot);
         Assert.Equal(committedGeneration, session.AnalysisGeneration);
+        Assert.Equal(committedSnapshotId, session.SnapshotId);
         Assert.NotNull(session.Graph?.GetSymbol("type:Incremental.Stable"));
         Assert.Null(session.Graph?.GetSymbol("type:Incremental.Refreshed"));
 
@@ -79,6 +91,7 @@ public sealed class GraphSessionPublicationTests : IDisposable
         Assert.Equal("incremental", retry.RootElement.GetProperty("mode").GetString());
         Assert.Equal(1, retry.RootElement.GetProperty("changedSourceFiles").GetInt32());
         Assert.Equal(committedGeneration + 1, session.AnalysisGeneration);
+        Assert.NotEqual(committedSnapshotId, session.SnapshotId);
         Assert.Null(session.Graph?.GetSymbol("type:Incremental.Stable"));
         Assert.NotNull(session.Graph?.GetSymbol("type:Incremental.Refreshed"));
     }

@@ -16,6 +16,7 @@ public static class ServerIdentity
     private static readonly string[] SessionLocalDoNotCiteFields =
     {
         "envelope.analysisGeneration",
+        "envelope.snapshotId",
         "envelope.stalenessSeconds",
         "envelope.filesChangedSinceAnalyze",
     };
@@ -120,6 +121,7 @@ public static class ServerIdentity
                 hasGraphLoaded = session.HasGraphLoaded,
                 hasCompilationState = session.HasCompilationState,
                 analysisGeneration = session.AnalysisGeneration,
+                snapshotId = session.SnapshotId,
                 projectRoot = session.ProjectRoot,
                 retainedProfileName = session.RetainedProfileName,
                 retainedProfileNames = session.RetainedProfileNames,
@@ -328,6 +330,7 @@ public sealed record ServerSessionInfo(
     bool HasGraphLoaded,
     bool HasCompilationState,
     long AnalysisGeneration,
+    string SnapshotId,
     string ProjectRoot,
     string? RetainedProfileName,
     string[] RetainedProfileNames,

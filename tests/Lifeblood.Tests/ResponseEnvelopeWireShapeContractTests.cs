@@ -40,6 +40,8 @@ public class ResponseEnvelopeWireShapeContractTests
         // S5 / INV-DIAGNOSE-FRESHNESS-001: monotonic generation counter
         // for cross-tool join coherence. Non-breaking addition.
         ("AnalysisGeneration",       "Int64"),
+        // INV-SNAPSHOT-IDENTITY-001: globally unique committed publication.
+        ("SnapshotId",               "String"),
     };
 
     [Fact]
