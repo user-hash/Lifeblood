@@ -279,9 +279,14 @@ function Invoke-Analyze($Owner, [object[]]$SampleOwners, $MemoryState) {
         arguments = $arguments
     }
     $response = Invoke-JsonRpc $Owner 2 "tools/call" $params $SampleOwners $MemoryState $TimeoutSec
-    $payload = $response.result.content[0].text | ConvertFrom-Json
+    $payloadText = [string]$response.result.content[0].text
+    if ($response.result.isError -eq $true) {
+        throw "lifeblood_analyze returned isError=true: $payloadText"
+    }
+    $payload = $payloadText | ConvertFrom-Json
     if ($payload.mode -ne "full") {
-        throw "Expected a fresh full analyze, received mode '$($payload.mode)'."
+        $compactPayload = $payload | ConvertTo-Json -Depth 20 -Compress
+        throw "Expected a fresh full analyze, received mode '$($payload.mode)'. Payload: $compactPayload"
     }
     return $payload
 }
