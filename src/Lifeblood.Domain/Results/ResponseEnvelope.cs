@@ -64,16 +64,26 @@ public sealed class ResponseEnvelope
     /// Monotonic counter that increments every time the workspace state
     /// is (re)loaded — full analyze, incremental analyze, or auto-refresh
     /// triggered by <c>compile_check</c>. Two responses carrying the same
-    /// <c>AnalysisGeneration</c> came from byte-identical workspace
-    /// state, so any cross-tool join (e.g. pairing a
+    /// <c>AnalysisGeneration</c> within one daemon came from the same
+    /// committed workspace state, so any cross-tool join (e.g. pairing a
     /// <c>find_references</c> hit list with a <c>compile_check</c>
     /// diagnostic) is provably coherent. A change in this counter
     /// between two reads on otherwise-static data signals that an
     /// auto-refresh happened in between and any cached caller-side
-    /// derivation should be invalidated. Zero when no workspace is
-    /// loaded. INV-DIAGNOSE-FRESHNESS-001.
+    /// derivation should be invalidated. Across daemon restarts or workspace
+    /// processes, callers use <see cref="SnapshotId"/> instead because
+    /// generation values may repeat. Zero when no workspace is loaded.
+    /// INV-DIAGNOSE-FRESHNESS-001.
     /// </summary>
     public long AnalysisGeneration { get; init; }
+
+    /// <summary>
+    /// Opaque globally unique identity of the exact committed snapshot used
+    /// by this response. Unlike the process-local generation counter, this
+    /// value cannot collide across workspaces or daemon restarts. Empty when
+    /// no workspace is loaded. INV-SNAPSHOT-IDENTITY-001.
+    /// </summary>
+    public string SnapshotId { get; init; } = "";
 }
 
 /// <summary>

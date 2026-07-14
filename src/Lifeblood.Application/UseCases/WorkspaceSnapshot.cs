@@ -26,6 +26,7 @@ public sealed class WorkspaceSnapshot : IDisposable
         WorkspaceContext? context,
         DateTime? analyzedAtUtc,
         long analysisGeneration,
+        SnapshotId snapshotId,
         ICompilationHost? compilationHost,
         ICodeExecutor? codeExecutor,
         IWorkspaceRefactoring? refactoring)
@@ -38,6 +39,7 @@ public sealed class WorkspaceSnapshot : IDisposable
         Context = context;
         AnalyzedAtUtc = analyzedAtUtc;
         AnalysisGeneration = analysisGeneration;
+        SnapshotId = snapshotId;
         CompilationHost = compilationHost;
         CodeExecutor = codeExecutor;
         Refactoring = refactoring;
@@ -58,6 +60,8 @@ public sealed class WorkspaceSnapshot : IDisposable
     public DateTime? AnalyzedAtUtc { get; }
 
     public long AnalysisGeneration { get; }
+
+    public SnapshotId SnapshotId { get; }
 
     public ICompilationHost? CompilationHost { get; }
 
@@ -80,7 +84,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         ICompilationHost? compilationHost = null,
         ICodeExecutor? codeExecutor = null,
         IWorkspaceRefactoring? refactoring = null,
-        WorkspaceCapability? workspaceOps = null)
+        WorkspaceCapability? workspaceOps = null,
+        SnapshotId? snapshotId = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(analysis);
@@ -105,6 +110,7 @@ public sealed class WorkspaceSnapshot : IDisposable
             context,
             analyzedAtUtc,
             analysisGeneration,
+            snapshotId ?? SnapshotId.New(),
             compilationHost,
             codeExecutor,
             refactoring);
@@ -119,11 +125,12 @@ public sealed class WorkspaceSnapshot : IDisposable
             graph: null,
             analysis: null,
             capability: null,
-            WorkspaceCapability.None,
+            workspaceOps: WorkspaceCapability.None,
             language: null,
             context: null,
             analyzedAtUtc: null,
-            analysisGeneration,
+            analysisGeneration: analysisGeneration,
+            snapshotId: SnapshotId.None,
             compilationHost: null,
             codeExecutor: null,
             refactoring: null);

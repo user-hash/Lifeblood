@@ -299,6 +299,7 @@ public class UseCaseTests
         Assert.False(session.HasCompilationState);
         Assert.Null(session.Graph);
         Assert.Equal(WorkspaceCapability.None, session.WorkspaceOps);
+        Assert.True(session.SnapshotId.IsNone);
     }
 
     [Fact]
@@ -318,6 +319,11 @@ public class UseCaseTests
         Assert.Equal("test", session.Language);
         Assert.NotSame(empty, session.Current);
         Assert.Equal(1, session.Current.AnalysisGeneration);
+        Assert.False(session.SnapshotId.IsNone);
+        Assert.True(Lifeblood.Domain.Workspaces.SnapshotId.TryParse(
+            session.SnapshotId.ToString(),
+            out var parsedSnapshotId));
+        Assert.Equal(session.SnapshotId, parsedSnapshotId);
     }
 
     [Fact]
@@ -336,6 +342,7 @@ public class UseCaseTests
         var published = session.Current;
         Assert.NotSame(loaded, published);
         Assert.Equal(loaded.AnalysisGeneration, published.AnalysisGeneration);
+        Assert.Equal(loaded.SnapshotId, published.SnapshotId);
         Assert.True(session.HasCompilationState);
         Assert.Same(host, session.CompilationHost);
         Assert.Same(executor, session.CodeExecutor);
@@ -373,12 +380,15 @@ public class UseCaseTests
         var refactoring = new StubRefactoring();
         session.AttachCompilationServices(host, executor, refactoring);
         var lease = session.Current.AcquireLease();
+        var loadedSnapshotId = session.SnapshotId;
 
         session.Clear();
 
         Assert.False(session.IsLoaded);
         Assert.False(session.HasCompilationState);
         Assert.Null(session.Graph);
+        Assert.True(session.SnapshotId.IsNone);
+        Assert.False(loadedSnapshotId.IsNone);
         Assert.False(session.WorkspaceOps.CanExecute);
         Assert.False(host.Disposed);
         Assert.False(executor.Disposed);

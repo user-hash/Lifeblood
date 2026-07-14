@@ -7,10 +7,21 @@ waiting for a quiescent workspace; path provenance and Wave 1 tool-behavior
 source of truth implemented; Wave 2 explicit workspace context, failure-
 isolated candidates, one-reference publication, and reference-counted read
 leases with deferred disposal are implemented; Wave 4 typed host identity and
-canonical workspace admission are implemented; stable snapshot identity is next
+canonical workspace admission are implemented; stable snapshot identity is
+implemented; canonical analysis spec and source fingerprint are next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
+
+Checkpoint stop: implementation is committed through immutable candidate
+publication, non-blocking read leases/deferred disposal, canonical shared-host
+identity/workspace admission, and globally unique committed `SnapshotId`.
+Resume in this order: (1) capture the frozen DAWG Wave 0 receipt only after its
+working tree is quiescent; (2) implement canonical `AnalysisSpec`, rule/source/
+descriptor fingerprints, and `AnalysisKey`; (3) coalesce identical analyses;
+(4) replace per-frame pipes with persistent client leases plus idle eviction;
+(5) add snapshot preconditions/batches and the bounded graph-history catalog;
+(6) complete Lifeblood/DAWG rollout, packaging, evidence, and docs gates.
 
 ## Goal
 
@@ -77,7 +88,7 @@ them, but must not re-declare their rules.
 | `BaseKey` | `WorkspaceKey + AnalysisSpec`. This owns exactly one latest committed semantic base. |
 | `SourceFingerprint` | Authoritative receipt for repository state, descriptors, and source content that can affect the analysis. Dirty state is included; git commit alone is insufficient. |
 | `AnalysisKey` | `BaseKey + SourceFingerprint`. Only equal keys may coalesce. |
-| `SnapshotId` | Workspace/spec identity plus committed generation and source fingerprint. |
+| `SnapshotId` | Opaque globally unique identity of one exact committed publication. `AnalysisKey` owns content/spec equality; snapshot identity does not duplicate it. |
 | `ClientLeaseId` | One attached proxy/client lifetime. It is transport lifecycle, not graph identity. |
 | `AnalysisRequestId` | One in-flight full or incremental candidate build, possibly awaited by several clients. |
 
@@ -413,18 +424,22 @@ Purpose: eliminate split-brain session fields and make refresh failure-safe.
 3. Make full and incremental adapter paths return complete candidates without
    publishing partial adapter/path/profile state.
 4. Add reference-counted read leases and deferred disposal.
-5. Preserve monotonic generation inside one daemon and add stable `SnapshotId`.
+5. Preserve monotonic generation inside one daemon and add stable `SnapshotId`
+   (complete).
 6. Test failure at every pre-publication phase: discovery, extraction,
    validation, rule analysis, compilation-service construction, and commit.
 
 Exit gate: every injected failure leaves the prior graph, profiles, compilation
 services, fingerprint, path, and generation mutually consistent and usable.
 
-Implementation status: steps 1-4 are pinned by explicit `WorkspaceContext`,
+Implementation status: steps 1-5 are pinned by explicit `WorkspaceContext`,
 immutable `WorkspaceSnapshot`, one-reference server publication,
 full/incremental failure rollback, non-blocking read leases, serialized writers,
-and deferred disposal under `INV-SNAPSHOT-ATOMIC-PUBLISH-001` and
-`INV-SNAPSHOT-LEASE-001`. Stable `SnapshotId` in step 5 is next.
+deferred disposal, and opaque cross-daemon-safe snapshot identity under
+`INV-SNAPSHOT-ATOMIC-PUBLISH-001`, `INV-SNAPSHOT-LEASE-001`, and
+`INV-SNAPSHOT-IDENTITY-001`. Complete pre-publication failure injection in step
+6 remains part of the final Wave 2 hardening gate; Wave 3 identity inputs are
+next.
 
 ### Wave 3 - Fingerprinted Refresh And Analyze Coalescing
 

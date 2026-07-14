@@ -56,11 +56,13 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         var observedBySecond = await ReadSessionAsync(secondProxy);
         Assert.True(observedBySecond.HasGraphLoaded);
         Assert.Equal(1, observedBySecond.AnalysisGeneration);
+        Assert.StartsWith("snap_", observedBySecond.SnapshotId, StringComparison.Ordinal);
 
         await AnalyzeGraphAsync(secondProxy, _secondGraphPath);
         var observedByFirst = await ReadSessionAsync(firstProxy);
         Assert.True(observedByFirst.HasGraphLoaded);
         Assert.Equal(2, observedByFirst.AnalysisGeneration);
+        Assert.NotEqual(observedBySecond.SnapshotId, observedByFirst.SnapshotId);
 
         using var lookupRpc = await firstProxy.CallToolAsync(
             "lifeblood_lookup",
@@ -71,6 +73,7 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         await firstProxy.DisposeAsync();
         var afterDisconnect = await ReadSessionAsync(secondProxy);
         Assert.Equal(2, afterDisconnect.AnalysisGeneration);
+        Assert.Equal(observedByFirst.SnapshotId, afterDisconnect.SnapshotId);
         Assert.False(daemon.HasExited);
     }
 
@@ -138,8 +141,10 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         var secondState = await ReadSessionAsync(secondProxy);
         Assert.True(firstState.HasGraphLoaded);
         Assert.Equal(1, firstState.AnalysisGeneration);
+        Assert.StartsWith("snap_", firstState.SnapshotId, StringComparison.Ordinal);
         Assert.False(secondState.HasGraphLoaded);
         Assert.Equal(0, secondState.AnalysisGeneration);
+        Assert.Equal("", secondState.SnapshotId);
 
         using var missingRpc = await secondProxy.CallToolAsync(
             "lifeblood_lookup",
@@ -306,6 +311,7 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         var beforeCrash = await ReadSessionAsync(proxy);
         Assert.True(beforeCrash.HasGraphLoaded);
         Assert.Equal(1, beforeCrash.AnalysisGeneration);
+        Assert.StartsWith("snap_", beforeCrash.SnapshotId, StringComparison.Ordinal);
 
         await owner.TerminateAsync();
 
@@ -320,6 +326,7 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         var afterRestart = await ReadSessionAsync(proxy);
         Assert.False(afterRestart.HasGraphLoaded);
         Assert.Equal(0, afterRestart.AnalysisGeneration);
+        Assert.Equal("", afterRestart.SnapshotId);
         Assert.NotEqual(owner.ProcessId, replacement.ProcessId);
     }
 
@@ -465,10 +472,12 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         var session = payload.RootElement.GetProperty("session");
         return new SessionState(
             session.GetProperty("hasGraphLoaded").GetBoolean(),
-            session.GetProperty("analysisGeneration").GetInt64());
+            session.GetProperty("analysisGeneration").GetInt64(),
+            session.GetProperty("snapshotId").GetString() ?? "");
     }
 
     private readonly record struct SessionState(
         bool HasGraphLoaded,
-        long AnalysisGeneration);
+        long AnalysisGeneration,
+        string SnapshotId);
 }

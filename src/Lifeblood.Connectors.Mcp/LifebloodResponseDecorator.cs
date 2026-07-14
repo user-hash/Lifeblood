@@ -85,6 +85,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 FilesChangedSinceAnalyze = filesChanged,
                 Limitations = unregisteredLimits,
                 AnalysisGeneration = context.AnalysisGeneration,
+                SnapshotId = context.SnapshotId,
             }, context.AdapterCapability);
         }
 
@@ -97,6 +98,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             FilesChangedSinceAnalyze = filesChanged,
             Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged),
             AnalysisGeneration = context.AnalysisGeneration,
+            SnapshotId = context.SnapshotId,
         }, context.AdapterCapability);
     }
 
@@ -131,6 +133,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             FilesChangedSinceAnalyze = envelope.FilesChangedSinceAnalyze,
             Limitations = limitations.ToArray(),
             AnalysisGeneration = envelope.AnalysisGeneration,
+            SnapshotId = envelope.SnapshotId,
         };
     }
 

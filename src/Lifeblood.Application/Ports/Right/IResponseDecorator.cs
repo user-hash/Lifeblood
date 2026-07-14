@@ -71,6 +71,12 @@ public sealed class EnvelopeContext
     public long AnalysisGeneration { get; init; }
 
     /// <summary>
+    /// Opaque identity of the exact committed workspace snapshot. Empty when
+    /// no workspace is loaded; surfaced unchanged on the response envelope.
+    /// </summary>
+    public string SnapshotId { get; init; } = "";
+
+    /// <summary>
     /// Capability declared by the adapter that produced the loaded graph.
     /// Null before a graph is loaded. Imported JSON graphs that omit
     /// adapter metadata are normalized by the MCP session to an explicit

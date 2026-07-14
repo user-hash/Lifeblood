@@ -96,6 +96,7 @@ public class ResponseEnvelopeTests
         var d = BuildRegistryDecorator();
         var env = d.Decorate("lifeblood_lookup", new EnvelopeContext
         {
+            SnapshotId = "snap_00000000000000000000000000000099",
             AdapterCapability = new AdapterCapability
             {
                 Language = "c",
@@ -112,6 +113,7 @@ public class ResponseEnvelopeTests
 
         Assert.Equal(ConfidenceBand.Proven, env.Confidence);
         Assert.Equal("Semantic", env.EvidenceSource);
+        Assert.Equal("snap_00000000000000000000000000000099", env.SnapshotId);
         Assert.Contains(env.Limitations, l =>
             l.Contains("native-clang", StringComparison.Ordinal) &&
             l.Contains("implementationResolution=None", StringComparison.Ordinal));
@@ -438,6 +440,7 @@ public class ResponseEnvelopeTests
     {
         var session = new Lifeblood.Application.UseCases.WorkspaceSession();
         Assert.Equal(0L, session.AnalysisGeneration);
+        Assert.True(session.SnapshotId.IsNone);
     }
 
     [Fact]
@@ -449,12 +452,17 @@ public class ResponseEnvelopeTests
 
         session.Load(emptyGraph, analysis, null, "csharp");
         Assert.Equal(1L, session.AnalysisGeneration);
+        var firstSnapshotId = session.SnapshotId;
 
         session.Load(emptyGraph, analysis, null, "csharp");
         Assert.Equal(2L, session.AnalysisGeneration);
+        var secondSnapshotId = session.SnapshotId;
 
         session.Load(emptyGraph, analysis, null, "csharp");
         Assert.Equal(3L, session.AnalysisGeneration);
+        Assert.False(firstSnapshotId.IsNone);
+        Assert.NotEqual(firstSnapshotId, secondSnapshotId);
+        Assert.NotEqual(secondSnapshotId, session.SnapshotId);
     }
 
     [Fact]
@@ -470,15 +478,18 @@ public class ResponseEnvelopeTests
 
         session.Load(emptyGraph, analysis, null, "csharp");
         var gen1 = session.AnalysisGeneration;
+        var snapshot1 = session.SnapshotId;
 
         session.Clear();
         // After Clear: state is empty but the counter is preserved so
         // the next Load produces a strictly-greater value.
         Assert.Equal(gen1, session.AnalysisGeneration);
+        Assert.True(session.SnapshotId.IsNone);
 
         session.Load(emptyGraph, analysis, null, "csharp");
         Assert.True(session.AnalysisGeneration > gen1,
             $"Post-Clear-Load generation ({session.AnalysisGeneration}) must exceed pre-Clear ({gen1}).");
+        Assert.NotEqual(snapshot1, session.SnapshotId);
     }
 
     [Fact]
@@ -494,8 +505,13 @@ public class ResponseEnvelopeTests
                 },
             });
 
-        var env = d.Decorate("any_tool", new EnvelopeContext { AnalysisGeneration = 42 });
+        var env = d.Decorate("any_tool", new EnvelopeContext
+        {
+            AnalysisGeneration = 42,
+            SnapshotId = "snap_00000000000000000000000000000042",
+        });
         Assert.Equal(42L, env.AnalysisGeneration);
+        Assert.Equal("snap_00000000000000000000000000000042", env.SnapshotId);
     }
 
     [Fact]
@@ -507,8 +523,13 @@ public class ResponseEnvelopeTests
         // class: feature wired on the happy path but forgotten on the
         // fallback.
         var d = new LifebloodResponseDecorator();
-        var env = d.Decorate("not_a_real_tool", new EnvelopeContext { AnalysisGeneration = 7 });
+        var env = d.Decorate("not_a_real_tool", new EnvelopeContext
+        {
+            AnalysisGeneration = 7,
+            SnapshotId = "snap_00000000000000000000000000000007",
+        });
         Assert.Equal(7L, env.AnalysisGeneration);
+        Assert.Equal("snap_00000000000000000000000000000007", env.SnapshotId);
         Assert.Equal(TruthTier.Heuristic, env.TruthTier);
     }
 
@@ -518,6 +539,7 @@ public class ResponseEnvelopeTests
         var d = new LifebloodResponseDecorator();
         var env = d.Decorate("any_tool", new EnvelopeContext());
         Assert.Equal(0L, env.AnalysisGeneration);
+        Assert.Equal("", env.SnapshotId);
     }
 
     private static ToolHandler CreateHandler(PhysicalFileSystem fs)

@@ -178,6 +178,12 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     public long AnalysisGeneration => Current.Workspace.AnalysisGeneration;
 
+    /// <summary>
+    /// Opaque identity of the exact committed publication. Unlike generation,
+    /// this cannot collide across workspace daemons or process restarts.
+    /// </summary>
+    public SnapshotId SnapshotId => Current.Workspace.SnapshotId;
+
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
     public bool CanIncremental => Current.RoslynAdapter?.HasSnapshot == true;
 

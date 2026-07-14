@@ -253,6 +253,7 @@ public sealed class ToolHandler
             HasGraphLoaded: _session.IsLoaded,
             HasCompilationState: _session.HasCompilationState,
             AnalysisGeneration: _session.AnalysisGeneration,
+            SnapshotId: _session.SnapshotId.ToString(),
             ProjectRoot: _session.ProjectRoot,
             RetainedProfileName: _session.RetainedProfileName,
             RetainedProfileNames: _session.RetainedProfileNames.ToArray(),
@@ -1754,6 +1755,7 @@ public sealed class ToolHandler
             {
                 FileSystem = _session.FileSystem,
                 AnalysisGeneration = _session.AnalysisGeneration,
+                SnapshotId = _session.SnapshotId.ToString(),
                 AdapterCapability = _session.AdapterCapability,
             };
         }
@@ -1776,6 +1778,7 @@ public sealed class ToolHandler
             FileSystem = _session.FileSystem,
             FileScanLimit = EnvelopeFileScanLimit,
             AnalysisGeneration = _session.AnalysisGeneration,
+            SnapshotId = _session.SnapshotId.ToString(),
             AdapterCapability = _session.AdapterCapability,
         };
     }
