@@ -146,23 +146,24 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(39, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
-        Assert.Equal(21, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
+        Assert.Equal(40, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(22, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var toolCapabilities = doc.RootElement.GetProperty("tools");
         Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
-        Assert.Equal(3, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
-        Assert.Equal(17, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
-        Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
+        Assert.Equal(4, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
+        Assert.Equal(16, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
+        Assert.Equal(2, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
         Assert.Equal(18, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
         Assert.Equal(34, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("RefreshWorkspace").GetInt32());
+        Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ManageSnapshotCatalog").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ExecuteCode").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("PreviewChanges").GetInt32());
         Assert.Equal(37, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
-        Assert.Equal(2, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
+        Assert.Equal(3, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
         var behaviorContracts = toolCapabilities.GetProperty("behaviorContracts");
-        Assert.Equal(39, behaviorContracts.GetArrayLength());
+        Assert.Equal(40, behaviorContracts.GetArrayLength());
         var analyzeContract = behaviorContracts.EnumerateArray()
             .Single(e => e.GetProperty("name").GetString() == "lifeblood_analyze");
         Assert.Equal("None", analyzeContract.GetProperty("sessionRequirement").GetString());
@@ -177,6 +178,9 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains("lifeblood.tool.truncated", telemetryEvents);
         Assert.Contains("lifeblood.analyze.fallback", telemetryEvents);
         Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransport").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("snapshotHistoryCatalog").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("historicalSnapshotSelection").GetBoolean());
+        Assert.False(doc.RootElement.GetProperty("featureFlags").GetProperty("historicalSnapshotsRetainSemanticServices").GetBoolean());
         Assert.Equal(
             "experimental",
             doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportMaturity").GetString());
@@ -209,7 +213,14 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal(expectedSummarizeCapableTools, summarizeCapableTools);
         Assert.Contains("schemas", doc.RootElement.GetProperty("contract").GetProperty("schemaSnapshotPath").GetString());
         Assert.Contains("STATUS.md", doc.RootElement.GetProperty("contract").GetProperty("statusDocAnchorPath").GetString());
-        Assert.False(doc.RootElement.GetProperty("session").GetProperty("hasGraphLoaded").GetBoolean());
+        var session = doc.RootElement.GetProperty("session");
+        Assert.False(session.GetProperty("hasGraphLoaded").GetBoolean());
+        var history = session.GetProperty("snapshotHistory");
+        Assert.Equal(3, history.GetProperty("configuredLimit").GetInt32());
+        Assert.Equal(16, history.GetProperty("hardMaximum").GetInt32());
+        Assert.Equal("graph-only", history.GetProperty("retentionMode").GetString());
+        Assert.Equal(0, history.GetProperty("semanticBaseCount").GetInt32());
+        Assert.Equal(0, history.GetProperty("additionalSemanticBaseCount").GetInt32());
     }
 
     [Fact]
@@ -318,6 +329,210 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal("batch-policy", payload.RootElement.GetProperty("failure").GetString());
         Assert.Equal(1, payload.RootElement.GetProperty("rejectedIndex").GetInt32());
         Assert.Equal(0, payload.RootElement.GetProperty("executedCallCount").GetInt32());
+    }
+
+    [Fact]
+    public void Handle_Snapshots_ManagesHistoryAndHistoricalReadSelection()
+    {
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+        var historicalSnapshotId = session.SnapshotId.ToString();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+        var latestSnapshotId = session.SnapshotId.ToString();
+
+        var pin = handler.Handle("lifeblood_snapshots", MakeArgs(new
+        {
+            action = "pin",
+            targetSnapshotId = historicalSnapshotId,
+            name = "before-refactor",
+        }));
+        Assert.Null(pin.IsError);
+
+        var list = handler.Handle("lifeblood_snapshots", MakeArgs(new { action = "list" }));
+        Assert.Null(list.IsError);
+        using (var inventory = JsonDocument.Parse(list.Content[0].Text))
+        {
+            var entries = inventory.RootElement.GetProperty("entries").EnumerateArray().ToArray();
+            Assert.Equal(2, entries.Length);
+            var historical = entries.Single(entry =>
+                entry.GetProperty("snapshotId").GetString() == historicalSnapshotId);
+            Assert.True(historical.GetProperty("pinned").GetBoolean());
+            Assert.True(historical.GetProperty("graphOnly").GetBoolean());
+            Assert.False(historical.GetProperty("retainedSemantic").GetBoolean());
+            Assert.Equal("before-refactor", historical.GetProperty("name").GetString());
+            Assert.Equal(0, inventory.RootElement.GetProperty("additionalSemanticBaseCount").GetInt32());
+        }
+
+        var historicalRead = handler.Handle("lifeblood_lookup", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+            expectedSnapshotId = historicalSnapshotId,
+            symbolId = "type:Core.Foo",
+        }));
+        Assert.Null(historicalRead.IsError);
+        using (var payload = JsonDocument.Parse(historicalRead.Content[0].Text))
+        {
+            Assert.Equal(
+                historicalSnapshotId,
+                payload.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        }
+
+        Assert.Null(handler.Handle("lifeblood_snapshots", MakeArgs(new
+        {
+            action = "unpin",
+            targetSnapshotId = historicalSnapshotId,
+        })).IsError);
+        Assert.Null(handler.Handle("lifeblood_snapshots", MakeArgs(new
+        {
+            action = "evict",
+            targetSnapshotId = historicalSnapshotId,
+        })).IsError);
+
+        var evictedRead = handler.Handle("lifeblood_lookup", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+            symbolId = "type:Core.Foo",
+        }));
+        Assert.True(evictedRead.IsError);
+        using var evicted = JsonDocument.Parse(evictedRead.Content[0].Text);
+        Assert.Equal("snapshot-not-found", evicted.RootElement.GetProperty("failure").GetString());
+        Assert.Equal(latestSnapshotId, evicted.RootElement.GetProperty("currentSnapshotId").GetString());
+    }
+
+    [Fact]
+    public void Handle_Batch_SelectsHistoricalPublicationAndRejectsNestedSwitchBeforeCallZero()
+    {
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+        var historicalSnapshotId = session.SnapshotId.ToString();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+        var latestSnapshotId = session.SnapshotId.ToString();
+
+        var accepted = handler.Handle("lifeblood_batch", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+            calls = new object[]
+            {
+                new { tool = "lifeblood_capabilities", arguments = new { } },
+                new { tool = "lifeblood_lookup", arguments = new { symbolId = "type:Core.Foo" } },
+            },
+        }));
+        Assert.Null(accepted.IsError);
+        using (var payload = JsonDocument.Parse(accepted.Content[0].Text))
+        {
+            Assert.Equal(historicalSnapshotId, payload.RootElement.GetProperty("snapshotId").GetString());
+            Assert.Equal(2, payload.RootElement.GetProperty("results").GetArrayLength());
+        }
+
+        var rejected = handler.Handle("lifeblood_batch", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+            calls = new object[]
+            {
+                new { tool = "lifeblood_capabilities", arguments = new { snapshotId = latestSnapshotId } },
+            },
+        }));
+        Assert.True(rejected.IsError);
+        using var rejection = JsonDocument.Parse(rejected.Content[0].Text);
+        Assert.Equal("batch-policy", rejection.RootElement.GetProperty("failure").GetString());
+        Assert.Equal(0, rejection.RootElement.GetProperty("executedCallCount").GetInt32());
+    }
+
+    [Fact]
+    public void Handle_Snapshots_CheckDriftRecapturesCanonicalWorkspaceIdentity()
+    {
+        var projectRoot = Path.Combine(_tempDir, "DriftProject");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "DriftProject.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        var sourcePath = Path.Combine(projectRoot, "Tracked.cs");
+        File.WriteAllText(sourcePath, "namespace DriftProject; public class Tracked { }");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
+
+        var current = handler.Handle("lifeblood_snapshots", MakeArgs(new
+        {
+            action = "list",
+            checkDrift = true,
+        }));
+        Assert.Null(current.IsError);
+        using (var payload = JsonDocument.Parse(current.Content[0].Text))
+        {
+            Assert.Equal(
+                "current",
+                payload.RootElement.GetProperty("entries")[0].GetProperty("drift").GetProperty("status").GetString());
+        }
+
+        File.WriteAllText(sourcePath, "namespace DriftProject; public class Changed { }");
+        var drifted = handler.Handle("lifeblood_snapshots", MakeArgs(new
+        {
+            action = "list",
+            checkDrift = true,
+        }));
+        Assert.Null(drifted.IsError);
+        using var driftPayload = JsonDocument.Parse(drifted.Content[0].Text);
+        Assert.Equal(
+            "drifted",
+            driftPayload.RootElement.GetProperty("entries")[0].GetProperty("drift").GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void Handle_HistoricalSelection_RejectsLiveSourceAndSemanticTools()
+    {
+        var projectRoot = Path.Combine(_tempDir, "HistoricalProject");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "HistoricalProject.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Tracked.cs"),
+            "namespace HistoricalProject; public class Tracked { }");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
+        var historicalSnapshotId = session.SnapshotId.ToString();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
+        Assert.True(session.HasCompilationState);
+
+        var partialView = handler.Handle("lifeblood_partial_view", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+            symbolId = "type:HistoricalProject.Tracked",
+        }));
+        var invariants = handler.Handle("lifeblood_invariant_check", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+            mode = "audit",
+        }));
+        var diagnostics = handler.Handle("lifeblood_diagnose", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+        }));
+        var capabilities = handler.Handle("lifeblood_capabilities", MakeArgs(new
+        {
+            snapshotId = historicalSnapshotId,
+        }));
+
+        Assert.True(partialView.IsError);
+        Assert.Contains("historical graph-only", partialView.Content[0].Text, StringComparison.Ordinal);
+        Assert.True(invariants.IsError);
+        Assert.Contains("historical graph-only", invariants.Content[0].Text, StringComparison.Ordinal);
+        Assert.True(diagnostics.IsError);
+        Assert.Contains("historical snapshots are graph-only", diagnostics.Content[0].Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(capabilities.IsError);
+        using var capabilityPayload = JsonDocument.Parse(capabilities.Content[0].Text);
+        Assert.False(capabilityPayload.RootElement.GetProperty("session").GetProperty("hasCompilationState").GetBoolean());
+        Assert.Equal(
+            1,
+            capabilityPayload.RootElement
+                .GetProperty("session")
+                .GetProperty("snapshotHistory")
+                .GetProperty("semanticBaseCount")
+                .GetInt32());
     }
 
     [Fact]
@@ -818,12 +1033,13 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns38Tools()
+    public void ToolRegistry_Returns40Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(39, tools.Length);
+        Assert.Equal(40, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
+        Assert.Contains(tools, t => t.Name == "lifeblood_snapshots");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");
         Assert.Contains(tools, t => t.Name == "lifeblood_wire_audit");
         Assert.Contains(tools, t => t.Name == "lifeblood_feature_switch_audit");
@@ -931,7 +1147,7 @@ public class ToolHandlerTests : IDisposable
 
         var tools = handler.GetTools();
 
-        Assert.Equal(39, tools.Length);
+        Assert.Equal(40, tools.Length);
         Assert.Equal(1, gate.ReadCount);
         Assert.Equal(0, gate.WriteCount);
     }
@@ -948,6 +1164,9 @@ public class ToolHandlerTests : IDisposable
         }
 
         public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
+            => Read(action);
+
+        public T Read<T>(WorkspaceSnapshotReadRequest request, Func<T> action)
             => Read(action);
 
         public T Write<T>(Func<T> action)
@@ -988,6 +1207,22 @@ public class ToolHandlerTests : IDisposable
                 if (nested && ++_nestedReadCount == 2)
                     _refresh();
                 return _inner.Read(precondition, action);
+            }
+            finally
+            {
+                _depth--;
+            }
+        }
+
+        public T Read<T>(WorkspaceSnapshotReadRequest request, Func<T> action)
+        {
+            var nested = _depth > 0;
+            _depth++;
+            try
+            {
+                if (nested && ++_nestedReadCount == 2)
+                    _refresh();
+                return _inner.Read(request, action);
             }
             finally
             {

@@ -12,6 +12,10 @@
       "type": "boolean",
       "description": "Default false. When true, after the BFS completes, scan each test method\u0027s containing file for the target\u0027s FQN as a source-text substring (with namespace-context or uniqueness-gated short-name fallback). Hits surface as \u0060kind: ReflectionHeuristic\u0060 rows. Symbol targets only \u2014 ignored when \u0060target\u0060 is a file path."
     },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
     "expectedSnapshotId": {
       "type": "string",
       "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."

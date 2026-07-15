@@ -49,3 +49,35 @@ public sealed record WorkspaceSnapshotMismatch(
     SnapshotId ActualSnapshotId,
     long ActualAnalysisGeneration,
     WorkspaceAnalysisIdentity? ActualAnalysisIdentity);
+
+/// <summary>
+/// Transport-neutral request to select one retained publication and/or apply
+/// an optimistic precondition after that publication has been leased.
+/// </summary>
+public sealed record WorkspaceSnapshotReadRequest
+{
+    public WorkspaceSnapshotReadRequest(
+        SnapshotId? selectedSnapshotId,
+        WorkspaceSnapshotPrecondition? precondition)
+    {
+        if (selectedSnapshotId == null && precondition == null)
+            throw new ArgumentException("A snapshot selection or precondition is required.");
+        if (selectedSnapshotId?.IsNone == true)
+            throw new ArgumentException("A selected snapshot id cannot be empty.", nameof(selectedSnapshotId));
+        if (selectedSnapshotId != null
+            && precondition?.ExpectedSnapshotId != null
+            && selectedSnapshotId != precondition.ExpectedSnapshotId)
+        {
+            throw new ArgumentException(
+                "Selected and expected snapshot identities must match.",
+                nameof(precondition));
+        }
+
+        SelectedSnapshotId = selectedSnapshotId;
+        Precondition = precondition;
+    }
+
+    public SnapshotId? SelectedSnapshotId { get; }
+
+    public WorkspaceSnapshotPrecondition? Precondition { get; }
+}

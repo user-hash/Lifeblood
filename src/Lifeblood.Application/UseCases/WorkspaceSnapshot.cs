@@ -74,6 +74,15 @@ public sealed class WorkspaceSnapshot : IDisposable
 
     public bool HasCompilationState => CompilationHost != null;
 
+    /// <summary>
+    /// True only while this publication owns a reference to the retained
+    /// semantic-service bundle. Historical catalog replicas are always false.
+    /// </summary>
+    public bool RetainsSemanticServices => _compilationServices != null;
+
+    /// <summary>Current number of active immutable read leases.</summary>
+    public int ActiveLeaseCount => Volatile.Read(ref _leaseCount);
+
     public static WorkspaceSnapshot Create(
         SemanticGraph graph,
         AnalysisResult analysis,
@@ -179,6 +188,31 @@ public sealed class WorkspaceSnapshot : IDisposable
             sharedServices?.Release();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Create a bounded-history replica over the same immutable graph,
+    /// analysis, capability, context, identity, and exact publication id.
+    /// Semantic ports are deliberately omitted, so retaining history cannot
+    /// extend a Roslyn workspace lifetime or create another semantic base.
+    /// </summary>
+    public WorkspaceSnapshot CreateGraphOnlyReplica()
+    {
+        if (!IsLoaded || Graph == null || Analysis == null)
+            throw new InvalidOperationException("Cannot retain an unloaded workspace snapshot.");
+
+        return new WorkspaceSnapshot(
+            Graph,
+            Analysis,
+            Capability,
+            WorkspaceCapability.None,
+            Language,
+            Context,
+            AnalyzedAtUtc,
+            AnalysisGeneration,
+            SnapshotId,
+            Identity,
+            compilationServices: null);
     }
 
     /// <summary>

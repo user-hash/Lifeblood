@@ -11,8 +11,9 @@ canonical workspace admission, persistent client leases, lifecycle drain, and
 live shared status are implemented; stable snapshot identity plus canonical
 analysis/spec/source/rule identity and exact in-flight analysis coalescing are
 implemented; Wave 5 snapshot preconditions, canonical identity envelopes, and
-behavior-derived serial read batches are implemented; bounded graph-only
-history is next
+behavior-derived serial read batches are implemented; Wave 6 bounded graph-
+only history, exact historical selection, catalog management, and drift
+reporting are implemented; Lifeblood/DAWG rollout evidence is next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -24,10 +25,9 @@ identity/workspace admission, globally unique committed `SnapshotId`, and one
 descriptor fingerprints, `BaseKey`, and `AnalysisKey`, then persistent shared
 protocol v2 connections, client leases, request activity, idle/maintenance
 drain, truthful shared status, snapshot preconditions, and pinned read batches.
-Resume in this order: (1) add the bounded graph-history catalog; (2) capture the
-frozen DAWG receipt and
-complete Lifeblood/DAWG rollout, packaging, evidence, and docs gates once the
-DAWG tree is quiescent.
+Resume in this order: (1) publish and verify one local Lifeblood distribution;
+(2) capture the frozen DAWG receipt and complete DAWG rollout, memory, evidence,
+and docs gates once the DAWG tree is quiescent.
 
 ## Goal
 
@@ -554,6 +554,20 @@ duplication.
 
 Exit gate: Editor/Player evidence lanes are identifiable and revisitable, and
 retaining history cannot create an unbounded compilation cache.
+
+Implementation status: complete under `INV-SNAPSHOT-CATALOG-BOUND-001` and
+`INV-MCP-HISTORICAL-READ-001`. Application owns a default-three, hard-maximum-
+sixteen graph-only catalog with optional age expiry, unpinned LRU eviction,
+case-insensitively unique names, pin/unpin/evict, active-lease-safe retirement,
+and observable refusal when all slots are pinned. `lifeblood_snapshots` reports
+current plus retained inventory, canonical identity, memory-retention facts,
+policy/counts, and optional live source/descriptor/rule drift. Every behavior-
+eligible snapshot read accepts exact `snapshotId` selection; unknown/evicted or
+nested-conflicting selections fail structurally without reading latest.
+Historical source/Roslyn-dependent tools fail unavailable rather than mixing an
+old graph with changing live state. Environment policy is bounded by
+`LIFEBLOOD_SNAPSHOT_HISTORY_LIMIT` and
+`LIFEBLOOD_SNAPSHOT_HISTORY_MAX_AGE_SECONDS`.
 
 ### Wave 7 - Lifeblood Then DAWG Rollout
 

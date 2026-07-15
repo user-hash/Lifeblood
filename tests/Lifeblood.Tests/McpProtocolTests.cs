@@ -193,6 +193,7 @@ public class McpProtocolTests
   {
   var noneObserve = new ToolBehavior(ToolSessionRequirement.None, ToolEffect.Observe, ToolSessionAccess.SharedRead);
   var refresh = new ToolBehavior(ToolSessionRequirement.None, ToolEffect.RefreshWorkspace, ToolSessionAccess.Exclusive);
+  var snapshotCatalog = new ToolBehavior(ToolSessionRequirement.None, ToolEffect.ManageSnapshotCatalog, ToolSessionAccess.Exclusive);
   var graphObserve = new ToolBehavior(ToolSessionRequirement.AnalyzedWorkspace, ToolEffect.Observe, ToolSessionAccess.SharedRead);
   var workspaceRootObserve = new ToolBehavior(ToolSessionRequirement.WorkspaceRoot, ToolEffect.Observe, ToolSessionAccess.SharedRead);
   var compilationObserve = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.Observe, ToolSessionAccess.SharedRead);
@@ -203,6 +204,7 @@ public class McpProtocolTests
   {
   ["lifeblood_capabilities"] = noneObserve,
   ["lifeblood_batch"] = noneObserve,
+  ["lifeblood_snapshots"] = snapshotCatalog,
   ["lifeblood_analyze"] = refresh,
   ["lifeblood_context"] = graphObserve,
   ["lifeblood_lookup"] = graphObserve,
@@ -214,7 +216,7 @@ public class McpProtocolTests
   ["lifeblood_resolve_member"] = graphObserve,
   ["lifeblood_resolve_short_name"] = graphObserve,
   ["lifeblood_dead_code"] = graphObserve,
-  ["lifeblood_partial_view"] = graphObserve,
+  ["lifeblood_partial_view"] = workspaceRootObserve,
   ["lifeblood_invariant_check"] = workspaceRootObserve,
   ["lifeblood_authority_report"] = graphObserve,
   ["lifeblood_authority_coverage"] = graphObserve,

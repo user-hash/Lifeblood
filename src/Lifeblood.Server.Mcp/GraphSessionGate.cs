@@ -12,6 +12,8 @@ public interface ISessionGate
 
     T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action);
 
+    T Read<T>(WorkspaceSnapshotReadRequest request, Func<T> action);
+
     T Write<T>(Func<T> action);
 }
 
@@ -27,17 +29,30 @@ public sealed class GraphSessionGate : ISessionGate, IDisposable
     }
 
     public T Read<T>(Func<T> action)
-        => Read(precondition: null, action);
-
-    public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
     {
         ThrowIfDisposed();
         using var lease = _session?.AcquireReadLease();
-        if (precondition != null)
+        return action();
+    }
+
+    public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
+        => precondition == null
+            ? Read(action)
+            : Read(new WorkspaceSnapshotReadRequest(selectedSnapshotId: null, precondition), action);
+
+    public T Read<T>(WorkspaceSnapshotReadRequest request, Func<T> action)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ThrowIfDisposed();
+        if (_session == null)
+            throw new InvalidOperationException("Snapshot selection and preconditions require a bound graph session.");
+
+        using var lease = request.SelectedSnapshotId == null
+            ? _session.AcquireReadLease()
+            : _session.AcquireReadLease(request.SelectedSnapshotId);
+        if (request.Precondition != null)
         {
-            if (_session == null)
-                throw new InvalidOperationException("Snapshot preconditions require a bound graph session.");
-            if (precondition.Compare(_session.CurrentSnapshot) is { } mismatch)
+            if (request.Precondition.Compare(_session.CurrentSnapshot) is { } mismatch)
                 throw new WorkspaceSnapshotPreconditionException(mismatch);
         }
 

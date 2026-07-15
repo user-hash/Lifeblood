@@ -13,6 +13,13 @@ public static class ToolInputContractCatalog
     private static readonly ToolArgumentContract[] SnapshotReadArguments =
     {
         Arg(
+            @"snapshotId",
+            ToolArgumentType.String,
+            required: false,
+            arrayItemType: null,
+            description: @"Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result.",
+            enumValues: Array.Empty<string>()),
+        Arg(
             @"expectedSnapshotId",
             ToolArgumentType.String,
             required: false,
@@ -63,6 +70,13 @@ public static class ToolInputContractCatalog
 
         yield return Contract(@"lifeblood_batch",
             Arg(@"calls", ToolArgumentType.Array, required: true, arrayItemType: ToolArgumentType.Object, description: @"Ordered read-only query plan. Each item is `{ tool: string, arguments?: object }`. The entire plan holds one snapshot lease, executes serially, rejects non-observation/exclusive/nested-batch tools before any call runs, and is hard-capped at 32 calls.", enumValues: Array.Empty<string>())
+        );
+
+        yield return Contract(@"lifeblood_snapshots",
+            Arg(@"action", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Catalog action. list (default) returns current + retained graph-only history; pin captures/names a graph-only publication; unpin releases retention protection; evict removes an unpinned historical copy.", enumValues: new[] { @"list", @"pin", @"unpin", @"evict" }),
+            Arg(@"targetSnapshotId", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Canonical snapshot id targeted by pin, unpin, or evict. Pin may target the current publication or an existing historical entry.", enumValues: Array.Empty<string>()),
+            Arg(@"name", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional unique investigation-lane name assigned while pinning. Trimmed, case-insensitively unique, maximum 128 characters.", enumValues: Array.Empty<string>()),
+            Arg(@"checkDrift", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"When true on list, recapture live source/descriptor/rule identity once per base key and report current/drifted/unavailable. Default false avoids filesystem hashing.", enumValues: Array.Empty<string>())
         );
 
         yield return Contract(@"lifeblood_analyze",

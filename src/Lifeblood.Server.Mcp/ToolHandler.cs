@@ -130,13 +130,23 @@ public sealed class ToolHandler
 
         try
         {
-            return _sessionGate.Read(
-                binding.Precondition,
-                () => HandleCore(toolName, arguments));
+            return binding.Request == null
+                ? _sessionGate.Read(() => HandleCore(toolName, arguments))
+                : _sessionGate.Read(
+                    binding.Request,
+                    () => HandleCore(toolName, arguments));
         }
         catch (WorkspaceSnapshotPreconditionException ex)
         {
             return SnapshotPreconditionMismatch(toolName, ex.Mismatch);
+        }
+        catch (GraphSession.WorkspaceSnapshotNotFoundException ex)
+        {
+            return SnapshotSelectionNotFound(toolName, ex);
+        }
+        catch (GraphSession.WorkspaceSnapshotSelectionConflictException ex)
+        {
+            return SnapshotSelectionConflict(toolName, ex);
         }
     }
 
@@ -184,7 +194,8 @@ public sealed class ToolHandler
 
     private ToolSessionState CurrentSessionState() => new(
         HasAnalyzedWorkspace: _session.IsLoaded,
-        HasWorkspaceRoot: !string.IsNullOrEmpty(_session.ProjectRoot),
+        HasWorkspaceRoot: !_session.IsHistoricalSelection
+            && !string.IsNullOrEmpty(_session.ProjectRoot),
         HasRetainedCompilation: _session.HasCompilationState);
 
     private McpToolResult HandleCore(string toolName, JsonElement? arguments)
@@ -225,6 +236,7 @@ public sealed class ToolHandler
                 // Read-side
                 "lifeblood_capabilities" => HandleCapabilities(arguments),
                 "lifeblood_batch" => HandleBatch(arguments),
+                "lifeblood_snapshots" => HandleSnapshots(arguments),
                 "lifeblood_analyze" => HandleAnalyze(arguments),
                 "lifeblood_context" => HandleContext(arguments),
                 "lifeblood_lookup" => HandleLookup(arguments),
@@ -310,8 +322,8 @@ public sealed class ToolHandler
                 ErrorResult("No graph loaded. Call lifeblood_analyze first."),
             ToolSessionRequirement.WorkspaceRoot =>
                 ErrorResult(
-                    "No workspace loaded. Call lifeblood_analyze with a projectPath first so " +
-                    "the invariant provider can locate CLAUDE.md."),
+                    "No workspace loaded for live-source access. Call lifeblood_analyze " +
+                    "with projectPath first, or omit snapshotId when a historical graph-only publication is selected."),
             ToolSessionRequirement.RetainedCompilation =>
                 ErrorResult(_session.CompilationStateRecoveryHint
                     ?? "Compilation-backed tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first."),
@@ -323,6 +335,7 @@ public sealed class ToolHandler
 
     private McpToolResult HandleCapabilities(JsonElement? args)
     {
+        var snapshotHistory = _session.SnapshotHistory;
         var sessionInfo = new ServerSessionInfo(
             HasGraphLoaded: _session.IsLoaded,
             HasCompilationState: _session.HasCompilationState,
@@ -332,6 +345,13 @@ public sealed class ToolHandler
             RetainedProfileName: _session.RetainedProfileName,
             RetainedProfileNames: _session.RetainedProfileNames.ToArray(),
             CompilationStateRecoveryHint: _session.CompilationStateRecoveryHint,
+            SnapshotHistoryLimit: _session.SnapshotCatalogOptions.HistoryLimit,
+            SnapshotHistoryHardMaximum: WorkspaceSnapshotCatalogOptions.HardMaximumHistoryLimit,
+            SnapshotHistoryMaximumAgeSeconds: _session.SnapshotCatalogOptions.MaximumAge.TotalSeconds,
+            RetainedSnapshotCount: snapshotHistory.Count,
+            PinnedSnapshotCount: snapshotHistory.Count(entry => entry.IsPinned),
+            DroppedSnapshotRetentionCount: _session.DroppedSnapshotRetentionCount,
+            SemanticBaseCount: _session.LatestSnapshot.RetainsSemanticServices ? 1 : 0,
             SharedService: BuildSharedServiceInfo());
 
         return TextResult(WithEnvelope("lifeblood_capabilities", ServerIdentity.BuildCapabilities(sessionInfo)));
@@ -376,6 +396,35 @@ public sealed class ToolHandler
                     "Batch targets must declare Observe effect and SharedRead access.",
                     definition);
             }
+
+            var nestedBinding = SnapshotReadRequestBinder.Bind(call.Arguments);
+            if (!nestedBinding.Accepted)
+            {
+                return BatchPolicyError(
+                    index,
+                    call.ToolName,
+                    nestedBinding.Error!,
+                    definition);
+            }
+
+            var nestedSnapshot = _session.CurrentSnapshot;
+            if (nestedBinding.Request?.SelectedSnapshotId is { } selected
+                && selected != nestedSnapshot.SnapshotId)
+            {
+                return BatchPolicyError(
+                    index,
+                    call.ToolName,
+                    "A nested call cannot select a publication different from the batch lease.",
+                    definition);
+            }
+            if (nestedBinding.Request?.Precondition?.Compare(nestedSnapshot) != null)
+            {
+                return BatchPolicyError(
+                    index,
+                    call.ToolName,
+                    "A nested call precondition does not match the batch publication.",
+                    definition);
+            }
         }
 
         var snapshot = _session.CurrentSnapshot;
@@ -407,6 +456,156 @@ public sealed class ToolHandler
         }));
     }
 
+    private McpToolResult HandleSnapshots(JsonElement? args)
+    {
+        SnapshotCatalogRequest request;
+        try
+        {
+            request = SnapshotCatalogRequestBinder.Bind(args);
+        }
+        catch (SnapshotCatalogContractException ex)
+        {
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = "lifeblood_snapshots",
+                failure = "snapshot-catalog-contract",
+                message = ex.Message,
+            }, JsonOpts));
+        }
+
+        if (request.Action == SnapshotCatalogAction.List)
+            return TextResult(WithEnvelope("lifeblood_snapshots", BuildSnapshotCatalogPayload(request.CheckDrift)));
+
+        WorkspaceSnapshotCatalogMutation mutation;
+        try
+        {
+            mutation = request.Action switch
+            {
+                SnapshotCatalogAction.Pin => _session.PinSnapshot(request.TargetSnapshotId!, request.Name),
+                SnapshotCatalogAction.Unpin => _session.UnpinSnapshot(request.TargetSnapshotId!),
+                SnapshotCatalogAction.Evict => _session.EvictSnapshot(request.TargetSnapshotId!),
+                _ => throw new InvalidOperationException($"Unsupported snapshot catalog action '{request.Action}'."),
+            };
+        }
+        catch (ArgumentException ex)
+        {
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = "lifeblood_snapshots",
+                failure = "snapshot-catalog-contract",
+                message = ex.Message,
+            }, JsonOpts));
+        }
+
+        if (!mutation.Succeeded)
+        {
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = "lifeblood_snapshots",
+                failure = "snapshot-catalog",
+                action = request.Action.ToString().ToLowerInvariant(),
+                status = LowerCamel(mutation.Status.ToString()),
+                targetSnapshotId = mutation.TargetSnapshotId.ToString(),
+                detail = mutation.Detail,
+            }, JsonOpts));
+        }
+
+        return TextResult(WithEnvelope("lifeblood_snapshots", new
+        {
+            action = request.Action.ToString().ToLowerInvariant(),
+            mutation = new
+            {
+                status = "success",
+                targetSnapshotId = mutation.TargetSnapshotId.ToString(),
+                evictedSnapshotId = mutation.EvictedSnapshotId?.ToString(),
+            },
+            catalog = BuildSnapshotCatalogPayload(checkDrift: false),
+        }));
+    }
+
+    private object BuildSnapshotCatalogPayload(bool checkDrift)
+    {
+        var current = _session.LatestSnapshot;
+        var retained = _session.SnapshotHistory;
+        var currentMetadata = retained.FirstOrDefault(entry =>
+            entry.Snapshot.SnapshotId == current.SnapshotId);
+        var logicalEntries = new List<(
+            WorkspaceSnapshot Snapshot,
+            WorkspaceSnapshotCatalogEntry? Metadata,
+            bool IsCurrent)>();
+        if (current.IsLoaded)
+            logicalEntries.Add((current, currentMetadata, true));
+        logicalEntries.AddRange(retained
+            .Where(entry => entry.Snapshot.SnapshotId != current.SnapshotId)
+            .Select(entry => (entry.Snapshot, (WorkspaceSnapshotCatalogEntry?)entry, false)));
+
+        var drift = checkDrift
+            ? _session.CheckSnapshotDrift(logicalEntries.Select(entry => entry.Snapshot))
+            : logicalEntries.ToDictionary(
+                entry => entry.Snapshot.SnapshotId,
+                _ => WorkspaceSnapshotDriftStatus.NotChecked);
+        var entries = logicalEntries.Select(entry =>
+        {
+            var snapshot = entry.Snapshot;
+            var metrics = snapshot.Analysis?.Metrics;
+            return new
+            {
+                snapshotId = snapshot.SnapshotId.ToString(),
+                analysisGeneration = snapshot.AnalysisGeneration,
+                name = entry.Metadata?.Name,
+                pinned = entry.Metadata?.IsPinned == true,
+                isCurrent = entry.IsCurrent,
+                retainedInCatalog = entry.Metadata != null,
+                capturedAtUtc = entry.Metadata?.CapturedAtUtc ?? snapshot.AnalyzedAtUtc,
+                lastAccessedAtUtc = entry.Metadata?.LastAccessedAtUtc,
+                analyzedAtUtc = snapshot.AnalyzedAtUtc,
+                workspaceRoot = snapshot.Context?.RootPath,
+                language = snapshot.Language,
+                graphOnly = !snapshot.RetainsSemanticServices,
+                retainedSemantic = snapshot.RetainsSemanticServices,
+                semanticMemoryBytes = snapshot.RetainsSemanticServices ? (long?)null : 0,
+                memoryAccounting = snapshot.RetainsSemanticServices
+                    ? "process-level-only"
+                    : "no-semantic-services-retained",
+                activeLeaseCount = snapshot.ActiveLeaseCount,
+                symbols = metrics?.TotalSymbols ?? snapshot.Graph?.Symbols.Count ?? 0,
+                edges = metrics?.TotalEdges ?? snapshot.Graph?.Edges.Count ?? 0,
+                modules = metrics?.TotalModules ?? 0,
+                types = metrics?.TotalTypes ?? 0,
+                violations = snapshot.Analysis?.Violations.Length ?? 0,
+                cycles = snapshot.Analysis?.Cycles.Length ?? 0,
+                analysisIdentity = snapshot.Identity == null
+                    ? null
+                    : WorkspaceAnalysisDescriptor.From(snapshot.Identity),
+                drift = drift[snapshot.SnapshotId],
+            };
+        }).ToArray();
+
+        return new
+        {
+            policy = new
+            {
+                historyLimit = _session.SnapshotCatalogOptions.HistoryLimit,
+                hardMaximumHistoryLimit = WorkspaceSnapshotCatalogOptions.HardMaximumHistoryLimit,
+                maximumAgeSeconds = _session.SnapshotCatalogOptions.MaximumAge.TotalSeconds,
+                ageEvictionEnabled = _session.SnapshotCatalogOptions.MaximumAge > TimeSpan.Zero,
+                historicalRetention = "graph-only",
+                additionalSemanticBasesAllowed = false,
+            },
+            currentSnapshotId = current.SnapshotId.ToString(),
+            retainedHistoryCount = retained.Count,
+            pinnedHistoryCount = retained.Count(entry => entry.IsPinned),
+            droppedAutomaticRetentionCount = _session.DroppedSnapshotRetentionCount,
+            semanticBaseCount = current.RetainsSemanticServices ? 1 : 0,
+            additionalSemanticBaseCount = 0,
+            checkDrift,
+            entries,
+        };
+    }
+
     private static McpToolResult BatchPolicyError(
         int index,
         string toolName,
@@ -430,10 +629,51 @@ public sealed class ToolHandler
         {
             error = true,
             tool = toolName,
-            failure = "snapshot-precondition-invalid",
+            failure = "snapshot-read-invalid",
             retryable = false,
             message,
         }, JsonOpts));
+
+    private static McpToolResult SnapshotSelectionNotFound(
+        string toolName,
+        GraphSession.WorkspaceSnapshotNotFoundException exception)
+        => ErrorResult(JsonSerializer.Serialize(new
+        {
+            error = true,
+            tool = toolName,
+            failure = "snapshot-not-found",
+            retryable = false,
+            requestedSnapshotId = exception.RequestedSnapshotId.ToString(),
+            currentSnapshotId = exception.CurrentSnapshotId.ToString(),
+            retainedSnapshotIds = exception.RetainedSnapshotIds.Select(id => id.ToString()).ToArray(),
+            suggestedRetry = new
+            {
+                omitSnapshotIdToReadLatest = true,
+                currentSnapshotId = exception.CurrentSnapshotId.IsNone
+                    ? null
+                    : exception.CurrentSnapshotId.ToString(),
+            },
+            message = "The selected publication is no longer current or retained. Choose a listed snapshot or omit snapshotId to read latest.",
+        }, JsonOpts));
+
+    private static McpToolResult SnapshotSelectionConflict(
+        string toolName,
+        GraphSession.WorkspaceSnapshotSelectionConflictException exception)
+        => ErrorResult(JsonSerializer.Serialize(new
+        {
+            error = true,
+            tool = toolName,
+            failure = "snapshot-selection-conflict",
+            retryable = false,
+            requestedSnapshotId = exception.RequestedSnapshotId.ToString(),
+            leasedSnapshotId = exception.LeasedSnapshotId.ToString(),
+            message = "A nested read cannot switch away from the publication leased by its outer batch or request scope.",
+        }, JsonOpts));
+
+    private static string LowerCamel(string value)
+        => value.Length == 0
+            ? value
+            : char.ToLowerInvariant(value[0]) + value[1..];
 
     private static McpToolResult SnapshotPreconditionMismatch(
         string toolName,

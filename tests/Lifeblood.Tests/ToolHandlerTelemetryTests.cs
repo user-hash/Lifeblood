@@ -477,6 +477,9 @@ public class ToolHandlerTelemetryTests
         public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
             => Read(action);
 
+        public T Read<T>(WorkspaceSnapshotReadRequest request, Func<T> action)
+            => Read(action);
+
         public T Write<T>(Func<T> action)
         {
             WriteCount++;

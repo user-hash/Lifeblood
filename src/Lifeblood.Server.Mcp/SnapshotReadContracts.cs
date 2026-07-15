@@ -5,7 +5,7 @@ using Lifeblood.Domain.Workspaces;
 namespace Lifeblood.Server.Mcp;
 
 internal sealed record SnapshotReadBinding(
-    WorkspaceSnapshotPrecondition? Precondition,
+    WorkspaceSnapshotReadRequest? Request,
     string? Error)
 {
     public bool Accepted => Error == null;
@@ -18,8 +18,20 @@ internal static class SnapshotReadRequestBinder
         if (arguments is not { ValueKind: JsonValueKind.Object } value)
             return new SnapshotReadBinding(null, null);
 
+        SnapshotId? selectedSnapshotId = null;
         SnapshotId? expectedSnapshotId = null;
         long? expectedGeneration = null;
+        if (value.TryGetProperty("snapshotId", out var selectionElement))
+        {
+            if (selectionElement.ValueKind != JsonValueKind.String
+                || !SnapshotId.TryParse(selectionElement.GetString(), out selectedSnapshotId))
+            {
+                return new SnapshotReadBinding(
+                    null,
+                    "snapshotId must use the canonical snap_<32 lowercase hex digits> form.");
+            }
+        }
+
         if (value.TryGetProperty("expectedSnapshotId", out var snapshotElement))
         {
             if (snapshotElement.ValueKind != JsonValueKind.String
@@ -48,7 +60,19 @@ internal static class SnapshotReadRequestBinder
         var precondition = expectedSnapshotId == null && expectedGeneration == null
             ? null
             : new WorkspaceSnapshotPrecondition(expectedSnapshotId, expectedGeneration);
-        return new SnapshotReadBinding(precondition, null);
+        if (selectedSnapshotId != null
+            && expectedSnapshotId != null
+            && selectedSnapshotId != expectedSnapshotId)
+        {
+            return new SnapshotReadBinding(
+                null,
+                "snapshotId and expectedSnapshotId must identify the same publication when both are supplied.");
+        }
+
+        var request = selectedSnapshotId == null && precondition == null
+            ? null
+            : new WorkspaceSnapshotReadRequest(selectedSnapshotId, precondition);
+        return new SnapshotReadBinding(request, null);
     }
 }
 
