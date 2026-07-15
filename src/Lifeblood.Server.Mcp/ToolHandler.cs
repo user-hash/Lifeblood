@@ -384,7 +384,9 @@ public sealed class ToolHandler
             SemanticBaseCount: _session.LatestSnapshot.RetainsSemanticServices ? 1 : 0,
             SharedService: BuildSharedServiceInfo());
 
-        return TextResult(WithEnvelope("lifeblood_capabilities", ServerIdentity.BuildCapabilities(sessionInfo)));
+        return TextResult(WithEnvelope(
+            "lifeblood_capabilities",
+            ServerIdentity.BuildCapabilities(sessionInfo, _session.SourceControl)));
     }
 
     private McpToolResult HandleBatch(JsonElement? args)
@@ -1652,7 +1654,10 @@ public sealed class ToolHandler
                 audit.ParseWarnings,
                 audit.SourcePaths,
                 audit.SourceCounts,
-                evidenceReceipt = ServerIdentity.BuildInvariantEvidenceReceipt(projectRoot, audit),
+                evidenceReceipt = ServerIdentity.BuildInvariantEvidenceReceipt(
+                    projectRoot,
+                    audit,
+                    _session.SourceControl),
             }));
         }
 

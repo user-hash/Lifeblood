@@ -117,6 +117,12 @@ JSON graph        ──┘    Analysis (optional)      └
 
 All port interfaces wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), the [typed-invariant tree under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md). Live counts: [`docs/STATUS.md`](docs/STATUS.md).
 
+Source-control provenance is a separate infrastructure boundary: one neutral
+receipt and Application port are implemented by `Lifeblood.Adapters.Git` and
+captured for analyze once at request admission and consumed by invariant evidence
+plus release ratchets. Language adapters and MCP handlers do not launch Git or
+own competing dirty-state models.
+
 ![Architecture Diagram](docs/architecture-screenshot.png)
 
 [Full architecture](docs/ARCHITECTURE.md) · [Interactive diagram](docs/architecture.html)

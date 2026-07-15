@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Versioning;
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 
@@ -8,8 +8,9 @@ namespace Lifeblood.Server.Mcp;
 
 /// <summary>
 /// Process-local identity and citation helpers for the MCP server.
-/// Kept in the server composition layer because it touches assemblies,
-/// optional git metadata, and repository-relative documentation paths.
+/// Kept in the server composition layer because it touches assemblies and
+/// repository-relative documentation paths. Source-control discovery is
+/// delegated through the Application-owned port.
 /// </summary>
 public static class ServerIdentity
 {
@@ -52,7 +53,9 @@ public static class ServerIdentity
             BuildMetadata: "");
     }
 
-    public static object BuildCapabilities(ServerSessionInfo session)
+    public static object BuildCapabilities(
+        ServerSessionInfo session,
+        ISourceControlSnapshotProvider sourceControl)
     {
         var definitions = ToolRegistry.GetDefinitions();
         var readSide = definitions.Where(d => d.Availability == ToolAvailability.ReadSide).Select(d => d.Name).ToArray();
@@ -79,12 +82,12 @@ public static class ServerIdentity
             .Select(d => d.Name)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
-        var repoRoot = FindRepositoryRoot();
+        var repoRoot = FindServerRepositoryRoot();
 
         return new
         {
             server = BuildServerBlock(),
-            sourceControl = BuildSourceControlBlock(repoRoot),
+            sourceControl = BuildSourceControlBlock(sourceControl.Capture(repoRoot)),
             tools = new
             {
                 totalCount = definitions.Length,
@@ -184,17 +187,18 @@ public static class ServerIdentity
         string? graphPath,
         string? rulesPath,
         string[]? activeProfiles,
-        string? fallbackReason)
+        string? fallbackReason,
+        SourceControlSnapshot sourceControl)
     {
         if (graph == null) return null;
 
-        var repoRoot = FindRepositoryRoot();
+        var serverRepoRoot = FindServerRepositoryRoot();
         return new
         {
             kind = "lifeblood.analyze",
             citationSafe = true,
             server = BuildServerBlock(),
-            sourceControl = BuildSourceControlBlock(repoRoot),
+            sourceControl = BuildSourceControlBlock(sourceControl),
             queryRecipe = new
             {
                 tool = "lifeblood_analyze",
@@ -219,23 +223,38 @@ public static class ServerIdentity
             },
             contract = new
             {
-                statusDocAnchorPath = BuildRepoPath(repoRoot, "docs", "STATUS.md"),
+                statusDocAnchorPath = BuildRepoPath(serverRepoRoot, "docs", "STATUS.md"),
             },
             doNotCite = SessionLocalDoNotCiteFields,
         };
     }
 
+    /// <summary>
+    /// Captures analyze provenance before compiler work begins. The analyzed
+    /// project or graph owns lookup precedence; server-build fallback applies
+    /// only when neither caller path exists.
+    /// </summary>
+    public static SourceControlSnapshot CaptureAnalyzeSourceControl(
+        ISourceControlSnapshotProvider sourceControl,
+        string? projectPath,
+        string? graphPath)
+        => sourceControl.Capture(FirstPopulated(
+            projectPath,
+            graphPath,
+            FindServerRepositoryRoot()));
+
     public static object BuildInvariantEvidenceReceipt(
         string projectRoot,
-        Lifeblood.Application.Ports.Right.Invariants.InvariantAudit audit)
+        Lifeblood.Application.Ports.Right.Invariants.InvariantAudit audit,
+        ISourceControlSnapshotProvider sourceControl)
     {
-        var repoRoot = FindRepositoryRoot();
+        var serverRepoRoot = FindServerRepositoryRoot();
         return new
         {
             kind = "lifeblood.invariant_audit",
             citationSafe = true,
             server = BuildServerBlock(),
-            sourceControl = BuildSourceControlBlock(repoRoot),
+            sourceControl = BuildSourceControlBlock(sourceControl.Capture(projectRoot)),
             workspaceRoot = projectRoot,
             queryRecipe = new
             {
@@ -252,7 +271,7 @@ public static class ServerIdentity
             parseWarnings = audit.ParseWarnings,
             contract = new
             {
-                statusDocAnchorPath = BuildRepoPath(repoRoot, "docs", "STATUS.md"),
+                statusDocAnchorPath = BuildRepoPath(serverRepoRoot, "docs", "STATUS.md"),
             },
             doNotCite = SessionLocalDoNotCiteFields,
         };
@@ -273,69 +292,25 @@ public static class ServerIdentity
         };
     }
 
-    private static object BuildSourceControlBlock(string? repoRoot)
-    {
-        if (string.IsNullOrWhiteSpace(repoRoot))
+    private static object BuildSourceControlBlock(SourceControlSnapshot snapshot)
+        => new
         {
-            return new
-            {
-                repositoryRoot = "",
-                commitHash = "",
-                shortCommitHash = "",
-                dirty = (bool?)null,
-                state = "unknown",
-                source = "repositoryNotFound",
-            };
-        }
-
-        var commit = RunGit(repoRoot, "rev-parse", "HEAD");
-        var status = RunGit(repoRoot, "status", "--porcelain");
-        var hasCommit = commit.Success && !string.IsNullOrWhiteSpace(commit.Output);
-        var hasStatus = status.Success;
-        bool? dirty = hasStatus ? status.Output.Length > 0 : null;
-        return new
-        {
-            repositoryRoot = repoRoot,
-            commitHash = hasCommit ? commit.Output.Trim() : "",
-            shortCommitHash = hasCommit ? commit.Output.Trim()[..Math.Min(12, commit.Output.Trim().Length)] : "",
-            dirty,
-            state = dirty == true ? "dirty" : dirty == false ? "clean" : "unknown",
-            source = hasCommit || hasStatus ? "git" : "unknown",
+            attemptedPath = snapshot.AttemptedPath,
+            repositoryRoot = snapshot.RepositoryRoot,
+            commitHash = snapshot.CommitHash,
+            shortCommitHash = snapshot.ShortCommitHash,
+            dirty = snapshot.Dirty,
+            state = snapshot.State,
+            source = snapshot.Source,
+            latestSemanticVersionTag = snapshot.LatestSemanticVersionTag,
+            dirtyEntryCount = snapshot.DirtyEntryCount,
+            dirtyEntryCountCapped = snapshot.DirtyEntryCountCapped,
+            dirtyEntries = snapshot.DirtyEntries,
+            dirtyEntriesTruncated = snapshot.DirtyEntriesTruncated,
+            failureReason = snapshot.FailureReason,
         };
-    }
 
-    private static (bool Success, string Output) RunGit(string repoRoot, params string[] arguments)
-    {
-        try
-        {
-            var start = new ProcessStartInfo("git")
-            {
-                WorkingDirectory = repoRoot,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            foreach (var arg in arguments) start.ArgumentList.Add(arg);
-
-            using var process = Process.Start(start);
-            if (process == null) return (false, "");
-            if (!process.WaitForExit(1500))
-            {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                return (false, "");
-            }
-
-            var output = process.StandardOutput.ReadToEnd();
-            return (process.ExitCode == 0, output.Trim());
-        }
-        catch
-        {
-            return (false, "");
-        }
-    }
-
-    private static string? FindRepositoryRoot()
+    private static string? FindServerRepositoryRoot()
     {
         foreach (var start in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
         {
@@ -350,6 +325,9 @@ public static class ServerIdentity
 
         return null;
     }
+
+    private static string? FirstPopulated(params string?[] candidates)
+        => candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));
 
     private static string BuildRepoPath(string? repoRoot, params string[] parts)
         => string.IsNullOrWhiteSpace(repoRoot)

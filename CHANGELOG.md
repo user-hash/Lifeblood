@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Source-control evidence follows the workspace being analyzed.**
+  One Application-owned snapshot port and one bounded Git adapter now serve MCP
+  capability, analyze, invariant, and release consumers. Analyze captures once
+  at request admission, before compiler work, preferring `projectPath`, then
+  `graphPath`, before server-build fallback; receipts distinguish
+  absent repositories, unavailable Git, and command failure while reporting the
+  resolved root, commit, dirty-state sample, and latest reachable stable tag.
+  (`INV-SOURCE-CONTROL-001`, `LB-INTAKE-20260629-028`.)
+
 - **File-scoped compilation ownership now fails closed.**
   `lifeblood_diagnose` and `lifeblood_compile_check` consume one C#-adapter
   ownership resolver instead of independent suffix scans. Exact paths outrank
@@ -27,6 +36,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ratchet closes the older report without adding another profile authority.
   (`INV-ANALYZE-FALLBACK-001`, `LB-INTAKE-20260629-017`.)
 
+- **Incremental responses explain the exact accepted change set.** One
+  Application-owned `AcceptedChangeSet` now derives all legacy counters and the
+  MCP receipt. Summary mode reports normalized causes/counts; detail mode returns
+  one bounded union of project-relative paths with per-path flags for reanalysis,
+  mtime touch, content change, descriptor-forced recompilation, and deletion.
+  Complete/returned/omitted counts and `truncated` remain truthful under the
+  1..200 path cap, and full fallback no longer masquerades as source change.
+  (`INV-ANALYZE-ACCEPTED-CHANGE-001`, `LB-INTAKE-20260629-019`.)
+
+### Added
+
+- **Shared MCP workspace base for multi-agent work.**
+
+## [0.7.12] - 2026-06-22
+
+### Changed
+
 - **Incremental analyze uses source content hashes and accepts editor-scoped change sets.**
   `lifeblood_analyze` now reports `mtimeTouchedSourceFiles` separately from
   `contentChangedSourceFiles`, so contentless Unity/IDE metadata touches do not
@@ -36,15 +62,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   using content hashes before replacing graph facts. Descriptor drift checks
   remain independent. (`LB-INTAKE-20260611-003`,
   `LB-INTAKE-20260611-005`.)
-
-- **Incremental responses explain the exact accepted change set.** One
-  Application-owned `AcceptedChangeSet` now derives all legacy counters and the
-  MCP receipt. Summary mode reports normalized causes/counts; detail mode returns
-  one bounded union of project-relative paths with per-path flags for reanalysis,
-  mtime touch, content change, descriptor-forced recompilation, and deletion.
-  Complete/returned/omitted counts and `truncated` remain truthful under the
-  1..200 path cap, and full fallback no longer masquerades as source change.
-  (`INV-ANALYZE-ACCEPTED-CHANGE-001`, `LB-INTAKE-20260629-019`.)
 
 - **Read-only session recovery is explicit.** After a `readOnly:true` analyze,
   a non-read-only incremental request now rejects with
@@ -83,8 +100,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `LB-INTAKE-20260601-004`.)
 
 ### Added
-
-- **Shared MCP workspace base for multi-agent work.**
 
 - **New tool `lifeblood_asmdef_check`.** Reports Unity/old-format
   direct-reference module boundary violations from the loaded graph: for every
@@ -1724,7 +1739,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Documentation**
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.11...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.12...HEAD
+[0.7.12]: https://github.com/user-hash/Lifeblood/compare/v0.7.11...v0.7.12
 [0.7.11]: https://github.com/user-hash/Lifeblood/compare/v0.7.10...v0.7.11
 [0.7.10]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...v0.7.10
 [0.7.9]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...v0.7.9

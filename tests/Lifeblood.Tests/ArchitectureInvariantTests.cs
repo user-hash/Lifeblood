@@ -24,6 +24,7 @@ public class ArchitectureInvariantTests
   "Lifeblood.Application",
   "Lifeblood.Analysis",
   "Lifeblood.Adapters.CSharp",
+  "Lifeblood.Adapters.Git",
   "Lifeblood.Adapters.JsonGraph",
   "Lifeblood.Connectors.ContextPack",
   "Lifeblood.Connectors.Mcp",

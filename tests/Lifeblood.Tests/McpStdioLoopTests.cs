@@ -65,6 +65,28 @@ public class McpStdioLoopTests
     }
 
     [SkippableFact]
+    public async Task McpServer_OverStdio_CapabilitiesCapturesGitWhileClientInputRemainsOpen()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        await using var process = McpProcessTestClient.Start(dll);
+        using var initialize = await process.InitializeAsync();
+        using var response = await process.CallToolAsync(
+            "lifeblood_capabilities",
+            timeout: TimeSpan.FromSeconds(15));
+        using var payload = McpProcessTestClient.ParseToolPayload(response);
+
+        var sourceControl = payload.RootElement
+            .GetProperty("sourceControl");
+        Assert.Equal("git", sourceControl.GetProperty("source").GetString());
+        Assert.Equal(40, sourceControl.GetProperty("commitHash").GetString()!.Length);
+        Assert.False(string.IsNullOrWhiteSpace(
+            sourceControl.GetProperty("repositoryRoot").GetString()));
+    }
+
+    [SkippableFact]
     public async Task McpServer_OverStdio_Stdout_ContainsOnlyJsonRpcFrames_NoBanners()
     {
         var dll = McpProcessTestClient.LocateServerDll();

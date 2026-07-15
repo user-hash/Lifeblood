@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Adapters.Git;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
@@ -52,7 +53,11 @@ internal sealed class McpServerHost : IDisposable
         var telemetryLifetime = telemetry as IDisposable;
         IFileSystem fs = new PhysicalFileSystem();
         var snapshotCatalog = new WorkspaceSnapshotCatalog(ReadSnapshotCatalogOptions());
-        var session = new GraphSession(fs, telemetry, snapshotCatalog);
+        var session = new GraphSession(
+            fs,
+            telemetry,
+            snapshotCatalog,
+            new GitSourceControlSnapshotProvider());
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
         IMcpGraphProvider graphProvider = new LifebloodMcpProvider(blastRadius);
         IUserInputCanonicalizer canonicalizer = new CSharpUserInputCanonicalizer();
