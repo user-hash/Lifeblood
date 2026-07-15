@@ -1175,3 +1175,35 @@ Fix shape:
   per kernel pointer" or "move outside render/audio callback".
 - Keep annotations consumer-authored and versioned so Lifeblood stays generic
   and does not bake Unity-specific rules into Domain/Application.
+
+## LB-INTAKE-20260715-041 - Shared transport maturity metadata contradicts the verified rollout
+
+Type: Bug
+Priority: Medium
+Source: Lifeblood backlog-clearance source audit, 2026-07-15; local `v0.7.13-alpha` branch at `f3d41a2`
+Workspace: Lifeblood self
+Rating for DAWG work: 7/10 value if shipped
+
+What:
+- The shared-base rollout, public setup guide, canonical `.mcp.json.example`,
+  Lifeblood self benchmarks, and DAWG 1/2/4-client receipts all establish
+  shared mode as the recommended same-workspace topology.
+- `ServerIdentity.BuildCapabilities` still emits
+  `featureFlags.sharedSessionTransportMaturity:"experimental"`, so the
+  machine-readable capability contract contradicts the tested/documented
+  maturity contract.
+
+Why it matters:
+- Agents should make configuration choices from capabilities without having to
+  override stale prose or infer maturity from unrelated fields.
+- Leaving the old label in place makes the previous rollout look incomplete
+  even though its functional, lifecycle, memory, cancellation, and package
+  gates passed.
+
+Fix shape:
+- Replace the stale literal with one canonical typed/shared-service maturity
+  value that matches the rollout decision and derive any public projection from
+  it.
+- Add a capability ratchet that compares the machine-readable value with the
+  canonical setup/status posture so future documentation or code changes cannot
+  drift independently.
