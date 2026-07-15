@@ -151,6 +151,28 @@ public sealed class MultiProfileWriteSideScopeTests : IDisposable
         Assert.True(payload.GetProperty("limitations").GetArrayLength() > 0);
     }
 
+    [Fact]
+    public void PlayerFirst_WhenFirstProfileOwnsNoModules_RecoveryHintNamesProfileOrder()
+    {
+        var root = Path.Combine(_tempDir, "editor-only");
+        WriteEditorOnlyWorkspace(root);
+        using var session = new GraphSession(Fs);
+
+        session.Load(
+            root,
+            graphPath: null,
+            rulesPath: null,
+            defineProfiles: new[] { "Player", "Editor" },
+            readOnly: false);
+
+        Assert.False(session.HasCompilationState);
+        var hint = session.CompilationStateRecoveryHint ?? "";
+        Assert.Contains("retained profile 'Player'", hint);
+        Assert.Contains("Editor", hint);
+        Assert.Contains("defineProfiles", hint);
+        Assert.DoesNotContain("readOnly:true", hint);
+    }
+
     private void LoadMultiProfile(ToolHandler handler, string[] profiles)
     {
         var args = MakeArgs(new { projectPath = _tempDir, defineProfiles = profiles, readOnly = false });
@@ -179,6 +201,29 @@ public sealed class MultiProfileWriteSideScopeTests : IDisposable
                 <TargetFramework>net8.0</TargetFramework>
                 <AssemblyName>Mpws</AssemblyName>
               </PropertyGroup>
+            </Project>
+            """);
+    }
+
+    private static void WriteEditorOnlyWorkspace(string root)
+    {
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "Library"));
+        File.WriteAllText(Path.Combine(root, "EditorOnly.cs"), """
+            namespace Mpws.EditorOnly {
+              public sealed class EditorOnlyType { public void Run() { } }
+            }
+            """);
+        File.WriteAllText(Path.Combine(root, "EditorOnly.csproj"), """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <PropertyGroup>
+                <AssemblyName>Mpws.EditorOnly</AssemblyName>
+                <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
+                <UnityProjectType>Editor:5</UnityProjectType>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="EditorOnly.cs" />
+              </ItemGroup>
             </Project>
             """);
     }
