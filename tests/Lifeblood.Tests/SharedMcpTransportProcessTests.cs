@@ -51,6 +51,12 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         using var secondInitialize = await secondProxy.InitializeAsync();
         Assert.NotEqual(daemon.ProcessId, firstProxy.ProcessId);
         Assert.NotEqual(firstProxy.ProcessId, secondProxy.ProcessId);
+        var connectedStatus = await ReadSharedStatusAsync(firstProxy);
+        Assert.True(connectedStatus.Active);
+        Assert.Equal("shared-daemon", connectedStatus.Mode);
+        Assert.Equal(2, connectedStatus.ProtocolVersion);
+        Assert.Equal(2, connectedStatus.ClientCount);
+        Assert.StartsWith("daemon_", connectedStatus.DaemonInstanceId, StringComparison.Ordinal);
 
         await AnalyzeGraphAsync(firstProxy, Path.GetFileName(_firstGraphPath));
         var observedBySecond = await ReadSessionAsync(secondProxy);
@@ -74,6 +80,9 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         var afterDisconnect = await ReadSessionAsync(secondProxy);
         Assert.Equal(2, afterDisconnect.AnalysisGeneration);
         Assert.Equal(observedByFirst.SnapshotId, afterDisconnect.SnapshotId);
+        var afterDisconnectStatus = await ReadSharedStatusAsync(secondProxy);
+        Assert.Equal(1, afterDisconnectStatus.ClientCount);
+        Assert.Equal(connectedStatus.DaemonInstanceId, afterDisconnectStatus.DaemonInstanceId);
         Assert.False(daemon.HasExited);
     }
 
@@ -199,7 +208,7 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
             workspaceRoot = _tempDirectory,
         });
         Assert.False(response.RootElement.GetProperty("accepted").GetBoolean());
-        Assert.Equal(1, response.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(2, response.RootElement.GetProperty("protocolVersion").GetInt32());
         Assert.Contains(
             "protocol mismatch",
             response.RootElement.GetProperty("error").GetString(),
@@ -219,7 +228,7 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         using var response = await SendRawHandshakeAsync(pipeName, new
         {
             kind = "lifeblood.shared.handshake",
-            protocolVersion = 1,
+            protocolVersion = 2,
             serverVersion = "different-version",
             buildIdentity = "different-build",
             workspaceRoot = _tempDirectory,
@@ -230,6 +239,122 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
             response.RootElement.GetProperty("error").GetString(),
             StringComparison.OrdinalIgnoreCase);
         Assert.False(daemon.HasExited);
+    }
+
+    [SkippableFact]
+    public async Task LastPersistentProxyDisconnect_ZeroIdlePolicyDrainsDaemon()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        var pipeName = UniquePipeName();
+        var environment = new Dictionary<string, string?>
+        {
+            ["LIFEBLOOD_SHARED_IDLE_SECONDS"] = "0",
+        };
+        await using var daemon = await StartDaemonAsync(
+            dll,
+            pipeName,
+            _tempDirectory,
+            environment);
+        var proxy = StartProxy(dll, pipeName, _tempDirectory);
+        using (var initialize = await proxy.InitializeAsync())
+        {
+            var status = await ReadSharedStatusAsync(proxy);
+            Assert.Equal(1, status.ClientCount);
+        }
+
+        await proxy.DisposeAsync();
+        await daemon.WaitForExitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, daemon.ExitCode);
+    }
+
+    [SkippableFact]
+    public async Task SameAnalysis_TwoPersistentClientsCoalesceAndPublishOnce()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        WriteCSharpWorkspace(fileCount: 250);
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var firstProxy = StartProxy(dll, pipeName, _tempDirectory);
+        await using var secondProxy = StartProxy(dll, pipeName, _tempDirectory);
+        using var firstInitialize = await firstProxy.InitializeAsync();
+        using var secondInitialize = await secondProxy.InitializeAsync();
+
+        var firstCall = firstProxy.CallToolAsync(
+            "lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = false },
+            TimeSpan.FromSeconds(90));
+        var secondCall = secondProxy.CallToolAsync(
+            "lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = false },
+            TimeSpan.FromSeconds(90));
+        var responses = await Task.WhenAll(firstCall, secondCall);
+        using var firstResponse = responses[0];
+        using var secondResponse = responses[1];
+        using var firstPayload = McpProcessTestClient.ParseToolPayload(firstResponse);
+        using var secondPayload = McpProcessTestClient.ParseToolPayload(secondResponse);
+
+        Assert.Equal(
+            firstPayload.RootElement.GetProperty("analysisRequestId").GetString(),
+            secondPayload.RootElement.GetProperty("analysisRequestId").GetString());
+        Assert.NotEqual(
+            firstPayload.RootElement.GetProperty("coalesced").GetBoolean(),
+            secondPayload.RootElement.GetProperty("coalesced").GetBoolean());
+        Assert.Equal(2, firstPayload.RootElement.GetProperty("waiterCount").GetInt32());
+        Assert.Equal(2, secondPayload.RootElement.GetProperty("waiterCount").GetInt32());
+
+        var session = await ReadSessionAsync(firstProxy);
+        Assert.Equal(1, session.AnalysisGeneration);
+        Assert.False(daemon.HasExited);
+    }
+
+    [SkippableFact]
+    public async Task MaintenanceDrain_RefusesUnrelatedLeaseThenStopsExclusiveOwner()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var firstProxy = StartProxy(dll, pipeName, _tempDirectory);
+        await using var secondProxy = StartProxy(dll, pipeName, _tempDirectory);
+        using var firstInitialize = await firstProxy.InitializeAsync();
+        using var secondInitialize = await secondProxy.InitializeAsync();
+
+        using var rejected = await firstProxy.SendRequestAsync(
+            JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                id = 7001,
+                method = "lifeblood/shared/drain",
+                @params = new { coordinatedDrain = false },
+            }),
+            TimeSpan.FromSeconds(10));
+        var rejectedResult = rejected.RootElement.GetProperty("result");
+        Assert.False(rejectedResult.GetProperty("accepted").GetBoolean());
+        Assert.Equal(1, rejectedResult.GetProperty("unrelatedClientCount").GetInt32());
+        Assert.False(daemon.HasExited);
+
+        await secondProxy.DisposeAsync();
+        using var accepted = await firstProxy.SendRequestAsync(
+            JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                id = 7002,
+                method = "lifeblood/shared/drain",
+                @params = new { coordinatedDrain = false },
+            }),
+            TimeSpan.FromSeconds(10));
+        Assert.True(accepted.RootElement.GetProperty("result").GetProperty("accepted").GetBoolean());
+
+        await daemon.WaitForExitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, daemon.ExitCode);
     }
 
     [SkippableFact]
@@ -378,18 +503,38 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         return path;
     }
 
+    private void WriteCSharpWorkspace(int fileCount)
+    {
+        File.WriteAllText(
+            Path.Combine(_tempDirectory, "Coalesce.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        for (var index = 0; index < fileCount; index++)
+        {
+            var next = (index + 1) % fileCount;
+            File.WriteAllText(
+                Path.Combine(_tempDirectory, $"Type{index:D3}.cs"),
+                $"namespace Coalesce; public sealed class Type{index:D3} {{ private Type{next:D3}? _next; public Type{next:D3}? Next() => _next; }}");
+        }
+    }
+
     private static string UniquePipeName()
         => $"lifeblood-process-test-{Guid.NewGuid():N}";
 
     private static async Task<McpProcessTestClient> StartDaemonAsync(
         string dll,
         string pipeName,
-        string? workspaceKey = null)
+        string? workspaceKey = null,
+        IReadOnlyDictionary<string, string?>? environment = null)
     {
         var daemon = workspaceKey == null
-            ? McpProcessTestClient.Start(dll, "--shared-daemon", pipeName)
+            ? McpProcessTestClient.Start(
+                dll,
+                environment,
+                "--shared-daemon",
+                pipeName)
             : McpProcessTestClient.Start(
                 dll,
+                environment,
                 "--shared-daemon",
                 pipeName,
                 "--shared-key",
@@ -476,8 +621,29 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
             session.GetProperty("snapshotId").GetString() ?? "");
     }
 
+    private static async Task<SharedStatus> ReadSharedStatusAsync(
+        McpProcessTestClient proxy)
+    {
+        using var response = await proxy.CallToolAsync("lifeblood_capabilities");
+        using var payload = McpProcessTestClient.ParseToolPayload(response);
+        var status = payload.RootElement.GetProperty("sharedService");
+        return new SharedStatus(
+            status.GetProperty("active").GetBoolean(),
+            status.GetProperty("mode").GetString() ?? "",
+            status.GetProperty("protocolVersion").GetInt32(),
+            status.GetProperty("daemonInstanceId").GetString() ?? "",
+            status.GetProperty("clientCount").GetInt32());
+    }
+
     private readonly record struct SessionState(
         bool HasGraphLoaded,
         long AnalysisGeneration,
         string SnapshotId);
+
+    private readonly record struct SharedStatus(
+        bool Active,
+        string Mode,
+        int ProtocolVersion,
+        string DaemonInstanceId,
+        int ClientCount);
 }

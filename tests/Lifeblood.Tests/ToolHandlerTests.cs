@@ -177,6 +177,13 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal(
             "experimental",
             doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportMaturity").GetString());
+        Assert.False(doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportActive").GetBoolean());
+        Assert.Equal("stdio", doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportMode").GetString());
+        var sharedService = doc.RootElement.GetProperty("sharedService");
+        Assert.True(sharedService.GetProperty("supported").GetBoolean());
+        Assert.False(sharedService.GetProperty("active").GetBoolean());
+        Assert.Equal("stdio", sharedService.GetProperty("mode").GetString());
+        Assert.Equal("not-applicable", sharedService.GetProperty("lifecycleState").GetString());
         // INV-TELEMETRY-002: the advertised surface is exactly the
         // emitted-event SSoT, so an emitted-but-unadvertised event fails here.
         Assert.Equal(McpTelemetryEvents.All, telemetryEvents);

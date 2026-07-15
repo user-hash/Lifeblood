@@ -102,6 +102,8 @@ public static class ServerIdentity
                 writeSideProfileScope = true,
                 evidenceReceipts = true,
                 sharedSessionTransport = true,
+                sharedSessionTransportActive = session.SharedService.Active,
+                sharedSessionTransportMode = session.SharedService.Mode,
                 sharedSessionTransportMaturity = "experimental",
                 strictJsonDuplicateRejection = true,
                 operationalTelemetry = true,
@@ -126,6 +128,27 @@ public static class ServerIdentity
                 retainedProfileName = session.RetainedProfileName,
                 retainedProfileNames = session.RetainedProfileNames,
                 compilationStateRecoveryHint = session.CompilationStateRecoveryHint,
+            },
+            sharedService = new
+            {
+                supported = true,
+                active = session.SharedService.Active,
+                mode = session.SharedService.Mode,
+                protocolVersion = session.SharedService.ProtocolVersion,
+                daemonInstanceId = session.SharedService.DaemonInstanceId,
+                buildIdentity = session.SharedService.BuildIdentity,
+                processId = session.SharedService.ProcessId,
+                processStartedAtUtc = session.SharedService.ProcessStartedAtUtc,
+                workspaceRoot = session.SharedService.WorkspaceRoot,
+                lifecycleState = session.SharedService.LifecycleState,
+                clientCount = session.SharedService.ClientCount,
+                activeRequestCount = session.SharedService.ActiveRequestCount,
+                inFlightAnalysisCount = session.SharedService.InFlightAnalysisCount,
+                lastActivityUtc = session.SharedService.LastActivityUtc,
+                idleTimeoutSeconds = session.SharedService.IdleTimeoutSeconds,
+                idleDeadlineUtc = session.SharedService.IdleDeadlineUtc,
+                workingSetBytes = session.SharedService.WorkingSetBytes,
+                privateMemoryBytes = session.SharedService.PrivateMemoryBytes,
             },
         };
     }
@@ -334,4 +357,24 @@ public sealed record ServerSessionInfo(
     string ProjectRoot,
     string? RetainedProfileName,
     string[] RetainedProfileNames,
-    string? CompilationStateRecoveryHint);
+    string? CompilationStateRecoveryHint,
+    ServerSharedServiceInfo SharedService);
+
+public sealed record ServerSharedServiceInfo(
+    bool Active,
+    string Mode,
+    int? ProtocolVersion,
+    string DaemonInstanceId,
+    string BuildIdentity,
+    int ProcessId,
+    DateTimeOffset ProcessStartedAtUtc,
+    string WorkspaceRoot,
+    string LifecycleState,
+    int ClientCount,
+    int ActiveRequestCount,
+    int InFlightAnalysisCount,
+    DateTimeOffset? LastActivityUtc,
+    double? IdleTimeoutSeconds,
+    DateTimeOffset? IdleDeadlineUtc,
+    long WorkingSetBytes,
+    long PrivateMemoryBytes);

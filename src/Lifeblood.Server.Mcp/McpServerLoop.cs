@@ -9,10 +9,11 @@ namespace Lifeblood.Server.Mcp;
 /// resilience contract can be ratcheted.
 ///
 /// Resilience contract (INV-MCP-TRANSPORT-RESILIENCE-001): the loop is
-/// single-flight by construction — it reads one line, dispatches it
-/// synchronously, then writes one response before reading the next, so an MCP
-/// client's parallel tool batch is serialized server-side and no two
-/// compilation requests ever run concurrently. NO single request — a dispatch
+/// single-flight per connection by construction — it reads one line, dispatches
+/// it synchronously, then writes one response before reading the next, so one
+/// MCP client's frames stay ordered. A shared daemon may run separate client
+/// connections concurrently; host scheduling and analysis coalescing own that
+/// cross-client concurrency. NO single request — a dispatch
 /// fault, a response that fails to serialize, or a write to a broken output
 /// pipe — may terminate the loop and close the transport for every other
 /// pending and future call. Faults are logged and turned into id-correlated
@@ -36,7 +37,11 @@ public static class McpServerLoop
             string? line;
             try
             {
-                line = await input.ReadLineAsync();
+                line = await input.ReadLineAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -103,7 +108,7 @@ public static class McpServerLoop
                 method,
                 exceptionType = ex.GetType().FullName ?? ex.GetType().Name,
                 recoverable = true,
-                recovery = "The server is single-flight (serial stdio loop); a fault on one call does not " +
+                recovery = "This connection is single-flight (serial request loop); a fault on one call does not " +
                            "affect the transport. Retry this call; if it persists, re-run lifeblood_analyze, " +
                            "then reconnect the MCP server.",
             },
