@@ -1,6 +1,7 @@
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Connectors.Mcp;
 
@@ -86,6 +87,9 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 Limitations = unregisteredLimits,
                 AnalysisGeneration = context.AnalysisGeneration,
                 SnapshotId = context.SnapshotId,
+                AnalysisIdentity = context.AnalysisIdentity == null
+                    ? null
+                    : WorkspaceAnalysisDescriptor.From(context.AnalysisIdentity),
             }, context.AdapterCapability);
         }
 
@@ -99,6 +103,9 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged),
             AnalysisGeneration = context.AnalysisGeneration,
             SnapshotId = context.SnapshotId,
+            AnalysisIdentity = context.AnalysisIdentity == null
+                ? null
+                : WorkspaceAnalysisDescriptor.From(context.AnalysisIdentity),
         }, context.AdapterCapability);
     }
 
@@ -134,6 +141,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             Limitations = limitations.ToArray(),
             AnalysisGeneration = envelope.AnalysisGeneration,
             SnapshotId = envelope.SnapshotId,
+            AnalysisIdentity = envelope.AnalysisIdentity,
         };
     }
 

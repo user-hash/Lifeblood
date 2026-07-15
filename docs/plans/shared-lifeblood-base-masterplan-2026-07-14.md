@@ -10,7 +10,9 @@ leases with deferred disposal are implemented; Wave 4 typed host identity,
 canonical workspace admission, persistent client leases, lifecycle drain, and
 live shared status are implemented; stable snapshot identity plus canonical
 analysis/spec/source/rule identity and exact in-flight analysis coalescing are
-implemented; snapshot-pinned reads, batches, and bounded history are next
+implemented; Wave 5 snapshot preconditions, canonical identity envelopes, and
+behavior-derived serial read batches are implemented; bounded graph-only
+history is next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -21,8 +23,8 @@ identity/workspace admission, globally unique committed `SnapshotId`, and one
 `WorkspaceAnalysisIdentity` authority for `AnalysisSpec`, rule/source/
 descriptor fingerprints, `BaseKey`, and `AnalysisKey`, then persistent shared
 protocol v2 connections, client leases, request activity, idle/maintenance
-drain, and truthful shared status. Resume in this order: (1) add snapshot
-preconditions/batches and the bounded graph-history catalog; (2) capture the
+drain, truthful shared status, snapshot preconditions, and pinned read batches.
+Resume in this order: (1) add the bounded graph-history catalog; (2) capture the
 frozen DAWG receipt and
 complete Lifeblood/DAWG rollout, packaging, evidence, and docs gates once the
 DAWG tree is quiescent.
@@ -177,7 +179,7 @@ property.
 | P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
 | Resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` is part of immutable `WorkspaceSnapshot` publication and flows through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Complete; future workspace-sensitive providers must consume the same committed context. |
 | Resolved in Wave 3 coalescing atom | Identical analyses serialized but did not coalesce | `AnalysisRequestCoordinator` joins complete `AnalysisKey` + execution-policy equality, while publication rejects preflight/source drift; two persistent process clients now prove one analyzer request, one generation, and two waiters. | Registry cancellation/failure semantics and process coalescing are pinned; MCP cancellation-frame mapping remains a rollout task. |
-| P1 | Multi-call reads can mix generations | Individual envelopes report generation, but callers cannot require one or lease it across a batch. | `expectedSnapshot`/generation precondition and a read-only pinned batch surface. |
+| Resolved in Wave 5 | Multi-call reads could mix generations | Individual envelopes reported generation, but callers could not require one or lease it across a batch. | Behavior-derived snapshot preconditions now compare after lease acquisition, and `lifeblood_batch` prevalidates a bounded read-only plan before executing it under one pinned lease. |
 | Resolved before Wave 2 | `tools/list` read session state outside the session gate | `McpDispatcher.HandleToolsList` read `HasCompilationState` directly while analyze could replace the session. | `McpDispatcher` no longer owns `GraphSession`; `ToolHandler.GetTools` evaluates registry availability under the shared session gate. Snapshot leases replace this gate read in Wave 2 without changing the dispatcher boundary. |
 | Resolved in Wave 1 | Tool labels conflated state and effects | `WriteSide` meant retained compilation required, even for observation or returned edits; only analyze and compile-check needed exclusive access. | Every tool now declares one immutable `ToolBehavior`: hierarchical `sessionRequirement` (including retained compilation), independent `effect`, and independent `sessionAccess`. Legacy read/write fields are derived compatibility aliases. |
 | P1 | Incremental acceptance is not explainable enough | DAWG reported 310 changed source files without an itemized/fingerprinted receipt in the response. | Bounded changed-set provenance, descriptor/scope/source fingerprint, and summarize/detail controls. |
@@ -252,7 +254,8 @@ stdio proxy ---- client lease + identity handshake ---- workspace daemon
    Availability, `tools/list`, capabilities, gate routing, and error wording
    derive from it.
 2. `AnalysisSpec` canonicalization is shared by the request binder, fingerprint
-   builder, coalescing key, snapshot id, and status surface.
+   builder, coalescing key, committed identity descriptor, and status surface.
+   Opaque `SnapshotId` remains deliberately independent of content equality.
 3. `WorkspaceSnapshot` is the one committed state object. Graph, analysis,
    capabilities, compilation ports, profiles, paths, fingerprint, generation,
    timestamps, and disposal ownership cannot be published independently.
@@ -523,6 +526,19 @@ Purpose: make multi-tool evidence joins consistent under parallel agents.
 
 Exit gate: a forced concurrent refresh cannot produce a mixed-generation batch
 or a falsely successful pinned read.
+
+Implementation status: complete under `INV-SNAPSHOT-PRECONDITION-001`,
+`INV-MCP-READ-BATCH-001`, and `INV-ANALYSIS-IDENTITY-PROJECTION-001`.
+`expectedSnapshotId` and `expectedAnalysisGeneration` are common optional
+arguments derived solely from `Observe + SharedRead`; the gate compares them
+against the already-leased publication and returns a structured retryable
+mismatch without invoking the tool. `lifeblood_batch` fully validates a plan
+of at most 32 registered snapshot reads before call zero, rejects nested or
+exclusive/effectful calls, and serially reuses normal dispatch under one outer
+lease. A forced-refresh regression publishes a newer live generation between
+nested reads while every outer/nested envelope remains pinned to the original
+snapshot. `WorkspaceAnalysisDescriptor` is the one bounded projection used by
+analyze, envelopes, batches, and mismatch diagnostics.
 
 ### Wave 6 - Bounded Snapshot Catalog
 

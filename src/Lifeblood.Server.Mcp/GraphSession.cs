@@ -1009,23 +1009,9 @@ public sealed class GraphSession : IDisposable
             mtimeTouchedSourceFiles = mtimeTouchedFileCount,
             contentChangedSourceFiles = contentChangedFileCount,
             skipped = skippedField,
-            analysisIdentity = identity == null ? null : new
-            {
-                workspaceKey = identity.Workspace.Value,
-                baseKey = identity.BaseKey.Value,
-                analysisKey = identity.AnalysisKey.Value,
-                specFingerprint = identity.Spec.Fingerprint.Value,
-                sourceFingerprint = identity.Source.Fingerprint.Value,
-                sourceContentFingerprint = identity.Source.SourceContent.Value,
-                descriptorFingerprint = identity.Source.Descriptors.Value,
-                sourceFileCount = identity.Source.SourceFileCount,
-                descriptorFileCount = identity.Source.DescriptorFileCount,
-                ruleFingerprint = identity.Spec.RuleSet.Fingerprint.Value,
-                retentionMode = identity.Spec.RetentionMode.ToString(),
-                descriptorPolicy = identity.Spec.DescriptorPolicy.ToString(),
-                defineProfiles = identity.Spec.DefineProfiles,
-                excludePathGlobs = identity.Spec.ExcludePathGlobs,
-            },
+            analysisIdentity = identity == null
+                ? null
+                : WorkspaceAnalysisDescriptor.From(identity),
             evidenceReceipt = ServerIdentity.BuildAnalyzeEvidenceReceipt(
                 mode,
                 requestedMode,

@@ -1,3 +1,5 @@
+using Lifeblood.Domain.Workspaces;
+
 namespace Lifeblood.Domain.Results;
 
 /// <summary>
@@ -84,6 +86,13 @@ public sealed class ResponseEnvelope
     /// no workspace is loaded. INV-SNAPSHOT-IDENTITY-001.
     /// </summary>
     public string SnapshotId { get; init; } = "";
+
+    /// <summary>
+    /// Canonical workspace/spec/source identity of the publication used by
+    /// this response. Null before a workspace is loaded. This is the same
+    /// bounded descriptor emitted by analyze and snapshot inventory.
+    /// </summary>
+    public WorkspaceAnalysisDescriptor? AnalysisIdentity { get; init; }
 }
 
 /// <summary>

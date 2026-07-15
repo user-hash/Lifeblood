@@ -191,7 +191,12 @@ public sealed class ToolDefinition
     Behavior.SessionRequirement == ToolSessionRequirement.RetainedCompilation
       ? ToolAvailability.WriteSide
       : ToolAvailability.ReadSide;
-  public ToolInputContract InputContract => ToolInputContractCatalog.Get(Name);
+  public bool SupportsSnapshotRead =>
+    Behavior.Effect == ToolEffect.Observe
+    && Behavior.SessionAccess == ToolSessionAccess.SharedRead;
+
+  public ToolInputContract InputContract =>
+    ToolInputContractCatalog.Get(Name, SupportsSnapshotRead);
   public object InputSchema => InputContract.ToInputSchema();
 
   /// <summary>

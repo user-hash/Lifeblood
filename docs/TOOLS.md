@@ -4,7 +4,7 @@ Lifeblood exposes the **MCP tool surface** — read side + write side — in one
 
 Every read-side tool that takes a `symbolId` routes through `ISymbolResolver` before any graph or workspace lookup. Resolution order: exact canonical match, truncated method form (single-overload lenient), kind correction (`method:` prefix on a property/field/event name on the same type, `INV-RESOLVER-006`), bare short name, extracted short name from a kind-prefixed or qualified input (`INV-RESOLVER-005`). Truncated ids, bare short names, qualified-but-wrong-namespace ids, and kind-mismatched ids all resolve correctly across the whole read surface.
 
-Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOPE-001`) with `truthTier` (Semantic / Derived / Heuristic / Inferred), `confidence` (Proven / Advisory / Speculative), `evidenceSource` (Semantic / Inferred / Heuristic), `stalenessSeconds`, `filesChangedSinceAnalyze`, and per-tool `limitations[]`. Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into the decorator at startup, so registry and decorator cannot drift.
+Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOPE-001`) with `truthTier` (Semantic / Derived / Heuristic / Inferred), `confidence` (Proven / Advisory / Speculative), `evidenceSource` (Semantic / Inferred / Heuristic), `stalenessSeconds`, `filesChangedSinceAnalyze`, per-tool `limitations[]`, and the exact `snapshotId`, `analysisGeneration`, and bounded `analysisIdentity` used by the response. Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into the decorator at startup, so registry and decorator cannot drift.
 
 ## Write-side (compiler-as-a-service)
 
@@ -49,6 +49,7 @@ delegate methods.
 | Tool | What it does |
 |------|-------------|
 | **Capabilities** | Report the live MCP server's version, version source, optional git commit / dirty state when running from a repo checkout, tool count with read/write split, feature flags, operational telemetry event names, schema snapshot path, STATUS.md anchor path, and current session state. Use at session start to detect local-server / local-doc drift before relying on stale prose. |
+| **Batch** | Execute 1–32 registered observation/shared-read calls serially under one immutable snapshot lease. The whole plan is validated before call zero: unknown tools, nested batches, and exclusive/effectful tools are rejected without partial execution. Every nested call still uses its ordinary argument, prerequisite, envelope, and telemetry path; stable input order is preserved. Use this for multi-tool evidence that must not mix generations while another agent refreshes. |
 | **Analyze** | Load a project into a verified semantic graph. Symbols, edges, modules, violations. Pass `incremental: true` after the first analysis for fast re-analysis. Source mtimes are a prefilter; source content hashes decide whether touched files re-extract, so mtime-only touches return `mode:"incremental-noop"` while `mtimeTouchedSourceFiles` and `contentChangedSourceFiles` explain the difference. If an editor or watcher knows the exact changed set, pass `authoritativeChangedFiles:["Assets/Foo.cs"]` to narrow source scanning; descriptor drift and analysis-scope drift are still checked independently. For Unity cross-define analysis, `defineProfiles:["Editor","Player","Standalone"]` covers editor identity, generic player `!UNITY_EDITOR`, and platform-neutral desktop `UNITY_STANDALONE && !UNITY_EDITOR` callsites. Pass `excludePaths:["Packages/*","*/Samples*/*","*/Examples*/*"]` to exclude vendored/sample source before Roslyn compilation. **Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`)**: by default `incremental: true` REJECTS when the adapter detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited, analysis-scope excludePath set changed, or retained compilation state unavailable after `readOnly:true`). Pass `allowFullFallback: true` to opt into silent widening. Wire shape: `mode` reports what the adapter DID (`full` / `incremental` / `incremental-noop` / `rejected`), `requestedMode` separately reports what the caller ASKED, `fallbackReason` (`noPriorAnalysis` / `moduleSetChanged` / `moduleDescriptorChanged` / `analysisScopeChanged` / `compilationStateUnavailable`) + `fallbackDetail` populate alongside whenever the cheap path could not be honored. Rejection responses additionally carry `canRetryFull: true` and a `suggestedRetry: { incremental: true, allowFullFallback: true }` block - the next move is self-documenting, no out-of-band knowledge required. Rejection is a NORMAL structured result, not a transport / tool error. Every response carries a `usage` field with wall time, CPU time, peak memory, and GC counters. Opt-in operational telemetry records `lifeblood.analyze.result` and `lifeblood.analyze.fallback` events for the same shape. |
 | **Context** | AI context pack with summary, high-value files, boundaries, invariants, hotspots, reading order, and a module dependency matrix. **Smart-dynamic shaping (`LB-FR-022`)**: every list-section has a sensible default cap (25 files / 50 boundaries / 20 hotspots / 50 reading-order / 100 matrix entries) so the response fits inside conservative tool-result budgets even on multi-module Unity workspaces. Override per-section caps with `maxFiles` / `maxBoundaries` / `maxHotspots` / `maxReadingOrder` / `maxMatrixEntries` (`-1` unlimited; `0` drops the section). Pass `summarize:true` for the smallest viable shape (only summary + invariants + violations). Pass `sections:["boundaries"]` to allow-list specific sections. Every clipped section is reported in the response's `truncated` map with its full pre-clip count. |
 | **Lookup** | Symbol details: kind, file, line, visibility, properties. For partial types, returns the deterministic primary `filePath` and the full sorted `filePaths[]` of every partial declaration. |
@@ -145,6 +146,37 @@ Rejection is a NORMAL structured result, not a transport / tool error.
 The `suggestedRetry` block is exactly the args needed to retry — pass it
 back to `lifeblood_analyze` to re-attempt with widened scope.
 
+## Snapshot-pinned reads and batches
+
+Every registered `Observe + SharedRead` tool accepts the common optional
+preconditions `expectedSnapshotId` and `expectedAnalysisGeneration`. The server
+first acquires the read lease, then compares the expectation with that exact
+publication. A mismatch returns `failure:"snapshot-precondition"` with the
+expected and actual id/generation, the actual canonical analysis identity, and
+a retry suggestion; the requested tool does not execute. Omit both fields to
+keep the normal latest-snapshot behavior.
+
+For several related reads, `lifeblood_batch` pins once and runs the plan in
+stable input order:
+
+```json
+{
+  "expectedSnapshotId": "snap_0123456789abcdef0123456789abcdef",
+  "calls": [
+    { "tool": "lifeblood_lookup", "arguments": { "symbolId": "type:Acme.Service" } },
+    { "tool": "lifeblood_dependencies", "arguments": { "symbolId": "type:Acme.Service" } },
+    { "tool": "lifeblood_blast_radius", "arguments": { "symbolId": "type:Acme.Service", "summarize": true } }
+  ]
+}
+```
+
+The plan is capped at 32 calls and is fully rejected before execution if any
+entry is unknown, nested, exclusive, or effectful. `lifeblood_analyze`,
+compilation-backed tools, rename/format, and another `lifeblood_batch` are not
+eligible. A concurrent refresh may publish a newer latest snapshot, but all
+accepted subcalls and the outer batch envelope remain on the leased snapshot
+(`INV-SNAPSHOT-PRECONDITION-001`, `INV-MCP-READ-BATCH-001`).
+
 ## Workspace auto-refresh for compile-check
 
 `lifeblood_compile_check` auto-refreshes the workspace when any tracked file has changed on disk since the last analyze, so you can edit source between an analysis and a compile-check without stale results. Opt out with `staleRefresh: false` to check against the pinned state. The response carries `autoRefreshed: true` + `changedFileCount: N` when a refresh actually ran. Asmdef edits also trigger a full re-analyze on the next round (`INV-UNITY-002`).
@@ -178,7 +210,14 @@ Every read-side tool response ships a top-level `envelope` field (`INV-ENVELOPE-
     "evidenceSource": "Semantic",
     "stalenessSeconds": 12,
     "filesChangedSinceAnalyze": 0,
-    "limitations": []
+    "limitations": [],
+    "analysisGeneration": 7,
+    "snapshotId": "snap_0123456789abcdef0123456789abcdef",
+    "analysisIdentity": {
+      "workspaceKey": "workspace_...",
+      "baseKey": "base_...",
+      "analysisKey": "analysis_..."
+    }
   },
   "...": "...the rest of the tool's normal payload"
 }
@@ -189,5 +228,7 @@ Every read-side tool response ships a top-level `envelope` field (`INV-ENVELOPE-
 - `stalenessSeconds`: wall-clock between the loaded graph's analyze time and now.
 - `filesChangedSinceAnalyze`: count of tracked source files with mtime newer than analyze (capped per call at 256 files; short-circuits as soon as drift is detected).
 - `limitations[]`: per-tool documented FP/FN classes (e.g. `lifeblood_dead_code` lists Unity reflection dispatch and runtime entry points).
+- `snapshotId` / `analysisGeneration`: exact publication identity and the human-friendly within-daemon generation used by this response.
+- `analysisIdentity`: bounded canonical workspace/spec/source/rule identity; use its `analysisKey` for equality/provenance and `snapshotId` for one exact publication.
 
 Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into `LifebloodResponseDecorator` at composition time. Adding a new read-side tool without a classification fails the registry ratchet test.

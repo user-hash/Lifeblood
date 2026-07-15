@@ -34,7 +34,9 @@ public class ToolArgumentContractTests
     {
         foreach (var definition in ToolRegistry.GetDefinitions())
         {
-            Assert.Same(ToolInputContractCatalog.Get(definition.Name), definition.InputContract);
+            Assert.Same(
+                ToolInputContractCatalog.Get(definition.Name, definition.SupportsSnapshotRead),
+                definition.InputContract);
         }
     }
 
@@ -51,6 +53,19 @@ public class ToolArgumentContractTests
             .ToArray();
 
         Assert.Equal(definitionNames, contractNames);
+    }
+
+    [Fact]
+    public void SnapshotReadArguments_DeriveOnlyFromObserveSharedReadBehavior()
+    {
+        foreach (var definition in ToolRegistry.GetDefinitions())
+        {
+            var hasSnapshotId = definition.InputContract.Arguments.ContainsKey("expectedSnapshotId");
+            var hasGeneration = definition.InputContract.Arguments.ContainsKey("expectedAnalysisGeneration");
+
+            Assert.Equal(definition.SupportsSnapshotRead, hasSnapshotId);
+            Assert.Equal(definition.SupportsSnapshotRead, hasGeneration);
+        }
     }
 
     [Fact]

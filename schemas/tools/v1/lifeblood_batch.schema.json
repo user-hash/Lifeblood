@@ -1,12 +1,15 @@
 {
   "type": "object",
   "required": [
-    "symbolId"
+    "calls"
   ],
   "properties": {
-    "symbolId": {
-      "type": "string",
-      "description": "Canonical id of a type (e.g. \u0027type:My.Service\u0027)."
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Ordered read-only query plan. Each item is `{ tool: string, arguments?: object }`. The entire plan holds one snapshot lease, executes serially, rejects non-observation/exclusive/nested-batch tools before any call runs, and is hard-capped at 32 calls."
     },
     "expectedSnapshotId": {
       "type": "string",

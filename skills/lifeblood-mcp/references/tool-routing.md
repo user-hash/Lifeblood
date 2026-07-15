@@ -7,6 +7,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Need | Tool | Notes |
 |---|---|---|
 | Inspect live server/tool surface | `lifeblood_capabilities` | Call first when available; catches local-doc drift and reports session state. |
+| Join several reads on one publication | `lifeblood_batch` | Pass ordered `{tool, arguments}` calls plus optional `expectedSnapshotId` / `expectedAnalysisGeneration`. Only `Observe` + `SharedRead` tools are admitted; execution is serial under one snapshot lease. |
 | Load a project | `lifeblood_analyze` | Use `projectPath` for C# / Unity, `graphPath` for JSON graph input. Use `excludePaths` to drop vendored/sample sources before compilation. |
 | Fast re-load after edits | `lifeblood_analyze incremental:true` | Source mtimes are a prefilter and content hashes decide actual re-extraction. Pass `authoritativeChangedFiles` when the editor/watcher has exact changed paths. On rejected fallback, retry with `allowFullFallback:true` only when wider scope is acceptable. Changing `excludePaths` reports `analysisScopeChanged`; read-only-to-retained recovery reports `compilationStateUnavailable`. |
 | Small context pack | `lifeblood_context summarize:true` | Good first read for unfamiliar repos or when handing off to another agent. |

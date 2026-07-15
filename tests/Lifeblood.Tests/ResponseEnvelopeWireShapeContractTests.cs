@@ -42,6 +42,8 @@ public class ResponseEnvelopeWireShapeContractTests
         ("AnalysisGeneration",       "Int64"),
         // INV-SNAPSHOT-IDENTITY-001: globally unique committed publication.
         ("SnapshotId",               "String"),
+        // INV-SNAPSHOT-READ-CONSISTENCY-001: one canonical identity projection.
+        ("AnalysisIdentity",         "WorkspaceAnalysisDescriptor"),
     };
 
     [Fact]

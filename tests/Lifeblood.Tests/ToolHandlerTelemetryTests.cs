@@ -6,6 +6,7 @@ using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
+using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
@@ -472,6 +473,9 @@ public class ToolHandlerTelemetryTests
             ReadCount++;
             return action();
         }
+
+        public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
+            => Read(action);
 
         public T Write<T>(Func<T> action)
         {

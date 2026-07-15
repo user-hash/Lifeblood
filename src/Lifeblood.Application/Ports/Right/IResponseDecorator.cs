@@ -1,6 +1,7 @@
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Application.Ports.Right;
 
@@ -75,6 +76,12 @@ public sealed class EnvelopeContext
     /// no workspace is loaded; surfaced unchanged on the response envelope.
     /// </summary>
     public string SnapshotId { get; init; } = "";
+
+    /// <summary>
+    /// Canonical equality/provenance authority for the leased publication.
+    /// Null before a workspace is loaded.
+    /// </summary>
+    public WorkspaceAnalysisIdentity? AnalysisIdentity { get; init; }
 
     /// <summary>
     /// Capability declared by the adapter that produced the loaded graph.

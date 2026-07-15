@@ -1,3 +1,4 @@
+using Lifeblood.Application.UseCases;
 using Lifeblood.Server.Mcp;
 using Xunit;
 
@@ -165,6 +166,41 @@ public class GraphSessionGateTests
             Assert.Equal(firstSnapshot.AnalysisGeneration, leasedGeneration);
             Assert.NotSame(firstSnapshot, session.CurrentSnapshot);
             Assert.Equal(firstSnapshot.AnalysisGeneration + 1, session.AnalysisGeneration);
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Read_SnapshotPrecondition_IsCheckedAgainstTheLeasedPublication()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "lifeblood-precondition-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var firstRoot = CreateProject(temp, "Expected");
+            var secondRoot = CreateProject(temp, "Newer");
+            using var session = new GraphSession(new Lifeblood.Adapters.CSharp.PhysicalFileSystem());
+            _ = session.Load(firstRoot, graphPath: null, rulesPath: null);
+            using var gate = new GraphSessionGate(session);
+            var expected = new WorkspaceSnapshotPrecondition(
+                session.SnapshotId,
+                session.AnalysisGeneration);
+
+            var observed = gate.Read(expected, () => session.SnapshotId);
+            Assert.Equal(expected.ExpectedSnapshotId, observed);
+
+            _ = session.Load(secondRoot, graphPath: null, rulesPath: null);
+            var actionRan = false;
+            var exception = Assert.Throws<WorkspaceSnapshotPreconditionException>(() =>
+                gate.Read(expected, () => actionRan = true));
+
+            Assert.False(actionRan);
+            Assert.Equal(expected.ExpectedSnapshotId, exception.Mismatch.ExpectedSnapshotId);
+            Assert.Equal(session.SnapshotId, exception.Mismatch.ActualSnapshotId);
+            Assert.Equal(session.AnalysisGeneration, exception.Mismatch.ActualAnalysisGeneration);
         }
         finally
         {

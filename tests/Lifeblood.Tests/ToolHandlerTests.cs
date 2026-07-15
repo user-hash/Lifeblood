@@ -3,6 +3,7 @@ using Lifeblood.Adapters.CSharp;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Right;
+using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
@@ -73,7 +74,9 @@ public class ToolHandlerTests : IDisposable
             => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
     }
 
-    private static ToolHandler CreateHandler(ISessionGate? sessionGate = null)
+    private static ToolHandler CreateHandler(
+        ISessionGate? sessionGate = null,
+        GraphSession? session = null)
     {
         IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
         ISymbolResolver resolver = new LifebloodSymbolResolver();
@@ -87,7 +90,7 @@ public class ToolHandlerTests : IDisposable
             .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
         return new ToolHandler(
-            new GraphSession(Fs),
+            session ?? new GraphSession(Fs),
             provider,
             resolver,
             search,
@@ -143,23 +146,23 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(38, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
-        Assert.Equal(20, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
+        Assert.Equal(39, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(21, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var toolCapabilities = doc.RootElement.GetProperty("tools");
         Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
-        Assert.Equal(2, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
+        Assert.Equal(3, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
         Assert.Equal(17, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
         Assert.Equal(18, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
-        Assert.Equal(33, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
+        Assert.Equal(34, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("RefreshWorkspace").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ExecuteCode").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("PreviewChanges").GetInt32());
-        Assert.Equal(36, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
+        Assert.Equal(37, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
         var behaviorContracts = toolCapabilities.GetProperty("behaviorContracts");
-        Assert.Equal(38, behaviorContracts.GetArrayLength());
+        Assert.Equal(39, behaviorContracts.GetArrayLength());
         var analyzeContract = behaviorContracts.EnumerateArray()
             .Single(e => e.GetProperty("name").GetString() == "lifeblood_analyze");
         Assert.Equal("None", analyzeContract.GetProperty("sessionRequirement").GetString());
@@ -207,6 +210,114 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains("schemas", doc.RootElement.GetProperty("contract").GetProperty("schemaSnapshotPath").GetString());
         Assert.Contains("STATUS.md", doc.RootElement.GetProperty("contract").GetProperty("statusDocAnchorPath").GetString());
         Assert.False(doc.RootElement.GetProperty("session").GetProperty("hasGraphLoaded").GetBoolean());
+    }
+
+    [Fact]
+    public void Handle_ReadPrecondition_RejectsNewerSnapshotWithRetryIdentity()
+    {
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+        var expectedSnapshotId = session.SnapshotId.ToString();
+        var expectedGeneration = session.AnalysisGeneration;
+
+        var accepted = handler.Handle("lifeblood_lookup", MakeArgs(new
+        {
+            symbolId = "type:Core.Foo",
+            expectedSnapshotId,
+            expectedAnalysisGeneration = expectedGeneration,
+        }));
+        Assert.Null(accepted.IsError);
+        using (var acceptedPayload = JsonDocument.Parse(accepted.Content[0].Text))
+        {
+            Assert.Equal(
+                session.AnalysisIdentity!.AnalysisKey.Value,
+                acceptedPayload.RootElement
+                    .GetProperty("envelope")
+                    .GetProperty("analysisIdentity")
+                    .GetProperty("analysisKey")
+                    .GetString());
+        }
+
+        handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
+        var rejected = handler.Handle("lifeblood_lookup", MakeArgs(new
+        {
+            symbolId = "type:Core.Foo",
+            expectedSnapshotId,
+            expectedAnalysisGeneration = expectedGeneration,
+        }));
+
+        Assert.True(rejected.IsError);
+        using var payload = JsonDocument.Parse(rejected.Content[0].Text);
+        Assert.Equal("snapshot-precondition", payload.RootElement.GetProperty("failure").GetString());
+        Assert.True(payload.RootElement.GetProperty("retryable").GetBoolean());
+        Assert.Equal(expectedSnapshotId, payload.RootElement.GetProperty("expectedSnapshotId").GetString());
+        Assert.Equal(session.SnapshotId.ToString(), payload.RootElement.GetProperty("actualSnapshotId").GetString());
+        Assert.Equal(session.AnalysisGeneration, payload.RootElement.GetProperty("actualAnalysisGeneration").GetInt64());
+        Assert.Equal(
+            session.AnalysisIdentity!.AnalysisKey.Value,
+            payload.RootElement.GetProperty("actualAnalysisIdentity").GetProperty("analysisKey").GetString());
+    }
+
+    [Fact]
+    public void Handle_Batch_HoldsOneSnapshotAcrossForcedRefresh()
+    {
+        using var session = new GraphSession(Fs);
+        session.Load(projectPath: null, graphPath: _graphPath, rulesPath: null);
+        var leasedSnapshotId = session.SnapshotId.ToString();
+        using var gate = new RefreshOnSecondNestedReadGate(
+            session,
+            () => session.Load(projectPath: null, graphPath: _graphPath, rulesPath: null));
+        var handler = CreateHandler(gate, session);
+
+        var result = handler.Handle("lifeblood_batch", MakeArgs(new
+        {
+            expectedSnapshotId = leasedSnapshotId,
+            calls = new object[]
+            {
+                new { tool = "lifeblood_capabilities", arguments = new { } },
+                new { tool = "lifeblood_capabilities", arguments = new { } },
+            },
+        }));
+
+        Assert.Null(result.IsError);
+        Assert.NotEqual(leasedSnapshotId, session.SnapshotId.ToString());
+        using var batch = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal(leasedSnapshotId, batch.RootElement.GetProperty("snapshotId").GetString());
+        Assert.Equal(leasedSnapshotId, batch.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        foreach (var call in batch.RootElement.GetProperty("results").EnumerateArray())
+        {
+            var text = call.GetProperty("content")[0].GetProperty("text").GetString();
+            using var nested = JsonDocument.Parse(text!);
+            Assert.Equal(
+                leasedSnapshotId,
+                nested.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        }
+    }
+
+    [Fact]
+    public void Handle_Batch_RejectsNonObservationPlanBeforeExecutingAnyCall()
+    {
+        using var session = new GraphSession(Fs);
+        session.Load(projectPath: null, graphPath: _graphPath, rulesPath: null);
+        var generation = session.AnalysisGeneration;
+        var handler = CreateHandler(session: session);
+
+        var result = handler.Handle("lifeblood_batch", MakeArgs(new
+        {
+            calls = new object[]
+            {
+                new { tool = "lifeblood_capabilities", arguments = new { } },
+                new { tool = "lifeblood_analyze", arguments = new { graphPath = _graphPath } },
+            },
+        }));
+
+        Assert.True(result.IsError);
+        Assert.Equal(generation, session.AnalysisGeneration);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal("batch-policy", payload.RootElement.GetProperty("failure").GetString());
+        Assert.Equal(1, payload.RootElement.GetProperty("rejectedIndex").GetInt32());
+        Assert.Equal(0, payload.RootElement.GetProperty("executedCallCount").GetInt32());
     }
 
     [Fact]
@@ -711,7 +822,7 @@ public class ToolHandlerTests : IDisposable
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(38, tools.Length);
+        Assert.Equal(39, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");
         Assert.Contains(tools, t => t.Name == "lifeblood_wire_audit");
@@ -820,7 +931,7 @@ public class ToolHandlerTests : IDisposable
 
         var tools = handler.GetTools();
 
-        Assert.Equal(38, tools.Length);
+        Assert.Equal(39, tools.Length);
         Assert.Equal(1, gate.ReadCount);
         Assert.Equal(0, gate.WriteCount);
     }
@@ -836,6 +947,9 @@ public class ToolHandlerTests : IDisposable
             return action();
         }
 
+        public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
+            => Read(action);
+
         public T Write<T>(Func<T> action)
         {
             WriteCount++;
@@ -847,6 +961,43 @@ public class ToolHandlerTests : IDisposable
             ReadCount = 0;
             WriteCount = 0;
         }
+    }
+
+    private sealed class RefreshOnSecondNestedReadGate : ISessionGate, IDisposable
+    {
+        private readonly GraphSessionGate _inner;
+        private readonly Action _refresh;
+        private int _depth;
+        private int _nestedReadCount;
+
+        public RefreshOnSecondNestedReadGate(GraphSession session, Action refresh)
+        {
+            _inner = new GraphSessionGate(session);
+            _refresh = refresh;
+        }
+
+        public T Read<T>(Func<T> action)
+            => Read(precondition: null, action);
+
+        public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
+        {
+            var nested = _depth > 0;
+            _depth++;
+            try
+            {
+                if (nested && ++_nestedReadCount == 2)
+                    _refresh();
+                return _inner.Read(precondition, action);
+            }
+            finally
+            {
+                _depth--;
+            }
+        }
+
+        public T Write<T>(Func<T> action) => _inner.Write(action);
+
+        public void Dispose() => _inner.Dispose();
     }
 
     // ──────────────────────────────────────────────────────────────────

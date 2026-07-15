@@ -10,6 +10,7 @@ using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.ContextPack;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -113,11 +114,31 @@ public sealed class ToolHandler
         => _sessionGate.Read(() => ToolRegistry.GetTools(CurrentSessionState()));
 
     public McpToolResult Handle(string toolName, JsonElement? arguments)
-        => string.Equals(toolName, "lifeblood_analyze", StringComparison.Ordinal)
-            ? HandleAnalyzeCoalesced(arguments)
-            : ToolRegistry.FindDefinition(toolName)?.Behavior.SessionAccess == ToolSessionAccess.Exclusive
-            ? _sessionGate.Write(() => HandleCore(toolName, arguments))
-            : _sessionGate.Read(() => HandleCore(toolName, arguments));
+    {
+        if (string.Equals(toolName, "lifeblood_analyze", StringComparison.Ordinal))
+            return HandleAnalyzeCoalesced(arguments);
+
+        var definition = ToolRegistry.FindDefinition(toolName);
+        if (definition?.Behavior.SessionAccess == ToolSessionAccess.Exclusive)
+            return _sessionGate.Write(() => HandleCore(toolName, arguments));
+        if (definition?.SupportsSnapshotRead != true)
+            return _sessionGate.Read(() => HandleCore(toolName, arguments));
+
+        var binding = SnapshotReadRequestBinder.Bind(arguments);
+        if (!binding.Accepted)
+            return SnapshotPreconditionInvalid(toolName, binding.Error!);
+
+        try
+        {
+            return _sessionGate.Read(
+                binding.Precondition,
+                () => HandleCore(toolName, arguments));
+        }
+        catch (WorkspaceSnapshotPreconditionException ex)
+        {
+            return SnapshotPreconditionMismatch(toolName, ex.Mismatch);
+        }
+    }
 
     private McpToolResult HandleAnalyzeCoalesced(JsonElement? arguments)
     {
@@ -203,6 +224,7 @@ public sealed class ToolHandler
             {
                 // Read-side
                 "lifeblood_capabilities" => HandleCapabilities(arguments),
+                "lifeblood_batch" => HandleBatch(arguments),
                 "lifeblood_analyze" => HandleAnalyze(arguments),
                 "lifeblood_context" => HandleContext(arguments),
                 "lifeblood_lookup" => HandleLookup(arguments),
@@ -314,6 +336,130 @@ public sealed class ToolHandler
 
         return TextResult(WithEnvelope("lifeblood_capabilities", ServerIdentity.BuildCapabilities(sessionInfo)));
     }
+
+    private McpToolResult HandleBatch(JsonElement? args)
+    {
+        ToolBatchRequest request;
+        try
+        {
+            request = ToolBatchRequestBinder.Bind(args);
+        }
+        catch (ToolBatchContractException ex)
+        {
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = "lifeblood_batch",
+                failure = "batch-contract",
+                message = ex.Message,
+                maximumCallCount = ToolBatchRequestBinder.MaximumCallCount,
+            }, JsonOpts));
+        }
+
+        for (var index = 0; index < request.Calls.Count; index++)
+        {
+            var call = request.Calls[index];
+            var definition = ToolRegistry.FindDefinition(call.ToolName);
+            if (definition == null)
+            {
+                return BatchPolicyError(index, call.ToolName, "The target tool is not registered.", null);
+            }
+            if (string.Equals(call.ToolName, "lifeblood_batch", StringComparison.Ordinal))
+            {
+                return BatchPolicyError(index, call.ToolName, "Nested batches are not allowed.", definition);
+            }
+            if (!definition.SupportsSnapshotRead)
+            {
+                return BatchPolicyError(
+                    index,
+                    call.ToolName,
+                    "Batch targets must declare Observe effect and SharedRead access.",
+                    definition);
+            }
+        }
+
+        var snapshot = _session.CurrentSnapshot;
+        var results = new object[request.Calls.Count];
+        for (var index = 0; index < request.Calls.Count; index++)
+        {
+            var call = request.Calls[index];
+            var result = Handle(call.ToolName, call.Arguments);
+            results[index] = new
+            {
+                index,
+                tool = call.ToolName,
+                isError = result.IsError == true,
+                content = result.Content,
+            };
+        }
+
+        return TextResult(WithEnvelope("lifeblood_batch", new
+        {
+            execution = "serial",
+            callCount = results.Length,
+            snapshotId = snapshot.SnapshotId.ToString(),
+            analysisGeneration = snapshot.AnalysisGeneration,
+            workspaceRoot = snapshot.Context?.RootPath ?? "",
+            analysisIdentity = snapshot.Identity == null
+                ? null
+                : WorkspaceAnalysisDescriptor.From(snapshot.Identity),
+            results,
+        }));
+    }
+
+    private static McpToolResult BatchPolicyError(
+        int index,
+        string toolName,
+        string message,
+        ToolDefinition? definition)
+        => ErrorResult(JsonSerializer.Serialize(new
+        {
+            error = true,
+            tool = "lifeblood_batch",
+            failure = "batch-policy",
+            rejectedIndex = index,
+            rejectedTool = toolName,
+            effect = definition?.Behavior.Effect.ToString(),
+            sessionAccess = definition?.Behavior.SessionAccess.ToString(),
+            message,
+            executedCallCount = 0,
+        }, JsonOpts));
+
+    private static McpToolResult SnapshotPreconditionInvalid(string toolName, string message)
+        => ErrorResult(JsonSerializer.Serialize(new
+        {
+            error = true,
+            tool = toolName,
+            failure = "snapshot-precondition-invalid",
+            retryable = false,
+            message,
+        }, JsonOpts));
+
+    private static McpToolResult SnapshotPreconditionMismatch(
+        string toolName,
+        WorkspaceSnapshotMismatch mismatch)
+        => ErrorResult(JsonSerializer.Serialize(new
+        {
+            error = true,
+            tool = toolName,
+            failure = "snapshot-precondition",
+            retryable = true,
+            expectedSnapshotId = mismatch.ExpectedSnapshotId?.ToString(),
+            expectedAnalysisGeneration = mismatch.ExpectedAnalysisGeneration,
+            actualSnapshotId = mismatch.ActualSnapshotId.ToString(),
+            actualAnalysisGeneration = mismatch.ActualAnalysisGeneration,
+            actualAnalysisIdentity = mismatch.ActualAnalysisIdentity == null
+                ? null
+                : WorkspaceAnalysisDescriptor.From(mismatch.ActualAnalysisIdentity),
+            suggestedRetry = new
+            {
+                expectedSnapshotId = mismatch.ActualSnapshotId.IsNone
+                    ? null
+                    : mismatch.ActualSnapshotId.ToString(),
+                expectedAnalysisGeneration = mismatch.ActualAnalysisGeneration,
+            },
+            message = "The requested publication is no longer current. Re-evaluate whether the newer snapshot is acceptable, then retry with its returned identity.",
+        }, JsonOpts));
 
     private ServerSharedServiceInfo BuildSharedServiceInfo()
     {
@@ -1902,6 +2048,7 @@ public sealed class ToolHandler
                 FileSystem = _session.FileSystem,
                 AnalysisGeneration = _session.AnalysisGeneration,
                 SnapshotId = _session.SnapshotId.ToString(),
+                AnalysisIdentity = _session.AnalysisIdentity,
                 AdapterCapability = _session.AdapterCapability,
             };
         }
@@ -1925,6 +2072,7 @@ public sealed class ToolHandler
             FileScanLimit = EnvelopeFileScanLimit,
             AnalysisGeneration = _session.AnalysisGeneration,
             SnapshotId = _session.SnapshotId.ToString(),
+            AnalysisIdentity = _session.AnalysisIdentity,
             AdapterCapability = _session.AdapterCapability,
         };
     }

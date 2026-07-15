@@ -61,6 +61,7 @@ public static class ServerIdentity
             sessionRequirement = d.Behavior.SessionRequirement.ToString(),
             effect = d.Behavior.Effect.ToString(),
             sessionAccess = d.Behavior.SessionAccess.ToString(),
+            supportsSnapshotRead = d.SupportsSnapshotRead,
         }).ToArray();
         var sessionRequirementCounts = definitions
             .GroupBy(d => d.Behavior.SessionRequirement)
@@ -101,6 +102,8 @@ public static class ServerIdentity
                 assignmentCoverage = definitions.Any(d => d.Name == "lifeblood_assignment_coverage"),
                 writeSideProfileScope = true,
                 evidenceReceipts = true,
+                snapshotReadPreconditions = true,
+                snapshotReadBatch = true,
                 sharedSessionTransport = true,
                 sharedSessionTransportActive = session.SharedService.Active,
                 sharedSessionTransportMode = session.SharedService.Mode,
