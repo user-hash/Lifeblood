@@ -2,6 +2,7 @@ using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Results;
@@ -126,6 +127,55 @@ public sealed class PackageSourceVisibilityTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void IncrementalAnalyze_PackageVisibilityInputChange_PublishesNewIdentity()
+    {
+        using var session = new GraphSession(_fs);
+
+        using var first = JsonDocument.Parse(session.Load(_root, graphPath: null, rulesPath: null));
+        var firstSnapshotId = session.SnapshotId.ToString();
+        var firstGeneration = session.AnalysisGeneration;
+        var firstAnalysisKey = first.RootElement
+            .GetProperty("analysisIdentity")
+            .GetProperty("analysisKey")
+            .GetString();
+        Assert.Equal(1, first.RootElement
+            .GetProperty("packageSourceVisibility")
+            .GetProperty("packageCount")
+            .GetInt32());
+
+        WriteUnboundEmbeddedPackage(_root, "com.acme.loose");
+
+        using var second = JsonDocument.Parse(session.Load(
+            _root,
+            graphPath: null,
+            rulesPath: null,
+            incremental: true));
+
+        Assert.Equal("incremental", second.RootElement.GetProperty("mode").GetString());
+        Assert.NotEqual(firstSnapshotId, session.SnapshotId.ToString());
+        Assert.True(session.AnalysisGeneration > firstGeneration);
+        Assert.NotEqual(
+            firstAnalysisKey,
+            second.RootElement.GetProperty("analysisIdentity").GetProperty("analysisKey").GetString());
+        Assert.Equal(2, second.RootElement
+            .GetProperty("packageSourceVisibility")
+            .GetProperty("packageCount")
+            .GetInt32());
+    }
+
+    [Fact]
+    public void Analyze_PackageDescriptorReadErrors_DoNotFailVisibilityReceipt()
+    {
+        using var session = new GraphSession(new ThrowingPackageDescriptorFileSystem(_fs, _root));
+
+        using var document = JsonDocument.Parse(session.Load(_root, graphPath: null, rulesPath: null));
+
+        Assert.True(document.RootElement.TryGetProperty("packageSourceVisibility", out var visibility));
+        Assert.True(visibility.GetProperty("isUnityWorkspace").GetBoolean());
+        Assert.Equal(1, visibility.GetProperty("packageCount").GetInt32());
+    }
+
     private static void WriteUnityPackageFixture(string root)
     {
         Directory.CreateDirectory(Path.Combine(root, "Library"));
@@ -188,6 +238,20 @@ public sealed class PackageSourceVisibilityTests : IDisposable
             """);
     }
 
+    private static void WriteUnboundEmbeddedPackage(string root, string packageName)
+    {
+        var runtime = Path.Combine(root, "Packages", packageName, "Runtime");
+        Directory.CreateDirectory(runtime);
+        File.WriteAllText(
+            Path.Combine(root, "Packages", packageName, "package.json"),
+            $$"""
+            { "name": "{{packageName}}", "version": "1.0.0" }
+            """);
+        File.WriteAllText(
+            Path.Combine(runtime, "Loose.cs"),
+            $"namespace Acme.Loose; public sealed class Loose {{ }}");
+    }
+
     private static ToolHandler CreateHandler(GraphSession session)
     {
         IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
@@ -222,5 +286,45 @@ public sealed class PackageSourceVisibilityTests : IDisposable
     {
         public BlastRadiusResult Analyze(Lifeblood.Domain.Graph.SemanticGraph graph, string targetSymbolId, int maxDepth = 10)
             => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
+    }
+
+    private sealed class ThrowingPackageDescriptorFileSystem : IFileSystem
+    {
+        private readonly IFileSystem _inner;
+        private readonly string _manifestPath;
+        private readonly string _lockPath;
+
+        public ThrowingPackageDescriptorFileSystem(IFileSystem inner, string root)
+        {
+            _inner = inner;
+            _manifestPath = Path.GetFullPath(Path.Combine(root, "Packages", "manifest.json"));
+            _lockPath = Path.GetFullPath(Path.Combine(root, "Packages", "packages-lock.json"));
+        }
+
+        public string ReadAllText(string path)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (PathComparer.Equals(fullPath, _manifestPath) || PathComparer.Equals(fullPath, _lockPath))
+                throw new UnauthorizedAccessException("Synthetic unreadable package descriptor.");
+            return _inner.ReadAllText(path);
+        }
+
+        public IEnumerable<string> ReadLines(string path) => _inner.ReadLines(path);
+
+        public Stream OpenRead(string path) => _inner.OpenRead(path);
+
+        public Stream OpenWrite(string path) => _inner.OpenWrite(path);
+
+        public bool FileExists(string path) => _inner.FileExists(path);
+
+        public bool DirectoryExists(string path) => _inner.DirectoryExists(path);
+
+        public string[] FindFiles(string directory, string pattern, bool recursive = true)
+            => _inner.FindFiles(directory, pattern, recursive);
+
+        public DateTime GetLastWriteTimeUtc(string path) => _inner.GetLastWriteTimeUtc(path);
+
+        private static StringComparer PathComparer { get; }
+            = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
     }
 }

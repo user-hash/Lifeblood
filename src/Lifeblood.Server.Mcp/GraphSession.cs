@@ -1377,6 +1377,21 @@ public sealed class GraphSession : IDisposable
         }
         if (!committed.Workspace.IsLoaded)
             return "Write-side tools require lifeblood_analyze with projectPath and readOnly:false.";
+        var retainedProfile = committed.RoslynAdapter?.RetainedProfileName;
+        var retainedProfiles = committed.RoslynAdapter?.RetainedProfileNames ?? Array.Empty<string>();
+        if (committed.Workspace.Identity?.Spec.RetentionMode == AnalysisRetentionMode.RetainedSemantic
+            && retainedProfiles.Count > 1
+            && !string.IsNullOrEmpty(retainedProfile))
+        {
+            var alternatives = string.Join(", ", retainedProfiles
+                .Where(profile => !string.Equals(profile, retainedProfile, StringComparison.Ordinal)));
+            var profileHint = string.IsNullOrEmpty(alternatives)
+                ? "Re-analyze with the profile that owns the target file first in defineProfiles."
+                : $"Re-analyze with the target owning profile first in defineProfiles (for this snapshot, candidates after '{retainedProfile}': {alternatives}).";
+            return $"Current graph requested retained semantic state, but retained profile '{retainedProfile}' has no Roslyn compilation state. "
+                   + "Write-side tools use only the first retained profile. "
+                   + $"{profileHint} Keep readOnly:false.";
+        }
         var projectPath = committed.Workspace.Context?.RootPath;
         if (!string.IsNullOrEmpty(projectPath))
             return BuildCompilationStateRecoveryDetail(projectPath);

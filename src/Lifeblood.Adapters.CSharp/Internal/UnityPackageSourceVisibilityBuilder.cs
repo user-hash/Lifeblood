@@ -3,11 +3,15 @@ using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.PathClassification;
 using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Adapters.CSharp.Internal;
 
 internal static class UnityPackageSourceVisibilityBuilder
 {
+    private const string PackageSourceInventoryFingerprintDomain =
+        "lifeblood.unity-package-source-inventory.v1";
+
     public static PackageSourceVisibilityReport? Build(
         IFileSystem fs,
         string projectRoot,
@@ -24,13 +28,7 @@ internal static class UnityPackageSourceVisibilityBuilder
         if (!hasPackageDescriptors)
             return null;
 
-        var packages = new Dictionary<string, MutablePackage>(PathComparer);
-        if (fs.FileExists(manifestPath))
-            ReadManifest(fs, projectRoot, packagesDir, manifestPath, packages);
-        if (fs.FileExists(lockPath))
-            ReadPackagesLock(fs, projectRoot, packagesDir, lockPath, packages);
-        DiscoverEmbeddedPackageDirectories(fs, packagesDir, packages);
-
+        var packages = DiscoverPackages(fs, projectRoot, packagesDir, manifestPath, lockPath);
         var moduleBySourcePath = BuildCompiledSourceIndex(modules, fs);
         var excludeGlobs = PathGlobMatcher.Compile(config.ExcludePathGlobs);
         var descriptorPaths = new List<string>();
@@ -53,6 +51,57 @@ internal static class UnityPackageSourceVisibilityBuilder
                 .ToArray(),
             Packages = shapedPackages,
         };
+    }
+
+    public static IReadOnlyDictionary<string, ContentFingerprint> CaptureInputFingerprints(
+        IFileSystem fs,
+        string projectRoot)
+    {
+        var packagesDir = Path.Combine(projectRoot, "Packages");
+        var manifestPath = Path.Combine(packagesDir, "manifest.json");
+        var lockPath = Path.Combine(packagesDir, "packages-lock.json");
+        var hasPackageDescriptors =
+            fs.DirectoryExists(packagesDir)
+            || fs.FileExists(manifestPath)
+            || fs.FileExists(lockPath);
+        var inputs = new Dictionary<string, ContentFingerprint>(PathComparer);
+        if (!hasPackageDescriptors)
+            return inputs;
+
+        CaptureTextInput(fs, manifestPath, inputs);
+        CaptureTextInput(fs, lockPath, inputs);
+
+        var packages = DiscoverPackages(fs, projectRoot, packagesDir, manifestPath, lockPath);
+        foreach (var package in packages.Values
+            .Where(package => fs.DirectoryExists(package.RootPath))
+            .OrderBy(package => package.RootPath, StringComparer.Ordinal))
+        {
+            CaptureTextInput(fs, Path.Combine(package.RootPath, "package.json"), inputs);
+            foreach (var sourcePath in TryFindFiles(fs, package.RootPath, "*.cs"))
+            {
+                inputs[Path.GetFullPath(sourcePath)] = ContentFingerprint.ComputeUtf8(
+                    PackageSourceInventoryFingerprintDomain,
+                    "present");
+            }
+        }
+
+        return inputs;
+    }
+
+    private static Dictionary<string, MutablePackage> DiscoverPackages(
+        IFileSystem fs,
+        string projectRoot,
+        string packagesDir,
+        string manifestPath,
+        string lockPath)
+    {
+        var packages = new Dictionary<string, MutablePackage>(PathComparer);
+        if (fs.FileExists(manifestPath))
+            ReadManifest(fs, projectRoot, packagesDir, manifestPath, packages);
+        if (fs.FileExists(lockPath))
+            ReadPackagesLock(fs, projectRoot, packagesDir, lockPath, packages);
+        DiscoverEmbeddedPackageDirectories(fs, packagesDir, packages);
+        return packages;
     }
 
     private static void ReadManifest(
@@ -86,6 +135,12 @@ internal static class UnityPackageSourceVisibilityBuilder
             }
         }
         catch (JsonException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
         {
         }
     }
@@ -132,6 +187,12 @@ internal static class UnityPackageSourceVisibilityBuilder
             }
         }
         catch (JsonException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
         {
         }
     }
@@ -349,6 +410,25 @@ internal static class UnityPackageSourceVisibilityBuilder
         catch (UnauthorizedAccessException)
         {
             return Array.Empty<string>();
+        }
+    }
+
+    private static void CaptureTextInput(
+        IFileSystem fs,
+        string path,
+        IDictionary<string, ContentFingerprint> inputs)
+    {
+        if (!fs.FileExists(path))
+            return;
+
+        try
+        {
+            inputs[Path.GetFullPath(path)] = ContentFingerprint.ComputeUtf8(
+                "lifeblood.workspace-descriptor-content.v1",
+                fs.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
         }
     }
 

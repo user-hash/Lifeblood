@@ -165,12 +165,15 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         }
 
         var referenceContent = CaptureReferenceContent(applicableModules);
+        var packageVisibilityContent =
+            UnityPackageSourceVisibilityBuilder.CaptureInputFingerprints(_fs, projectRoot);
         var sourceFingerprint = WorkspaceInputFingerprintBuilder.Build(
             projectRoot,
             sourceContent,
             _discovery.LastDescriptorContentHashes,
             asmdefContent,
-            referenceContent);
+            referenceContent,
+            packageVisibilityContent);
         return new WorkspaceAnalysisInputs(
             activeProfiles.Select(profile => profile.Name),
             sourceFingerprint);
@@ -267,6 +270,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             }
 
             CaptureReferenceInputs(snapshot, applicableModules);
+            CapturePackageVisibilityInputs(snapshot, projectRoot);
 
             // Create module symbols (lightweight — just names and metadata).
             foreach (var module in applicableModules)
@@ -588,6 +592,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 FallbackReason.ModuleDescriptorChanged,
                 detail: "Referenced binary or source-generator input changed (descriptorKind=reference).");
         }
+
+        CapturePackageVisibilityInputs(_snapshot, projectRoot);
 
         // Detect changed files by timestamp + content-hash comparison.
         // An editor/build integration can pass an authoritative changed-file
@@ -1409,6 +1415,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 // failure policy before that authoritative seam runs.
             }
         }
+    }
+
+    private void CapturePackageVisibilityInputs(AnalysisSnapshot snapshot, string projectRoot)
+    {
+        var content = UnityPackageSourceVisibilityBuilder.CaptureInputFingerprints(_fs, projectRoot);
+        ReplaceDictionary(snapshot.PackageVisibilityInputHashes, content);
     }
 
     private Dictionary<string, ContentFingerprint> CaptureReferenceContent(ModuleInfo[] modules)

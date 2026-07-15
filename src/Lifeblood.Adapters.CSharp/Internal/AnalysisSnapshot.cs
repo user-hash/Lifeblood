@@ -63,6 +63,15 @@ internal sealed class AnalysisSnapshot
     public Dictionary<string, ContentFingerprint> ReferenceContentHashes { get; }
         = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Adapter-owned Unity package source-visibility inputs. These are not all
+    /// graph source files: unbound package .cs paths affect the package
+    /// visibility receipt but do not enter Roslyn until Unity regenerates
+    /// project descriptors.
+    /// </summary>
+    public Dictionary<string, ContentFingerprint> PackageVisibilityInputHashes { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
     public Dictionary<string, DateTime> ReferenceTimestamps { get; }
         = new(StringComparer.OrdinalIgnoreCase);
 
@@ -171,6 +180,7 @@ internal sealed class AnalysisSnapshot
         CopyDictionary(DescriptorContentHashes, candidate.DescriptorContentHashes);
         CopyDictionary(AsmdefContentHashes, candidate.AsmdefContentHashes);
         CopyDictionary(ReferenceContentHashes, candidate.ReferenceContentHashes);
+        CopyDictionary(PackageVisibilityInputHashes, candidate.PackageVisibilityInputHashes);
         CopyDictionary(ReferenceTimestamps, candidate.ReferenceTimestamps);
         CopyDictionary(CsprojTimestamps, candidate.CsprojTimestamps);
         CopyDictionary(AsmdefTimestamps, candidate.AsmdefTimestamps);
@@ -199,7 +209,8 @@ internal sealed class AnalysisSnapshot
             FileContentHashes,
             DescriptorContentHashes,
             AsmdefContentHashes,
-            ReferenceContentHashes);
+            ReferenceContentHashes,
+            PackageVisibilityInputHashes);
 
     private static void CopyDictionary<TKey, TValue>(
         Dictionary<TKey, TValue> source,

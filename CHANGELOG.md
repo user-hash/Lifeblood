@@ -17,8 +17,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bounded deterministic file previews. `lifeblood_compile_check(filePath)`
   adds `packageSourceResolution` for recognized package files, naming the
   owner package, expected asmdef assembly, current status, reason, and remedy
-  when a package source is outside the loaded compilation set.
+  when a package source is outside the loaded compilation set. Package
+  visibility descriptors and source inventory now participate in the C# adapter
+  analysis fingerprint, so incremental refreshes publish a new identity when
+  the visibility receipt changes without graph source changes; unreadable
+  package descriptors fail closed instead of aborting analyze.
   (`INV-UNITY-PACKAGE-SOURCE-001`, `LB-INTAKE-20260629-024`.)
+- **Multi-profile retained-state recovery names profile-order gaps.** When a
+  retained-semantic analyze is ordered so the first profile owns no applicable
+  compilations, write-side recovery guidance now names the retained profile and
+  tells callers to re-analyze with the target-owning profile first, instead of
+  implying the session was loaded with `readOnly:true`.
+  (`INV-MULTI-DEFINE-IOP-001`.)
 - **Source-control evidence follows the workspace being analyzed.**
   One Application-owned snapshot port and one bounded Git adapter now serve MCP
   capability, analyze, invariant, and release consumers. Analyze captures once
