@@ -79,6 +79,7 @@ public class DiagnosticEnvelopeDefinesTests
         var report = host.GetDiagnosticsReport(new DiagnosticsRequest { FilePath = "Edit.cs" });
 
         Assert.Equal(EditorModuleName, report.ResolvedModule);
+        Assert.Equal(CompilationFileOwnershipOutcome.Unique, report.FileOwnership.Outcome);
         Assert.Equal(new[] { EditorDefine }, report.DefinesActive);
     }
 
@@ -90,6 +91,7 @@ public class DiagnosticEnvelopeDefinesTests
         var report = host.GetDiagnosticsReport(new DiagnosticsRequest { ModuleName = PlayerModuleName });
 
         Assert.Equal(PlayerModuleName, report.ResolvedModule);
+        Assert.Equal(CompilationFileOwnershipOutcome.NotRequested, report.FileOwnership.Outcome);
         Assert.Equal(new[] { PlayerDefine }, report.DefinesActive);
     }
 

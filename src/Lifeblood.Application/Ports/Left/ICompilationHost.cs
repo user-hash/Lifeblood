@@ -17,8 +17,10 @@ public interface ICompilationHost
     /// source file — useful for verifying a single edited file without drowning
     /// in a whole-project dump. <see cref="DiagnosticsRequest.ModuleName"/>
     /// disambiguates which compilation contains the file when the same path
-    /// appears in multiple modules. Either field may be omitted; both omitted
-    /// is equivalent to the parameterless overload.
+    /// appears in multiple modules. Unpinned ambiguity fails closed and is
+    /// reported through <see cref="DiagnosticsReport.FileOwnership"/>; it never
+    /// selects the first module. Either field may be omitted; both omitted is
+    /// equivalent to the parameterless overload.
     /// </summary>
     DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request);
 
@@ -41,8 +43,10 @@ public interface ICompilationHost
     /// Typed-request overload of <see cref="CompileCheck(string, string?)"/>.
     /// File-mode (<see cref="CompileCheckRequest.FilePath"/> set) auto-detects
     /// the owning compilation by matching the path against each compilation's
-    /// syntax-tree paths and swaps the file's existing tree for the on-disk
-    /// content, so module-owned files compile-check against their real
+    /// syntax-tree paths. Exact matches outrank suffix matches; more than one
+    /// best match returns an ambiguous ownership receipt rather than selecting
+    /// the first module. A unique match swaps the file's existing tree, so
+    /// module-owned files compile-check against their real
     /// reference set instead of being added as a duplicate snippet tree to
     /// some arbitrary first compilation. Snippet mode (<see cref="CompileCheckRequest.Code"/>
     /// set) preserves the legacy snippet-wrapping behavior.
@@ -199,7 +203,9 @@ public interface ICompilationHost
 /// <summary>
 /// Scope filter for <see cref="ICompilationHost.GetDiagnostics(DiagnosticsRequest)"/>.
 /// Both fields are optional. When <see cref="FilePath"/> is set, the result is
-/// limited to diagnostics whose syntax-tree path matches the requested file.
+/// limited to diagnostics from the uniquely matched syntax tree. Ambiguous or
+/// absent ownership returns an empty diagnostic set plus a typed
+/// <see cref="DiagnosticsReport.FileOwnership"/> receipt; no module is guessed.
 /// When <see cref="ModuleName"/> is set, the search is restricted to that
 /// module's compilation; when both are set, the file must live inside the
 /// named module. Path comparison is case-insensitive on Windows-style paths

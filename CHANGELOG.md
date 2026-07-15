@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **File-scoped compilation ownership now fails closed.**
+  `lifeblood_diagnose` and `lifeblood_compile_check` consume one C#-adapter
+  ownership resolver instead of independent suffix scans. Exact paths outrank
+  suffix matches; unique, ambiguous, absent, missing-module, and pinned-module
+  misses are typed in one shared receipt. Ambiguity returns stable candidates
+  and never selects the first module or replaces a guessed syntax tree.
+  (`INV-COMPILATION-FILE-OWNERSHIP-001`, `LB-INTAKE-20260629-018`.)
 - **Shared transport now reports its verified maturity.**
   `lifeblood_capabilities.featureFlags.sharedSessionTransportMaturity` derives
   from one server-edge constant and reports `recommended`, matching the tested

@@ -549,39 +549,6 @@ Fix shape:
 - Return scores by category plus concrete missing-evidence links. Avoid a
   global quality number; make it a triage aid with named evidence gaps.
 
-## LB-INTAKE-20260629-018 - File-scope diagnose should resolve newly imported Unity files without explicit moduleName
-
-Type: UX
-Priority: Medium
-Source: DAWG tuning UI ratchet session, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
-Workspace: DAWG
-Rating for DAWG work: 7/10 value if shipped
-
-What:
-- A new Unity EditMode test file had a `.meta` file and appeared in
-  `Nebulae.Tests.Editor.Audio.csproj`.
-- `lifeblood_diagnose(filePath:"Assets/Tests/Editor/Audio/TuningFxTonePresentationRatchetTests.cs")`
-  returned no diagnostics but `resolvedModule:null`.
-- The same file diagnosed with `moduleName:"Nebulae.Tests.Editor.Audio"`
-  resolved correctly to that module.
-
-Why it matters:
-- Agents commonly add a test/source file, let Unity import it, then ask
-  Lifeblood to diagnose the file by path. If the file is present in the generated
-  project descriptor, the user should not need to know the exact asmdef module.
-- A null module with no diagnostic can look harmless while still weakening the
-  evidence receipt: the caller cannot tell whether Lifeblood checked the real
-  owning compilation, a fallback parse, or an ambiguous path.
-
-Fix shape:
-- Strengthen file-path ownership resolution so a file included in exactly one
-  compilation resolves that module automatically after descriptors include it.
-- If multiple compilations match, return an ambiguity list with candidate
-  modules and require `moduleName`.
-- If no compilation matches, keep the existing stale-descriptor guidance, but
-  make the reason explicit in `resolvedModule`/`limitations` instead of only
-  returning clean diagnostics.
-
 ## LB-INTAKE-20260629-020 - Release metadata drift between local tag and changelog snapshot
 
 Type: Docs

@@ -2869,3 +2869,43 @@ Resolution:
 Impact:
 - Descriptor fallback may widen analysis cost but cannot silently narrow
   preprocessor coverage, so Player-only evidence remains represented.
+
+## LB-INTAKE-20260629-018 - File-scope diagnose resolves compilation ownership without guessing
+
+Status: Shipped (in-tree, untagged) - backlog-clearance Wave 1
+Type: UX
+Source: DAWG tuning UI ratchet session, 2026-06-29; closure 2026-07-15
+Workspace: DAWG and Lifeblood self
+Verification: `CompileCheckFileResolutionTests`,
+`DiagnosticEnvelopeDefinesTests`,
+`ToolHandlerTests.Handle_DiagnoseAndCompileCheck_AmbiguousFileOwnershipFailsClosed`,
+`INV-COMPILATION-FILE-OWNERSHIP-001`, the [Unreleased] changelog, and a private
+new-server DAWG Editor+Player receipt (100 modules / 88,394 symbols):
+`TuningFxTonePresentationRatchetTests.cs` resolved `Unique` to
+`Nebulae.Tests.Editor.Audio` with zero diagnostics and that sole candidate.
+
+Resolution:
+- `Internal.CompilationFileOwnershipResolver` is the only C#-adapter authority
+  for mapping a requested path to retained compilation membership. Exact paths
+  outrank suffix matches and operating-system path case rules are preserved.
+- `DiagnosticsReport` and `CompileCheckResult` carry one neutral Domain receipt
+  with unique, ambiguous, absent, missing-module, and pinned-module-miss states.
+  Existing `resolvedModule`/`fileResolution` fields remain compatibility
+  projections rather than parallel decision authorities.
+- Diagnose and compile-check both fail closed on ambiguous ownership and return
+  stable candidates. Explicit `moduleName` disambiguates; a path in exactly one
+  loaded compilation resolves automatically. Missing ownership retains the
+  disk-aware stale-descriptor hint at the MCP handler boundary.
+
+Impact:
+- Agents can diagnose newly imported Unity files without knowing the asmdef name
+  once descriptors include them, while linked/shared files can no longer be
+  silently checked against whichever module happened to enumerate first.
+
+Verification limitation:
+- The 102-second live DAWG receipt observed unrelated project-settings/docs
+  changes from concurrent work, so it is not presented as a clean-worktree
+  receipt. A frozen local clone retry exceeded the five-minute outer timeout
+  and was cleaned up; it is recorded as a timed-out environment gate, not a
+  pass. The focused shared-file MCP fixture and full Lifeblood suite are the
+  deterministic acceptance authorities for this atom.
