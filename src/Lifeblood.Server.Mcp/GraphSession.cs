@@ -137,6 +137,18 @@ public sealed class GraphSession : IDisposable
     public WorkspaceSnapshot CurrentSnapshot => Current.Workspace;
 
     /// <summary>
+    /// Current Unity package source visibility receipt, if the loaded
+    /// workspace has package descriptors. This stays with the live Roslyn
+    /// adapter and is intentionally absent from graph-only historical
+    /// selections.
+    /// </summary>
+    public PackageSourceVisibilityReport? PackageSourceVisibility =>
+        Current.RoslynAdapter?.PackageSourceVisibility;
+
+    public PackageSourceVisibilityFile? ResolvePackageSource(string filePath) =>
+        Current.RoslynAdapter?.ResolvePackageSource(filePath);
+
+    /// <summary>
     /// Latest committed publication, independent of any request-scoped
     /// historical selection. Process-level inventory and memory facts use this
     /// view; tool result data continues to use <see cref="CurrentSnapshot"/>.
@@ -632,6 +644,7 @@ public sealed class GraphSession : IDisposable
                             acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
                             changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
+                            packageSourceVisibility: committedAdapter?.PackageSourceVisibility,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.AnalysisScopeChanged,
                             fallbackDetail: detail,
@@ -659,6 +672,7 @@ public sealed class GraphSession : IDisposable
                             acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
                             changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
+                            packageSourceVisibility: committedAdapter?.PackageSourceVisibility,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.CompilationStateUnavailable,
                             fallbackDetail: detail,
@@ -889,6 +903,7 @@ public sealed class GraphSession : IDisposable
                 : null,
             changeReceipt: changeReceipt,
             skipped: candidateRoslynAdapter?.SkippedFiles,
+            packageSourceVisibility: candidateRoslynAdapter?.PackageSourceVisibility,
             requestedMode: fullRequestedMode,
             fallbackReason: fullFallbackReason,
             fallbackDetail: fullFallbackDetail,
@@ -962,6 +977,7 @@ public sealed class GraphSession : IDisposable
                     acceptedChanges: incremental.AcceptedChanges,
                     changeReceipt: changeReceipt,
                     skipped: committed.RoslynAdapter?.SkippedFiles,
+                    packageSourceVisibility: committed.RoslynAdapter?.PackageSourceVisibility,
                     requestedMode: "incremental",
                     fallbackReason: incremental.Reason,
                     fallbackDetail: incremental.Detail,
@@ -1019,6 +1035,7 @@ public sealed class GraphSession : IDisposable
                         acceptedChanges: incremental.AcceptedChanges,
                         changeReceipt: changeReceipt,
                         skipped: candidateAdapter.SkippedFiles,
+                        packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
                         requestedMode: "incremental",
                         activeProfiles: incrActiveProfiles,
                         projectPath: projectPath,
@@ -1044,6 +1061,7 @@ public sealed class GraphSession : IDisposable
                     acceptedChanges: incremental.AcceptedChanges,
                     changeReceipt: changeReceipt,
                     skipped: candidateAdapter.SkippedFiles,
+                    packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
                     requestedMode: "incremental",
                     activeProfiles: incrActiveProfiles,
                     projectPath: projectPath,
@@ -1113,6 +1131,7 @@ public sealed class GraphSession : IDisposable
                 acceptedChanges: incremental.AcceptedChanges,
                 changeReceipt: changeReceipt,
                 skipped: candidateAdapter.SkippedFiles,
+                packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
                 fallbackDetail: incremental.Detail,
@@ -1145,6 +1164,7 @@ public sealed class GraphSession : IDisposable
         AcceptedChangeSet? acceptedChanges,
         AcceptedChangeReceiptRequest? changeReceipt = null,
         IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null,
+        PackageSourceVisibilityReport? packageSourceVisibility = null,
         string? requestedMode = null,
         FallbackReason? fallbackReason = null,
         string? fallbackDetail = null,
@@ -1235,6 +1255,7 @@ public sealed class GraphSession : IDisposable
             contentChangedSourceFiles = contentChangedFileCount,
             acceptedChanges = acceptedChangesField,
             skipped = skippedField,
+            packageSourceVisibility = BuildPackageSourceVisibilityField(packageSourceVisibility),
             analysisIdentity = identity == null
                 ? null
                 : WorkspaceAnalysisDescriptor.From(identity),
@@ -1271,6 +1292,46 @@ public sealed class GraphSession : IDisposable
             },
         };
         return JsonSerializer.Serialize(response, JsonOpts);
+    }
+
+    private static object? BuildPackageSourceVisibilityField(PackageSourceVisibilityReport? report)
+    {
+        if (report == null)
+            return null;
+
+        const int maxFilesPerPackage = 64;
+        return new
+        {
+            report.IsUnityWorkspace,
+            report.DescriptorPaths,
+            report.PackageCount,
+            report.IncludedSourceFileCount,
+            report.ExcludedSourceFileCount,
+            report.UnboundSourceFileCount,
+            packages = report.Packages.Select(package =>
+            {
+                var files = package.Files
+                    .OrderBy(file => file.Path, StringComparer.Ordinal)
+                    .Take(maxFilesPerPackage)
+                    .ToArray();
+                return new
+                {
+                    package.Name,
+                    package.RootPath,
+                    package.DescriptorSources,
+                    package.AssemblyDefinitionCount,
+                    package.AssemblyDefinitions,
+                    package.SourceFileCount,
+                    package.IncludedSourceFileCount,
+                    package.ExcludedSourceFileCount,
+                    package.UnboundSourceFileCount,
+                    returnedFileCount = files.Length,
+                    omittedFileCount = package.Files.Length - files.Length,
+                    truncated = package.Files.Length > files.Length,
+                    files,
+                };
+            }).ToArray(),
+        };
     }
 
     /// <summary>INV-MULTI-DEFINE-ANALYZE-001 per-profile edge count summary.</summary>

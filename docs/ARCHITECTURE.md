@@ -64,6 +64,19 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. Zero ProjectReferences (INV-SCRIPTHOST-001). | Roslyn Scripting only |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch. | Everything |
 
+## Unity Package Visibility Boundary
+
+Unity package source visibility is a C# adapter fact projected through existing
+MCP responses, not a separate tool or a connector-owned disk scan. Domain owns
+the neutral result shapes (`PackageSourceVisibilityReport`,
+`PackageSourceVisibilityPackage`, `PackageSourceVisibilityFile`). The Roslyn
+adapter owns descriptor interpretation through
+`Internal.UnityPackageSourceVisibilityBuilder`, combining package descriptors,
+package asmdefs, module file membership, and `excludePaths`. `GraphSession`
+projects the bounded `lifeblood_analyze.packageSourceVisibility` view, and
+`WriteToolHandler` projects `lifeblood_compile_check.packageSourceResolution`
+from the same live adapter receipt.
+
 ## Domain Model
 
 The domain is pure. No Roslyn, no JSON, no System.IO.

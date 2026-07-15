@@ -29,6 +29,22 @@ Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOP
 | **Rename** | Safe rename across the workspace. Returns text edits as preview. The agent decides whether to apply. |
 | **Format** | Roslyn's own formatter. Not regex hacks. |
 
+### Unity Package Source Visibility
+
+For Unity package workspaces, `lifeblood_analyze` includes
+`packageSourceVisibility`: package roots discovered from
+`Packages/manifest.json`, `Packages/packages-lock.json`, and embedded package
+descriptors; package asmdefs; included/excluded/unbound source counts; and a
+bounded deterministic file preview. Included means the package file is in the
+loaded Roslyn descriptor set after `excludePaths`; excluded means
+`excludePaths` removed it from analysis; unbound means the file lives under a
+known package source root but is absent from the loaded project descriptors.
+
+When `lifeblood_compile_check(filePath)` targets a known package file, the
+response adds `packageSourceResolution` with package name/root, status, reason,
+expected asmdef assembly, and a concrete remedy. This shares the same
+adapter-owned receipt as analyze (`INV-UNITY-PACKAGE-SOURCE-001`).
+
 **Static table coverage (v0.7.6 prep wave, SHIPPED on `main`):** `LB-INBOX-011`
 is closed. `lifeblood_static_tables` recognises both explicit
 `new T[] { ... }` and implicit `static readonly float[] X = { ... }` array

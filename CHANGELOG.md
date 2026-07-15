@@ -9,6 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Unity package source visibility is explicit on analyze and compile-check.**
+  `lifeblood_analyze` now reports `packageSourceVisibility` for Unity package
+  workspaces: package roots from `Packages/manifest.json`,
+  `Packages/packages-lock.json`, and embedded package descriptors, discovered
+  package asmdefs, and included/excluded/unbound package source counts with
+  bounded deterministic file previews. `lifeblood_compile_check(filePath)`
+  adds `packageSourceResolution` for recognized package files, naming the
+  owner package, expected asmdef assembly, current status, reason, and remedy
+  when a package source is outside the loaded compilation set.
+  (`INV-UNITY-PACKAGE-SOURCE-001`, `LB-INTAKE-20260629-024`.)
 - **Source-control evidence follows the workspace being analyzed.**
   One Application-owned snapshot port and one bounded Git adapter now serve MCP
   capability, analyze, invariant, and release consumers. Analyze captures once

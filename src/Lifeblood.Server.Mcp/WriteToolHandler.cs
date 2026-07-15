@@ -128,6 +128,47 @@ internal sealed class WriteToolHandler
     private static (int Count, string[]? List) ProjectDefines(string[] definesActive, bool compact)
         => (definesActive.Length, compact ? null : definesActive);
 
+    private static string BuildStaleDescriptorHint(PackageSourceVisibilityFile? packageSource)
+    {
+        if (packageSource == null)
+        {
+            return "File exists on disk but is not in any loaded compilation. Project descriptors are " +
+                   "likely stale (e.g. a freshly-added Unity file before import). Regenerate project " +
+                   "files / refresh the editor, then re-run lifeblood_analyze.";
+        }
+
+        return $"Package source '{packageSource.Path}' belongs to package '{packageSource.PackageName}' " +
+               $"but is not in any loaded compilation ({packageSource.Reason}). {PackageSourceRemedy(packageSource)}";
+    }
+
+    private static object? BuildPackageSourceResolution(PackageSourceVisibilityFile? packageSource)
+        => packageSource == null
+            ? null
+            : new
+            {
+                packageSource.PackageName,
+                packageSource.PackageRoot,
+                packageSource.Path,
+                packageSource.Status,
+                packageSource.Reason,
+                packageSource.ModuleName,
+                packageSource.ExpectedAssembly,
+                remedy = PackageSourceRemedy(packageSource),
+            };
+
+    private static string PackageSourceRemedy(PackageSourceVisibilityFile packageSource)
+        => packageSource.Status switch
+        {
+            PackageSourceVisibilityStatus.Excluded =>
+                "Adjust lifeblood_analyze excludePaths so this package source is inside the analysis scope, then re-run lifeblood_analyze.",
+            PackageSourceVisibilityStatus.Included =>
+                string.IsNullOrEmpty(packageSource.ModuleName)
+                    ? "The package source is reported included; re-run lifeblood_analyze to refresh retained compilations if compile_check still cannot bind it."
+                    : $"The package source is included in module '{packageSource.ModuleName}'. Pass moduleName:'{packageSource.ModuleName}' if file ownership is ambiguous.",
+            _ =>
+                "Regenerate Unity project descriptors or include the package asmdef in the generated solution, then re-run lifeblood_analyze; if Unity compiles it outside project descriptors, verify this file through Unity compile.",
+        };
+
     /// <summary>
     /// True iff the requested diagnose scope has at least one tracked
     /// source file whose on-disk mtime is newer than the loaded graph's
@@ -252,6 +293,9 @@ internal sealed class WriteToolHandler
             ModuleName = moduleName,
         };
         var result = _session.CompilationHost!.CompileCheck(request);
+        var packageSource = !string.IsNullOrEmpty(filePath)
+            ? _session.ResolvePackageSource(filePath)
+            : null;
 
         // INV-COMPILE-CHECK-FILE-RESOLUTION-001 / LB-TRACK-20260530-028.
         // The handler proved the path exists on disk above (FileExists guard),
@@ -262,9 +306,7 @@ internal sealed class WriteToolHandler
         var staleDescriptorHint =
             !string.IsNullOrEmpty(filePath)
             && result.FileOwnership.Outcome == CompilationFileOwnershipOutcome.NotFound
-            ? "File exists on disk but is not in any loaded compilation. Project descriptors are " +
-              "likely stale (e.g. a freshly-added Unity file before import). Regenerate project " +
-              "files / refresh the editor, then re-run lifeblood_analyze."
+            ? BuildStaleDescriptorHint(packageSource)
             : null;
 
         var (definesActiveCount, definesActiveList) = ProjectDefines(result.DefinesActive, IsCompactVerbosity(toolRequest.Verbosity));
@@ -286,6 +328,7 @@ internal sealed class WriteToolHandler
             // INV-COMPILE-CHECK-FILE-RESOLUTION-001 / LB-TRACK-20260530-028.
             fileResolution = result.FileResolution.ToString(),
             staleDescriptorHint,
+            packageSourceResolution = BuildPackageSourceResolution(packageSource),
         };
 
         if (refreshed is int changedFileCount)
@@ -303,6 +346,7 @@ internal sealed class WriteToolHandler
                 commonShape.definesActive,
                 commonShape.fileResolution,
                 commonShape.staleDescriptorHint,
+                commonShape.packageSourceResolution,
                 autoRefreshed = true,
                 changedFileCount,
             }, _jsonOpts));

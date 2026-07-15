@@ -644,43 +644,6 @@ Fix shape:
 - Return a route-level report with hazards, evidence spans, detected seed or
   ordering controls, and suggested contract hooks for tests/probes.
 
-## LB-INTAKE-20260629-024 - Embedded Unity package source visibility report
-
-Type: Improvement
-Priority: High
-Source: DAWG Unity MCP/package dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- DAWG package-side investigations exposed a visibility class that is different
-  from the already-logged "new file not yet imported" case: Unity can compile an
-  embedded package source file, while Lifeblood reports the file as outside the
-  loaded project descriptors.
-- The package source is not a raw disk orphan. It lives under `Packages/`, has
-  package/asmdef ownership, and Unity can load the resulting editor assembly.
-  The missing bit is Lifeblood's explicit report of which package sources are
-  included, excluded, or intentionally unsupported by the current analyze scope.
-
-Why it matters:
-- Tooling and test-job code often lives in embedded packages. If those files are
-  outside the semantic graph, agents can accidentally treat a clean analyze as
-  covering code that Lifeblood did not actually inspect.
-- This is generic for Unity packages, vendored SDKs, source generators, local
-  package references, samples promoted to packages, and any project where the
-  build tool compiles code that does not appear in the primary solution graph.
-
-Fix shape:
-- Add a package/source-visibility section to `lifeblood_analyze` and
-  `lifeblood_compile_check` for Unity workspaces.
-- Report package roots from `manifest.json` / `packages-lock.json`, discovered
-  package asmdefs, files included in Roslyn compilations, files excluded by
-  `excludePaths`, and files Unity appears to compile but Lifeblood cannot bind.
-- When `compile_check(filePath)` hits package source outside the loaded
-  compilation, return a package-specific resolution with the owner package,
-  expected assembly, exclusion reason, and a concrete remedy such as include
-  packages, route to Unity compile, or regenerate project descriptors.
-
 ## LB-INTAKE-20260629-025 - Sibling implementation parity audit
 
 Type: Feature request

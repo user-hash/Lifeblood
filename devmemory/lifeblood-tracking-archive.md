@@ -2910,6 +2910,45 @@ Verification limitation:
   pass. The focused shared-file MCP fixture and full Lifeblood suite are the
   deterministic acceptance authorities for this atom.
 
+## LB-INTAKE-20260629-024 - Embedded Unity package source visibility report
+
+Status: Shipped (in-tree, untagged) - backlog-clearance Wave 1
+Type: Improvement
+Source: DAWG Unity MCP/package dogfood, 2026-06-29; closure 2026-07-15
+Workspace: DAWG and Lifeblood self
+Verification: `PackageSourceVisibilityTests`,
+`INV-UNITY-PACKAGE-SOURCE-001`, focused docs/schema/ledger/package gate
+(59/59), clean Release build (0 warnings/errors), full suite (1,534 passed +
+11 expected native-Clang skips = 1,545), fresh-server self-analysis
+(6,304 symbols / 33,749 edges / 12 modules / 672 types / 0 violations), DAWG
+Editor+Player read-only analyze (116.9 s; 88,787 symbols / 346,562 edges /
+100 modules / 5,544 types / 0 violations; 9 packages, 537 included package
+source files, 2 unbound), and retained DAWG compile-check of
+`Packages/com.dawgtools.textanim.pro/Runtime/Integration/OKLab/OKLabBridge.cs`
+showing `packageSourceResolution.status:"unbound"`,
+`reason:"not-in-project-descriptors"`, expected assembly
+`DawgTools.TextAnimation.Pro.OKLab`, and a descriptor-regeneration remedy.
+
+Resolution:
+- `PackageSourceVisibilityReport` is the neutral Domain receipt for package
+  source coverage. The Roslyn adapter's
+  `Internal.UnityPackageSourceVisibilityBuilder` owns package-root discovery,
+  package asmdef expected assembly evidence, compilation membership, and
+  `excludePaths` classification.
+- `lifeblood_analyze` additively projects `packageSourceVisibility` with
+  package roots, descriptor sources, asmdefs, included/excluded/unbound counts,
+  and bounded deterministic file previews.
+- `lifeblood_compile_check(filePath)` additively projects
+  `packageSourceResolution` for recognized package files, including package
+  name/root, status, reason, expected assembly, and a concrete remedy for
+  unbound or excluded package source.
+
+Impact:
+- Agents can distinguish "clean analyze covered this package file" from
+  "package source exists but the current descriptor/scope did not bind it",
+  without treating every `Packages/` path as either vendored noise or a raw
+  disk orphan.
+
 ## LB-INTAKE-20260629-020 - Release metadata drift between local tag and changelog snapshot
 
 Status: Shipped (in-tree, untagged) - backlog-clearance Wave 1
