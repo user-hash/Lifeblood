@@ -42,6 +42,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 
     private Dictionary<string, CSharpCompilation>? _compilations;
     private AnalysisSnapshot? _snapshot;
+    private PackageSourceVisibilityReport? _packageSourceVisibility;
 
     /// <summary>
     /// INV-MULTI-DEFINE-IOP-001. Name of the profile whose compilations are
@@ -95,6 +96,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
     public IReadOnlyList<Lifeblood.Domain.Results.SkippedFile> SkippedFiles =>
         _snapshot?.SkippedFiles as IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>
         ?? System.Array.Empty<Lifeblood.Domain.Results.SkippedFile>();
+
+    /// <summary>
+    /// Current Unity package source visibility receipt. Populated for
+    /// Unity-shaped workspaces during full and incremental analyze, null for
+    /// non-Unity workspaces or before the first completed analyze.
+    /// </summary>
+    public PackageSourceVisibilityReport? PackageSourceVisibility => _packageSourceVisibility;
 
     public RoslynWorkspaceAnalyzer(IFileSystem fs)
         : this(fs, new DefaultDefineProfileResolver())
@@ -193,6 +201,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 pair => pair.Key,
                 pair => pair.Value.ToArray(),
                 StringComparer.Ordinal),
+            _packageSourceVisibility = _packageSourceVisibility,
             RetainedProfileName = RetainedProfileName,
             RetainedProfileNames = RetainedProfileNames.ToArray(),
             OnModuleProgress = OnModuleProgress,
@@ -457,6 +466,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 activeProfiles.Count == 0
                     ? Array.Empty<ModuleInfo>()
                     : ApplyProfileToModules(modules, activeProfiles[0]));
+            _packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
+                _fs,
+                projectRoot,
+                applicableModules,
+                config);
 
             _snapshot = snapshot;
             phase = "graph-build";
@@ -708,6 +722,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         // if the invariant above broke. INV-INCREMENTAL-XREF-001.
 
         if (changedFiles.Count == 0 && deletedFiles.Count == 0)
+        {
+            _packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
+                _fs,
+                projectRoot,
+                applicableCurrentModules,
+                config);
             return new IncrementalAnalyzeResult
             {
                 Mode = IncrementalMode.Incremental,
@@ -721,6 +741,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                     descriptorForcedFiles,
                     deletedFiles),
             };
+        }
 
         // Recompile only changed modules
         var modulesToRecompile = applicableCurrentModules
@@ -943,6 +964,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         }
 
         _moduleDependencies = BuildModuleDependencyMap(retainedProfileModules);
+        _packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
+            _fs,
+            projectRoot,
+            applicableCurrentModules,
+            config);
 
         return new IncrementalAnalyzeResult
         {
@@ -1010,6 +1036,36 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             reanalyzedSourceFiles: ToProjectRelativePaths(
                 snapshot.ProjectRoot,
                 snapshot.FileTimestamps.Keys));
+    }
+
+    public PackageSourceVisibilityFile? ResolvePackageSource(string filePath)
+    {
+        if (_packageSourceVisibility == null || _snapshot == null || string.IsNullOrWhiteSpace(filePath))
+            return null;
+
+        string query;
+        try
+        {
+            var fullPath = Path.IsPathRooted(filePath)
+                ? Path.GetFullPath(filePath)
+                : Path.GetFullPath(Path.Combine(_snapshot.ProjectRoot, filePath));
+            query = Path.GetRelativePath(_snapshot.ProjectRoot, fullPath).Replace('\\', '/');
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            query = filePath.Trim().Replace('\\', '/');
+        }
+
+        foreach (var package in _packageSourceVisibility.Packages)
+        {
+            foreach (var file in package.Files)
+            {
+                if (PathComparer.Equals(file.Path, query))
+                    return file;
+            }
+        }
+
+        return null;
     }
 
     private static AcceptedChangeSet BuildAcceptedChanges(
@@ -1168,6 +1224,9 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
     private static bool SameExcludePathGlobs(string[] left, string[] right)
         => new HashSet<string>(left, StringComparer.OrdinalIgnoreCase)
             .SetEquals(right);
+
+    private static StringComparer PathComparer { get; }
+        = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     private static HashSet<string>? NormalizeAuthoritativeChangedFiles(
         string projectRoot,
