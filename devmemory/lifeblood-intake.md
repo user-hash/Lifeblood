@@ -549,40 +549,6 @@ Fix shape:
 - Return scores by category plus concrete missing-evidence links. Avoid a
   global quality number; make it a triage aid with named evidence gaps.
 
-## LB-INTAKE-20260629-017 - Multi-profile analyze fallback must preserve requested profiles
-
-Type: Bug
-Priority: High
-Source: DAWG tuning/Burst dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- During a DAWG edit session, `lifeblood_analyze` was called with
-  `defineProfiles:["Editor","Player"]`, `incremental:true`, and
-  `allowFullFallback:true`.
-- The request widened to `mode:"full"` because of
-  `fallbackReason:"moduleDescriptorChanged"`, but the response reported
-  `profileCount:1` and `activeProfiles:null` instead of preserving the
-  requested Editor+Player profile set.
-
-Why it matters:
-- A fallback from incremental to full should widen analysis scope, not silently
-  narrow preprocessor coverage. For Unity/Burst work, Player-only callsites and
-  runtime-only failures are exactly the reason agents request multi-profile
-  analysis.
-- If the response says the analysis is `full` and clean but profile coverage
-  collapsed, an agent can over-trust structural evidence for release/runtime
-  code.
-
-Fix shape:
-- Preserve `AnalysisConfig.DefineProfiles` through every fallback path, including
-  descriptor drift and asmdef/csproj drift.
-- If a fallback cannot honor the requested profiles, reject loudly or return an
-  explicit limitation that names `requestedProfiles` and `effectiveProfiles`.
-- Add a regression test where incremental multi-profile analyze falls back to
-  full because of descriptor drift and still reports the same active profiles.
-
 ## LB-INTAKE-20260629-018 - File-scope diagnose should resolve newly imported Unity files without explicit moduleName
 
 Type: UX

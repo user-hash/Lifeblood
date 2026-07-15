@@ -346,6 +346,7 @@ acceptance receipt passes.
 | Entry | Resolution | Verification | Commit |
 |---|---|---|---|
 | `LB-INTAKE-20260715-041` | shared capability maturity derives from the verified `recommended` rollout contract | focused capability/docs/ledger ratchets, Release build, full suite | `fix(shared-host): align maturity with verified rollout` atom |
+| `LB-INTAKE-20260629-017` | already satisfied by the shared analysis-request pipeline; exact MCP fallback behavior ratcheted without production duplication | Editor+Player asmdef-drift full fallback preserves response, retained profiles, and analysis identity; Release/full suite | `test(analyze): ratchet profile fallback preservation` atom |
 
 ## Failure And Rollback Policy
 

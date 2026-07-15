@@ -15,6 +15,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   same-workspace rollout, canonical setup, and private-stdio rollback posture.
   Code, wire, and documentation ratchets prevent the label from drifting again.
   (`INV-MCP-SHARED-MATURITY-001`, `LB-INTAKE-20260715-041`.)
+- **Multi-profile full fallback is now pinned through the MCP boundary.**
+  An Editor+Player incremental analyze forced to full by asmdef descriptor drift
+  retains both requested profiles in the response summary, per-profile counts,
+  retained compilation state, and canonical analysis identity. The behavior was
+  already restored by the shared analysis-request pipeline; the exact regression
+  ratchet closes the older report without adding another profile authority.
+  (`INV-ANALYZE-FALLBACK-001`, `LB-INTAKE-20260629-017`.)
 - **Incremental analyze uses source content hashes and accepts editor-scoped change sets.**
   `lifeblood_analyze` now reports `mtimeTouchedSourceFiles` separately from
   `contentChangedSourceFiles`, so contentless Unity/IDE metadata touches do not

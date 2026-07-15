@@ -2844,3 +2844,28 @@ Resolution:
 Impact:
 - Agents can select the shared topology from capabilities without overriding a
   stale experimental label, and future rollout/documentation drift fails tests.
+
+## LB-INTAKE-20260629-017 - Multi-profile analyze fallback preserves requested profiles
+
+Status: Shipped (already satisfied, regression-ratcheted) - backlog-clearance Wave 1
+Type: Bug
+Source: DAWG tuning/Burst dogfood, 2026-06-29; closure audit 2026-07-15
+Workspace: DAWG and Lifeblood self
+Verification: `ToolHandlerTests.Handle_Analyze_MultiProfileDescriptorFallbackPreservesRequestedProfiles`,
+`INV-ANALYZE-FALLBACK-001`, and the [Unreleased] changelog.
+
+Resolution:
+- The shared analysis-request pipeline at `7c7a9a2` carries the request's
+  effective `DefineProfiles` into `AnalysisConfig`; the ordinary full path also
+  passes that same sequence into `AnalyzeWorkspaceUseCase`.
+- A public-handler regression now performs an Editor+Player full baseline,
+  changes a Unity asmdef, requests incremental analysis with full fallback, and
+  proves `mode:"full"` plus `fallbackReason:"moduleDescriptorChanged"` without
+  collapsing profile coverage.
+- The receipt checks response `profileCount`, `activeProfiles`, both per-profile
+  counters, retained profile names, and canonical `AnalysisSpec.DefineProfiles`.
+  No second profile owner or production hotpatch was added.
+
+Impact:
+- Descriptor fallback may widen analysis cost but cannot silently narrow
+  preprocessor coverage, so Player-only evidence remains represented.

@@ -136,6 +136,57 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_Analyze_MultiProfileDescriptorFallbackPreservesRequestedProfiles()
+    {
+        var projectRoot = Path.Combine(_tempDir, "multi-profile-project");
+        Directory.CreateDirectory(projectRoot);
+        Directory.CreateDirectory(Path.Combine(projectRoot, "Library"));
+        File.WriteAllText(
+            Path.Combine(projectRoot, "TestProject.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Program.cs"),
+            "#if UNITY_EDITOR\npublic class EditorOnly { }\n#else\npublic class PlayerOnly { }\n#endif");
+        var asmdefPath = Path.Combine(projectRoot, "TestProject.asmdef");
+        File.WriteAllText(asmdefPath, "{\"name\":\"TestProject\"}");
+        var profiles = new[] { "Editor", "Player" };
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+
+        var baseline = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot, defineProfiles = profiles }));
+        Assert.Null(baseline.IsError);
+        File.WriteAllText(asmdefPath, "{\"name\":\"TestProject\",\"references\":[]}");
+
+        var result = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new
+            {
+                projectPath = projectRoot,
+                defineProfiles = profiles,
+                incremental = true,
+                allowFullFallback = true,
+            }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal("full", payload.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("incremental", payload.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("moduleDescriptorChanged", payload.RootElement.GetProperty("fallbackReason").GetString());
+        var summary = payload.RootElement.GetProperty("summary");
+        Assert.Equal(2, summary.GetProperty("profileCount").GetInt32());
+        Assert.Equal(
+            profiles,
+            summary.GetProperty("activeProfiles").EnumerateArray().Select(item => item.GetString()).ToArray());
+        var perProfile = summary.GetProperty("perProfileEdgeCounts");
+        Assert.True(perProfile.TryGetProperty("Editor", out _));
+        Assert.True(perProfile.TryGetProperty("Player", out _));
+        Assert.Equal(profiles, session.RetainedProfileNames);
+        Assert.Equal(profiles, session.AnalysisIdentity!.Spec.DefineProfiles);
+    }
+
+    [Fact]
     public void Handle_Capabilities_WithoutLoad_ReturnsVersionToolCountsAndContractPaths()
     {
         var handler = CreateHandler();
