@@ -94,6 +94,7 @@ internal sealed class WriteToolHandler
             filePath,
             moduleName,
             resolvedModule = string.IsNullOrEmpty(report.ResolvedModule) ? null : report.ResolvedModule,
+            fileOwnership = report.FileOwnership,
             count = report.Diagnostics.Length,
             definesActiveCount,
             definesActive,
@@ -260,7 +261,7 @@ internal sealed class WriteToolHandler
         // the IFileSystem port lives.
         var staleDescriptorHint =
             !string.IsNullOrEmpty(filePath)
-            && result.FileResolution == CompileCheckFileResolution.NotInAnyCompilation
+            && result.FileOwnership.Outcome == CompilationFileOwnershipOutcome.NotFound
             ? "File exists on disk but is not in any loaded compilation. Project descriptors are " +
               "likely stale (e.g. a freshly-added Unity file before import). Regenerate project " +
               "files / refresh the editor, then re-run lifeblood_analyze."
@@ -276,6 +277,7 @@ internal sealed class WriteToolHandler
             filePath,
             resolvedModule = string.IsNullOrEmpty(result.ResolvedModule) ? null : result.ResolvedModule,
             existingTreeReplaced = result.ExistingTreeReplaced,
+            fileOwnership = result.FileOwnership,
             // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001 / LB-INBOX-008.
             // INV-DIAGNOSTIC-ENVELOPE-VERBOSITY-001 / LB-TRACK-20260530-030:
             // compact mode keeps the count but drops the full list.
@@ -296,6 +298,7 @@ internal sealed class WriteToolHandler
                 commonShape.filePath,
                 commonShape.resolvedModule,
                 commonShape.existingTreeReplaced,
+                commonShape.fileOwnership,
                 commonShape.definesActiveCount,
                 commonShape.definesActive,
                 commonShape.fileResolution,

@@ -116,6 +116,15 @@ csproj-driven option follows the same shape.
 
 - **INV-SOURCEGEN-PATH-PROVENANCE-001. Source-generator hint paths are virtual identities and never resolve through the process working directory.**
 
+## Compilation File Ownership
+
+File-scoped compilation operations resolve one retained syntax tree before they
+read diagnostics or replace source. The resolver is adapter-owned because path
+identity and compilation membership are language-host facts; its result is a
+language-neutral Domain receipt consumed by every public projection.
+
+- **INV-COMPILATION-FILE-OWNERSHIP-001. Diagnose and compile-check consume one fail-closed compilation-file ownership resolver; neither operation may select the first suffix match.** `Internal.CompilationFileOwnershipResolver` normalizes separators, applies operating-system case semantics, ranks exact normalized paths above boundary-safe suffix matches, and returns one of `Unique`, `Ambiguous`, `NotFound`, `ModuleNotFound`, or `NotInModule`. A unique result carries the owning module and syntax tree. An ambiguous result carries stable, ordinal module candidates and candidate tree paths but no selected module/tree; callers must pin `moduleName` or provide a more specific path. `DiagnosticsReport.FileOwnership` and `CompileCheckResult.FileOwnership` are the canonical Domain receipt; `ResolvedModule` and `CompileCheckFileResolution` remain additive compatibility projections. `lifeblood_diagnose` fails closed to an empty diagnostic/define set on non-unique file ownership instead of presenting another compilation as clean, while `lifeblood_compile_check` returns `LB0004` for ambiguity and never replaces a guessed tree. Pinned by `CompileCheckFileResolutionTests` (unique, missing, pinned miss, missing module, exact-path precedence, deterministic ambiguity), `DiagnosticEnvelopeDefinesTests`, and `ToolHandlerTests.Handle_DiagnoseAndCompileCheck_AmbiguousFileOwnershipFailsClosed`. Closes `LB-INTAKE-20260629-018`.
+
 ## Diagnostic Parity Wall
 
 Lifeblood's `diagnose` output on a workspace `dotnet build` calls clean

@@ -25,6 +25,37 @@ public enum DiagnosticSeverity
     Error,
 }
 
+/// <summary>
+/// Language-neutral outcome of mapping one requested source path to loaded
+/// compilation membership. Adapters own path matching; consumers receive this
+/// typed fact instead of inferring ownership from empty diagnostics or a
+/// first-match module name.
+/// </summary>
+public enum CompilationFileOwnershipOutcome
+{
+    NotRequested,
+    Unique,
+    Ambiguous,
+    NotFound,
+    ModuleNotFound,
+    NotInModule,
+}
+
+/// <summary>
+/// Canonical file-to-compilation ownership receipt shared by diagnostics and
+/// compile-check results. Candidate arrays are stable and complete for the
+/// loaded compilation set; an ambiguous result never selects a winner.
+/// INV-COMPILATION-FILE-OWNERSHIP-001.
+/// </summary>
+public sealed class CompilationFileOwnership
+{
+    public CompilationFileOwnershipOutcome Outcome { get; init; }
+        = CompilationFileOwnershipOutcome.NotRequested;
+    public string ResolvedModule { get; init; } = "";
+    public string[] CandidateModules { get; init; } = Array.Empty<string>();
+    public string[] CandidateFilePaths { get; init; } = Array.Empty<string>();
+}
+
 public sealed class CompileCheckResult
 {
     public required bool Success { get; init; }
@@ -33,8 +64,8 @@ public sealed class CompileCheckResult
     /// <summary>
     /// Module that owned the file or hosted the snippet for this check.
     /// Populated when a file-mode check found an owning module; empty
-    /// when the host fell through to the first available compilation
-    /// (the legacy snippet path) or the request couldn't be resolved.
+    /// for the legacy unpinned snippet path or when file ownership could
+    /// not be resolved uniquely.
     /// </summary>
     public string ResolvedModule { get; init; } = "";
 
@@ -43,8 +74,8 @@ public sealed class CompileCheckResult
     /// compilation, the host swapped its existing syntax tree for the
     /// on-disk content (so the user gets edit-then-check semantics
     /// without colliding type re-declarations). False when the host
-    /// added the input as a new tree (snippet mode, or a brand-new
-    /// file not yet in any module).
+    /// added the input as a new tree in snippet mode or file ownership
+    /// could not be resolved.
     /// </summary>
     public bool ExistingTreeReplaced { get; init; }
 
@@ -71,6 +102,14 @@ public sealed class CompileCheckResult
     /// INV-COMPILE-CHECK-FILE-RESOLUTION-001 / LB-TRACK-20260530-028.
     /// </summary>
     public CompileCheckFileResolution FileResolution { get; init; } = CompileCheckFileResolution.Resolved;
+
+    /// <summary>
+    /// Canonical file-ownership fact for file mode. The older
+    /// <see cref="FileResolution"/> field remains a compatibility projection;
+    /// new consumers should use this shared receipt to distinguish ambiguity,
+    /// missing modules, and paths absent from a pinned module.
+    /// </summary>
+    public CompilationFileOwnership FileOwnership { get; init; } = new();
 }
 
 /// <summary>
@@ -91,8 +130,10 @@ public enum CompileCheckFileResolution
     NotInModule,
     /// <summary>The file matched no loaded compilation's syntax-tree paths.</summary>
     NotInAnyCompilation,
-    /// <summary>Resolved to a module but had no existing tree and no inline override to compile.</summary>
+    /// <summary>Legacy compatibility value; the canonical resolver never emits a unique owner without a tree.</summary>
     NoTreeToCompile,
+    /// <summary>More than one loaded compilation matched; no winner was selected.</summary>
+    Ambiguous,
 }
 
 /// <summary>
@@ -129,6 +170,13 @@ public sealed class DiagnosticsReport
     /// compilation.
     /// </summary>
     public string ResolvedModule { get; init; } = "";
+
+    /// <summary>
+    /// Canonical file-ownership fact when the request was file-scoped.
+    /// Module/project requests keep <c>NotRequested</c> and use
+    /// <see cref="ResolvedModule"/> for their existing scope projection.
+    /// </summary>
+    public CompilationFileOwnership FileOwnership { get; init; } = new();
 }
 
 /// <summary>
@@ -146,9 +194,11 @@ public sealed class CompileCheckRequest
     /// <summary>
     /// Workspace-relative or absolute path to a source file. The host
     /// detects which module's compilation owns the file by matching the
-    /// path against each compilation's syntax tree paths, then swaps the
-    /// file's existing tree for the on-disk content. Mutually exclusive
-    /// with <see cref="Code"/>.
+    /// path against each compilation's syntax tree paths. Exact paths outrank
+    /// suffix matches; ambiguity fails closed until <see cref="ModuleName"/>
+    /// selects one owner. The host then swaps the file's existing tree for
+    /// the supplied or retained content. Mutually exclusive with
+    /// <see cref="Code"/> at the MCP boundary.
     /// </summary>
     public string? FilePath { get; init; }
 

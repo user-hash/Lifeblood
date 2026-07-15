@@ -54,35 +54,50 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   ISymbol? Internal.IRoslynLookup.ResolveFromSource(string symbolId) => ResolveFromSource(symbolId);
 
   public DiagnosticInfo[] GetDiagnostics(string? moduleName = null) =>
-  GetDiagnostics(new DiagnosticsRequest { ModuleName = moduleName });
+  GetDiagnosticsReport(new DiagnosticsRequest { ModuleName = moduleName }).Diagnostics;
 
   public DiagnosticsReport GetDiagnosticsReport(DiagnosticsRequest request)
   {
-  // File-scope: route through FindOwningCompilation (same path-match
-  // rules as the rest of the adapter). Module-scope: use the request's
-  // module name verbatim. Project-wide: empty resolvedModule, defines
-  // are the sorted-deduped union across every compilation.
-  // INV-DIAGNOSTIC-ENVELOPE-DEFINES-001.
+  var fileOwnership = new CompilationFileOwnership();
   string resolvedModule = request.ModuleName ?? "";
-  if (!string.IsNullOrEmpty(request.FilePath) && string.IsNullOrEmpty(resolvedModule))
+  SyntaxTree? requestedTree = null;
+  if (!string.IsNullOrEmpty(request.FilePath))
   {
-  var owning = FindOwningCompilation(request.FilePath!, null);
-  resolvedModule = owning.Module ?? "";
+  var owner = CompilationFileOwnershipResolver.Resolve(
+  _compilations,
+  request.FilePath!,
+  request.ModuleName);
+  fileOwnership = owner.Ownership;
+  if (fileOwnership.Outcome != CompilationFileOwnershipOutcome.Unique)
+  {
+  return new DiagnosticsReport
+  {
+  Diagnostics = Array.Empty<DiagnosticInfo>(),
+  DefinesActive = Array.Empty<string>(),
+  FileOwnership = fileOwnership,
+  };
+  }
+
+  resolvedModule = fileOwnership.ResolvedModule;
+  requestedTree = owner.Tree;
   }
 
   return new DiagnosticsReport
   {
-  Diagnostics = GetDiagnostics(request),
+  Diagnostics = CollectDiagnostics(
+  string.IsNullOrEmpty(resolvedModule) ? null : resolvedModule,
+  requestedTree),
   DefinesActive = CollectDefines(string.IsNullOrEmpty(resolvedModule) ? null : resolvedModule),
   ResolvedModule = resolvedModule,
+  FileOwnership = fileOwnership,
   };
   }
 
   public DiagnosticInfo[] GetDiagnostics(DiagnosticsRequest request)
-  {
-  var moduleName = request.ModuleName;
-  var requestedFile = request.FilePath;
+  => GetDiagnosticsReport(request).Diagnostics;
 
+  private DiagnosticInfo[] CollectDiagnostics(string? moduleName, SyntaxTree? requestedTree)
+  {
   if (moduleName != null && !_compilations.ContainsKey(moduleName))
   return Array.Empty<DiagnosticInfo>();
 
@@ -102,12 +117,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
 
   var lineSpan = diag.Location.GetMappedLineSpan();
 
-  // File scope filter: restrict to diagnostics whose syntax-tree path
-  // matches the requested file. Match end-of-path so callers can pass
-  // a relative form (e.g. "src/Foo/Bar.cs") and have it match the
-  // compilation's stored absolute path. Comparison is case-insensitive
-  // (Windows-friendly) on the path-separator-normalized form.
-  if (requestedFile != null && !PathsMatch(lineSpan.Path, requestedFile))
+  if (requestedTree != null && !ReferenceEquals(diag.Location.SourceTree, requestedTree))
   continue;
 
   results.Add(new DiagnosticInfo
@@ -168,26 +178,6 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   return defines.ToArray();
   }
 
-  /// <summary>
-  /// True if <paramref name="diagPath"/> (the absolute path Roslyn reports
-  /// for a diagnostic location) matches <paramref name="userPath"/> (the
-  /// caller-supplied scope filter, which may be relative or absolute).
-  /// Both forms are normalized to forward-slashes and lowercased before
-  /// the suffix comparison; either side may be the suffix of the other so
-  /// passing the absolute path or the project-relative path both work.
-  /// Returns false for null/empty diagnostic paths.
-  /// </summary>
-  private static bool PathsMatch(string? diagPath, string userPath)
-  {
-  if (string.IsNullOrEmpty(diagPath)) return false;
-  var a = diagPath.Replace('\\', '/').ToLowerInvariant();
-  var b = userPath.Replace('\\', '/').ToLowerInvariant();
-  if (a == b) return true;
-  if (a.EndsWith("/" + b, StringComparison.Ordinal)) return true;
-  if (b.EndsWith("/" + a, StringComparison.Ordinal)) return true;
-  return false;
-  }
-
   public CompileCheckResult CompileCheck(string code, string? moduleName = null)
   => CompileCheck(new CompileCheckRequest { Code = code, ModuleName = moduleName });
 
@@ -213,13 +203,27 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
 
   private CompileCheckResult CompileCheckFile(string filePath, string? overrideCode, string? moduleName)
   {
-  // Find the owning compilation. If the caller pinned a moduleName,
-  // require the file to live in that module; otherwise scan every
-  // compilation for a matching syntax-tree path.
-  var (resolvedModule, owningCompilation, existingTree) =
-  FindOwningCompilation(filePath, moduleName);
-  if (owningCompilation == null)
+  var owner = CompilationFileOwnershipResolver.Resolve(_compilations, filePath, moduleName);
+  var fileOwnership = owner.Ownership;
+  if (fileOwnership.Outcome != CompilationFileOwnershipOutcome.Unique)
   {
+  var ambiguous = fileOwnership.Outcome == CompilationFileOwnershipOutcome.Ambiguous;
+  var pinnedMiss = fileOwnership.Outcome is
+  CompilationFileOwnershipOutcome.ModuleNotFound or
+  CompilationFileOwnershipOutcome.NotInModule;
+  var message = fileOwnership.Outcome switch
+  {
+  CompilationFileOwnershipOutcome.Ambiguous =>
+  $"File '{filePath}' matches multiple loaded compilations ({string.Join(", ", fileOwnership.CandidateModules)}). Pass moduleName to select one explicitly.",
+  CompilationFileOwnershipOutcome.ModuleNotFound =>
+  $"Module '{moduleName}' is not loaded. Re-run analyze or pass moduleName=null to auto-detect file ownership.",
+  CompilationFileOwnershipOutcome.NotInModule =>
+  $"File '{filePath}' not found in module '{moduleName}'. Pass moduleName=null to auto-detect.",
+  _ =>
+  $"File '{filePath}' not found in any loaded compilation. The file may exist on disk but not yet be in a loaded module — " +
+  $"re-run analyze, or if project descriptors are stale (e.g. a freshly-added Unity file), regenerate project files / refresh first. " +
+  $"Compilations available: {string.Join(", ", _compilations.Keys)}.",
+  };
   // The host knows only compilation membership, not disk presence.
   // A pinned-but-missing module is NotInModule; an unmatched path is
   // NotInAnyCompilation — which a disk-aware caller reads as the
@@ -229,20 +233,22 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   Success = false,
   Diagnostics = new[] { new DiagnosticInfo
   {
-  Id = "LB0002",
-  Message = moduleName != null
-  ? $"File '{filePath}' not found in module '{moduleName}'. Pass moduleName=null to auto-detect."
-  : $"File '{filePath}' not found in any loaded compilation. The file may exist on disk but not yet be in a loaded module — " +
-  $"re-run analyze, or if project descriptors are stale (e.g. a freshly-added Unity file), regenerate project files / refresh first. " +
-  $"Compilations available: {string.Join(", ", _compilations.Keys)}.",
+  Id = ambiguous ? "LB0004" : "LB0002",
+  Message = message,
   Severity = DomainDiagnosticSeverity.Error,
   }},
-  ResolvedModule = resolvedModule ?? "",
-  FileResolution = moduleName != null
+  FileResolution = ambiguous
+  ? CompileCheckFileResolution.Ambiguous
+  : pinnedMiss
   ? CompileCheckFileResolution.NotInModule
   : CompileCheckFileResolution.NotInAnyCompilation,
+  FileOwnership = fileOwnership,
   };
   }
+
+  var resolvedModule = fileOwnership.ResolvedModule;
+  var owningCompilation = owner.Compilation!;
+  var existingTree = owner.Tree!;
 
   // Source: explicit override (rare — caller knows file content
   // differs from disk) or the existing tree's text. We deliberately
@@ -253,24 +259,9 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   {
   newSource = overrideCode!;
   }
-  else if (existingTree != null)
-  {
-  newSource = existingTree.GetText().ToString();
-  }
   else
   {
-  return new CompileCheckResult
-  {
-  Success = false,
-  Diagnostics = new[] { new DiagnosticInfo
-  {
-  Id = "LB0003",
-  Message = $"File '{filePath}' resolved to module '{resolvedModule}' but had no existing tree and no inline 'code' override; nothing to compile-check.",
-  Severity = DomainDiagnosticSeverity.Error,
-  }},
-  ResolvedModule = resolvedModule ?? "",
-  FileResolution = CompileCheckFileResolution.NoTreeToCompile,
-  };
+  newSource = existingTree.GetText().ToString();
   }
 
   // Build the replacement tree at the SAME path so diagnostics keep
@@ -280,7 +271,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   // ModuleCompilationBuilder) so AddSyntaxTrees / ReplaceSyntaxTree
   // does not throw "Inconsistent language versions" when the module
   // declares a non-default LangVersion.
-  var preservedPath = existingTree?.FilePath ?? filePath;
+  var preservedPath = existingTree.FilePath;
   var moduleParseOptions = GetModuleParseOptions(owningCompilation);
   var newTree = CSharpSyntaxTree.ParseText(newSource, moduleParseOptions, path: preservedPath);
 
@@ -293,9 +284,7 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
   .Select(d => DiagnosticKey(d)));
 
-  var testCompilation = existingTree != null
-  ? owningCompilation.ReplaceSyntaxTree(existingTree, newTree)
-  : owningCompilation.AddSyntaxTrees(newTree);
+  var testCompilation = owningCompilation.ReplaceSyntaxTree(existingTree, newTree);
 
   using var ms = new MemoryStream();
   var emitResult = testCompilation.Emit(ms);
@@ -325,9 +314,10 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   {
   Success = !hasErrors,
   Diagnostics = diagnostics,
-  ResolvedModule = resolvedModule ?? "",
-  ExistingTreeReplaced = existingTree != null,
+  ResolvedModule = resolvedModule,
+  ExistingTreeReplaced = true,
   DefinesActive = CollectDefines(resolvedModule),
+  FileOwnership = fileOwnership,
   };
   }
 
@@ -424,38 +414,6 @@ public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLo
   {
   var span = d.Location.GetMappedLineSpan();
   return $"{d.Id}:{span.Path}:{span.StartLinePosition.Line}";
-  }
-
-  /// <summary>
-  /// Walk every loaded compilation for the syntax tree whose path
-  /// matches <paramref name="filePath"/>. Match is case-insensitive
-  /// forward-slash suffix: a tree at <c><project-root>/Assets/.../Foo.cs</c>
-  /// resolves a request for <c>Assets/.../Foo.cs</c>, an absolute
-  /// path, or anything in between. When <paramref name="moduleName"/>
-  /// is set the search is restricted to that one compilation.
-  /// </summary>
-  private (string? Module, CSharpCompilation? Compilation, SyntaxTree? Tree) FindOwningCompilation(string filePath, string? moduleName)
-  {
-  var normalized = filePath.Replace('\\', '/').TrimStart('/').ToLowerInvariant();
-
-  IEnumerable<KeyValuePair<string, CSharpCompilation>> candidates =
-  moduleName != null && _compilations.TryGetValue(moduleName, out var pinned)
-  ? new[] { new KeyValuePair<string, CSharpCompilation>(moduleName, pinned) }
-  : _compilations;
-
-  foreach (var kv in candidates)
-  {
-  foreach (var tree in kv.Value.SyntaxTrees)
-  {
-  var treePath = (tree.FilePath ?? string.Empty).Replace('\\', '/').ToLowerInvariant();
-  if (treePath.Length == 0) continue;
-  if (treePath == normalized) return (kv.Key, kv.Value, tree);
-  if (treePath.EndsWith("/" + normalized, StringComparison.Ordinal)) return (kv.Key, kv.Value, tree);
-  if (normalized.EndsWith("/" + treePath, StringComparison.Ordinal)) return (kv.Key, kv.Value, tree);
-  }
-  }
-
-  return (moduleName, null, null);
   }
 
   public DomainReferenceLocation[] FindReferences(string symbolId)

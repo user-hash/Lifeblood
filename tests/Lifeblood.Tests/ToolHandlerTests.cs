@@ -187,6 +187,64 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_DiagnoseAndCompileCheck_AmbiguousFileOwnershipFailsClosed()
+    {
+        var projectRoot = Path.Combine(_tempDir, "shared-file-project");
+        var sharedDirectory = Path.Combine(projectRoot, "Shared");
+        Directory.CreateDirectory(sharedDirectory);
+        File.WriteAllText(Path.Combine(sharedDirectory, "Shared.cs"), "public class Shared { }");
+        WriteModule("ModB");
+        WriteModule("ModA");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+
+        var analyze = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot }));
+        Assert.Null(analyze.IsError);
+
+        var diagnose = handler.Handle(
+            "lifeblood_diagnose",
+            MakeArgs(new { filePath = "Shared/Shared.cs" }));
+        var compile = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new { filePath = "Shared/Shared.cs", staleRefresh = false }));
+        var pinned = handler.Handle(
+            "lifeblood_diagnose",
+            MakeArgs(new { filePath = "Shared/Shared.cs", moduleName = "ModB" }));
+
+        Assert.Null(diagnose.IsError);
+        Assert.Null(compile.IsError);
+        Assert.Null(pinned.IsError);
+        using var diagnosePayload = JsonDocument.Parse(diagnose.Content[0].Text);
+        using var compilePayload = JsonDocument.Parse(compile.Content[0].Text);
+        using var pinnedPayload = JsonDocument.Parse(pinned.Content[0].Text);
+        var diagnoseOwnership = diagnosePayload.RootElement.GetProperty("fileOwnership");
+        Assert.Equal("Ambiguous", diagnoseOwnership.GetProperty("outcome").GetString());
+        Assert.Equal(
+            new[] { "ModA", "ModB" },
+            diagnoseOwnership.GetProperty("candidateModules").EnumerateArray().Select(item => item.GetString()).ToArray());
+        Assert.Equal(JsonValueKind.Null, diagnosePayload.RootElement.GetProperty("resolvedModule").ValueKind);
+        var compileOwnership = compilePayload.RootElement.GetProperty("fileOwnership");
+        Assert.Equal("Ambiguous", compileOwnership.GetProperty("outcome").GetString());
+        Assert.Equal("Ambiguous", compilePayload.RootElement.GetProperty("fileResolution").GetString());
+        Assert.Contains("LB0004", compilePayload.RootElement.GetProperty("diagnostics").GetRawText());
+        Assert.Equal("Unique", pinnedPayload.RootElement.GetProperty("fileOwnership").GetProperty("outcome").GetString());
+        Assert.Equal("ModB", pinnedPayload.RootElement.GetProperty("resolvedModule").GetString());
+
+        void WriteModule(string moduleName)
+        {
+            var moduleDirectory = Path.Combine(projectRoot, moduleName);
+            Directory.CreateDirectory(moduleDirectory);
+            File.WriteAllText(
+                Path.Combine(moduleDirectory, moduleName + ".csproj"),
+                $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework>" +
+                $"<AssemblyName>{moduleName}</AssemblyName><EnableDefaultCompileItems>false</EnableDefaultCompileItems>" +
+                "</PropertyGroup><ItemGroup><Compile Include=\"../Shared/Shared.cs\" /></ItemGroup></Project>");
+        }
+    }
+
+    [Fact]
     public void Handle_Capabilities_WithoutLoad_ReturnsVersionToolCountsAndContractPaths()
     {
         var handler = CreateHandler();
