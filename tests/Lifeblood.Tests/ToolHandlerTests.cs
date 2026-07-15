@@ -183,8 +183,9 @@ public class ToolHandlerTests : IDisposable
         Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("snapshotHistoryCatalog").GetBoolean());
         Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("historicalSnapshotSelection").GetBoolean());
         Assert.False(doc.RootElement.GetProperty("featureFlags").GetProperty("historicalSnapshotsRetainSemanticServices").GetBoolean());
+        Assert.Equal("recommended", ServerIdentity.SharedSessionTransportMaturity);
         Assert.Equal(
-            "experimental",
+            ServerIdentity.SharedSessionTransportMaturity,
             doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportMaturity").GetString());
         Assert.False(doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportActive").GetBoolean());
         Assert.Equal("stdio", doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransportMode").GetString());

@@ -33,6 +33,8 @@ testable through its normal public API.
 
 - **INV-MCP-SHARED-STATUS-001. Capability status reports the active host and lifecycle rather than advertising shared support as active everywhere.** Top-level `lifeblood_capabilities.sharedService` projects the live hosting boundary: active mode, shared protocol version, daemon instance, compiled build identity, process id/start, bound workspace, lifecycle state, client/request/in-flight-analysis counts, last activity, idle policy/deadline, and current working/private memory. Private stdio reports `active:false`, `mode:"stdio"`, no daemon protocol/lifecycle deadline, and its own process facts. Feature flags separately distinguish shared transport support from whether this process is the shared daemon. Pinned by `ToolHandlerTests.Handle_Capabilities_WithoutLoad_ReturnsVersionToolCountsAndContractPaths` and same-pipe process assertions.
 
+- **INV-MCP-SHARED-MATURITY-001. Shared-transport maturity has one machine-readable owner and must match the verified rollout posture.**
+
 - **INV-WORKSPACE-BINDING-001. A shared daemon may publish analysis state only for its canonical bound workspace.**
 
 ## Tool Registry

@@ -238,6 +238,22 @@ public class DocsTests
 
   // Specialized ratchets — non-integer-equality contracts.
 
+  /// <summary>INV-MCP-SHARED-MATURITY-001. Machine maturity matches the rollout posture.</summary>
+  [Fact]
+  public void SharedTransportMaturity_MatchesCanonicalRolloutDocs()
+  {
+    var status = File.ReadAllText(Path.Combine(RepoRoot, "docs", "STATUS.md"));
+    var setup = File.ReadAllText(Path.Combine(RepoRoot, "docs", "MCP_SETUP.md"));
+    var example = File.ReadAllText(Path.Combine(RepoRoot, ".mcp.json.example"));
+
+    Assert.Equal("recommended", ServerIdentity.SharedSessionTransportMaturity);
+    Assert.Matches(
+      @"(?s)Shared transport rollout:.*?recommended configuration.*?private stdio remains the rollback path",
+      status);
+    Assert.Contains("Keep private stdio available only as the rollback configuration.", setup);
+    Assert.Contains("\"args\": [\"--shared\"]", example);
+  }
+
   /// <summary>INV-CHANGELOG-001. Every ## [X.Y.Z] heading has a matching link reference.</summary>
   [Fact]
   public void Changelog_EveryHeadingHasLinkReference()

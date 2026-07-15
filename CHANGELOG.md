@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Shared transport now reports its verified maturity.**
+
 - **Incremental analyze uses source content hashes and accepts editor-scoped change sets.**
   `lifeblood_analyze` now reports `mtimeTouchedSourceFiles` separately from
   `contentChangedSourceFiles`, so contentless Unity/IDE metadata touches do not
