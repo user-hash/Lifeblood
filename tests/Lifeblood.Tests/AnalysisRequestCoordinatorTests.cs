@@ -139,6 +139,51 @@ public sealed class AnalysisRequestCoordinatorTests
     }
 
     [Fact]
+    public async Task Execute_SynchronousOwnerCancellationStopsAcceptingLateWaiters()
+    {
+        using var coordinator = new AnalysisRequestCoordinator<int>();
+        using var waiterCancellation = new CancellationTokenSource();
+        using var permitOldWorkToExit = new ManualResetEventSlim();
+        var key = CreateKey("sync-cancel-retry");
+        var entered = NewSignal();
+        var workCancellationObserved = NewSignal();
+        var invocations = 0;
+
+        var cancelledOwner = Task.Run(() => coordinator.Execute(
+            key,
+            cancellationToken =>
+            {
+                Interlocked.Increment(ref invocations);
+                entered.TrySetResult();
+                cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
+                if (cancellationToken.IsCancellationRequested)
+                    workCancellationObserved.TrySetResult();
+                permitOldWorkToExit.Wait(TimeSpan.FromSeconds(5));
+                cancellationToken.ThrowIfCancellationRequested();
+                return 1;
+            },
+            waiterCancellation.Token));
+
+        await entered.Task;
+        waiterCancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledOwner);
+        await workCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var retry = await coordinator.ExecuteAsync(
+            key,
+            _ =>
+            {
+                Interlocked.Increment(ref invocations);
+                return Task.FromResult(9);
+            });
+
+        Assert.Equal(9, retry.Value);
+        Assert.False(retry.Coalesced);
+        Assert.Equal(2, invocations);
+        permitOldWorkToExit.Set();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_FailureFansOutAndDoesNotPoisonRetry()
     {
         using var coordinator = new AnalysisRequestCoordinator<int>();

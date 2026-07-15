@@ -35,25 +35,28 @@ public sealed record IncrementalAnalyzeResult
     /// <see cref="IncrementalMode.Rejected"/>.</summary>
     public SemanticGraph? Graph { get; init; }
 
-    /// <summary>Number of source files that triggered re-extraction. When
-    /// <see cref="Mode"/> is <see cref="IncrementalMode.FullFallback"/>
-    /// this counts every tracked file (the entire workspace is re-analyzed).
-    /// For <see cref="IncrementalMode.Rejected"/> this is 0.</summary>
-    public int ChangedFileCount { get; init; }
+    /// <summary>
+    /// Canonical source-change evidence. This is the single authority for all
+    /// accepted-change paths and counts returned by this result.
+    /// </summary>
+    public AcceptedChangeSet AcceptedChanges { get; init; } = AcceptedChangeSet.Empty;
+
+    /// <summary>Number of source files reanalyzed or deleted.</summary>
+    public int ChangedFileCount => AcceptedChanges.ChangedFileCount;
 
     /// <summary>
     /// Number of tracked source files whose filesystem mtime changed since
     /// the prior snapshot. This can be larger than <see cref="ChangedFileCount"/>
     /// when the file text hash is unchanged (Unity/IDE metadata churn).
     /// </summary>
-    public int MtimeTouchedFileCount { get; init; }
+    public int MtimeTouchedFileCount => AcceptedChanges.MtimeTouchedFileCount;
 
     /// <summary>
     /// Number of source files whose content hash changed. Descriptor-triggered
     /// recompiles can make <see cref="ChangedFileCount"/> positive while this
     /// remains zero.
     /// </summary>
-    public int ContentChangedFileCount { get; init; }
+    public int ContentChangedFileCount => AcceptedChanges.ContentChangedFileCount;
 
     /// <summary>Why incremental was downgraded. Populated when
     /// <see cref="Mode"/> is <see cref="IncrementalMode.FullFallback"/>

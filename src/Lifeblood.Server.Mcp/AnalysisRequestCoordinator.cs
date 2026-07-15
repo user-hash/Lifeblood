@@ -37,7 +37,7 @@ public sealed class AnalysisRequestCoordinator<T> : IDisposable
         CancellationToken waiterCancellation = default)
         => ExecuteAsync(
                 key,
-                cancellation => Task.FromResult(work(cancellation)),
+                cancellation => Task.Run(() => work(cancellation), cancellation),
                 waiterCancellation)
             .GetAwaiter()
             .GetResult();
@@ -189,6 +189,8 @@ public sealed class AnalysisRequestCoordinator<T> : IDisposable
                 if (_activeWaiters < 0)
                     throw new InvalidOperationException("Analysis waiter count became negative.");
                 cancelWork = _activeWaiters == 0 && !Completion.Task.IsCompleted;
+                if (cancelWork)
+                    _acceptingWaiters = false;
             }
 
             if (cancelWork)

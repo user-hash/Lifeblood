@@ -574,8 +574,12 @@ public sealed class GraphSession : IDisposable
                        string[]? defineProfiles = null,
                        string[]? excludePaths = null,
                        string[]? authoritativeChangedFiles = null,
-                       AnalysisKey? expectedAnalysisKey = null)
+                       AcceptedChangeReceiptRequest? acceptedChangeReceipt = null,
+                       AnalysisKey? expectedAnalysisKey = null,
+                       CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        var changeReceipt = acceptedChangeReceipt ?? AcceptedChangeReceiptRequest.Summary;
         var committed = Current;
         var fullRequestedMode = "full";
         FallbackReason? fullFallbackReason = null;
@@ -614,7 +618,8 @@ public sealed class GraphSession : IDisposable
                             graph: null,
                             analysis: null,
                             usage: null,
-                            changedFileCount: 0,
+                            acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
+                            changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.AnalysisScopeChanged,
@@ -639,7 +644,8 @@ public sealed class GraphSession : IDisposable
                             graph: null,
                             analysis: null,
                             usage: null,
-                            changedFileCount: 0,
+                            acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
+                            changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.CompilationStateUnavailable,
@@ -662,40 +668,47 @@ public sealed class GraphSession : IDisposable
                         allowFullFallback,
                         excludePaths,
                         authoritativeChangedFiles,
-                        expectedAnalysisKey);
+                        changeReceipt,
+                        expectedAnalysisKey,
+                        cancellationToken);
                 }
             }
 
-            // No prior snapshot (first call) OR snapshot is for a different
-            // project. Both are "no prior analysis for THIS project" from the
-            // caller's POV, both map to FallbackReason.NoPriorAnalysis. The
-            // adapter would return the same Rejected/NoPriorAnalysis result
-            // if invoked, but we don't have an adapter to invoke yet — so
-            // synthesize the wire response directly. INV-ANALYZE-FALLBACK-001
-            // requires this path to surface the structured rejection so the
-            // agent's incremental:true assumption isn't silently overridden
-            // by a slow full re-analyze.
-            if (!allowFullFallback)
+            if (!canIncrementalThisProject)
             {
-                var detail = committedAdapter?.HasSnapshot != true
+                // No prior snapshot (first call) OR snapshot is for a different
+                // project. Both are "no prior analysis for THIS project" from the
+                // caller's POV, both map to FallbackReason.NoPriorAnalysis. The
+                // adapter would return the same Rejected/NoPriorAnalysis result
+                // if invoked, but we don't have an adapter to invoke yet — so
+                // synthesize the wire response directly. INV-ANALYZE-FALLBACK-001.
+                var noPriorDetail = committedAdapter?.HasSnapshot != true
                     ? "No previous analysis snapshot. Call lifeblood_analyze first (without incremental:true)."
                     : $"Previous analysis was for a different project ('{committedProjectPath}'); current request is for '{projectPath}'.";
+                if (!allowFullFallback)
+                {
+                    return BuildLoadResult(
+                        mode: "rejected",
+                        graph: null,
+                        analysis: null,
+                        usage: null,
+                        acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
+                        changeReceipt: changeReceipt,
+                        skipped: null,
+                        requestedMode: "incremental",
+                        fallbackReason: FallbackReason.NoPriorAnalysis,
+                        fallbackDetail: noPriorDetail,
+                        canRetryFull: true,
+                        projectPath: projectPath,
+                        rulesPath: rulesPath);
+                }
 
-                return BuildLoadResult(
-                    mode: "rejected",
-                    graph: null,
-                    analysis: null,
-                    usage: null,
-                    changedFileCount: 0,
-                    skipped: null,
-                    requestedMode: "incremental",
-                    fallbackReason: FallbackReason.NoPriorAnalysis,
-                    fallbackDetail: detail,
-                    canRetryFull: true,
-                    projectPath: projectPath,
-                    rulesPath: rulesPath);
+                // Caller accepted widening, but requested intent and cause remain
+                // observable on the successful full response.
+                fullRequestedMode = "incremental";
+                fullFallbackReason = FallbackReason.NoPriorAnalysis;
+                fullFallbackDetail = noPriorDetail;
             }
-            // allowFullFallback==true: fall through to full re-analyze.
         }
 
         SemanticGraph graph;
@@ -791,6 +804,8 @@ public sealed class GraphSession : IDisposable
             return "Specify projectPath or graphPath";
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         // Analyze (rules are optional — resolve built-in name first, then file path)
         var resolvedRuleSet = candidateRuleSet
             ?? throw new InvalidOperationException("Rule identity was not resolved for the analysis candidate.");
@@ -799,6 +814,8 @@ public sealed class GraphSession : IDisposable
         {
             analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, resolvedRuleSet.Rules);
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         var identity = candidateRoslynAdapter != null
             ? BuildRoslynIdentity(
@@ -819,6 +836,8 @@ public sealed class GraphSession : IDisposable
             (newCompilationHost, newCodeExecutor, newRefactoring) =
                 CreateCompilationServices(candidateRoslynAdapter, graph, candidateProjectPath);
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Publish the complete host + Application state through one reference.
         using (TelemetryPhase("session-commit"))
@@ -850,7 +869,10 @@ public sealed class GraphSession : IDisposable
             graph: graph,
             analysis: analysis,
             usage: usage,
-            changedFileCount: null,
+            acceptedChanges: fullRequestedMode == "incremental" && candidateRoslynAdapter != null
+                ? candidateRoslynAdapter.CaptureFullFallbackAcceptedChanges()
+                : null,
+            changeReceipt: changeReceipt,
             skipped: candidateRoslynAdapter?.SkippedFiles,
             requestedMode: fullRequestedMode,
             fallbackReason: fullFallbackReason,
@@ -869,8 +891,11 @@ public sealed class GraphSession : IDisposable
         bool allowFullFallback,
         string[]? excludePaths,
         string[]? authoritativeChangedFiles,
-        AnalysisKey? expectedAnalysisKey)
+        AcceptedChangeReceiptRequest changeReceipt,
+        AnalysisKey? expectedAnalysisKey,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var capture = UsageProbe.Start();
         AnalysisUsage? usage = null;
         try
@@ -893,6 +918,7 @@ public sealed class GraphSession : IDisposable
             {
                 incremental = candidateAdapter.IncrementalAnalyze(config);
             }
+            cancellationToken.ThrowIfCancellationRequested();
             capture.MarkPhase("incremental");
 
             // INV-MULTI-DEFINE-INCREMENTAL-001. Snapshot's retained profile set echoed
@@ -916,9 +942,8 @@ public sealed class GraphSession : IDisposable
                     graph: null,
                     analysis: null,
                     usage: usage,
-                    changedFileCount: 0,
-                    mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
-                    contentChangedFileCount: incremental.ContentChangedFileCount,
+                    acceptedChanges: incremental.AcceptedChanges,
+                    changeReceipt: changeReceipt,
                     skipped: committed.RoslynAdapter?.SkippedFiles,
                     requestedMode: "incremental",
                     fallbackReason: incremental.Reason,
@@ -950,6 +975,7 @@ public sealed class GraphSession : IDisposable
                     {
                         refreshedAnalysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, effectiveRuleSet.Rules);
                     }
+                    cancellationToken.ThrowIfCancellationRequested();
                     capture.MarkPhase("rules-analyze");
 
                     using (TelemetryPhase("incremental-session-commit"))
@@ -972,9 +998,8 @@ public sealed class GraphSession : IDisposable
                         graph: graph,
                         analysis: refreshedAnalysis,
                         usage: usage,
-                        changedFileCount: 0,
-                        mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
-                        contentChangedFileCount: incremental.ContentChangedFileCount,
+                        acceptedChanges: incremental.AcceptedChanges,
+                        changeReceipt: changeReceipt,
                         skipped: candidateAdapter.SkippedFiles,
                         requestedMode: "incremental",
                         activeProfiles: incrActiveProfiles,
@@ -983,6 +1008,7 @@ public sealed class GraphSession : IDisposable
                         identity: candidateIdentity);
                 }
 
+                cancellationToken.ThrowIfCancellationRequested();
                 Commit(committed.WithRoslynAdapter(candidateAdapter));
                 usage = capture.Stop();
                 // Graph is unchanged on noop — reuse the prior session analysis
@@ -996,9 +1022,8 @@ public sealed class GraphSession : IDisposable
                     graph: graph,
                     analysis: committed.Workspace.Analysis,
                     usage: usage,
-                    changedFileCount: 0,
-                    mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
-                    contentChangedFileCount: incremental.ContentChangedFileCount,
+                    acceptedChanges: incremental.AcceptedChanges,
+                    changeReceipt: changeReceipt,
                     skipped: candidateAdapter.SkippedFiles,
                     requestedMode: "incremental",
                     activeProfiles: incrActiveProfiles,
@@ -1024,10 +1049,13 @@ public sealed class GraphSession : IDisposable
             {
                 analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, effectiveRuleSet.Rules);
             }
+            cancellationToken.ThrowIfCancellationRequested();
             capture.MarkPhase("validate-analyze");
 
             var (newCompilationHost, newCodeExecutor, newRefactoring) =
                 CreateCompilationServices(candidateAdapter, graph, projectPath);
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             using (TelemetryPhase("incremental-session-commit"))
             {
@@ -1062,9 +1090,8 @@ public sealed class GraphSession : IDisposable
                 graph: graph,
                 analysis: analysis,
                 usage: usage,
-                changedFileCount: changedFileCount,
-                mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
-                contentChangedFileCount: incremental.ContentChangedFileCount,
+                acceptedChanges: incremental.AcceptedChanges,
+                changeReceipt: changeReceipt,
                 skipped: candidateAdapter.SkippedFiles,
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
@@ -1094,9 +1121,8 @@ public sealed class GraphSession : IDisposable
         SemanticGraph? graph,
         Lifeblood.Domain.Results.AnalysisResult? analysis,
         AnalysisUsage? usage,
-        int? changedFileCount,
-        int? mtimeTouchedFileCount = null,
-        int? contentChangedFileCount = null,
+        AcceptedChangeSet? acceptedChanges,
+        AcceptedChangeReceiptRequest? changeReceipt = null,
         IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null,
         string? requestedMode = null,
         FallbackReason? fallbackReason = null,
@@ -1108,6 +1134,15 @@ public sealed class GraphSession : IDisposable
         string? rulesPath = null,
         WorkspaceAnalysisIdentity? identity = null)
     {
+        var changedFileCount = acceptedChanges?.ChangedFileCount;
+        var mtimeTouchedFileCount = acceptedChanges?.MtimeTouchedFileCount;
+        var contentChangedFileCount = acceptedChanges?.ContentChangedFileCount;
+        var acceptedChangesField = acceptedChanges == null
+            ? null
+            : AcceptedChangeReceipt.Build(
+                acceptedChanges,
+                changeReceipt ?? AcceptedChangeReceiptRequest.Summary);
+
         // Skipped files surface in the analyze response so users can see
         // exactly which files the adapter dropped and why. Emitted as
         // `skipped` when non-empty, omitted entirely otherwise to keep
@@ -1177,6 +1212,7 @@ public sealed class GraphSession : IDisposable
             touchedGraphFiles = changedFileCount,
             mtimeTouchedSourceFiles = mtimeTouchedFileCount,
             contentChangedSourceFiles = contentChangedFileCount,
+            acceptedChanges = acceptedChangesField,
             skipped = skippedField,
             analysisIdentity = identity == null
                 ? null
@@ -1275,6 +1311,12 @@ public sealed class GraphSession : IDisposable
             .ToArray()
            ?? Array.Empty<string>();
 
+    private static AcceptedChangeSet EmptyAcceptedChanges(string[]? authoritativeChangedFiles)
+        => AcceptedChangeSet.Create(
+            authoritativeChangedFiles == null
+                ? ChangeScanMode.FilesystemPrefilter
+                : ChangeScanMode.AuthoritativeChangedSet);
+
     private static ContentFingerprint BuildExecutionPolicyFingerprint(
         AnalyzeToolRequest request,
         string? projectPath,
@@ -1290,11 +1332,19 @@ public sealed class GraphSession : IDisposable
             ?? Array.Empty<string>();
 
         return ContentFingerprint.Compute(
-            "lifeblood.analysis-request-policy.v1",
+            "lifeblood.analysis-request-policy.v2",
             new[]
             {
                 request.Incremental ? "incremental" : "full",
                 request.AllowFullFallback ? "allow-fallback" : "reject-fallback",
+                request.AuthoritativeChangedFiles == null
+                    ? "filesystem-prefilter"
+                    : "authoritative-changed-set",
+                request.EffectiveChangeReceipt.Mode == AcceptedChangeReceiptMode.Detail
+                    ? "change-receipt-detail"
+                    : "change-receipt-summary",
+                request.EffectiveChangeReceipt.Limit.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
                 NormalizeExecutionPath(null, projectPath),
                 NormalizeExecutionPath(null, graphPath),
                 effectiveRulesSource ?? "",

@@ -21,6 +21,8 @@ public static class ToolRequestBinder
     private static readonly string AnalyzeDefineProfiles = ArgumentName(AnalyzeToolName, "defineProfiles");
     private static readonly string AnalyzeExcludePaths = ArgumentName(AnalyzeToolName, "excludePaths");
     private static readonly string AnalyzeAuthoritativeChangedFiles = ArgumentName(AnalyzeToolName, "authoritativeChangedFiles");
+    private static readonly string AnalyzeChangeReceiptMode = ArgumentName(AnalyzeToolName, "changeReceiptMode");
+    private static readonly string AnalyzeChangeReceiptLimit = ArgumentName(AnalyzeToolName, "changeReceiptLimit");
 
     private static readonly string CompileCheckCode = ArgumentName(CompileCheckToolName, "code");
     private static readonly string CompileCheckFilePath = ArgumentName(CompileCheckToolName, "filePath");
@@ -45,7 +47,12 @@ public static class ToolRequestBinder
             AllowFullFallback = ReadBool(root, AnalyzeAllowFullFallback) ?? false,
             DefineProfiles = ReadStringArray(root, AnalyzeDefineProfiles),
             ExcludePaths = ReadStringArray(root, AnalyzeExcludePaths),
-            AuthoritativeChangedFiles = ReadStringArray(root, AnalyzeAuthoritativeChangedFiles),
+            AuthoritativeChangedFiles = ReadStringArray(
+                root,
+                AnalyzeAuthoritativeChangedFiles,
+                preserveExplicitEmpty: true),
+            ChangeReceiptMode = ReadString(root, AnalyzeChangeReceiptMode),
+            ChangeReceiptLimit = ReadInt(root, AnalyzeChangeReceiptLimit),
         };
     }
 
@@ -100,7 +107,17 @@ public static class ToolRequestBinder
             ? value.GetBoolean()
             : null;
 
-    private static string[]? ReadStringArray(JsonElement root, string name)
+    private static int? ReadInt(JsonElement root, string name)
+        => root.TryGetProperty(name, out var value)
+           && value.ValueKind == JsonValueKind.Number
+           && value.TryGetInt32(out var parsed)
+            ? parsed
+            : null;
+
+    private static string[]? ReadStringArray(
+        JsonElement root,
+        string name,
+        bool preserveExplicitEmpty = false)
     {
         if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Array)
         {
@@ -113,7 +130,11 @@ public static class ToolRequestBinder
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .Select(item => item!.Trim())
             .ToArray();
-        return values.Length == 0 ? null : values;
+        if (values.Length > 0)
+            return values;
+        return preserveExplicitEmpty && value.GetArrayLength() == 0
+            ? Array.Empty<string>()
+            : null;
     }
 }
 
@@ -130,6 +151,10 @@ public sealed record AnalyzeToolRequest
     public string[]? DefineProfiles { get; init; }
     public string[]? ExcludePaths { get; init; }
     public string[]? AuthoritativeChangedFiles { get; init; }
+    public string? ChangeReceiptMode { get; init; }
+    public int? ChangeReceiptLimit { get; init; }
+    public AcceptedChangeReceiptRequest EffectiveChangeReceipt =>
+        AcceptedChangeReceiptRequest.Create(ChangeReceiptMode, ChangeReceiptLimit);
 }
 
 public sealed record CompileCheckToolRequest

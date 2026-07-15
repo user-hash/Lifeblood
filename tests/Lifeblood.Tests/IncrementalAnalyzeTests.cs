@@ -62,6 +62,9 @@ public class IncrementalAnalyzeTests : IDisposable
 
         Assert.Equal(IncrementalMode.Incremental, r.Mode);
         Assert.True(r.ChangedFileCount > 0, "Should detect changed file");
+        Assert.Equal(ChangeScanMode.FilesystemPrefilter, r.AcceptedChanges.ScanMode);
+        Assert.Equal(new[] { "Program.cs" }, r.AcceptedChanges.ReanalyzedSourceFiles);
+        Assert.Equal(new[] { "Program.cs" }, r.AcceptedChanges.ContentChangedSourceFiles);
         Assert.NotNull(r.Graph);
         Assert.Contains(r.Graph!.Symbols, s => s.Name == "Bar" && s.Kind == SymbolKind.Method);
     }
@@ -150,6 +153,9 @@ public class IncrementalAnalyzeTests : IDisposable
         Assert.Equal(0, r.ChangedFileCount);
         Assert.Equal(1, r.MtimeTouchedFileCount);
         Assert.Equal(0, r.ContentChangedFileCount);
+        Assert.Empty(r.AcceptedChanges.ReanalyzedSourceFiles);
+        Assert.Equal(new[] { "Program.cs" }, r.AcceptedChanges.MtimeTouchedSourceFiles);
+        Assert.Equal(new[] { "Program.cs" }, r.AcceptedChanges.EvidenceSourceFiles);
         Assert.NotNull(r.Graph);
         Assert.Equal(graph1.Symbols.Count, r.Graph!.Symbols.Count);
         Assert.Contains(r.Graph.Symbols, s => s.Name == "Keep" && s.Kind == SymbolKind.Method);
@@ -190,6 +196,8 @@ public class IncrementalAnalyzeTests : IDisposable
         Assert.Equal(IncrementalMode.Incremental, detected.Mode);
         Assert.Equal(1, detected.ChangedFileCount);
         Assert.Equal(1, detected.ContentChangedFileCount);
+        Assert.Equal(ChangeScanMode.AuthoritativeChangedSet, detected.AcceptedChanges.ScanMode);
+        Assert.Equal(new[] { "Dynamic.cs" }, detected.AcceptedChanges.ReanalyzedSourceFiles);
         Assert.Contains(detected.Graph!.Symbols, s => s.Name == "Added" && s.Kind == SymbolKind.Property);
     }
 
@@ -305,6 +313,9 @@ public class IncrementalAnalyzeTests : IDisposable
         // The fresh ModuleInfo from rediscovery must have BclOwnership = ModuleProvided.
         // Verify by re-running discovery directly (the analyzer's internal state
         // also has it but we don't expose snapshot publicly).
+        Assert.Equal(new[] { "Program.cs" }, r.AcceptedChanges.DescriptorForcedSourceFiles);
+        Assert.Empty(r.AcceptedChanges.ContentChangedSourceFiles);
+
         var modules = new RoslynModuleDiscovery(_fs).DiscoverModules(_tempDir);
         Assert.Single(modules);
         Assert.Equal(BclOwnershipMode.ModuleProvided, modules[0].BclOwnership);
@@ -385,6 +396,11 @@ public class IncrementalAnalyzeTests : IDisposable
         Assert.Equal(FallbackReason.ModuleSetChanged, r.Reason);
         Assert.NotNull(r.Graph);
         Assert.NotNull(r.Detail);
+        Assert.True(r.AcceptedChanges.FullFallback);
+        Assert.Equal(ChangeScanMode.FullFallback, r.AcceptedChanges.ScanMode);
+        Assert.Equal(new[] { "ModuleA/A.cs" }, r.AcceptedChanges.ReanalyzedSourceFiles);
+        Assert.Empty(r.AcceptedChanges.MtimeTouchedSourceFiles);
+        Assert.Empty(r.AcceptedChanges.ContentChangedSourceFiles);
         // After widening, only ModuleA's symbols remain (B was deleted).
         Assert.Contains(r.Graph!.Symbols, s => s.Name == "ATypeA");
         Assert.DoesNotContain(r.Graph.Symbols, s => s.Name == "BTypeB");
@@ -407,6 +423,25 @@ public class IncrementalAnalyzeTests : IDisposable
     // AnalysisSnapshot.DowngradedRefs, threaded through ProcessInOrder as
     // a carry-in/carry-out parameter. Touching a file in module B must leave
     // every B→A edge intact: same kind, same target, same count.
+
+    [Fact]
+    public void IncrementalAnalyze_DeletedSource_ReceiptsNormalizedDeletedPath()
+    {
+        WriteTwoFileProject(
+            "public class Stable { }",
+            "public class Dynamic { }");
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        analyzer.AnalyzeWorkspace(_tempDir, _config);
+
+        File.Delete(Path.Combine(_tempDir, "Dynamic.cs"));
+        var r = analyzer.IncrementalAnalyze(_config);
+
+        Assert.Equal(IncrementalMode.Incremental, r.Mode);
+        Assert.Equal(1, r.ChangedFileCount);
+        Assert.Equal(new[] { "Dynamic.cs" }, r.AcceptedChanges.DeletedSourceFiles);
+        Assert.Empty(r.AcceptedChanges.ReanalyzedSourceFiles);
+        Assert.DoesNotContain(r.Graph!.Symbols, symbol => symbol.FilePath == "Dynamic.cs");
+    }
 
     [Fact]
     public void IncrementalAnalyze_CrossModuleEdges_IdenticalAfterContentlessTouch()

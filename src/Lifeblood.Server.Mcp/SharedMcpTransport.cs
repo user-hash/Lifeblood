@@ -36,6 +36,7 @@ internal static class SharedMcpTransport
         "persistent-connection",
         "client-lease",
         "request-activity",
+        "request-cancellation",
         "idle-drain",
         "status-v1",
     };
@@ -71,24 +72,36 @@ internal static class SharedMcpTransport
         var identity = ResolveHostIdentity(args);
         var clientId = $"client_{Guid.NewGuid():N}";
         SharedProxyConnection? connection = null;
+        var queuedLines = new Queue<string>();
+        Task<string?>? pendingRead = null;
+        var inputClosed = false;
 
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested && !inputClosed)
             {
                 string? line;
-                try
+                if (queuedLines.Count > 0)
                 {
-                    line = await input.ReadLineAsync(cancellationToken);
+                    line = queuedLines.Dequeue();
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                else
                 {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    logError?.Invoke($"stdin read failed: {ex.Message}");
-                    break;
+                    try
+                    {
+                        pendingRead ??= input.ReadLineAsync(cancellationToken).AsTask();
+                        line = await pendingRead;
+                        pendingRead = null;
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        logError?.Invoke($"stdin read failed: {ex.Message}");
+                        break;
+                    }
                 }
 
                 if (line == null) break;
@@ -125,10 +138,54 @@ internal static class SharedMcpTransport
                             $"for workspace '{identity.WorkspaceRoot}'.");
                     }
 
-                    var responseLine = await connection.ForwardAsync(
+                    using var activeForwardCancellation =
+                        CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    var responseTask = connection.ForwardAsync(
                         canonicalFrame,
                         expectsResponse,
-                        cancellationToken);
+                        activeForwardCancellation.Token);
+                    var activeRequestId = McpServerLoop.RequestIdKey(request.Id);
+
+                    while (expectsResponse
+                           && !responseTask.IsCompleted
+                           && !cancellationToken.IsCancellationRequested)
+                    {
+                        pendingRead ??= input.ReadLineAsync(cancellationToken).AsTask();
+                        var completed = await Task.WhenAny(responseTask, pendingRead);
+                        if (ReferenceEquals(completed, responseTask))
+                            break;
+
+                        var concurrentLine = await pendingRead;
+                        pendingRead = null;
+                        if (concurrentLine == null)
+                        {
+                            inputClosed = true;
+                            activeForwardCancellation.Cancel();
+                            break;
+                        }
+                        if (string.IsNullOrWhiteSpace(concurrentLine))
+                            continue;
+
+                        if (TryParseCancellationFor(
+                                concurrentLine,
+                                activeRequestId,
+                                jsonOpts,
+                                strictJson,
+                                out var cancellationFrame))
+                        {
+                            TraceProxyFrame(cancellationFrame);
+                            await connection.ForwardAsync(
+                                cancellationFrame,
+                                expectsResponse: false,
+                                cancellationToken);
+                        }
+                        else
+                        {
+                            queuedLines.Enqueue(concurrentLine);
+                        }
+                    }
+
+                    var responseLine = await responseTask;
                     if (expectsResponse && !string.IsNullOrWhiteSpace(responseLine))
                     {
                         output.WriteLine(responseLine);
@@ -142,7 +199,7 @@ internal static class SharedMcpTransport
                         await connection.DisposeAsync();
                         connection = null;
                     }
-                    if (cancellationToken.IsCancellationRequested) break;
+                    if (cancellationToken.IsCancellationRequested || inputClosed) break;
                     logError?.Invoke($"Shared daemon forward failed: {ex.Message}");
                     Exception reportedFailure = ex;
                     try
@@ -265,7 +322,7 @@ internal static class SharedMcpTransport
         NamedPipeServerStream pipe,
         SharedHostIdentity identity,
         SharedDaemonLifecycle lifecycle,
-        Func<JsonRpcRequest, JsonRpcResponse?> dispatch,
+        Func<JsonRpcRequest, CancellationToken, JsonRpcResponse?> dispatch,
         Func<int> inFlightAnalysisCount,
         JsonSerializerOptions jsonOpts,
         bool strictJson,
@@ -292,7 +349,9 @@ internal static class SharedMcpTransport
                 return;
             }
 
-            JsonRpcResponse? DispatchWithActivity(JsonRpcRequest request)
+            JsonRpcResponse? DispatchWithActivity(
+                JsonRpcRequest request,
+                CancellationToken requestCancellation)
             {
                 using var activity = lifecycle.BeginRequest(clientLease.LeaseId);
                 if (string.Equals(request.Method, MaintenanceDrainMethod, StringComparison.Ordinal))
@@ -314,7 +373,7 @@ internal static class SharedMcpTransport
                     };
                 }
 
-                return dispatch(request);
+                return dispatch(request, requestCancellation);
             }
 
             await McpServerLoop.RunAsync(
@@ -452,6 +511,36 @@ internal static class SharedMcpTransport
             or InvalidOperationException
             or System.ComponentModel.Win32Exception
             or OperationCanceledException;
+
+    private static bool TryParseCancellationFor(
+        string line,
+        string? activeRequestId,
+        JsonSerializerOptions jsonOpts,
+        bool strictJson,
+        out string canonicalFrame)
+    {
+        canonicalFrame = string.Empty;
+        if (activeRequestId == null)
+            return false;
+
+        try
+        {
+            var request = McpJsonRequestParser.DeserializeRequest(line, jsonOpts, strictJson);
+            if (request == null
+                || !McpServerLoop.TryGetCancellationTarget(request, out var targetId)
+                || !string.Equals(targetId, activeRequestId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            canonicalFrame = JsonSerializer.Serialize(request, jsonOpts);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     private static void WriteResponse(
         TextWriter output,
@@ -776,6 +865,7 @@ internal static class SharedMcpTransport
         private readonly NamedPipeClientStream _pipe;
         private readonly StreamReader _reader;
         private readonly StreamWriter _writer;
+        private readonly SemaphoreSlim _writeGate = new(1, 1);
         private int _disposed;
 
         private SharedProxyConnection(
@@ -856,8 +946,16 @@ internal static class SharedMcpTransport
             CancellationToken cancellationToken)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-            await _writer.WriteLineAsync(line.AsMemory(), cancellationToken);
-            await _writer.FlushAsync(cancellationToken);
+            await _writeGate.WaitAsync(cancellationToken);
+            try
+            {
+                await _writer.WriteLineAsync(line.AsMemory(), cancellationToken);
+                await _writer.FlushAsync(cancellationToken);
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
 
             if (!expectsResponse)
                 return null;
@@ -880,6 +978,7 @@ internal static class SharedMcpTransport
             catch (ObjectDisposedException) { }
             try { await _pipe.DisposeAsync(); }
             catch (ObjectDisposedException) { }
+            _writeGate.Dispose();
         }
     }
 

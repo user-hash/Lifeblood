@@ -113,16 +113,20 @@ public sealed class ToolHandler
     public McpToolInfo[] GetTools()
         => _sessionGate.Read(() => ToolRegistry.GetTools(CurrentSessionState()));
 
-    public McpToolResult Handle(string toolName, JsonElement? arguments)
+    public McpToolResult Handle(
+        string toolName,
+        JsonElement? arguments,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (string.Equals(toolName, "lifeblood_analyze", StringComparison.Ordinal))
-            return HandleAnalyzeCoalesced(arguments);
+            return HandleAnalyzeCoalesced(arguments, cancellationToken);
 
         var definition = ToolRegistry.FindDefinition(toolName);
         if (definition?.Behavior.SessionAccess == ToolSessionAccess.Exclusive)
-            return _sessionGate.Write(() => HandleCore(toolName, arguments));
+            return _sessionGate.Write(() => HandleCore(toolName, arguments, cancellationToken));
         if (definition?.SupportsSnapshotRead != true)
-            return _sessionGate.Read(() => HandleCore(toolName, arguments));
+            return _sessionGate.Read(() => HandleCore(toolName, arguments, cancellationToken));
 
         var binding = SnapshotReadRequestBinder.Bind(arguments);
         if (!binding.Accepted)
@@ -131,10 +135,10 @@ public sealed class ToolHandler
         try
         {
             return binding.Request == null
-                ? _sessionGate.Read(() => HandleCore(toolName, arguments))
+                ? _sessionGate.Read(() => HandleCore(toolName, arguments, cancellationToken))
                 : _sessionGate.Read(
                     binding.Request,
-                    () => HandleCore(toolName, arguments));
+                    () => HandleCore(toolName, arguments, cancellationToken));
         }
         catch (WorkspaceSnapshotPreconditionException ex)
         {
@@ -150,44 +154,62 @@ public sealed class ToolHandler
         }
     }
 
-    private McpToolResult HandleAnalyzeCoalesced(JsonElement? arguments)
+    private McpToolResult HandleAnalyzeCoalesced(
+        JsonElement? arguments,
+        CancellationToken cancellationToken)
     {
         PreparedAnalyzeRequest prepared;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var binding = _argumentBinder.Validate(
                 "lifeblood_analyze",
                 arguments,
                 _jsonCompatibilityMode);
             if (!binding.Accepted)
-                return _sessionGate.Write(() => HandleCore("lifeblood_analyze", arguments));
+                return _sessionGate.Write(() => HandleCore(
+                    "lifeblood_analyze",
+                    arguments,
+                    cancellationToken));
 
             var request = ToolRequestBinder.BindAnalyze(arguments);
             request = _workspaceBinding?.Bind(request) ?? request;
             prepared = _session.PrepareAnalysis(request);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
             // Preparation uses the same bind/rule/filesystem contracts as the
             // real handler. Let HandleCore render its established structured
             // error shape when preparation cannot produce a valid key.
-            return _sessionGate.Write(() => HandleCore("lifeblood_analyze", arguments));
+            return _sessionGate.Write(() => HandleCore(
+                "lifeblood_analyze",
+                arguments,
+                cancellationToken));
         }
 
         var coordination = _analysisCoordinator.Execute(
             prepared.CoalescingKey,
-            _ =>
+            workCancellation =>
             {
                 _preparedAnalyze.Value = prepared;
                 try
                 {
-                    return _sessionGate.Write(() => HandleCore("lifeblood_analyze", arguments));
+                    return _sessionGate.Write(() => HandleCore(
+                        "lifeblood_analyze",
+                        arguments,
+                        workCancellation));
                 }
                 finally
                 {
                     _preparedAnalyze.Value = null;
                 }
-            });
+            },
+            cancellationToken);
 
         return AddAnalysisCoordination(coordination);
     }
@@ -198,7 +220,10 @@ public sealed class ToolHandler
             && !string.IsNullOrEmpty(_session.ProjectRoot),
         HasRetainedCompilation: _session.HasCompilationState);
 
-    private McpToolResult HandleCore(string toolName, JsonElement? arguments)
+    private McpToolResult HandleCore(
+        string toolName,
+        JsonElement? arguments,
+        CancellationToken cancellationToken = default)
     {
         using var operation = _telemetry.StartOperation(
             "lifeblood.tool",
@@ -206,6 +231,7 @@ public sealed class ToolHandler
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var binding = _argumentBinder.Validate(toolName, arguments, _jsonCompatibilityMode);
             RecordArgumentBindingTelemetry(toolName, binding);
             if (!binding.Accepted)
@@ -237,7 +263,7 @@ public sealed class ToolHandler
                 "lifeblood_capabilities" => HandleCapabilities(arguments),
                 "lifeblood_batch" => HandleBatch(arguments),
                 "lifeblood_snapshots" => HandleSnapshots(arguments),
-                "lifeblood_analyze" => HandleAnalyze(arguments),
+                "lifeblood_analyze" => HandleAnalyze(arguments, cancellationToken),
                 "lifeblood_context" => HandleContext(arguments),
                 "lifeblood_lookup" => HandleLookup(arguments),
                 "lifeblood_dependencies" => HandleDependencies(arguments),
@@ -297,6 +323,10 @@ public sealed class ToolHandler
             }
 
             return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -748,7 +778,9 @@ public sealed class ToolHandler
             PrivateMemoryBytes: process.PrivateMemorySize64);
     }
 
-    private McpToolResult HandleAnalyze(JsonElement? args)
+    private McpToolResult HandleAnalyze(
+        JsonElement? args,
+        CancellationToken cancellationToken)
     {
         var prepared = _preparedAnalyze.Value;
         var request = prepared?.Request ?? ToolRequestBinder.BindAnalyze(args);
@@ -767,7 +799,9 @@ public sealed class ToolHandler
                 request.DefineProfiles,
                 request.ExcludePaths,
                 request.AuthoritativeChangedFiles,
-                expectedAnalysisKey: prepared?.Identity.AnalysisKey);
+                request.EffectiveChangeReceipt,
+                expectedAnalysisKey: prepared?.Identity.AnalysisKey,
+                cancellationToken: cancellationToken);
             RecordAnalyzeTelemetry(result);
             return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
         }

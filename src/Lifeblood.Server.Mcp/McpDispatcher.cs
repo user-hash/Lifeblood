@@ -62,7 +62,9 @@ public sealed class McpDispatcher
   /// for requests. Never throws; internal errors surface via
   /// <see cref="JsonRpcResponse.Error"/>.
   /// </summary>
-  public JsonRpcResponse? Dispatch(JsonRpcRequest request)
+  public JsonRpcResponse? Dispatch(
+    JsonRpcRequest request,
+    CancellationToken cancellationToken = default)
   {
   // INV-MCP-002: notifications never receive a response body, known or
   // unknown. Detect notification shape once, short-circuit before any
@@ -86,7 +88,7 @@ public sealed class McpDispatcher
   {
   McpProtocolSpec.Methods.Initialize => HandleInitialize(request),
   McpProtocolSpec.Methods.ToolsList => HandleToolsList(request),
-  McpProtocolSpec.Methods.ToolsCall => HandleToolsCall(request),
+  McpProtocolSpec.Methods.ToolsCall => HandleToolsCall(request, cancellationToken),
   "ping" => new JsonRpcResponse { Id = request.Id, Result = new { } },
   _ => new JsonRpcResponse
   {
@@ -133,7 +135,9 @@ public sealed class McpDispatcher
   };
   }
 
-  private JsonRpcResponse HandleToolsCall(JsonRpcRequest request)
+  private JsonRpcResponse HandleToolsCall(
+    JsonRpcRequest request,
+    CancellationToken cancellationToken)
   {
   var response = new JsonRpcResponse { Id = request.Id };
 
@@ -166,7 +170,7 @@ public sealed class McpDispatcher
   arguments = argsEl;
   }
 
-  response.Result = _toolHandler.Handle(toolName, arguments);
+  response.Result = _toolHandler.Handle(toolName, arguments, cancellationToken);
   return response;
   }
 

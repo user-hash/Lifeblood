@@ -177,7 +177,9 @@ public class ToolHandlerTests : IDisposable
             .ToArray();
         Assert.Contains("lifeblood.tool.truncated", telemetryEvents);
         Assert.Contains("lifeblood.analyze.fallback", telemetryEvents);
+        Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("acceptedChangeReceipts").GetBoolean());
         Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionTransport").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("sharedSessionRequestCancellation").GetBoolean());
         Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("snapshotHistoryCatalog").GetBoolean());
         Assert.True(doc.RootElement.GetProperty("featureFlags").GetProperty("historicalSnapshotSelection").GetBoolean());
         Assert.False(doc.RootElement.GetProperty("featureFlags").GetProperty("historicalSnapshotsRetainSemanticServices").GetBoolean());
