@@ -56,6 +56,7 @@ public class MultiProfileAnalyzeTests
             FilePaths = new[] { "App.cs" },
             Dependencies = new[] { "Lib" },
             IsPure = true,
+            IsEditorOnly = true,
             ExternalDllPaths = new[] { "UnityEngine.dll" },
             BclOwnership = BclOwnershipMode.ModuleProvided,
             AllowUnsafeCode = true,
@@ -79,6 +80,7 @@ public class MultiProfileAnalyzeTests
         Assert.Equal(module.SourceGeneratorAnalyzerPaths, clone.SourceGeneratorAnalyzerPaths);
         Assert.Equal(module.CompilerFeatures, clone.CompilerFeatures);
         Assert.Equal(module.Properties, clone.Properties);
+        Assert.True(clone.IsEditorOnly);
     }
 
     [Fact]
@@ -280,5 +282,157 @@ public class MultiProfileAnalyzeTests
         {
             Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    [Fact]
+    public void UnityPlayerProfile_ExcludesDescriptorOwnedEditorModules()
+    {
+        var fs = new PhysicalFileSystem();
+        var tempDir = CreateUnityEditorModuleWorkspace();
+        try
+        {
+            var discovery = new RoslynModuleDiscovery(fs);
+            var modules = discovery.DiscoverModules(tempDir);
+            Assert.False(modules.Single(module => module.Name == "Runtime").IsEditorOnly);
+            Assert.True(modules.Single(module => module.Name == "Editor").IsEditorOnly);
+
+            var analyzer = new RoslynWorkspaceAnalyzer(fs, new UnityDefineProfileResolver(fs));
+            var graph = analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig
+            {
+                DefineProfiles = new[] { "Player" },
+                RetainCompilations = true,
+            });
+
+            Assert.Contains(graph.Symbols, symbol => symbol.Id == "mod:Runtime");
+            Assert.DoesNotContain(graph.Symbols, symbol => symbol.Id == "mod:Editor");
+            Assert.DoesNotContain(graph.Symbols, symbol =>
+                symbol.QualifiedName == "App.Editor.GameObjectLookup");
+            Assert.NotNull(analyzer.Compilations);
+            Assert.True(analyzer.Compilations!.ContainsKey("Runtime"));
+            Assert.False(analyzer.Compilations.ContainsKey("Editor"));
+            Assert.DoesNotContain(
+                analyzer.Compilations.SelectMany(pair => pair.Value.GetDiagnostics()),
+                diagnostic => diagnostic.Id == "CS0117");
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PlayerThenEditorProfiles_LaterApplicableEditorModuleOwnsItsSymbolsAndEdges()
+    {
+        var fs = new PhysicalFileSystem();
+        var tempDir = CreateUnityEditorModuleWorkspace();
+        try
+        {
+            var analyzer = new RoslynWorkspaceAnalyzer(fs, new UnityDefineProfileResolver(fs));
+            var graph = analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig
+            {
+                DefineProfiles = new[] { "Player", "Editor" },
+                RetainCompilations = true,
+            });
+
+            Assert.Contains(graph.Symbols, symbol => symbol.Id == "mod:Editor");
+            Assert.Contains(graph.Symbols, symbol =>
+                symbol.QualifiedName == "App.Editor.GameObjectLookup");
+            var editorEdges = graph.Edges.Where(edge =>
+                edge.Profiles?.Contains("Editor", StringComparer.Ordinal) == true).ToArray();
+            Assert.True(
+                editorEdges.Any(edge =>
+                    edge.SourceId == "type:App.Editor.GameObjectLookup" &&
+                    edge.TargetId == "type:App.Runtime.UnityObjectIdCompat" &&
+                    edge.Kind == EdgeKind.References),
+                string.Join(Environment.NewLine, editorEdges.Select(edge =>
+                    $"{edge.Kind}: {edge.SourceId} -> {edge.TargetId}")));
+
+            Assert.NotNull(analyzer.Compilations);
+            Assert.True(analyzer.Compilations!.ContainsKey("Runtime"));
+            Assert.False(analyzer.Compilations.ContainsKey("Editor"));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UnityPlayerProfile_SourceFingerprintExcludesEditorOnlySourceContent()
+    {
+        var fs = new PhysicalFileSystem();
+        var tempDir = CreateUnityEditorModuleWorkspace();
+        try
+        {
+            var analyzer = new RoslynWorkspaceAnalyzer(fs, new UnityDefineProfileResolver(fs));
+            var config = new AnalysisConfig { DefineProfiles = new[] { "Player" } };
+            var before = analyzer.CaptureAnalysisInputs(tempDir, config).SourceFingerprint;
+
+            File.AppendAllText(Path.Combine(tempDir, "EditorOnly.cs"), Environment.NewLine + "// editor-only change");
+            var afterEditorChange = analyzer.CaptureAnalysisInputs(tempDir, config).SourceFingerprint;
+            Assert.Equal(before, afterEditorChange);
+
+            File.AppendAllText(Path.Combine(tempDir, "Runtime.cs"), Environment.NewLine + "// runtime change");
+            var afterRuntimeChange = analyzer.CaptureAnalysisInputs(tempDir, config).SourceFingerprint;
+            Assert.NotEqual(afterEditorChange, afterRuntimeChange);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    private static string CreateUnityEditorModuleWorkspace()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"lifeblood-unity-modules-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "Library"));
+
+        File.WriteAllText(Path.Combine(root, "Runtime.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <AssemblyName>Runtime</AssemblyName>
+                <DefineConstants>UNITY_EDITOR</DefineConstants>
+                <UnityProjectType>Player:5</UnityProjectType>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="Runtime.cs" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(root, "Editor.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <AssemblyName>Editor</AssemblyName>
+                <DefineConstants>UNITY_EDITOR</DefineConstants>
+                <UnityProjectType>Editor:5</UnityProjectType>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="EditorOnly.cs" />
+                <ProjectReference Include="Runtime.csproj" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(root, "Runtime.cs"), """
+            namespace App.Runtime;
+            public static class UnityObjectIdCompat
+            {
+            #if UNITY_EDITOR
+                public static object InstanceIDToObjectCompat(int id) => new object();
+            #endif
+            }
+            """);
+        File.WriteAllText(Path.Combine(root, "EditorOnly.cs"), """
+            namespace App.Editor;
+            public static class GameObjectLookup
+            {
+                public static object Resolve(int id) =>
+                    App.Runtime.UnityObjectIdCompat.InstanceIDToObjectCompat(id);
+            }
+            """);
+
+        return root;
     }
 }

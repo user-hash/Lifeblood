@@ -69,12 +69,14 @@ public sealed class UnityDefineProfileResolver : IDefineProfileResolver
             Name = PlayerProfileName,
             AddDefines = Array.Empty<string>(),
             RemoveDefines = UnityEditorDiscriminators,
+            IncludeEditorOnlyModules = false,
         },
         new DefineProfile
         {
             Name = StandaloneProfileName,
             AddDefines = UnityStandaloneDefines,
             RemoveDefines = UnityEditorDiscriminators,
+            IncludeEditorOnlyModules = false,
         },
     };
 

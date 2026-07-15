@@ -5,7 +5,9 @@ using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.PathClassification;
+using Lifeblood.Domain.Results;
 using Lifeblood.Domain.Workspaces;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using DomainSymbolKind = Lifeblood.Domain.Graph.SymbolKind;
 
@@ -113,10 +115,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
     {
         var modules = _discovery.DiscoverModules(projectRoot);
         var activeProfiles = ResolveActiveProfiles(projectRoot, config);
+        var applicableModules = ApplyProfilesToModules(modules, activeProfiles);
         var sourceContent = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
         var excludePathGlobs = PathGlobMatcher.Compile(config.ExcludePathGlobs);
 
-        foreach (var path in modules
+        foreach (var path in applicableModules
             .SelectMany(module => module.FilePaths)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.Ordinal))
@@ -153,7 +156,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
 
-        var referenceContent = CaptureReferenceContent(modules);
+        var referenceContent = CaptureReferenceContent(applicableModules);
         var sourceFingerprint = WorkspaceInputFingerprintBuilder.Build(
             projectRoot,
             sourceContent,
@@ -210,6 +213,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         try
         {
             var modules = _discovery.DiscoverModules(projectRoot);
+            var activeProfiles = ResolveActiveProfiles(projectRoot, config);
+            var applicableModules = ApplyProfilesToModules(modules, activeProfiles);
 
             var snapshot = new AnalysisSnapshot
             {
@@ -252,10 +257,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 }
             }
 
-            CaptureReferenceInputs(snapshot, modules);
+            CaptureReferenceInputs(snapshot, applicableModules);
 
             // Create module symbols (lightweight — just names and metadata).
-            foreach (var module in modules)
+            foreach (var module in applicableModules)
             {
                 snapshot.ModuleSymbols.Add(new Symbol
                 {
@@ -273,7 +278,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             // extractor creates cross-module edges (metadata symbols from other
             // analyzed modules are tracked, not filtered).
             _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
-                modules.Select(m => m.Name), StringComparer.Ordinal);
+                applicableModules.Select(m => m.Name), StringComparer.Ordinal);
 
             var refCache = new SharedMetadataReferenceCache();
             var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
@@ -291,10 +296,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             // Merge discovery-level skips (csproj lists a .cs file that doesn't
             // exist on disk) into the snapshot so users see them in the
             // analyze response alongside compilation-level skips.
-            snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped);
+            var applicableModuleNames = new HashSet<string>(
+                applicableModules.Select(module => module.Name),
+                StringComparer.Ordinal);
+            snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped.Where(
+                skipped => applicableModuleNames.Contains(skipped.ModuleName)));
 
             // INV-MULTI-DEFINE-ANALYZE-001 + INV-MULTI-DEFINE-INCREMENTAL-001.
-            var activeProfiles = ResolveActiveProfiles(projectRoot, config);
             var multiProfile = activeProfiles.Count > 1;
             RetainedProfileName = activeProfiles.Count > 0 ? activeProfiles[0].Name : null;
             RetainedProfileNames = activeProfiles.Select(p => p.Name).ToArray();
@@ -310,12 +318,21 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 var profileTag = multiProfile ? profile.Name : null;
                 cursorProfile = profile.Name;
                 var profileModules = ApplyProfileToModules(modules, profile);
+                var profileOwnedModuleNames = GetProfileOwnedModuleNames(
+                    modules,
+                    activeProfiles,
+                    profileIndex);
+                var profileSkippedFiles = isFirstProfile
+                    ? snapshot.SkippedFiles
+                    : new List<SkippedFile>();
 
                 // INV-MULTI-DEFINE-IOP-001. First profile retains compilations per
                 // caller config (typically true for write-side / IOperation tool
                 // support). Subsequent profile passes force streaming mode so
                 // their compilations downgrade after extraction — peak RAM stays
                 // at single-profile baseline regardless of profile count.
+                // Each module's first applicable profile owns its symbols,
+                // source hashes, and skipped-file accounting.
                 var profileConfig = isFirstProfile
                     ? config
                     : new AnalysisConfig
@@ -345,7 +362,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                         cursorModule = name;
                         OnModuleProgress?.Invoke(name, idx, total);
                     },
-                    skippedCollector: isFirstProfile ? snapshot.SkippedFiles : null,
+                    skippedCollector: profileSkippedFiles,
                     carryDowngraded: profileCarry,
                     processor: (module, compilation) =>
                     {
@@ -369,7 +386,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                             var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
                             var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
 
-                            if (isFirstProfile)
+                            if (profileOwnedModuleNames.Contains(module.Name))
                             {
                                 var fileSymbol = new Symbol
                                 {
@@ -396,9 +413,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                             }
                         }
                     },
-                    contentHashCollector: isFirstProfile
-                        ? (path, hash) => snapshot.FileContentHashes[path] = hash
-                        : null);
+                    contentHashCollector: (path, hash) => snapshot.FileContentHashes[path] = hash);
+
+                if (!isFirstProfile)
+                {
+                    snapshot.SkippedFiles.AddRange(profileSkippedFiles.Where(
+                        skipped => profileOwnedModuleNames.Contains(skipped.ModuleName)));
+                }
 
                 if (isFirstProfile) _compilations = profileCompilations;
             }
@@ -409,8 +430,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             cursorProfile = null;
 
             // Module dependency edges.
-            var moduleNames = new HashSet<string>(modules.Select(m => m.Name), StringComparer.Ordinal);
-            foreach (var module in modules)
+            var moduleNames = new HashSet<string>(applicableModules.Select(m => m.Name), StringComparer.Ordinal);
+            foreach (var module in applicableModules)
             {
                 var sourceId = SymbolIds.Module(module.Name);
                 foreach (var dep in module.Dependencies)
@@ -432,7 +453,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             }
 
             // Capture module dependency map for write-side workspace construction
-            _moduleDependencies = BuildModuleDependencyMap(modules);
+            _moduleDependencies = BuildModuleDependencyMap(
+                activeProfiles.Count == 0
+                    ? Array.Empty<ModuleInfo>()
+                    : ApplyProfileToModules(modules, activeProfiles[0]));
 
             _snapshot = snapshot;
             phase = "graph-build";
@@ -505,6 +529,8 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 
         // Rediscover modules — cheap, just XML parsing
         var currentModules = _discovery.DiscoverModules(projectRoot);
+        var snapshotProfiles = _snapshot.ActiveProfiles;
+        var applicableCurrentModules = ApplyProfilesToModules(currentModules, snapshotProfiles);
 
         // INV-ANALYZE-FALLBACK-001 site 1: module set drift. If modules were
         // added/removed since the snapshot we cannot safely walk per-file
@@ -540,7 +566,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 detail: "Unity asmdef edit/add/remove detected (descriptorKind=asmdef).");
         }
 
-        if (HasReferenceInputDrift(currentModules))
+        if (HasReferenceInputDrift(applicableCurrentModules))
         {
             return HandleFallback(
                 config,
@@ -595,7 +621,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             _snapshot.DescriptorContentHashes,
             _discovery.LastDescriptorContentHashes);
 
-        foreach (var module in currentModules)
+        foreach (var module in applicableCurrentModules)
         {
             // If this module's csproj changed, force every .cs file in it to be
             // recompiled even if no source-file timestamp changed. The new
@@ -654,7 +680,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 
         // Also check for deleted files (in previous snapshot but not in current modules)
         var currentFilePaths = new HashSet<string>(
-            currentModules.SelectMany(m => m.FilePaths), StringComparer.OrdinalIgnoreCase);
+            applicableCurrentModules.SelectMany(m => m.FilePaths), StringComparer.OrdinalIgnoreCase);
         var deletedFileCount = 0;
         foreach (var prevFile in _snapshot.FileTimestamps.Keys.ToArray())
         {
@@ -689,13 +715,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             };
 
         // Recompile only changed modules
-        var modulesToRecompile = currentModules
+        var modulesToRecompile = applicableCurrentModules
             .Where(m => changedModules.Contains(m.Name))
             .ToArray();
 
         // Ensure cross-module edge extraction uses the full module set
         _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
-            currentModules.Select(m => m.Name), StringComparer.Ordinal);
+            applicableCurrentModules.Select(m => m.Name), StringComparer.Ordinal);
 
         var refCache = new SharedMetadataReferenceCache();
         var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
@@ -714,8 +740,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         // back-compat). Count >= 2 tags edges per profile + AppendProfileEdges
         // unions them at RebuildGraph time. Defensive _default-profile fallback
         // covers the unreachable case where ActiveProfiles is empty.
-        var snapshotProfiles = _snapshot.ActiveProfiles;
         var snapshotMultiProfile = snapshotProfiles.Count > 1;
+        var retainedProfileModules = snapshotProfiles.Count > 0
+            ? ApplyProfileToModules(currentModules, snapshotProfiles[0])
+            : applicableCurrentModules;
         Dictionary<string, Microsoft.CodeAnalysis.CSharp.CSharpCompilation>? newCompilations = null;
 
         var profilesToReplay = snapshotProfiles.Count > 0
@@ -738,10 +766,19 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             var profileModulesToRecompile = snapshotProfiles.Count > 0
                 ? ApplyProfileToModules(modulesToRecompile, profile)
                 : modulesToRecompile;
+            var profileOwnedModuleNames = snapshotProfiles.Count > 0
+                ? GetProfileOwnedModuleNames(currentModules, snapshotProfiles, profileIndex)
+                : new HashSet<string>(
+                    profileModulesToRecompile.Select(module => module.Name),
+                    StringComparer.Ordinal);
+            var profileSkippedFiles = isFirstProfile
+                ? _snapshot.SkippedFiles
+                : new List<SkippedFile>();
 
-            // INV-MULTI-DEFINE-IOP-001. First profile retains compilations
-            // and owns skipped-files + downgraded-refs accounting; subsequent
-            // profiles force streaming so peak RAM stays at single-profile baseline.
+            // INV-MULTI-DEFINE-IOP-001. First profile retains compilations;
+            // subsequent profiles force streaming so peak RAM stays at the
+            // single-profile baseline. Each module's first applicable profile
+            // owns its symbols and skipped-file accounting.
             var profileConfig = isFirstProfile
                 ? config
                 : new AnalysisConfig
@@ -763,10 +800,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             // dropping every cross-project edge whose target lived in an
             // unchanged module.
             var profileCarry = GetOrCreateProfileCarry(_snapshot, profile.Name);
+            PruneProfileCarry(profileCarry, ApplyProfileToModules(currentModules, profile));
 
             var profileCompilations = compilationBuilder.ProcessInOrder(
                 profileModulesToRecompile, projectRoot, profileConfig,
-                skippedCollector: isFirstProfile ? _snapshot.SkippedFiles : null,
+                skippedCollector: profileSkippedFiles,
                 carryDowngraded: profileCarry,
                 processor: (module, compilation) =>
                 {
@@ -796,7 +834,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                         var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
                         var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
 
-                        if (isFirstProfile)
+                        if (profileOwnedModuleNames.Contains(module.Name))
                         {
                             var fileSymbol = new Symbol
                             {
@@ -821,9 +859,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                         }
                     }
                 },
-                contentHashCollector: isFirstProfile
-                    ? (path, hash) => _snapshot.FileContentHashes[path] = hash
-                    : null);
+                contentHashCollector: (path, hash) => _snapshot.FileContentHashes[path] = hash);
+
+            if (!isFirstProfile)
+            {
+                _snapshot.SkippedFiles.AddRange(profileSkippedFiles.Where(
+                    skipped => profileOwnedModuleNames.Contains(skipped.ModuleName)));
+            }
 
             if (isFirstProfile) newCompilations = profileCompilations;
         }
@@ -839,12 +881,24 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             _compilations = newCompilations;
         }
 
+        if (_compilations != null)
+        {
+            var retainedModuleNames = new HashSet<string>(
+                retainedProfileModules.Select(module => module.Name),
+                StringComparer.Ordinal);
+            foreach (var name in _compilations.Keys.Where(
+                         name => !retainedModuleNames.Contains(name)).ToArray())
+            {
+                _compilations.Remove(name);
+            }
+        }
+
         // Update module-level data (dependencies may have changed)
         _snapshot.Modules = currentModules;
         _snapshot.ModuleSymbols.Clear();
         _snapshot.ModuleEdges.Clear();
 
-        foreach (var module in currentModules)
+        foreach (var module in applicableCurrentModules)
         {
             _snapshot.ModuleSymbols.Add(new Symbol
             {
@@ -856,8 +910,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             });
         }
 
-        var moduleNameSet = new HashSet<string>(currentModules.Select(m => m.Name), StringComparer.Ordinal);
-        foreach (var module in currentModules)
+        var moduleNameSet = new HashSet<string>(
+            applicableCurrentModules.Select(m => m.Name),
+            StringComparer.Ordinal);
+        foreach (var module in applicableCurrentModules)
         {
             var sourceId = SymbolIds.Module(module.Name);
             foreach (var dep in module.Dependencies)
@@ -878,7 +934,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             }
         }
 
-        _moduleDependencies = BuildModuleDependencyMap(currentModules);
+        _moduleDependencies = BuildModuleDependencyMap(retainedProfileModules);
 
         return new IncrementalAnalyzeResult
         {
@@ -984,10 +1040,67 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
     /// <summary>INV-MULTI-DEFINE-APPLIER-001.</summary>
     private static ModuleInfo[] ApplyProfileToModules(ModuleInfo[] modules, DefineProfile profile)
     {
-        var result = new ModuleInfo[modules.Length];
-        for (var i = 0; i < modules.Length; i++)
-            result[i] = DefineProfileApplier.WithProfileDefines(modules[i], profile);
-        return result;
+        return modules
+            .Where(module => IsModuleApplicable(module, profile))
+            .Select(module => DefineProfileApplier.WithProfileDefines(module, profile))
+            .ToArray();
+    }
+
+    private static ModuleInfo[] ApplyProfilesToModules(
+        ModuleInfo[] modules,
+        IReadOnlyList<DefineProfile> profiles)
+    {
+        return modules
+            .Where(module => profiles.Any(profile => IsModuleApplicable(module, profile)))
+            .ToArray();
+    }
+
+    private static HashSet<string> GetProfileOwnedModuleNames(
+        ModuleInfo[] modules,
+        IReadOnlyList<DefineProfile> profiles,
+        int profileIndex)
+    {
+        var owned = new HashSet<string>(StringComparer.Ordinal);
+        if (profileIndex < 0 || profileIndex >= profiles.Count)
+            return owned;
+
+        foreach (var module in modules)
+        {
+            if (!IsModuleApplicable(module, profiles[profileIndex]))
+                continue;
+
+            var ownedEarlier = false;
+            for (var earlierIndex = 0; earlierIndex < profileIndex; earlierIndex++)
+            {
+                if (!IsModuleApplicable(module, profiles[earlierIndex]))
+                    continue;
+
+                ownedEarlier = true;
+                break;
+            }
+
+            if (!ownedEarlier)
+                owned.Add(module.Name);
+        }
+
+        return owned;
+    }
+
+    private static bool IsModuleApplicable(ModuleInfo module, DefineProfile profile)
+        => profile.IncludeEditorOnlyModules || !module.IsEditorOnly;
+
+    private static void PruneProfileCarry(
+        IDictionary<string, MetadataReference> carry,
+        IEnumerable<ModuleInfo> applicableModules)
+    {
+        var applicableNames = new HashSet<string>(
+            applicableModules.Select(module => module.Name),
+            StringComparer.Ordinal);
+        foreach (var name in carry.Keys.Where(
+                     name => !applicableNames.Contains(name)).ToArray())
+        {
+            carry.Remove(name);
+        }
     }
 
     private static string[] NormalizeExcludePathGlobs(string[]? globs)

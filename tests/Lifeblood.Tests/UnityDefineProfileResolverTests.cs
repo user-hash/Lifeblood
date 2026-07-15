@@ -49,6 +49,7 @@ public class UnityDefineProfileResolverTests : IDisposable
 
         Assert.Empty(editor.AddDefines);
         Assert.Empty(editor.RemoveDefines);
+        Assert.True(editor.IncludeEditorOnlyModules);
     }
 
     [Fact]
@@ -65,6 +66,7 @@ public class UnityDefineProfileResolverTests : IDisposable
         Assert.Contains("UNITY_EDITOR_OSX", player.RemoveDefines);
         Assert.Contains("UNITY_EDITOR_LINUX", player.RemoveDefines);
         Assert.Equal(5, player.RemoveDefines.Length);
+        Assert.False(player.IncludeEditorOnlyModules);
     }
 
     [Fact]
@@ -81,6 +83,7 @@ public class UnityDefineProfileResolverTests : IDisposable
         Assert.Contains("UNITY_EDITOR_OSX", standalone.RemoveDefines);
         Assert.Contains("UNITY_EDITOR_LINUX", standalone.RemoveDefines);
         Assert.Equal(5, standalone.RemoveDefines.Length);
+        Assert.False(standalone.IncludeEditorOnlyModules);
     }
 
     [Fact]
@@ -94,6 +97,7 @@ public class UnityDefineProfileResolverTests : IDisposable
         Assert.Equal(UnityDefineProfileResolver.EditorProfileName, profile.Name);
         Assert.Empty(profile.AddDefines);
         Assert.Empty(profile.RemoveDefines);
+        Assert.True(profile.IncludeEditorOnlyModules);
     }
 
     [Fact]
@@ -171,6 +175,7 @@ public class UnityDefineProfileResolverTests : IDisposable
             Assert.Equal(first[i].Name, second[i].Name);
             Assert.Equal(first[i].AddDefines, second[i].AddDefines);
             Assert.Equal(first[i].RemoveDefines, second[i].RemoveDefines);
+            Assert.Equal(first[i].IncludeEditorOnlyModules, second[i].IncludeEditorOnlyModules);
         }
     }
 

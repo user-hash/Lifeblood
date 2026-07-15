@@ -362,6 +362,17 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                     .Where(s => !string.IsNullOrEmpty(s))
                     .LastOrDefault() ?? string.Empty);
 
+            // Unity's generated project descriptor owns the assembly's build
+            // domain (for example, "Editor:5"). This typed fact is the only
+            // module-applicability authority; names and paths are not build
+            // contracts.
+            var unityProjectType = doc.Descendants()
+                .Where(el => el.Name.LocalName == "UnityProjectType")
+                .Select(el => el.Value?.Trim() ?? string.Empty)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .LastOrDefault() ?? string.Empty;
+            bool isEditorOnly = IsUnityEditorOnlyProjectType(unityProjectType);
+
             // Compilation fact: <InternalsVisibleTo Include="X" /> items
             // (INV-DIAGNOSTIC-IVT-PARITY-001 / INV-COMPFACT-001..003).
             // MSBuild's GenerateAssemblyInfo target turns each item into an
@@ -409,6 +420,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 FilePaths = sourceFiles,
                 Dependencies = deps,
                 IsPure = isPure,
+                IsEditorOnly = isEditorOnly,
                 ExternalDllPaths = externalDlls,
                 BclOwnership = ownsBcl
                     ? BclOwnershipMode.ModuleProvided
@@ -477,6 +489,16 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
         }
 
         return features;
+    }
+
+    internal static bool IsUnityEditorOnlyProjectType(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var separator = value.IndexOf(':');
+        var kind = separator < 0 ? value : value.Substring(0, separator);
+        return string.Equals(kind.Trim(), "Editor", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ReadTargetFramework(XDocument doc)

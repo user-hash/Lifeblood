@@ -94,6 +94,8 @@ csproj-driven option follows the same shape.
   entire `ModuleInfo` on csproj edit, not just one field. The next compilation
   fact added under this convention ships with zero new incremental work.
 
+- **INV-COMPFACT-UNITY-PROJECT-TYPE-001. `<UnityProjectType>` is the descriptor-owned module-applicability fact for Unity profile analysis.** `RoslynModuleDiscovery` normalizes the type prefix before Unity's numeric suffix and records `Editor` as `ModuleInfo.IsEditorOnly`; missing and non-Editor values preserve the non-Unity default. `DefineProfileApplier` preserves the typed fact, and `RoslynWorkspaceAnalyzer` excludes Editor-only modules when `DefineProfile.IncludeEditorOnlyModules` is false. Applicability governs source/reference fingerprints, compilation, graph module facts, retained compilations, skipped-file evidence, and incremental downgraded-reference carry through the same profile seam. Assembly names and filesystem paths are not substitutes for the descriptor. Pinned by `UnityDefineProfileResolverTests` and the Unity module-applicability cases in `MultiProfileAnalyzeTests`.
+
 - **INV-RUNTIME-ASYNC-COMPAT-001. Runtime Async starts as user-project
   compatibility metadata, not a Lifeblood server feature.** If an analyzed
   csproj declares `<Features>runtime-async=on</Features>` or another compiler
