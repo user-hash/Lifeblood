@@ -89,20 +89,20 @@ Add to `.mcp.json` in your project root (or `~/.claude/.mcp.json` for global). T
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }
 ```
 
-Experimental shared multi-agent form (not yet recommended as the default):
+Private stdio rollback form:
 
 ```json
 {
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": ["--shared"]
+      "args": []
     }
   }
 }
@@ -151,7 +151,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }
@@ -178,7 +178,7 @@ Or in `.cursor/mcp.json`:
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }
@@ -198,7 +198,7 @@ In `.continue/config.json`:
         "transport": {
           "type": "stdio",
           "command": "lifeblood-mcp",
-          "args": []
+          "args": ["--shared"]
         }
       }
     ]

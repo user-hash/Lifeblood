@@ -28,13 +28,13 @@ Add to your project's `.mcp.json`:
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }
 ```
 
-See [MCP Setup Guide](docs/MCP_SETUP.md) for Claude Desktop, VS Code, Cursor, and raw stdio configs.
+Shared mode gives same-workspace agents one latest semantic/Roslyn base. See the [MCP Setup Guide](docs/MCP_SETUP.md) for lifecycle details, Claude Desktop, VS Code, Cursor, raw stdio configs, and the private-process rollback form.
 
 ### Use
 

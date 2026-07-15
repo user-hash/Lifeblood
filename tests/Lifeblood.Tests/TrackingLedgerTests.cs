@@ -12,6 +12,7 @@ public class TrackingLedgerTests
 {
     private static readonly string RepoRoot = FindRepoRoot();
     private static readonly string TrackingPath = Path.Combine(RepoRoot, "devmemory", "lifeblood-tracking.md");
+    private static readonly string ArchivePath = Path.Combine(RepoRoot, "devmemory", "lifeblood-tracking-archive.md");
 
     [Fact]
     public void TrackingLedger_StatusSummaryAnchors_MatchParsedEntries()
@@ -68,6 +69,19 @@ public class TrackingLedgerTests
         Assert.True(
             missing.Length == 0,
             "Partially shipped entries must name their remaining open work: " + string.Join("; ", missing));
+    }
+
+    [Fact]
+    public void TrackingArchive_DoesNotRecreateLivingLedgerAuthority()
+    {
+        var archive = File.ReadAllText(ArchivePath);
+
+        Assert.StartsWith("# Lifeblood Tracking Archive", archive, StringComparison.Ordinal);
+        Assert.DoesNotContain("trackingActiveBacklog:start", archive, StringComparison.Ordinal);
+        Assert.DoesNotContain("trackingStatusPartiallyShippedCount", archive, StringComparison.Ordinal);
+        Assert.DoesNotMatch(
+            new Regex(@"^Status:\s*Partially shipped", RegexOptions.Multiline | RegexOptions.IgnoreCase),
+            archive);
     }
 
     [Fact]
