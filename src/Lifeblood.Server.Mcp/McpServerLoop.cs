@@ -1,121 +1,264 @@
 using System.Text.Json;
+using Lifeblood.Connectors.Mcp;
 
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
 /// The MCP stdio read-dispatch-write loop, extracted from
-/// <see cref="Program"/> so it is testable through its public API (the same
-/// no-visibility-tricks ethos as <see cref="McpDispatcher"/>) and so its
-/// resilience contract can be ratcheted.
+/// <see cref="Program"/> so its transport resilience and cancellation
+/// contracts are directly testable.
 ///
-/// Resilience contract (INV-MCP-TRANSPORT-RESILIENCE-001): the loop is
-/// single-flight per connection by construction — it reads one line, dispatches
-/// it synchronously, then writes one response before reading the next, so one
-/// MCP client's frames stay ordered. A shared daemon may run separate client
-/// connections concurrently; host scheduling and analysis coalescing own that
-/// cross-client concurrency. NO single request — a dispatch
-/// fault, a response that fails to serialize, or a write to a broken output
-/// pipe — may terminate the loop and close the transport for every other
-/// pending and future call. Faults are logged and turned into id-correlated
-/// JSON-RPC error responses (so the client can match the failure to its
-/// request instead of seeing an opaque transport drop); a genuinely-closed
-/// stdin still ends the loop cleanly via the null-line sentinel.
+/// INV-MCP-TRANSPORT-RESILIENCE-001 keeps one active request per connection
+/// and preserves response order. While that request runs, the loop continues
+/// reading cancellation notifications for its id and queues every other frame.
+/// Cross-client concurrency remains owned by the shared daemon, session gate,
+/// and analysis coordinator. A dispatch, serialization, or broken-output fault
+/// on one call never terminates the connection's future calls.
 /// </summary>
 public static class McpServerLoop
 {
     public static async Task RunAsync(
         TextReader input,
         TextWriter output,
-        Func<JsonRpcRequest, JsonRpcResponse?> dispatch,
+        Func<JsonRpcRequest, CancellationToken, JsonRpcResponse?> dispatch,
         JsonSerializerOptions jsonOpts,
         bool strictJson,
         CancellationToken cancellationToken,
         Action<string>? logError = null)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        var queuedLines = new Queue<string>();
+        Task<string?>? pendingRead = null;
+        var inputClosed = false;
+
+        while (!cancellationToken.IsCancellationRequested
+               && (!inputClosed || queuedLines.Count > 0))
         {
             string? line;
-            try
+            if (queuedLines.Count > 0)
             {
-                line = await input.ReadLineAsync(cancellationToken);
+                line = queuedLines.Dequeue();
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            else
             {
-                break;
-            }
-            catch (Exception ex)
-            {
-                // A read fault on a half-open pipe is terminal for the session,
-                // but it must end the loop cleanly — never bubble out of Main.
-                logError?.Invoke($"stdin read failed: {ex.Message}");
-                break;
-            }
-
-            if (line == null) break;             // stdin closed — clean shutdown
-            if (string.IsNullOrWhiteSpace(line)) continue;
-
-            JsonRpcResponse? response;
-            try
-            {
-                var request = McpJsonRequestParser.DeserializeRequest(line, jsonOpts, strictJson);
-                if (request == null) continue;
-
                 try
                 {
-                    response = dispatch(request);
+                    pendingRead ??= input.ReadLineAsync(cancellationToken).AsTask();
+                    line = await pendingRead;
+                    pendingRead = null;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
-                    // McpDispatcher.Dispatch is contracted not to throw; this is
-                    // the backstop that keeps one bad request from killing the
-                    // transport, and echoes the request id so the client can
-                    // correlate the failure. INV-MCP-TRANSPORT-RESILIENCE-001.
-                    logError?.Invoke($"Dispatch fault on '{request.Method}': {ex.Message}");
-                    response = BuildInternalError(request.Id, request.Method, ex);
+                    logError?.Invoke($"stdin read failed: {ex.Message}");
+                    break;
                 }
+            }
 
-                if (response == null) continue;  // notification — no response body
+            if (line == null)
+                break;
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            JsonRpcRequest request;
+            try
+            {
+                var parsed = McpJsonRequestParser.DeserializeRequest(line, jsonOpts, strictJson);
+                if (parsed == null)
+                    continue;
+                request = parsed;
             }
             catch (JsonException ex)
             {
-                // Parse failed before we had a request — id is genuinely unknown.
                 logError?.Invoke($"Parse error: {ex.Message}");
-                response = BuildParseError();
+                TryWriteResponse(output, BuildParseError(), jsonOpts, logError);
+                continue;
             }
 
-            // Write failures (broken pipe, serialization fault) are logged and
-            // swallowed: the loop continues, and a truly-closed stdin ends it
-            // via the null-line sentinel above. They never escape to terminate
-            // the process mid-session.
-            TryWriteResponse(output, response, jsonOpts, logError);
+            // A cancellation notification has meaning only while its target
+            // request is active. A late notification is an idempotent no-op.
+            if (TryGetCancellationTarget(request, out _))
+                continue;
+
+            using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+            var activeRequestId = RequestIdKey(request.Id);
+            var dispatchTask = Task.Run(
+                () => DispatchSafely(request, dispatch, requestCancellation.Token, logError),
+                CancellationToken.None);
+
+            while (!dispatchTask.IsCompleted
+                   && !cancellationToken.IsCancellationRequested
+                   && !inputClosed)
+            {
+                try
+                {
+                    pendingRead ??= input.ReadLineAsync(cancellationToken).AsTask();
+                    var completed = await Task.WhenAny(dispatchTask, pendingRead);
+                    if (ReferenceEquals(completed, dispatchTask))
+                        break;
+
+                    var concurrentLine = await pendingRead;
+                    pendingRead = null;
+                    if (concurrentLine == null)
+                    {
+                        inputClosed = true;
+                        if (queuedLines.Count == 0)
+                            requestCancellation.Cancel();
+                        break;
+                    }
+                    if (string.IsNullOrWhiteSpace(concurrentLine))
+                        continue;
+
+                    if (TryParseCancellationFor(
+                            concurrentLine,
+                            activeRequestId,
+                            jsonOpts,
+                            strictJson))
+                    {
+                        requestCancellation.Cancel();
+                    }
+                    else
+                    {
+                        queuedLines.Enqueue(concurrentLine);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    requestCancellation.Cancel();
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    logError?.Invoke(
+                        $"stdin read failed while '{request.Method}' was active: {ex.Message}");
+                    inputClosed = true;
+                    requestCancellation.Cancel();
+                    break;
+                }
+            }
+
+            var response = await dispatchTask;
+            if (response != null)
+                TryWriteResponse(output, response, jsonOpts, logError);
         }
     }
 
-    /// <summary>
-    /// Structured internal-error response with the request id echoed and a
-    /// recovery-posture envelope in JSON-RPC <c>data</c>.
-    /// </summary>
-    internal static JsonRpcResponse BuildInternalError(JsonElement? id, string method, Exception ex) => new()
+    private static JsonRpcResponse? DispatchSafely(
+        JsonRpcRequest request,
+        Func<JsonRpcRequest, CancellationToken, JsonRpcResponse?> dispatch,
+        CancellationToken cancellationToken,
+        Action<string>? logError)
     {
-        Id = id,
-        Error = new JsonRpcError
+        try
         {
-            Code = -32603,
-            Message = $"Internal error handling '{method}': {ex.Message}",
-            Data = new
-            {
-                phase = "dispatch",
-                method,
-                exceptionType = ex.GetType().FullName ?? ex.GetType().Name,
-                recoverable = true,
-                recovery = "This connection is single-flight (serial request loop); a fault on one call does not " +
-                           "affect the transport. Retry this call; if it persists, re-run lifeblood_analyze, " +
-                           "then reconnect the MCP server.",
-            },
-        },
-    };
+            return dispatch(request, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return request.Id == null ? null : BuildRequestCancelled(request.Id, request.Method);
+        }
+        catch (Exception ex)
+        {
+            logError?.Invoke($"Dispatch fault on '{request.Method}': {ex.Message}");
+            return BuildInternalError(request.Id, request.Method, ex);
+        }
+    }
 
-    /// <summary>Parse-error response. Id is unknown (parse failed) so it stays null per JSON-RPC 2.0.</summary>
+    internal static bool TryGetCancellationTarget(
+        JsonRpcRequest request,
+        out string targetId)
+    {
+        targetId = string.Empty;
+        var parameterName = request.Method switch
+        {
+            McpProtocolSpec.Notifications.Cancelled => "requestId",
+            McpProtocolSpec.Notifications.CancelRequest => "id",
+            _ => null,
+        };
+        if (parameterName == null
+            || request.Params is not { } parameters
+            || parameters.ValueKind != JsonValueKind.Object
+            || !parameters.TryGetProperty(parameterName, out var id))
+        {
+            return false;
+        }
+
+        targetId = RequestIdKey(id) ?? string.Empty;
+        return targetId.Length > 0;
+    }
+
+    internal static string? RequestIdKey(JsonElement? id)
+        => id is { } value && value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            ? value.GetRawText()
+            : null;
+
+    private static bool TryParseCancellationFor(
+        string line,
+        string? activeRequestId,
+        JsonSerializerOptions jsonOpts,
+        bool strictJson)
+    {
+        if (activeRequestId == null)
+            return false;
+
+        try
+        {
+            var request = McpJsonRequestParser.DeserializeRequest(line, jsonOpts, strictJson);
+            return request != null
+                && TryGetCancellationTarget(request, out var targetId)
+                && string.Equals(targetId, activeRequestId, StringComparison.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    internal static JsonRpcResponse BuildInternalError(
+        JsonElement? id,
+        string method,
+        Exception ex) => new()
+        {
+            Id = id,
+            Error = new JsonRpcError
+            {
+                Code = -32603,
+                Message = $"Internal error handling '{method}': {ex.Message}",
+                Data = new
+                {
+                    phase = "dispatch",
+                    method,
+                    exceptionType = ex.GetType().FullName ?? ex.GetType().Name,
+                    recoverable = true,
+                    recovery = "This connection keeps one active request; a fault on one call does not " +
+                           "affect later traffic. Retry this call; if it persists, re-run " +
+                           "lifeblood_analyze, then reconnect the MCP server.",
+                },
+            },
+        };
+
+    internal static JsonRpcResponse BuildRequestCancelled(
+        JsonElement? id,
+        string method) => new()
+        {
+            Id = id,
+            Error = new JsonRpcError
+            {
+                Code = -32800,
+                Message = $"Request cancelled: {method}",
+                Data = new
+                {
+                    phase = "dispatch",
+                    method,
+                    cancelled = true,
+                    retryable = true,
+                },
+            },
+        };
+
     internal static JsonRpcResponse BuildParseError() => new()
     {
         Error = new JsonRpcError
@@ -139,9 +282,6 @@ public static class McpServerLoop
         }
         catch (Exception ex)
         {
-            // A response that cannot serialize must still produce an
-            // id-correlated error rather than silence (which reads as a
-            // transport drop to a client awaiting that id).
             logError?.Invoke($"Response serialize failed: {ex.Message}");
             try
             {
@@ -149,7 +289,11 @@ public static class McpServerLoop
                     new JsonRpcResponse
                     {
                         Id = response.Id,
-                        Error = new JsonRpcError { Code = -32603, Message = "Response serialization failed" },
+                        Error = new JsonRpcError
+                        {
+                            Code = -32603,
+                            Message = "Response serialization failed",
+                        },
                     },
                     jsonOpts);
             }
@@ -166,9 +310,6 @@ public static class McpServerLoop
         }
         catch (Exception ex)
         {
-            // Broken output pipe. Do NOT rethrow — the prior design let this
-            // escape the catch handler and terminate the process, closing the
-            // transport permanently. INV-MCP-TRANSPORT-RESILIENCE-001.
             logError?.Invoke($"Response write failed (transport): {ex.Message}");
         }
     }

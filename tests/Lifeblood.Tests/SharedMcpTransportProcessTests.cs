@@ -314,6 +314,62 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task PersistentProxy_CancelledAnalyzeDoesNotPublishAndRetrySucceeds()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        WriteCSharpWorkspace(fileCount: 500);
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var firstProxy = StartProxy(dll, pipeName, _tempDirectory);
+        await using var secondProxy = StartProxy(dll, pipeName, _tempDirectory);
+        using var firstInitialize = await firstProxy.InitializeAsync();
+        using var secondInitialize = await secondProxy.InitializeAsync();
+
+        const int analyzeId = 8101;
+        await firstProxy.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            id = analyzeId,
+            method = "tools/call",
+            @params = new
+            {
+                name = "lifeblood_analyze",
+                arguments = new { projectPath = _tempDirectory, readOnly = false },
+            },
+        }));
+        await Task.Delay(10);
+        await firstProxy.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            method = "notifications/cancelled",
+            @params = new { requestId = analyzeId },
+        }));
+
+        using var cancelled = McpProcessTestClient.AssertValidJsonRpcLine(
+            await firstProxy.ReadJsonLineAsync(TimeSpan.FromSeconds(30)));
+        Assert.Equal(analyzeId, cancelled.RootElement.GetProperty("id").GetInt32());
+        Assert.Equal(
+            -32800,
+            cancelled.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+
+        var afterCancellation = await ReadSessionAsync(secondProxy);
+        Assert.False(afterCancellation.HasGraphLoaded);
+        Assert.Equal(0, afterCancellation.AnalysisGeneration);
+
+        using var retryResponse = await secondProxy.CallToolAsync(
+            "lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = false },
+            TimeSpan.FromSeconds(90));
+        using var retryPayload = McpProcessTestClient.ParseToolPayload(retryResponse);
+        Assert.Equal(1, retryPayload.RootElement.GetProperty("envelope")
+            .GetProperty("analysisGeneration").GetInt32());
+        Assert.False(daemon.HasExited);
+    }
+
+    [SkippableFact]
     public async Task MaintenanceDrain_RefusesUnrelatedLeaseThenStopsExclusiveOwner()
     {
         var dll = McpProcessTestClient.LocateServerDll();

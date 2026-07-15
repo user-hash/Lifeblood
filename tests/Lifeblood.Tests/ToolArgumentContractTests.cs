@@ -197,6 +197,8 @@ public class ToolArgumentContractTests
             defineProfiles = new[] { "Editor", "", " Player " },
             excludePaths = new[] { "*/Examples*/*", "", " Packages/* " },
             authoritativeChangedFiles = new[] { "Assets/Foo.cs", "", " Packages/Bar.cs " },
+            changeReceiptMode = "detail",
+            changeReceiptLimit = 999,
         }));
 
         Assert.Equal("D:/repo", request.ProjectPath);
@@ -206,6 +208,8 @@ public class ToolArgumentContractTests
         Assert.Equal(new[] { "Editor", "Player" }, request.DefineProfiles);
         Assert.Equal(new[] { "*/Examples*/*", "Packages/*" }, request.ExcludePaths);
         Assert.Equal(new[] { "Assets/Foo.cs", "Packages/Bar.cs" }, request.AuthoritativeChangedFiles);
+        Assert.Equal(AcceptedChangeReceiptMode.Detail, request.EffectiveChangeReceipt.Mode);
+        Assert.Equal(AcceptedChangeReceiptRequest.MaximumLimit, request.EffectiveChangeReceipt.Limit);
         Assert.Same(AnalyzeToolRequest.Empty, ToolRequestBinder.BindAnalyze(null));
 
         var legacyBadTypes = ToolRequestBinder.BindAnalyze(JsonArgs(new
@@ -215,12 +219,37 @@ public class ToolArgumentContractTests
             defineProfiles = new object[] { 42, " Editor " },
             excludePaths = new object[] { 42, " */Samples*/* " },
             authoritativeChangedFiles = new object[] { 42, " Assets/Changed.cs " },
+            changeReceiptMode = 42,
+            changeReceiptLimit = "10",
         }));
         Assert.Null(legacyBadTypes.ProjectPath);
         Assert.False(legacyBadTypes.Incremental);
         Assert.Equal(new[] { "Editor" }, legacyBadTypes.DefineProfiles);
         Assert.Equal(new[] { "*/Samples*/*" }, legacyBadTypes.ExcludePaths);
         Assert.Equal(new[] { "Assets/Changed.cs" }, legacyBadTypes.AuthoritativeChangedFiles);
+        Assert.Equal(AcceptedChangeReceiptMode.Summary, legacyBadTypes.EffectiveChangeReceipt.Mode);
+        Assert.Equal(AcceptedChangeReceiptRequest.DefaultLimit, legacyBadTypes.EffectiveChangeReceipt.Limit);
+
+        var explicitEmpty = ToolRequestBinder.BindAnalyze(JsonArgs(new
+        {
+            authoritativeChangedFiles = Array.Empty<string>(),
+        }));
+        Assert.NotNull(explicitEmpty.AuthoritativeChangedFiles);
+        Assert.Empty(explicitEmpty.AuthoritativeChangedFiles);
+    }
+
+    [Fact]
+    public void Binder_StrictMode_RejectsUnknownAnalyzeReceiptMode()
+    {
+        var result = NewBinder().Validate(
+            "lifeblood_analyze",
+            JsonArgs(new { changeReceiptMode = "verbose" }),
+            ToolJsonCompatibilityMode.Strict);
+
+        Assert.False(result.Accepted);
+        Assert.Contains(result.Diagnostics, diagnostic =>
+            diagnostic.Kind == "enumMismatch"
+            && diagnostic.Argument == "changeReceiptMode");
     }
 
     [Fact]

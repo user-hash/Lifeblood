@@ -28,7 +28,7 @@ public class McpServerLoopTests
 
         await McpServerLoop.RunAsync(
             input, output,
-            req => new JsonRpcResponse { Id = req.Id, Result = new { ok = true } },
+            (req, _) => new JsonRpcResponse { Id = req.Id, Result = new { ok = true } },
             JsonOpts, strictJson: false, CancellationToken.None);
 
         var written = output.ToString();
@@ -49,7 +49,7 @@ public class McpServerLoopTests
 
         await McpServerLoop.RunAsync(
             input, output,
-            req =>
+            (req, _) =>
             {
                 dispatched++;
                 if (req.Method == "boom") throw new InvalidOperationException("kaboom");
@@ -81,7 +81,7 @@ public class McpServerLoopTests
 
         var ex = await Record.ExceptionAsync(() => McpServerLoop.RunAsync(
             input, output,
-            req => { dispatched++; return new JsonRpcResponse { Id = req.Id, Result = new { ok = true } }; },
+            (req, _) => { dispatched++; return new JsonRpcResponse { Id = req.Id, Result = new { ok = true } }; },
             JsonOpts, strictJson: false, CancellationToken.None));
 
         Assert.Null(ex);              // loop never throws out of the broken write
@@ -98,12 +98,58 @@ public class McpServerLoopTests
 
         await McpServerLoop.RunAsync(
             input, output,
-            req => new JsonRpcResponse { Id = req.Id, Result = new { ok = true } },
+            (req, _) => new JsonRpcResponse { Id = req.Id, Result = new { ok = true } },
             JsonOpts, strictJson: false, CancellationToken.None);
 
         var written = output.ToString();
         Assert.Contains("-32700", written);     // parse error emitted
         Assert.Contains("\"id\":5", written);   // loop recovered and served the next line
+    }
+
+    [Theory]
+    [InlineData("notifications/cancelled", "requestId")]
+    [InlineData("$/cancelRequest", "id")]
+    public async Task ActiveRequest_CancellationNotificationCancelsById_AndLoopContinues(
+        string cancellationMethod,
+        string cancellationIdProperty)
+    {
+        var cancellationParams = cancellationIdProperty == "requestId"
+            ? "{\"requestId\":1}"
+            : "{\"id\":1}";
+        var input = new StringReader(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"slow\"}\n" +
+            $"{{\"jsonrpc\":\"2.0\",\"method\":\"{cancellationMethod}\",\"params\":{cancellationParams}}}\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ok\"}\n");
+        var output = new StringWriter();
+
+        await McpServerLoop.RunAsync(
+            input,
+            output,
+            (request, cancellationToken) =>
+            {
+                if (request.Method == "slow")
+                {
+                    cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                return new JsonRpcResponse { Id = request.Id, Result = new { ok = true } };
+            },
+            JsonOpts,
+            strictJson: false,
+            CancellationToken.None);
+
+        var responses = output.ToString().Split(
+            new[] { '\r', '\n' },
+            StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(2, responses.Length);
+        using var cancelled = JsonDocument.Parse(responses[0]);
+        Assert.Equal(1, cancelled.RootElement.GetProperty("id").GetInt32());
+        Assert.Equal(-32800, cancelled.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.True(cancelled.RootElement.GetProperty("error").GetProperty("data").GetProperty("cancelled").GetBoolean());
+        using var succeeded = JsonDocument.Parse(responses[1]);
+        Assert.Equal(2, succeeded.RootElement.GetProperty("id").GetInt32());
+        Assert.True(succeeded.RootElement.GetProperty("result").GetProperty("ok").GetBoolean());
     }
 
     private sealed class ThrowingTextWriter : TextWriter

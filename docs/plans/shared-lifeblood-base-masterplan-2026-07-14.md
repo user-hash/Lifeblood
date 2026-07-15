@@ -13,7 +13,8 @@ analysis/spec/source/rule identity and exact in-flight analysis coalescing are
 implemented; Wave 5 snapshot preconditions, canonical identity envelopes, and
 behavior-derived serial read batches are implemented; Wave 6 bounded graph-
 only history, exact historical selection, catalog management, and drift
-reporting are implemented; Lifeblood/DAWG rollout evidence is next
+reporting are implemented; request cancellation and the canonical bounded
+accepted-change receipt are implemented; Lifeblood/DAWG rollout evidence is next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -24,7 +25,8 @@ identity/workspace admission, globally unique committed `SnapshotId`, and one
 `WorkspaceAnalysisIdentity` authority for `AnalysisSpec`, rule/source/
 descriptor fingerprints, `BaseKey`, and `AnalysisKey`, then persistent shared
 protocol v2 connections, client leases, request activity, idle/maintenance
-drain, truthful shared status, snapshot preconditions, and pinned read batches.
+drain, truthful shared status, request cancellation, snapshot preconditions,
+pinned read batches, and bounded accepted-change receipts.
 Resume in this order: (1) publish and verify one local Lifeblood distribution;
 (2) capture the frozen DAWG receipt and complete DAWG rollout, memory, evidence,
 and docs gates once the DAWG tree is quiescent.
@@ -170,7 +172,7 @@ property.
 
 | Priority | Issue | Evidence | Required resolution |
 |---|---|---|---|
-| Resolved in Wave 0 and extended in Wave 4 | No transport contract tests | Twelve black-box `SharedMcpTransportProcessTests` cover sharing, isolation, malformed frames, duplicate ownership, crash/restart, protocol/build/workspace identity, bound-workspace rejection, persistent connection state, N-client coalescing, idle exit, and maintenance drain with owned process cleanup. | Complete for identity, lifecycle, and process coalescing; cancellation-frame mapping remains a Wave 7 rollout task. |
+| Resolved through the cancellation atom | No transport contract tests | Black-box `SharedMcpTransportProcessTests` cover sharing, isolation, malformed frames, duplicate ownership, crash/restart, protocol/build/workspace identity, bound-workspace rejection, persistent connection state, N-client coalescing, request cancellation, idle exit, and maintenance drain with owned process cleanup. | Complete for identity, lifecycle, coalescing, and cancellation mapping. |
 | Resolved in Wave 4 identity atom | Daemon identity was trusted by pipe name | Every connection now performs a typed protocol/server-version/module-MVID/workspace handshake, and both sides verify the complete identity before MCP forwarding. | Complete; incompatible reuse returns a correlated error without killing the unknown daemon. |
 | Resolved in Wave 4 lifecycle atom | Daemon lifetime was unbounded | Shared protocol v2 owns client leases, activity, an injectable last-client idle deadline, cooperative host drain, and deterministic composition disposal. | Fake-clock tests pin reattach/rearm and blocker policy; process tests pin zero-idle exit and explicit maintenance drain. |
 | Resolved in Wave 4 lifecycle atom | The proxy could not model a client lifetime | One stable client id now owns one persistent handshaken connection and daemon lease until disconnect. | Complete; a failed request is not replayed across reconnect, avoiding duplicate side effects. |
@@ -178,11 +180,11 @@ property.
 | Resolved in Wave 4 identity atom | Workspace identity was implicit | Default keys now converge on the nearest Git worktree root, the handshake carries that canonical root, and shared-daemon analyze admission rejects a different project root or an out-of-root graph before `GraphSession.Load`. | Complete; rejection preserves the exact last good generation. |
 | P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
 | Resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` is part of immutable `WorkspaceSnapshot` publication and flows through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Complete; future workspace-sensitive providers must consume the same committed context. |
-| Resolved in Wave 3 coalescing atom | Identical analyses serialized but did not coalesce | `AnalysisRequestCoordinator` joins complete `AnalysisKey` + execution-policy equality, while publication rejects preflight/source drift; two persistent process clients now prove one analyzer request, one generation, and two waiters. | Registry cancellation/failure semantics and process coalescing are pinned; MCP cancellation-frame mapping remains a rollout task. |
+| Resolved in Wave 3 plus the cancellation atom | Identical analyses serialized but did not coalesce | `AnalysisRequestCoordinator` joins complete `AnalysisKey` + execution-policy equality, while publication rejects preflight/source drift; two persistent process clients prove one analyzer request, one generation, and two waiters. | Request ids now map through the persistent proxy/daemon to independent waiter cancellation; last-waiter cancellation blocks publication and a clean retry succeeds. |
 | Resolved in Wave 5 | Multi-call reads could mix generations | Individual envelopes reported generation, but callers could not require one or lease it across a batch. | Behavior-derived snapshot preconditions now compare after lease acquisition, and `lifeblood_batch` prevalidates a bounded read-only plan before executing it under one pinned lease. |
 | Resolved before Wave 2 | `tools/list` read session state outside the session gate | `McpDispatcher.HandleToolsList` read `HasCompilationState` directly while analyze could replace the session. | `McpDispatcher` no longer owns `GraphSession`; `ToolHandler.GetTools` evaluates registry availability under the shared session gate. Snapshot leases replace this gate read in Wave 2 without changing the dispatcher boundary. |
 | Resolved in Wave 1 | Tool labels conflated state and effects | `WriteSide` meant retained compilation required, even for observation or returned edits; only analyze and compile-check needed exclusive access. | Every tool now declares one immutable `ToolBehavior`: hierarchical `sessionRequirement` (including retained compilation), independent `effect`, and independent `sessionAccess`. Legacy read/write fields are derived compatibility aliases. |
-| P1 | Incremental acceptance is not explainable enough | DAWG reported 310 changed source files without an itemized/fingerprinted receipt in the response. | Bounded changed-set provenance, descriptor/scope/source fingerprint, and summarize/detail controls. |
+| Resolved in Wave 3 receipt atom | Incremental acceptance was not explainable enough | DAWG reported 310 changed source files without an itemized/fingerprinted receipt in the response. | `AcceptedChangeSet` is the one normalized Application authority; summary/detail MCP projections distinguish content, descriptor, deletion, mtime-only, and full-fallback causes under a hard path limit. DAWG must now rerun the scenario and use this receipt rather than guess. |
 | Resolved in Wave 3 identity atom | Rule identity was not refresh-aware | `AnalysisRuleSetResolver` now returns parsed rules and their content identity together; explicit and committed-path refreshes cannot drift. | A rule-only change reruns stateless rule analysis, advances generation / snapshot / analysis identity, and shares the existing reference-counted semantic-service bundle without recompilation. |
 | Resolved in Wave 4 lifecycle atom | Shared capability was advertised too broadly | Top-level `lifeblood_capabilities.sharedService` now distinguishes private stdio from an active daemon and reports protocol/build/process/workspace/lifecycle/client/activity/in-flight/memory facts. | Complete under `INV-MCP-SHARED-STATUS-001`. |
 | P2 | One active graph cannot represent named investigation lanes | Editor/Player and platform-specific lanes overwrite the singleton session. | Bounded snapshot catalog; graph-only historical pins by default, explicit cost for extra semantic bases. |
@@ -463,8 +465,7 @@ Purpose: ensure agents share work, not only the final heap.
 Exit gate: N simultaneous identical full or incremental requests call the
 analyzer once and publish once; non-identical requests never join.
 
-Implementation status: steps 1-3 and the request/waiter projection in step 4
-are complete. Domain-owned, length-framed
+Implementation status: complete. Domain-owned, length-framed
 `ContentFingerprint` values compose the canonical `WorkspaceKey`,
 `AnalysisSpec`, `BaseKey`, `SourceFingerprint`, and `AnalysisKey` inside one
 `WorkspaceAnalysisIdentity` stored on the committed `WorkspaceSnapshot`.
@@ -476,10 +477,14 @@ before scheduling; publication compares the expected key again, so changed
 inputs cannot slip through a stale coalescing key. The per-workspace registry
 returns one request id, clones per-waiter metadata, keeps non-identical policy
 separate, cancels its shared work token only after every waiter leaves, and
-removes failed entries before retry. A two-persistent-client process test now
-proves one analyzer request, one publication, and two joined waiters.
-Persistent-transport cancellation mapping and the bounded accepted-change
-detail in step 4 remain rollout gates.
+removes failed entries before retry. A two-persistent-client process test proves
+one analyzer request, one publication, and two joined waiters. Canonical and
+compatibility cancellation frames now map through the persistent proxy to the
+matching waiter; cancellation of every waiter prevents publication and leaves
+a clean retry path. `AcceptedChangeSet` now owns the normalized project-relative
+path evidence and derives every legacy count; the default summary and bounded
+detail projections distinguish source-content, descriptor-forced, deleted,
+mtime-only, and truthful full-fallback causes without duplicating path arrays.
 
 ### Wave 4 - Versioned Persistent Transport And Daemon Lifecycle
 
@@ -578,7 +583,8 @@ gates pass.
 2. Point every Lifeblood client config at that distribution with an explicit
    canonical Lifeblood shared key.
 3. Run full, no-op incremental, real-edit incremental, two-client coalescing,
-   pinned batch, disconnect, idle eviction, and restart recovery.
+   request cancellation, pinned batch, disconnect, idle eviction, and restart
+   recovery.
 4. Repeat with DAWG Editor+Player using an explicit DAWG key.
 5. Explain the earlier 310-file refresh through the new accepted-change receipt
    or file a separate verified bug; do not waive it as Unity churn.

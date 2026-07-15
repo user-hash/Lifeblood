@@ -90,16 +90,14 @@ public class AnalyzeWireShapeTests : IDisposable
         var doc = JsonDocument.Parse(json);
 
         Assert.Equal("full", doc.RootElement.GetProperty("mode").GetString());
-        // The result type is full, but requestedMode is "full" (not
-        // "incremental") for this path because the caller explicitly opted
-        // into widening — they're asking "be cheap if possible, otherwise
-        // do whatever it takes." From the wire-contract POV the caller has
-        // accepted full. The fallbackReason field is optional populate; we
-        // currently don't emit it on this fall-through path because the
-        // GraphSession-level synthesis is bypassed entirely. (See F3 commit
-        // notes: this is the intentionally-relaxed path for backward compat
-        // with the existing first-call-incremental:true behavior.)
-        // Sanity guard only on the work-succeeded shape.
+        Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("noPriorAnalysis", doc.RootElement.GetProperty("fallbackReason").GetString());
+        var receipt = doc.RootElement.GetProperty("acceptedChanges");
+        Assert.Equal("fullFallback", receipt.GetProperty("scanMode").GetString());
+        Assert.True(receipt.GetProperty("fullFallback").GetBoolean());
+        Assert.Equal(1, receipt.GetProperty("counts").GetProperty("reanalyzedSourceFiles").GetInt32());
+        Assert.Equal(0, receipt.GetProperty("counts").GetProperty("mtimeTouchedSourceFiles").GetInt32());
+        Assert.Equal(0, receipt.GetProperty("counts").GetProperty("contentChangedSourceFiles").GetInt32());
         Assert.NotEqual(JsonValueKind.Null, doc.RootElement.GetProperty("summary").ValueKind);
     }
 
@@ -118,6 +116,7 @@ public class AnalyzeWireShapeTests : IDisposable
         AssertNullProperty(doc.RootElement, "fallbackDetail");
         AssertNullProperty(doc.RootElement, "canRetryFull");
         AssertNullProperty(doc.RootElement, "suggestedRetry");
+        AssertNullProperty(doc.RootElement, "acceptedChanges");
     }
 
     [Fact]
@@ -201,6 +200,11 @@ public class AnalyzeWireShapeTests : IDisposable
         Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
         AssertNullProperty(doc.RootElement, "fallbackReason");
         AssertNullProperty(doc.RootElement, "canRetryFull");
+        var receipt = doc.RootElement.GetProperty("acceptedChanges");
+        Assert.Equal("summary", receipt.GetProperty("mode").GetString());
+        Assert.Equal("filesystemPrefilter", receipt.GetProperty("scanMode").GetString());
+        Assert.Equal(0, receipt.GetProperty("evidenceFileCount").GetInt32());
+        Assert.Empty(receipt.GetProperty("files").EnumerateArray());
     }
 
     [Fact]
@@ -257,19 +261,43 @@ public class AnalyzeWireShapeTests : IDisposable
     public void Load_IncrementalAfterEdit_WireCarriesIncrementalMode()
     {
         var filePath = WriteSingleFileProject("public class Foo { }");
+        var secondPath = Path.Combine(_tempDir, "Second.cs");
+        File.WriteAllText(secondPath, "public class Second { }");
         var session = new GraphSession(_fs);
         session.Load(_tempDir, graphPath: null, rulesPath: null, incremental: false);
 
         Thread.Sleep(50);
         File.WriteAllText(filePath, "public class Foo { public void Bar() { } }");
+        File.WriteAllText(secondPath, "public class Second { public void Baz() { } }");
 
-        var json = session.Load(_tempDir, graphPath: null, rulesPath: null, incremental: true);
+        var json = session.Load(
+            _tempDir,
+            graphPath: null,
+            rulesPath: null,
+            incremental: true,
+            acceptedChangeReceipt: new AcceptedChangeReceiptRequest(
+                AcceptedChangeReceiptMode.Detail,
+                limit: 1));
         var doc = JsonDocument.Parse(json);
 
         Assert.Equal("incremental", doc.RootElement.GetProperty("mode").GetString());
         Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
         AssertNullProperty(doc.RootElement, "fallbackReason");
-        Assert.True(doc.RootElement.GetProperty("changedSourceFiles").GetInt32() > 0);
+        var receipt = doc.RootElement.GetProperty("acceptedChanges");
+        var counts = receipt.GetProperty("counts");
+        Assert.Equal("detail", receipt.GetProperty("mode").GetString());
+        Assert.Equal("filesystemPrefilter", receipt.GetProperty("scanMode").GetString());
+        Assert.Equal(2, counts.GetProperty("changedSourceFiles").GetInt32());
+        Assert.Equal(2, counts.GetProperty("contentChangedSourceFiles").GetInt32());
+        Assert.Equal(2, doc.RootElement.GetProperty("changedSourceFiles").GetInt32());
+        Assert.Equal(2, receipt.GetProperty("evidenceFileCount").GetInt32());
+        Assert.Equal(1, receipt.GetProperty("returnedFileCount").GetInt32());
+        Assert.Equal(1, receipt.GetProperty("omittedFileCount").GetInt32());
+        Assert.True(receipt.GetProperty("truncated").GetBoolean());
+        var file = Assert.Single(receipt.GetProperty("files").EnumerateArray());
+        Assert.Equal("Program.cs", file.GetProperty("path").GetString());
+        Assert.True(file.GetProperty("reanalyzed").GetBoolean());
+        Assert.True(file.GetProperty("contentChanged").GetBoolean());
     }
 
     [Fact]

@@ -156,6 +156,36 @@ public sealed class GraphSessionAnalysisIdentityTests : IDisposable
     }
 
     [Fact]
+    public void PrepareAnalysis_CoalescingPolicyDistinguishesChangeScanAndReceiptProjection()
+    {
+        using var session = new GraphSession(new PhysicalFileSystem());
+        var baseline = session.PrepareAnalysis(new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            Incremental = true,
+        });
+        var authoritativeEmpty = session.PrepareAnalysis(new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            Incremental = true,
+            AuthoritativeChangedFiles = Array.Empty<string>(),
+        });
+        var detailed = session.PrepareAnalysis(new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            Incremental = true,
+            ChangeReceiptMode = "detail",
+            ChangeReceiptLimit = 1,
+        });
+
+        Assert.Equal(baseline.Identity.AnalysisKey, authoritativeEmpty.Identity.AnalysisKey);
+        Assert.Equal(baseline.Identity.AnalysisKey, detailed.Identity.AnalysisKey);
+        Assert.NotEqual(baseline.CoalescingKey, authoritativeEmpty.CoalescingKey);
+        Assert.NotEqual(baseline.CoalescingKey, detailed.CoalescingKey);
+        Assert.NotEqual(authoritativeEmpty.CoalescingKey, detailed.CoalescingKey);
+    }
+
+    [Fact]
     public void Load_ChangedInputAfterPreparationRejectsCandidateAndPreservesPublication()
     {
         using var session = new GraphSession(new PhysicalFileSystem());

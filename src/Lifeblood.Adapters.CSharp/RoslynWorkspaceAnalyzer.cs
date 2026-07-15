@@ -509,7 +509,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             {
                 Mode = IncrementalMode.Rejected,
                 Graph = null,
-                ChangedFileCount = 0,
+                AcceptedChanges = AcceptedChangeSet.Create(ResolveChangeScanMode(config)),
                 Reason = FallbackReason.NoPriorAnalysis,
                 Detail = "No previous analysis snapshot. Call AnalyzeWorkspace first.",
             };
@@ -583,8 +583,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         var changedModules = new HashSet<string>(StringComparer.Ordinal); // module names
         var previousModuleByFile = BuildModuleFileIndex(_snapshot.Modules);
         var authoritativeChangedFiles = NormalizeAuthoritativeChangedFiles(projectRoot, config.AuthoritativeChangedFiles);
+        var scanMode = ResolveChangeScanMode(config);
         var mtimeTouchedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var contentChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var descriptorForcedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // INV-BCL-005: csproj edits change discovered module facts (BclOwnership,
         // ExternalDllPaths, Dependencies) and require re-discovery + recompile —
@@ -639,6 +641,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 {
                     TrackSourceTouch(filePath, mtimeTouchedFiles, contentChangedFiles);
                     changedFiles.Add(filePath);
+                    descriptorForcedFiles.Add(filePath);
                     changedModules.Add(module.Name);
                     continue;
                 }
@@ -681,7 +684,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         // Also check for deleted files (in previous snapshot but not in current modules)
         var currentFilePaths = new HashSet<string>(
             applicableCurrentModules.SelectMany(m => m.FilePaths), StringComparer.OrdinalIgnoreCase);
-        var deletedFileCount = 0;
+        var deletedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var prevFile in _snapshot.FileTimestamps.Keys.ToArray())
         {
             if (!currentFilePaths.Contains(prevFile))
@@ -693,7 +696,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 _snapshot.RemoveFile(fileId);
                 _snapshot.FileTimestamps.Remove(prevFile);
                 _snapshot.FileContentHashes.Remove(prevFile);
-                deletedFileCount++;
+                deletedFiles.Add(prevFile);
             }
         }
 
@@ -704,14 +707,19 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         // handled by the same gate. Defensive sanity check would only fire
         // if the invariant above broke. INV-INCREMENTAL-XREF-001.
 
-        if (changedFiles.Count == 0 && deletedFileCount == 0)
+        if (changedFiles.Count == 0 && deletedFiles.Count == 0)
             return new IncrementalAnalyzeResult
             {
                 Mode = IncrementalMode.Incremental,
                 Graph = _snapshot.RebuildGraph(),
-                ChangedFileCount = 0,
-                MtimeTouchedFileCount = mtimeTouchedFiles.Count,
-                ContentChangedFileCount = contentChangedFiles.Count,
+                AcceptedChanges = BuildAcceptedChanges(
+                    projectRoot,
+                    scanMode,
+                    changedFiles,
+                    mtimeTouchedFiles,
+                    contentChangedFiles,
+                    descriptorForcedFiles,
+                    deletedFiles),
             };
 
         // Recompile only changed modules
@@ -940,9 +948,14 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         {
             Mode = IncrementalMode.Incremental,
             Graph = _snapshot.RebuildGraph(),
-            ChangedFileCount = changedFiles.Count + deletedFileCount,
-            MtimeTouchedFileCount = mtimeTouchedFiles.Count,
-            ContentChangedFileCount = contentChangedFiles.Count,
+            AcceptedChanges = BuildAcceptedChanges(
+                projectRoot,
+                scanMode,
+                changedFiles,
+                mtimeTouchedFiles,
+                contentChangedFiles,
+                descriptorForcedFiles,
+                deletedFiles),
         };
     }
 
@@ -965,9 +978,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             {
                 Mode = IncrementalMode.FullFallback,
                 Graph = graph,
-                ChangedFileCount = _snapshot!.FileTimestamps.Count,
-                MtimeTouchedFileCount = _snapshot!.FileTimestamps.Count,
-                ContentChangedFileCount = _snapshot!.FileTimestamps.Count,
+                AcceptedChanges = CaptureFullFallbackAcceptedChanges(),
                 Reason = reason,
                 Detail = detail,
             };
@@ -977,13 +988,57 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         {
             Mode = IncrementalMode.Rejected,
             Graph = null,
-            ChangedFileCount = 0,
-            MtimeTouchedFileCount = 0,
-            ContentChangedFileCount = 0,
+            AcceptedChanges = AcceptedChangeSet.Create(ResolveChangeScanMode(config)),
             Reason = reason,
             Detail = detail,
         };
     }
+
+    /// <summary>
+    /// Describes a completed full analysis when it was performed as the
+    /// caller-approved fallback for an incremental request. A full pass
+    /// reanalyzes every tracked source; it does not pretend each file's mtime
+    /// or content changed when those causes were not measured.
+    /// </summary>
+    public AcceptedChangeSet CaptureFullFallbackAcceptedChanges()
+    {
+        var snapshot = _snapshot
+            ?? throw new InvalidOperationException("No completed analysis snapshot is available.");
+        return AcceptedChangeSet.Create(
+            ChangeScanMode.FullFallback,
+            fullFallback: true,
+            reanalyzedSourceFiles: ToProjectRelativePaths(
+                snapshot.ProjectRoot,
+                snapshot.FileTimestamps.Keys));
+    }
+
+    private static AcceptedChangeSet BuildAcceptedChanges(
+        string projectRoot,
+        ChangeScanMode scanMode,
+        IEnumerable<string> reanalyzedSourceFiles,
+        IEnumerable<string> mtimeTouchedSourceFiles,
+        IEnumerable<string> contentChangedSourceFiles,
+        IEnumerable<string> descriptorForcedSourceFiles,
+        IEnumerable<string> deletedSourceFiles)
+        => AcceptedChangeSet.Create(
+            scanMode,
+            reanalyzedSourceFiles: ToProjectRelativePaths(projectRoot, reanalyzedSourceFiles),
+            mtimeTouchedSourceFiles: ToProjectRelativePaths(projectRoot, mtimeTouchedSourceFiles),
+            contentChangedSourceFiles: ToProjectRelativePaths(projectRoot, contentChangedSourceFiles),
+            descriptorForcedSourceFiles: ToProjectRelativePaths(projectRoot, descriptorForcedSourceFiles),
+            deletedSourceFiles: ToProjectRelativePaths(projectRoot, deletedSourceFiles));
+
+    private static string[] ToProjectRelativePaths(
+        string projectRoot,
+        IEnumerable<string> absolutePaths)
+        => absolutePaths
+            .Select(path => Path.GetRelativePath(projectRoot, path).Replace('\\', '/'))
+            .ToArray();
+
+    private static ChangeScanMode ResolveChangeScanMode(AnalysisConfig config)
+        => config.AuthoritativeChangedFiles == null
+            ? ChangeScanMode.FilesystemPrefilter
+            : ChangeScanMode.AuthoritativeChangedSet;
 
     private static Dictionary<string, string[]> BuildModuleDependencyMap(ModuleInfo[] modules)
     {

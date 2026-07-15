@@ -45,6 +45,18 @@
         "type": "string"
       },
       "description": "Optional. For incremental analyze, an editor/build-system-provided set of project-relative or absolute changed source paths. When supplied, Lifeblood bounds the source-file scan to this set while still using content hashes to decide whether listed files actually need graph replacement. Descriptor drift checks still run independently."
+    },
+    "changeReceiptMode": {
+      "type": "string",
+      "description": "Accepted-change receipt projection. \u0060summary\u0060 (default) returns truthful cause/count evidence without paths; \u0060detail\u0060 returns one bounded union of normalized project-relative paths with per-path flags for reanalysis, mtime touch, content change, descriptor-forced recompile, and deletion.",
+      "enum": [
+        "summary",
+        "detail"
+      ]
+    },
+    "changeReceiptLimit": {
+      "type": "integer",
+      "description": "Maximum path records returned when changeReceiptMode is \u0060detail\u0060. Default 50; clamped to 1..200. Counts and evidenceFileCount always describe the complete accepted set."
     }
   }
 }
