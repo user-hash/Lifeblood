@@ -4,7 +4,7 @@ Lifeblood exposes the **MCP tool surface** — read side + write side — in one
 
 Every read-side tool that takes a `symbolId` routes through `ISymbolResolver` before any graph or workspace lookup. Resolution order: exact canonical match, truncated method form (single-overload lenient), kind correction (`method:` prefix on a property/field/event name on the same type, `INV-RESOLVER-006`), bare short name, extracted short name from a kind-prefixed or qualified input (`INV-RESOLVER-005`). Truncated ids, bare short names, qualified-but-wrong-namespace ids, and kind-mismatched ids all resolve correctly across the whole read surface.
 
-Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOPE-001`) with `truthTier` (Semantic / Derived / Heuristic / Inferred), `confidence` (Proven / Advisory / Speculative), `evidenceSource` (Semantic / Inferred / Heuristic), `stalenessSeconds`, `filesChangedSinceAnalyze`, and per-tool `limitations[]`. Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into the decorator at startup, so registry and decorator cannot drift.
+Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOPE-001`) with `truthTier` (Semantic / Derived / Heuristic / Inferred), `confidence` (Proven / Advisory / Speculative), `evidenceSource` (Semantic / Inferred / Heuristic), `stalenessSeconds`, `filesChangedSinceAnalyze`, per-tool `limitations[]`, and the exact `snapshotId`, `analysisGeneration`, and bounded `analysisIdentity` used by the response. Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into the decorator at startup, so registry and decorator cannot drift.
 
 ## Write-side (compiler-as-a-service)
 
@@ -103,6 +103,26 @@ Rejection is a NORMAL structured result, not a transport / tool error.
 The `suggestedRetry` block is exactly the args needed to retry — pass it
 back to `lifeblood_analyze` to re-attempt with widened scope.
 
+## Snapshot-pinned reads and batches
+
+Every registered `Observe + SharedRead` tool accepts the common optional
+preconditions `expectedSnapshotId` and `expectedAnalysisGeneration`. The server
+first acquires the read lease, then compares the expectation with that exact
+publication. A mismatch returns `failure:"snapshot-precondition"` with the
+expected and actual id/generation, the actual canonical analysis identity, and
+a retry suggestion; the requested tool does not execute. Omit both fields to
+keep the normal latest-snapshot behavior.
+
+For several related reads, `lifeblood_batch` pins once and runs the plan in
+stable input order:
+
+The plan is capped at 32 calls and is fully rejected before execution if any
+entry is unknown, nested, exclusive, or effectful. `lifeblood_analyze`,
+compilation-backed tools, rename/format, and another `lifeblood_batch` are not
+eligible. A concurrent refresh may publish a newer latest snapshot, but all
+accepted subcalls and the outer batch envelope remain on the leased snapshot
+(`INV-SNAPSHOT-PRECONDITION-001`, `INV-MCP-READ-BATCH-001`).
+
 ## Workspace auto-refresh for compile-check
 
 `lifeblood_compile_check` auto-refreshes the workspace when any tracked file has changed on disk since the last analyze, so you can edit source between an analysis and a compile-check without stale results. Opt out with `staleRefresh: false` to check against the pinned state. The response carries `autoRefreshed: true` + `changedFileCount: N` when a refresh actually ran. Asmdef edits also trigger a full re-analyze on the next round (`INV-UNITY-002`).
@@ -127,25 +147,5 @@ Pre-fix the same call emitted ~120 spurious CS0246 / CS0103 errors (UnityEngine,
 ## Truth envelope on every read-side response
 
 Every read-side tool response ships a top-level `envelope` field (`INV-ENVELOPE-001`):
-
-```json
-{
-  "envelope": {
-    "truthTier": "Semantic",
-    "confidence": "Proven",
-    "evidenceSource": "Semantic",
-    "stalenessSeconds": 12,
-    "filesChangedSinceAnalyze": 0,
-    "limitations": []
-  },
-  "...": "...the rest of the tool's normal payload"
-}
-```
-
-- `truthTier`: `Semantic` (compiler-grade), `Derived` (graph rollup over semantic edges), `Heuristic` (advisory only), `Inferred` (synthesized from secondary signals like file-level edges).
-- `confidence`: `Proven` (deterministic), `Advisory` (correct most of the time, with documented FP classes), `Speculative` (ranked suggestions).
-- `stalenessSeconds`: wall-clock between the loaded graph's analyze time and now.
-- `filesChangedSinceAnalyze`: count of tracked source files with mtime newer than analyze (capped per call at 256 files; short-circuits as soon as drift is detected).
-- `limitations[]`: per-tool documented FP/FN classes (e.g. `lifeblood_dead_code` lists Unity reflection dispatch and runtime entry points).
 
 Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into `LifebloodResponseDecorator` at composition time. Adding a new read-side tool without a classification fails the registry ratchet test.

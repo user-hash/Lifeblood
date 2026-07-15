@@ -10,6 +10,30 @@ public static class ToolInputContractCatalog
 {
     private static readonly Lazy<IReadOnlyDictionary<string, ToolInputContract>> Contracts = new(() =>
         Create().ToDictionary(c => c.ToolName, c => c, StringComparer.Ordinal));
+    private static readonly ToolArgumentContract[] SnapshotReadArguments =
+    {
+        Arg(
+            @"expectedSnapshotId",
+            ToolArgumentType.String,
+            required: false,
+            arrayItemType: null,
+            description: @"Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest.",
+            enumValues: Array.Empty<string>()),
+        Arg(
+            @"expectedAnalysisGeneration",
+            ToolArgumentType.Integer,
+            required: false,
+            arrayItemType: null,
+            description: @"Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance.",
+            enumValues: Array.Empty<string>()),
+    };
+    private static readonly Lazy<IReadOnlyDictionary<string, ToolInputContract>> SnapshotReadContracts = new(() =>
+        Contracts.Value.Values.ToDictionary(
+            contract => contract.ToolName,
+            contract => new ToolInputContract(
+                contract.ToolName,
+                contract.ArgumentList.Concat(SnapshotReadArguments).ToArray()),
+            StringComparer.Ordinal));
 
     public static IReadOnlyCollection<ToolInputContract> All => Contracts.Value.Values.ToArray();
 
@@ -23,9 +47,23 @@ public static class ToolInputContractCatalog
         throw new InvalidOperationException($"No MCP tool input contract is registered for '{toolName}'.");
     }
 
+    public static ToolInputContract Get(string toolName, bool includeSnapshotReadArguments)
+    {
+        if (!includeSnapshotReadArguments)
+            return Get(toolName);
+        if (SnapshotReadContracts.Value.TryGetValue(toolName, out var contract))
+            return contract;
+
+        throw new InvalidOperationException($"No MCP tool input contract is registered for '{toolName}'.");
+    }
+
     private static IEnumerable<ToolInputContract> Create()
     {
         yield return Contract(@"lifeblood_capabilities");
+
+        yield return Contract(@"lifeblood_batch",
+            Arg(@"calls", ToolArgumentType.Array, required: true, arrayItemType: ToolArgumentType.Object, description: @"Ordered read-only query plan. Each item is `{ tool: string, arguments?: object }`. The entire plan holds one snapshot lease, executes serially, rejects non-observation/exclusive/nested-batch tools before any call runs, and is hard-capped at 32 calls.", enumValues: Array.Empty<string>())
+        );
 
         yield return Contract(@"lifeblood_analyze",
             Arg(@"projectPath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Path to C# project root (with .sln or .csproj)", enumValues: Array.Empty<string>()),

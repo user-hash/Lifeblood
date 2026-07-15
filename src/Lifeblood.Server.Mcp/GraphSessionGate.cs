@@ -1,3 +1,5 @@
+using Lifeblood.Application.UseCases;
+
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace Lifeblood.Server.Mcp;
 public interface ISessionGate
 {
     T Read<T>(Func<T> action);
+
+    T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action);
 
     T Write<T>(Func<T> action);
 }
@@ -23,9 +27,20 @@ public sealed class GraphSessionGate : ISessionGate, IDisposable
     }
 
     public T Read<T>(Func<T> action)
+        => Read(precondition: null, action);
+
+    public T Read<T>(WorkspaceSnapshotPrecondition? precondition, Func<T> action)
     {
         ThrowIfDisposed();
         using var lease = _session?.AcquireReadLease();
+        if (precondition != null)
+        {
+            if (_session == null)
+                throw new InvalidOperationException("Snapshot preconditions require a bound graph session.");
+            if (precondition.Compare(_session.CurrentSnapshot) is { } mismatch)
+                throw new WorkspaceSnapshotPreconditionException(mismatch);
+        }
+
         return action();
     }
 
@@ -46,4 +61,15 @@ public sealed class GraphSessionGate : ISessionGate, IDisposable
         if (Volatile.Read(ref _disposed) != 0)
             throw new ObjectDisposedException(nameof(GraphSessionGate));
     }
+}
+
+public sealed class WorkspaceSnapshotPreconditionException : InvalidOperationException
+{
+    public WorkspaceSnapshotPreconditionException(WorkspaceSnapshotMismatch mismatch)
+        : base("The leased workspace snapshot does not satisfy the requested optimistic-read precondition.")
+    {
+        Mismatch = mismatch ?? throw new ArgumentNullException(nameof(mismatch));
+    }
+
+    public WorkspaceSnapshotMismatch Mismatch { get; }
 }

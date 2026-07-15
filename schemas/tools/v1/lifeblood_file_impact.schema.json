@@ -15,6 +15,14 @@
     "summarize": {
       "type": "boolean",
       "description": "Optional. When true, forces \u0060maxResults=25\u0060 regardless of caller-passed value \u2014 smallest viable wire shape for triage workflows on god-type files. Defaults to false. INV-FILE-IMPACT-SUMMARIZE-001."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
     }
   }
 }

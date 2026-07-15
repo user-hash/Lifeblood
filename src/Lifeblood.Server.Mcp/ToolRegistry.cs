@@ -261,6 +261,13 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_batch",
+  Behavior = CapabilityObservation,
+  EnvelopeClassification = DerivedProven,
+  Description = "Execute an ordered read-only query plan under one immutable workspace snapshot lease. Each calls[] item names a registered tool and optional arguments. The complete plan is validated before execution: nested batches, exclusive tools, and every non-Observe effect are rejected without running any item. Accepted calls run serially in stable input order, retain their normal per-tool result/envelope, and the batch adds one common snapshot id, generation, and canonical analysis identity. Hard cap: 32 calls. Use expectedSnapshotId and/or expectedAnalysisGeneration for optimistic consistency.",
+  },
+  new()
+  {
   Name = "lifeblood_analyze",
   Behavior = WorkspaceRefresh,
   EnvelopeClassification = SemanticProven,

@@ -202,6 +202,7 @@ public class McpProtocolTests
   var expected = new Dictionary<string, ToolBehavior>(StringComparer.Ordinal)
   {
   ["lifeblood_capabilities"] = noneObserve,
+  ["lifeblood_batch"] = noneObserve,
   ["lifeblood_analyze"] = refresh,
   ["lifeblood_context"] = graphObserve,
   ["lifeblood_lookup"] = graphObserve,

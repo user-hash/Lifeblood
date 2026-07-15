@@ -43,6 +43,14 @@
     "previewPerGroup": {
       "type": "integer",
       "description": "Cap on preview endpoint-ids per bucket/module when `groupBy` is set. 0 = counts only. Default: 5."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
     }
   }
 }
