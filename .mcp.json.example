@@ -2,7 +2,7 @@
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }

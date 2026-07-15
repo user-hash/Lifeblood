@@ -18,6 +18,7 @@ public class IntakeLedgerTests
     private static readonly string RepoRoot = FindRepoRoot();
     private static readonly string IntakePath = Path.Combine(RepoRoot, "devmemory", "lifeblood-intake.md");
     private static readonly string TrackingPath = Path.Combine(RepoRoot, "devmemory", "lifeblood-tracking.md");
+    private static readonly string ArchivePath = Path.Combine(RepoRoot, "devmemory", "lifeblood-tracking-archive.md");
 
     private const string IntakeIdPattern = @"^LB-INTAKE-\d{8}-\d{3}$";
 
@@ -108,6 +109,18 @@ public class IntakeLedgerTests
             .ToArray();
 
         Assert.True(leaked.Length == 0, "Intake ids also present in tracking ledger: " + string.Join("; ", leaked));
+    }
+
+    [Fact]
+    public void NoIntakeId_AlsoAppearsInClosedHistory()
+    {
+        var archive = File.ReadAllText(ArchivePath);
+        var leaked = ParseEntries()
+            .Where(e => archive.Contains(e.Id, StringComparison.Ordinal))
+            .Select(e => e.Id)
+            .ToArray();
+
+        Assert.True(leaked.Length == 0, "Intake ids also present in closed history: " + string.Join("; ", leaked));
     }
 
     private static string LeadingToken(string title)

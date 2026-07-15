@@ -18,6 +18,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   using content hashes before replacing graph facts. Descriptor drift checks
   remain independent. (`LB-INTAKE-20260611-003`,
   `LB-INTAKE-20260611-005`.)
+- **Incremental responses explain the exact accepted change set.** One
+  Application-owned `AcceptedChangeSet` now derives all legacy counters and the
+  MCP receipt. Summary mode reports normalized causes/counts; detail mode returns
+  one bounded union of project-relative paths with per-path flags for reanalysis,
+  mtime touch, content change, descriptor-forced recompilation, and deletion.
+  Complete/returned/omitted counts and `truncated` remain truthful under the
+  1..200 path cap, and full fallback no longer masquerades as source change.
+  (`INV-ANALYZE-ACCEPTED-CHANGE-001`, `LB-INTAKE-20260629-019`.)
 - **Read-only session recovery is explicit.** After a `readOnly:true` analyze,
   a non-read-only incremental request now rejects with
   `fallbackReason:"compilationStateUnavailable"` and an exact full
@@ -53,18 +61,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Experimental shared MCP transport foundation.** `lifeblood-mcp --shared`
-  runs each client as a thin stdio proxy to one explicit-pipe daemon-owned
-  `McpServerHost`, so same-pipe clients observe the same retained graph and
-  newest analysis generation while different pipes remain isolated. A reusable
-  process harness now owns real daemon/proxy children, validates JSON-RPC stdout,
-  and guarantees process-tree cleanup. Black-box tests cover two-client refresh
-  propagation, pipe isolation, malformed proxy-frame recovery, and duplicate
-  daemon refusal. Daemon-crash coverage proves the proxy survives a failed
-  supervisor-managed restart and a replacement daemon begins with a disposed,
-  empty generation-0 session. This remains opt-in until identity handshakes, workspace
-  binding, client leases, idle eviction, and analyze coalescing ship.
-  (`INV-MCP-SHARED-BASE-001`.)
+- **Shared MCP workspace base for multi-agent work.** `lifeblood-mcp --shared`
+  runs each client as a thin persistent stdio proxy to one canonical-workspace-
+  keyed daemon. Same-workspace agents share one latest immutable semantic/Roslyn
+  base, while Lifeblood and DAWG remain isolated by canonical workspace identity.
+  Protocol-v2 build/workspace handshakes, persistent client leases, live status,
+  last-client idle drain, maintenance drain, crash/restart recovery, and bounded
+  diagnostics make the process lifecycle explicit. Full/incremental candidates
+  carry canonical spec/source/descriptor/rule fingerprints; identical requests
+  coalesce, input drift rejects before publication, and per-waiter MCP
+  cancellation cannot abandon a last-waiter candidate into the committed state.
+  Every publication has a globally unique snapshot id; behavior-derived
+  preconditions, serial `lifeblood_batch`, and a default-three/hard-sixteen
+  graph-only catalog provide pinned historical reads without retaining another
+  semantic base. (`INV-MCP-SHARED-BASE-001`, `INV-SHARED-HOST-IDENTITY-001`,
+  `INV-ANALYZE-COALESCE-001`, `INV-MCP-REQUEST-CANCEL-001`,
+  `INV-MCP-READ-BATCH-001`, `INV-SNAPSHOT-CATALOG-BOUND-001`.)
 - **New tool `lifeblood_asmdef_check`.** Reports Unity/old-format
   direct-reference module boundary violations from the loaded graph: for every
   cross-module source edge whose source module is `referenceClosure=DirectOnly`,

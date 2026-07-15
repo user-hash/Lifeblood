@@ -27,7 +27,7 @@ Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents the full MCP tool surfa
 
 **Lifecycle.** In ordinary stdio mode, the client spawns one `lifeblood-mcp` process and that process owns one initially empty session. The first call to `lifeblood_analyze` walks the project's csproj files, discovers modules, decides per-module BCL ownership from `<Reference>` elements, parses sources with Roslyn, builds the semantic graph, and caches the workspace and graph in memory. Every subsequent tool call in that process shares that loaded state by reference. There is no per-call recompile, no domain reload, no IDE round-trip.
 
-**Experimental shared multi-agent mode.** For controlled testing with multiple agents attached to the same workspace, start `lifeblood-mcp` with `--shared` or set `LIFEBLOOD_SHARED_SESSION=1`. Each MCP client still gets a small stdio process, but that process is a persistent proxy to one canonical-workspace-keyed named-pipe daemon. The daemon owns the single latest semantic `GraphSession`: any attached agent may run `lifeblood_analyze`, identical concurrent requests coalesce, and every attached client observes the committed publication. The default key resolves to the nearest Git worktree root (falling back to the configured/process directory); use `--shared-key <path>` or `LIFEBLOOD_SHARED_SESSION_KEY` when launch directories cannot converge. `--shared-pipe` / `LIFEBLOOD_SHARED_PIPE_NAME` is diagnostic routing only and cannot bypass the typed protocol/build/workspace handshake. One persistent proxy connection owns one client lease and forwards matching MCP cancellation notifications while a request is active; cancelling one coalesced waiter does not cancel work still needed by another. Disconnect starts the last-client idle deadline, and accepted maintenance drain or idle expiry cooperatively disposes the daemon-owned session. Bounded historical publications are graph-only, so the catalog never creates another Roslyn base. Shared mode remains opt-in until Lifeblood/DAWG deployment and memory receipts pass; identity, binding, leases, lifecycle, cancellation, exact coalescing, snapshot preconditions, pinned batches, and bounded history are implemented and ratcheted.
+**Shared multi-agent mode.** For multiple agents attached to the same workspace, start `lifeblood-mcp` with `--shared` or set `LIFEBLOOD_SHARED_SESSION=1`. Each MCP client still gets a small stdio process, but that process is a persistent proxy to one canonical-workspace-keyed named-pipe daemon. The daemon owns the single latest semantic `GraphSession`: any attached agent may run `lifeblood_analyze`, identical concurrent requests coalesce, and every attached client observes the committed publication. The default key resolves to the nearest Git worktree root (falling back to the configured/process directory); use `--shared-key <path>` or `LIFEBLOOD_SHARED_SESSION_KEY` when launch directories cannot converge. `--shared-pipe` / `LIFEBLOOD_SHARED_PIPE_NAME` is diagnostic routing only and cannot bypass the typed protocol/build/workspace handshake. One persistent proxy connection owns one client lease and forwards matching MCP cancellation notifications while a request is active; cancelling one coalesced waiter does not cancel work still needed by another. Disconnect starts the last-client idle deadline, and accepted maintenance drain or idle expiry cooperatively disposes the daemon-owned session. Bounded historical publications are graph-only, so the catalog never creates another Roslyn base. Exact-build Lifeblood and DAWG rollout receipts now cover 1/2/4 clients, coalescing, cancellation, pinned batches, accepted-change evidence, idle exit, restart recovery, and memory. Private stdio remains the one-line rollback path.
 
 **Memory.** Streaming compilation with downgrading compiles, extracts, then downgrades each module to a lightweight PE metadata reference (around 10 to 100 KB), so only one full Roslyn `Compilation` is held at once on the streaming path. Retained MCP sessions keep compilations in memory for write-side tools. With ordinary stdio, every MCP client has its own retained heap. With shared mode, those clients converge on one daemon-owned retained heap per workspace key. Historical catalog entries share immutable graph/analysis references and retain zero Roslyn services; pinned entries count toward the same hard bound. Use the `usage` block on every `lifeblood_analyze` response, `lifeblood_snapshots`, and the current receipts in [`STATUS.md`](STATUS.md) as the source of truth for a workspace's actual memory profile.
 
@@ -87,10 +87,10 @@ The server reads optional environment variables at startup. All have safe defaul
 | `LIFEBLOOD_STRICT_JSON` | off | Backward-compatible strict alias used only when `LIFEBLOOD_JSON_COMPAT` is unset. Truthy values select the same strict behavior as `LIFEBLOOD_JSON_COMPAT=strict`. |
 | `LIFEBLOOD_SNAPSHOT_HISTORY_LIMIT` | `3` | Graph-only publications retained per session. `0` disables history; the Application hard maximum is `16`. Invalid/out-of-range values use `3`; pins consume the same bound. |
 | `LIFEBLOOD_SNAPSHOT_HISTORY_MAX_AGE_SECONDS` | `86400` | Unpinned history age before eviction. `0` disables age expiry; maximum accepted deployment value is one year. Invalid/out-of-range values use 24 hours. |
-| `LIFEBLOOD_SHARED_SESSION` | off | Experimental. Truthy values make this process a stdio proxy to a workspace-keyed shared daemon instead of owning a private in-process `GraphSession`. Equivalent to passing `--shared`. |
+| `LIFEBLOOD_SHARED_SESSION` | off | Truthy values make this process a stdio proxy to a workspace-keyed shared daemon instead of owning a private in-process `GraphSession`. Equivalent to passing `--shared`. |
 | `LIFEBLOOD_SHARED_SESSION_KEY` | nearest Git worktree root, else current working directory | Canonical root used to derive shared daemon identity. Set an explicit absolute workspace path when several agents launch outside the worktree but should share one scan. |
 | `LIFEBLOOD_SHARED_PIPE_NAME` | derived from key | Explicit named-pipe name. Use only when you need exact interop with a supervisor; otherwise prefer the key. |
-| `LIFEBLOOD_SHARED_DAEMON_AUTOSTART` | on | Experimental. Set false only when an external supervisor owns the daemon lifecycle. A missing daemon then returns a recoverable proxy error and the proxy remains attached for a later replacement instead of spawning a detached process. |
+| `LIFEBLOOD_SHARED_DAEMON_AUTOSTART` | on | Set false only when an external supervisor owns the daemon lifecycle. A missing daemon then returns a recoverable proxy error and the proxy remains attached for a later replacement instead of spawning a detached process. |
 | `LIFEBLOOD_SHARED_IDLE_SECONDS` | `300` | Last-client idle interval before the daemon drains, disposes its retained session, releases pipe/mutex ownership, and exits. Malformed, negative, NaN, or infinite values fall back to five minutes. |
 | `LIFEBLOOD_SHARED_PROXY_TRACE` | unset | Optional diagnostic file receiving bounded proxy transport traces. Leave unset for normal operation; stdout remains JSON-RPC only. |
 
@@ -107,20 +107,20 @@ Add to `.mcp.json` in your project root (or `~/.claude/.mcp.json` for global). T
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }
 ```
 
-Experimental shared multi-agent form (not yet recommended as the default):
+Private stdio rollback form:
 
 ```json
 {
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": ["--shared"]
+      "args": []
     }
   }
 }
@@ -168,7 +168,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }
@@ -192,7 +192,7 @@ Or in `.cursor/mcp.json`:
   "mcpServers": {
     "lifeblood": {
       "command": "lifeblood-mcp",
-      "args": []
+      "args": ["--shared"]
     }
   }
 }
@@ -212,7 +212,7 @@ In `.continue/config.json`:
         "transport": {
           "type": "stdio",
           "command": "lifeblood-mcp",
-          "args": []
+          "args": ["--shared"]
         }
       }
     ]
@@ -364,7 +364,7 @@ If none resolve, the bridge logs an error to the Unity console and tool calls re
 - **Use the bridge** when you want Lifeblood semantic queries available to an AI agent inside the Unity Editor, in the same connection as Coplay's scene/asset tools, with no separate MCP client wiring.
 - **Use a standalone client** (Claude Code, Cursor) connected directly to `lifeblood-mcp` when you want Lifeblood without the Unity Editor running, or when you want the lowest-latency path with no Coplay layer in between.
 
-You can run both at the same time. In ordinary stdio mode each is its own `lifeblood-mcp` process and nothing is shared between them. In experimental shared mode (`--shared` / `LIFEBLOOD_SHARED_SESSION=1`) clients with the same canonical workspace identity attach to one daemon-owned session, so one analyze refreshes the graph every attached agent sees. Identity, workspace binding, client leases, idle drain, exact analyze coalescing, pinned read batches, and bounded graph-only history are closed; keep shared mode opt-in until the documented Lifeblood/DAWG deployment and memory gates pass.
+You can run both at the same time. In ordinary stdio mode each is its own `lifeblood-mcp` process and nothing is shared between them. In shared mode (`--shared` / `LIFEBLOOD_SHARED_SESSION=1`) clients with the same canonical workspace identity attach to one daemon-owned session, so one analyze refreshes the graph every attached agent sees. Identity, workspace binding, client leases, idle drain, exact analyze coalescing, request cancellation, pinned read batches, bounded graph-only history, and Lifeblood/DAWG deployment and memory gates are closed. Keep private stdio available only as the rollback configuration.
 
 ---
 

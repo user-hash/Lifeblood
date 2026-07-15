@@ -8,8 +8,8 @@ This is the clean canonical tracker for Lifeblood-only bugs, improvements,
 optimizations, and shipped follow-through. DAWG architecture findings belong in
 DAWG audit docs unless they expose a Lifeblood product issue.
 
-Closed history (29 Shipped + 18 Receipt + 2 Partially shipped entries,
-including local v0.7.12-alpha implementation receipts) lives in
+Closed history, including local v0.7.12/v0.7.13-alpha implementation receipts,
+lives in
 [`lifeblood-tracking-archive.md`](lifeblood-tracking-archive.md). This live file
 carries only the active backlog and new intake so the working surface stays small.
 
@@ -19,9 +19,9 @@ carries only the active backlog and new intake so the working surface stays smal
 2. Every entry must include a concrete date and source session/report.
 3. Every entry must declare one type: Bug, Improvement, Optimization, UX, Docs,
    or Shipped.
-4. Every open item gets a stable tracking id in this file until it is promoted
-   to a Lifeblood id such as `LB-BUG-*`, `LB-FR-*`, `LB-FP-*`, or
-   `LB-INBOX-*`.
+4. Unstarted findings stay in `lifeblood-intake.md`. When implementation begins,
+   promote the item here as `Partially shipped` with its stable intake/product
+   id; do not maintain the same active item in both files.
 5. Every shipped item must point to the Lifeblood changelog, tag, or commit that
    closed it.
 6. Do not mix DAWG architectural debt with Lifeblood tool feedback. If Lifeblood
@@ -36,7 +36,7 @@ carries only the active backlog and new intake so the working surface stays smal
 ```text
 ## YYYY-MM-DD - Lifeblood vX.Y.Z - Short title
 
-Status: Open | Candidate | Shipped | Archived
+Status: Partially shipped | Shipped | Receipt
 Type: Bug | Improvement | Optimization | UX | Docs | Shipped
 Source: report/session/file path
 Workspace: DAWG | Lifeblood self | other
