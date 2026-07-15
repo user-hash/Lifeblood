@@ -17,7 +17,13 @@ JSON graph        ──┘    Analysis (optional)      ├──  LifebloodSema
                                                   └──  CLI / CI
 ```
 
-In-process adapters (`Roslyn`) live under `src/Lifeblood.Adapters.*` and reference `Lifeblood.Application` ports. External JSON-emitting adapters (`libclang`, `TypeScript`, `Python`) live under `adapters/` and feed Lifeblood through `JsonGraphImporter`. The boundary keeps LLVM, Clang, TypeScript, and Python toolchains out of the Lifeblood core. See [`NATIVE_CLANG.md`](NATIVE_CLANG.md) for the C capability page and [`ADAPTERS.md`](ADAPTERS.md) for the adapter-building guide.
+In-process language adapters (`Roslyn`, JSON graph) and infrastructure adapters
+(`Git`) live under `src/Lifeblood.Adapters.*` and reference
+`Lifeblood.Application` ports. External JSON-emitting adapters (`libclang`,
+`TypeScript`, `Python`) live under `adapters/` and feed Lifeblood through
+`JsonGraphImporter`. The boundary keeps language and environment toolchains out
+of the Lifeblood core. See [`NATIVE_CLANG.md`](NATIVE_CLANG.md) for the C
+capability page and [`ADAPTERS.md`](ADAPTERS.md) for adapter boundary guidance.
 
 ## Three Layers of Truth
 
@@ -33,6 +39,7 @@ These layers stay separate. Every edge carries Evidence saying which layer produ
 CLI (composition root)
   → Application → Domain (pure leaf, zero deps)
   → Adapters.CSharp → Application
+  → Adapters.Git → Application
   → Adapters.JsonGraph → Application
   → Connectors.ContextPack → Application
   → Connectors.Mcp → Application (blast radius via IBlastRadiusProvider port)
@@ -46,13 +53,14 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | Assembly | Role | Dependencies |
 |----------|------|-------------|
 | **Lifeblood.Domain** | Graph model, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, rules, results (incl. `EnumCoverageReport`, `DiagnosticsReport`, `TestImpactReport`, `CompileCheckResult`, `AsmdefBoundaryReport`), ResponseEnvelope + EnvelopeClassification, `PathClassification/PathBucketClassifier` (Production / Test / Editor / Generated / Vendored SSoT, `INV-PATHBUCKET-SHARED-001`), `PathClassification/PathGlobMatcher` (shared POSIX full-path glob grammar), `Graph/SymbolPropertyKeys` (writer↔consumer string-key contract, including `fieldType`, `constantValue`, and `referenceClosure`) | None |
-| **Lifeblood.Application** | Port interfaces (live count in [`STATUS.md`](STATUS.md)) including `IWorkspaceAnalyzer`, `ICompilationHost`, `IRuntimeAssemblyResolver`, `ISymbolResolver`, `IResponseDecorator`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IUnityReachabilityProvider`, `IPartialViewBuilder`, `IAuthorityReporter`, `IInvariantProvider`, `IPortHealthAnalyzer`, `IDefineProfileResolver`, `IUsageProbe` + `IUsageCapture`, and `ITelemetrySink`. AnalyzeWorkspaceUseCase, GenerateContextUseCase. | Domain |
+| **Lifeblood.Application** | Port interfaces (live count in [`STATUS.md`](STATUS.md)) including `IWorkspaceAnalyzer`, `ICompilationHost`, `IRuntimeAssemblyResolver`, `ISymbolResolver`, `IResponseDecorator`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IUnityReachabilityProvider`, `IPartialViewBuilder`, `IAuthorityReporter`, `IInvariantProvider`, `IPortHealthAnalyzer`, `IDefineProfileResolver`, `IUsageProbe` + `IUsageCapture`, `ITelemetrySink`, and `ISourceControlSnapshotProvider`. AnalyzeWorkspaceUseCase, GenerateContextUseCase. | Domain |
 | **Lifeblood.Adapters.CSharp** | Roslyn reference adapter. `RoslynWorkspaceAnalyzer` (analyze, incremental, asmdef-edit-aware, excludePath-scope-aware, content-hash incremental, `authoritativeChangedFiles` source-scan narrowing), `RoslynModuleDiscovery` (csproj parse -> typed `ModuleInfo` with `BclOwnership`, `ReferenceClosure`, `AllowUnsafeCode`, `ImplicitUsings`, `LangVersion`, `Nullable`, `NoWarn`, `DefineConstants`; emits module `Properties["referenceClosure"]` for graph-only consumers), `RoslynCompilationHost` (compile-check, diagnose, enum-coverage), `Internal.ModuleCompilationBuilder` (threads every csproj-driven compilation fact into `CSharpParseOptions` / `CSharpCompilationOptions` - `LangVersion` / `Nullable` warning level / `NoWarn` / `DefineConstants` via FOLLOWUP-001..003 + BUG-2, and applies analyze `excludePaths` before syntax-tree parsing), `Internal.SourceContentHasher` (mtime-prefilter confirmation), `Internal.SourceGeneratorRunner` (serialized analyzer loading + generator-driver execution), symbol/edge extraction (records `Properties["attributes"]`, `Properties["baseType"]`, `Properties["baseTypeChain"]`, `Properties["classification"]`, field `Properties["fieldType"]`, and const-field `Properties["constantValue"]`), `RoslynSemanticView` (sandbox helpers `Help` / `SymbolsOfKind(string)` / `EdgesOfKind(string)`), `CanonicalSymbolFormat` (parameter-type display SSoT), `CsprojPaths` (cross-platform csproj path normalization), `SnippetWrapper` (compile_check auto-wrap), `UnityReachabilityAdapter` (entrypoint attributes + MonoBehaviour magic methods + transitive base-chain walk + UnityEvent persistent calls from Unity YAML), `UnityAssemblyResolver` (`Library/ScriptAssemblies` + `Library/Bee/artifacts` + `Library/PackageCache` DLL probe). | Application, Roslyn |
 | **Lifeblood.Adapters.JsonGraph** | JSON import/export with round-trip fidelity. | Application |
+| **Lifeblood.Adapters.Git** | Infrastructure adapter for `ISourceControlSnapshotProvider`. Resolves a caller-selected repository root, commit hashes, latest reachable stable tag, dirty state/count/sample, and classified bounded failures with timeout and non-interactive environment policy. | Application |
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator. | Application |
 | **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius, file impact), LifebloodSymbolResolver (identifier resolution + wrong-namespace short-name fallback + kind correction), LifebloodResponseDecorator (truth envelope; classification injected from registry at composition time), LifebloodAuthorityReporter, LifebloodSemanticSearchProvider (tokenized ranked-OR search over name + xmldoc), LifebloodDeadCodeAnalyzer (consults `IUnityReachabilityProvider` when injected), LifebloodPartialViewBuilder, LifebloodInvariantProvider (CLAUDE.md runtime parser + cache), ClaudeMdInvariantParser (pure text to records), InvariantParseCache (generic timestamp-invalidated cache with optional cache lookup telemetry), McpProtocolSpec (single source of truth for JSON-RPC wire constants). | Application |
 | **Lifeblood.Analysis** | CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector (Tarjan SCC + taxonomy classification per `INV-CYCLE-TAXONOMY-001`), TierClassifier (semantic test-fixture detection via `Properties["attributes"]`), TestImpactAnalyzer (`lifeblood_test_impact` BFS, `INV-TEST-IMPACT-001`), AuthorityCoverageAnalyzer (`lifeblood_authority_coverage`), AsmdefBoundaryAnalyzer (`lifeblood_asmdef_check`), RuleValidator. | Domain |
-| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. MCP tool surface (20 read + 18 write live in [`STATUS.md`](STATUS.md)). Bidirectional Roslyn. McpDispatcher owns the wire protocol. ToolDefinition.EnvelopeClassification is the registry-side source of truth for the truth envelope. `ToolInputContract` / `ToolArgumentBinder` validate MCP arguments at the server edge under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`; `GraphSessionGate` serializes retained-session mutation without pushing lock policy into Domain/Application. `DotNetDiagnosticsTelemetrySink` is opt-in via `LIFEBLOOD_TELEMETRY` and records tool result, argument diagnostics, response JSON cost, analyze fallback/phase allocation, truncation, and cache lookup events. | Application, Adapters.CSharp, Connectors |
+| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. MCP tool surface (22 read + 18 write live in [`STATUS.md`](STATUS.md)). Bidirectional Roslyn. McpDispatcher owns the wire protocol. ToolDefinition.EnvelopeClassification is the registry-side source of truth for the truth envelope. `ToolInputContract` / `ToolArgumentBinder` validate MCP arguments at the server edge under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`; `GraphSessionGate` serializes retained-session mutation without pushing lock policy into Domain/Application. `DotNetDiagnosticsTelemetrySink` is opt-in via `LIFEBLOOD_TELEMETRY` and records tool result, argument diagnostics, response JSON cost, analyze fallback/phase allocation, truncation, and cache lookup events. Source-control evidence is delegated to `ISourceControlSnapshotProvider`; the host does not launch Git. | Application, Adapters.CSharp, Adapters.Git, Connectors |
 | **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. Zero ProjectReferences (INV-SCRIPTHOST-001). | Roslyn Scripting only |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch. | Everything |
 
@@ -90,6 +98,11 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 - `IUsageCapture`. One-shot usage capture scoped to a single analyze run.
 - `ITelemetrySink`. Optional operational telemetry port. The server default is no-op; `DotNetDiagnosticsTelemetrySink` maps `StartOperation` / `RecordEvent` to .NET `ActivitySource` and `Meter` counters when `LIFEBLOOD_TELEMETRY` opts in. Tool argument diagnostics, analyze phase events, allocation deltas, and invariant cache outcomes all travel through this port (`INV-TELEMETRY-001`).
 - `ITelemetryOperation`. The `IDisposable` scope returned by `ITelemetrySink.StartOperation`. Carries `SetTag` / `SetError`; dispose records the operation's duration + success/error status. Neutral primitive-tag surface only — no `Activity` / `Meter` types leak across the port.
+
+- `ISourceControlSnapshotProvider`. Captures one neutral `SourceControlSnapshot`
+  for a caller-selected workspace. The Git adapter owns discovery/process details;
+  analyze, invariant, capability, and release consumers own lookup precedence and
+  projection (`INV-SOURCE-CONTROL-001`).
 
 ### Output
 - `IProgressSink`. Receives stderr-style progress events from long-running pipelines (per-module compile, validate, complete).
@@ -180,6 +193,17 @@ The invariant register lives under [`docs/invariants/`](../docs/invariants/INDEX
 
 **Seam 9. Authority + forwarder analysis.** `IAuthorityReporter` produces a single-walk report (`implementedInterfaceCount`, `ownedPublicSurface`, per-interface usage, `forwarderRatio`). `AuthorityCoverageAnalyzer` separately computes graph-only source-of-truth reachability for `lifeblood_authority_coverage`. The forwarder ratio is read off `Symbol.Properties["classification"]`, set at extraction time by `RoslynSymbolExtractor.AttachMethodClassification` (`PureForwarder` / `ThinWrapper` / `RealLogic`). `lifeblood_authority_report`, `lifeblood_authority_coverage`, and `lifeblood_port_health` consume graph evidence directly. Invariants: `INV-AUTHORITY-001`, `INV-AUTHORITY-COVERAGE-001`, `INV-FORWARDER-001`.
 
+**Seam 10. Source-control evidence.** `SourceControlSnapshot` is a neutral Domain
+receipt, `ISourceControlSnapshotProvider` is the Application seam, and
+`GitSourceControlSnapshotProvider` is the sole Git process owner. Analyze captures
+provenance once at request admission, before compiler work, selecting the analyzed
+project/graph path; invariant receipts select the audited workspace, and
+capabilities select server-build provenance. Dirty details and
+failures are bounded; absent repository, unavailable Git, and command failure are
+different states. Release metadata consumes the same adapter, so no docs test or
+handler grows a second Git launcher. Invariants: `INV-SOURCE-CONTROL-001`,
+`INV-CHANGELOG-LATEST-TAG-001`.
+
 ## Invariant Enforcement
 
 Architecture rules are not just documented. They are tested AND queryable:
@@ -190,3 +214,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - **Typed invariants under `docs/invariants/`** (8 domain files + INDEX; live count + category coverage in [`STATUS.md`](STATUS.md)), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
 - DocsTests ratchets: `portCount`, `toolCount`, `testCount`, `invariantCount`, `invariantCategoryCount`, `skippedCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)
+- Latest-tag ratchet: the newest reachable stable tag must own a dated heading,
+  link reference, and the `[Unreleased]` comparison base
+  (`INV-CHANGELOG-LATEST-TAG-001`)

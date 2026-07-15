@@ -54,12 +54,12 @@ Fix shape:
 
 ## Current Snapshot
 
-Latest release tracked in the changelog: **`v0.7.11`** (changelog rewritten
-human-readable 2026-06-01; GitHub Release cut + tag re-pointed to `5fd1c45`).
-Local repo note from 2026-06-29: a `v0.7.12` tag exists at `dbfd871`, but the
-top-level changelog links still compare `[Unreleased]` from `v0.7.11` and no
-`[0.7.12]` section/link is present; release-metadata cleanup is logged in intake
-instead of mutating historical release claims here.
+Latest stable tag represented in the changelog: **`v0.7.12`** at `dbfd871`
+(2026-06-22). `CHANGELOG.md` now carries a dated `[0.7.12]` historical section,
+its comparison link, and `[Unreleased]` begins at `v0.7.12`. The latest-tag
+relationship is ratcheted through the shared source-control adapter
+(`INV-CHANGELOG-LATEST-TAG-001`); this maintenance atom did not create, move,
+push, or publish a tag.
 
 Current verification anchors live in [`docs/STATUS.md`](../docs/STATUS.md) —
 self-analyze symbols / edges / modules / types, test discovery count,

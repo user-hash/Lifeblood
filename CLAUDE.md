@@ -16,11 +16,12 @@ Lifeblood.Application           # Ports + use cases. Depends only on Domain.
   ├── Ports/GraphIO/            # IGraphImporter, IGraphExporter
   ├── Ports/Analysis/           # IRuleProvider, IBlastRadiusProvider
   ├── Ports/Output/             # IProgressSink
-  ├── Ports/Infrastructure/     # IFileSystem, IUsageProbe, IUsageCapture
+  ├── Ports/Infrastructure/     # IFileSystem, IUsageProbe, IUsageCapture, ISourceControlSnapshotProvider
   └── UseCases/                 # AnalyzeWorkspace, GenerateContext
 
 Lifeblood.Adapters.CSharp       # LEFT SIDE. Roslyn. Reference implementation.
 Lifeblood.Adapters.JsonGraph    # LEFT SIDE. Universal JSON protocol.
+Lifeblood.Adapters.Git          # INFRASTRUCTURE. Bounded Git provenance behind Application port.
 Lifeblood.Connectors.ContextPack # RIGHT SIDE. Context pack + CLAUDE.md generator.
 Lifeblood.Connectors.Mcp        # RIGHT SIDE. MCP graph provider for AI agents.
 Lifeblood.Analysis              # Optional analyzers (coupling, blast radius, cycles, tiers).
@@ -45,6 +46,7 @@ External adapters emit `graph.json` conforming to `schemas/graph.schema.json`. L
 Lifeblood.CLI
   → Lifeblood.Application
   → Lifeblood.Adapters.CSharp
+  ? Lifeblood.Adapters.Git
   → Lifeblood.Adapters.JsonGraph
   → Lifeblood.Connectors.*
   → Lifeblood.Analysis
@@ -53,6 +55,9 @@ Lifeblood.Adapters.CSharp
   → Lifeblood.Application (ports only)
   → Lifeblood.Domain
   → Microsoft.CodeAnalysis.CSharp (Roslyn)
+
+Lifeblood.Adapters.Git
+  ? Lifeblood.Application (ports only)
 
 Lifeblood.Connectors.Mcp
   → Lifeblood.Application (ports only)
@@ -104,7 +109,7 @@ Shape E:  - **INV-ANIM-1:** body...                            (colon inside bol
 
 ## Port Interfaces
 
-All ports live under `src/Lifeblood.Application/Ports/`. The directory layout is the contract: `Ports/Left/` (language adapters: `IWorkspaceAnalyzer`, `IModuleDiscovery`, `ICompilationHost`, `ICodeExecutor`, `IWorkspaceRefactoring`), `Ports/Right/` (AI connectors: `IAgentContextGenerator`, `IMcpGraphProvider`, `IInstructionFileGenerator`, `ISymbolResolver`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IPartialViewBuilder`, `Invariants/IInvariantProvider`, `IAuthorityReporter`, `IPortHealthAnalyzer`, `IUnityReachabilityProvider`, `IRuntimeAssemblyResolver`, `IResponseDecorator`), `Ports/GraphIO/` (`IGraphImporter`, `IGraphExporter`), `Ports/Analysis/` (`IRuleProvider`, `IBlastRadiusProvider`), `Ports/Infrastructure/` (`IFileSystem`, `IUsageProbe`, `IUsageCapture`). Total count pinned by `docs/STATUS.md` `<!-- portCount -->` ratchet.
+All ports live under `src/Lifeblood.Application/Ports/`. The directory layout is the contract: `Ports/Left/` (language adapters: `IWorkspaceAnalyzer`, `IModuleDiscovery`, `ICompilationHost`, `ICodeExecutor`, `IWorkspaceRefactoring`), `Ports/Right/` (AI connectors: `IAgentContextGenerator`, `IMcpGraphProvider`, `IInstructionFileGenerator`, `ISymbolResolver`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IPartialViewBuilder`, `Invariants/IInvariantProvider`, `IAuthorityReporter`, `IPortHealthAnalyzer`, `IUnityReachabilityProvider`, `IRuntimeAssemblyResolver`, `IResponseDecorator`), `Ports/GraphIO/` (`IGraphImporter`, `IGraphExporter`), `Ports/Analysis/` (`IRuleProvider`, `IBlastRadiusProvider`), `Ports/Infrastructure/` (`IFileSystem`, `IUsageProbe`, `IUsageCapture`, `ISourceControlSnapshotProvider`). Total count pinned by `docs/STATUS.md` `<!-- portCount -->` ratchet.
 
 ## Serialization Naming
 

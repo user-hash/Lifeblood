@@ -549,37 +549,6 @@ Fix shape:
 - Return scores by category plus concrete missing-evidence links. Avoid a
   global quality number; make it a triage aid with named evidence gaps.
 
-## LB-INTAKE-20260629-020 - Release metadata drift between local tag and changelog snapshot
-
-Type: Docs
-Priority: Medium
-Source: Lifeblood tracker maintenance, 2026-06-29; local repo inspection
-Workspace: Lifeblood self
-Rating for DAWG work: 5/10 value if shipped
-
-What:
-- The local Lifeblood repo has tag `v0.7.12` at `dbfd871`, but
-  `CHANGELOG.md` still links `[Unreleased]` as `v0.7.11...HEAD` and has no
-  `[0.7.12]` section/link reference.
-- `devmemory/lifeblood-tracking.md` was also still naming `v0.7.11` as the
-  latest release snapshot before this maintenance pass clarified the local tag
-  mismatch.
-
-Why it matters:
-- The tracker is used as dogfood provenance. If release metadata drifts, agents
-  can cite the wrong version under test or miss that a local tag contains fixes
-  not described in the changelog.
-- This is especially risky for Lifeblood because tool behavior often changes
-  through additive wire contracts and invariant IDs; version provenance matters.
-
-Fix shape:
-- Add a release-metadata ratchet that compares the latest semantic version tag
-  against `CHANGELOG.md` headings and link references.
-- Optionally ratchet the tracker snapshot to mention the latest tagged version
-  or explicitly mark it as "latest changelog-tracked release".
-- Keep the release checklist, but make drift visible in tests rather than relying
-  on manual release hygiene.
-
 ## LB-INTAKE-20260629-021 - Realtime allocation and forbidden-API audit for hot paths
 
 Type: Feature request
@@ -811,39 +780,6 @@ Fix shape:
 - Let callers configure required coverage depth per invariant family, such as
   one architecture ratchet, one compile check, one generated probe, or one
   runtime fixture.
-
-## LB-INTAKE-20260629-028 - Analyze evidence receipt should resolve analyzed git root
-
-Type: Bug
-Priority: Medium
-Source: DAWG Lifeblood analyze dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
-Workspace: DAWG
-Rating for DAWG work: 7/10 value if shipped
-
-What:
-- A full read-only `lifeblood_analyze(projectPath:"D:/Projekti/DAWG",
-  defineProfiles:["Editor","Player"])` returned a valid semantic snapshot, but
-  the evidence receipt reported `sourceControl.repositoryRoot:""`,
-  `state:"unknown"`, and `source:"repositoryNotFound"`.
-- A direct shell check from the same workspace resolves DAWG's git root as
-  `D:/Projekti/DAWG`, and the repo has local dirty files that would be useful
-  provenance on the receipt.
-
-Why it matters:
-- The evidence receipt is what makes Lifeblood output citation-safe. If source
-  control provenance is rooted at the server process instead of the analyzed
-  project path, the receipt loses commit/dirty context exactly when agents need
-  to distinguish proven facts from stale workspace state.
-- This applies to any external project analyzed by a long-running MCP server,
-  especially when the server binary lives outside the target repository.
-
-Fix shape:
-- Resolve source control from the analyzed `projectPath` or `graphPath` first,
-  falling back to the server process root only when no analyzed path exists.
-- Include repository root, commit hash, short hash, dirty state, and a bounded
-  dirty-file count or capped sample.
-- If git metadata cannot be read, report the attempted root and failure reason
-  so callers can tell "not a repo" from "wrong lookup root" from "git failed".
 
 ## LB-INTAKE-20260714-029 - Diff-scoped diagnostic ownership report
 

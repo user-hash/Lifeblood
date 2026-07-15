@@ -86,6 +86,18 @@ public class MyAdapter : IWorkspaceAnalyzer
 
 The Roslyn adapter (`src/Lifeblood.Adapters.CSharp/`) is the reference implementation.
 
+## Infrastructure Adapters
+
+Not every `Lifeblood.Adapters.*` project is a language adapter. Infrastructure
+adapters implement Application-owned environment ports without translating
+source code into the graph. `src/Lifeblood.Adapters.Git/` is the reference
+example: it implements `ISourceControlSnapshotProvider`, depends inward on
+Application, and owns Git process discovery, timeouts, environment flags, and
+bounded output. The neutral `SourceControlSnapshot` remains in Domain; server,
+connector, and release consumers do not invoke Git directly
+(`INV-SOURCE-CONTROL-001`). Infrastructure adapters remain subject to the same
+no-adapter-to-adapter and no-adapter-to-connector dependency ratchets.
+
 ## Adapter Quality Levels
 
 | Level | What you provide | What it unlocks | Confidence |

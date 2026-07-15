@@ -27,6 +27,7 @@ public sealed class GraphSession : IDisposable
 
     private readonly IFileSystem _fs;
     private readonly ITelemetrySink _telemetry;
+    private readonly ISourceControlSnapshotProvider _sourceControl;
     private readonly AnalysisRuleSetResolver _ruleSetResolver;
     private readonly WorkspaceSnapshotCatalog _snapshotCatalog;
     private readonly object _publicationSync = new();
@@ -39,10 +40,12 @@ public sealed class GraphSession : IDisposable
     public GraphSession(
         IFileSystem fs,
         ITelemetrySink? telemetry = null,
-        WorkspaceSnapshotCatalog? snapshotCatalog = null)
+        WorkspaceSnapshotCatalog? snapshotCatalog = null,
+        ISourceControlSnapshotProvider? sourceControl = null)
     {
         _fs = fs;
         _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
+        _sourceControl = sourceControl ?? UnavailableSourceControlSnapshotProvider.Instance;
         _ruleSetResolver = new AnalysisRuleSetResolver(fs);
         _snapshotCatalog = snapshotCatalog ?? new WorkspaceSnapshotCatalog();
     }
@@ -65,6 +68,9 @@ public sealed class GraphSession : IDisposable
 
     /// <summary>Exposed file-system port for tool handlers that need disk access (partial view, compile_check auto-refresh).</summary>
     public IFileSystem FileSystem => _fs;
+
+    /// <summary>Source-control evidence authority composed for this host.</summary>
+    public ISourceControlSnapshotProvider SourceControl => _sourceControl;
 
     /// <summary>
     /// UTC moment the most recent analyze (full or incremental) finished.
@@ -579,6 +585,10 @@ public sealed class GraphSession : IDisposable
                        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var sourceControlSnapshot = ServerIdentity.CaptureAnalyzeSourceControl(
+            _sourceControl,
+            projectPath,
+            graphPath);
         var changeReceipt = acceptedChangeReceipt ?? AcceptedChangeReceiptRequest.Summary;
         var committed = Current;
         var fullRequestedMode = "full";
@@ -618,6 +628,7 @@ public sealed class GraphSession : IDisposable
                             graph: null,
                             analysis: null,
                             usage: null,
+                            sourceControl: sourceControlSnapshot,
                             acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
                             changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
@@ -644,6 +655,7 @@ public sealed class GraphSession : IDisposable
                             graph: null,
                             analysis: null,
                             usage: null,
+                            sourceControl: sourceControlSnapshot,
                             acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
                             changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
@@ -664,6 +676,7 @@ public sealed class GraphSession : IDisposable
                     return LoadIncremental(
                         committed,
                         projectPath,
+                        sourceControlSnapshot,
                         rulesPath,
                         allowFullFallback,
                         excludePaths,
@@ -692,6 +705,7 @@ public sealed class GraphSession : IDisposable
                         graph: null,
                         analysis: null,
                         usage: null,
+                        sourceControl: sourceControlSnapshot,
                         acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
                         changeReceipt: changeReceipt,
                         skipped: null,
@@ -869,6 +883,7 @@ public sealed class GraphSession : IDisposable
             graph: graph,
             analysis: analysis,
             usage: usage,
+            sourceControl: sourceControlSnapshot,
             acceptedChanges: fullRequestedMode == "incremental" && candidateRoslynAdapter != null
                 ? candidateRoslynAdapter.CaptureFullFallbackAcceptedChanges()
                 : null,
@@ -887,6 +902,7 @@ public sealed class GraphSession : IDisposable
     private string LoadIncremental(
         CommittedGraphSessionState committed,
         string projectPath,
+        SourceControlSnapshot sourceControlSnapshot,
         string? rulesPath,
         bool allowFullFallback,
         string[]? excludePaths,
@@ -942,6 +958,7 @@ public sealed class GraphSession : IDisposable
                     graph: null,
                     analysis: null,
                     usage: usage,
+                    sourceControl: sourceControlSnapshot,
                     acceptedChanges: incremental.AcceptedChanges,
                     changeReceipt: changeReceipt,
                     skipped: committed.RoslynAdapter?.SkippedFiles,
@@ -998,6 +1015,7 @@ public sealed class GraphSession : IDisposable
                         graph: graph,
                         analysis: refreshedAnalysis,
                         usage: usage,
+                        sourceControl: sourceControlSnapshot,
                         acceptedChanges: incremental.AcceptedChanges,
                         changeReceipt: changeReceipt,
                         skipped: candidateAdapter.SkippedFiles,
@@ -1022,6 +1040,7 @@ public sealed class GraphSession : IDisposable
                     graph: graph,
                     analysis: committed.Workspace.Analysis,
                     usage: usage,
+                    sourceControl: sourceControlSnapshot,
                     acceptedChanges: incremental.AcceptedChanges,
                     changeReceipt: changeReceipt,
                     skipped: candidateAdapter.SkippedFiles,
@@ -1090,6 +1109,7 @@ public sealed class GraphSession : IDisposable
                 graph: graph,
                 analysis: analysis,
                 usage: usage,
+                sourceControl: sourceControlSnapshot,
                 acceptedChanges: incremental.AcceptedChanges,
                 changeReceipt: changeReceipt,
                 skipped: candidateAdapter.SkippedFiles,
@@ -1121,6 +1141,7 @@ public sealed class GraphSession : IDisposable
         SemanticGraph? graph,
         Lifeblood.Domain.Results.AnalysisResult? analysis,
         AnalysisUsage? usage,
+        SourceControlSnapshot sourceControl,
         AcceptedChangeSet? acceptedChanges,
         AcceptedChangeReceiptRequest? changeReceipt = null,
         IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null,
@@ -1226,7 +1247,8 @@ public sealed class GraphSession : IDisposable
                 graphPath,
                 rulesPath,
                 activeProfiles,
-                fallbackReason.HasValue ? WireReasonName(fallbackReason.Value) : null),
+                fallbackReason.HasValue ? WireReasonName(fallbackReason.Value) : null,
+                sourceControl),
             usage = usage == null ? null : new
             {
                 wallTimeMs = usage.WallTimeMs,

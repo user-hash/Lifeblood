@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Source-control evidence follows the workspace being analyzed.**
+  One Application-owned snapshot port and one bounded Git adapter now serve MCP
+  capability, analyze, invariant, and release consumers. Analyze captures once
+  at request admission, before compiler work, preferring `projectPath`, then
+  `graphPath`, before server-build fallback; receipts distinguish
+  absent repositories, unavailable Git, and command failure while reporting the
+  resolved root, commit, dirty-state sample, and latest reachable stable tag.
+  (`INV-SOURCE-CONTROL-001`, `LB-INTAKE-20260629-028`.)
 - **File-scoped compilation ownership now fails closed.**
   `lifeblood_diagnose` and `lifeblood_compile_check` consume one C#-adapter
   ownership resolver instead of independent suffix scans. Exact paths outrank
@@ -29,6 +37,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   already restored by the shared analysis-request pipeline; the exact regression
   ratchet closes the older report without adding another profile authority.
   (`INV-ANALYZE-FALLBACK-001`, `LB-INTAKE-20260629-017`.)
+- **Incremental responses explain the exact accepted change set.** One
+  Application-owned `AcceptedChangeSet` now derives all legacy counters and the
+  MCP receipt. Summary mode reports normalized causes/counts; detail mode returns
+  one bounded union of project-relative paths with per-path flags for reanalysis,
+  mtime touch, content change, descriptor-forced recompilation, and deletion.
+  Complete/returned/omitted counts and `truncated` remain truthful under the
+  1..200 path cap, and full fallback no longer masquerades as source change.
+  (`INV-ANALYZE-ACCEPTED-CHANGE-001`, `LB-INTAKE-20260629-019`.)
+
+### Added
+
+- **Shared MCP workspace base for multi-agent work.** `lifeblood-mcp --shared`
+  runs each client as a thin persistent stdio proxy to one canonical-workspace-
+  keyed daemon. Same-workspace agents share one latest immutable semantic/Roslyn
+  base, while Lifeblood and DAWG remain isolated by canonical workspace identity.
+  Protocol-v2 build/workspace handshakes, persistent client leases, live status,
+  last-client idle drain, maintenance drain, crash/restart recovery, and bounded
+  diagnostics make the process lifecycle explicit. Full/incremental candidates
+  carry canonical spec/source/descriptor/rule fingerprints; identical requests
+  coalesce, input drift rejects before publication, and per-waiter MCP
+  cancellation cannot abandon a last-waiter candidate into the committed state.
+  Every publication has a globally unique snapshot id; behavior-derived
+  preconditions, serial `lifeblood_batch`, and a default-three/hard-sixteen
+  graph-only catalog provide pinned historical reads without retaining another
+  semantic base. (`INV-MCP-SHARED-BASE-001`, `INV-SHARED-HOST-IDENTITY-001`,
+  `INV-ANALYZE-COALESCE-001`, `INV-MCP-REQUEST-CANCEL-001`,
+  `INV-MCP-READ-BATCH-001`, `INV-SNAPSHOT-CATALOG-BOUND-001`.)
+
+
+## [0.7.12] - 2026-06-22
+
+### Changed
+
 - **Incremental analyze uses source content hashes and accepts editor-scoped change sets.**
   `lifeblood_analyze` now reports `mtimeTouchedSourceFiles` separately from
   `contentChangedSourceFiles`, so contentless Unity/IDE metadata touches do not
@@ -38,14 +79,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   using content hashes before replacing graph facts. Descriptor drift checks
   remain independent. (`LB-INTAKE-20260611-003`,
   `LB-INTAKE-20260611-005`.)
-- **Incremental responses explain the exact accepted change set.** One
-  Application-owned `AcceptedChangeSet` now derives all legacy counters and the
-  MCP receipt. Summary mode reports normalized causes/counts; detail mode returns
-  one bounded union of project-relative paths with per-path flags for reanalysis,
-  mtime touch, content change, descriptor-forced recompilation, and deletion.
-  Complete/returned/omitted counts and `truncated` remain truthful under the
-  1..200 path cap, and full fallback no longer masquerades as source change.
-  (`INV-ANALYZE-ACCEPTED-CHANGE-001`, `LB-INTAKE-20260629-019`.)
 - **Read-only session recovery is explicit.** After a `readOnly:true` analyze,
   a non-read-only incremental request now rejects with
   `fallbackReason:"compilationStateUnavailable"` and an exact full
@@ -81,22 +114,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Shared MCP workspace base for multi-agent work.** `lifeblood-mcp --shared`
-  runs each client as a thin persistent stdio proxy to one canonical-workspace-
-  keyed daemon. Same-workspace agents share one latest immutable semantic/Roslyn
-  base, while Lifeblood and DAWG remain isolated by canonical workspace identity.
-  Protocol-v2 build/workspace handshakes, persistent client leases, live status,
-  last-client idle drain, maintenance drain, crash/restart recovery, and bounded
-  diagnostics make the process lifecycle explicit. Full/incremental candidates
-  carry canonical spec/source/descriptor/rule fingerprints; identical requests
-  coalesce, input drift rejects before publication, and per-waiter MCP
-  cancellation cannot abandon a last-waiter candidate into the committed state.
-  Every publication has a globally unique snapshot id; behavior-derived
-  preconditions, serial `lifeblood_batch`, and a default-three/hard-sixteen
-  graph-only catalog provide pinned historical reads without retaining another
-  semantic base. (`INV-MCP-SHARED-BASE-001`, `INV-SHARED-HOST-IDENTITY-001`,
-  `INV-ANALYZE-COALESCE-001`, `INV-MCP-REQUEST-CANCEL-001`,
-  `INV-MCP-READ-BATCH-001`, `INV-SNAPSHOT-CATALOG-BOUND-001`.)
 - **New tool `lifeblood_asmdef_check`.** Reports Unity/old-format
   direct-reference module boundary violations from the loaded graph: for every
   cross-module source edge whose source module is `referenceClosure=DirectOnly`,
@@ -1689,7 +1706,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.11...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.12...HEAD
+[0.7.12]: https://github.com/user-hash/Lifeblood/compare/v0.7.11...v0.7.12
 [0.7.11]: https://github.com/user-hash/Lifeblood/compare/v0.7.10...v0.7.11
 [0.7.10]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...v0.7.10
 [0.7.9]: https://github.com/user-hash/Lifeblood/compare/v0.7.8...v0.7.9

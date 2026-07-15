@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.CSharp.Internal;
+using Lifeblood.Adapters.Git;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Server.Mcp;
@@ -278,6 +279,33 @@ public class DocsTests
       "CHANGELOG.md headings without a matching [X.Y.Z]: link reference: " + string.Join(", ", headingsWithoutRef));
     Assert.True(referencesWithoutHeading.Length == 0,
       "CHANGELOG.md link references without a matching ## [X.Y.Z] heading: " + string.Join(", ", referencesWithoutHeading));
+  }
+
+  /// <summary>
+  /// INV-CHANGELOG-LATEST-TAG-001. The latest reachable stable Git tag must be
+  /// represented by a historical heading/reference, and Unreleased must start
+  /// its comparison at that tag.
+  /// </summary>
+  [Fact]
+  public void Changelog_LatestStableTagOwnsHistoricalSectionAndUnreleasedBase()
+  {
+    var sourceControl = new GitSourceControlSnapshotProvider().Capture(RepoRoot);
+    Assert.Equal("git", sourceControl.Source);
+    Assert.Matches(@"^v\d+\.\d+\.\d+$", sourceControl.LatestSemanticVersionTag);
+
+    var tag = sourceControl.LatestSemanticVersionTag;
+    var version = tag[1..];
+    var changelog = File.ReadAllText(Path.Combine(RepoRoot, "CHANGELOG.md"));
+
+    Assert.Matches(
+      $@"(?m)^##\s*\[{Regex.Escape(version)}\]\s*-\s*\d{{4}}-\d{{2}}-\d{{2}}\s*$",
+      changelog);
+    Assert.Matches(
+      $@"(?m)^\[{Regex.Escape(version)}\]:\s*https?://\S+\.\.\.{Regex.Escape(tag)}\s*$",
+      changelog);
+    Assert.Matches(
+      $@"(?m)^\[Unreleased\]:\s*https?://\S+/compare/{Regex.Escape(tag)}\.\.\.HEAD\s*$",
+      changelog);
   }
 
   /// <summary>

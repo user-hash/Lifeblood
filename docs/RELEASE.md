@@ -9,8 +9,10 @@ This document governs every public release tagged `vX.Y.Z`. Pre-release tags (`v
 Source of truth for related ratchets:
 
 - `INV-CHANGELOG-001`. Every `## [X.Y.Z]` heading needs a matching `[X.Y.Z]:` link reference (`docs/invariants/governance.md`).
+- `INV-CHANGELOG-LATEST-TAG-001`. The latest reachable stable tag owns a
+  historical section/reference and the `[Unreleased]` comparison base.
 - `INV-DOCS-001`. `docs/STATUS.md` port, tool, and test count anchors match live repo state.
-- `Lifeblood.Tests.DocsTests` owns both ratchets.
+- `Lifeblood.Tests.DocsTests` owns these ratchets.
 
 ## Pre-tag steps
 
@@ -28,6 +30,11 @@ Run these in order on the release commit before tagging.
    ```
 
    `[Unreleased]` must point at the new tag, not the previous one. `[X.Y.Z]` must point at the comparison range from the previous tag.
+
+   `DocsTests.Changelog_LatestStableTagOwnsHistoricalSectionAndUnreleasedBase`
+   enforces this against the latest reachable stable Git tag. Build/test CI
+   checkouts therefore use `fetch-depth: 0`; a shallow checkout is not an
+   acceptable substitute for release-history truth.
 
 4. **`docs/STATUS.md` anchors match live repo state.** Hidden HTML comments declare the live counts:
 
@@ -97,5 +104,5 @@ The recovery is always the next patch:
 
 ## Why each step exists
 
-- Step 3 closes the drift class that shipped v0.7.6 with three red CI workflows on origin. The `Changelog_EveryHeadingHasLinkReference` ratchet caught it locally. The operator pushed the tag anyway. The eternal mechanism is this checklist plus the existing ratchet. No new automation is required, only discipline applied before the tag command runs.
+- Step 3 closes the drift class that shipped v0.7.6 with three red CI workflows on origin and the later class where `v0.7.12` existed while the changelog still compared from `v0.7.11`. Heading/reference parity and latest-tag/base parity now fail tests before another tag; the checklist remains the operator gate.
 - Step 5 prevents the same operational gap from recurring through any other ratchet. A test-suite failure on the release commit is by definition a release blocker.

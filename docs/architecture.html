@@ -202,9 +202,9 @@
   Every port interface has a concrete implementation. All hexagonal boundaries enforced by tests.
   </p>
   <div class="pills">
-  <div class="pill">11 assemblies + 3 standalone adapters</div>
+  <div class="pill">12 assemblies + 3 standalone adapters</div>
   <div class="pill">Self-analyze graph (live counts in STATUS.md)</div>
-  <div class="pill">1,421 test cases / 37 [SkippableFact] runtime-gated</div>
+  <div class="pill">Live test counts in STATUS.md</div>
   <div class="pill">C# + C + TypeScript + Python</div>
   <div class="pill">Cross-module: Proven</div>
   <div class="pill">Every port wired</div>
@@ -218,6 +218,7 @@
   <div class="pill">ISymbolResolver + IInvariantProvider</div>
   <div class="pill">RoslynSemanticView</div>
   <div class="pill">BCL ownership</div>
+  <div class="pill">Workspace-rooted Git provenance</div>
   <div class="pill">Native usage + timing</div>
   <div class="pill">Queryable invariants in tree</div>
   <div class="pill">UTF-16 BOM-aware JSON import</div>
@@ -247,6 +248,7 @@
   <div class="card">
   <h3>Infrastructure Ports <span style="font-size:9px; color:var(--accent-3); font-weight:normal; text-transform:uppercase;">sealed</span></h3>
   <div class="item"><strong>IFileSystem</strong><small>ReadAllText, ReadLines, OpenRead, FileExists, DirectoryExists, FindFiles, GetLastWriteTimeUtc. Impl: PhysicalFileSystem.</small></div>
+  <div class="item"><strong>ISourceControlSnapshotProvider</strong><small>Caller-rooted, bounded provenance receipt. Impl: Lifeblood.Adapters.Git. One authority for analyze, invariant, capability, and release consumers.</small></div>
   <div class="item"><strong>IProgressSink</strong><small>Report(phase, current, total), Log(message). Impl: ConsoleProgressSink (stderr).</small></div>
   <div class="item"><strong>IRuleProvider</strong><small>LoadRules(path) → ArchitectureRule[]. Impl: RulesLoader (JSON deserialization).</small></div>
   </div>
@@ -370,7 +372,7 @@
 
   <div class="legend">
   <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference with cross-module resolution. libclang is the C reference (beta, v0.7.7), reading compile_commands.json and emitting Lifeblood-shape graph JSON. TypeScript and Python are standalone adapters. JSON graph is the universal bridge. Community adapters (Go, Rust) have contribution guides.</div>
-  <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. Port interfaces (live count in STATUS.md). All sealed with concrete implementations. GraphDocument carries version, language, and adapter capabilities. All invariants enforced by tests AND queryable at runtime via lifeblood_invariant_check.</div>
+  <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. Port interfaces (live count in STATUS.md). Environment integrations stay behind ports; Lifeblood.Adapters.Git is the bounded source-control implementation. GraphDocument carries version, language, and adapter capabilities. All invariants enforced by tests AND queryable at runtime via lifeblood_invariant_check.</div>
   <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with interactive tool surface, CLI with CI exit codes. They depend inward on Application ports, never on adapters. Packaged as dotnet tools.</div>
   </div>
 

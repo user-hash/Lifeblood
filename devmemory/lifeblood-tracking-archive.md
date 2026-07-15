@@ -2909,3 +2909,72 @@ Verification limitation:
   and was cleaned up; it is recorded as a timed-out environment gate, not a
   pass. The focused shared-file MCP fixture and full Lifeblood suite are the
   deterministic acceptance authorities for this atom.
+
+## LB-INTAKE-20260629-020 - Release metadata drift between local tag and changelog snapshot
+
+Status: Shipped (in-tree, untagged) - backlog-clearance Wave 1
+Type: Docs
+Source: Lifeblood tracker maintenance, 2026-06-29; closure 2026-07-15
+Workspace: Lifeblood self
+Verification: `DocsTests.Changelog_LatestStableTagOwnsHistoricalSectionAndUnreleasedBase`,
+`INV-CHANGELOG-LATEST-TAG-001`, focused source-control/architecture/docs gate
+(64/64), clean Release build (0 warnings/errors), full suite (1,532 passed +
+11 expected native-Clang skips = 1,543), and self-analysis (6,216 symbols /
+33,369 edges / 12 modules / 661 types / 0 violations).
+
+Resolution:
+- `GitSourceControlSnapshotProvider` is the sole source of the latest reachable
+  stable `vX.Y.Z` tag. The docs ratchet consumes that Application-owned port
+  instead of launching a second Git process.
+- `CHANGELOG.md` now owns a dated `[0.7.12]` historical section and comparison
+  reference, while `[Unreleased]` compares from `v0.7.12`.
+- CI checkouts that run the release ratchet fetch full history, and the living
+  tracker names the same latest stable changelog base. No tag was created,
+  moved, pushed, or published.
+
+Impact:
+- Release provenance can no longer silently drift behind the latest reachable
+  stable tag, and agents have one tested version authority for local evidence.
+
+## LB-INTAKE-20260629-028 - Analyze evidence receipt resolves the analyzed git root
+
+Status: Shipped (in-tree, untagged) - backlog-clearance Wave 1
+Type: Bug
+Source: DAWG Lifeblood analyze dogfood, 2026-06-29; closure 2026-07-15
+Workspace: DAWG and Lifeblood self
+Verification: `SourceControlEvidenceTests`,
+`McpStdioLoopTests.McpServer_OverStdio_CapabilitiesCapturesGitWhileClientInputRemainsOpen`,
+`INV-SOURCE-CONTROL-001`, focused source-control/architecture/docs gate
+(64/64), clean Release build (0 warnings/errors), full suite (1,532 passed +
+11 expected native-Clang skips = 1,543), self-analysis (6,216 symbols /
+33,369 edges / 12 modules / 661 types / 0 violations), and a real read-only
+DAWG Editor+Player MCP analyze.
+
+Resolution:
+- One neutral Domain `SourceControlSnapshot`, one Application
+  `ISourceControlSnapshotProvider`, and one infrastructure
+  `GitSourceControlSnapshotProvider` now serve capability, analyze, invariant,
+  and release consumers. No MCP handler or docs test owns another Git launcher.
+- Analyze captures one immutable receipt before compiler work, preferring
+  `projectPath`, then `graphPath`, with server-build fallback only when both
+  caller paths are absent. Invariant evidence roots at the audited workspace;
+  capabilities intentionally describe the server build repository.
+- The adapter reports attempted/resolved roots, full/short commit, latest stable
+  tag, nullable dirty state, exact-or-capped dirty count, a 32-entry sample,
+  truncation, and bounded classified failure detail under a ten-second command
+  timeout.
+- Git stdin is redirected and closed immediately so a child command cannot
+  inherit the MCP server's persistent JSON-RPC input pipe. Dedicated bounded
+  output drains prevent pipe or thread-pool starvation; the real stdio
+  regression pins this production failure mode.
+
+DAWG receipt:
+- Full read-only Editor+Player analysis completed in 98.015 seconds with 88,600
+  symbols, 345,730 edges, 100 modules, 5,538 types, and 0 violations.
+- `sourceControl.repositoryRoot` was `D:\Projekti\DAWG`;
+  commit `955e6cb02aabc29d6dbc722959d1c3adc3311974`, latest stable tag
+  `v1.2.356`, and the exact two dirty entries were reported.
+
+Impact:
+- External-workspace evidence is citation-safe at the repository actually
+  analyzed, while all consumers share one bounded hexagonal authority.
