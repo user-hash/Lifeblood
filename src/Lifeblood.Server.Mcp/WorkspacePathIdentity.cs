@@ -1,5 +1,7 @@
 namespace Lifeblood.Server.Mcp;
 
+using Lifeblood.Domain.Workspaces;
+
 /// <summary>
 /// Canonical path identity for the shared-host boundary. Transport keying and
 /// analyze admission use this one seam so they cannot disagree about which
@@ -7,6 +9,15 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 internal static class WorkspacePathIdentity
 {
+    public static WorkspaceKey CreateWorkspaceKey(string key)
+    {
+        var root = ResolveWorkspaceRoot(key);
+        var identityMaterial = OperatingSystem.IsWindows()
+            ? root.ToUpperInvariant()
+            : root;
+        return WorkspaceKey.FromCanonicalIdentity(identityMaterial);
+    }
+
     public static string ResolveWorkspaceRoot(string key)
     {
         var fullPath = Normalize(key);

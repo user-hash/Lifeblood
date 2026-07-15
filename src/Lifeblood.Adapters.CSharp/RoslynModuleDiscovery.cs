@@ -3,6 +3,7 @@ using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Adapters.CSharp;
 
@@ -14,6 +15,8 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
 {
     private readonly IFileSystem _fs;
     private readonly List<SkippedFile> _lastSkipped = new();
+    private readonly Dictionary<string, ContentFingerprint> _lastDescriptorContentHashes
+        = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Diagnostic IDs that MSBuild's <c>Microsoft.CSharp.CurrentVersion.targets</c>
@@ -41,17 +44,33 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     /// </summary>
     public IReadOnlyList<SkippedFile> LastDiscoverySkipped => _lastSkipped;
 
+    /// <summary>
+    /// Exact project/solution content consumed by the most recent discovery
+    /// pass. The analyzer folds this receipt into its source fingerprint
+    /// instead of re-reading descriptors through a parallel hashing path.
+    /// </summary>
+    public IReadOnlyDictionary<string, ContentFingerprint> LastDescriptorContentHashes
+        => _lastDescriptorContentHashes;
+
     public ModuleInfo[] DiscoverModules(string projectRoot)
     {
         _lastSkipped.Clear();
+        _lastDescriptorContentHashes.Clear();
 
         // Try .sln first
-        var slnFiles = _fs.FindFiles(projectRoot, "*.sln", recursive: false);
+        var slnFiles = _fs.FindFiles(projectRoot, "*.sln", recursive: false)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
         if (slnFiles.Length > 0)
+        {
+            CaptureTextDescriptor(slnFiles[0], _fs.ReadAllText(slnFiles[0]));
             return DiscoverFromSolution(slnFiles[0], projectRoot);
+        }
 
         // Fall back to .csproj files
-        var csprojFiles = _fs.FindFiles(projectRoot, "*.csproj", recursive: true);
+        var csprojFiles = _fs.FindFiles(projectRoot, "*.csproj", recursive: true)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
         return csprojFiles.Select(f => ParseProject(f, projectRoot)).Where(m => m != null).ToArray()!;
     }
 
@@ -91,6 +110,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
         try
         {
             var xml = _fs.ReadAllText(csprojPath);
+            CaptureTextDescriptor(csprojPath, xml);
             var doc = XDocument.Parse(xml);
             var ns = doc.Root?.Name.Namespace ?? XNamespace.None;
             var projectDir = Path.GetDirectoryName(csprojPath)!;
@@ -582,8 +602,8 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     /// csproj declares.
     /// </summary>
     internal static bool IsBclSimpleName(string name) =>
-        name.Equals("netstandard",    StringComparison.OrdinalIgnoreCase)
-     || name.Equals("mscorlib",       StringComparison.OrdinalIgnoreCase)
+        name.Equals("netstandard", StringComparison.OrdinalIgnoreCase)
+     || name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase)
      || name.Equals("System.Runtime", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
@@ -603,6 +623,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 return Internal.CsprojPaths.GetReferencedModuleName(referencePath);
 
             var xml = _fs.ReadAllText(fullPath);
+            CaptureTextDescriptor(fullPath, xml);
             var refDoc = XDocument.Parse(xml);
             var asmName = refDoc.Descendants()
                 .FirstOrDefault(el => el.Name.LocalName == "AssemblyName")?.Value;
@@ -614,4 +635,9 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             return Internal.CsprojPaths.GetReferencedModuleName(referencePath);
         }
     }
+
+    private void CaptureTextDescriptor(string path, string content)
+        => _lastDescriptorContentHashes[path] = ContentFingerprint.ComputeUtf8(
+            "lifeblood.workspace-descriptor-content.v1",
+            content);
 }

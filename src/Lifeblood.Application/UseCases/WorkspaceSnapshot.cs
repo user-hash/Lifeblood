@@ -16,6 +16,7 @@ public sealed class WorkspaceSnapshot : IDisposable
     private int _retired;
     private int _portsDisposed;
     private int _leaseCount;
+    private readonly WorkspaceCompilationServices? _compilationServices;
 
     private WorkspaceSnapshot(
         SemanticGraph? graph,
@@ -27,9 +28,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         DateTime? analyzedAtUtc,
         long analysisGeneration,
         SnapshotId snapshotId,
-        ICompilationHost? compilationHost,
-        ICodeExecutor? codeExecutor,
-        IWorkspaceRefactoring? refactoring)
+        WorkspaceAnalysisIdentity? identity,
+        WorkspaceCompilationServices? compilationServices)
     {
         Graph = graph;
         Analysis = analysis;
@@ -40,9 +40,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         AnalyzedAtUtc = analyzedAtUtc;
         AnalysisGeneration = analysisGeneration;
         SnapshotId = snapshotId;
-        CompilationHost = compilationHost;
-        CodeExecutor = codeExecutor;
-        Refactoring = refactoring;
+        Identity = identity;
+        _compilationServices = compilationServices;
     }
 
     public SemanticGraph? Graph { get; }
@@ -63,11 +62,13 @@ public sealed class WorkspaceSnapshot : IDisposable
 
     public SnapshotId SnapshotId { get; }
 
-    public ICompilationHost? CompilationHost { get; }
+    public WorkspaceAnalysisIdentity? Identity { get; }
 
-    public ICodeExecutor? CodeExecutor { get; }
+    public ICompilationHost? CompilationHost => _compilationServices?.CompilationHost;
 
-    public IWorkspaceRefactoring? Refactoring { get; }
+    public ICodeExecutor? CodeExecutor => _compilationServices?.CodeExecutor;
+
+    public IWorkspaceRefactoring? Refactoring => _compilationServices?.Refactoring;
 
     public bool IsLoaded => Graph != null;
 
@@ -85,7 +86,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         ICodeExecutor? codeExecutor = null,
         IWorkspaceRefactoring? refactoring = null,
         WorkspaceCapability? workspaceOps = null,
-        SnapshotId? snapshotId = null)
+        SnapshotId? snapshotId = null,
+        WorkspaceAnalysisIdentity? identity = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(analysis);
@@ -99,6 +101,9 @@ public sealed class WorkspaceSnapshot : IDisposable
         if (compilationServiceCount is not (0 or 3))
             throw new ArgumentException("Compilation host, code executor, and refactoring ports must be published together.");
 
+        var compilationServices = compilationServiceCount == 0
+            ? null
+            : new WorkspaceCompilationServices(compilationHost!, codeExecutor!, refactoring!);
         return new WorkspaceSnapshot(
             graph,
             analysis,
@@ -111,9 +116,8 @@ public sealed class WorkspaceSnapshot : IDisposable
             analyzedAtUtc,
             analysisGeneration,
             snapshotId ?? SnapshotId.New(),
-            compilationHost,
-            codeExecutor,
-            refactoring);
+            identity,
+            compilationServices);
     }
 
     public static WorkspaceSnapshot Empty(long analysisGeneration = 0)
@@ -131,9 +135,50 @@ public sealed class WorkspaceSnapshot : IDisposable
             analyzedAtUtc: null,
             analysisGeneration: analysisGeneration,
             snapshotId: SnapshotId.None,
-            compilationHost: null,
-            codeExecutor: null,
-            refactoring: null);
+            identity: null,
+            compilationServices: null);
+    }
+
+    /// <summary>
+    /// Publish a new analysis/identity over the same immutable graph and
+    /// semantic service base. The service bundle is reference-counted so old
+    /// snapshot leases and the new publication can coexist without rebuilding
+    /// or prematurely disposing Roslyn state.
+    /// </summary>
+    public WorkspaceSnapshot DeriveAnalysis(
+        AnalysisResult analysis,
+        WorkspaceAnalysisIdentity identity,
+        DateTime analyzedAtUtc,
+        long analysisGeneration)
+    {
+        ArgumentNullException.ThrowIfNull(analysis);
+        ArgumentNullException.ThrowIfNull(identity);
+        if (!IsLoaded || Graph == null)
+            throw new InvalidOperationException("Cannot derive an unloaded workspace snapshot.");
+        if (analysisGeneration <= AnalysisGeneration)
+            throw new ArgumentOutOfRangeException(nameof(analysisGeneration), "A derived publication must advance generation.");
+
+        var sharedServices = _compilationServices?.AddReference();
+        try
+        {
+            return new WorkspaceSnapshot(
+                Graph,
+                analysis,
+                Capability,
+                WorkspaceOps,
+                Language,
+                Context,
+                analyzedAtUtc,
+                analysisGeneration,
+                SnapshotId.New(),
+                identity,
+                sharedServices);
+        }
+        catch
+        {
+            sharedServices?.Release();
+            throw;
+        }
     }
 
     /// <summary>
@@ -189,13 +234,57 @@ public sealed class WorkspaceSnapshot : IDisposable
         if (Interlocked.Exchange(ref _portsDisposed, 1) != 0)
             return;
 
+        _compilationServices?.Release();
+    }
+}
+
+internal sealed class WorkspaceCompilationServices
+{
+    private int _referenceCount = 1;
+
+    public WorkspaceCompilationServices(
+        ICompilationHost compilationHost,
+        ICodeExecutor codeExecutor,
+        IWorkspaceRefactoring refactoring)
+    {
+        CompilationHost = compilationHost;
+        CodeExecutor = codeExecutor;
+        Refactoring = refactoring;
+    }
+
+    public ICompilationHost CompilationHost { get; }
+
+    public ICodeExecutor CodeExecutor { get; }
+
+    public IWorkspaceRefactoring Refactoring { get; }
+
+    public WorkspaceCompilationServices AddReference()
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _referenceCount);
+            if (current == 0)
+                throw new ObjectDisposedException(nameof(WorkspaceCompilationServices));
+            if (Interlocked.CompareExchange(ref _referenceCount, checked(current + 1), current) == current)
+                return this;
+        }
+    }
+
+    public void Release()
+    {
+        var remaining = Interlocked.Decrement(ref _referenceCount);
+        if (remaining < 0)
+            throw new InvalidOperationException("Workspace compilation-service reference count became negative.");
+        if (remaining != 0)
+            return;
+
         var disposed = new HashSet<object>(ReferenceEqualityComparer.Instance);
         DisposeOnce(CompilationHost, disposed);
         DisposeOnce(CodeExecutor, disposed);
         DisposeOnce(Refactoring, disposed);
     }
 
-    private static void DisposeOnce(object? value, HashSet<object> disposed)
+    private static void DisposeOnce(object value, HashSet<object> disposed)
     {
         if (value is IDisposable disposable && disposed.Add(value))
             disposable.Dispose();

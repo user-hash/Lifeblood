@@ -2,6 +2,7 @@ using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.PathClassification;
 using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Workspaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -82,7 +83,7 @@ internal sealed class ModuleCompilationBuilder
         Action<string, int, int>? onModuleProgress = null,
         List<SkippedFile>? skippedCollector = null,
         Dictionary<string, MetadataReference>? carryDowngraded = null,
-        Action<string, string>? contentHashCollector = null)
+        Action<string, ContentFingerprint>? contentHashCollector = null)
     {
         var sorted = TopologicalSort(modules);
         var moduleLookup = modules.ToDictionary(m => m.Name, StringComparer.Ordinal);
@@ -203,7 +204,7 @@ internal sealed class ModuleCompilationBuilder
         ModuleInfo module, string projectRoot, AnalysisConfig config,
         MetadataReference[] dependencyRefs,
         List<SkippedFile>? skippedCollector,
-        Action<string, string>? contentHashCollector)
+        Action<string, ContentFingerprint>? contentHashCollector)
     {
         // Surface every file the adapter declines to process so consumers
         // can show users exactly what was dropped and why.
