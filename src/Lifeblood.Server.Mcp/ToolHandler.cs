@@ -42,6 +42,7 @@ public sealed class ToolHandler
     private readonly ISessionGate _sessionGate;
     private readonly WorkspaceBindingPolicy? _workspaceBinding;
     private readonly AnalysisRequestCoordinator<McpToolResult> _analysisCoordinator;
+    private readonly ISharedDaemonStatusProvider? _sharedDaemonStatus;
     private readonly AsyncLocal<PreparedAnalyzeRequest?> _preparedAnalyze = new();
 
     private bool TelemetryEnabled => !ReferenceEquals(_telemetry, NoOpTelemetrySink.Instance);
@@ -74,7 +75,8 @@ public sealed class ToolHandler
         ToolJsonCompatibilityMode jsonCompatibilityMode = ToolJsonCompatibilityMode.Legacy,
         ISessionGate? sessionGate = null,
         string? boundWorkspaceRoot = null,
-        AnalysisRequestCoordinator<McpToolResult>? analysisCoordinator = null)
+        AnalysisRequestCoordinator<McpToolResult>? analysisCoordinator = null,
+        ISharedDaemonStatusProvider? sharedDaemonStatus = null)
     {
         _session = session;
         _provider = provider;
@@ -94,6 +96,7 @@ public sealed class ToolHandler
             ? null
             : new WorkspaceBindingPolicy(boundWorkspaceRoot);
         _analysisCoordinator = analysisCoordinator ?? new AnalysisRequestCoordinator<McpToolResult>();
+        _sharedDaemonStatus = sharedDaemonStatus;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -115,8 +118,6 @@ public sealed class ToolHandler
             : ToolRegistry.FindDefinition(toolName)?.Behavior.SessionAccess == ToolSessionAccess.Exclusive
             ? _sessionGate.Write(() => HandleCore(toolName, arguments))
             : _sessionGate.Read(() => HandleCore(toolName, arguments));
-
-    internal int InFlightAnalysisCount => _analysisCoordinator.InFlightCount;
 
     private McpToolResult HandleAnalyzeCoalesced(JsonElement? arguments)
     {
@@ -308,9 +309,57 @@ public sealed class ToolHandler
             ProjectRoot: _session.ProjectRoot,
             RetainedProfileName: _session.RetainedProfileName,
             RetainedProfileNames: _session.RetainedProfileNames.ToArray(),
-            CompilationStateRecoveryHint: _session.CompilationStateRecoveryHint);
+            CompilationStateRecoveryHint: _session.CompilationStateRecoveryHint,
+            SharedService: BuildSharedServiceInfo());
 
         return TextResult(WithEnvelope("lifeblood_capabilities", ServerIdentity.BuildCapabilities(sessionInfo)));
+    }
+
+    private ServerSharedServiceInfo BuildSharedServiceInfo()
+    {
+        using var process = Process.GetCurrentProcess();
+        var buildIdentity = typeof(ToolHandler).Assembly.ManifestModule.ModuleVersionId.ToString("N");
+        var shared = _sharedDaemonStatus?.CaptureStatus();
+        if (shared == null)
+        {
+            return new ServerSharedServiceInfo(
+                Active: false,
+                Mode: "stdio",
+                ProtocolVersion: null,
+                DaemonInstanceId: "",
+                BuildIdentity: buildIdentity,
+                ProcessId: process.Id,
+                ProcessStartedAtUtc: process.StartTime.ToUniversalTime(),
+                WorkspaceRoot: _session.ProjectRoot,
+                LifecycleState: "not-applicable",
+                ClientCount: 1,
+                ActiveRequestCount: 0,
+                InFlightAnalysisCount: _analysisCoordinator.InFlightCount,
+                LastActivityUtc: null,
+                IdleTimeoutSeconds: null,
+                IdleDeadlineUtc: null,
+                WorkingSetBytes: process.WorkingSet64,
+                PrivateMemoryBytes: process.PrivateMemorySize64);
+        }
+
+        return new ServerSharedServiceInfo(
+            Active: true,
+            Mode: "shared-daemon",
+            ProtocolVersion: SharedMcpTransport.ProtocolVersion,
+            DaemonInstanceId: shared.DaemonInstanceId,
+            BuildIdentity: buildIdentity,
+            ProcessId: process.Id,
+            ProcessStartedAtUtc: process.StartTime.ToUniversalTime(),
+            WorkspaceRoot: _workspaceBinding?.WorkspaceRoot ?? _session.ProjectRoot,
+            LifecycleState: shared.State.ToString(),
+            ClientCount: shared.ClientCount,
+            ActiveRequestCount: shared.ActiveRequestCount,
+            InFlightAnalysisCount: _analysisCoordinator.InFlightCount,
+            LastActivityUtc: shared.LastActivityUtc,
+            IdleTimeoutSeconds: shared.IdleTimeout.TotalSeconds,
+            IdleDeadlineUtc: shared.IdleDeadlineUtc,
+            WorkingSetBytes: process.WorkingSet64,
+            PrivateMemoryBytes: process.PrivateMemorySize64);
     }
 
     private McpToolResult HandleAnalyze(JsonElement? args)
