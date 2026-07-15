@@ -225,6 +225,35 @@ public class AnalyzeWireShapeTests : IDisposable
     }
 
     [Fact]
+    public void Load_IncrementalWithChangedDefineProfileOrder_RejectsWithAnalysisScopeChanged()
+    {
+        WriteSingleFileProject("public class Foo { }");
+        Directory.CreateDirectory(Path.Combine(_tempDir, "Library"));
+        using var session = new GraphSession(_fs);
+        session.Load(
+            _tempDir,
+            graphPath: null,
+            rulesPath: null,
+            defineProfiles: new[] { "Editor", "Player" });
+        var committedSnapshot = session.CurrentSnapshot;
+
+        var json = session.Load(
+            _tempDir,
+            graphPath: null,
+            rulesPath: null,
+            incremental: true,
+            allowFullFallback: false,
+            defineProfiles: new[] { "Player", "Editor" });
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("rejected", doc.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("incremental", doc.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("analysisScopeChanged", doc.RootElement.GetProperty("fallbackReason").GetString());
+        Assert.True(doc.RootElement.GetProperty("canRetryFull").GetBoolean());
+        Assert.Same(committedSnapshot, session.CurrentSnapshot);
+    }
+
+    [Fact]
     public void Load_IncrementalAfterEdit_WireCarriesIncrementalMode()
     {
         var filePath = WriteSingleFileProject("public class Foo { }");

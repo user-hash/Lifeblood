@@ -194,26 +194,12 @@ internal sealed class AnalysisSnapshot
     }
 
     public SourceFingerprint BuildSourceFingerprint()
-        => new(
-            FileContentHashes.Select(pair => new FingerprintEntry(
-                NormalizeFingerprintPath(pair.Key),
-                pair.Value)),
-            DescriptorContentHashes
-                .Concat(AsmdefContentHashes)
-                .Concat(ReferenceContentHashes)
-                .Select(pair => new FingerprintEntry(
-                    NormalizeFingerprintPath(pair.Key),
-                    pair.Value)));
-
-    private string NormalizeFingerprintPath(string path)
-    {
-        var fullRoot = Path.GetFullPath(ProjectRoot);
-        var fullPath = Path.GetFullPath(path);
-        var relative = Path.GetRelativePath(fullRoot, fullPath).Replace('\\', '/');
-        return Path.IsPathRooted(relative)
-            ? fullPath.Replace('\\', '/')
-            : relative;
-    }
+        => WorkspaceInputFingerprintBuilder.Build(
+            ProjectRoot,
+            FileContentHashes,
+            DescriptorContentHashes,
+            AsmdefContentHashes,
+            ReferenceContentHashes);
 
     private static void CopyDictionary<TKey, TValue>(
         Dictionary<TKey, TValue> source,

@@ -33,12 +33,16 @@ public class ToolHandlerTests : IDisposable
             .AddSymbol(new Symbol { Id = "method:Core.Foo.Do", Name = "Do", Kind = SymbolKind.Method, ParentId = "type:Core.Foo" })
             .AddEdge(new Edge
             {
-                SourceId = "type:Core.Foo", TargetId = "type:Core.Bar", Kind = EdgeKind.DependsOn,
+                SourceId = "type:Core.Foo",
+                TargetId = "type:Core.Bar",
+                Kind = EdgeKind.DependsOn,
                 Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test", Confidence = ConfidenceLevel.Proven },
             })
             .AddEdge(new Edge
             {
-                SourceId = "method:Core.Foo.Do", TargetId = "type:Core.Bar", Kind = EdgeKind.Calls,
+                SourceId = "method:Core.Foo.Do",
+                TargetId = "type:Core.Bar",
+                Kind = EdgeKind.Calls,
                 Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test", Confidence = ConfidenceLevel.Proven },
             })
             .Build();
@@ -119,6 +123,13 @@ public class ToolHandlerTests : IDisposable
         Assert.Null(result.IsError);
         Assert.Contains("symbols", result.Content[0].Text);
         Assert.Contains("edges", result.Content[0].Text);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        Assert.StartsWith(
+            "analysis_request_",
+            payload.RootElement.GetProperty("analysisRequestId").GetString(),
+            StringComparison.Ordinal);
+        Assert.False(payload.RootElement.GetProperty("coalesced").GetBoolean());
+        Assert.Equal(1, payload.RootElement.GetProperty("waiterCount").GetInt32());
     }
 
     [Fact]

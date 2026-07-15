@@ -192,6 +192,102 @@ public sealed class GraphSession : IDisposable
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
     public bool CanIncremental => Current.RoslynAdapter?.HasSnapshot == true;
 
+    internal PreparedAnalyzeRequest PrepareAnalysis(AnalyzeToolRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        WorkspaceAnalysisIdentity identity;
+        AnalysisRuleSetResolver.ResolvedRuleSet ruleSet;
+        string? projectPath = null;
+        string? graphPath = null;
+
+        if (!string.IsNullOrWhiteSpace(request.GraphPath))
+        {
+            graphPath = Path.GetFullPath(request.GraphPath);
+            if (!_fs.FileExists(graphPath))
+                throw new FileNotFoundException($"Graph file not found: {graphPath}", graphPath);
+
+            var workspaceRoot = WorkspacePathIdentity.ResolveWorkspaceRoot(Path.GetDirectoryName(graphPath)!);
+            ruleSet = _ruleSetResolver.Resolve(request.RulesPath, workspaceRoot);
+            using var stream = _fs.OpenRead(graphPath);
+            identity = BuildImportedGraphIdentity(
+                graphPath,
+                ContentFingerprint.FromHashBytes(SHA256.HashData(stream)),
+                ruleSet.Identity);
+        }
+        else if (!string.IsNullOrWhiteSpace(request.ProjectPath))
+        {
+            projectPath = Path.GetFullPath(request.ProjectPath);
+            if (!_fs.DirectoryExists(projectPath))
+                throw new DirectoryNotFoundException($"Project directory not found: {projectPath}");
+
+            var committed = Current;
+            var sameIncrementalWorkspace = request.Incremental
+                && committed.RoslynAdapter?.HasSnapshot == true
+                && WorkspacePathIdentity.Equal(committed.Workspace.Context?.RootPath, projectPath);
+            ruleSet = request.RulesPath == null && sameIncrementalWorkspace
+                ? RefreshCommittedRuleSet(committed, projectPath)
+                : _ruleSetResolver.Resolve(request.RulesPath, projectPath);
+            var excludePaths = request.ExcludePaths == null && sameIncrementalWorkspace
+                ? committed.ExcludePaths
+                : NormalizePathGlobs(request.ExcludePaths);
+            var defineProfiles = request.DefineProfiles == null && sameIncrementalWorkspace
+                ? committed.RoslynAdapter!.RetainedProfileNames.ToArray()
+                : request.DefineProfiles;
+            var profileScopeChanged = sameIncrementalWorkspace
+                && defineProfiles is { Length: > 0 }
+                && !defineProfiles.SequenceEqual(
+                    committed.RoslynAdapter!.RetainedProfileNames,
+                    StringComparer.Ordinal);
+            var retainCompilations = sameIncrementalWorkspace
+                && !(profileScopeChanged && request.AllowFullFallback)
+                    ? true
+                    : !request.ReadOnly;
+            var config = new AnalysisConfig
+            {
+                RetainCompilations = retainCompilations,
+                DefineProfiles = defineProfiles,
+                ExcludePathGlobs = excludePaths,
+                AuthoritativeChangedFiles = request.AuthoritativeChangedFiles,
+                AllowFullFallback = request.AllowFullFallback,
+            };
+            IWorkspaceInputFingerprintProvider fingerprintProvider =
+                new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
+            var inputs = fingerprintProvider.CaptureAnalysisInputs(projectPath, config);
+            var spec = new AnalysisSpec(
+                inputs.EffectiveDefineProfiles,
+                excludePaths,
+                retainCompilations
+                    ? AnalysisRetentionMode.RetainedSemantic
+                    : AnalysisRetentionMode.GraphOnly,
+                AnalysisDescriptorPolicy.WorkspaceDiscovery,
+                ruleSet.Identity);
+            identity = new WorkspaceAnalysisIdentity(
+                WorkspacePathIdentity.CreateWorkspaceKey(projectPath),
+                spec,
+                inputs.SourceFingerprint);
+        }
+        else
+        {
+            throw new ArgumentException("Specify projectPath or graphPath.", nameof(request));
+        }
+
+        var preparedRequest = request with
+        {
+            ProjectPath = projectPath,
+            GraphPath = graphPath,
+        };
+        var executionPolicy = BuildExecutionPolicyFingerprint(
+            preparedRequest,
+            projectPath,
+            graphPath,
+            ruleSet.Source);
+        return new PreparedAnalyzeRequest(
+            preparedRequest,
+            identity,
+            new AnalysisCoalescingKey(identity.AnalysisKey, executionPolicy));
+    }
+
     /// <summary>
     /// Refresh the session if any tracked file has changed on disk since
     /// the last analyze. Idempotent: returns <c>null</c> when nothing
@@ -308,7 +404,8 @@ public sealed class GraphSession : IDisposable
                        bool allowFullFallback = false,
                        string[]? defineProfiles = null,
                        string[]? excludePaths = null,
-                       string[]? authoritativeChangedFiles = null)
+                       string[]? authoritativeChangedFiles = null,
+                       AnalysisKey? expectedAnalysisKey = null)
     {
         var committed = Current;
         var fullRequestedMode = "full";
@@ -330,7 +427,40 @@ public sealed class GraphSession : IDisposable
 
             if (canIncrementalThisProject)
             {
-                if (!readOnly && !committed.Workspace.HasCompilationState)
+                var requestedProfiles = defineProfiles?
+                    .Where(profile => !string.IsNullOrWhiteSpace(profile))
+                    .Select(profile => profile.Trim())
+                    .ToArray();
+                var profileScopeChanged = requestedProfiles is { Length: > 0 }
+                    && !requestedProfiles.SequenceEqual(
+                        committedAdapter!.RetainedProfileNames,
+                        StringComparer.Ordinal);
+                if (profileScopeChanged)
+                {
+                    var detail = "Define-profile order/set changed; full re-analyze required because the first profile owns retained compilations.";
+                    if (!allowFullFallback)
+                    {
+                        return BuildLoadResult(
+                            mode: "rejected",
+                            graph: null,
+                            analysis: null,
+                            usage: null,
+                            changedFileCount: 0,
+                            skipped: committedAdapter?.SkippedFiles,
+                            requestedMode: "incremental",
+                            fallbackReason: FallbackReason.AnalysisScopeChanged,
+                            fallbackDetail: detail,
+                            canRetryFull: true,
+                            projectPath: projectPath,
+                            rulesPath: rulesPath,
+                            identity: committed.Workspace.Identity);
+                    }
+
+                    fullRequestedMode = "incremental";
+                    fullFallbackReason = FallbackReason.AnalysisScopeChanged;
+                    fullFallbackDetail = detail;
+                }
+                else if (!readOnly && !committed.Workspace.HasCompilationState)
                 {
                     var detail = BuildCompilationStateRecoveryDetail(projectPath);
                     if (!allowFullFallback)
@@ -362,7 +492,8 @@ public sealed class GraphSession : IDisposable
                         rulesPath,
                         allowFullFallback,
                         excludePaths,
-                        authoritativeChangedFiles);
+                        authoritativeChangedFiles,
+                        expectedAnalysisKey);
                 }
             }
 
@@ -500,6 +631,20 @@ public sealed class GraphSession : IDisposable
             analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, resolvedRuleSet.Rules);
         }
 
+        var identity = candidateRoslynAdapter != null
+            ? BuildRoslynIdentity(
+                candidateProjectPath!,
+                candidateRoslynAdapter,
+                candidateExcludePaths,
+                retainCompilations: !readOnly,
+                resolvedRuleSet.Identity)
+            : BuildImportedGraphIdentity(
+                graphPath!,
+                importedGraphContent
+                    ?? throw new InvalidOperationException("Imported graph fingerprint was not captured."),
+                resolvedRuleSet.Identity);
+        EnsureExpectedAnalysisKey(expectedAnalysisKey, identity);
+
         if (candidateRoslynAdapter != null)
         {
             (newCompilationHost, newCodeExecutor, newRefactoring) =
@@ -512,18 +657,6 @@ public sealed class GraphSession : IDisposable
             var context = string.IsNullOrEmpty(candidateProjectPath)
                 ? null
                 : new WorkspaceContext(candidateProjectPath);
-            var identity = candidateRoslynAdapter != null
-                ? BuildRoslynIdentity(
-                    candidateProjectPath!,
-                    candidateRoslynAdapter,
-                    candidateExcludePaths,
-                    retainCompilations: !readOnly,
-                    resolvedRuleSet.Identity)
-                : BuildImportedGraphIdentity(
-                    graphPath!,
-                    importedGraphContent
-                        ?? throw new InvalidOperationException("Imported graph fingerprint was not captured."),
-                    resolvedRuleSet.Identity);
             var workspace = WorkspaceSnapshot.Create(
                 graph,
                 analysis,
@@ -557,7 +690,7 @@ public sealed class GraphSession : IDisposable
             projectPath: projectPath,
             graphPath: graphPath,
             rulesPath: resolvedRuleSet.Source,
-            identity: Current.Workspace.Identity);
+            identity: identity);
     }
 
     private string LoadIncremental(
@@ -566,7 +699,8 @@ public sealed class GraphSession : IDisposable
         string? rulesPath,
         bool allowFullFallback,
         string[]? excludePaths,
-        string[]? authoritativeChangedFiles)
+        string[]? authoritativeChangedFiles,
+        AnalysisKey? expectedAnalysisKey)
     {
         var capture = UsageProbe.Start();
         AnalysisUsage? usage = null;
@@ -636,6 +770,7 @@ public sealed class GraphSession : IDisposable
                 config.ExcludePathGlobs,
                 retainCompilations: true,
                 effectiveRuleSet.Identity);
+            EnsureExpectedAnalysisKey(expectedAnalysisKey, candidateIdentity);
 
             if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0)
             {
@@ -980,6 +1115,46 @@ public sealed class GraphSession : IDisposable
             .ToArray()
            ?? Array.Empty<string>();
 
+    private static ContentFingerprint BuildExecutionPolicyFingerprint(
+        AnalyzeToolRequest request,
+        string? projectPath,
+        string? graphPath,
+        string? effectiveRulesSource)
+    {
+        var changedFiles = request.AuthoritativeChangedFiles?
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => NormalizeExecutionPath(projectPath, path))
+            .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            .OrderBy(path => path, OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            .ToArray()
+            ?? Array.Empty<string>();
+
+        return ContentFingerprint.Compute(
+            "lifeblood.analysis-request-policy.v1",
+            new[]
+            {
+                request.Incremental ? "incremental" : "full",
+                request.AllowFullFallback ? "allow-fallback" : "reject-fallback",
+                NormalizeExecutionPath(null, projectPath),
+                NormalizeExecutionPath(null, graphPath),
+                effectiveRulesSource ?? "",
+                changedFiles.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            }.Concat(changedFiles));
+    }
+
+    private static string NormalizeExecutionPath(string? projectPath, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return "";
+
+        var fullPath = Path.GetFullPath(
+            Path.IsPathRooted(path)
+                ? path
+                : Path.Combine(projectPath ?? throw new InvalidOperationException(
+                    "A relative analysis path requires a project root."), path));
+        return OperatingSystem.IsWindows() ? fullPath.ToUpperInvariant() : fullPath;
+    }
+
     private static WorkspaceAnalysisIdentity BuildRoslynIdentity(
         string projectPath,
         RoslynWorkspaceAnalyzer adapter,
@@ -1029,6 +1204,14 @@ public sealed class GraphSession : IDisposable
         => committed.RuleSet.Identity.SourceKind == RuleSetSourceKind.None
             ? committed.RuleSet
             : _ruleSetResolver.Resolve(committed.RuleSet.Source, workspaceRoot);
+
+    private static void EnsureExpectedAnalysisKey(
+        AnalysisKey? expected,
+        WorkspaceAnalysisIdentity actual)
+    {
+        if (expected != null && expected != actual.AnalysisKey)
+            throw new AnalysisInputChangedException(expected, actual.AnalysisKey);
+    }
 
     private static Domain.Capabilities.AdapterCapability UnknownImportedGraphCapability(string? language)
         => new()

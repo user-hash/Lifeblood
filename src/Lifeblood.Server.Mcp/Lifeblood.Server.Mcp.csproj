@@ -25,6 +25,7 @@
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Lifeblood.Tests" />
     <ProjectReference Include="..\Lifeblood.Domain\Lifeblood.Domain.csproj" />
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
     <ProjectReference Include="..\Lifeblood.Analysis\Lifeblood.Analysis.csproj" />

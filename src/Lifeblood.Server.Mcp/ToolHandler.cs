@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
@@ -40,6 +41,8 @@ public sealed class ToolHandler
     private readonly ToolJsonCompatibilityMode _jsonCompatibilityMode;
     private readonly ISessionGate _sessionGate;
     private readonly WorkspaceBindingPolicy? _workspaceBinding;
+    private readonly AnalysisRequestCoordinator<McpToolResult> _analysisCoordinator;
+    private readonly AsyncLocal<PreparedAnalyzeRequest?> _preparedAnalyze = new();
 
     private bool TelemetryEnabled => !ReferenceEquals(_telemetry, NoOpTelemetrySink.Instance);
 
@@ -70,7 +73,8 @@ public sealed class ToolHandler
         ToolArgumentBinder? argumentBinder = null,
         ToolJsonCompatibilityMode jsonCompatibilityMode = ToolJsonCompatibilityMode.Legacy,
         ISessionGate? sessionGate = null,
-        string? boundWorkspaceRoot = null)
+        string? boundWorkspaceRoot = null,
+        AnalysisRequestCoordinator<McpToolResult>? analysisCoordinator = null)
     {
         _session = session;
         _provider = provider;
@@ -89,6 +93,7 @@ public sealed class ToolHandler
         _workspaceBinding = string.IsNullOrWhiteSpace(boundWorkspaceRoot)
             ? null
             : new WorkspaceBindingPolicy(boundWorkspaceRoot);
+        _analysisCoordinator = analysisCoordinator ?? new AnalysisRequestCoordinator<McpToolResult>();
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
     }
 
@@ -105,9 +110,55 @@ public sealed class ToolHandler
         => _sessionGate.Read(() => ToolRegistry.GetTools(CurrentSessionState()));
 
     public McpToolResult Handle(string toolName, JsonElement? arguments)
-        => ToolRegistry.FindDefinition(toolName)?.Behavior.SessionAccess == ToolSessionAccess.Exclusive
+        => string.Equals(toolName, "lifeblood_analyze", StringComparison.Ordinal)
+            ? HandleAnalyzeCoalesced(arguments)
+            : ToolRegistry.FindDefinition(toolName)?.Behavior.SessionAccess == ToolSessionAccess.Exclusive
             ? _sessionGate.Write(() => HandleCore(toolName, arguments))
             : _sessionGate.Read(() => HandleCore(toolName, arguments));
+
+    internal int InFlightAnalysisCount => _analysisCoordinator.InFlightCount;
+
+    private McpToolResult HandleAnalyzeCoalesced(JsonElement? arguments)
+    {
+        PreparedAnalyzeRequest prepared;
+        try
+        {
+            var binding = _argumentBinder.Validate(
+                "lifeblood_analyze",
+                arguments,
+                _jsonCompatibilityMode);
+            if (!binding.Accepted)
+                return _sessionGate.Write(() => HandleCore("lifeblood_analyze", arguments));
+
+            var request = ToolRequestBinder.BindAnalyze(arguments);
+            request = _workspaceBinding?.Bind(request) ?? request;
+            prepared = _session.PrepareAnalysis(request);
+        }
+        catch
+        {
+            // Preparation uses the same bind/rule/filesystem contracts as the
+            // real handler. Let HandleCore render its established structured
+            // error shape when preparation cannot produce a valid key.
+            return _sessionGate.Write(() => HandleCore("lifeblood_analyze", arguments));
+        }
+
+        var coordination = _analysisCoordinator.Execute(
+            prepared.CoalescingKey,
+            _ =>
+            {
+                _preparedAnalyze.Value = prepared;
+                try
+                {
+                    return _sessionGate.Write(() => HandleCore("lifeblood_analyze", arguments));
+                }
+                finally
+                {
+                    _preparedAnalyze.Value = null;
+                }
+            });
+
+        return AddAnalysisCoordination(coordination);
+    }
 
     private ToolSessionState CurrentSessionState() => new(
         HasAnalyzedWorkspace: _session.IsLoaded,
@@ -264,11 +315,13 @@ public sealed class ToolHandler
 
     private McpToolResult HandleAnalyze(JsonElement? args)
     {
-        var request = ToolRequestBinder.BindAnalyze(args);
+        var prepared = _preparedAnalyze.Value;
+        var request = prepared?.Request ?? ToolRequestBinder.BindAnalyze(args);
 
         try
         {
-            request = _workspaceBinding?.Bind(request) ?? request;
+            if (prepared == null)
+                request = _workspaceBinding?.Bind(request) ?? request;
             var result = _session.Load(
                 request.ProjectPath,
                 request.GraphPath,
@@ -278,9 +331,23 @@ public sealed class ToolHandler
                 request.AllowFullFallback,
                 request.DefineProfiles,
                 request.ExcludePaths,
-                request.AuthoritativeChangedFiles);
+                request.AuthoritativeChangedFiles,
+                expectedAnalysisKey: prepared?.Identity.AnalysisKey);
             RecordAnalyzeTelemetry(result);
             return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
+        }
+        catch (AnalysisInputChangedException ex)
+        {
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = "lifeblood_analyze",
+                failure = "analysis-input-changed",
+                expectedAnalysisKey = ex.Expected.Value,
+                actualAnalysisKey = ex.Actual.Value,
+                retryable = true,
+                message = ex.Message,
+            }, JsonOpts));
         }
         catch (WorkspaceBindingException ex)
         {
@@ -312,6 +379,36 @@ public sealed class ToolHandler
                 message = ex.Message,
             }, JsonOpts));
         }
+    }
+
+    private static McpToolResult AddAnalysisCoordination(
+        AnalysisCoordinationResult<McpToolResult> coordination)
+    {
+        var source = coordination.Value;
+        var content = source.Content
+            .Select(item => new McpContent { Type = item.Type, Text = item.Text })
+            .ToArray();
+
+        JsonObject? payload = null;
+        if (content.Length > 0)
+        {
+            try { payload = JsonNode.Parse(content[0].Text) as JsonObject; }
+            catch (JsonException) { }
+        }
+
+        if (payload != null)
+        {
+            payload["analysisRequestId"] = coordination.AnalysisRequestId;
+            payload["coalesced"] = coordination.Coalesced;
+            payload["waiterCount"] = coordination.WaiterCount;
+            content[0].Text = payload.ToJsonString(JsonOpts);
+        }
+
+        return new McpToolResult
+        {
+            Content = content,
+            IsError = source.IsError,
+        };
     }
 
     private static string[]? ReadStringArray(JsonElement? args, string key)
