@@ -106,6 +106,15 @@ public sealed class ModuleInfo
     public string[] Dependencies { get; init; } = Array.Empty<string>();
 
     public bool IsPure { get; init; }
+
+    /// <summary>
+    /// True when the project descriptor declares that this module is compiled
+    /// only for an editor host. Profile application excludes such modules from
+    /// player compilations instead of compiling editor source with player
+    /// preprocessor symbols. Default false preserves non-Unity behavior.
+    /// </summary>
+    public bool IsEditorOnly { get; init; }
+
     public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
 
     /// <summary>

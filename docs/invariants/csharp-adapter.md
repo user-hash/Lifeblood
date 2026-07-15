@@ -96,6 +96,8 @@ csproj-driven option follows the same shape.
   entire `ModuleInfo` on csproj edit, not just one field. The next compilation
   fact added under this convention ships with zero new incremental work.
 
+- **INV-COMPFACT-UNITY-PROJECT-TYPE-001. `<UnityProjectType>` is the descriptor-owned module-applicability fact for Unity profile analysis.**
+
 - **INV-RUNTIME-ASYNC-COMPAT-001. Runtime Async starts as user-project
   compatibility metadata, not a Lifeblood server feature.** If an analyzed
   csproj declares `<Features>runtime-async=on</Features>` or another compiler

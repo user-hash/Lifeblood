@@ -26,4 +26,11 @@ public sealed class DefineProfile
 
     /// <summary>Symbols removed relative to baseline.</summary>
     public required string[] RemoveDefines { get; init; }
+
+    /// <summary>
+    /// Whether modules declared editor-only by their project descriptor are
+    /// part of this profile. Defaults to true for backward compatibility with
+    /// non-Unity resolvers and the identity Editor profile.
+    /// </summary>
+    public bool IncludeEditorOnlyModules { get; init; } = true;
 }
