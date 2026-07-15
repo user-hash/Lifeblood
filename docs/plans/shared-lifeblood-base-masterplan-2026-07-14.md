@@ -7,21 +7,23 @@ waiting for a quiescent workspace; path provenance and Wave 1 tool-behavior
 source of truth implemented; Wave 2 explicit workspace context, failure-
 isolated candidates, one-reference publication, and reference-counted read
 leases with deferred disposal are implemented; Wave 4 typed host identity and
-canonical workspace admission are implemented; stable snapshot identity is
-implemented; canonical analysis spec and source fingerprint are next
+canonical workspace admission are implemented; stable snapshot identity plus
+canonical analysis/spec/source/rule identity are implemented; identical
+in-flight analysis coalescing is next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
 
 Checkpoint stop: implementation is committed through immutable candidate
 publication, non-blocking read leases/deferred disposal, canonical shared-host
-identity/workspace admission, and globally unique committed `SnapshotId`.
-Resume in this order: (1) capture the frozen DAWG Wave 0 receipt only after its
-working tree is quiescent; (2) implement canonical `AnalysisSpec`, rule/source/
-descriptor fingerprints, and `AnalysisKey`; (3) coalesce identical analyses;
-(4) replace per-frame pipes with persistent client leases plus idle eviction;
-(5) add snapshot preconditions/batches and the bounded graph-history catalog;
-(6) complete Lifeblood/DAWG rollout, packaging, evidence, and docs gates.
+identity/workspace admission, globally unique committed `SnapshotId`, and one
+`WorkspaceAnalysisIdentity` authority for `AnalysisSpec`, rule/source/
+descriptor fingerprints, `BaseKey`, and `AnalysisKey`. Resume in this order:
+(1) coalesce identical analyses; (2) replace per-frame pipes with persistent
+client leases plus idle eviction; (3) add snapshot preconditions/batches and
+the bounded graph-history catalog; (4) capture the frozen DAWG receipt and
+complete Lifeblood/DAWG rollout, packaging, evidence, and docs gates once the
+DAWG tree is quiescent.
 
 ## Goal
 
@@ -177,7 +179,7 @@ property.
 | Resolved before Wave 2 | `tools/list` read session state outside the session gate | `McpDispatcher.HandleToolsList` read `HasCompilationState` directly while analyze could replace the session. | `McpDispatcher` no longer owns `GraphSession`; `ToolHandler.GetTools` evaluates registry availability under the shared session gate. Snapshot leases replace this gate read in Wave 2 without changing the dispatcher boundary. |
 | Resolved in Wave 1 | Tool labels conflated state and effects | `WriteSide` meant retained compilation required, even for observation or returned edits; only analyze and compile-check needed exclusive access. | Every tool now declares one immutable `ToolBehavior`: hierarchical `sessionRequirement` (including retained compilation), independent `effect`, and independent `sessionAccess`. Legacy read/write fields are derived compatibility aliases. |
 | P1 | Incremental acceptance is not explainable enough | DAWG reported 310 changed source files without an itemized/fingerprinted receipt in the response. | Bounded changed-set provenance, descriptor/scope/source fingerprint, and summarize/detail controls. |
-| P1 | Rule identity is not refresh-aware | Incremental no-op reuses the prior `AnalysisResult` even when a different `rulesPath` is requested, and stale auto-refresh currently analyzes with no rules. | Put normalized rule identity/content hash in `AnalysisSpec` and `AnalysisKey`; a rule change must rerun rule analysis and publish a new generation without recompiling unchanged source. |
+| Resolved in Wave 3 identity atom | Rule identity was not refresh-aware | `AnalysisRuleSetResolver` now returns parsed rules and their content identity together; explicit and committed-path refreshes cannot drift. | A rule-only change reruns stateless rule analysis, advances generation / snapshot / analysis identity, and shares the existing reference-counted semantic-service bundle without recompilation. |
 | P1 | Shared capability is advertised too broadly | The uncommitted feature flag reports shared transport support without proving the active transport mode or lifecycle contract. | Report actual mode, protocol version, daemon identity, lease state, and capability version. |
 | P2 | One active graph cannot represent named investigation lanes | Editor/Player and platform-specific lanes overwrite the singleton session. | Bounded snapshot catalog; graph-only historical pins by default, explicit cost for extra semantic bases. |
 | P2 | Cross-workspace process consolidation is undecided | Current daemon is one singleton workspace session. | First ship one daemon per workspace key; add a multi-workspace supervisor only after correctness and process/memory evidence justify it. |
@@ -455,6 +457,16 @@ Purpose: ensure agents share work, not only the final heap.
 
 Exit gate: N simultaneous identical full or incremental requests call the
 analyzer once and publish once; non-identical requests never join.
+
+Implementation status: step 1 is complete. Domain-owned, length-framed
+`ContentFingerprint` values compose the canonical `WorkspaceKey`,
+`AnalysisSpec`, `BaseKey`, `SourceFingerprint`, and `AnalysisKey` inside one
+`WorkspaceAnalysisIdentity` stored on the committed `WorkspaceSnapshot`.
+Roslyn snapshots fold source content, discovery descriptors, asmdefs, external
+references, and source-generator binaries into the receipt. Rule identity is
+content-authoritative and rule-only refreshes reuse one reference-counted
+semantic service base. Steps 2-5 (in-flight registry, response request/waiter
+facts, waiter-aware cancellation, and deterministic failure fan-out) are next.
 
 ### Wave 4 - Versioned Persistent Transport And Daemon Lifecycle
 

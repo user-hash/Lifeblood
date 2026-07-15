@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
@@ -6,7 +7,6 @@ using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
-using Lifeblood.Domain.Rules;
 using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Server.Mcp;
@@ -27,6 +27,7 @@ public sealed class GraphSession : IDisposable
 
     private readonly IFileSystem _fs;
     private readonly ITelemetrySink _telemetry;
+    private readonly AnalysisRuleSetResolver _ruleSetResolver;
     private readonly AsyncLocal<CommittedGraphSessionState?> _leasedState = new();
     private CommittedGraphSessionState _current = CommittedGraphSessionState.CreateEmpty();
 
@@ -37,6 +38,7 @@ public sealed class GraphSession : IDisposable
     {
         _fs = fs;
         _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
+        _ruleSetResolver = new AnalysisRuleSetResolver(fs);
     }
 
     /// <summary>
@@ -184,6 +186,9 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     public SnapshotId SnapshotId => Current.Workspace.SnapshotId;
 
+    /// <summary>The canonical equality/provenance contract of the current publication.</summary>
+    public WorkspaceAnalysisIdentity? AnalysisIdentity => Current.Workspace.Identity;
+
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
     public bool CanIncremental => Current.RoslynAdapter?.HasSnapshot == true;
 
@@ -230,7 +235,15 @@ public sealed class GraphSession : IDisposable
                 return null;
             var graph = incremental.Graph;
             var changedFileCount = incremental.ChangedFileCount;
-            if (changedFileCount == 0)
+            var ruleSet = RefreshCommittedRuleSet(committed, projectPath);
+            var identity = BuildRoslynIdentity(
+                projectPath,
+                candidateAdapter,
+                config.ExcludePathGlobs,
+                retainCompilations: true,
+                ruleSet.Identity);
+            if (changedFileCount == 0
+                && committed.Workspace.Identity?.AnalysisKey == identity.AnalysisKey)
             {
                 Commit(committed.WithRoslynAdapter(candidateAdapter));
                 return null;
@@ -241,29 +254,41 @@ public sealed class GraphSession : IDisposable
             AnalysisResult analysis;
             using (TelemetryPhase("auto-refresh.analyze"))
             {
-                analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, null);
+                analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, ruleSet.Rules);
             }
-
-            var (newCompilationHost, newCodeExecutor, newRefactoring) =
-                CreateCompilationServices(candidateAdapter, graph, projectPath);
 
             using (TelemetryPhase("auto-refresh.commit"))
             {
-                var workspace = WorkspaceSnapshot.Create(
-                    graph,
-                    analysis,
-                    candidateAdapter.Capability,
-                    "csharp",
-                    committed.Workspace.Context,
-                    DateTime.UtcNow,
-                    checked(committed.Workspace.AnalysisGeneration + 1),
-                    newCompilationHost,
-                    newCodeExecutor,
-                    newRefactoring);
+                WorkspaceSnapshot workspace;
+                if (changedFileCount == 0)
+                {
+                    workspace = committed.Workspace.DeriveAnalysis(
+                        analysis,
+                        identity,
+                        DateTime.UtcNow,
+                        checked(committed.Workspace.AnalysisGeneration + 1));
+                }
+                else
+                {
+                    var (newCompilationHost, newCodeExecutor, newRefactoring) =
+                        CreateCompilationServices(candidateAdapter, graph, projectPath);
+                    workspace = WorkspaceSnapshot.Create(
+                        graph,
+                        analysis,
+                        candidateAdapter.Capability,
+                        "csharp",
+                        committed.Workspace.Context,
+                        DateTime.UtcNow,
+                        checked(committed.Workspace.AnalysisGeneration + 1),
+                        newCompilationHost,
+                        newCodeExecutor,
+                        newRefactoring,
+                        identity: identity);
+                }
                 Commit(new CommittedGraphSessionState(
                     workspace,
                     candidateAdapter,
-                    committed.RulesPath,
+                    ruleSet,
                     committed.ExcludePaths));
             }
 
@@ -383,12 +408,21 @@ public sealed class GraphSession : IDisposable
         RoslynWorkspaceAnalyzer? candidateRoslynAdapter = null;
         string? candidateProjectPath = null;
         var candidateExcludePaths = Array.Empty<string>();
+        AnalysisRuleSetResolver.ResolvedRuleSet? candidateRuleSet = null;
+        ContentFingerprint? importedGraphContent = null;
 
         if (!string.IsNullOrEmpty(graphPath))
         {
             // JSON graph path: import + validate here (no use case involved)
             if (!_fs.FileExists(graphPath))
                 return $"Graph file not found: {graphPath}";
+
+            var graphWorkspaceRoot = WorkspacePathIdentity.ResolveWorkspaceRoot(
+                Path.GetDirectoryName(Path.GetFullPath(graphPath))!);
+            candidateRuleSet = _ruleSetResolver.Resolve(rulesPath, graphWorkspaceRoot);
+
+            using (var fingerprintStream = _fs.OpenRead(graphPath))
+                importedGraphContent = ContentFingerprint.FromHashBytes(SHA256.HashData(fingerprintStream));
 
             GraphDocument doc;
             using (TelemetryPhase("json-import"))
@@ -415,6 +449,8 @@ public sealed class GraphSession : IDisposable
             // Roslyn path: AnalyzeWorkspaceUseCase validates internally
             if (!_fs.DirectoryExists(projectPath))
                 return $"Project directory not found: {projectPath}";
+
+            candidateRuleSet = _ruleSetResolver.Resolve(rulesPath, projectPath);
 
             // INV-MULTI-DEFINE-UNITY-RESOLVER-001. UnityDefineProfileResolver
             // auto-detects Library/ and returns 2 profiles on Unity, single
@@ -456,11 +492,12 @@ public sealed class GraphSession : IDisposable
         }
 
         // Analyze (rules are optional — resolve built-in name first, then file path)
-        ArchitectureRule[]? rules = ResolveRules(rulesPath);
+        var resolvedRuleSet = candidateRuleSet
+            ?? throw new InvalidOperationException("Rule identity was not resolved for the analysis candidate.");
         AnalysisResult analysis;
         using (TelemetryPhase("rules-analyze"))
         {
-            analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
+            analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, resolvedRuleSet.Rules);
         }
 
         if (candidateRoslynAdapter != null)
@@ -475,6 +512,18 @@ public sealed class GraphSession : IDisposable
             var context = string.IsNullOrEmpty(candidateProjectPath)
                 ? null
                 : new WorkspaceContext(candidateProjectPath);
+            var identity = candidateRoslynAdapter != null
+                ? BuildRoslynIdentity(
+                    candidateProjectPath!,
+                    candidateRoslynAdapter,
+                    candidateExcludePaths,
+                    retainCompilations: !readOnly,
+                    resolvedRuleSet.Identity)
+                : BuildImportedGraphIdentity(
+                    graphPath!,
+                    importedGraphContent
+                        ?? throw new InvalidOperationException("Imported graph fingerprint was not captured."),
+                    resolvedRuleSet.Identity);
             var workspace = WorkspaceSnapshot.Create(
                 graph,
                 analysis,
@@ -485,11 +534,12 @@ public sealed class GraphSession : IDisposable
                 checked(committed.Workspace.AnalysisGeneration + 1),
                 newCompilationHost,
                 newCodeExecutor,
-                newRefactoring);
+                newRefactoring,
+                identity: identity);
             Commit(new CommittedGraphSessionState(
                 workspace,
                 candidateRoslynAdapter,
-                rulesPath,
+                resolvedRuleSet,
                 candidateExcludePaths));
         }
 
@@ -506,7 +556,8 @@ public sealed class GraphSession : IDisposable
             activeProfiles: defineProfiles,
             projectPath: projectPath,
             graphPath: graphPath,
-            rulesPath: rulesPath);
+            rulesPath: resolvedRuleSet.Source,
+            identity: Current.Workspace.Identity);
     }
 
     private string LoadIncremental(
@@ -521,151 +572,203 @@ public sealed class GraphSession : IDisposable
         AnalysisUsage? usage = null;
         try
         {
-        var config = new AnalysisConfig
-        {
-            RetainCompilations = true,
-            AllowFullFallback = allowFullFallback,
-            ExcludePathGlobs = excludePaths == null ? committed.ExcludePaths : NormalizePathGlobs(excludePaths),
-            AuthoritativeChangedFiles = authoritativeChangedFiles,
-        };
-        var candidateAdapter = committed.RoslynAdapter!.ForkForIncrementalCandidate();
-        IncrementalAnalyzeResult incremental;
-        using (TelemetryPhase("incremental-analyze",
-            new TelemetryTag("analyze.allow_full_fallback", allowFullFallback)))
-        {
-            incremental = candidateAdapter.IncrementalAnalyze(config);
-        }
-        capture.MarkPhase("incremental");
+            var effectiveRuleSet = rulesPath == null
+                ? RefreshCommittedRuleSet(committed, projectPath)
+                : _ruleSetResolver.Resolve(rulesPath, projectPath);
+            var config = new AnalysisConfig
+            {
+                RetainCompilations = true,
+                AllowFullFallback = allowFullFallback,
+                ExcludePathGlobs = excludePaths == null ? committed.ExcludePaths : NormalizePathGlobs(excludePaths),
+                AuthoritativeChangedFiles = authoritativeChangedFiles,
+                DefineProfiles = committed.RoslynAdapter!.RetainedProfileNames.ToArray(),
+            };
+            var candidateAdapter = committed.RoslynAdapter.ForkForIncrementalCandidate();
+            IncrementalAnalyzeResult incremental;
+            using (TelemetryPhase("incremental-analyze",
+                new TelemetryTag("analyze.allow_full_fallback", allowFullFallback)))
+            {
+                incremental = candidateAdapter.IncrementalAnalyze(config);
+            }
+            capture.MarkPhase("incremental");
 
-        // INV-MULTI-DEFINE-INCREMENTAL-001. Snapshot's retained profile set echoed
-        // on every incremental wire path (rejected / noop / incremental / full
-        // fallback). Count == 1 collapses to null per BuildLoadResult contract —
-        // single-profile back-compat byte-stable. The committed adapter is non-null
-        // here per the CanIncremental gate at the public Load entry.
-        var incrActiveProfiles = candidateAdapter.RetainedProfileNames is { Count: > 1 } names
-            ? names.ToArray()
-            : null;
+            // INV-MULTI-DEFINE-INCREMENTAL-001. Snapshot's retained profile set echoed
+            // on every incremental wire path (rejected / noop / incremental / full
+            // fallback). Count == 1 collapses to null per BuildLoadResult contract —
+            // single-profile back-compat byte-stable. The committed adapter is non-null
+            // here per the CanIncremental gate at the public Load entry.
+            var incrActiveProfiles = candidateAdapter.RetainedProfileNames is { Count: > 1 } names
+                ? names.ToArray()
+                : null;
 
-        // INV-ANALYZE-FALLBACK-001: caller refused widening; the adapter
-        // returned a typed Rejected. Surface it on the wire — the agent
-        // re-runs explicitly with allowFullFallback:true or switches to
-        // a non-incremental call.
-        if (incremental.Mode == IncrementalMode.Rejected)
-        {
+            // INV-ANALYZE-FALLBACK-001: caller refused widening; the adapter
+            // returned a typed Rejected. Surface it on the wire — the agent
+            // re-runs explicitly with allowFullFallback:true or switches to
+            // a non-incremental call.
+            if (incremental.Mode == IncrementalMode.Rejected)
+            {
+                usage = capture.Stop();
+                return BuildLoadResult(
+                    mode: "rejected",
+                    graph: null,
+                    analysis: null,
+                    usage: usage,
+                    changedFileCount: 0,
+                    mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
+                    contentChangedFileCount: incremental.ContentChangedFileCount,
+                    skipped: committed.RoslynAdapter?.SkippedFiles,
+                    requestedMode: "incremental",
+                    fallbackReason: incremental.Reason,
+                    fallbackDetail: incremental.Detail,
+                    canRetryFull: true,
+                    activeProfiles: incrActiveProfiles,
+                    projectPath: projectPath,
+                    rulesPath: effectiveRuleSet.Source,
+                    identity: committed.Workspace.Identity);
+            }
+
+            // From here on Graph is non-null (Incremental or FullFallback).
+            var graph = incremental.Graph!;
+            var changedFileCount = incremental.ChangedFileCount;
+            var candidateIdentity = BuildRoslynIdentity(
+                projectPath,
+                candidateAdapter,
+                config.ExcludePathGlobs,
+                retainCompilations: true,
+                effectiveRuleSet.Identity);
+
+            if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0)
+            {
+                if (committed.Workspace.Identity?.AnalysisKey != candidateIdentity.AnalysisKey)
+                {
+                    AnalysisResult refreshedAnalysis;
+                    using (TelemetryPhase("incremental-rules-analyze"))
+                    {
+                        refreshedAnalysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, effectiveRuleSet.Rules);
+                    }
+                    capture.MarkPhase("rules-analyze");
+
+                    using (TelemetryPhase("incremental-session-commit"))
+                    {
+                        var workspace = committed.Workspace.DeriveAnalysis(
+                            refreshedAnalysis,
+                            candidateIdentity,
+                            DateTime.UtcNow,
+                            checked(committed.Workspace.AnalysisGeneration + 1));
+                        Commit(new CommittedGraphSessionState(
+                            workspace,
+                            candidateAdapter,
+                            effectiveRuleSet,
+                            config.ExcludePathGlobs));
+                    }
+
+                    usage = capture.Stop();
+                    return BuildLoadResult(
+                        mode: "incremental",
+                        graph: graph,
+                        analysis: refreshedAnalysis,
+                        usage: usage,
+                        changedFileCount: 0,
+                        mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
+                        contentChangedFileCount: incremental.ContentChangedFileCount,
+                        skipped: candidateAdapter.SkippedFiles,
+                        requestedMode: "incremental",
+                        activeProfiles: incrActiveProfiles,
+                        projectPath: projectPath,
+                        rulesPath: effectiveRuleSet.Source,
+                        identity: candidateIdentity);
+                }
+
+                Commit(committed.WithRoslynAdapter(candidateAdapter));
+                usage = capture.Stop();
+                // Graph is unchanged on noop — reuse the prior session analysis
+                // so the response surfaces real modules/types/files/violations/cycles
+                // counts instead of zeros. Pre-fix this passed analysis:null and
+                // BuildLoadResult fell back to 0 across the board, making
+                // incremental-noop responses indistinguishable from "no graph
+                // loaded" to anything reading the summary metrics.
+                return BuildLoadResult(
+                    mode: "incremental-noop",
+                    graph: graph,
+                    analysis: committed.Workspace.Analysis,
+                    usage: usage,
+                    changedFileCount: 0,
+                    mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
+                    contentChangedFileCount: incremental.ContentChangedFileCount,
+                    skipped: candidateAdapter.SkippedFiles,
+                    requestedMode: "incremental",
+                    activeProfiles: incrActiveProfiles,
+                    projectPath: projectPath,
+                    rulesPath: effectiveRuleSet.Source,
+                    identity: committed.Workspace.Identity);
+            }
+
+            // Validate the rebuilt graph
+            GraphValidationError[] errors;
+            using (TelemetryPhase("incremental-validate"))
+            {
+                errors = GraphValidator.Validate(graph);
+            }
+            if (errors.Length > 0)
+            {
+                capture.Dispose();
+                return $"Incremental graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
+            }
+
+            AnalysisResult analysis;
+            using (TelemetryPhase("incremental-rules-analyze"))
+            {
+                analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, effectiveRuleSet.Rules);
+            }
+            capture.MarkPhase("validate-analyze");
+
+            var (newCompilationHost, newCodeExecutor, newRefactoring) =
+                CreateCompilationServices(candidateAdapter, graph, projectPath);
+
+            using (TelemetryPhase("incremental-session-commit"))
+            {
+                var workspace = WorkspaceSnapshot.Create(
+                    graph,
+                    analysis,
+                    candidateAdapter.Capability,
+                    "csharp",
+                    committed.Workspace.Context,
+                    DateTime.UtcNow,
+                    checked(committed.Workspace.AnalysisGeneration + 1),
+                    newCompilationHost,
+                    newCodeExecutor,
+                    newRefactoring,
+                    identity: candidateIdentity);
+                Commit(new CommittedGraphSessionState(
+                    workspace,
+                    candidateAdapter,
+                    effectiveRuleSet,
+                    config.ExcludePathGlobs));
+            }
+
             usage = capture.Stop();
+            // INV-ANALYZE-FALLBACK-001: `mode` reports what the adapter DID,
+            // `requestedMode` reports what the caller ASKED. FullFallback's
+            // `mode` is "full" (the truth: the adapter did a full re-analyze)
+            // and the `fallbackReason` field surfaces alongside so the caller
+            // sees the cache-miss without parsing a hybrid mode value.
+            var wireMode = incremental.Mode == IncrementalMode.FullFallback ? "full" : "incremental";
             return BuildLoadResult(
-                mode: "rejected",
-                graph: null,
-                analysis: null,
-                usage: usage,
-                changedFileCount: 0,
-                mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
-                contentChangedFileCount: incremental.ContentChangedFileCount,
-                skipped: committed.RoslynAdapter?.SkippedFiles,
-                requestedMode: "incremental",
-                fallbackReason: incremental.Reason,
-                fallbackDetail: incremental.Detail,
-                canRetryFull: true,
-                activeProfiles: incrActiveProfiles,
-                projectPath: projectPath,
-                rulesPath: rulesPath ?? committed.RulesPath);
-        }
-
-        // From here on Graph is non-null (Incremental or FullFallback).
-        var graph = incremental.Graph!;
-        var changedFileCount = incremental.ChangedFileCount;
-
-        if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0)
-        {
-            Commit(committed.WithRoslynAdapter(candidateAdapter));
-            usage = capture.Stop();
-            // Graph is unchanged on noop — reuse the prior session analysis
-            // so the response surfaces real modules/types/files/violations/cycles
-            // counts instead of zeros. Pre-fix this passed analysis:null and
-            // BuildLoadResult fell back to 0 across the board, making
-            // incremental-noop responses indistinguishable from "no graph
-            // loaded" to anything reading the summary metrics.
-            return BuildLoadResult(
-                mode: "incremental-noop",
+                mode: wireMode,
                 graph: graph,
-                analysis: committed.Workspace.Analysis,
+                analysis: analysis,
                 usage: usage,
-                changedFileCount: 0,
+                changedFileCount: changedFileCount,
                 mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
                 contentChangedFileCount: incremental.ContentChangedFileCount,
                 skipped: candidateAdapter.SkippedFiles,
                 requestedMode: "incremental",
+                fallbackReason: incremental.Reason,
+                fallbackDetail: incremental.Detail,
                 activeProfiles: incrActiveProfiles,
                 projectPath: projectPath,
-                rulesPath: rulesPath ?? committed.RulesPath);
-        }
-
-        // Validate the rebuilt graph
-        GraphValidationError[] errors;
-        using (TelemetryPhase("incremental-validate"))
-        {
-            errors = GraphValidator.Validate(graph);
-        }
-        if (errors.Length > 0)
-        {
-            capture.Dispose();
-            return $"Incremental graph validation failed: {errors.Length} errors. First: [{errors[0].Code}] {errors[0].Message}";
-        }
-
-        var effectiveRulesPath = rulesPath ?? committed.RulesPath;
-        ArchitectureRule[]? rules = ResolveRules(effectiveRulesPath);
-        AnalysisResult analysis;
-        using (TelemetryPhase("incremental-rules-analyze"))
-        {
-            analysis = Lifeblood.Analysis.AnalysisPipeline.Run(graph, rules);
-        }
-        capture.MarkPhase("validate-analyze");
-
-        var (newCompilationHost, newCodeExecutor, newRefactoring) =
-            CreateCompilationServices(candidateAdapter, graph, projectPath);
-
-        using (TelemetryPhase("incremental-session-commit"))
-        {
-            var workspace = WorkspaceSnapshot.Create(
-                graph,
-                analysis,
-                candidateAdapter.Capability,
-                "csharp",
-                committed.Workspace.Context,
-                DateTime.UtcNow,
-                checked(committed.Workspace.AnalysisGeneration + 1),
-                newCompilationHost,
-                newCodeExecutor,
-                newRefactoring);
-            Commit(new CommittedGraphSessionState(
-                workspace,
-                candidateAdapter,
-                effectiveRulesPath,
-                config.ExcludePathGlobs));
-        }
-
-        usage = capture.Stop();
-        // INV-ANALYZE-FALLBACK-001: `mode` reports what the adapter DID,
-        // `requestedMode` reports what the caller ASKED. FullFallback's
-        // `mode` is "full" (the truth: the adapter did a full re-analyze)
-        // and the `fallbackReason` field surfaces alongside so the caller
-        // sees the cache-miss without parsing a hybrid mode value.
-        var wireMode = incremental.Mode == IncrementalMode.FullFallback ? "full" : "incremental";
-        return BuildLoadResult(
-            mode: wireMode,
-            graph: graph,
-            analysis: analysis,
-            usage: usage,
-            changedFileCount: changedFileCount,
-            mtimeTouchedFileCount: incremental.MtimeTouchedFileCount,
-            contentChangedFileCount: incremental.ContentChangedFileCount,
-            skipped: candidateAdapter.SkippedFiles,
-            requestedMode: "incremental",
-            fallbackReason: incremental.Reason,
-            fallbackDetail: incremental.Detail,
-            activeProfiles: incrActiveProfiles,
-            projectPath: projectPath,
-            rulesPath: effectiveRulesPath);
+                rulesPath: effectiveRuleSet.Source,
+                identity: candidateIdentity);
         }
         catch
         {
@@ -698,7 +801,8 @@ public sealed class GraphSession : IDisposable
         string[]? activeProfiles = null,
         string? projectPath = null,
         string? graphPath = null,
-        string? rulesPath = null)
+        string? rulesPath = null,
+        WorkspaceAnalysisIdentity? identity = null)
     {
         // Skipped files surface in the analyze response so users can see
         // exactly which files the adapter dropped and why. Emitted as
@@ -770,6 +874,23 @@ public sealed class GraphSession : IDisposable
             mtimeTouchedSourceFiles = mtimeTouchedFileCount,
             contentChangedSourceFiles = contentChangedFileCount,
             skipped = skippedField,
+            analysisIdentity = identity == null ? null : new
+            {
+                workspaceKey = identity.Workspace.Value,
+                baseKey = identity.BaseKey.Value,
+                analysisKey = identity.AnalysisKey.Value,
+                specFingerprint = identity.Spec.Fingerprint.Value,
+                sourceFingerprint = identity.Source.Fingerprint.Value,
+                sourceContentFingerprint = identity.Source.SourceContent.Value,
+                descriptorFingerprint = identity.Source.Descriptors.Value,
+                sourceFileCount = identity.Source.SourceFileCount,
+                descriptorFileCount = identity.Source.DescriptorFileCount,
+                ruleFingerprint = identity.Spec.RuleSet.Fingerprint.Value,
+                retentionMode = identity.Spec.RetentionMode.ToString(),
+                descriptorPolicy = identity.Spec.DescriptorPolicy.ToString(),
+                defineProfiles = identity.Spec.DefineProfiles,
+                excludePathGlobs = identity.Spec.ExcludePathGlobs,
+            },
             evidenceReceipt = ServerIdentity.BuildAnalyzeEvidenceReceipt(
                 mode,
                 requestedMode,
@@ -828,10 +949,10 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     private static string WireReasonName(FallbackReason reason) => reason switch
     {
-        FallbackReason.NoPriorAnalysis         => "noPriorAnalysis",
-        FallbackReason.ModuleSetChanged        => "moduleSetChanged",
+        FallbackReason.NoPriorAnalysis => "noPriorAnalysis",
+        FallbackReason.ModuleSetChanged => "moduleSetChanged",
         FallbackReason.ModuleDescriptorChanged => "moduleDescriptorChanged",
-        FallbackReason.AnalysisScopeChanged    => "analysisScopeChanged",
+        FallbackReason.AnalysisScopeChanged => "analysisScopeChanged",
         FallbackReason.CompilationStateUnavailable => "compilationStateUnavailable",
         _ => reason.ToString(),
     };
@@ -859,14 +980,55 @@ public sealed class GraphSession : IDisposable
             .ToArray()
            ?? Array.Empty<string>();
 
-    private ArchitectureRule[]? ResolveRules(string? rulesPath)
+    private static WorkspaceAnalysisIdentity BuildRoslynIdentity(
+        string projectPath,
+        RoslynWorkspaceAnalyzer adapter,
+        IReadOnlyList<string> excludePaths,
+        bool retainCompilations,
+        RuleSetIdentity ruleSet)
     {
-        if (string.IsNullOrEmpty(rulesPath)) return null;
-        var rules = Lifeblood.Analysis.RulePacks.ResolveBuiltIn(rulesPath);
-        if (rules == null && _fs.FileExists(rulesPath))
-            rules = Lifeblood.Analysis.RulePacks.ParseJson(_fs.ReadAllText(rulesPath));
-        return rules;
+        var source = adapter.CurrentSourceFingerprint
+            ?? throw new InvalidOperationException("The Roslyn candidate did not publish a source fingerprint.");
+        var spec = new AnalysisSpec(
+            adapter.RetainedProfileNames,
+            excludePaths,
+            retainCompilations
+                ? AnalysisRetentionMode.RetainedSemantic
+                : AnalysisRetentionMode.GraphOnly,
+            AnalysisDescriptorPolicy.WorkspaceDiscovery,
+            ruleSet);
+        return new WorkspaceAnalysisIdentity(
+            WorkspacePathIdentity.CreateWorkspaceKey(projectPath),
+            spec,
+            source);
     }
+
+    private static WorkspaceAnalysisIdentity BuildImportedGraphIdentity(
+        string graphPath,
+        ContentFingerprint graphContent,
+        RuleSetIdentity ruleSet)
+    {
+        var spec = new AnalysisSpec(
+            defineProfiles: null,
+            excludePathGlobs: null,
+            AnalysisRetentionMode.GraphOnly,
+            AnalysisDescriptorPolicy.ImportedGraph,
+            ruleSet);
+        var source = new SourceFingerprint(
+            new[] { new FingerprintEntry("graph", graphContent) },
+            Array.Empty<FingerprintEntry>());
+        return new WorkspaceAnalysisIdentity(
+            WorkspacePathIdentity.CreateWorkspaceKey(Path.GetDirectoryName(Path.GetFullPath(graphPath))!),
+            spec,
+            source);
+    }
+
+    private AnalysisRuleSetResolver.ResolvedRuleSet RefreshCommittedRuleSet(
+        CommittedGraphSessionState committed,
+        string workspaceRoot)
+        => committed.RuleSet.Identity.SourceKind == RuleSetSourceKind.None
+            ? committed.RuleSet
+            : _ruleSetResolver.Resolve(committed.RuleSet.Source, workspaceRoot);
 
     private static Domain.Capabilities.AdapterCapability UnknownImportedGraphCapability(string? language)
         => new()
@@ -901,18 +1063,18 @@ public sealed class GraphSession : IDisposable
             => new(
                 WorkspaceSnapshot.Empty(analysisGeneration),
                 roslynAdapter: null,
-                rulesPath: null,
+                AnalysisRuleSetResolver.ResolvedRuleSet.None,
                 Array.Empty<string>());
 
         public CommittedGraphSessionState(
             WorkspaceSnapshot workspace,
             RoslynWorkspaceAnalyzer? roslynAdapter,
-            string? rulesPath,
+            AnalysisRuleSetResolver.ResolvedRuleSet ruleSet,
             IReadOnlyList<string> excludePaths)
         {
             Workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
             RoslynAdapter = roslynAdapter;
-            RulesPath = rulesPath;
+            RuleSet = ruleSet ?? throw new ArgumentNullException(nameof(ruleSet));
             ExcludePaths = excludePaths.ToArray();
         }
 
@@ -920,12 +1082,12 @@ public sealed class GraphSession : IDisposable
 
         public RoslynWorkspaceAnalyzer? RoslynAdapter { get; }
 
-        public string? RulesPath { get; }
+        public AnalysisRuleSetResolver.ResolvedRuleSet RuleSet { get; }
 
         public string[] ExcludePaths { get; }
 
         public CommittedGraphSessionState WithRoslynAdapter(RoslynWorkspaceAnalyzer roslynAdapter)
-            => new(Workspace, roslynAdapter, RulesPath, ExcludePaths);
+            => new(Workspace, roslynAdapter, RuleSet, ExcludePaths);
     }
 
     private sealed class GraphSessionReadLease : IDisposable

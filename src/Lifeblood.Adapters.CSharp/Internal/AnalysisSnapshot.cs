@@ -1,6 +1,7 @@
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
+using Lifeblood.Domain.Workspaces;
 using Microsoft.CodeAnalysis;
 
 namespace Lifeblood.Adapters.CSharp.Internal;
@@ -45,7 +46,25 @@ internal sealed class AnalysisSnapshot
     /// check after an mtime touch, so Unity/IDE metadata churn does not force
     /// graph replacement when the file text is unchanged.
     /// </summary>
-    public Dictionary<string, string> FileContentHashes { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, ContentFingerprint> FileContentHashes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Absolute descriptor/reference path to its content-authoritative digest.
+    /// This includes project/solution/asmdef descriptors and binary inputs
+    /// whose contents can change semantic binding. Paths are reduced to a
+    /// stable workspace-relative form when the aggregate fingerprint is built.
+    /// </summary>
+    public Dictionary<string, ContentFingerprint> DescriptorContentHashes { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    public Dictionary<string, ContentFingerprint> AsmdefContentHashes { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    public Dictionary<string, ContentFingerprint> ReferenceContentHashes { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    public Dictionary<string, DateTime> ReferenceTimestamps { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Absolute csproj file path → last-write-time-UTC at analysis time.
@@ -149,6 +168,10 @@ internal sealed class AnalysisSnapshot
 
         CopyDictionary(FileTimestamps, candidate.FileTimestamps);
         CopyDictionary(FileContentHashes, candidate.FileContentHashes);
+        CopyDictionary(DescriptorContentHashes, candidate.DescriptorContentHashes);
+        CopyDictionary(AsmdefContentHashes, candidate.AsmdefContentHashes);
+        CopyDictionary(ReferenceContentHashes, candidate.ReferenceContentHashes);
+        CopyDictionary(ReferenceTimestamps, candidate.ReferenceTimestamps);
         CopyDictionary(CsprojTimestamps, candidate.CsprojTimestamps);
         CopyDictionary(AsmdefTimestamps, candidate.AsmdefTimestamps);
 
@@ -168,6 +191,28 @@ internal sealed class AnalysisSnapshot
         }
 
         return candidate;
+    }
+
+    public SourceFingerprint BuildSourceFingerprint()
+        => new(
+            FileContentHashes.Select(pair => new FingerprintEntry(
+                NormalizeFingerprintPath(pair.Key),
+                pair.Value)),
+            DescriptorContentHashes
+                .Concat(AsmdefContentHashes)
+                .Concat(ReferenceContentHashes)
+                .Select(pair => new FingerprintEntry(
+                    NormalizeFingerprintPath(pair.Key),
+                    pair.Value)));
+
+    private string NormalizeFingerprintPath(string path)
+    {
+        var fullRoot = Path.GetFullPath(ProjectRoot);
+        var fullPath = Path.GetFullPath(path);
+        var relative = Path.GetRelativePath(fullRoot, fullPath).Replace('\\', '/');
+        return Path.IsPathRooted(relative)
+            ? fullPath.Replace('\\', '/')
+            : relative;
     }
 
     private static void CopyDictionary<TKey, TValue>(

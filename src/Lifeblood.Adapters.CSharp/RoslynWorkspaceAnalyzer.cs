@@ -1,8 +1,10 @@
+using System.Security.Cryptography;
 using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Workspaces;
 using Microsoft.CodeAnalysis.CSharp;
 using DomainSymbolKind = Lifeblood.Domain.Graph.SymbolKind;
 
@@ -75,6 +77,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     public bool HasSnapshot => _snapshot != null;
 
     /// <summary>
+    /// Content-authoritative receipt for the exact source and descriptor
+    /// inputs retained by the current adapter snapshot.
+    /// </summary>
+    public SourceFingerprint? CurrentSourceFingerprint => _snapshot?.BuildSourceFingerprint();
+
+    /// <summary>
     /// Files the analyzer declined to process during the most recent
     /// AnalyzeWorkspace / IncrementalAnalyze call. Empty when everything
     /// listed in the module csprojs parsed cleanly. Consumers surface this
@@ -144,228 +152,234 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         var reachedCompilation = false;
         try
         {
-        var modules = _discovery.DiscoverModules(projectRoot);
+            var modules = _discovery.DiscoverModules(projectRoot);
 
-        var snapshot = new AnalysisSnapshot
-        {
-            ProjectRoot = projectRoot,
-            Modules = modules,
-            ExcludePathGlobs = NormalizeExcludePathGlobs(config.ExcludePathGlobs),
-        };
-
-        // Record csproj file timestamps so incremental re-analyze can detect
-        // csproj edits (which change discovered facts like BclOwnership) and
-        // force module re-discovery + recompile. See INV-BCL-005 in
-        // .claude/plans/bcl-ownership-fix.md.
-        foreach (var module in modules)
-        {
-            if (!module.Properties.TryGetValue("projectFile", out var relCsproj)) continue;
-            var csprojAbs = Path.GetFullPath(Path.Combine(projectRoot, relCsproj));
-            if (_fs.FileExists(csprojAbs))
-                snapshot.CsprojTimestamps[csprojAbs] = _fs.GetLastWriteTimeUtc(csprojAbs);
-        }
-
-        // Record *.asmdef timestamps. Unity workspaces declare module-level
-        // options on asmdefs; their on-disk csprojs are generated from those
-        // declarations. Editing an asmdef without forcing Unity to regenerate
-        // csprojs leaves the on-disk csproj stale, so the csproj-timestamp
-        // tracker alone misses the change. INV-UNITY-002.
-        foreach (var asmdefAbs in _fs.FindFiles(projectRoot, "*.asmdef", recursive: true))
-        {
-            try
+            var snapshot = new AnalysisSnapshot
             {
-                snapshot.AsmdefTimestamps[asmdefAbs] = _fs.GetLastWriteTimeUtc(asmdefAbs);
+                ProjectRoot = projectRoot,
+                Modules = modules,
+                ExcludePathGlobs = NormalizeExcludePathGlobs(config.ExcludePathGlobs),
+            };
+            ReplaceDictionary(
+                snapshot.DescriptorContentHashes,
+                _discovery.LastDescriptorContentHashes);
+
+            // Record csproj file timestamps so incremental re-analyze can detect
+            // csproj edits (which change discovered facts like BclOwnership) and
+            // force module re-discovery + recompile. See INV-BCL-005 in
+            // .claude/plans/bcl-ownership-fix.md.
+            foreach (var module in modules)
+            {
+                if (!module.Properties.TryGetValue("projectFile", out var relCsproj)) continue;
+                var csprojAbs = Path.GetFullPath(Path.Combine(projectRoot, relCsproj));
+                if (_fs.FileExists(csprojAbs))
+                    snapshot.CsprojTimestamps[csprojAbs] = _fs.GetLastWriteTimeUtc(csprojAbs);
             }
-            catch
+
+            // Record *.asmdef timestamps. Unity workspaces declare module-level
+            // options on asmdefs; their on-disk csprojs are generated from those
+            // declarations. Editing an asmdef without forcing Unity to regenerate
+            // csprojs leaves the on-disk csproj stale, so the csproj-timestamp
+            // tracker alone misses the change. INV-UNITY-002.
+            foreach (var asmdefAbs in _fs.FindFiles(projectRoot, "*.asmdef", recursive: true))
             {
-                // Best-effort scan; permission errors on individual files
-                // shouldn't fail the entire analyze.
+                try
+                {
+                    snapshot.AsmdefTimestamps[asmdefAbs] = _fs.GetLastWriteTimeUtc(asmdefAbs);
+                    snapshot.AsmdefContentHashes[asmdefAbs] = HashTextDescriptor(asmdefAbs);
+                }
+                catch
+                {
+                    // Best-effort scan; permission errors on individual files
+                    // shouldn't fail the entire analyze.
+                }
             }
-        }
 
-        // Create module symbols (lightweight — just names and metadata).
-        foreach (var module in modules)
-        {
-            snapshot.ModuleSymbols.Add(new Symbol
+            CaptureReferenceInputs(snapshot, modules);
+
+            // Create module symbols (lightweight — just names and metadata).
+            foreach (var module in modules)
             {
-                Id = SymbolIds.Module(module.Name),
-                Name = module.Name,
-                QualifiedName = module.Name,
-                Kind = DomainSymbolKind.Module,
-                Properties = module.Properties,
-            });
-        }
-
-        // Streaming compilation + extraction: each module is compiled, extracted,
-        // then downgraded (unless RetainCompilations=true). Memory: O(1 compilation)
-        // instead of O(N compilations). Set known module assemblies so the edge
-        // extractor creates cross-module edges (metadata symbols from other
-        // analyzed modules are tracked, not filtered).
-        _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
-            modules.Select(m => m.Name), StringComparer.Ordinal);
-
-        var refCache = new SharedMetadataReferenceCache();
-        var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
-
-        // Full analyze: reset the snapshot's skipped-file list before the
-        // pipeline runs so we don't accumulate stale entries from prior
-        // incremental updates. Incremental analyze intentionally appends
-        // rather than replaces — see the IncrementalAnalyze path.
-        snapshot.SkippedFiles.Clear();
-        // Full analyze starts with no prior knowledge of any module — clear
-        // any carry-over downgraded refs so a re-analyze on the same
-        // analyzer instance does not inherit stale PE images from a prior
-        // project root. INV-INCREMENTAL-XREF-001 + INV-MULTI-DEFINE-INCREMENTAL-001.
-        snapshot.DowngradedRefsByProfile.Clear();
-        // Merge discovery-level skips (csproj lists a .cs file that doesn't
-        // exist on disk) into the snapshot so users see them in the
-        // analyze response alongside compilation-level skips.
-        snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped);
-
-        // INV-MULTI-DEFINE-ANALYZE-001 + INV-MULTI-DEFINE-INCREMENTAL-001.
-        var activeProfiles = ResolveActiveProfiles(projectRoot, config);
-        var multiProfile = activeProfiles.Count > 1;
-        RetainedProfileName = activeProfiles.Count > 0 ? activeProfiles[0].Name : null;
-        RetainedProfileNames = activeProfiles.Select(p => p.Name).ToArray();
-        snapshot.ActiveProfiles = activeProfiles;
-
-        phase = "compilation";
-        reachedCompilation = true;
-
-        for (var profileIndex = 0; profileIndex < activeProfiles.Count; profileIndex++)
-        {
-            var profile = activeProfiles[profileIndex];
-            var isFirstProfile = profileIndex == 0;
-            var profileTag = multiProfile ? profile.Name : null;
-            cursorProfile = profile.Name;
-            var profileModules = ApplyProfileToModules(modules, profile);
-
-            // INV-MULTI-DEFINE-IOP-001. First profile retains compilations per
-            // caller config (typically true for write-side / IOperation tool
-            // support). Subsequent profile passes force streaming mode so
-            // their compilations downgrade after extraction — peak RAM stays
-            // at single-profile baseline regardless of profile count.
-            var profileConfig = isFirstProfile
-                ? config
-                : new AnalysisConfig
+                snapshot.ModuleSymbols.Add(new Symbol
                 {
-                    ExcludePatterns = config.ExcludePatterns,
-                    ExcludePathGlobs = config.ExcludePathGlobs,
-                    AuthoritativeChangedFiles = config.AuthoritativeChangedFiles,
-                    AllowFullFallback = config.AllowFullFallback,
-                    DefineProfiles = config.DefineProfiles,
-                    RetainCompilations = false,
-                };
-
-            // INV-MULTI-DEFINE-INCREMENTAL-001. Per-profile carry. Each profile
-            // pass writes its own PE images into a dict keyed by the profile
-            // name. Incremental re-analyze reads back the SAME profile's dict
-            // so changed-modules' compilations resolve cross-project references
-            // under the matching defines. Without per-profile keying, non-first
-            // profile incremental passes silently bind every cross-project
-            // dependency to the first profile's PE image (or to nothing if the
-            // first profile pass left it null) and drop the edge.
-            var profileCarry = GetOrCreateProfileCarry(snapshot, profile.Name);
-
-            var profileCompilations = compilationBuilder.ProcessInOrder(
-                profileModules, projectRoot, profileConfig,
-                onModuleProgress: (name, idx, total) =>
-                {
-                    cursorModule = name;
-                    OnModuleProgress?.Invoke(name, idx, total);
-                },
-                skippedCollector: isFirstProfile ? snapshot.SkippedFiles : null,
-                carryDowngraded: profileCarry,
-                processor: (module, compilation) =>
-                {
-                    var moduleId = SymbolIds.Module(module.Name);
-                    cursorModule = module.Name;
-
-                    foreach (var tree in compilation.SyntaxTrees)
-                    {
-                        if (string.IsNullOrEmpty(tree.FilePath)) continue;
-                        if (tree.FilePath.StartsWith("<")) continue;
-
-                        var model = compilation.GetSemanticModel(tree);
-                        var pathIdentity = SyntaxTreePathIdentity.Resolve(
-                            projectRoot,
-                            module.Name,
-                            tree.FilePath);
-                        var relPath = pathIdentity.GraphPath;
-                        cursorFile = relPath;
-
-                        var fileId = SymbolIds.File(relPath);
-                        var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
-                        var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
-
-                        if (isFirstProfile)
-                        {
-                            var fileSymbol = new Symbol
-                            {
-                                Id = fileId,
-                                Name = Path.GetFileName(tree.FilePath),
-                                QualifiedName = $"{module.Name}/{relPath}",
-                                Kind = DomainSymbolKind.File,
-                                FilePath = relPath,
-                                ParentId = moduleId,
-                            };
-
-                            var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
-                            snapshot.ReplaceFile(fileId, fileSymbol, symbols, taggedEdges);
-                            // Source-generated trees have no on-disk file. Tracking them in
-                            // FileTimestamps makes the incremental deleted-file prune treat
-                            // them as removed every run (they are never in module.FilePaths),
-                            // silently dropping every generated symbol. INV-INCREMENTAL-XREF-001.
-                            if (!pathIdentity.IsGenerated && _fs.FileExists(tree.FilePath))
-                                snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
-                        }
-                        else
-                        {
-                            snapshot.AppendProfileEdges(fileId, taggedEdges);
-                        }
-                    }
-                },
-                contentHashCollector: isFirstProfile
-                    ? (path, hash) => snapshot.FileContentHashes[path] = hash
-                    : null);
-
-            if (isFirstProfile) _compilations = profileCompilations;
-        }
-
-        phase = "module-edges";
-        cursorModule = null;
-        cursorFile = null;
-        cursorProfile = null;
-
-        // Module dependency edges.
-        var moduleNames = new HashSet<string>(modules.Select(m => m.Name), StringComparer.Ordinal);
-        foreach (var module in modules)
-        {
-            var sourceId = SymbolIds.Module(module.Name);
-            foreach (var dep in module.Dependencies)
-            {
-                if (!moduleNames.Contains(dep)) continue;
-                snapshot.ModuleEdges.Add(new Edge
-                {
-                    SourceId = sourceId,
-                    TargetId = SymbolIds.Module(dep),
-                    Kind = EdgeKind.DependsOn,
-                    Evidence = new Evidence
-                    {
-                        Kind = EvidenceKind.Semantic,
-                        AdapterName = "Roslyn",
-                        Confidence = ConfidenceLevel.Proven,
-                    },
+                    Id = SymbolIds.Module(module.Name),
+                    Name = module.Name,
+                    QualifiedName = module.Name,
+                    Kind = DomainSymbolKind.Module,
+                    Properties = module.Properties,
                 });
             }
-        }
 
-        // Capture module dependency map for write-side workspace construction
-        _moduleDependencies = BuildModuleDependencyMap(modules);
+            // Streaming compilation + extraction: each module is compiled, extracted,
+            // then downgraded (unless RetainCompilations=true). Memory: O(1 compilation)
+            // instead of O(N compilations). Set known module assemblies so the edge
+            // extractor creates cross-module edges (metadata symbols from other
+            // analyzed modules are tracked, not filtered).
+            _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
+                modules.Select(m => m.Name), StringComparer.Ordinal);
 
-        _snapshot = snapshot;
-        phase = "graph-build";
-        return snapshot.RebuildGraph();
+            var refCache = new SharedMetadataReferenceCache();
+            var compilationBuilder = new ModuleCompilationBuilder(_fs, refCache);
+
+            // Full analyze: reset the snapshot's skipped-file list before the
+            // pipeline runs so we don't accumulate stale entries from prior
+            // incremental updates. Incremental analyze intentionally appends
+            // rather than replaces — see the IncrementalAnalyze path.
+            snapshot.SkippedFiles.Clear();
+            // Full analyze starts with no prior knowledge of any module — clear
+            // any carry-over downgraded refs so a re-analyze on the same
+            // analyzer instance does not inherit stale PE images from a prior
+            // project root. INV-INCREMENTAL-XREF-001 + INV-MULTI-DEFINE-INCREMENTAL-001.
+            snapshot.DowngradedRefsByProfile.Clear();
+            // Merge discovery-level skips (csproj lists a .cs file that doesn't
+            // exist on disk) into the snapshot so users see them in the
+            // analyze response alongside compilation-level skips.
+            snapshot.SkippedFiles.AddRange(_discovery.LastDiscoverySkipped);
+
+            // INV-MULTI-DEFINE-ANALYZE-001 + INV-MULTI-DEFINE-INCREMENTAL-001.
+            var activeProfiles = ResolveActiveProfiles(projectRoot, config);
+            var multiProfile = activeProfiles.Count > 1;
+            RetainedProfileName = activeProfiles.Count > 0 ? activeProfiles[0].Name : null;
+            RetainedProfileNames = activeProfiles.Select(p => p.Name).ToArray();
+            snapshot.ActiveProfiles = activeProfiles;
+
+            phase = "compilation";
+            reachedCompilation = true;
+
+            for (var profileIndex = 0; profileIndex < activeProfiles.Count; profileIndex++)
+            {
+                var profile = activeProfiles[profileIndex];
+                var isFirstProfile = profileIndex == 0;
+                var profileTag = multiProfile ? profile.Name : null;
+                cursorProfile = profile.Name;
+                var profileModules = ApplyProfileToModules(modules, profile);
+
+                // INV-MULTI-DEFINE-IOP-001. First profile retains compilations per
+                // caller config (typically true for write-side / IOperation tool
+                // support). Subsequent profile passes force streaming mode so
+                // their compilations downgrade after extraction — peak RAM stays
+                // at single-profile baseline regardless of profile count.
+                var profileConfig = isFirstProfile
+                    ? config
+                    : new AnalysisConfig
+                    {
+                        ExcludePatterns = config.ExcludePatterns,
+                        ExcludePathGlobs = config.ExcludePathGlobs,
+                        AuthoritativeChangedFiles = config.AuthoritativeChangedFiles,
+                        AllowFullFallback = config.AllowFullFallback,
+                        DefineProfiles = config.DefineProfiles,
+                        RetainCompilations = false,
+                    };
+
+                // INV-MULTI-DEFINE-INCREMENTAL-001. Per-profile carry. Each profile
+                // pass writes its own PE images into a dict keyed by the profile
+                // name. Incremental re-analyze reads back the SAME profile's dict
+                // so changed-modules' compilations resolve cross-project references
+                // under the matching defines. Without per-profile keying, non-first
+                // profile incremental passes silently bind every cross-project
+                // dependency to the first profile's PE image (or to nothing if the
+                // first profile pass left it null) and drop the edge.
+                var profileCarry = GetOrCreateProfileCarry(snapshot, profile.Name);
+
+                var profileCompilations = compilationBuilder.ProcessInOrder(
+                    profileModules, projectRoot, profileConfig,
+                    onModuleProgress: (name, idx, total) =>
+                    {
+                        cursorModule = name;
+                        OnModuleProgress?.Invoke(name, idx, total);
+                    },
+                    skippedCollector: isFirstProfile ? snapshot.SkippedFiles : null,
+                    carryDowngraded: profileCarry,
+                    processor: (module, compilation) =>
+                    {
+                        var moduleId = SymbolIds.Module(module.Name);
+                        cursorModule = module.Name;
+
+                        foreach (var tree in compilation.SyntaxTrees)
+                        {
+                            if (string.IsNullOrEmpty(tree.FilePath)) continue;
+                            if (tree.FilePath.StartsWith("<")) continue;
+
+                            var model = compilation.GetSemanticModel(tree);
+                            var pathIdentity = SyntaxTreePathIdentity.Resolve(
+                                projectRoot,
+                                module.Name,
+                                tree.FilePath);
+                            var relPath = pathIdentity.GraphPath;
+                            cursorFile = relPath;
+
+                            var fileId = SymbolIds.File(relPath);
+                            var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
+                            var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
+
+                            if (isFirstProfile)
+                            {
+                                var fileSymbol = new Symbol
+                                {
+                                    Id = fileId,
+                                    Name = Path.GetFileName(tree.FilePath),
+                                    QualifiedName = $"{module.Name}/{relPath}",
+                                    Kind = DomainSymbolKind.File,
+                                    FilePath = relPath,
+                                    ParentId = moduleId,
+                                };
+
+                                var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
+                                snapshot.ReplaceFile(fileId, fileSymbol, symbols, taggedEdges);
+                                // Source-generated trees have no on-disk file. Tracking them in
+                                // FileTimestamps makes the incremental deleted-file prune treat
+                                // them as removed every run (they are never in module.FilePaths),
+                                // silently dropping every generated symbol. INV-INCREMENTAL-XREF-001.
+                                if (!pathIdentity.IsGenerated && _fs.FileExists(tree.FilePath))
+                                    snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
+                            }
+                            else
+                            {
+                                snapshot.AppendProfileEdges(fileId, taggedEdges);
+                            }
+                        }
+                    },
+                    contentHashCollector: isFirstProfile
+                        ? (path, hash) => snapshot.FileContentHashes[path] = hash
+                        : null);
+
+                if (isFirstProfile) _compilations = profileCompilations;
+            }
+
+            phase = "module-edges";
+            cursorModule = null;
+            cursorFile = null;
+            cursorProfile = null;
+
+            // Module dependency edges.
+            var moduleNames = new HashSet<string>(modules.Select(m => m.Name), StringComparer.Ordinal);
+            foreach (var module in modules)
+            {
+                var sourceId = SymbolIds.Module(module.Name);
+                foreach (var dep in module.Dependencies)
+                {
+                    if (!moduleNames.Contains(dep)) continue;
+                    snapshot.ModuleEdges.Add(new Edge
+                    {
+                        SourceId = sourceId,
+                        TargetId = SymbolIds.Module(dep),
+                        Kind = EdgeKind.DependsOn,
+                        Evidence = new Evidence
+                        {
+                            Kind = EvidenceKind.Semantic,
+                            AdapterName = "Roslyn",
+                            Confidence = ConfidenceLevel.Proven,
+                        },
+                    });
+                }
+            }
+
+            // Capture module dependency map for write-side workspace construction
+            _moduleDependencies = BuildModuleDependencyMap(modules);
+
+            _snapshot = snapshot;
+            phase = "graph-build";
+            return snapshot.RebuildGraph();
         }
         catch (WorkspaceAnalysisException)
         {
@@ -469,6 +483,15 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 detail: "Unity asmdef edit/add/remove detected (descriptorKind=asmdef).");
         }
 
+        if (HasReferenceInputDrift(currentModules))
+        {
+            return HandleFallback(
+                config,
+                projectRoot,
+                FallbackReason.ModuleDescriptorChanged,
+                detail: "Referenced binary or source-generator input changed (descriptorKind=reference).");
+        }
+
         // Detect changed files by timestamp + content-hash comparison.
         // An editor/build integration can pass an authoritative changed-file
         // set to bound the source walk; descriptor-triggered recompiles still
@@ -494,13 +517,26 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             if (!_fs.FileExists(csprojAbs)) continue;
 
             var currentCsprojTs = _fs.GetLastWriteTimeUtc(csprojAbs);
-            if (_snapshot.CsprojTimestamps.TryGetValue(csprojAbs, out var prevCsprojTs)
-                && currentCsprojTs == prevCsprojTs)
+            var currentDescriptorHash = _discovery.LastDescriptorContentHashes.TryGetValue(csprojAbs, out var discoveredHash)
+                ? discoveredHash
+                : HashTextDescriptor(csprojAbs);
+            var contentChanged = !_snapshot.DescriptorContentHashes.TryGetValue(csprojAbs, out var previousDescriptorHash)
+                || previousDescriptorHash != currentDescriptorHash;
+            _snapshot.CsprojTimestamps[csprojAbs] = currentCsprojTs;
+            _snapshot.DescriptorContentHashes[csprojAbs] = currentDescriptorHash;
+            if (!contentChanged)
                 continue;
 
             csprojChangedModules.Add(module.Name);
-            _snapshot.CsprojTimestamps[csprojAbs] = currentCsprojTs;
         }
+
+
+        // Keep solution/project descriptor membership exact. A descriptor
+        // change that leaves discovered module facts unchanged still changes
+        // the source fingerprint and therefore the committed AnalysisKey.
+        ReplaceDictionary(
+            _snapshot.DescriptorContentHashes,
+            _discovery.LastDescriptorContentHashes);
 
         foreach (var module in currentModules)
         {
@@ -963,7 +999,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             contentChangedFiles.Add(filePath);
     }
 
-    private bool HasSourceContentChanged(string filePath, out string? currentHash)
+    private bool HasSourceContentChanged(string filePath, out ContentFingerprint? currentHash)
     {
         currentHash = null;
         if (_snapshot == null) return true;
@@ -978,7 +1014,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         }
 
         return !_snapshot.FileContentHashes.TryGetValue(filePath, out var previousHash)
-            || !string.Equals(previousHash, currentHash, StringComparison.Ordinal);
+            || previousHash != currentHash;
     }
 
     private static Dictionary<string, string> BuildModuleFileIndex(ModuleInfo[] modules)
@@ -1000,6 +1036,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
         if (_snapshot == null) return false;
 
         var current = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var currentHashes = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
         foreach (var asmdefAbs in _fs.FindFiles(projectRoot, "*.asmdef", recursive: true))
         {
             current.Add(asmdefAbs);
@@ -1007,8 +1044,17 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             try { currentTs = _fs.GetLastWriteTimeUtc(asmdefAbs); }
             catch { continue; }
 
-            if (!_snapshot.AsmdefTimestamps.TryGetValue(asmdefAbs, out var prevTs)) return true; // new
-            if (currentTs != prevTs) return true;                                                 // edited
+            ContentFingerprint currentHash;
+            try { currentHash = HashTextDescriptor(asmdefAbs); }
+            catch { return true; }
+            currentHashes[asmdefAbs] = currentHash;
+
+            if (!_snapshot.AsmdefContentHashes.TryGetValue(asmdefAbs, out var previousHash)) return true;
+            if (previousHash != currentHash) return true;
+
+            // Timestamp-only churn is harmless once content equality is
+            // proven, but retain the fresh prefilter for the next pass.
+            _snapshot.AsmdefTimestamps[asmdefAbs] = currentTs;
         }
 
         // Removed file? Snapshot tracked it, current scan missed it.
@@ -1017,6 +1063,94 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
             if (!current.Contains(prev)) return true;
         }
 
+
+        ReplaceDictionary(_snapshot.AsmdefContentHashes, currentHashes);
+
         return false;
+    }
+
+    private bool HasReferenceInputDrift(ModuleInfo[] modules)
+    {
+        if (_snapshot == null) return false;
+
+        var currentPaths = GetReferenceInputPaths(modules);
+        if (!_snapshot.ReferenceContentHashes.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)
+            .SetEquals(currentPaths))
+        {
+            return true;
+        }
+
+        foreach (var path in currentPaths)
+        {
+            DateTime timestamp;
+            try { timestamp = _fs.GetLastWriteTimeUtc(path); }
+            catch { return true; }
+
+            if (_snapshot.ReferenceTimestamps.TryGetValue(path, out var previousTimestamp)
+                && previousTimestamp == timestamp)
+            {
+                continue;
+            }
+
+            ContentFingerprint currentHash;
+            try { currentHash = HashBinaryDescriptor(path); }
+            catch { return true; }
+
+            if (!_snapshot.ReferenceContentHashes.TryGetValue(path, out var previousHash)
+                || previousHash != currentHash)
+            {
+                return true;
+            }
+
+            _snapshot.ReferenceTimestamps[path] = timestamp;
+        }
+
+        return false;
+    }
+
+    private void CaptureReferenceInputs(AnalysisSnapshot snapshot, ModuleInfo[] modules)
+    {
+        foreach (var path in GetReferenceInputPaths(modules))
+        {
+            try
+            {
+                snapshot.ReferenceContentHashes[path] = HashBinaryDescriptor(path);
+                snapshot.ReferenceTimestamps[path] = _fs.GetLastWriteTimeUtc(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The compilation builder owns the structured missing/unreadable
+                // reference outcome. Fingerprinting must not invent a second
+                // failure policy before that authoritative seam runs.
+            }
+        }
+    }
+
+    private static HashSet<string> GetReferenceInputPaths(ModuleInfo[] modules)
+        => modules
+            .SelectMany(module => module.ExternalDllPaths.Concat(module.SourceGeneratorAnalyzerPaths))
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private ContentFingerprint HashTextDescriptor(string path)
+        => ContentFingerprint.ComputeUtf8(
+            "lifeblood.workspace-descriptor-content.v1",
+            _fs.ReadAllText(path));
+
+    private ContentFingerprint HashBinaryDescriptor(string path)
+    {
+        using var stream = _fs.OpenRead(path);
+        return ContentFingerprint.FromHashBytes(SHA256.HashData(stream));
+    }
+
+    private static void ReplaceDictionary<TKey, TValue>(
+        Dictionary<TKey, TValue> destination,
+        IReadOnlyDictionary<TKey, TValue> source)
+        where TKey : notnull
+    {
+        destination.Clear();
+        foreach (var (key, value) in source)
+            destination[key] = value;
     }
 }

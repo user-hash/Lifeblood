@@ -1,13 +1,9 @@
-using System.Security.Cryptography;
-using System.Text;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Adapters.CSharp.Internal;
 
 internal static class SourceContentHasher
 {
-    public static string HashText(string text)
-    {
-        var bytes = Encoding.UTF8.GetBytes(text);
-        return Convert.ToHexString(SHA256.HashData(bytes));
-    }
+    public static ContentFingerprint HashText(string text)
+        => ContentFingerprint.ComputeUtf8("lifeblood.source-file-content.v1", text);
 }

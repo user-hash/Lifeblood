@@ -25,6 +25,7 @@ public sealed class WorkspaceSession
     public WorkspaceContext? Context => Current.Context;
     public DateTime? AnalyzedAtUtc => Current.AnalyzedAtUtc;
     public SnapshotId SnapshotId => Current.SnapshotId;
+    public WorkspaceAnalysisIdentity? Identity => Current.Identity;
 
     /// <summary>
     /// Monotonic counter incremented every time <see cref="Load"/> is
@@ -91,7 +92,8 @@ public sealed class WorkspaceSession
             codeExecutor,
             refactoring,
             workspaceOps,
-            snapshotId: current.SnapshotId));
+            snapshotId: current.SnapshotId,
+            identity: current.Identity));
     }
 
     /// <summary>
