@@ -104,6 +104,9 @@ public static class ServerIdentity
                 evidenceReceipts = true,
                 snapshotReadPreconditions = true,
                 snapshotReadBatch = true,
+                snapshotHistoryCatalog = true,
+                historicalSnapshotSelection = true,
+                historicalSnapshotsRetainSemanticServices = false,
                 sharedSessionTransport = true,
                 sharedSessionTransportActive = session.SharedService.Active,
                 sharedSessionTransportMode = session.SharedService.Mode,
@@ -131,6 +134,18 @@ public static class ServerIdentity
                 retainedProfileName = session.RetainedProfileName,
                 retainedProfileNames = session.RetainedProfileNames,
                 compilationStateRecoveryHint = session.CompilationStateRecoveryHint,
+                snapshotHistory = new
+                {
+                    configuredLimit = session.SnapshotHistoryLimit,
+                    hardMaximum = session.SnapshotHistoryHardMaximum,
+                    maximumAgeSeconds = session.SnapshotHistoryMaximumAgeSeconds,
+                    retainedCount = session.RetainedSnapshotCount,
+                    pinnedCount = session.PinnedSnapshotCount,
+                    droppedAutomaticRetentionCount = session.DroppedSnapshotRetentionCount,
+                    retentionMode = "graph-only",
+                    semanticBaseCount = session.SemanticBaseCount,
+                    additionalSemanticBaseCount = 0,
+                },
             },
             sharedService = new
             {
@@ -361,6 +376,13 @@ public sealed record ServerSessionInfo(
     string? RetainedProfileName,
     string[] RetainedProfileNames,
     string? CompilationStateRecoveryHint,
+    int SnapshotHistoryLimit,
+    int SnapshotHistoryHardMaximum,
+    double SnapshotHistoryMaximumAgeSeconds,
+    int RetainedSnapshotCount,
+    int PinnedSnapshotCount,
+    long DroppedSnapshotRetentionCount,
+    int SemanticBaseCount,
     ServerSharedServiceInfo SharedService);
 
 public sealed record ServerSharedServiceInfo(

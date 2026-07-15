@@ -28,17 +28,23 @@ public sealed class GraphSession : IDisposable
     private readonly IFileSystem _fs;
     private readonly ITelemetrySink _telemetry;
     private readonly AnalysisRuleSetResolver _ruleSetResolver;
+    private readonly WorkspaceSnapshotCatalog _snapshotCatalog;
+    private readonly object _publicationSync = new();
     private readonly AsyncLocal<CommittedGraphSessionState?> _leasedState = new();
     private CommittedGraphSessionState _current = CommittedGraphSessionState.CreateEmpty();
 
     private CommittedGraphSessionState Current =>
         _leasedState.Value ?? Volatile.Read(ref _current);
 
-    public GraphSession(IFileSystem fs, ITelemetrySink? telemetry = null)
+    public GraphSession(
+        IFileSystem fs,
+        ITelemetrySink? telemetry = null,
+        WorkspaceSnapshotCatalog? snapshotCatalog = null)
     {
         _fs = fs;
         _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
         _ruleSetResolver = new AnalysisRuleSetResolver(fs);
+        _snapshotCatalog = snapshotCatalog ?? new WorkspaceSnapshotCatalog();
     }
 
     /// <summary>
@@ -125,6 +131,26 @@ public sealed class GraphSession : IDisposable
     public WorkspaceSnapshot CurrentSnapshot => Current.Workspace;
 
     /// <summary>
+    /// Latest committed publication, independent of any request-scoped
+    /// historical selection. Process-level inventory and memory facts use this
+    /// view; tool result data continues to use <see cref="CurrentSnapshot"/>.
+    /// </summary>
+    public WorkspaceSnapshot LatestSnapshot => Volatile.Read(ref _current).Workspace;
+
+    /// <summary>
+    /// True only inside an exact graph-only historical lease. Consumers that
+    /// require live source files or semantic services must not present those
+    /// changing resources as evidence from the historical publication.
+    /// </summary>
+    public bool IsHistoricalSelection => Current.IsHistorical;
+
+    public WorkspaceSnapshotCatalogOptions SnapshotCatalogOptions => _snapshotCatalog.Options;
+
+    public long DroppedSnapshotRetentionCount => _snapshotCatalog.DroppedAutomaticRetentionCount;
+
+    public IReadOnlyList<WorkspaceSnapshotCatalogEntry> SnapshotHistory => _snapshotCatalog.List();
+
+    /// <summary>
     /// Pin one complete host/Application generation for the current execution
     /// context. Publication may continue concurrently; all session properties
     /// resolve through the leased state until the scope is disposed.
@@ -146,6 +172,149 @@ public sealed class GraphSession : IDisposable
             _leasedState.Value = state;
             return new GraphSessionReadLease(this, state, snapshotLease);
         }
+    }
+
+    /// <summary>
+    /// Lease one exact current or graph-only historical publication. Explicit
+    /// selection is synchronized only with the atomic publication seam; it
+    /// never blocks while a candidate is being built.
+    /// </summary>
+    public IDisposable AcquireReadLease(SnapshotId selectedSnapshotId)
+    {
+        ArgumentNullException.ThrowIfNull(selectedSnapshotId);
+        if (selectedSnapshotId.IsNone)
+            throw new ArgumentException("A selected snapshot id cannot be empty.", nameof(selectedSnapshotId));
+
+        var nested = _leasedState.Value;
+        if (nested != null)
+        {
+            if (nested.Workspace.SnapshotId != selectedSnapshotId)
+            {
+                throw new WorkspaceSnapshotSelectionConflictException(
+                    selectedSnapshotId,
+                    nested.Workspace.SnapshotId);
+            }
+
+            return NestedReadLease.Instance;
+        }
+
+        lock (_publicationSync)
+        {
+            var current = Volatile.Read(ref _current);
+            WorkspaceSnapshotLease snapshotLease;
+            CommittedGraphSessionState selectedState;
+            if (current.Workspace.SnapshotId == selectedSnapshotId)
+            {
+                snapshotLease = current.Workspace.AcquireLease();
+                selectedState = current;
+            }
+            else if (_snapshotCatalog.TryAcquire(selectedSnapshotId, out snapshotLease))
+            {
+                selectedState = CommittedGraphSessionState.CreateHistorical(snapshotLease.Snapshot);
+            }
+            else
+            {
+                throw new WorkspaceSnapshotNotFoundException(
+                    selectedSnapshotId,
+                    current.Workspace.SnapshotId,
+                    _snapshotCatalog.List().Select(entry => entry.Snapshot.SnapshotId).ToArray());
+            }
+
+            _leasedState.Value = selectedState;
+            return new GraphSessionReadLease(this, selectedState, snapshotLease);
+        }
+    }
+
+    public WorkspaceSnapshotCatalogMutation PinSnapshot(SnapshotId snapshotId, string? name)
+    {
+        ArgumentNullException.ThrowIfNull(snapshotId);
+        lock (_publicationSync)
+        {
+            var current = Volatile.Read(ref _current).Workspace;
+            return current.SnapshotId == snapshotId
+                ? _snapshotCatalog.Pin(current, name)
+                : _snapshotCatalog.Pin(snapshotId, name);
+        }
+    }
+
+    public WorkspaceSnapshotCatalogMutation UnpinSnapshot(SnapshotId snapshotId)
+        => _snapshotCatalog.Unpin(snapshotId);
+
+    public WorkspaceSnapshotCatalogMutation EvictSnapshot(SnapshotId snapshotId)
+        => _snapshotCatalog.Evict(snapshotId);
+
+    /// <summary>
+    /// Recapture live workspace inputs once per historical base key. The C#
+    /// adapter remains the source fingerprint authority; this host only
+    /// compares its receipt with committed identity.
+    /// </summary>
+    public IReadOnlyDictionary<SnapshotId, WorkspaceSnapshotDriftStatus> CheckSnapshotDrift(
+        IEnumerable<WorkspaceSnapshot> snapshots)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        var result = new Dictionary<SnapshotId, WorkspaceSnapshotDriftStatus>();
+        var currentByBase = new Dictionary<string, WorkspaceAnalysisIdentity>(StringComparer.Ordinal);
+        foreach (var snapshot in snapshots)
+        {
+            if (snapshot.Identity is not { } identity
+                || snapshot.Context is not { } context
+                || identity.Spec.DescriptorPolicy != AnalysisDescriptorPolicy.WorkspaceDiscovery)
+            {
+                result[snapshot.SnapshotId] = new WorkspaceSnapshotDriftStatus(
+                    "unavailable",
+                    LiveInputChecked: false,
+                    Detail: "Live drift checks require a workspace-discovery publication with an explicit root.");
+                continue;
+            }
+
+            try
+            {
+                if (!currentByBase.TryGetValue(identity.BaseKey.Value, out var currentIdentity))
+                {
+                    IWorkspaceInputFingerprintProvider fingerprintProvider =
+                        new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
+                    var inputs = fingerprintProvider.CaptureAnalysisInputs(
+                        context.RootPath,
+                        new AnalysisConfig
+                        {
+                            RetainCompilations = false,
+                            DefineProfiles = identity.Spec.DefineProfiles.ToArray(),
+                            ExcludePathGlobs = identity.Spec.ExcludePathGlobs.ToArray(),
+                        });
+                    var rules = _ruleSetResolver.Resolve(identity.Spec.RuleSet.Source, context.RootPath);
+                    var spec = new AnalysisSpec(
+                        inputs.EffectiveDefineProfiles,
+                        identity.Spec.ExcludePathGlobs,
+                        identity.Spec.RetentionMode,
+                        identity.Spec.DescriptorPolicy,
+                        rules.Identity);
+                    currentIdentity = new WorkspaceAnalysisIdentity(
+                        WorkspacePathIdentity.CreateWorkspaceKey(context.RootPath),
+                        spec,
+                        inputs.SourceFingerprint);
+                    currentByBase.Add(identity.BaseKey.Value, currentIdentity);
+                }
+
+                result[snapshot.SnapshotId] = new WorkspaceSnapshotDriftStatus(
+                    currentIdentity.AnalysisKey == identity.AnalysisKey ? "current" : "drifted",
+                    LiveInputChecked: true,
+                    CurrentAnalysisKey: currentIdentity.AnalysisKey.Value,
+                    CurrentSourceFingerprint: currentIdentity.Source.Fingerprint.Value);
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or InvalidDataException
+                or InvalidOperationException
+                or ArgumentException)
+            {
+                result[snapshot.SnapshotId] = new WorkspaceSnapshotDriftStatus(
+                    "unavailable",
+                    LiveInputChecked: false,
+                    Detail: $"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        return result;
     }
 
     public SemanticGraph? Graph => Current.Workspace.Graph;
@@ -1082,6 +1251,11 @@ public sealed class GraphSession : IDisposable
     {
         var committed = Current;
         if (committed.Workspace.HasCompilationState) return null;
+        if (committed.IsHistorical)
+        {
+            return "Selected historical snapshots are graph-only and do not retain Roslyn compilation state. "
+                   + "Omit snapshotId to use the latest semantic base.";
+        }
         if (!committed.Workspace.IsLoaded)
             return "Write-side tools require lifeblood_analyze with projectPath and readOnly:false.";
         var projectPath = committed.Workspace.Context?.RootPath;
@@ -1215,15 +1389,36 @@ public sealed class GraphSession : IDisposable
 
     public void Dispose()
     {
-        var current = Volatile.Read(ref _current);
-        Commit(CommittedGraphSessionState.CreateEmpty(current.Workspace.AnalysisGeneration));
+        lock (_publicationSync)
+        {
+            var current = Volatile.Read(ref _current);
+            CommitCore(
+                CommittedGraphSessionState.CreateEmpty(current.Workspace.AnalysisGeneration),
+                retainReplaced: false);
+            _snapshotCatalog.Dispose();
+        }
     }
 
     private void Commit(CommittedGraphSessionState candidate)
     {
+        lock (_publicationSync)
+            CommitCore(candidate, retainReplaced: true);
+    }
+
+    private void CommitCore(CommittedGraphSessionState candidate, bool retainReplaced)
+    {
         var replaced = Interlocked.Exchange(ref _current, candidate);
-        if (!ReferenceEquals(replaced.Workspace, candidate.Workspace))
-            replaced.Workspace.Dispose();
+        if (ReferenceEquals(replaced.Workspace, candidate.Workspace))
+            return;
+
+        var sameWorkspace = replaced.Workspace.Identity?.Workspace
+            == candidate.Workspace.Identity?.Workspace;
+        if (retainReplaced && replaced.Workspace.IsLoaded && sameWorkspace)
+            _snapshotCatalog.Retain(replaced.Workspace);
+        else if (!sameWorkspace)
+            _snapshotCatalog.Clear();
+
+        replaced.Workspace.Dispose();
     }
 
     private sealed class CommittedGraphSessionState
@@ -1235,16 +1430,26 @@ public sealed class GraphSession : IDisposable
                 AnalysisRuleSetResolver.ResolvedRuleSet.None,
                 Array.Empty<string>());
 
+        public static CommittedGraphSessionState CreateHistorical(WorkspaceSnapshot workspace)
+            => new(
+                workspace,
+                roslynAdapter: null,
+                AnalysisRuleSetResolver.ResolvedRuleSet.None,
+                Array.Empty<string>(),
+                isHistorical: true);
+
         public CommittedGraphSessionState(
             WorkspaceSnapshot workspace,
             RoslynWorkspaceAnalyzer? roslynAdapter,
             AnalysisRuleSetResolver.ResolvedRuleSet ruleSet,
-            IReadOnlyList<string> excludePaths)
+            IReadOnlyList<string> excludePaths,
+            bool isHistorical = false)
         {
             Workspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
             RoslynAdapter = roslynAdapter;
             RuleSet = ruleSet ?? throw new ArgumentNullException(nameof(ruleSet));
             ExcludePaths = excludePaths.ToArray();
+            IsHistorical = isHistorical;
         }
 
         public WorkspaceSnapshot Workspace { get; }
@@ -1255,8 +1460,46 @@ public sealed class GraphSession : IDisposable
 
         public string[] ExcludePaths { get; }
 
+        public bool IsHistorical { get; }
+
         public CommittedGraphSessionState WithRoslynAdapter(RoslynWorkspaceAnalyzer roslynAdapter)
             => new(Workspace, roslynAdapter, RuleSet, ExcludePaths);
+    }
+
+    public sealed class WorkspaceSnapshotNotFoundException : InvalidOperationException
+    {
+        public WorkspaceSnapshotNotFoundException(
+            SnapshotId requestedSnapshotId,
+            SnapshotId currentSnapshotId,
+            IReadOnlyList<SnapshotId> retainedSnapshotIds)
+            : base($"Snapshot '{requestedSnapshotId}' is neither current nor retained.")
+        {
+            RequestedSnapshotId = requestedSnapshotId;
+            CurrentSnapshotId = currentSnapshotId;
+            RetainedSnapshotIds = retainedSnapshotIds;
+        }
+
+        public SnapshotId RequestedSnapshotId { get; }
+
+        public SnapshotId CurrentSnapshotId { get; }
+
+        public IReadOnlyList<SnapshotId> RetainedSnapshotIds { get; }
+    }
+
+    public sealed class WorkspaceSnapshotSelectionConflictException : InvalidOperationException
+    {
+        public WorkspaceSnapshotSelectionConflictException(
+            SnapshotId requestedSnapshotId,
+            SnapshotId leasedSnapshotId)
+            : base("A nested read cannot switch away from its outer leased publication.")
+        {
+            RequestedSnapshotId = requestedSnapshotId;
+            LeasedSnapshotId = leasedSnapshotId;
+        }
+
+        public SnapshotId RequestedSnapshotId { get; }
+
+        public SnapshotId LeasedSnapshotId { get; }
     }
 
     private sealed class GraphSessionReadLease : IDisposable

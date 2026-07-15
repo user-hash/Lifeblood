@@ -34,6 +34,10 @@
       "type": "integer",
       "description": "Cap on preview entries per bucket/module when \u0060groupBy\u0060 is set. 0 = no preview, counts only. Default: 5."
     },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
     "expectedSnapshotId": {
       "type": "string",
       "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."

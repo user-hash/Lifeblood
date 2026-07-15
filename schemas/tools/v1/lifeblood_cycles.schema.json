@@ -9,6 +9,10 @@
       "type": "integer",
       "description": "Maximum number of cycles embedded in the response. When the SCC set is larger, the array is clipped and \u0060truncated:true\u0060 is set. Default: 500 in normal mode, 25 in summarize mode."
     },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
     "expectedSnapshotId": {
       "type": "string",
       "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."

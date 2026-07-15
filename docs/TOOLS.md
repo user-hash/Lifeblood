@@ -103,7 +103,7 @@ Rejection is a NORMAL structured result, not a transport / tool error.
 The `suggestedRetry` block is exactly the args needed to retry — pass it
 back to `lifeblood_analyze` to re-attempt with widened scope.
 
-## Snapshot-pinned reads and batches
+## Snapshot-pinned reads, history, and batches
 
 Every registered `Observe + SharedRead` tool accepts the common optional
 preconditions `expectedSnapshotId` and `expectedAnalysisGeneration`. The server
@@ -112,6 +112,22 @@ publication. A mismatch returns `failure:"snapshot-precondition"` with the
 expected and actual id/generation, the actual canonical analysis identity, and
 a retry suggestion; the requested tool does not execute. Omit both fields to
 keep the normal latest-snapshot behavior.
+
+Pass `snapshotId` to select one exact current or retained graph-only
+publication. Missing or evicted ids return `failure:"snapshot-not-found"` with
+the current id and retained inventory; a nested batch call cannot switch away
+from its outer lease. Historical graph queries retain their normal response
+shape and envelope. Historical publications deliberately contain neither
+Roslyn services nor source bytes, so compilation-backed, `partial_view`, and
+invariant-tree calls return unavailable instead of mixing historical graph
+facts with changing live state (`INV-MCP-HISTORICAL-READ-001`).
+
+`lifeblood_snapshots` owns history inventory and mutations. The default catalog
+retains at most three graph-only publications, the Application hard maximum is
+16, and unpinned entries expire after 24 hours or by LRU pressure. Pinned
+entries count toward the same bound; if all slots are pinned, automatic
+rollover is refused and reported rather than growing another cache. Use
+`checkDrift:true` on list only when filesystem hashing is worth the I/O cost.
 
 For several related reads, `lifeblood_batch` pins once and runs the plan in
 stable input order:

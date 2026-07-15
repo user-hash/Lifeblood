@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "Catalog action. list (default) returns current + retained graph-only history; pin captures/names a graph-only publication; unpin releases retention protection; evict removes an unpinned historical copy.",
+      "enum": [
+        "list",
+        "pin",
+        "unpin",
+        "evict"
+      ]
+    },
+    "targetSnapshotId": {
+      "type": "string",
+      "description": "Canonical snapshot id targeted by pin, unpin, or evict. Pin may target the current publication or an existing historical entry."
+    },
+    "name": {
+      "type": "string",
+      "description": "Optional unique investigation-lane name assigned while pinning. Trimmed, case-insensitively unique, maximum 128 characters."
+    },
+    "checkDrift": {
+      "type": "boolean",
+      "description": "When true on list, recapture live source/descriptor/rule identity once per base key and report current/drifted/unavailable. Default false avoids filesystem hashing."
+    }
+  }
+}

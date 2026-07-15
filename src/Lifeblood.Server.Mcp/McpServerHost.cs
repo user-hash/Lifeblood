@@ -5,6 +5,7 @@ using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.Ports.Right.Invariants;
+using Lifeblood.Application.UseCases;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
@@ -50,7 +51,8 @@ internal sealed class McpServerHost : IDisposable
         var telemetry = DotNetDiagnosticsTelemetrySink.CreateFromEnvironment("LIFEBLOOD_TELEMETRY");
         var telemetryLifetime = telemetry as IDisposable;
         IFileSystem fs = new PhysicalFileSystem();
-        var session = new GraphSession(fs, telemetry);
+        var snapshotCatalog = new WorkspaceSnapshotCatalog(ReadSnapshotCatalogOptions());
+        var session = new GraphSession(fs, telemetry, snapshotCatalog);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
         IMcpGraphProvider graphProvider = new LifebloodMcpProvider(blastRadius);
         IUserInputCanonicalizer canonicalizer = new CSharpUserInputCanonicalizer();
@@ -106,6 +108,25 @@ internal sealed class McpServerHost : IDisposable
         Session.Dispose();
         _sessionGate.Dispose();
         _telemetryLifetime?.Dispose();
+    }
+
+    internal static WorkspaceSnapshotCatalogOptions ReadSnapshotCatalogOptions()
+    {
+        var historyLimit = ReadEnvInt(
+            "LIFEBLOOD_SNAPSHOT_HISTORY_LIMIT",
+            WorkspaceSnapshotCatalogOptions.DefaultHistoryLimit);
+        if (historyLimit is < 0 or > WorkspaceSnapshotCatalogOptions.HardMaximumHistoryLimit)
+            historyLimit = WorkspaceSnapshotCatalogOptions.DefaultHistoryLimit;
+
+        var historyAgeSeconds = ReadEnvInt(
+            "LIFEBLOOD_SNAPSHOT_HISTORY_MAX_AGE_SECONDS",
+            checked((int)WorkspaceSnapshotCatalogOptions.DefaultMaximumAge.TotalSeconds));
+        if (historyAgeSeconds is < 0 or > 31_536_000)
+            historyAgeSeconds = checked((int)WorkspaceSnapshotCatalogOptions.DefaultMaximumAge.TotalSeconds);
+
+        return new WorkspaceSnapshotCatalogOptions(
+            historyLimit,
+            TimeSpan.FromSeconds(historyAgeSeconds));
     }
 
     private static long ReadEnvLong(string name, long fallback)

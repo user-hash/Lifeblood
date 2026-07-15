@@ -21,6 +21,11 @@ public static class ToolRegistry
     ToolEffect.RefreshWorkspace,
     ToolSessionAccess.Exclusive);
 
+  private static readonly ToolBehavior SnapshotCatalogManagement = new(
+    ToolSessionRequirement.None,
+    ToolEffect.ManageSnapshotCatalog,
+    ToolSessionAccess.Exclusive);
+
   private static readonly ToolBehavior GraphObservation = new(
     ToolSessionRequirement.AnalyzedWorkspace,
     ToolEffect.Observe,
@@ -264,7 +269,14 @@ public static class ToolRegistry
   Name = "lifeblood_batch",
   Behavior = CapabilityObservation,
   EnvelopeClassification = DerivedProven,
-  Description = "Execute an ordered read-only query plan under one immutable workspace snapshot lease. Each calls[] item names a registered tool and optional arguments. The complete plan is validated before execution: nested batches, exclusive tools, and every non-Observe effect are rejected without running any item. Accepted calls run serially in stable input order, retain their normal per-tool result/envelope, and the batch adds one common snapshot id, generation, and canonical analysis identity. Hard cap: 32 calls. Use expectedSnapshotId and/or expectedAnalysisGeneration for optimistic consistency.",
+  Description = "Execute an ordered read-only query plan under one immutable workspace snapshot lease. Each calls[] item names a registered tool and optional arguments. The complete plan is validated before execution: nested batches, exclusive tools, and every non-Observe effect are rejected without running any item. Accepted calls run serially in stable input order, retain their normal per-tool result/envelope, and the batch adds one common snapshot id, generation, and canonical analysis identity. Hard cap: 32 calls. Use snapshotId for an exact retained publication and expectedSnapshotId and/or expectedAnalysisGeneration for optimistic consistency.",
+  },
+  new()
+  {
+  Name = "lifeblood_snapshots",
+  Behavior = SnapshotCatalogManagement,
+  EnvelopeClassification = DerivedProven,
+  Description = "Inspect and manage the hard-bounded graph-only publication catalog. action=list (default) reports the current publication plus retained history, pin names/protects a current or historical graph-only snapshot, unpin releases that protection, and evict removes an unpinned retained copy. Historical entries share immutable graph/analysis objects but never retain Roslyn services; pinned entries count toward the same hard limit. Use targetSnapshotId for mutations and checkDrift:true only when live source/descriptor/rule hashing is worth the I/O cost. Live-source and compilation tools are unavailable on historical selection; omit snapshotId to use the latest semantic base.",
   },
   new()
   {
@@ -381,7 +393,7 @@ public static class ToolRegistry
   new()
   {
   Name = "lifeblood_partial_view",
-  Behavior = GraphObservation,
+  Behavior = WorkspaceRootObservation,
   EnvelopeClassification = SemanticProven,
   Description = "Return the combined source of every partial declaration of a type. Takes a type symbol id, walks the incoming Contains edges from File symbols to discover every partial file, reads each file via IFileSystem, and emits both per-segment source and a concatenated combined view with file headers.",
   },

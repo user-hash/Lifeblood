@@ -371,6 +371,47 @@ public class UseCaseTests
     }
 
     [Fact]
+    public void WorkspaceSnapshot_GraphOnlyReplica_PreservesPublicationWithoutRetainingSemanticServices()
+    {
+        var graph = BuildTestGraph();
+        var analysis = new AnalysisResult();
+        var host = new StubCompilationHost();
+        var executor = new StubCodeExecutor();
+        var refactoring = new StubRefactoring();
+        using var source = WorkspaceSnapshot.Create(
+            graph,
+            analysis,
+            capability: null,
+            language: "test",
+            context: null,
+            analyzedAtUtc: DateTime.UtcNow,
+            analysisGeneration: 7,
+            host,
+            executor,
+            refactoring);
+
+        using var replica = source.CreateGraphOnlyReplica();
+
+        Assert.Same(graph, replica.Graph);
+        Assert.Same(analysis, replica.Analysis);
+        Assert.Equal(source.SnapshotId, replica.SnapshotId);
+        Assert.Equal(source.AnalysisGeneration, replica.AnalysisGeneration);
+        Assert.True(source.RetainsSemanticServices);
+        Assert.False(replica.RetainsSemanticServices);
+        Assert.False(replica.HasCompilationState);
+
+        replica.Dispose();
+        Assert.False(host.Disposed);
+        Assert.False(executor.Disposed);
+        Assert.False(refactoring.Disposed);
+
+        source.Dispose();
+        Assert.True(host.Disposed);
+        Assert.True(executor.Disposed);
+        Assert.True(refactoring.Disposed);
+    }
+
+    [Fact]
     public void WorkspaceSession_Clear_ResetsAllState()
     {
         var session = new WorkspaceSession();

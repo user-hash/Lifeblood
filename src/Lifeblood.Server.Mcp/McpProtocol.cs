@@ -87,6 +87,7 @@ public enum ToolEffect
 {
   Observe,
   RefreshWorkspace,
+  ManageSnapshotCatalog,
   ExecuteCode,
   PreviewChanges,
 }
