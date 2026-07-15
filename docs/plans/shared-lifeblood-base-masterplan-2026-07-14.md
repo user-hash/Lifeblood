@@ -8,8 +8,9 @@ source of truth implemented; Wave 2 explicit workspace context, failure-
 isolated candidates, one-reference publication, and reference-counted read
 leases with deferred disposal are implemented; Wave 4 typed host identity and
 canonical workspace admission are implemented; stable snapshot identity plus
-canonical analysis/spec/source/rule identity are implemented; identical
-in-flight analysis coalescing is next
+canonical analysis/spec/source/rule identity and exact in-flight analysis
+coalescing are implemented; persistent client leases and daemon lifecycle are
+next
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded against Lifeblood and
 `D:/Projekti/DAWG`
@@ -19,9 +20,9 @@ publication, non-blocking read leases/deferred disposal, canonical shared-host
 identity/workspace admission, globally unique committed `SnapshotId`, and one
 `WorkspaceAnalysisIdentity` authority for `AnalysisSpec`, rule/source/
 descriptor fingerprints, `BaseKey`, and `AnalysisKey`. Resume in this order:
-(1) coalesce identical analyses; (2) replace per-frame pipes with persistent
-client leases plus idle eviction; (3) add snapshot preconditions/batches and
-the bounded graph-history catalog; (4) capture the frozen DAWG receipt and
+(1) replace per-frame pipes with persistent client leases plus idle eviction;
+(2) add snapshot preconditions/batches and the bounded graph-history catalog;
+(3) capture the frozen DAWG receipt and
 complete Lifeblood/DAWG rollout, packaging, evidence, and docs gates once the
 DAWG tree is quiescent.
 
@@ -174,7 +175,7 @@ property.
 | Resolved in Wave 4 identity atom | Workspace identity was implicit | Default keys now converge on the nearest Git worktree root, the handshake carries that canonical root, and shared-daemon analyze admission rejects a different project root or an out-of-root graph before `GraphSession.Load`. | Complete; rejection preserves the exact last good generation. |
 | P0 | Source-generated graph paths used ambient process CWD | A live Lifeblood graph analyzed by a server launched in DAWG attributed `McpJsonSerializerContext` generator files and symbols to `../DAWG/System.Text.Json.SourceGeneration/...`; same-hint outputs from different modules shared one file id. | Shipped locally before Wave 1: one full/incremental `SyntaxTreePathIdentity` seam maps generator hints into a module-qualified `generated/` namespace and keeps them out of disk lifecycle logic (`INV-SOURCEGEN-PATH-PROVENANCE-001`). |
 | Resolved in Wave 2 | Unity asset reachability also inferred project root through ambient CWD | `WorkspaceContext` is part of immutable `WorkspaceSnapshot` publication and flows through dead-code analysis into `UnityReachabilityAdapter`; relative paths without context fail closed and a non-CWD-root UnityEvent regression is pinned. | Complete; future workspace-sensitive providers must consume the same committed context. |
-| P1 | Identical analyses serialize but do not coalesce | `GraphSessionGate` queues exclusive analyses; a second identical request can repeat the entire analysis. | In-flight registry keyed by the complete `AnalysisKey`. |
+| Resolved in Wave 3 coalescing atom | Identical analyses serialized but did not coalesce | `AnalysisRequestCoordinator` now joins complete `AnalysisKey` + execution-policy equality, while publication rejects preflight/source drift. | Registry cancellation/failure semantics are pinned; persistent-transport cancellation mapping and process-level rollout receipt remain lifecycle gates. |
 | P1 | Multi-call reads can mix generations | Individual envelopes report generation, but callers cannot require one or lease it across a batch. | `expectedSnapshot`/generation precondition and a read-only pinned batch surface. |
 | Resolved before Wave 2 | `tools/list` read session state outside the session gate | `McpDispatcher.HandleToolsList` read `HasCompilationState` directly while analyze could replace the session. | `McpDispatcher` no longer owns `GraphSession`; `ToolHandler.GetTools` evaluates registry availability under the shared session gate. Snapshot leases replace this gate read in Wave 2 without changing the dispatcher boundary. |
 | Resolved in Wave 1 | Tool labels conflated state and effects | `WriteSide` meant retained compilation required, even for observation or returned edits; only analyze and compile-check needed exclusive access. | Every tool now declares one immutable `ToolBehavior`: hierarchical `sessionRequirement` (including retained compilation), independent `effect`, and independent `sessionAccess`. Legacy read/write fields are derived compatibility aliases. |
@@ -458,15 +459,22 @@ Purpose: ensure agents share work, not only the final heap.
 Exit gate: N simultaneous identical full or incremental requests call the
 analyzer once and publish once; non-identical requests never join.
 
-Implementation status: step 1 is complete. Domain-owned, length-framed
+Implementation status: steps 1-3 and the request/waiter projection in step 4
+are complete. Domain-owned, length-framed
 `ContentFingerprint` values compose the canonical `WorkspaceKey`,
 `AnalysisSpec`, `BaseKey`, `SourceFingerprint`, and `AnalysisKey` inside one
 `WorkspaceAnalysisIdentity` stored on the committed `WorkspaceSnapshot`.
 Roslyn snapshots fold source content, discovery descriptors, asmdefs, external
 references, and source-generator binaries into the receipt. Rule identity is
 content-authoritative and rule-only refreshes reuse one reference-counted
-semantic service base. Steps 2-5 (in-flight registry, response request/waiter
-facts, waiter-aware cancellation, and deterministic failure fan-out) are next.
+semantic service base. An adapter-owned preflight port builds the same identity
+before scheduling; publication compares the expected key again, so changed
+inputs cannot slip through a stale coalescing key. The per-workspace registry
+returns one request id, clones per-waiter metadata, keeps non-identical policy
+separate, cancels its shared work token only after every waiter leaves, and
+removes failed entries before retry. Persistent-transport cancellation mapping,
+the bounded accepted-change detail in step 4, and the process-level N-client
+analyzer-once receipt remain final Wave 3/4 rollout gates.
 
 ### Wave 4 - Versioned Persistent Transport And Daemon Lifecycle
 

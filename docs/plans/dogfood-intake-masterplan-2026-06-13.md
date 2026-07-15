@@ -441,7 +441,7 @@ Read top-to-bottom before touching anything.
   untouched**; do NOT push or tag mid-plan. User owns any push + tag.
 - **Goal** burn `devmemory/lifeblood-intake.md` down to locally implemented, ratcheted features
   with local verification. No push, tag, NuGet publish, or release cut in this run.
-- **Live state** 38 MCP tools (20 read + 18 write), 30 ports. Final local
+- **Live state** 38 MCP tools (20 read + 18 write), 31 ports. Final local
   preflight on 2026-06-22 is green: focused doc/contract ratchets 146/146,
   full Release suite **1441 passed / 0 failed / 11 native-clang skips / 1452 total**,
   `git diff --check`, and direct local MCP smoke against `dist`.

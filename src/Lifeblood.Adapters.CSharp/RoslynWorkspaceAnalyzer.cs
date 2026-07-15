@@ -4,6 +4,7 @@ using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.PathClassification;
 using Lifeblood.Domain.Workspaces;
 using Microsoft.CodeAnalysis.CSharp;
 using DomainSymbolKind = Lifeblood.Domain.Graph.SymbolKind;
@@ -29,7 +30,7 @@ namespace Lifeblood.Adapters.CSharp;
 ///
 /// INV-ADAPT-002: C# adapter is the reference. Most complete, best tested.
 /// </summary>
-public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
+public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInputFingerprintProvider
 {
     private readonly IFileSystem _fs;
     private readonly RoslynModuleDiscovery _discovery;
@@ -107,6 +108,62 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
     }
 
     public AdapterCapability Capability => RoslynCapabilityDescriptor.Capability;
+
+    public WorkspaceAnalysisInputs CaptureAnalysisInputs(string projectRoot, AnalysisConfig config)
+    {
+        var modules = _discovery.DiscoverModules(projectRoot);
+        var activeProfiles = ResolveActiveProfiles(projectRoot, config);
+        var sourceContent = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
+        var excludePathGlobs = PathGlobMatcher.Compile(config.ExcludePathGlobs);
+
+        foreach (var path in modules
+            .SelectMany(module => module.FilePaths)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.Ordinal))
+        {
+            if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                || !_fs.FileExists(path))
+            {
+                continue;
+            }
+
+            var relativePath = Path.GetRelativePath(projectRoot, path).Replace('\\', '/');
+            if (config.ExcludePatterns.Any(pattern =>
+                    relativePath.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                || PathGlobMatcher.MatchesAny(excludePathGlobs, relativePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                sourceContent[path] = SourceContentHasher.HashText(_fs.ReadAllText(path));
+            }
+            catch (IOException)
+            {
+                // Mirrors ModuleCompilationBuilder: an I/O-unreadable source
+                // never enters the compilation or its retained fingerprint.
+            }
+        }
+
+        var asmdefContent = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in _fs.FindFiles(projectRoot, "*.asmdef", recursive: true))
+        {
+            try { asmdefContent[path] = HashTextDescriptor(path); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+
+        var referenceContent = CaptureReferenceContent(modules);
+        var sourceFingerprint = WorkspaceInputFingerprintBuilder.Build(
+            projectRoot,
+            sourceContent,
+            _discovery.LastDescriptorContentHashes,
+            asmdefContent,
+            referenceContent);
+        return new WorkspaceAnalysisInputs(
+            activeProfiles.Select(profile => profile.Name),
+            sourceFingerprint);
+    }
 
     /// <summary>Optional per-module progress callback. Set before calling AnalyzeWorkspace.</summary>
     public Action<string, int, int>? OnModuleProgress { get; set; }
@@ -1110,11 +1167,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
 
     private void CaptureReferenceInputs(AnalysisSnapshot snapshot, ModuleInfo[] modules)
     {
-        foreach (var path in GetReferenceInputPaths(modules))
+        var content = CaptureReferenceContent(modules);
+        ReplaceDictionary(snapshot.ReferenceContentHashes, content);
+        foreach (var path in content.Keys)
         {
             try
             {
-                snapshot.ReferenceContentHashes[path] = HashBinaryDescriptor(path);
                 snapshot.ReferenceTimestamps[path] = _fs.GetLastWriteTimeUtc(path);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -1124,6 +1182,18 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer
                 // failure policy before that authoritative seam runs.
             }
         }
+    }
+
+    private Dictionary<string, ContentFingerprint> CaptureReferenceContent(ModuleInfo[] modules)
+    {
+        var content = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in GetReferenceInputPaths(modules))
+        {
+            try { content[path] = HashBinaryDescriptor(path); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+
+        return content;
     }
 
     private static HashSet<string> GetReferenceInputPaths(ModuleInfo[] modules)

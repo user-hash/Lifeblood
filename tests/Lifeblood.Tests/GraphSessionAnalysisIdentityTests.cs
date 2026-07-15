@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Domain.Workspaces;
 using Lifeblood.Server.Mcp;
 using Xunit;
 
@@ -127,6 +128,63 @@ public sealed class GraphSessionAnalysisIdentityTests : IDisposable
         Assert.Same(snapshot, session.CurrentSnapshot);
         Assert.Equal(snapshotId, session.SnapshotId);
         Assert.Equal(identity, session.AnalysisIdentity);
+    }
+
+    [Fact]
+    public void PrepareAnalysis_FingerprintMatchesCommittedFullAnalysis()
+    {
+        using var session = new GraphSession(new PhysicalFileSystem());
+        var request = new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            ReadOnly = false,
+            DefineProfiles = new[] { "Editor" },
+            ExcludePaths = new[] { "obj/**", "bin/**" },
+        };
+
+        var prepared = session.PrepareAnalysis(request);
+        _ = session.Load(
+            request.ProjectPath,
+            graphPath: null,
+            rulesPath: null,
+            readOnly: request.ReadOnly,
+            defineProfiles: request.DefineProfiles,
+            excludePaths: request.ExcludePaths,
+            expectedAnalysisKey: prepared.Identity.AnalysisKey);
+
+        Assert.Equal(prepared.Identity, session.AnalysisIdentity);
+    }
+
+    [Fact]
+    public void Load_ChangedInputAfterPreparationRejectsCandidateAndPreservesPublication()
+    {
+        using var session = new GraphSession(new PhysicalFileSystem());
+        _ = session.Load(_root, graphPath: null, rulesPath: null);
+        var request = new AnalyzeToolRequest { ProjectPath = _root, Incremental = true };
+        var prepared = session.PrepareAnalysis(request);
+        var committedSnapshot = session.CurrentSnapshot;
+        Assert.Equal(committedSnapshot.Identity, prepared.Identity);
+
+        File.WriteAllText(
+            Path.Combine(_root, "Types.cs"),
+            "namespace Identity; public class Changed { public int Value => 1; }");
+
+        var failure = Assert.Throws<AnalysisInputChangedException>(() =>
+            session.Load(
+                request.ProjectPath,
+                graphPath: null,
+                rulesPath: null,
+                incremental: true,
+                expectedAnalysisKey: prepared.Identity.AnalysisKey));
+
+        Assert.Equal(prepared.Identity.AnalysisKey, failure.Expected);
+        Assert.NotEqual(prepared.Identity.AnalysisKey, failure.Actual);
+        Assert.Same(committedSnapshot, session.CurrentSnapshot);
+        Assert.True(session.IsLoaded);
+
+        _ = session.Load(request.ProjectPath, graphPath: null, rulesPath: null, incremental: true);
+        Assert.NotSame(committedSnapshot, session.CurrentSnapshot);
+        Assert.NotEqual(prepared.Identity.AnalysisKey, session.AnalysisIdentity!.AnalysisKey);
     }
 
     public void Dispose()

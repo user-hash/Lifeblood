@@ -20,17 +20,20 @@ internal sealed class McpServerHost : IDisposable
 {
     private readonly IDisposable? _telemetryLifetime;
     private readonly GraphSessionGate _sessionGate;
+    private readonly AnalysisRequestCoordinator<McpToolResult> _analysisCoordinator;
 
     private McpServerHost(
         GraphSession session,
         McpDispatcher dispatcher,
         IDisposable? telemetryLifetime,
-        GraphSessionGate sessionGate)
+        GraphSessionGate sessionGate,
+        AnalysisRequestCoordinator<McpToolResult> analysisCoordinator)
     {
         Session = session;
         Dispatcher = dispatcher;
         _telemetryLifetime = telemetryLifetime;
         _sessionGate = sessionGate;
+        _analysisCoordinator = analysisCoordinator;
     }
 
     public GraphSession Session { get; }
@@ -68,6 +71,7 @@ internal sealed class McpServerHost : IDisposable
                 StalenessPolicy.Default.FilesChangedWarnThreshold));
         IResponseDecorator decorator = new LifebloodResponseDecorator(classifications, stalenessPolicy);
         var sessionGate = new GraphSessionGate(session);
+        var analysisCoordinator = new AnalysisRequestCoordinator<McpToolResult>();
         var toolHandler = new ToolHandler(
             session,
             graphProvider,
@@ -80,14 +84,21 @@ internal sealed class McpServerHost : IDisposable
             telemetry: telemetry,
             jsonCompatibilityMode: jsonCompatibilityMode,
             sessionGate: sessionGate,
-            boundWorkspaceRoot: boundWorkspaceRoot);
+            boundWorkspaceRoot: boundWorkspaceRoot,
+            analysisCoordinator: analysisCoordinator);
         var dispatcher = new McpDispatcher(toolHandler);
 
-        return new McpServerHost(session, dispatcher, telemetryLifetime, sessionGate);
+        return new McpServerHost(
+            session,
+            dispatcher,
+            telemetryLifetime,
+            sessionGate,
+            analysisCoordinator);
     }
 
     public void Dispose()
     {
+        _analysisCoordinator.Dispose();
         Session.Dispose();
         _sessionGate.Dispose();
         _telemetryLifetime?.Dispose();
