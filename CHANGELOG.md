@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Shared transport now reports its verified maturity.**
+  `lifeblood_capabilities.featureFlags.sharedSessionTransportMaturity` derives
+  from one server-edge constant and reports `recommended`, matching the tested
+  same-workspace rollout, canonical setup, and private-stdio rollback posture.
+  Code, wire, and documentation ratchets prevent the label from drifting again.
+  (`INV-MCP-SHARED-MATURITY-001`, `LB-INTAKE-20260715-041`.)
 - **Incremental analyze uses source content hashes and accepts editor-scoped change sets.**
   `lifeblood_analyze` now reports `mtimeTouchedSourceFiles` separately from
   `contentChangedSourceFiles`, so contentless Unity/IDE metadata touches do not

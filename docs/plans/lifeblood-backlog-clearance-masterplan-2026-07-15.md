@@ -341,6 +341,12 @@ acceptance receipt passes.
   and no ID appears in more than one lifecycle ledger.
 - Commit the final reconciliation atom. Do not push or tag.
 
+## Execution Receipts
+
+| Entry | Resolution | Verification | Commit |
+|---|---|---|---|
+| `LB-INTAKE-20260715-041` | shared capability maturity derives from the verified `recommended` rollout contract | focused capability/docs/ledger ratchets, Release build, full suite | `fix(shared-host): align maturity with verified rollout` atom |
+
 ## Failure And Rollback Policy
 
 - A candidate feature that cannot prove value on its motivating DAWG shape does

@@ -2819,3 +2819,28 @@ Acceptance:
   route the bug without external logs.
 - Subsequent read-side calls after a failed compile-check still succeed, or the
   client receives an explicit server-restart-required status.
+
+## LB-INTAKE-20260715-041 - Shared transport maturity metadata matches the verified rollout
+
+Status: Shipped (in-tree, untagged) - backlog-clearance Wave 1
+Type: Bug
+Source: Lifeblood backlog-clearance source audit, 2026-07-15
+Workspace: Lifeblood self
+Verification: `ToolHandlerTests.Handle_Capabilities_WithoutLoad_ReturnsVersionToolCountsAndContractPaths`,
+`DocsTests.SharedTransportMaturity_MatchesCanonicalRolloutDocs`,
+`INV-MCP-SHARED-MATURITY-001`, and the [Unreleased] changelog.
+
+Resolution:
+- `ServerIdentity.SharedSessionTransportMaturity` is the single server-edge
+  authority for the machine-readable capability value and now reports
+  `recommended`.
+- The live active/mode fields remain separate, so private stdio truthfully
+  reports inactive stdio while the supported shared topology remains
+  recommended.
+- A cross-surface ratchet pins the value to `STATUS.md`, `MCP_SETUP.md`, and the
+  canonical `.mcp.json.example`; the existing capability test pins the emitted
+  wire field to that authority.
+
+Impact:
+- Agents can select the shared topology from capabilities without overriding a
+  stale experimental label, and future rollout/documentation drift fails tests.

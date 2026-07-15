@@ -13,6 +13,8 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class ServerIdentity
 {
+    public const string SharedSessionTransportMaturity = "recommended";
+
     private static readonly string[] SessionLocalDoNotCiteFields =
     {
         "envelope.analysisGeneration",
@@ -112,7 +114,7 @@ public static class ServerIdentity
                 sharedSessionRequestCancellation = true,
                 sharedSessionTransportActive = session.SharedService.Active,
                 sharedSessionTransportMode = session.SharedService.Mode,
-                sharedSessionTransportMaturity = "experimental",
+                sharedSessionTransportMaturity = SharedSessionTransportMaturity,
                 strictJsonDuplicateRejection = true,
                 operationalTelemetry = true,
                 operationalTelemetryEvents = McpTelemetryEvents.All,
