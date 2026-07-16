@@ -10,6 +10,20 @@ namespace Lifeblood.Application.Ports.Infrastructure;
 public interface ISourceControlSnapshotProvider
 {
     SourceControlSnapshot Capture(string? startPath);
+
+    /// <summary>
+    /// Captures bounded current-side file/line evidence for a caller-selected
+    /// comparison. The provider never compiles source or classifies diagnostics.
+    /// </summary>
+    SourceChangeSnapshot CaptureChanges(SourceChangeRequest request);
+}
+
+public sealed record SourceChangeRequest
+{
+    public string? StartPath { get; init; }
+    public SourceChangeScope Scope { get; init; }
+    public string SinceCommit { get; init; } = "";
+    public string[] TouchedFiles { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -26,4 +40,10 @@ public sealed class UnavailableSourceControlSnapshotProvider : ISourceControlSna
 
     public SourceControlSnapshot Capture(string? startPath)
         => SourceControlSnapshot.Unavailable(startPath, "providerNotConfigured");
+
+    public SourceChangeSnapshot CaptureChanges(SourceChangeRequest request)
+        => SourceChangeSnapshot.Unavailable(
+            request.Scope,
+            "providerNotConfigured",
+            "Source-change provider is not configured.");
 }

@@ -13,6 +13,27 @@
       "type": "string",
       "description": "'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list."
     },
+    "diagnosticOwnershipMode": {
+      "type": "string",
+      "description": "Optional change-ownership grouping: workingTree (HEAD to current index/worktree plus untracked), staged (HEAD to index), sinceCommit (selected commit to current index/worktree), or explicitFiles (caller-declared touched paths without line history).",
+      "enum": [
+        "workingTree",
+        "staged",
+        "sinceCommit",
+        "explicitFiles"
+      ]
+    },
+    "sinceCommit": {
+      "type": "string",
+      "description": "Commit-ish used only with diagnosticOwnershipMode:'sinceCommit'. The Git adapter resolves it to an exact commit before diffing."
+    },
+    "touchedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Caller-supplied project-relative or absolute paths used only with diagnosticOwnershipMode:'explicitFiles'. Bounded to 1..128; these paths have no changed-line history, so in-file diagnostics remain unknownOwnership."
+    },
     "snapshotId": {
       "type": "string",
       "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."

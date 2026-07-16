@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Lifeblood.Analysis;
+using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Results;
 
@@ -57,6 +59,55 @@ internal sealed class WriteToolHandler
     {
         var moduleName = GetString(args, "moduleName");
         var filePath = GetString(args, "filePath");
+        var ownershipMode = GetString(args, "diagnosticOwnershipMode");
+        var sinceCommit = GetString(args, "sinceCommit");
+        if (!TryGetStringArray(args, "touchedFiles", out var touchedFiles, out var touchedFilesError))
+            return ErrorResult(touchedFilesError);
+        if (string.IsNullOrEmpty(ownershipMode) &&
+            (!string.IsNullOrEmpty(sinceCommit) || touchedFiles != null))
+        {
+            return ErrorResult(
+                "diagnosticOwnershipMode is required when sinceCommit or touchedFiles is supplied.");
+        }
+
+        SourceChangeRequest? ownershipRequest = null;
+        if (!string.IsNullOrEmpty(ownershipMode))
+        {
+            var scope = ownershipMode switch
+            {
+                "workingTree" => SourceChangeScope.WorkingTree,
+                "staged" => SourceChangeScope.Staged,
+                "sinceCommit" => SourceChangeScope.SinceCommit,
+                "explicitFiles" => SourceChangeScope.ExplicitFiles,
+                _ => (SourceChangeScope?)null,
+            };
+            if (scope == null)
+            {
+                return ErrorResult(
+                    $"Unknown diagnosticOwnershipMode '{ownershipMode}'. Use workingTree, staged, sinceCommit, or explicitFiles.");
+            }
+
+            if (scope == SourceChangeScope.SinceCommit && string.IsNullOrWhiteSpace(sinceCommit))
+                return ErrorResult("sinceCommit is required when diagnosticOwnershipMode is sinceCommit.");
+            if (scope != SourceChangeScope.SinceCommit && !string.IsNullOrEmpty(sinceCommit))
+                return ErrorResult("sinceCommit is only valid when diagnosticOwnershipMode is sinceCommit.");
+            if (scope == SourceChangeScope.ExplicitFiles && (touchedFiles == null || touchedFiles.Length == 0))
+                return ErrorResult("touchedFiles must contain 1..128 paths when diagnosticOwnershipMode is explicitFiles.");
+            if (scope != SourceChangeScope.ExplicitFiles && touchedFiles != null)
+                return ErrorResult("touchedFiles is only valid when diagnosticOwnershipMode is explicitFiles.");
+            if (touchedFiles?.Length > 128)
+                return ErrorResult("touchedFiles accepts at most 128 paths.");
+            if (touchedFiles?.Any(string.IsNullOrWhiteSpace) == true)
+                return ErrorResult("touchedFiles cannot contain empty paths.");
+
+            ownershipRequest = new SourceChangeRequest
+            {
+                StartPath = _session.ProjectRoot,
+                Scope = scope.Value,
+                SinceCommit = sinceCommit?.Trim() ?? "",
+                TouchedFiles = touchedFiles?.Select(path => path.Trim()).ToArray() ?? Array.Empty<string>(),
+            };
+        }
 
         var request = new Lifeblood.Application.Ports.Left.DiagnosticsRequest
         {
@@ -89,6 +140,20 @@ internal sealed class WriteToolHandler
         // wire shape. Wire-shaping is a connector concern — lives here, not in
         // the Domain DTO or the Roslyn adapter.
         var (definesActiveCount, definesActive) = ProjectDefines(report.DefinesActive, IsCompactVerbosity(args));
+        object? diagnosticOwnership = null;
+        if (ownershipRequest != null)
+        {
+            var changes = _session.SourceControl.CaptureChanges(ownershipRequest);
+            var ownership = DiagnosticOwnershipClassifier.Classify(
+                report.Diagnostics,
+                changes,
+                possiblyStale);
+            diagnosticOwnership = ProjectDiagnosticOwnership(
+                ownershipMode!,
+                changes,
+                ownership,
+                possiblyStale);
+        }
 
         return TextResult(JsonSerializer.Serialize(new
         {
@@ -102,7 +167,65 @@ internal sealed class WriteToolHandler
             definesActive,
             possiblyStale,
             diagnostics = report.Diagnostics,
+            diagnosticOwnership,
         }, _jsonOpts));
+    }
+
+    private static object ProjectDiagnosticOwnership(
+        string mode,
+        SourceChangeSnapshot changes,
+        DiagnosticOwnershipReport report,
+        bool diagnosticsPossiblyStale)
+    {
+        object[] Select(DiagnosticOwnership ownership) => report.Classifications
+            .Where(row => row.Ownership == ownership)
+            .Select(row => (object)new
+            {
+                row.DiagnosticIndex,
+                row.Evidence,
+            })
+            .ToArray();
+
+        var introducedByDiff = Select(DiagnosticOwnership.IntroducedByDiff);
+        var preExistingTouchedFile = Select(DiagnosticOwnership.PreExistingTouchedFile);
+        var preExistingUnrelated = Select(DiagnosticOwnership.PreExistingUnrelated);
+        var unknownOwnership = Select(DiagnosticOwnership.UnknownOwnership);
+        return new
+        {
+            mode,
+            diagnosticsPossiblyStale,
+            sourceControl = new
+            {
+                changes.Source,
+                changes.RepositoryRoot,
+                changes.BaseRevision,
+                changes.CurrentRevision,
+                changes.EvidenceComplete,
+                changes.OutputTruncated,
+                touchedFileCount = changes.Files.Length,
+                changes.FailureReason,
+            },
+            counts = new
+            {
+                introducedByDiff = introducedByDiff.Length,
+                preExistingTouchedFile = preExistingTouchedFile.Length,
+                preExistingUnrelated = preExistingUnrelated.Length,
+                unknownOwnership = unknownOwnership.Length,
+            },
+            introducedByDiff,
+            preExistingTouchedFile,
+            preExistingUnrelated,
+            unknownOwnership,
+            limitations = new[]
+            {
+                "Ownership is based on the diagnostic's current file/line location; it does not claim that a changed line caused a diagnostic emitted elsewhere.",
+                diagnosticsPossiblyStale
+                    ? "Diagnostics are older than the current source scope, so every ownership result is unknown until lifeblood_analyze refreshes the retained compilation."
+                    : changes.Scope == SourceChangeScope.ExplicitFiles
+                    ? "Caller-supplied touched files carry no changed-line history, so diagnostics in those files remain unknownOwnership."
+                    : "A diagnostic in a touched file but outside current-side changed lines is conservatively classified preExistingTouchedFile.",
+            },
+        };
     }
 
     /// <summary>
@@ -973,6 +1096,36 @@ internal sealed class WriteToolHandler
             (val.ValueKind == JsonValueKind.True || val.ValueKind == JsonValueKind.False))
             return val.GetBoolean();
         return null;
+    }
+
+    private static bool TryGetStringArray(
+        JsonElement? args,
+        string key,
+        out string[]? values,
+        out string error)
+    {
+        values = null;
+        error = "";
+        if (args == null || !args.Value.TryGetProperty(key, out var element)) return true;
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            error = $"{key} must be an array of strings.";
+            return false;
+        }
+
+        var result = new List<string>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                error = $"{key} must contain only strings.";
+                return false;
+            }
+            result.Add(item.GetString() ?? "");
+        }
+
+        values = result.ToArray();
+        return true;
     }
 
     private static McpToolResult TextResult(string text) => new()

@@ -352,6 +352,15 @@ namespace Lifeblood.UnityBridge
 
             [ToolParameter("Diagnostic verbosity (optional)", Required = false)]
             public string verbosity { get; set; }
+
+            [ToolParameter("Diagnostic ownership mode: workingTree, staged, sinceCommit, or explicitFiles (optional)", Required = false)]
+            public string diagnosticOwnershipMode { get; set; }
+
+            [ToolParameter("Commit-ish for diagnosticOwnershipMode=sinceCommit (optional)", Required = false)]
+            public string sinceCommit { get; set; }
+
+            [ToolParameter("Touched paths for diagnosticOwnershipMode=explicitFiles (optional, max 128)", Required = false)]
+            public string[] touchedFiles { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
