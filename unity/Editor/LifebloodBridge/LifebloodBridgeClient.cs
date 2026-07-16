@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -35,8 +34,7 @@ namespace Lifeblood.UnityBridge
         private int _nextId = 1;
         private bool _initialized;
         private readonly object _lock = new();
-        private readonly object _pendingLock = new();
-        private readonly Dictionary<string, Task<JObject>> _pendingCalls = new();
+        private readonly PendingToolCallRegistry<JObject> _pendingCalls = new();
 
         /// <summary>
         /// Timeout for individual tool calls. Five minutes leaves margin for a
@@ -147,55 +145,45 @@ namespace Lifeblood.UnityBridge
                 ? new JObject()
                 : (JObject)arguments.DeepClone();
             forwarded.Remove("action");
-            var callKey = CreateCallKey(toolName, forwarded);
-
             if (string.Equals(arguments?["action"]?.ToString(), "status", StringComparison.OrdinalIgnoreCase))
-                return PollToolCall(toolName, callKey);
+                return PollToolCall(toolName);
 
-            lock (_pendingLock)
+            try
             {
-                if (_pendingCalls.TryGetValue(callKey, out var existing))
-                {
-                    if (!existing.IsCompleted)
-                        return Pending(toolName);
-
-                    // A completed task remains owned by its original poller until
-                    // that poll consumes it. Coalesce a duplicate admission onto
-                    // the same terminal result instead of replacing evidence.
-                    return Pending(toolName);
-                }
-
-                try
-                {
-                    // ServerCommand reads Unity Editor state. Complete process start
-                    // and the MCP handshake on the main thread before Task.Run;
-                    // the worker then performs only process/stream I/O.
-                    lock (_lock)
-                        EnsureStarted();
-                }
-                catch (Exception ex)
-                {
-                    return new ErrorResponse($"Lifeblood bridge start failed: {ex.Message}");
-                }
-
-                _pendingCalls[callKey] = Task.Run(() => CallTool(toolName, forwarded));
-                return Pending(toolName);
+                // ServerCommand reads Unity Editor state. Complete process start
+                // and the MCP handshake on the main thread before Task.Run; the
+                // worker then performs only process/stream I/O.
+                lock (_lock)
+                    EnsureStarted();
             }
+            catch (Exception ex)
+            {
+                return new ErrorResponse($"Lifeblood bridge start failed: {ex.Message}");
+            }
+
+            var requestIdentity = forwarded.ToString(Formatting.None);
+            var admission = _pendingCalls.Admit(
+                toolName,
+                requestIdentity,
+                () => Task.Run(() => CallTool(toolName, forwarded)),
+                out _);
+            if (admission == PendingCallAdmission.ConflictingArguments)
+            {
+                return new ErrorResponse(
+                    $"A Lifeblood call for '{toolName}' is already awaiting status. " +
+                    "Poll it before starting the same tool with different arguments.");
+            }
+
+            return Pending(toolName);
         }
 
-        private object PollToolCall(string toolName, string callKey)
+        private object PollToolCall(string toolName)
         {
-            Task<JObject> pending;
-            lock (_pendingLock)
-            {
-                if (!_pendingCalls.TryGetValue(callKey, out pending))
-                    return new ErrorResponse($"No pending Lifeblood call for '{toolName}'.");
-
-                if (!pending.IsCompleted)
-                    return Pending(toolName);
-
-                _pendingCalls.Remove(callKey);
-            }
+            var state = _pendingCalls.Poll(toolName, out var pending);
+            if (state == PendingCallPollState.Missing)
+                return new ErrorResponse($"No pending Lifeblood call for '{toolName}'.");
+            if (state == PendingCallPollState.Pending)
+                return Pending(toolName);
 
             try
             {
@@ -211,9 +199,6 @@ namespace Lifeblood.UnityBridge
             => new PendingResponse(
                 $"Lifeblood call '{toolName}' is in progress.",
                 pollIntervalSeconds: 0.25);
-
-        private static string CreateCallKey(string toolName, JObject arguments)
-            => toolName + "\n" + arguments.ToString(Formatting.None);
 
         /// <summary>
         /// Polling form used by the Unity custom-tool surface. The bridge owns

@@ -114,7 +114,7 @@ public sealed class UnityBridgeContractTests
     }
 
     [Fact]
-    public void PollingCoordinator_KeysRequestsByToolAndArguments()
+    public void PollingCoordinator_UsesArgumentsOnlyToDetectAdmissionConflicts()
     {
         var root = Parse(ClientPath);
         var bridge = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
@@ -124,7 +124,8 @@ public sealed class UnityBridgeContractTests
         var analysis = bridge.Members.OfType<MethodDeclarationSyntax>()
             .Single(method => method.Identifier.ValueText == "AnalyzeCurrentProjectWithPolling");
 
-        Assert.Contains("CreateCallKey(toolName, forwarded)", polling.ToString());
+        Assert.Contains("var requestIdentity = forwarded.ToString(Formatting.None)", polling.ToString());
+        Assert.Contains("_pendingCalls.Admit(", polling.ToString());
         var projectPathAssignment = analysis.DescendantNodes()
             .OfType<AssignmentExpressionSyntax>()
             .Single(assignment => assignment.Left.ToString() == "args[\"projectPath\"]");
@@ -132,6 +133,20 @@ public sealed class UnityBridgeContractTests
             projectPathAssignment.Ancestors().TakeWhile(node => node != analysis),
             node => node is IfStatementSyntax);
         Assert.Contains("CallToolWithPolling(\"lifeblood_analyze\", args)", analysis.ToString());
+    }
+
+    [Fact]
+    public void PollingCoordinator_StatusLookupUsesToolIdentityWithoutOriginalArguments()
+    {
+        var root = Parse(ClientPath);
+        var bridge = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .Single(type => type.Identifier.ValueText == "LifebloodBridgeClient");
+        var polling = bridge.Members.OfType<MethodDeclarationSyntax>()
+            .Single(method => method.Identifier.ValueText == "CallToolWithPolling");
+        var source = polling.ToString();
+
+        Assert.DoesNotContain("CreateCallKey(toolName, forwarded)", source);
+        Assert.Contains("PollToolCall(toolName)", source);
     }
 
     [Fact]

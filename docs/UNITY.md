@@ -52,7 +52,7 @@ Delete any copied `Packages/com.dawgtools.lifeblood-bridge` directory or old `As
 
 ### Step 4: Verify
 
-Open Unity and refresh scripts. The bridge auto-discovers via `[McpForUnityTool]` attributes. Every parameter is a typed public instance property on the tool's nested `Parameters` class, matching Coplay's discovery contract. All bridge calls use Coplay's polling lifecycle so a cold analysis or reference search can outlive the synchronous gateway deadline without losing its result.
+Open Unity and refresh scripts. The bridge auto-discovers via `[McpForUnityTool]` attributes. Every parameter is a typed public instance property on the tool's nested `Parameters` class, matching Coplay's discovery contract. All bridge calls use Coplay's polling lifecycle so a cold analysis or reference search can outlive the synchronous gateway deadline without losing its result. Admission owns at most one unconsumed call per tool; an action-only status poll retrieves it without resending the original arguments.
 
 ## Server command discovery
 
