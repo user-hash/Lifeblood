@@ -1657,6 +1657,8 @@ public sealed class ToolHandler
                 audit.ParseWarnings,
                 audit.SourcePaths,
                 audit.SourceCounts,
+                audit.Coverage,
+                audit.CoverageWarnings,
                 evidenceReceipt = ServerIdentity.BuildInvariantEvidenceReceipt(
                     projectRoot,
                     audit,

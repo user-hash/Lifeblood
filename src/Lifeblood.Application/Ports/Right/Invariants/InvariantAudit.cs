@@ -89,6 +89,21 @@ public sealed class InvariantAudit
     /// where it came from without reparsing markdown themselves.
     /// </summary>
     public InvariantSourceCount[] SourceCounts { get; init; } = System.Array.Empty<InvariantSourceCount>();
+
+    /// <summary>
+    /// Coverage confidence for the discovered invariant source set. This is
+    /// intentionally separate from parse warnings: a source can be perfectly
+    /// readable markdown while still containing no parser-recognized invariant
+    /// declarations.
+    /// </summary>
+    public InvariantCoverage Coverage { get; init; } = new();
+
+    /// <summary>
+    /// Human-readable advisory warnings when the discovered source tree looks
+    /// materially under-recognized. Non-fatal; callers may still inspect the
+    /// recognized declarations.
+    /// </summary>
+    public string[] CoverageWarnings { get; init; } = System.Array.Empty<string>();
 }
 
 /// <summary>
@@ -150,4 +165,17 @@ public sealed class InvariantSourceCount
 {
     public string SourcePath { get; init; } = "";
     public int Count { get; init; }
+}
+
+/// <summary>
+/// Declared-invariant recognition coverage for one audit.
+/// </summary>
+public sealed class InvariantCoverage
+{
+    public int SourceFileCount { get; init; }
+    public int RecognizedSourceFileCount { get; init; }
+    public int EmptySourceFileCount { get; init; }
+    public int DeclaredCount { get; init; }
+    public double RecognizedSourceRatio { get; init; }
+    public string Status { get; init; } = "noSources";
 }

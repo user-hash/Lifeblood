@@ -411,7 +411,7 @@ public static class ToolRegistry
   Name = "lifeblood_invariant_check",
   Behavior = WorkspaceRootObservation,
   EnvelopeClassification = SemanticProven,
-  Description = "Query the architectural invariants declared in the loaded project's invariant tree. The provider walks <root>/CLAUDE.md, <root>/AGENTS.md, and any <root>/docs/invariants/**.md, aggregating across every source. Three modes: (1) pass 'id' to fetch one invariant's full body, title, category, and source line; (2) pass mode='audit' (default) for a summary — total count, per-category breakdown, duplicate-id collisions, parse warnings, and contributing source paths; (3) pass mode='list' for an id/title index across every declared invariant. Requires a prior lifeblood_analyze to establish the project root.",
+  Description = "Query the architectural invariants declared in the loaded project's invariant tree. The provider walks <root>/CLAUDE.md, <root>/AGENTS.md, and any <root>/docs/invariants/**.md, aggregating across every source. Three modes: (1) pass 'id' to fetch one invariant's full body, title, category, and source line; (2) pass mode='audit' (default) for a summary — total count, per-category breakdown, duplicate-id collisions, parse warnings, contributing source paths, and coverage/coverageWarnings that distinguish prose-only or under-recognized source trees from parser errors; (3) pass mode='list' for an id/title index across every declared invariant. Requires a prior lifeblood_analyze to establish the project root.",
   },
   new()
   {

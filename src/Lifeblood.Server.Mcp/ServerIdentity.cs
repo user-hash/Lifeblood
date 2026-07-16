@@ -266,6 +266,8 @@ public static class ServerIdentity
             duplicateDeclarationCount = audit.DuplicateDeclarationCount,
             sourcePaths = audit.SourcePaths,
             sourceCounts = audit.SourceCounts,
+            coverage = audit.Coverage,
+            coverageWarnings = audit.CoverageWarnings,
             duplicateIds = audit.Duplicates.Select(d => d.Id).ToArray(),
             duplicates = audit.Duplicates,
             parseWarnings = audit.ParseWarnings,
