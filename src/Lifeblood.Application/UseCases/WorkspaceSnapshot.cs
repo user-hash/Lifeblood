@@ -29,6 +29,7 @@ public sealed class WorkspaceSnapshot : IDisposable
         long analysisGeneration,
         SnapshotId snapshotId,
         WorkspaceAnalysisIdentity? identity,
+        SourceControlSnapshot? sourceControl,
         WorkspaceCompilationServices? compilationServices)
     {
         Graph = graph;
@@ -41,6 +42,7 @@ public sealed class WorkspaceSnapshot : IDisposable
         AnalysisGeneration = analysisGeneration;
         SnapshotId = snapshotId;
         Identity = identity;
+        SourceControl = sourceControl;
         _compilationServices = compilationServices;
     }
 
@@ -63,6 +65,8 @@ public sealed class WorkspaceSnapshot : IDisposable
     public SnapshotId SnapshotId { get; }
 
     public WorkspaceAnalysisIdentity? Identity { get; }
+
+    public SourceControlSnapshot? SourceControl { get; }
 
     public ICompilationHost? CompilationHost => _compilationServices?.CompilationHost;
 
@@ -96,7 +100,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         IWorkspaceRefactoring? refactoring = null,
         WorkspaceCapability? workspaceOps = null,
         SnapshotId? snapshotId = null,
-        WorkspaceAnalysisIdentity? identity = null)
+        WorkspaceAnalysisIdentity? identity = null,
+        SourceControlSnapshot? sourceControl = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(analysis);
@@ -126,6 +131,7 @@ public sealed class WorkspaceSnapshot : IDisposable
             analysisGeneration,
             snapshotId ?? SnapshotId.New(),
             identity,
+            sourceControl,
             compilationServices);
     }
 
@@ -145,6 +151,7 @@ public sealed class WorkspaceSnapshot : IDisposable
             analysisGeneration: analysisGeneration,
             snapshotId: SnapshotId.None,
             identity: null,
+            sourceControl: null,
             compilationServices: null);
     }
 
@@ -158,7 +165,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         AnalysisResult analysis,
         WorkspaceAnalysisIdentity identity,
         DateTime analyzedAtUtc,
-        long analysisGeneration)
+        long analysisGeneration,
+        SourceControlSnapshot? sourceControl = null)
     {
         ArgumentNullException.ThrowIfNull(analysis);
         ArgumentNullException.ThrowIfNull(identity);
@@ -181,6 +189,7 @@ public sealed class WorkspaceSnapshot : IDisposable
                 analysisGeneration,
                 SnapshotId.New(),
                 identity,
+                sourceControl ?? SourceControl,
                 sharedServices);
         }
         catch
@@ -212,6 +221,7 @@ public sealed class WorkspaceSnapshot : IDisposable
             AnalysisGeneration,
             SnapshotId,
             Identity,
+            SourceControl,
             compilationServices: null);
     }
 

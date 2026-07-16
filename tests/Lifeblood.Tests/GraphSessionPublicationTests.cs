@@ -96,6 +96,54 @@ public sealed class GraphSessionPublicationTests : IDisposable
         Assert.NotNull(session.Graph?.GetSymbol("type:Incremental.Refreshed"));
     }
 
+    [Fact]
+    public void Load_FullAnalyzeWithSameIdentity_ReusesCurrentPublication()
+    {
+        var root = CreateProject("Stable", "namespace Stable; public class Same { }");
+        using var session = new GraphSession(new PhysicalFileSystem());
+
+        _ = session.Load(root, graphPath: null, rulesPath: null);
+        var firstGeneration = session.AnalysisGeneration;
+        var firstSnapshotId = session.SnapshotId;
+        var firstIdentity = session.AnalysisIdentity;
+
+        var retryJson = session.Load(root, graphPath: null, rulesPath: null);
+        using var retry = JsonDocument.Parse(retryJson);
+
+        Assert.Equal(firstGeneration, session.AnalysisGeneration);
+        Assert.Equal(firstSnapshotId, session.SnapshotId);
+        Assert.Equal(firstIdentity, session.AnalysisIdentity);
+
+        var publication = retry.RootElement.GetProperty("publication");
+        Assert.Equal("reusedCurrent", publication.GetProperty("action").GetString());
+        Assert.Equal(firstSnapshotId.Value, publication.GetProperty("snapshotId").GetString());
+        Assert.Equal(firstGeneration, publication.GetProperty("analysisGeneration").GetInt64());
+        Assert.True(publication.GetProperty("sameAnalysisIdentity").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, retry.RootElement.GetProperty("usage").ValueKind);
+    }
+
+    [Fact]
+    public void Load_FullAnalyzePreparedBeforeSourceEdit_RejectsInsteadOfReusingStalePublication()
+    {
+        var root = CreateProject("Prepared", "namespace Prepared; public class Stable { }");
+        var sourcePath = Path.Combine(root, "Prepared.cs");
+        using var session = new GraphSession(new PhysicalFileSystem());
+
+        _ = session.Load(root, graphPath: null, rulesPath: null);
+        var committedSnapshot = session.CurrentSnapshot;
+        var prepared = session.PrepareAnalysis(new AnalyzeToolRequest { ProjectPath = root });
+
+        File.WriteAllText(sourcePath, "namespace Prepared; public class Changed { public int Value => 1; }");
+
+        Assert.Throws<AnalysisInputChangedException>(() =>
+            session.Load(
+                root,
+                graphPath: null,
+                rulesPath: null,
+                expectedAnalysisKey: prepared.Identity.AnalysisKey));
+        Assert.Same(committedSnapshot, session.CurrentSnapshot);
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_tempDir, recursive: true); }
