@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Shared graph retention no longer has an implicit wall-clock deadline.**
+  Disconnecting the last proxy keeps the daemon-owned latest semantic base by
+  default, so an agent handoff cannot silently turn the next incremental call
+  into `noPriorAnalysis`. Operators may still opt into automatic reclamation
+  with `LIFEBLOOD_SHARED_IDLE_SECONDS` or request a lease-aware maintenance
+  drain. Capabilities expose explicit enablement plus nullable timeout/deadline
+  values, and process tests pin exact generation/snapshot retention across a
+  disconnect. (`INV-MCP-IDLE-DRAIN-001`.)
 - **Versioned semantic contracts now share one bounded stateless evaluator.**
   Consumer-owned manifests declare operation-argument guards, external API
   cost annotations, and exact suppressions. `ContractAuditEngine` derives one
@@ -127,7 +135,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keyed daemon. Same-workspace agents share one latest immutable semantic/Roslyn
   base, while Lifeblood and DAWG remain isolated by canonical workspace identity.
   Protocol-v2 build/workspace handshakes, persistent client leases, live status,
-  last-client idle drain, maintenance drain, crash/restart recovery, and bounded
+  opt-in last-client idle drain, maintenance drain, crash/restart recovery, and bounded
   diagnostics make the process lifecycle explicit. Full/incremental candidates
   carry canonical spec/source/descriptor/rule fingerprints; identical requests
   coalesce, input drift rejects before publication, and per-waiter MCP

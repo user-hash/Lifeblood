@@ -167,6 +167,21 @@ process lifetime on both success and failure. Classification must distinguish
 server state loss from a stale direct connector, Unity polling-token misuse,
 and maintenance restart. No transport patch lands from the report alone.
 
+Reproduction has now separated two server-edge defects from the still-open
+direct-connector lane. Unity action-only status polls were keyed by their
+original argument object and therefore could not recover the admitted call;
+the registry now keys status by tool identity while retaining arguments only
+for duplicate/conflict admission. Shared graph loss was also real: the daemon
+hardcoded a five-minute last-client eviction policy, so ordinary agent gaps
+disposed the sole retained base and the next proxy correctly found generation
+zero. The lifecycle fix removes every implicit wall-clock deadline, preserves
+the exact publication with zero leases, and keeps automatic reclamation only
+as an explicit `LIFEBLOOD_SHARED_IDLE_SECONDS` operator policy. Focused fake-
+clock, long-policy, capability, and process reconnect tests are green; installed
+DAWG verification remains required before this reliability item closes. Direct
+Codex connector `Transport closed` remains independently open and must not be
+reported as solved by either server fix.
+
 ## Non-Negotiable Architecture Gates
 
 ### One authority per fact

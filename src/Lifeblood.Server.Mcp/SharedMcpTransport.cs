@@ -30,7 +30,6 @@ internal static class SharedMcpTransport
     private const string SharedProxyTraceEnv = "LIFEBLOOD_SHARED_PROXY_TRACE";
     private const string SharedDaemonAutostartEnv = "LIFEBLOOD_SHARED_DAEMON_AUTOSTART";
     private const string SharedIdleSecondsEnv = "LIFEBLOOD_SHARED_IDLE_SECONDS";
-    private static readonly TimeSpan DefaultSharedIdleTimeout = TimeSpan.FromMinutes(5);
     private static readonly string[] SharedCapabilities =
     {
         "persistent-connection",
@@ -842,22 +841,33 @@ internal static class SharedMcpTransport
         };
     }
 
-    private static TimeSpan ReadIdleTimeout()
+    private static TimeSpan? ReadIdleTimeout()
+        => ParseIdleTimeout(Environment.GetEnvironmentVariable(SharedIdleSecondsEnv));
+
+    internal static TimeSpan? ParseIdleTimeout(string? raw)
     {
-        var raw = Environment.GetEnvironmentVariable(SharedIdleSecondsEnv);
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
         if (double.TryParse(
                 raw,
                 System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture,
                 out var seconds)
             && double.IsFinite(seconds)
-            && seconds >= 0
-            && seconds <= TimeSpan.FromDays(1).TotalSeconds)
+            && seconds >= 0)
         {
-            return TimeSpan.FromSeconds(seconds);
+            try
+            {
+                return TimeSpan.FromSeconds(seconds);
+            }
+            catch (OverflowException)
+            {
+                return null;
+            }
         }
 
-        return DefaultSharedIdleTimeout;
+        return null;
     }
 
     private sealed class SharedProxyConnection : IAsyncDisposable
@@ -1040,7 +1050,8 @@ internal static class SharedMcpTransport
         string? ClientLeaseId,
         int ProcessId,
         DateTimeOffset StartedAtUtc,
-        double IdleTimeoutSeconds,
+        bool IdleEvictionEnabled,
+        double? IdleTimeoutSeconds,
         string[] Capabilities,
         string? Error)
     {
@@ -1073,7 +1084,8 @@ internal static class SharedMcpTransport
                 clientLeaseId,
                 Environment.ProcessId,
                 status.StartedAtUtc,
-                status.IdleTimeout.TotalSeconds,
+                status.IdleTimeout.HasValue,
+                status.IdleTimeout?.TotalSeconds,
                 SharedCapabilities,
                 error);
     }

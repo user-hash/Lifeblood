@@ -271,6 +271,48 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task DefaultNoIdleEviction_ReconnectRetainsExactPublication()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(
+            dll,
+            pipeName,
+            _tempDirectory);
+        var firstProxy = StartProxy(dll, pipeName, _tempDirectory);
+        SessionState published;
+        SharedStatus originalStatus;
+        try
+        {
+            using var initialize = await firstProxy.InitializeAsync();
+            await AnalyzeGraphAsync(firstProxy, _firstGraphPath);
+            published = await ReadSessionAsync(firstProxy);
+            originalStatus = await ReadSharedStatusAsync(firstProxy);
+        }
+        finally
+        {
+            await firstProxy.DisposeAsync();
+        }
+
+        Assert.False(daemon.HasExited);
+
+        await using var secondProxy = StartProxy(dll, pipeName, _tempDirectory);
+        using var secondInitialize = await secondProxy.InitializeAsync();
+        var reattached = await ReadSessionAsync(secondProxy);
+        var reattachedStatus = await ReadSharedStatusAsync(secondProxy);
+
+        Assert.True(reattached.HasGraphLoaded);
+        Assert.Equal(published.AnalysisGeneration, reattached.AnalysisGeneration);
+        Assert.Equal(published.SnapshotId, reattached.SnapshotId);
+        Assert.Equal(originalStatus.DaemonInstanceId, reattachedStatus.DaemonInstanceId);
+        Assert.False(reattachedStatus.IdleEvictionEnabled);
+        Assert.Null(reattachedStatus.IdleTimeoutSeconds);
+    }
+
+    [SkippableFact]
     public async Task SameAnalysis_TwoPersistentClientsCoalesceAndPublishOnce()
     {
         var dll = McpProcessTestClient.LocateServerDll();
@@ -743,7 +785,11 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
             status.GetProperty("protocolVersion").GetInt32(),
             status.GetProperty("daemonInstanceId").GetString() ?? "",
             status.GetProperty("clientCount").GetInt32(),
-            status.GetProperty("inFlightAnalysisCount").GetInt32());
+            status.GetProperty("inFlightAnalysisCount").GetInt32(),
+            status.GetProperty("idleEvictionEnabled").GetBoolean(),
+            status.GetProperty("idleTimeoutSeconds").ValueKind == JsonValueKind.Null
+                ? null
+                : status.GetProperty("idleTimeoutSeconds").GetDouble());
     }
 
     private static async Task WaitUntilSharedAnalyzeInFlightAsync(
@@ -773,5 +819,7 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         int ProtocolVersion,
         string DaemonInstanceId,
         int ClientCount,
-        int InFlightAnalysisCount);
+        int InFlightAnalysisCount,
+        bool IdleEvictionEnabled,
+        double? IdleTimeoutSeconds);
 }

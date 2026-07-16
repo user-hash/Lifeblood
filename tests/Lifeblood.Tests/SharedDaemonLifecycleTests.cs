@@ -6,6 +6,43 @@ namespace Lifeblood.Tests;
 public sealed class SharedDaemonLifecycleTests
 {
     [Fact]
+    public void IdlePolicy_IsDisabledByDefaultAndPreservesLongExplicitIntervals()
+    {
+        Assert.Null(SharedMcpTransport.ParseIdleTimeout(null));
+        Assert.Null(SharedMcpTransport.ParseIdleTimeout("invalid"));
+        Assert.Null(SharedMcpTransport.ParseIdleTimeout("-1"));
+
+        var requested = TimeSpan.FromDays(365);
+        var rawSeconds = requested.TotalSeconds.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(requested, SharedMcpTransport.ParseIdleTimeout(rawSeconds));
+
+        var callbackCount = 0;
+        using var schedule = SystemSharedDaemonTimeSource.Instance.Schedule(
+            requested,
+            () => Interlocked.Increment(ref callbackCount));
+        Assert.Equal(0, Volatile.Read(ref callbackCount));
+    }
+
+    [Fact]
+    public void NoIdlePolicy_LastReleaseRetainsDaemonWithoutSchedulingEviction()
+    {
+        var clock = new ManualSharedDaemonTimeSource();
+        using var lifecycle = new SharedDaemonLifecycle(idleTimeout: null, clock);
+        var client = lifecycle.AcquireClient("client", Array.Empty<string>());
+
+        client.Dispose();
+
+        var status = lifecycle.CaptureStatus();
+        Assert.Equal(SharedDaemonLifecycleState.Running, status.State);
+        Assert.Equal(0, status.ClientCount);
+        Assert.Null(status.IdleTimeout);
+        Assert.Null(status.IdleDeadlineUtc);
+        Assert.Equal(0, clock.ScheduleCount);
+        Assert.False(lifecycle.ShutdownToken.IsCancellationRequested);
+    }
+
+    [Fact]
     public void ClientLeases_AreCountedAndLastReleaseStartsIdleDeadline()
     {
         var clock = new ManualSharedDaemonTimeSource();
@@ -143,8 +180,11 @@ public sealed class SharedDaemonLifecycleTests
 
         public bool ThrowOnSchedule { get; init; }
 
+        public int ScheduleCount { get; private set; }
+
         public IDisposable Schedule(TimeSpan delay, Action callback)
         {
+            ScheduleCount++;
             if (ThrowOnSchedule)
                 throw new InvalidOperationException("Test scheduler failure.");
 
