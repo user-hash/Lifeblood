@@ -45,6 +45,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   release it immediately. Receipts report execution mode, scan bounds,
   truncation, input drift, compiled-module count, and
   `AdditionalSemanticBaseCount`. (`INV-OPERATION-FACTS-001`.)
+- **Targeted contract scans avoid materializing rejected operation evidence.**
+  Kind, bound-target, and containing-symbol filters now run before argument,
+  value, and control-context projection. A request-scoped canonical-symbol-ID
+  cache removes repeated formatting work without retaining Roslyn symbols
+  after the scan. The motivating DAWG value-domain audit fell from roughly
+  62 seconds of post-analyze wall time to an isolated 16.416 seconds while
+  preserving one emitted fact/finding and zero additional semantic bases.
 - **Shared DAWG analysis is responsive, reusable, and loss-tolerant.** Snapshot
   catalog reads use a shared lease while analyze builds a candidate; identical
   completed identities reuse the current immutable publication; disconnected

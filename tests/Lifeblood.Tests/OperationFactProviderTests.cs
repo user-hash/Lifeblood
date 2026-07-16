@@ -228,6 +228,35 @@ public sealed class OperationFactProviderTests
         Assert.Equal(3, receipt.EmittedFactCount);
     }
 
+    [Fact]
+    public void Scan_TargetPrefilterPreservesUnfilteredFactIdentityAndProjection()
+    {
+        using var host = HostWith(Source);
+        var (allCalls, _) = Scan(host, new OperationFactQuery
+        {
+            IncludeKinds = new[] { OperationFactKind.Call },
+        });
+        var (filteredCalls, _) = Scan(host, new OperationFactQuery
+        {
+            TargetSymbolIds = new[] { "method:Acme.Engine.Sink(float)" },
+            IncludeKinds = new[] { OperationFactKind.Call },
+        });
+
+        var expected = allCalls
+            .Where(fact => fact.TargetSymbolId == "method:Acme.Engine.Sink(float)")
+            .ToArray();
+
+        Assert.Equal(expected.Select(fact => fact.Id), filteredCalls.Select(fact => fact.Id));
+        Assert.Equal(expected.Select(fact => fact.Source.Line), filteredCalls.Select(fact => fact.Source.Line));
+        Assert.Equal(
+            expected.Select(fact => Assert.Single(
+                fact.Inputs,
+                input => input.Role == OperationInputRole.Argument).Value.Expression),
+            filteredCalls.Select(fact => Assert.Single(
+                fact.Inputs,
+                input => input.Role == OperationInputRole.Argument).Value.Expression));
+    }
+
     private static (OperationFact[] Facts, OperationFactScanReceipt Receipt) Scan(
         RoslynCompilationHost host,
         OperationFactQuery query)

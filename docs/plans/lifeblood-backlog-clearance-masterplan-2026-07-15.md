@@ -387,6 +387,16 @@ mechanism. This is not closure for `006` or `010` yet: non-finite policy,
 constant provenance, cadence-boundary fixtures, and motivating DAWG receipts
 remain required.
 
+The first DAWG dogfood exposed a performance defect before closure: a target-
+filtered audit emitted one fact but still materialized value/control evidence
+for 3,012,606 visited operations, leaving roughly 62 seconds after the cold
+analyze. The C# adapter now applies kind/target/containing filters before fact
+construction and memoizes canonical symbol IDs only for the request. An exact
+candidate rerun over the same 4,383-file Editor profile emitted the same fact
+and proven mismatch in 16.416 seconds with `additionalSemanticBaseCount = 0`.
+The remaining full operation-tree traversal cost stays visible as a measured
+optimization boundary; no incomplete name/path heuristic was added.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 

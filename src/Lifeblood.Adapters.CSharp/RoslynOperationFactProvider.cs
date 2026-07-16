@@ -67,6 +67,7 @@ internal sealed class RoslynOperationFactProvider
             query.IncludeKinds,
             value => value,
             StringComparer.Ordinal);
+        var symbolIds = new ScanSymbolIds();
         var scannedModules = 0;
         var scannedFiles = 0;
         var observedOperations = 0;
@@ -106,6 +107,7 @@ internal sealed class RoslynOperationFactProvider
                             containingFilter,
                             targetFilter,
                             kindFilter,
+                            symbolIds,
                             visited,
                             consume,
                             cancellationToken,
@@ -160,6 +162,7 @@ internal sealed class RoslynOperationFactProvider
         HashSet<string>? containingFilter,
         HashSet<string>? targetFilter,
         HashSet<string>? kindFilter,
+        ScanSymbolIds symbolIds,
         HashSet<IOperation> visited,
         Func<OperationFact, bool> consume,
         CancellationToken cancellationToken,
@@ -174,25 +177,42 @@ internal sealed class RoslynOperationFactProvider
         observedOperations++;
         treeOperationOrdinal++;
 
-        var fact = BuildFact(operation, model, compilation, moduleName, treeOperationOrdinal);
-        if (fact != null
-            && (query.IncludeImplicit || !fact.IsImplicit)
-            && (containingFilter is not { Count: > 0 } || containingFilter.Contains(fact.ContainingSymbolId))
-            && (targetFilter is not { Count: > 0 }
-                || (fact.TargetSymbolId != null && targetFilter.Contains(fact.TargetSymbolId)))
-            && (kindFilter is not { Count: > 0 } || kindFilter.Contains(fact.Kind)))
+        var kind = OperationKind(operation);
+        if (kind != null
+            && (query.IncludeImplicit || !operation.IsImplicit)
+            && (kindFilter is not { Count: > 0 } || kindFilter.Contains(kind)))
         {
-            if (emittedFacts >= query.MaxFacts)
+            var targetId = TargetSymbolId(operation, symbolIds);
+            var targetMatches = targetFilter is not { Count: > 0 }
+                || (targetId != null && targetFilter.Contains(targetId));
+            var containingSymbolId = targetMatches
+                ? ContainingSymbolId(model, operation.Syntax.SpanStart, moduleName, symbolIds)
+                : null;
+            var containingMatches = containingFilter is not { Count: > 0 }
+                || (containingSymbolId != null && containingFilter.Contains(containingSymbolId));
+            if (targetMatches && containingMatches)
             {
-                truncated = true;
-                return false;
-            }
+                if (emittedFacts >= query.MaxFacts)
+                {
+                    truncated = true;
+                    return false;
+                }
 
-            emittedFacts++;
-            if (!consume(fact))
-            {
-                stoppedByConsumer = true;
-                return false;
+                var fact = BuildFact(
+                    operation,
+                    compilation,
+                    moduleName,
+                    treeOperationOrdinal,
+                    kind,
+                    targetId,
+                    containingSymbolId!,
+                    symbolIds);
+                emittedFacts++;
+                if (!consume(fact))
+                {
+                    stoppedByConsumer = true;
+                    return false;
+                }
             }
         }
 
@@ -207,6 +227,7 @@ internal sealed class RoslynOperationFactProvider
                     containingFilter,
                     targetFilter,
                     kindFilter,
+                    symbolIds,
                     visited,
                     consume,
                     cancellationToken,
@@ -221,156 +242,161 @@ internal sealed class RoslynOperationFactProvider
         return true;
     }
 
-    private OperationFact? BuildFact(
+    private static string? OperationKind(IOperation operation) => operation switch
+    {
+        IInvocationOperation => OperationFactKind.Call,
+        IObjectCreationOperation => OperationFactKind.ObjectCreation,
+        IArrayCreationOperation => OperationFactKind.ArrayCreation,
+        IDelegateCreationOperation => OperationFactKind.DelegateCreation,
+        IAssignmentOperation or IIncrementOrDecrementOperation => OperationFactKind.Assignment,
+        IFieldReferenceOperation field => RoslynOperationFacts.IsWriteContext(field)
+            ? OperationFactKind.MemberWrite
+            : OperationFactKind.MemberRead,
+        IPropertyReferenceOperation property => RoslynOperationFacts.IsWriteContext(property)
+            ? OperationFactKind.MemberWrite
+            : OperationFactKind.MemberRead,
+        IEventReferenceOperation eventReference => RoslynOperationFacts.IsWriteContext(eventReference)
+            ? OperationFactKind.MemberWrite
+            : OperationFactKind.MemberRead,
+        IArrayElementReferenceOperation => OperationFactKind.ElementAccess,
+        IBinaryOperation => OperationFactKind.Binary,
+        IUnaryOperation => OperationFactKind.Unary,
+        IConversionOperation => OperationFactKind.Conversion,
+        IConditionalOperation => OperationFactKind.Branch,
+        ILoopOperation => OperationFactKind.Loop,
+        IReturnOperation => OperationFactKind.Return,
+        IThrowOperation => OperationFactKind.Throw,
+        IAwaitOperation => OperationFactKind.Await,
+        ILockOperation => OperationFactKind.Lock,
+        IInterpolatedStringOperation => OperationFactKind.InterpolatedString,
+        _ => null,
+    };
+
+    private static string? TargetSymbolId(IOperation operation, ScanSymbolIds symbolIds) => operation switch
+    {
+        IInvocationOperation invocation => symbolIds.Get(invocation.TargetMethod),
+        IObjectCreationOperation { Constructor: { } constructor } => symbolIds.Get(constructor),
+        IAssignmentOperation assignment => ReferencedSymbolId(assignment.Target, symbolIds),
+        IIncrementOrDecrementOperation increment => ReferencedSymbolId(increment.Target, symbolIds),
+        IFieldReferenceOperation field => symbolIds.Get(field.Field),
+        IPropertyReferenceOperation property => symbolIds.Get(property.Property),
+        IEventReferenceOperation eventReference => symbolIds.Get(eventReference.Event),
+        IBinaryOperation { OperatorMethod: { } method } => symbolIds.Get(method),
+        IUnaryOperation { OperatorMethod: { } method } => symbolIds.Get(method),
+        IConversionOperation { OperatorMethod: { } method } => symbolIds.Get(method),
+        _ => null,
+    };
+
+    private static string? OperatorName(IOperation operation) => operation switch
+    {
+        ICompoundAssignmentOperation compound => compound.OperatorKind.ToString(),
+        ICoalesceAssignmentOperation => "Coalesce",
+        IAssignmentOperation => "Simple",
+        IIncrementOrDecrementOperation increment => increment.Kind.ToString(),
+        IBinaryOperation binary => binary.OperatorKind.ToString(),
+        IUnaryOperation unary => unary.OperatorKind.ToString(),
+        IConversionOperation conversion => conversion.IsChecked ? "Checked" : "Unchecked",
+        ILoopOperation loop => loop.LoopKind.ToString(),
+        _ => null,
+    };
+
+    private OperationFact BuildFact(
         IOperation operation,
-        SemanticModel model,
         CSharpCompilation compilation,
         string moduleName,
-        int operationOrdinal)
+        int operationOrdinal,
+        string kind,
+        string? targetId,
+        string containingSymbolId,
+        ScanSymbolIds symbolIds)
     {
-        string? kind = null;
-        string? targetId = null;
-        string? operatorName = null;
         var inputs = new List<OperationInputFact>();
 
         switch (operation)
         {
             case IInvocationOperation invocation:
-                kind = OperationFactKind.Call;
-                targetId = SymbolId(invocation.TargetMethod);
-                AddInput(inputs, OperationInputRole.Receiver, invocation.Instance);
-                AddArguments(inputs, invocation.Arguments, compilation);
+                AddInput(inputs, OperationInputRole.Receiver, invocation.Instance, symbolIds);
+                AddArguments(inputs, invocation.Arguments, compilation, symbolIds);
                 break;
 
             case IObjectCreationOperation creation:
-                kind = OperationFactKind.ObjectCreation;
-                targetId = creation.Constructor == null ? null : SymbolId(creation.Constructor);
-                AddArguments(inputs, creation.Arguments, compilation);
+                AddArguments(inputs, creation.Arguments, compilation, symbolIds);
                 break;
 
             case IArrayCreationOperation arrayCreation:
-                kind = OperationFactKind.ArrayCreation;
                 foreach (var dimension in arrayCreation.DimensionSizes)
-                    AddInput(inputs, OperationInputRole.Argument, dimension, inputs.Count);
+                    AddInput(inputs, OperationInputRole.Argument, dimension, symbolIds, inputs.Count);
                 break;
 
             case IDelegateCreationOperation delegateCreation:
-                kind = OperationFactKind.DelegateCreation;
-                AddInput(inputs, OperationInputRole.Value, delegateCreation.Target);
+                AddInput(inputs, OperationInputRole.Value, delegateCreation.Target, symbolIds);
                 break;
 
             case IAssignmentOperation assignment:
-                kind = OperationFactKind.Assignment;
-                targetId = ReferencedSymbolId(assignment.Target);
-                operatorName = assignment switch
-                {
-                    ICompoundAssignmentOperation compound => compound.OperatorKind.ToString(),
-                    ICoalesceAssignmentOperation => "Coalesce",
-                    _ => "Simple",
-                };
-                AddInput(inputs, OperationInputRole.Target, assignment.Target);
-                AddInput(inputs, OperationInputRole.Value, assignment.Value);
+                AddInput(inputs, OperationInputRole.Target, assignment.Target, symbolIds);
+                AddInput(inputs, OperationInputRole.Value, assignment.Value, symbolIds);
                 break;
 
             case IIncrementOrDecrementOperation increment:
-                kind = OperationFactKind.Assignment;
-                targetId = ReferencedSymbolId(increment.Target);
-                operatorName = increment.Kind.ToString();
-                AddInput(inputs, OperationInputRole.Target, increment.Target);
+                AddInput(inputs, OperationInputRole.Target, increment.Target, symbolIds);
                 break;
 
             case IFieldReferenceOperation field:
-                kind = RoslynOperationFacts.IsWriteContext(field)
-                    ? OperationFactKind.MemberWrite
-                    : OperationFactKind.MemberRead;
-                targetId = SymbolId(field.Field);
-                AddInput(inputs, OperationInputRole.Receiver, field.Instance);
+                AddInput(inputs, OperationInputRole.Receiver, field.Instance, symbolIds);
                 break;
 
             case IPropertyReferenceOperation property:
-                kind = RoslynOperationFacts.IsWriteContext(property)
-                    ? OperationFactKind.MemberWrite
-                    : OperationFactKind.MemberRead;
-                targetId = SymbolId(property.Property);
-                AddInput(inputs, OperationInputRole.Receiver, property.Instance);
+                AddInput(inputs, OperationInputRole.Receiver, property.Instance, symbolIds);
                 break;
 
             case IEventReferenceOperation eventReference:
-                kind = RoslynOperationFacts.IsWriteContext(eventReference)
-                    ? OperationFactKind.MemberWrite
-                    : OperationFactKind.MemberRead;
-                targetId = SymbolId(eventReference.Event);
-                AddInput(inputs, OperationInputRole.Receiver, eventReference.Instance);
+                AddInput(inputs, OperationInputRole.Receiver, eventReference.Instance, symbolIds);
                 break;
 
             case IArrayElementReferenceOperation element:
-                kind = OperationFactKind.ElementAccess;
-                AddInput(inputs, OperationInputRole.Receiver, element.ArrayReference);
+                AddInput(inputs, OperationInputRole.Receiver, element.ArrayReference, symbolIds);
                 for (var index = 0; index < element.Indices.Length; index++)
-                    AddInput(inputs, OperationInputRole.Index, element.Indices[index], index);
+                    AddInput(inputs, OperationInputRole.Index, element.Indices[index], symbolIds, index);
                 break;
 
             case IBinaryOperation binary:
-                kind = OperationFactKind.Binary;
-                targetId = binary.OperatorMethod == null ? null : SymbolId(binary.OperatorMethod);
-                operatorName = binary.OperatorKind.ToString();
-                AddInput(inputs, OperationInputRole.Left, binary.LeftOperand);
-                AddInput(inputs, OperationInputRole.Right, binary.RightOperand);
+                AddInput(inputs, OperationInputRole.Left, binary.LeftOperand, symbolIds);
+                AddInput(inputs, OperationInputRole.Right, binary.RightOperand, symbolIds);
                 break;
 
             case IUnaryOperation unary:
-                kind = OperationFactKind.Unary;
-                targetId = unary.OperatorMethod == null ? null : SymbolId(unary.OperatorMethod);
-                operatorName = unary.OperatorKind.ToString();
-                AddInput(inputs, OperationInputRole.Operand, unary.Operand);
+                AddInput(inputs, OperationInputRole.Operand, unary.Operand, symbolIds);
                 break;
 
             case IConversionOperation conversion:
-                kind = OperationFactKind.Conversion;
-                targetId = conversion.OperatorMethod == null ? null : SymbolId(conversion.OperatorMethod);
-                operatorName = conversion.IsChecked ? "Checked" : "Unchecked";
-                AddInput(inputs, OperationInputRole.Value, conversion.Operand);
+                AddInput(inputs, OperationInputRole.Value, conversion.Operand, symbolIds);
                 break;
 
             case IConditionalOperation conditional:
-                kind = OperationFactKind.Branch;
-                AddInput(inputs, OperationInputRole.Condition, conditional.Condition);
+                AddInput(inputs, OperationInputRole.Condition, conditional.Condition, symbolIds);
                 break;
 
             case ILoopOperation loop:
-                kind = OperationFactKind.Loop;
-                operatorName = loop.LoopKind.ToString();
-                AddLoopInput(inputs, loop);
+                AddLoopInput(inputs, loop, symbolIds);
                 break;
 
             case IReturnOperation returned:
-                kind = OperationFactKind.Return;
-                AddInput(inputs, OperationInputRole.ReturnedValue, returned.ReturnedValue);
+                AddInput(inputs, OperationInputRole.ReturnedValue, returned.ReturnedValue, symbolIds);
                 break;
 
             case IThrowOperation thrown:
-                kind = OperationFactKind.Throw;
-                AddInput(inputs, OperationInputRole.Exception, thrown.Exception);
+                AddInput(inputs, OperationInputRole.Exception, thrown.Exception, symbolIds);
                 break;
 
             case IAwaitOperation awaited:
-                kind = OperationFactKind.Await;
-                AddInput(inputs, OperationInputRole.Value, awaited.Operation);
+                AddInput(inputs, OperationInputRole.Value, awaited.Operation, symbolIds);
                 break;
 
             case ILockOperation locked:
-                kind = OperationFactKind.Lock;
-                AddInput(inputs, OperationInputRole.LockedValue, locked.LockedValue);
-                break;
-
-            case IInterpolatedStringOperation:
-                kind = OperationFactKind.InterpolatedString;
+                AddInput(inputs, OperationInputRole.LockedValue, locked.LockedValue, symbolIds);
                 break;
         }
 
-        if (kind == null) return null;
-
-        var containingSymbolId = ContainingSymbolId(model, operation.Syntax.SpanStart, moduleName);
         var source = SourceSpan(operation.Syntax);
         return new OperationFact
         {
@@ -381,11 +407,11 @@ internal sealed class RoslynOperationFactProvider
             ContainingSymbolId = containingSymbolId,
             TargetSymbolId = targetId,
             ResultType = operation.Type == null ? null : TypeDisplay(operation.Type),
-            Operator = operatorName,
+            Operator = OperatorName(operation),
             Source = source,
             IsImplicit = operation.IsImplicit,
             Inputs = inputs.ToArray(),
-            ControlContexts = BuildControlContexts(operation),
+            ControlContexts = BuildControlContexts(operation, symbolIds),
         };
     }
 
@@ -409,7 +435,8 @@ internal sealed class RoslynOperationFactProvider
     private static void AddArguments(
         List<OperationInputFact> inputs,
         IEnumerable<IArgumentOperation> arguments,
-        CSharpCompilation compilation)
+        CSharpCompilation compilation,
+        ScanSymbolIds symbolIds)
     {
         foreach (var argument in arguments)
         {
@@ -418,26 +445,29 @@ internal sealed class RoslynOperationFactProvider
             {
                 Role = OperationInputRole.Argument,
                 Ordinal = argument.Parameter?.Ordinal,
-                ParameterId = argument.Parameter == null ? null : ParameterId(argument.Parameter),
+                ParameterId = argument.Parameter == null ? null : symbolIds.Parameter(argument.Parameter),
                 ParameterName = argument.Parameter?.Name,
                 AuthorSupplied = argument.ArgumentKind != ArgumentKind.DefaultValue,
-                Value = DescribeValue(value),
+                Value = DescribeValue(value, symbolIds),
             });
         }
     }
 
-    private static void AddLoopInput(List<OperationInputFact> inputs, ILoopOperation loop)
+    private static void AddLoopInput(
+        List<OperationInputFact> inputs,
+        ILoopOperation loop,
+        ScanSymbolIds symbolIds)
     {
         switch (loop)
         {
             case IForLoopOperation forLoop:
-                AddInput(inputs, OperationInputRole.Condition, forLoop.Condition);
+                AddInput(inputs, OperationInputRole.Condition, forLoop.Condition, symbolIds);
                 break;
             case IWhileLoopOperation whileLoop:
-                AddInput(inputs, OperationInputRole.Condition, whileLoop.Condition);
+                AddInput(inputs, OperationInputRole.Condition, whileLoop.Condition, symbolIds);
                 break;
             case IForEachLoopOperation forEach:
-                AddInput(inputs, OperationInputRole.Collection, forEach.Collection);
+                AddInput(inputs, OperationInputRole.Collection, forEach.Collection, symbolIds);
                 break;
         }
     }
@@ -446,6 +476,7 @@ internal sealed class RoslynOperationFactProvider
         List<OperationInputFact> inputs,
         string role,
         IOperation? value,
+        ScanSymbolIds symbolIds,
         int? ordinal = null)
     {
         if (value == null) return;
@@ -454,11 +485,11 @@ internal sealed class RoslynOperationFactProvider
             Role = role,
             Ordinal = ordinal,
             AuthorSupplied = true,
-            Value = DescribeValue(value),
+            Value = DescribeValue(value, symbolIds),
         });
     }
 
-    private static OperationValueFact DescribeValue(IOperation operation)
+    private static OperationValueFact DescribeValue(IOperation operation, ScanSymbolIds symbolIds)
     {
         var conversionTypes = new List<string>();
         var unwrapped = operation;
@@ -482,12 +513,12 @@ internal sealed class RoslynOperationFactProvider
 
         var sourceSymbols = new List<string>();
         var seenSymbols = new HashSet<string>(StringComparer.Ordinal);
-        CollectSourceSymbols(operation, sourceSymbols, seenSymbols);
+        CollectSourceSymbols(operation, sourceSymbols, seenSymbols, symbolIds);
 
         return new OperationValueFact
         {
             Kind = ValueKind(unwrapped),
-            SymbolId = ReferencedSymbolId(unwrapped),
+            SymbolId = ReferencedSymbolId(unwrapped, symbolIds),
             Type = operation.Type == null ? null : TypeDisplay(operation.Type),
             ConstantValue = ConstantText(unwrapped.ConstantValue),
             Expression = Clip(operation.Syntax.ToString()),
@@ -501,12 +532,13 @@ internal sealed class RoslynOperationFactProvider
     private static void CollectSourceSymbols(
         IOperation operation,
         List<string> result,
-        HashSet<string> seen)
+        HashSet<string> seen,
+        ScanSymbolIds symbolIds)
     {
-        var id = ReferencedSymbolId(operation);
+        var id = ReferencedSymbolId(operation, symbolIds);
         if (id != null && seen.Add(id)) result.Add(id);
         foreach (var child in operation.ChildOperations)
-            CollectSourceSymbols(child, result, seen);
+            CollectSourceSymbols(child, result, seen, symbolIds);
     }
 
     private static string ValueKind(IOperation operation) => operation switch
@@ -532,47 +564,35 @@ internal sealed class RoslynOperationFactProvider
         _ => OperationValueKind.Other,
     };
 
-    private static string? ReferencedSymbolId(IOperation operation) => operation switch
+    private static string? ReferencedSymbolId(IOperation operation, ScanSymbolIds symbolIds) => operation switch
     {
-        IFieldReferenceOperation field => SymbolId(field.Field),
-        IPropertyReferenceOperation property => SymbolId(property.Property),
-        IEventReferenceOperation eventReference => SymbolId(eventReference.Event),
-        IParameterReferenceOperation parameter => ParameterId(parameter.Parameter),
-        ILocalReferenceOperation local => LocalId(local.Local),
-        IInvocationOperation invocation => SymbolId(invocation.TargetMethod),
-        IObjectCreationOperation creation when creation.Constructor != null => SymbolId(creation.Constructor),
-        IMethodReferenceOperation method => SymbolId(method.Method),
+        IFieldReferenceOperation field => symbolIds.Get(field.Field),
+        IPropertyReferenceOperation property => symbolIds.Get(property.Property),
+        IEventReferenceOperation eventReference => symbolIds.Get(eventReference.Event),
+        IParameterReferenceOperation parameter => symbolIds.Parameter(parameter.Parameter),
+        ILocalReferenceOperation local => symbolIds.Local(local.Local),
+        IInvocationOperation invocation => symbolIds.Get(invocation.TargetMethod),
+        IObjectCreationOperation creation when creation.Constructor != null => symbolIds.Get(creation.Constructor),
+        IMethodReferenceOperation method => symbolIds.Get(method.Method),
         _ => null,
     };
 
-    private static string SymbolId(ISymbol symbol)
-        => CanonicalSymbolFormat.BuildSymbolId(symbol.OriginalDefinition);
-
-    private static string ParameterId(IParameterSymbol parameter)
-    {
-        var owner = parameter.ContainingSymbol == null
-            ? "(unknown)"
-            : SymbolId(parameter.ContainingSymbol);
-        return $"parameter:{owner}#{parameter.Ordinal}:{parameter.Name}";
-    }
-
-    private static string LocalId(ILocalSymbol local)
-    {
-        var owner = local.ContainingSymbol == null ? "(unknown)" : SymbolId(local.ContainingSymbol);
-        var declarationStart = local.DeclaringSyntaxReferences.FirstOrDefault()?.Span.Start ?? -1;
-        return $"local:{owner}@{declarationStart}:{local.Name}";
-    }
-
-    private static string ContainingSymbolId(SemanticModel model, int position, string moduleName)
+    private static string ContainingSymbolId(
+        SemanticModel model,
+        int position,
+        string moduleName,
+        ScanSymbolIds symbolIds)
     {
         ISymbol? symbol = model.GetEnclosingSymbol(position);
         while (symbol is IMethodSymbol method
                && method.MethodKind is MethodKind.AnonymousFunction or MethodKind.LocalFunction)
             symbol = symbol.ContainingSymbol;
-        return symbol == null ? $"mod:{moduleName}" : SymbolId(symbol);
+        return symbol == null ? $"mod:{moduleName}" : symbolIds.Get(symbol);
     }
 
-    private static OperationControlContext[] BuildControlContexts(IOperation operation)
+    private static OperationControlContext[] BuildControlContexts(
+        IOperation operation,
+        ScanSymbolIds symbolIds)
     {
         var contexts = new List<OperationControlContext>();
         for (var parent = operation.Parent; parent != null; parent = parent.Parent)
@@ -613,13 +633,15 @@ internal sealed class RoslynOperationFactProvider
                 {
                     Kind = kind,
                     Condition = Clip(conditionOperation?.Syntax.ToString()),
-                    ConditionValue = conditionOperation == null ? null : DescribeValue(conditionOperation),
+                    ConditionValue = conditionOperation == null
+                        ? null
+                        : DescribeValue(conditionOperation, symbolIds),
                     Operators = conditionOperation == null
                         ? Array.Empty<string>()
                         : CollectOperators(conditionOperation),
                     Predicates = conditionOperation == null
                         ? Array.Empty<OperationControlPredicate>()
-                        : CollectPredicates(conditionOperation),
+                        : CollectPredicates(conditionOperation, symbolIds),
                     Source = SourceSpan(parent.Syntax),
                 });
             }
@@ -651,14 +673,19 @@ internal sealed class RoslynOperationFactProvider
             CollectOperators(child, result);
     }
 
-    private static OperationControlPredicate[] CollectPredicates(IOperation operation)
+    private static OperationControlPredicate[] CollectPredicates(
+        IOperation operation,
+        ScanSymbolIds symbolIds)
     {
         var result = new List<OperationControlPredicate>();
-        CollectPredicates(operation, result);
+        CollectPredicates(operation, result, symbolIds);
         return result.ToArray();
     }
 
-    private static void CollectPredicates(IOperation operation, List<OperationControlPredicate> result)
+    private static void CollectPredicates(
+        IOperation operation,
+        List<OperationControlPredicate> result,
+        ScanSymbolIds symbolIds)
     {
         var operatorName = operation switch
         {
@@ -669,7 +696,11 @@ internal sealed class RoslynOperationFactProvider
         if (operatorName != null)
         {
             var symbols = new List<string>();
-            CollectSourceSymbols(operation, symbols, new HashSet<string>(StringComparer.Ordinal));
+            CollectSourceSymbols(
+                operation,
+                symbols,
+                new HashSet<string>(StringComparer.Ordinal),
+                symbolIds);
             result.Add(new OperationControlPredicate
             {
                 Operator = operatorName,
@@ -679,7 +710,7 @@ internal sealed class RoslynOperationFactProvider
         }
 
         foreach (var child in operation.ChildOperations)
-            CollectPredicates(child, result);
+            CollectPredicates(child, result, symbolIds);
     }
 
     private static IOperation? LoopCondition(ILoopOperation loop) => loop switch
@@ -762,4 +793,37 @@ internal sealed class RoslynOperationFactProvider
 
     private static string NormalizePath(string? path)
         => (path ?? string.Empty).Replace('\\', '/');
+
+    /// <summary>
+    /// Request-scoped canonical-id memoization. The cache dies with the scan,
+    /// so it never retains Roslyn symbols or creates another semantic base.
+    /// </summary>
+    private sealed class ScanSymbolIds
+    {
+        private readonly Dictionary<ISymbol, string> _canonical = new(SymbolEqualityComparer.Default);
+
+        internal string Get(ISymbol symbol)
+        {
+            var canonical = symbol.OriginalDefinition;
+            if (_canonical.TryGetValue(canonical, out var id)) return id;
+            id = CanonicalSymbolFormat.BuildSymbolId(canonical);
+            _canonical.Add(canonical, id);
+            return id;
+        }
+
+        internal string Parameter(IParameterSymbol parameter)
+        {
+            var owner = parameter.ContainingSymbol == null
+                ? "(unknown)"
+                : Get(parameter.ContainingSymbol);
+            return $"parameter:{owner}#{parameter.Ordinal}:{parameter.Name}";
+        }
+
+        internal string Local(ILocalSymbol local)
+        {
+            var owner = local.ContainingSymbol == null ? "(unknown)" : Get(local.ContainingSymbol);
+            var declarationStart = local.DeclaringSyntaxReferences.FirstOrDefault()?.Span.Start ?? -1;
+            return $"local:{owner}@{declarationStart}:{local.Name}";
+        }
+    }
 }
