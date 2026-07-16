@@ -58,6 +58,7 @@ public sealed class GraphSessionSnapshotCatalogTests : IDisposable
         using var session = new GraphSession(new PhysicalFileSystem());
 
         session.Load(projectPath: null, firstPath, rulesPath: null);
+        WriteGraph(Path.GetDirectoryName(firstPath)!, "FirstUpdated");
         session.Load(projectPath: null, firstPath, rulesPath: null);
         Assert.Single(session.SnapshotHistory);
 

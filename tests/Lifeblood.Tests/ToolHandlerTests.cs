@@ -27,6 +27,21 @@ public class ToolHandlerTests : IDisposable
         Directory.CreateDirectory(_tempDir);
 
         // Build a minimal valid graph.json for testing
+        _graphPath = Path.Combine(_tempDir, "graph.json");
+        WriteCoreGraph(_graphPath);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDir))
+            Directory.Delete(_tempDir, recursive: true);
+    }
+
+    private void RewriteGraphWithExtraType(string typeName)
+        => WriteCoreGraph(_graphPath, typeName);
+
+    private static void WriteCoreGraph(string graphPath, params string[] extraTypeNames)
+    {
         var graph = new GraphBuilder()
             .AddSymbol(new Symbol { Id = "mod:Core", Name = "Core", Kind = SymbolKind.Module })
             .AddSymbol(new Symbol { Id = "type:Core.Foo", Name = "Foo", Kind = SymbolKind.Type, ParentId = "mod:Core", FilePath = "Foo.cs", Line = 1 })
@@ -45,25 +60,30 @@ public class ToolHandlerTests : IDisposable
                 TargetId = "type:Core.Bar",
                 Kind = EdgeKind.Calls,
                 Evidence = new Evidence { Kind = EvidenceKind.Semantic, AdapterName = "Test", Confidence = ConfidenceLevel.Proven },
-            })
-            .Build();
+            });
+
+        foreach (var extraTypeName in extraTypeNames)
+        {
+            graph.AddSymbol(new Symbol
+            {
+                Id = $"type:Core.{extraTypeName}",
+                Name = extraTypeName,
+                Kind = SymbolKind.Type,
+                ParentId = "mod:Core",
+                FilePath = $"{extraTypeName}.cs",
+                Line = 1,
+            });
+        }
 
         var doc = new GraphDocument
         {
             Language = "test",
             Adapter = new AdapterCapability { CanDiscoverSymbols = true, TypeResolution = ConfidenceLevel.Proven },
-            Graph = graph,
+            Graph = graph.Build(),
         };
 
-        _graphPath = Path.Combine(_tempDir, "graph.json");
-        using var stream = File.Create(_graphPath);
+        using var stream = File.Create(graphPath);
         new Lifeblood.Adapters.JsonGraph.JsonGraphExporter().Export(doc, stream);
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_tempDir))
-            Directory.Delete(_tempDir, recursive: true);
     }
 
     private static readonly PhysicalFileSystem Fs = new();
@@ -362,6 +382,7 @@ public class ToolHandlerTests : IDisposable
                     .GetString());
         }
 
+        RewriteGraphWithExtraType("Baz");
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
         var rejected = handler.Handle("lifeblood_lookup", MakeArgs(new
         {
@@ -388,9 +409,14 @@ public class ToolHandlerTests : IDisposable
         using var session = new GraphSession(Fs);
         session.Load(projectPath: null, graphPath: _graphPath, rulesPath: null);
         var leasedSnapshotId = session.SnapshotId.ToString();
+        var refreshIndex = 0;
         using var gate = new RefreshOnSecondNestedReadGate(
             session,
-            () => session.Load(projectPath: null, graphPath: _graphPath, rulesPath: null));
+            () =>
+            {
+                RewriteGraphWithExtraType($"Refresh{++refreshIndex}");
+                session.Load(projectPath: null, graphPath: _graphPath, rulesPath: null);
+            });
         var handler = CreateHandler(gate, session);
 
         var result = handler.Handle("lifeblood_batch", MakeArgs(new
@@ -450,6 +476,7 @@ public class ToolHandlerTests : IDisposable
         var handler = CreateHandler(session: session);
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
         var historicalSnapshotId = session.SnapshotId.ToString();
+        RewriteGraphWithExtraType("Baz");
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
         var latestSnapshotId = session.SnapshotId.ToString();
 
@@ -519,6 +546,7 @@ public class ToolHandlerTests : IDisposable
         var handler = CreateHandler(session: session);
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
         var historicalSnapshotId = session.SnapshotId.ToString();
+        RewriteGraphWithExtraType("Baz");
         handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath }));
         var latestSnapshotId = session.SnapshotId.ToString();
 
@@ -607,6 +635,9 @@ public class ToolHandlerTests : IDisposable
         var handler = CreateHandler(session: session);
         handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
         var historicalSnapshotId = session.SnapshotId.ToString();
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Tracked2.cs"),
+            "namespace HistoricalProject; public class Tracked2 { }");
         handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
         Assert.True(session.HasCompilationState);
 
