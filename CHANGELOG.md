@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Occurrence-level semantic evidence now has one neutral streaming boundary.**
+  `IOperationFactProvider` carries bounded call, argument, value-origin,
+  assignment, member-access, conversion, allocation, and control-context facts
+  from the C# adapter without adding graph edges or retaining another semantic
+  base. The retained-profile implementation is deterministic and reports its
+  profile scope, scan bounds, truncation, limitations, and
+  `AdditionalSemanticBaseCount`. (`INV-OPERATION-FACTS-001`.)
+
 - **Shared ExampleApp analysis is responsive, reusable, and loss-tolerant.**
 
 - **Analyze defaults are summary-first and provenance-complete.** Package

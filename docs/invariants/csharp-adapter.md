@@ -44,6 +44,10 @@ threading raw fields through individual constructors.
   handle. Sharing avoids accidental divergence between consumers' views of
   the same workspace.
 
+## Operation Fact Boundary
+
+- **INV-OPERATION-FACTS-001. Occurrence-level contract evidence streams through one language-neutral port and never changes the semantic graph.**
+
 ## BCL Ownership
 
 Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't. They rely on the host runtime BCL.
