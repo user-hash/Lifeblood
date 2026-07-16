@@ -73,7 +73,8 @@ the neutral result shapes (`PackageSourceVisibilityReport`,
 adapter owns descriptor interpretation through
 `Internal.UnityPackageSourceVisibilityBuilder`, combining package descriptors,
 package asmdefs, module file membership, and `excludePaths`. `GraphSession`
-projects the bounded `lifeblood_analyze.packageSourceVisibility` view, and
+projects the bounded `lifeblood_analyze.packageSourceVisibility` view (summary
+is aggregate plus excluded/unbound package rows; detail returns every package), and
 `WriteToolHandler` projects `lifeblood_compile_check.packageSourceResolution`
 from the same live adapter receipt.
 
@@ -171,18 +172,18 @@ v1 limitation: does not cascade to dependent modules when an API surface changes
 
 ## Unity Bridge
 
-The Unity bridge lives at `unity/Editor/LifebloodBridge/`. It runs Lifeblood as a sidecar MCP server (separate .NET process), communicating via JSON-RPC 2.0 over stdin/stdout. Unity projects create a directory junction to this path. The bridge auto-discovers via `[McpForUnityTool]` attributes and exposes a curated in-Editor subset of the MCP tool surface to Unity MCP; the standalone `lifeblood-mcp` server exposes every tool. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift.
+The Unity bridge is the canonical UPM package rooted at `unity/`. Consumer projects reference that directory from `Packages/manifest.json` and never copy or fork the sources. `[McpForUnityTool]` classes expose a curated in-Editor subset: Coplay discovers typed public instance properties on nested `Parameters` classes, and every tool participates in a shared polling lifecycle owned by one `LifebloodBridgeClient` coordinator. The bridge launches the installed `lifeblood-mcp` command with the Unity project as its explicit shared key, so Unity and direct agents consume one daemon-owned semantic base instead of private Debug/Release processes. Wire-format constants live in `McpProtocolSpec` (`INV-MCP-003`); the Unity mirror at `unity/Editor/LifebloodBridge/McpProtocolConstants.cs` is byte-compared by a ratchet test so the two sides cannot drift (`INV-MCP-UNITY-BRIDGE-001`).
 
 ```
 Unity Editor ──→ Unity MCP (scenes, GameObjects, assets)
                      │
-                     └── [McpForUnityTool] ──→ Lifeblood MCP (child process)
+                     └── [McpForUnityTool] ──→ Lifeblood MCP (shared proxy)
                          └── semantic tools over JSON-RPC
 ```
 
 ## Deterministic Output
 
-GraphBuilder sorts symbols by ID and edges by source+target+kind before producing the graph. File discovery is sorted. Same input always produces the same output (`INV-PIPE-001`).
+GraphBuilder sorts symbols by ID and edges by source+target+kind before producing the graph. File discovery is sorted. `CompilationTreeExtractor` may bind up to eight immutable syntax trees concurrently, but records results/failures by original tree index and leaves `RoslynWorkspaceAnalyzer` as the sole snapshot writer. Same input always produces the same output (`INV-PIPE-001`, `INV-EXTRACT-PARALLEL-001`).
 
 ## Architectural Seams
 

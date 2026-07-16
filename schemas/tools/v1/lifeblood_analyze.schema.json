@@ -60,7 +60,7 @@
     },
     "packageSourceVisibilityMode": {
       "type": "string",
-      "description": "Unity package visibility projection. \u0060summary\u0060 (default) returns package/source counts without per-file inventories; \u0060detail\u0060 returns bounded per-package file previews for investigations that need exact source rows.",
+      "description": "Unity package visibility projection. \u0060summary\u0060 (default) returns aggregate counts plus only actionable excluded/unbound package rows, without per-file inventories; \u0060detail\u0060 returns all package rows with bounded per-package file previews for investigations that need exact source rows.",
       "enum": [
         "summary",
         "detail"

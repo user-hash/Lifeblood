@@ -76,7 +76,7 @@ If `lifeblood-mcp` is not found, check that `~/.dotnet/tools` (or the platform e
 
 ## Configuration (environment variables)
 
-The server reads optional environment variables at startup. All have safe defaults; set them per deployment without a code change. Relevant variables are honored by the standalone server and the Unity bridge child process.
+The server reads optional environment variables at startup. All have safe defaults; set them per deployment without a code change. Shared-session variables are honored by direct clients; the Unity bridge always supplies shared mode and its current project root. `LIFEBLOOD_MCP_COMMAND` is the bridge-only executable override.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -93,6 +93,7 @@ The server reads optional environment variables at startup. All have safe defaul
 | `LIFEBLOOD_SHARED_DAEMON_AUTOSTART` | on | Set false only when an external supervisor owns the daemon lifecycle. A missing daemon then returns a recoverable proxy error and the proxy remains attached for a later replacement instead of spawning a detached process. |
 | `LIFEBLOOD_SHARED_IDLE_SECONDS` | `300` | Last-client idle interval before the daemon drains, disposes its retained session, releases pipe/mutex ownership, and exits. Malformed, negative, NaN, or infinite values fall back to five minutes. |
 | `LIFEBLOOD_SHARED_PROXY_TRACE` | unset | Optional diagnostic file receiving bounded proxy transport traces. Leave unset for normal operation; stdout remains JSON-RPC only. |
+| `LIFEBLOOD_MCP_COMMAND` | standard global-tool shim / `PATH` | Unity-bridge-only executable override. Supply the `lifeblood-mcp` executable path, not a DLL or argument string; the bridge appends shared mode and the Unity project key. |
 
 Malformed numeric values fall through to each setting's documented default; they never throw. The live capability surface — including which feature flags and telemetry events are active in the running server — is reported by the `lifeblood_capabilities` tool.
 
@@ -252,7 +253,7 @@ Call a tool:
 
 ## Unity Editor (via Coplay MCP for Unity)
 
-Lifeblood integrates with the Unity Editor as a **sidecar process** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds its semantic tools to the same connection without competing for assemblies, without triggering domain reloads, and without colliding with Unity's own tooling.
+Lifeblood integrates with the Unity Editor as a **canonical UPM outer adapter** under the [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin. Unity already speaks MCP through that plugin (scenes, GameObjects, scripts, prefabs, assets, build, and so on). Lifeblood adds semantic tools to that connection through a thin shared proxy, while direct agent clients and Unity consume one daemon-owned graph.
 
 ### How the bridge works
 
@@ -267,14 +268,14 @@ Lifeblood integrates with the Unity Editor as a **sidecar process** under the [C
 └──────────────────┘    │  │ [McpForUnityTool]      │  │
                         │  │ Lifeblood bridge stubs │──┼──┐
                         │  │  (one per tool, fwds   │  │  │
-                        │  │   to child process)    │  │  │
+                        │  │   to shared proxy)     │  │  │
                         │  └────────────────────────┘  │  │
                         └──────────────────────────────┘  │
                                                           │ stdio JSON-RPC
                                                           ▼
                                         ┌─────────────────────────────┐
                                         │      lifeblood-mcp          │
-                                        │   (separate .NET 8 process) │
+                                        │   (shared .NET 8 daemon)    │
                                         │   - Roslyn workspace        │
                                         │   - Semantic graph          │
                                         │   - All tools share         │
@@ -286,91 +287,78 @@ Three pieces work together:
 
 1. **Coplay MCP for Unity** is the host plugin. It exposes its own MCP server inside the Unity Editor and lets you connect any MCP client (Claude Code, Cursor, …) to your running Editor.
 2. **Lifeblood Unity bridge** lives at `unity/Editor/LifebloodBridge/` in the Lifeblood repo (`LifebloodTools.cs` + `LifebloodBridgeClient.cs`). Each Lifeblood tool has a small `[McpForUnityTool]`-decorated stub class. Coplay's plugin auto-discovers those stubs via reflection and registers them under its own MCP server alongside its built-in tools. When the client calls `lifeblood_lookup`, Coplay routes the call to the corresponding stub.
-3. **The stubs forward to a child `lifeblood-mcp` process** managed by `LifebloodBridgeClient`. The first call spawns the child, performs the JSON-RPC `initialize` handshake, and reuses the same process for the rest of the session. Each tool call becomes a JSON-RPC `tools/call` request; the response is unwrapped back to Coplay and returned to the client.
+3. **The stubs forward through an installed `lifeblood-mcp --shared` proxy** managed by `LifebloodBridgeClient`. The proxy handshakes with the canonical workspace-keyed daemon, which owns the one retained semantic base. Each tool call becomes a JSON-RPC `tools/call` request; Coplay polls long calls until the bridge returns their terminal result.
 
-The child process runs **outside** Unity's `AppDomain`. Three consequences:
+Lifeblood runs **outside** Unity's `AppDomain`. Three consequences:
 
 - **No assembly conflicts.** Lifeblood pulls Roslyn 4.14 (Microsoft.CodeAnalysis). Unity ships its own (often older) Roslyn assemblies. Sidecar isolation means neither side fights for type identity.
-- **No domain reload interference.** When Unity recompiles, the bridge kills the child and restarts it on the next call. The semantic graph is rebuilt fresh after the reload, so analysis state cannot leak across compilation cycles.
-- **Editor stays responsive.** Lifeblood analysis (around 60 to 90 seconds on a 75-module Unity workspace cold) runs on the child process. Unity's main thread is not blocked.
+- **No domain reload state loss.** When Unity recompiles, the bridge disposes only Unity's proxy. The semantic daemon stays alive while another workspace lease exists, and the next Unity call reconnects to the same publication.
+- **Editor stays responsive.** Lifeblood work runs in the shared daemon and every bridge tool uses Coplay's polling lifecycle, so Unity's synchronous gateway does not need to hold a cold call open.
 
 ### Setup (~3 minutes)
 
-You need: Unity 2021.3+ or Unity 6, [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) installed in the project, and Lifeblood built.
+You need: Unity 2021.3+ or Unity 6, [Coplay MCP for Unity](https://github.com/CoplayDev/MCPForUnity) installed in the project, the Lifeblood repo available to Unity Package Manager, and the matching `Lifeblood.Server.Mcp` global tool installed.
 
-**Step 1. Install or build Lifeblood somewhere alongside the Unity project.**
+**Step 1. Install Lifeblood's MCP tool.**
 
 ```bash
-git clone https://github.com/user-hash/Lifeblood.git
-cd Lifeblood
-dotnet build
+dotnet tool install --global Lifeblood.Server.Mcp
+# Later updates:
+dotnet tool update --global Lifeblood.Server.Mcp
 ```
 
-The bridge needs the build output DLL at `src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`. The bridge auto-resolves the DLL if Lifeblood is a sibling directory of the Unity project. Otherwise see the override below.
+The bridge launches the installed executable, never a repository Debug DLL. Shared-host identity includes the compiled module MVID, so Unity and direct clients must use the same installed build.
 
-**Step 2. Create a directory junction from your Unity project to the bridge.** This is what makes Unity treat the bridge files as if they live in the project, while keeping the source of truth in the Lifeblood repo:
+**Step 2. Reference the canonical UPM package.** With Lifeblood and the Unity project as sibling directories, add this dependency to `Packages/manifest.json`:
 
-Windows (`cmd.exe`, run from the Unity project root):
-```cmd
-mklink /J "Assets\Editor\LifebloodBridge" "X:\path\to\Lifeblood\unity\Editor\LifebloodBridge"
+```json
+"com.dawgtools.lifeblood-bridge": "file:../../Lifeblood/unity"
 ```
 
-macOS / Linux:
-```bash
-ln -s /path/to/Lifeblood/unity/Editor/LifebloodBridge Assets/Editor/LifebloodBridge
-```
+Adjust the relative path for your layout. The package ships its own Editor-only asmdef with `MCPForUnity.Editor` referenced.
 
-The bridge ships its own asmdef so Unity compiles it as an Editor-only assembly with `MCPForUnity.Editor` referenced.
+**Step 3. Remove any legacy bridge copy or junction.** Delete a copied `Packages/com.dawgtools.lifeblood-bridge` directory or `Assets/Editor/LifebloodBridge` junction before refreshing. The consumer tracks only the manifest reference; `unity/` remains the single source.
 
-**Step 3. Add the junction to your Unity project's `.gitignore`:**
+**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay auto-discovers their typed nested `Parameters` properties and polling metadata. The Unity bridge surfaces a curated subset — 18 of the 40 tools, with `lifeblood_analyze_project` wrapping analyze and owning the Unity project path — alongside the built-in Unity tools. The remaining tools are reachable through a direct `lifeblood-mcp --shared` client and observe the same daemon publication.
 
-```
-Assets/Editor/LifebloodBridge/
-Assets/Editor/LifebloodBridge.meta
-```
-
-The bridge files belong in the Lifeblood repo. They should not be committed to the consuming Unity project's git history.
-
-**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay's MCP plugin auto-discovers them via the `[McpForUnityTool]` attribute. The Unity bridge surfaces a curated subset — 18 of the 40 tools (the in-Editor-relevant read + write ones, with `lifeblood_analyze_project` wrapping analyze) — in Coplay's tool list alongside the built-in Unity tools. The remaining tools (`lifeblood_capabilities`, `lifeblood_batch`, `lifeblood_snapshots`, `lifeblood_search`, `lifeblood_dead_code`, `lifeblood_asmdef_check`, `lifeblood_port_health`, `lifeblood_cycles`, `lifeblood_enum_coverage`, `lifeblood_static_tables`, `lifeblood_assignment_coverage`, and others) are reachable by connecting an MCP client directly to the standalone `lifeblood-mcp` server (see the client sections above).
-
-**Step 5. Connect any MCP client to Coplay MCP for Unity** following Coplay's own setup guide. From the client's perspective, Lifeblood tools (`lifeblood_analyze`, `lifeblood_lookup`, `lifeblood_blast_radius`, and so on) appear next to Coplay's tools (`unity_manage_scene`, `unity_find_gameobjects`, and so on) on a single MCP connection.
+**Step 5. Connect any MCP client to Coplay MCP for Unity** following Coplay's own setup guide. From the client's perspective, `lifeblood_analyze_project`, `lifeblood_lookup`, `lifeblood_blast_radius`, and the other bridge tools appear next to Coplay's Unity tools on one connection.
 
 **Step 6. First-call flow.** From the connected MCP client, call:
 
 ```
-lifeblood_analyze projectPath="<absolute path to your Unity project>"
+lifeblood_analyze_project incremental=false readOnly=false defineProfiles=["Editor","Player"]
 ```
 
-The bridge spawns the child process, performs the MCP `initialize` handshake (15 second timeout), forwards the analyze call (5 minute timeout, since cold analysis on a 75-module Unity workspace runs around 90 seconds), and returns the loaded module, symbol, edge, and violation summary. Subsequent tool calls reuse the same child process and the same loaded graph.
+The bridge injects the current Unity project root, starts the installed shared proxy, performs the MCP `initialize` handshake, and returns a polling receipt before Coplay's synchronous deadline. Status polls use the same arguments and project root, so they retrieve the original task's terminal result. Subsequent bridge and direct-agent calls reuse the same daemon graph.
 
-### Locating the server DLL
+### Locating the server command
 
-`LifebloodBridgeClient` resolves the DLL path in this order:
+`LifebloodBridgeClient` resolves the executable in this order:
 
-1. `EditorPrefs` key `Lifeblood_ServerPath` (Unity-side, persisted per machine).
-2. Sibling Lifeblood repo's Debug build output next to the Unity project (`<project>/../Lifeblood/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`).
-3. Environment variable `LIFEBLOOD_SERVER_DLL` (process-wide).
+1. `EditorPrefs` key `Lifeblood_McpCommand` (Unity-side, persisted per machine).
+2. Environment variable `LIFEBLOOD_MCP_COMMAND`.
+3. The standard `~/.dotnet/tools/lifeblood-mcp` shim, then `PATH`.
 
-If none resolve, the bridge logs an error to the Unity console and tool calls return an error object. Set the EditorPref or env var explicitly if your layout is non-standard.
+Overrides name one executable, not a command line. The bridge owns `--shared --shared-key <UnityProjectRoot>` so every admission and status call targets the same workspace identity.
 
 ### Lifecycle
 
-- **Domain reload.** The bridge kills the child process before Unity recompiles, and restarts it on the next tool call. Plan for 60 to 90 seconds of cold-analyze re-warming on the first call after a recompile, or use `incremental: true` if the prior analysis result is still useful.
-- **Unity quit.** The child process is killed when the Editor exits.
-- **Crash recovery.** If the child dies mid-session (compile error, OOM), the bridge detects EOF on stdout, logs the failure, and respawns on the next tool call.
+- **Domain reload.** The bridge disposes Unity's proxy before recompilation. The daemon keeps its base while another client lease exists; the next Unity call reconnects.
+- **Unity quit.** Unity's proxy is disposed; the daemon follows the shared idle/drain policy.
+- **Crash recovery.** EOF or timeout closes the broken proxy. The next independent call connects a replacement; failed effectful requests are never replayed automatically.
 
 ### When to use Unity bridge vs standalone CLI
 
 - **Use the bridge** when you want Lifeblood semantic queries available to an AI agent inside the Unity Editor, in the same connection as Coplay's scene/asset tools, with no separate MCP client wiring.
 - **Use a standalone client** (Claude Code, Cursor) connected directly to `lifeblood-mcp` when you want Lifeblood without the Unity Editor running, or when you want the lowest-latency path with no Coplay layer in between.
 
-You can run both at the same time. In ordinary stdio mode each is its own `lifeblood-mcp` process and nothing is shared between them. In shared mode (`--shared` / `LIFEBLOOD_SHARED_SESSION=1`) clients with the same canonical workspace identity attach to one daemon-owned session, so one analyze refreshes the graph every attached agent sees. Identity, workspace binding, client leases, idle drain, exact analyze coalescing, request cancellation, pinned read batches, bounded graph-only history, and Lifeblood/DAWG deployment and memory gates are closed. Keep private stdio available only as the rollback configuration.
+You can run both at the same time. The canonical bridge always uses shared mode, so direct clients launched with `--shared` and the same workspace identity attach to that daemon-owned session. One analyze refreshes the graph every attached agent sees. Identity, workspace binding, client leases, idle drain, exact analyze coalescing, request cancellation, pinned read batches, bounded graph-only history, and Lifeblood/DAWG deployment and memory gates are closed. Keep private stdio available only as the rollback configuration.
 
 ---
 
 ## First steps after connecting
 
-1. Call `lifeblood_analyze` with your project path to load the semantic graph.
+1. Through Unity, call `lifeblood_analyze_project`; through a direct client, call `lifeblood_analyze` with `projectPath`.
 2. Don't know the canonical id of a symbol? Call `lifeblood_resolve_short_name name="MyType"` to discover it.
 3. Use `lifeblood_lookup`, `lifeblood_dependencies`, and `lifeblood_blast_radius` to query the graph. Truncated method ids and bare short names work because every read-side tool routes through `ISymbolResolver`.
 4. For multi-tool evidence, copy `envelope.snapshotId` into `expectedSnapshotId` or use `lifeblood_batch` so a concurrent refresh cannot mix generations. Use `lifeblood_snapshots` and exact `snapshotId` selection only when a bounded graph-only investigation lane must survive a refresh.

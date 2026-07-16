@@ -2,9 +2,11 @@
 
 Date: 2026-07-15
 
-Status: adopted for the fresh backlog-clearance goal. Investigation and plan
-atom only; no intake entry is considered implemented merely because it is
-routed here.
+Status: active. Wave 1 is closed; Waves 2-7 remain the feature-backlog roadmap.
+The 2026-07-16 reliability continuation was executed first because live DAWG
+transport, latency, response-size, provenance, and Unity-wrapper defects made
+Lifeblood unsafe as a release gate. Routing never counts as implementation;
+only the receipts below close work.
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded read-only against
 `D:/Projekti/DAWG`. No push, tag, NuGet publication, or release cut is part of
@@ -351,6 +353,36 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-024` | one C#-adapter package visibility receipt feeds analyze and compile-check; package sources are included/excluded/unbound from descriptors, asmdefs, compilation membership, and `excludePaths` | `PackageSourceVisibilityTests` cover included/excluded/unbound analyze shape and compile-check package resolution; 59/59 focused docs/schema/ledger/package gate; clean Release build; 1,545-case full suite; fresh-server self-dogfood; DAWG Editor+Player read-only package receipt; retained DAWG unbound-package compile-check receipt | `fix(package): surface Unity package source visibility` atom |
 | `LB-INTAKE-20260629-020` | latest reachable stable tag, changelog history/base, and tracker snapshot are one ratcheted release fact | latest-tag docs ratchet; full-history CI; 64 focused checks; clean Release build; 1,543-case suite; self-dogfood | `fix(provenance): unify source control evidence` atom |
 | `LB-INTAKE-20260629-028` | one Domain receipt, Application port, and bounded Git adapter serve analyzed-workspace, invariant, capability, and release provenance | temp-repo bounds/root fixtures; persistent-stdin MCP process regression; 64 focused checks; clean Release build; 1,543-case suite; self-dogfood; DAWG Editor+Player full receipt rooted at DAWG | `fix(provenance): unify source control evidence` atom |
+
+### 2026-07-16 reliability continuation receipts
+
+These fixes are an urgent interlude, not a declaration that Waves 2-7 are
+implemented. The installed-build DAWG receipt used the canonical Unity bridge
+and an independent direct client against one daemon publication: cold
+Editor+Player server work 51.94 seconds; warm reuse 4.99 seconds; 88,832
+symbols / 346,496 edges / 100 modules / 5,567 types / 138 cycles / zero
+configured violations; one retained semantic base; 10,586-character analyze
+result; latest reachable stable tag `v1.2.376.0`.
+
+| Finding | Permanent owner/fix | Verification | Commit |
+|---|---|---|---|
+| `LB-INTAKE-20260716-037` | registry-owned action routing lets snapshot `list` use the shared-read lease while catalog mutations remain exclusive | focused handler/protocol gate and concurrent DAWG read during analyze | `ac1f50a` |
+| `LB-INTAKE-20260716-038` | immutable publication identity reuse, publication-time source control, and waiter-isolated shared transport | publication/process regressions plus exact live snapshot/generation reuse | `87b055f` |
+| `LB-INTAKE-20260716-039` | summary-first package/profile projection with policy-aware coalescing; clean package rows omitted | bounded synthetic payload tests plus live 9-package receipt returning one actionable row | `6449ae3`, `1c31c57`, `2af780b`, `aa3aad2` |
+| `LB-INTAKE-20260716-040` | sole Git adapter accepts stable three- and four-component semantic tags | real temporary-repository fixture and DAWG `v1.2.376.0` receipt | `bc70502` |
+| `LB-INTAKE-20260716-041` | invariant audit separates parser errors from declaration-coverage confidence | DAWG-shaped coverage fixture and live coverage receipt | `d1ab449` |
+| `LB-INTAKE-20260716-042` | C# adapter owns module/profile applicability provenance; MCP only projects it | multi-profile descriptor fixtures plus DAWG Editor/Player counts | `4757292`, `2af780b` |
+| `LB-INTAKE-20260716-043` | accepted-change projection distinguishes cold fallback reanalysis from content change | focused wire-shape fixtures and live no-op reuse | `5f82678` |
+| `LB-INTAKE-20260716-044` | semantic edges stay precise; opt-in advisory source-file-IO receipt names supported and unsupported heuristic families | focused zero-semantic-impact fixture | `b00fce6` (partial; reflection/resource/serialized families remain explicit limitations) |
+| `LB-INTAKE-20260716-045` | one server/source-control provenance authority labels local prerelease and stable release-gate evidence | source-control/release-gate tests plus installed alpha DAWG receipt | `44e11e4` |
+| DAWG cold-scan regression | bounded deterministic per-tree Roslyn extraction in the C# adapter | 90 focused cases, stable export hash, full suite, DAWG 51.94-second server receipt | `37de605` |
+| Unity wrapper parameters/polling | canonical UPM outer adapter, typed nested parameter properties, one polling coordinator | 5 contract tests, Unity discovery of all 18 tools, live cold/warm calls | `827c4f2` |
+| Duplicate consumer bridge | DAWG manifest references `Lifeblood/unity`; copied 11-file package removed | Unity compile/discovery and process command-line proof | DAWG `42d1b484c` |
+
+Final in-tree verification passed 1,570 tests with 11 native-Clang
+precondition skips and zero failures (1,581 discovered total). The focused
+docs/schema/ledger gate passed 62/62 after lifecycle reconciliation. No tag,
+push, NuGet publication, or release cut was performed.
 
 ## Failure And Rollback Policy
 

@@ -3017,3 +3017,443 @@ DAWG receipt:
 Impact:
 - External-workspace evidence is citation-safe at the repository actually
   analyzed, while all consumers share one bounded hexagonal authority.
+
+## LB-INTAKE-20260716-037 - Shared snapshot reads block behind in-flight analyze
+
+Type: Bug
+Priority: Critical
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG shared-daemon repro, 2026-07-16; Lifeblood local `0.7.13-alpha.0.35+9180af4404a21d3894667d84a67567b8666f1b20`
+Workspace: DAWG and Lifeblood self
+
+What:
+- A second shared client called `lifeblood_snapshots action:"list"` while a
+  first client was running a full DAWG Editor+Player analyze. The snapshot-list
+  call took 96.688 seconds and returned only after the full analyze published,
+  even though the same list call completed in about 20 ms when no analyze was
+  in flight.
+- Source inspection pins the scheduling seam: `lifeblood_snapshots` is
+  registered as `SnapshotCatalogManagement`, whose static behavior is
+  `ToolSessionAccess.Exclusive`. `ToolHandler.Handle` therefore routes even
+  pure `action:"list"` calls through the writer gate instead of the shared
+  read-lease path.
+
+Why it matters:
+- Shared Lifeblood is meant to be one canonical master base for many agents.
+  Reads must be atomic and generation-pinned, but they must not block behind a
+  writer merely to inspect the last committed publication.
+- The current behavior is safe but slow: the second client eventually sees the
+  new snapshot, but it experiences synchronization by queueing instead of
+  non-blocking snapshot leasing plus explicit in-flight status.
+
+Fix shape:
+- Add action-aware routing for `lifeblood_snapshots`: `list` stays Observe /
+  SharedRead, while `pin`, `unpin`, and `evict` remain exclusive catalog
+  mutations.
+- Add a shared-process regression where client A holds an in-flight analyze and
+  client B can list snapshots quickly against the last committed generation.
+- Preserve atomic publication and exact `snapshotId`/generation envelopes. Do
+  not let a read observe a half-built candidate.
+
+Resolution evidence:
+- Added registry-owned per-call behavior resolution so mixed-action tools do
+  not move action policy into `ToolHandler` name branches. `lifeblood_snapshots`
+  now resolves `action:"list"` to Observe / SharedRead and `pin`, `unpin`, and
+  `evict` to ManageSnapshotCatalog / Exclusive.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~ToolHandlerTests|FullyQualifiedName~ToolHandlerTelemetryTests|FullyQualifiedName~McpProtocolTests|FullyQualifiedName~ToolArgumentContractTests"`
+  passed 106/106.
+- Live DAWG no-baseline repro after the fix: session A started full
+  Editor+Player analyze; session B called `lifeblood_snapshots action:"list"`
+  while A was still in flight. B returned in 0.039 s with no current snapshot
+  rather than waiting for A, proving the read path no longer queues behind the
+  writer. No half-built candidate was exposed.
+- DAWG full baseline publication remained separately unstable during this run:
+  two attempts failed with retryable `failure:"analysis-input-changed"` after
+  the source fingerprint changed during candidate construction. Track that as
+  pipeline/provenance follow-up instead of hiding it under this gate fix.
+
+## LB-INTAKE-20260716-038 - Shared daemon pipe loss and recovery publication ambiguity
+
+Type: Bug
+Priority: Critical
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG first-session field report, 2026-07-16; follow-up local repro did not yet deterministically trigger pipe loss
+Workspace: DAWG and Lifeblood self
+
+What:
+- A full analysis reportedly completed and published a snapshot, but the client
+  received `Shared daemon closed the persistent pipe without a response`.
+  Retrying later recovered the completed graph.
+- A local follow-up run did not reproduce the pipe death, but did identify the
+  transport seam that reports this failure:
+  `SharedProxyConnection.ForwardAsync` throws when `ReadLineAsync` returns null
+  after forwarding a response-expected frame.
+- The same field report observed an identical graph republished from generation
+  1 to generation 2 during recovery, making it hard to tell whether the retry
+  reused a completed candidate, rebuilt the same graph, or published duplicate
+  evidence.
+
+Why it matters:
+- Shared mode cannot be the release gate if a completed analyze can disappear at
+  the pipe boundary. Agents need one durable answer for whether a candidate was
+  published, cancelled, coalesced, or lost before response delivery.
+- Duplicate-looking publications also blur provenance. A receipt that combines
+  a semantic snapshot with current dirty Git state can be misread as proof of a
+  working tree that was not actually analyzed.
+
+Fix shape:
+- Build a deterministic shared-transport stress fixture that kills or closes a
+  proxy/pipe around a response-expected analyze and asserts daemon survival,
+  publication state, and retry semantics.
+- Surface recovery provenance in analyze receipts: whether a response is fresh,
+  coalesced, recovered from an already-published candidate, or republished after
+  a retry.
+- Keep snapshot identity immutable. If the graph identity is identical but the
+  publication is new, the receipt must explain that distinction instead of
+  relying on generation alone.
+
+Resolution evidence:
+- Added `GraphSessionPublicationTests.Load_FullAnalyzeWithSameIdentity_ReusesCurrentPublication`.
+  Pre-fix it reproduced duplicate publication by advancing generation from 1 to
+  2 for an identical full-analysis identity. Post-fix, the second call performs
+  a live identity preflight, skips full reanalysis when the current publication
+  already matches, preserves `snapshotId`/generation, reports
+  `publication.action:"reusedCurrent"`, and returns no full-analysis `usage`
+  block.
+- Added `GraphSessionPublicationTests.Load_FullAnalyzePreparedBeforeSourceEdit_RejectsInsteadOfReusingStalePublication`.
+  A caller-prepared key captured before a source edit now rejects through the
+  existing `AnalysisInputChangedException` contract instead of reusing stale
+  evidence.
+- `WorkspaceSnapshot` now carries the neutral `SourceControlSnapshot` captured
+  at publication time, so reused/current-publication responses do not recapture
+  current Git state and attach it to an older semantic graph.
+- Added `SharedMcpTransportProcessTests.DisconnectedAnalyzeWaiter_DoesNotPoisonSurvivingSharedWaiter`.
+  A real shared daemon with three proxies starts one analyze, admits a surviving
+  coalesced waiter, kills the first proxy, and proves the surviving waiter still
+  receives the generation-1 publication while the daemon remains alive.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~GraphSessionPublicationTests|FullyQualifiedName~UseCaseTests"`
+  passed 21/21.
+- Shared-process verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~SharedMcpTransportProcessTests.DisconnectedAnalyzeWaiter_DoesNotPoisonSurvivingSharedWaiter`
+  passed 1/1.
+- Final combined gate:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~GraphSessionPublicationTests|FullyQualifiedName~UseCaseTests|FullyQualifiedName~SharedMcpTransportProcessTests|FullyQualifiedName~AnalysisRequestCoordinatorTests|FullyQualifiedName~McpProtocolTests|FullyQualifiedName~ToolArgumentContractTests|FullyQualifiedName~DocsTests"`
+  passed 122/122.
+
+## LB-INTAKE-20260716-039 - Analyze summary emits oversized package-source inventories
+
+Type: Optimization
+Priority: High
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG shared-daemon repro, 2026-07-16; Lifeblood local `0.7.13-alpha.0.35+9180af4404a21d3894667d84a67567b8666f1b20`
+Workspace: DAWG
+
+What:
+- DAWG full and warm incremental-noop analyze responses using
+  `changeReceiptMode:"summary"` still returned 146 KB of tool text. The
+  `packageSourceVisibility` projection alone was about 99 KB, roughly two
+  thirds of the response.
+- Source inspection pins the projection seam:
+  `GraphSession.BuildPackageSourceVisibilityField` always emits every package
+  plus up to 64 files per package. The C# adapter's neutral
+  `PackageSourceVisibilityReport` is not duplicated; the bloat is in the MCP
+  response projection.
+- Follow-up DAWG validation after the package-file fix found the remaining
+  default-response bloat in `profileApplicability.modules`: a reused-current
+  DAWG analyze response was 54,785 characters, with about 22 KB from the
+  per-module profile applicability ledger and about 7.4 KB from package
+  metadata. The graph result itself was already small.
+
+Why it matters:
+- Summary mode should keep the default analyze response small enough to be a
+  reliable agent gate. Large package inventories can truncate, destabilize
+  clients, and hide the actual graph summary, usage, fallback, and provenance
+  fields.
+- The package-source receipt is valuable, so the fix must not remove the
+  authority. It needs caller-owned projection, like accepted-change receipts.
+
+Fix shape:
+- Add one package-visibility projection contract at the MCP boundary:
+  default/summary returns counts, package names/root/status counts, and
+  truncation facts without per-file inventories; detail mode returns bounded
+  per-file evidence by explicit request.
+- Keep `UnityPackageSourceVisibilityBuilder` as the sole scanner and
+  `PackageSourceVisibilityReport` as the neutral Domain result.
+- Add DAWG-sized or synthetic many-file package tests proving summary size stays
+  bounded while detail remains explicit and capped.
+- Apply the same projection rule to profile applicability: counts by default,
+  per-module ledger only by explicit detail request.
+
+Resolution evidence:
+- Added `packageSourceVisibilityMode` to `lifeblood_analyze` at the MCP
+  boundary. Default `summary` omits package per-file inventories; explicit
+  `detail` returns the existing bounded previews.
+- Kept `UnityPackageSourceVisibilityBuilder` and `PackageSourceVisibilityReport`
+  as the only scanner/result authority; the change is a Server.Mcp projection.
+- Added package visibility tests for default summary shape, explicit detail
+  shape, an 80-file package summary response under 8 KB, and detail capping at
+  64 files/package.
+- 2026-07-16 follow-up: reproduced the remaining direct/shared session leak
+  where `GraphSession.Load` still defaulted to detail even when
+  `acceptedChangeReceipt` was summary-oriented. The session contract now
+  defaults to `PackageSourceVisibilityProjection.Summary`; direct callers and
+  shared-daemon internal paths must opt into `Detail` exactly like MCP callers.
+- Added
+  `PackageSourceVisibilityTests.IncrementalAnalyze_DefaultSessionPackageVisibilitySummaryOmitsPerFileInventory`
+  so a synthetic 80-file package stays summary-only across full + incremental
+  session calls unless detail is explicitly requested.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~PackageSourceVisibilityTests`
+  passed 8/8.
+- Follow-up verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj --filter PackageSourceVisibilityTests`
+  passed 9/9, and the wider analyze/session/shared gate passed 84/84.
+- 2026-07-16 second follow-up: added `profileApplicabilityMode` to
+  `lifeblood_analyze`. Default `summary` returns profile/module counts without
+  the per-module ledger; explicit `detail` returns the previous module ledger.
+  `packageSourceVisibilityMode` and `profileApplicabilityMode` now participate
+  in the analysis coalescing policy fingerprint so simultaneous summary/detail
+  callers cannot share the wrong serialized projection.
+- Added profile applicability summary/detail wire-shape tests and updated the
+  v1 tool schema snapshot. Full release verification:
+  `dotnet test Lifeblood.sln -c Release --no-restore` passed 1557/1568 with
+  11 native-clang precondition skips.
+
+## LB-INTAKE-20260716-040 - Stable Git tag provenance ignores four-part release tags
+
+Type: Bug
+Priority: High
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG provenance repro, 2026-07-16; Git tags `v1.2.356` and `v1.2.376.0`
+Workspace: DAWG and Lifeblood self
+
+What:
+- Lifeblood reported `latestSemanticVersionTag: v1.2.356` while Git correctly
+  reported `v1.2.376.0` as the newest reachable release tag.
+- Source inspection pins the bug to
+  `GitSourceControlSnapshotProvider.StableSemanticVersionTag`, which currently
+  accepts only `vX.Y.Z`. DAWG uses four-component stable tags such as
+  `v1.2.376.0`, so the adapter silently skips the real newest tag.
+
+Why it matters:
+- Analyze, invariant, changelog, and evidence receipts rely on this one
+  source-control authority. A stale latest tag makes release provenance and
+  baseline comparisons materially wrong.
+- This is not a DAWG-only concern; many .NET and Unity projects use
+  four-component version tags.
+
+Fix shape:
+- Extend the stable-tag parser to accept reachable stable `vX.Y.Z` and
+  `vX.Y.Z.W` tags while continuing to reject prerelease tags.
+- Add a real temporary-repository test with both three-part and four-part tags,
+  including a prerelease tag that must not win.
+- Keep the adapter bounded and caller-rooted; do not add a second Git tag
+  resolver elsewhere.
+
+Resolution evidence:
+- Added `SourceControlEvidenceTests.Capture_SelectsNewestFourPartStableSemanticTag`,
+  a real temporary Git repository containing `v1.2.356`, `v1.2.376.0`, and
+  `v1.2.377.0-preview.1`. Before the fix it failed with actual `v1.2.356`.
+- `GitSourceControlSnapshotProvider.StableSemanticVersionTag` now accepts
+  stable `vX.Y.Z` and `vX.Y.Z.W` tags and still rejects prerelease tags.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~SourceControlEvidenceTests`
+  passed 5/5.
+
+## LB-INTAKE-20260716-041 - Invariant audit under-reports coverage confidence on zero-heavy trees
+
+Type: UX
+Priority: High
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG invariant-audit repro, 2026-07-16; 56 discovered sources, 2 recognized declaration openings
+Workspace: DAWG
+
+What:
+- DAWG invariant discovery found 56 candidate sources, but only two parser
+  recognized declarations, both in `docs/invariants/burst.md`.
+- DAWG's `docs/invariants/INDEX.md` explicitly says many table rows are human
+  routing aids until pages are normalized. Lifeblood's parser is therefore
+  behaving according to its current five-shape contract, but the audit response
+  can still look deceptively clean because it reports zero parse warnings.
+
+Why it matters:
+- "0 graph violations" plus "0 parse warnings" can be misread as comprehensive
+  invariant enforcement. On DAWG today it means the graph rule set found no
+  configured violations, while most invariant pages are not machine-declared.
+- Agents need a bounded, prominent confidence signal before citing invariant
+  coverage as release evidence.
+
+Fix shape:
+- Extend the compact invariant-audit intake with a projection
+  that reports discovered source count, recognized declaration count,
+  zero-declaration source count, and a `coverageWarning` when recognition is
+  narrow.
+- Keep parse warnings for malformed recognized declaration blocks; do not use
+  warnings to shame intentionally prose-only routing pages.
+- Add a DAWG-shaped fixture with many zero-declaration sources and two valid
+  declarations, proving the warning and compact source projection are stable.
+
+Resolution evidence:
+- Added `InvariantAudit.Coverage` with source-file count, recognized-source
+  count, empty-source count, declared count, recognized-source ratio, and
+  status (`ok`, `noSources`, `noRecognizedDeclarations`,
+  `lowRecognizedSourceRatio`).
+- Added `CoverageWarnings` as advisory warnings separate from parser warnings.
+  Prose-only routing pages are not parse errors, but low recognition is now
+  visible before an agent cites audit coverage.
+- Projected the coverage object and warnings through
+  `lifeblood_invariant_check(mode:"audit")` and the docs-safe invariant
+  evidence receipt.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~InvariantProviderAndHandlerTests`
+  passed 17/17.
+
+## LB-INTAKE-20260716-042 - Multi-profile edge deltas need explicit applicability provenance
+
+Type: Improvement
+Priority: High
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG evidence comparison, 2026-07-16; Player edges dropped from prior stamped evidence while union edges grew
+Workspace: DAWG
+
+What:
+- DAWG's current Editor+Player run reports Player profile edges much lower than
+  earlier stamped evidence, while the union edge count grew. Source inspection
+  shows current Lifeblood intentionally excludes csproj modules whose
+  `<UnityProjectType>` resolves to `Editor` from Player, and tests pin that
+  behavior.
+- DAWG also contains generated project descriptors with `UnityProjectType`
+  values such as `Game:1`, `Editor:5`, and `EditorPlugins:7`. Current
+  `IsUnityEditorOnlyProjectType` recognizes exact `Editor` before the colon;
+  the product has no first-class report explaining which modules were included
+  or excluded for each profile.
+
+Why it matters:
+- The edge drop may be a correct definition change, but agents comparing
+  evidence across Lifeblood versions need an explainable profile-applicability
+  ledger before treating deltas as regressions.
+- Unity project-type values are descriptor facts. Lifeblood should expose how
+  they shaped each profile instead of forcing humans to reverse-engineer counts
+  from generated csprojs.
+
+Fix shape:
+- Add profile-applicability provenance to analyze evidence or a compact
+  companion query: module name, descriptor project type, included profiles,
+  excluded profiles, and exclusion reason.
+- Add descriptor fixtures for `Editor`, player/game-like, and editor-plugin
+  project types. Decide the `EditorPlugins` contract from Unity evidence before
+  changing the predicate.
+- Keep profile filtering owned by the C# adapter; MCP should project the receipt
+  rather than infer profile membership from paths or names.
+
+Resolution evidence:
+- Added `ProfileApplicabilityReport` in Domain Results and
+  `RoslynWorkspaceAnalyzer.ProfileApplicability` as the adapter-owned receipt.
+  The receipt lists active profiles, per-profile included/excluded module
+  counts, module name, project file, raw `UnityProjectType`, included profiles,
+  excluded profiles, and stable exclusion reasons.
+- Preserved raw `<UnityProjectType>` on `ModuleInfo.UnityProjectType`; the
+  existing `IsEditorOnly` predicate remains unchanged. `EditorPlugins:7` is
+  now visible in the receipt but is not silently reclassified as `Editor`.
+- `lifeblood_analyze` projects `profileApplicability` for multi-profile or
+  excluding profile runs. MCP does not infer membership from paths/names; it
+  serializes the adapter receipt.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~MultiProfileAnalyzeTests.ProfileApplicabilityReport_ExplainsUnityDescriptorProfileMembership|FullyQualifiedName~AnalyzeWireShapeTests.Load_MultiProfileUnityAnalyze_ProjectsProfileApplicability"`
+  passed 2/2.
+
+## LB-INTAKE-20260716-043 - Cold incremental fallback diagnostics conflate reanalysis with content change
+
+Type: UX
+Priority: Medium
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG shared-daemon repro and first-session report, 2026-07-16
+Workspace: DAWG
+
+What:
+- A first-call `incremental:true, allowFullFallback:true` analyze on DAWG had no
+  reusable semantic base, so it truthfully widened to a full analysis. The run
+  took about 104 seconds client time / 95 seconds server work.
+- The accepted-change receipt uses `scanMode:"fullFallback"` and reports all
+  tracked sources as reanalyzed while `mtimeTouchedSourceFiles` and
+  `contentChangedSourceFiles` remain zero. This is semantically accurate but
+  easy to read as "all files changed."
+
+Why it matters:
+- Agents asked for an incremental pass and received a full rebuild. The product
+  already exposes the fallback, but the wording and summary should make the
+  cache miss unmistakable without implying source churn.
+- This issue becomes more painful in shared mode because a cold fallback can
+  block other exclusive operations while users think they requested a cheap
+  operation.
+
+Fix shape:
+- Keep the existing `mode:"full"`, `requestedMode:"incremental"`, and
+  `fallbackReason:"noPriorAnalysis"` contract.
+- Add or sharpen human-readable fields that distinguish "reanalyzed because no
+  base existed" from "content changed," and ensure summary mode has no path
+  arrays.
+- Add focused tests for cold fallback wording/counts and update docs so agents
+  know to expect a full run when no master semantic base exists.
+
+Resolution evidence:
+- Added `acceptedChanges.interpretation` at the MCP projection seam, leaving
+  `AcceptedChangeSet` as the single Application authority. Summary and detail
+  receipts now expose `work`, `changedSourceFilesMeaning`,
+  `contentChangeStatus`, and a short human `summary`.
+- Cold fallback now reports `work:"fullFallbackReanalysis"`,
+  `changedSourceFilesMeaning:"reanalyzedOrDeleted"`, and
+  `contentChangeStatus:"none"` while keeping `contentChangedSourceFiles:0` and
+  summary-mode `files:[]`.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~AnalyzeWireShapeTests`
+  passed 12/12.
+
+## LB-INTAKE-20260716-045 - Release-gate receipts must distinguish local alpha builds from published releases
+
+Type: UX
+Priority: Medium
+Status: Shipped (in-tree, untagged) - 2026-07-16 reliability continuation
+Source: DAWG first-session field report, 2026-07-16; Lifeblood local `0.7.13-alpha.0.35+9180af4404a21d3894667d84a67567b8666f1b20`
+Workspace: DAWG and Lifeblood self
+
+What:
+- DAWG evidence was produced with a local alpha Lifeblood build. That is useful
+  for dogfood, but a release gate can confuse "local alpha has verified this"
+  with "published stable Lifeblood has verified this."
+- The first-session report also noted receipts that combine analyzed semantic
+  evidence with current dirty Git state. Both are valuable facts, but they need
+  clearer labels.
+
+Why it matters:
+- Lifeblood should be a release gate only when the gate version and workspace
+  state are unambiguous. Local alpha receipts are allowed during development,
+  but they need an explicit confidence/status label.
+- Users should not need to know MinVer or Git internals to understand whether a
+  receipt came from a published stable package, a local alpha, or a dirty
+  checkout.
+
+Fix shape:
+- Add release-channel fields to evidence receipts: published stable, local
+  prerelease/alpha, dirty checkout, and source-control capture timing.
+- Keep analyzed input identity separate from current worktree dirtiness, and
+  label which facts are semantic equality authority versus provenance context.
+- Add tests around `ServerIdentity`/source-control receipt projection so local
+  alpha builds cannot masquerade as stable release gates.
+
+Resolution evidence:
+- `ServerIdentity` now classifies server versions for release-gate receipts:
+  stable no-build-metadata versions project `publishedStable`, prereleases such
+  as `0.7.13-alpha.0.35+...` project `localPrerelease`, stable versions with
+  build metadata project `localStableWithBuildMetadata`, and unparsable versions
+  project `unknown`.
+- `lifeblood_capabilities`, `lifeblood_analyze` evidence receipts, and invariant
+  audit receipts now carry additive `releaseGate` blocks plus source-control
+  `captureTiming`, `role:"provenanceContext"`, and
+  `semanticEqualityAuthority:false`. `analysisIdentity` remains the semantic
+  equality authority; Git/server-version data is provenance context.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj --filter SourceControlEvidenceTests`
+  passed 7/7.

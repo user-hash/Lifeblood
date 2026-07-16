@@ -70,7 +70,7 @@ static-tables defaults. Every anchor is ratcheted against live source by
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 2 --><!-- trackingStatusReceiptCount: 0 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 3 --><!-- trackingStatusReceiptCount: 0 --><!-- trackingStatusOpenCount: 0 -->
 
 New intake — un-started findings/feature requests awaiting prioritization (the
 ledger itself holds only Shipped + in-flight per `TrackingLedger_HasNoPlainOpenOrCandidateEntries`):
@@ -80,6 +80,7 @@ Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
 - 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
+- LB-INTAKE-20260716-044 - Static semantic blind spots need explicit unsupported-edge receipts
 <!-- trackingActiveBacklog:end -->
 
 Historical close receipts (L-LIM-001..006 multi-define closure, Native-Clang
@@ -202,3 +203,54 @@ Fix shape:
 - Add an explicit support gate: production `net10.0` migration must be decided
   before .NET 8 EOL. If customers still need `net8.0`, keep it as a compatibility
   branch rather than leaving `main` stranded on an unsupported runtime.
+
+## LB-INTAKE-20260716-044 - Static semantic blind spots need explicit unsupported-edge receipts
+
+Type: Improvement
+Priority: Medium
+Status: Partially shipped
+Source: DAWG first-session field report, 2026-07-16
+Workspace: DAWG
+
+What:
+- The field report called out semantic blind spots that Lifeblood does not
+  currently represent as graph edges, including reflection and
+  `Resources.Load` relationships.
+- DAWG also has source-text ratchets using `File.ReadAllText` that can protect
+  production files while showing zero semantic file impact, because the graph
+  models compiled references rather than arbitrary test data dependencies.
+
+Why it matters:
+- These are not graph corruption bugs; they are unsupported relationship
+  classes. The product should say that clearly so agents do not overstate
+  semantic coverage.
+- When unsupported edges matter, the tool should offer an explicit extension
+  path instead of letting users infer missing relationships from silence.
+
+Fix shape:
+- Add an unsupported-edge/heuristic receipt for known blind-spot families:
+  reflection strings, Unity resource paths, serialized asset references, and
+  source-text/file IO ratchets.
+- Keep core semantic edges precise. Heuristic relationships should be separate,
+  confidence-tagged, and opt-in for tools like file impact or test impact.
+- Add fixtures where normal graph impact is zero but an advisory unsupported
+  relationship is reported with confidence and evidence.
+
+Resolution evidence:
+- Added Domain `UnsupportedRelationshipReport` / family / hit DTOs.
+- `lifeblood_file_impact` now accepts
+  `includeUnsupportedRelationships:true`. The normal semantic
+  `dependsOnCount` / `dependedOnByCount` fields stay graph-proven; the new
+  capped advisory receipt is separate and reports
+  `semanticGraphEdgesChanged:false`.
+- The first shipped scanner detects source-file IO literal relationships such
+  as `File.ReadAllText("Target.cs")`, capped to 25 hits. Reflection strings,
+  `Resources.Load` paths, and Unity serialized asset references are explicitly
+  documented as unsupported families in the receipt rather than silently
+  modeled as graph edges.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~ToolHandlerTests.Handle_FileImpact_UnsupportedRelationships_SourceFileIoLiteral_IsAdvisory`
+  passed 1/1.
+
+Remaining open work:
+- Add separate opt-in, confidence-tagged adapters for reflection strings, Unity Resources paths, and serialized asset references only when their target identity can be resolved without weakening semantic graph edges; keep source-file IO scanning advisory and bounded.

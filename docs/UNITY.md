@@ -1,6 +1,6 @@
 # Unity Integration
 
-Lifeblood runs as a **sidecar semantic engine** alongside Unity MCP. The Unity Editor stays in control of scenes, GameObjects, and assets. Lifeblood provides compiler-grade code intelligence.
+Lifeblood runs as a **workspace-shared semantic engine** alongside Unity MCP. The Unity Editor stays in control of scenes, GameObjects, and assets. Lifeblood provides compiler-grade code intelligence through a thin stdio proxy to the same daemon used by standalone agent clients.
 
 ## Architecture
 
@@ -9,74 +9,64 @@ Claude Code ──→ Unity MCP (action/control plane)
                     │
                     ├── built-in tools (scenes, GameObjects, scripts...)
                     │
-                    └── [McpForUnityTool] custom tools ──→ Lifeblood MCP (child process)
+                    └── [McpForUnityTool] custom tools ──→ Lifeblood MCP (shared proxy)
                         └── semantic tools (analyze, references, blast radius, dead code, search, invariant check, authority report, port health, cycles, test impact, enum coverage, ...)
 ```
 
-Lifeblood does NOT run inside Unity. It spawns as a separate .NET process with its own Roslyn workspace. No assembly conflicts, no domain reload interference, no memory pressure on the Editor.
+Lifeblood does NOT run inside Unity. The bridge starts the installed `lifeblood-mcp` command in shared mode; its small proxy attaches to one workspace-keyed daemon that owns the Roslyn workspace. No Lifeblood/Roslyn assemblies load into Unity, and Unity plus direct agents observe the same committed graph.
 
 ## Setup
 
-The bridge source lives in `unity/Editor/LifebloodBridge/` in the Lifeblood repo (3 files: asmdef, client, tools). Unity projects create a **directory junction** to this path so Unity sees the files as local.
+The Lifeblood repo's `unity/` directory is the canonical UPM package. Unity projects reference that package directly from `Packages/manifest.json`; do not copy its files or create a second bridge package in the consumer repository.
 
 ### Prerequisites
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin installed in your Unity project
-- Lifeblood repo cloned and built
+- Lifeblood repo cloned next to the Unity project
+- The matching `Lifeblood.Server.Mcp` global tool installed
 
-### Step 1: Build Lifeblood
+### Step 1: Install the Lifeblood tool
 
 ```bash
-git clone https://github.com/user-hash/Lifeblood.git
-cd Lifeblood
-dotnet build
+dotnet tool install --global Lifeblood.Server.Mcp
+# Later updates:
+dotnet tool update --global Lifeblood.Server.Mcp
 ```
 
-### Step 2: Create a directory junction
+The bridge intentionally launches the installed tool rather than a repository Debug DLL. Shared-host admission compares the compiled module MVID, so every proxy must use the same installed build.
 
-The bridge files need to be visible to Unity as editor scripts. Create a junction from your Unity project to the Lifeblood repo:
+### Step 2: Reference the canonical UPM package
 
-**Windows:**
-```cmd
-mklink /J "D:\YourUnityProject\Assets\Editor\LifebloodBridge" "D:\Lifeblood\unity\Editor\LifebloodBridge"
+With the Unity project and Lifeblood as sibling directories, add this dependency to `Packages/manifest.json`:
+
+```json
+"com.dawgtools.lifeblood-bridge": "file:../../Lifeblood/unity"
 ```
 
-**macOS/Linux:**
-```bash
-ln -s /path/to/Lifeblood/unity/Editor/LifebloodBridge /path/to/YourUnityProject/Assets/Editor/LifebloodBridge
-```
+Adjust the relative path for your layout. Track the manifest entry; the Lifeblood repository remains the sole bridge source.
 
-### Step 3: Add to `.gitignore`
+### Step 3: Remove legacy copies
 
-The junction is a local dev concern. Don't track it in your Unity project's git:
-
-```
-Assets/Editor/LifebloodBridge/
-Assets/Editor/LifebloodBridge.meta
-```
+Delete any copied `Packages/com.dawgtools.lifeblood-bridge` directory or old `Assets/Editor/LifebloodBridge` junction before refreshing Unity. Keeping either would compile duplicate tool types and recreate two authorities.
 
 ### Step 4: Verify
 
-Open Unity. The bridge auto-discovers via `[McpForUnityTool]` attributes. The Unity bridge surfaces a curated in-Editor subset of the Lifeblood tools alongside Unity MCP's built-in tools; the standalone `lifeblood-mcp` server exposes the full tool surface.
+Open Unity and refresh scripts. The bridge auto-discovers via `[McpForUnityTool]` attributes. Every parameter is a typed public instance property on the tool's nested `Parameters` class, matching Coplay's discovery contract. All bridge calls use Coplay's polling lifecycle so a cold analysis or reference search can outlive the synchronous gateway deadline without losing its result.
 
-## Server Discovery
+## Server command discovery
 
-The bridge finds the Lifeblood server DLL automatically via sibling directory convention:
+The bridge resolves the command in this order:
 
-```
-YourUnityProject/          ← your Unity project
-Lifeblood/                 ← sibling directory
-  src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll
-```
+1. Unity `EditorPrefs` key `Lifeblood_McpCommand`.
+2. Environment variable `LIFEBLOOD_MCP_COMMAND`.
+3. The standard `~/.dotnet/tools/lifeblood-mcp` global-tool shim, then `PATH`.
 
-**Override if needed:**
-- **EditorPrefs:** Set `Lifeblood_ServerPath` to the full path of `Lifeblood.Server.Mcp.dll`
-- **Environment variable:** Set `LIFEBLOOD_SERVER_DLL`
+The command must be the executable, not a DLL plus arguments. The bridge owns `--shared --shared-key <UnityProjectRoot>` so admission and polling always address the same canonical workspace.
 
 ## Incremental Re-Analyze
 
-After the first `lifeblood_analyze_project`, pass `incremental=true` for fast updates. Only modules with changed files are recompiled:
+After the first `lifeblood_analyze_project`, pass `incremental=true` for fast updates. The wrapper owns `projectPath`; callers can select `readOnly`, `allowFullFallback`, and `defineProfiles` directly through the typed schema:
 
 ```
 lifeblood_analyze_project                    → full analysis (~60s on large projects)
@@ -90,7 +80,7 @@ Streaming compilation with downgrading keeps memory bounded:
 | Project size | Peak memory (CLI streaming) | Peak memory (MCP retained) | Graph |
 |---|---|---|---|
 | ~11 modules (Lifeblood itself) | see `STATUS.md` | see `STATUS.md` | current live counts in `STATUS.md` |
-| ~90 modules (400k LOC Unity project) | ~570 MB | ~3.7 GB | 62,134 symbols, 219,548 edges (~48 s wall) |
+| 100 modules (DAWG Editor+Player receipt) | see `STATUS.md` | 2.40 GB working set | 88,832 symbols, 346,496 edges (51.94 s server wall) |
 
 Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction. The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools. To regain write-side tools after a read-only session, run a full retained analyze or retry a `fallbackReason:"compilationStateUnavailable"` incremental rejection with `allowFullFallback:true`.
 
@@ -98,13 +88,13 @@ For multi-agent Unity work, shared mode (`lifeblood-mcp --shared` or `LIFEBLOOD_
 
 Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Prefer live receipts in `STATUS.md` over copying old workstation-specific numbers into this setup guide.
 
-Each module is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Only one full compilation is in memory at a time.
+Each module on the streaming path is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Retained shared mode keeps the one compiler base needed by write-side tools.
 
 ## Lifecycle
 
-- **Domain reload:** The bridge kills the sidecar process before Unity recompiles, and restarts it on next tool call.
-- **Editor quit:** Process is killed via `EditorApplication.quitting` hook.
-- **Crash recovery:** If the sidecar dies, the next tool call auto-restarts it.
+- **Domain reload:** The bridge disposes Unity's proxy before recompilation. The daemon and semantic base remain alive while another workspace client lease exists; the next Unity call reconnects.
+- **Editor quit:** Unity's proxy is disposed via `EditorApplication.quitting`; the daemon follows its lease-aware idle policy.
+- **Crash recovery:** EOF or timeout closes the broken proxy. The next independent call starts a replacement proxy; a crashed daemon starts empty rather than replaying a possibly effectful request.
 
 ## Unity-Aware Reachability (`INV-UNITY-001`)
 
