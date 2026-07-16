@@ -1559,4 +1559,71 @@ public class ToolHandlerTests : IDisposable
         Assert.Contains("\"dependsOnTruncated\": false", text);
         Assert.Contains("\"dependedOnByTruncated\": false", text);
     }
+
+    [Fact]
+    public void Handle_FileImpact_UnsupportedRelationships_SourceFileIoLiteral_IsAdvisory()
+    {
+        var handler = CreateHandler();
+        var projectRoot = BuildSourceFileIoRatchetProject();
+        handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
+
+        var result = handler.Handle("lifeblood_file_impact", MakeArgs(new
+        {
+            filePath = "Target.cs",
+            includeUnsupportedRelationships = true,
+        }));
+
+        Assert.Null(result.IsError);
+        using var doc = JsonDocument.Parse(result.Content[0].Text);
+        var root = doc.RootElement;
+        Assert.Equal(0, root.GetProperty("dependsOnCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("dependedOnByCount").GetInt32());
+
+        var unsupported = root.GetProperty("unsupportedRelationships");
+        Assert.Equal("advisory", unsupported.GetProperty("mode").GetString());
+        Assert.False(unsupported.GetProperty("semanticGraphEdgesChanged").GetBoolean());
+        Assert.Equal(1, unsupported.GetProperty("totalHitCount").GetInt32());
+        Assert.Equal(1, unsupported.GetProperty("returnedHitCount").GetInt32());
+        Assert.False(unsupported.GetProperty("truncated").GetBoolean());
+
+        var hit = Assert.Single(unsupported.GetProperty("hits").EnumerateArray());
+        Assert.Equal("sourceFileIoLiteral", hit.GetProperty("family").GetString());
+        Assert.Equal("Ratchet.cs", hit.GetProperty("sourceFilePath").GetString());
+        Assert.Equal("Target.cs", hit.GetProperty("targetFilePath").GetString());
+        Assert.Equal("File.ReadAllText", hit.GetProperty("api").GetString());
+        Assert.Equal("BestEffort", hit.GetProperty("confidence").GetString());
+        Assert.Contains("Target.cs", hit.GetProperty("evidence").GetString());
+
+        var families = unsupported.GetProperty("families").EnumerateArray().ToArray();
+        Assert.Contains(families, family =>
+            family.GetProperty("name").GetString() == "sourceFileIoLiteral"
+            && family.GetProperty("status").GetString() == "scanned");
+        Assert.Contains(families, family =>
+            family.GetProperty("name").GetString() == "reflectionString"
+            && family.GetProperty("status").GetString() == "documentedLimitation");
+    }
+
+    private string BuildSourceFileIoRatchetProject()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "RatchetProject.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(_tempDir, "Target.cs"), """
+            namespace Ratchet;
+            public sealed class Target { }
+            """);
+        File.WriteAllText(Path.Combine(_tempDir, "Ratchet.cs"), """
+            using System.IO;
+            namespace Ratchet;
+            public sealed class SourceTextRatchet
+            {
+                public string Read() => File.ReadAllText("Target.cs");
+            }
+            """);
+        return _tempDir;
+    }
 }

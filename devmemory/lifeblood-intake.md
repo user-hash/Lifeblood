@@ -1376,6 +1376,7 @@ Resolution evidence:
 
 Type: Improvement
 Priority: Medium
+Status: Partially fixed locally on 2026-07-16; source-file IO/file-impact receipt shipped, broader heuristic families remain documented limitations.
 Source: DAWG first-session field report, 2026-07-16
 Workspace: DAWG
 
@@ -1402,6 +1403,22 @@ Fix shape:
   confidence-tagged, and opt-in for tools like file impact or test impact.
 - Add fixtures where normal graph impact is zero but an advisory unsupported
   relationship is reported with confidence and evidence.
+
+Resolution evidence:
+- Added Domain `UnsupportedRelationshipReport` / family / hit DTOs.
+- `lifeblood_file_impact` now accepts
+  `includeUnsupportedRelationships:true`. The normal semantic
+  `dependsOnCount` / `dependedOnByCount` fields stay graph-proven; the new
+  capped advisory receipt is separate and reports
+  `semanticGraphEdgesChanged:false`.
+- The first shipped scanner detects source-file IO literal relationships such
+  as `File.ReadAllText("Target.cs")`, capped to 25 hits. Reflection strings,
+  `Resources.Load` paths, and Unity serialized asset references are explicitly
+  documented as unsupported families in the receipt rather than silently
+  modeled as graph edges.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~ToolHandlerTests.Handle_FileImpact_UnsupportedRelationships_SourceFileIoLiteral_IsAdvisory`
+  passed 1/1.
 
 ## LB-INTAKE-20260716-045 - Release-gate receipts must distinguish local alpha builds from published releases
 
