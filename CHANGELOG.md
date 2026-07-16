@@ -14,8 +14,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cost annotations, and exact suppressions. `ContractAuditEngine` derives one
   target-filtered operation-fact query, fans that stream across every selected
   rule family, counts the complete result, and retains only a deterministic
-  bounded finding/evidence projection. It adds no graph edge kind and no
-  retained semantic base. (`INV-CONTRACT-AUDIT-001`.)
+  bounded finding/evidence projection. `lifeblood_contract_audit` exposes that
+  engine through one summary-first typed tool with inline or workspace-contained
+  manifests. It adds no graph edge kind and no retained semantic base.
+  (`INV-CONTRACT-AUDIT-001`.)
 - **Occurrence-level semantic evidence now has one neutral streaming boundary.**
   `IOperationFactProvider` carries bounded call, argument, value-origin,
   assignment, member-access, conversion, allocation, and control-context facts
@@ -54,7 +56,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`LB-INTAKE-20260716-044`, partially shipped.)
 - **The Unity bridge has one canonical, pollable package authority.** The UPM
   source lives under `unity/`; consumers reference it instead of copying it.
-  All 18 wrappers expose Coplay-discoverable typed nested parameters and the
+  All 19 wrappers expose Coplay-discoverable typed nested parameters and the
   polling lifecycle, while one coordinator launches the installed
   `lifeblood-mcp --shared --shared-key <UnityRoot>` proxy. Unity and direct
   clients therefore converge on the same daemon-owned semantic base rather

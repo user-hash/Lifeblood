@@ -4,7 +4,7 @@ using MCPForUnity.Editor.Tools;
 namespace Lifeblood.UnityBridge
 {
     /// <summary>
-    /// All 18 Lifeblood semantic tools exposed as Unity MCP custom tools.
+    /// All 19 Lifeblood semantic tools exposed as Unity MCP custom tools.
     /// Each class is auto-discovered by Unity MCP via [McpForUnityTool].
     /// Architecture: pure outer adapters. JObject in, JObject out, with all
     /// semantic work delegated to the workspace-shared Lifeblood host. Parameters
@@ -44,7 +44,7 @@ namespace Lifeblood.UnityBridge
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // Read-side: Graph queries (6 tools)
+    // Read-side: Graph and operation-fact queries (8 tools)
     // ═══════════════════════════════════════════════════════════════
 
     [McpForUnityTool("lifeblood_context",
@@ -166,6 +166,59 @@ namespace Lifeblood.UnityBridge
     // ═══════════════════════════════════════════════════════════════
     // Write-side: Compilation & diagnostics (4 tools)
     // ═══════════════════════════════════════════════════════════════
+
+    [McpForUnityTool("lifeblood_contract_audit",
+        Description = "Evaluate a versioned consumer contract manifest over one bounded operation-fact scan. Supply manifestJson or a workspace-contained manifestPath. Summary-first by default.",
+        Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
+    public static class LifebloodContractAudit
+    {
+        public sealed class Parameters
+        {
+            [ToolParameter("Inline contract manifest JSON. Supply exactly one of manifestJson or manifestPath.", Required = false)]
+            public string manifestJson { get; set; }
+
+            [ToolParameter("Contract manifest path inside the analyzed Unity workspace. Supply exactly one of manifestJson or manifestPath.", Required = false)]
+            public string manifestPath { get; set; }
+
+            [ToolParameter("Optional committed define profile.", Required = false)]
+            public string profileScope { get; set; }
+
+            [ToolParameter("Optional module/asmdef scope.", Required = false)]
+            public string moduleScope { get; set; }
+
+            [ToolParameter("Optional source-file allowlist.", Required = false)]
+            public string[] filePaths { get; set; }
+
+            [ToolParameter("Optional containing-symbol allowlist.", Required = false)]
+            public string[] containingSymbolIds { get; set; }
+
+            [ToolParameter("Optional rule-family or exact contract-id allowlist.", Required = false)]
+            public string[] includeRuleIds { get; set; }
+
+            [ToolParameter("Maximum emitted operation facts. Default 50000; hard cap 250000.", Required = false)]
+            public int? maxFacts { get; set; }
+
+            [ToolParameter("Maximum returned findings. Default 200; hard cap 1000.", Required = false)]
+            public int? maxFindings { get; set; }
+
+            [ToolParameter("Maximum evidence records per finding. Default 8; hard cap 32.", Required = false)]
+            public int? maxEvidencePerFinding { get; set; }
+
+            [ToolParameter("Summary-first response. Default true; pass false for bounded evidence detail.", Required = false, DefaultValue = "true")]
+            public bool summarize { get; set; }
+        }
+
+        public static object HandleCommand(JObject @params)
+        {
+            var forwarded = @params == null ? new JObject() : (JObject)@params.DeepClone();
+            var manifestJson = forwarded.Value<string>("manifestJson");
+            forwarded.Remove("manifestJson");
+            if (!string.IsNullOrWhiteSpace(manifestJson))
+                forwarded["manifest"] = JObject.Parse(manifestJson);
+
+            return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_contract_audit", forwarded);
+        }
+    }
 
     [McpForUnityTool("lifeblood_diagnose",
         Description = "Get compilation diagnostics (errors, warnings) for the project. Optionally filter by module/assembly name.",

@@ -37,6 +37,7 @@ public sealed class ToolHandler
     private readonly IAuthorityReporter _authority;
     private readonly IPortHealthAnalyzer _portHealth;
     private readonly WriteToolHandler _write;
+    private readonly ContractAuditToolHandler _contractAudit;
     private readonly ITelemetrySink _telemetry;
     private readonly ToolArgumentBinder _argumentBinder;
     private readonly ToolJsonCompatibilityMode _jsonCompatibilityMode;
@@ -99,6 +100,7 @@ public sealed class ToolHandler
         _analysisCoordinator = analysisCoordinator ?? new AnalysisRequestCoordinator<McpToolResult>();
         _sharedDaemonStatus = sharedDaemonStatus;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
+        _contractAudit = new ContractAuditToolHandler(session, JsonOpts);
     }
 
     private static ToolArgumentBinder BuildArgumentBinder()
@@ -219,6 +221,7 @@ public sealed class ToolHandler
         HasAnalyzedWorkspace: _session.IsLoaded,
         HasWorkspaceRoot: !_session.IsHistoricalSelection
             && !string.IsNullOrEmpty(_session.ProjectRoot),
+        HasOperationFactProvider: _session.OperationFactProvider != null,
         HasRetainedCompilation: _session.HasCompilationState);
 
     private McpToolResult HandleCore(
@@ -284,6 +287,7 @@ public sealed class ToolHandler
                 "lifeblood_port_health" => HandlePortHealth(arguments),
                 "lifeblood_cycles" => HandleCycles(arguments),
                 "lifeblood_test_impact" => HandleTestImpact(arguments),
+                "lifeblood_contract_audit" => HandleContractAudit(arguments, cancellationToken),
                 // Write-side. Wrapped uniformly through WrapWriteSide so
                 // every write-side response carries the same envelope shape
                 // as the read-side tools. INV-ENVELOPE-001 +
@@ -356,6 +360,10 @@ public sealed class ToolHandler
                 ErrorResult(
                     "No workspace loaded for live-source access. Call lifeblood_analyze " +
                     "with projectPath first, or omit snapshotId when a historical graph-only publication is selected."),
+            ToolSessionRequirement.OperationFacts =>
+                ErrorResult(
+                    "Operation-fact tools require a live C# workspace publication. Call lifeblood_analyze " +
+                    "with projectPath first, or omit snapshotId when a historical graph-only publication is selected."),
             ToolSessionRequirement.RetainedCompilation =>
                 ErrorResult(_session.CompilationStateRecoveryHint
                     ?? "Compilation-backed tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first."),
@@ -371,6 +379,7 @@ public sealed class ToolHandler
         var sessionInfo = new ServerSessionInfo(
             HasGraphLoaded: _session.IsLoaded,
             HasCompilationState: _session.HasCompilationState,
+            HasOperationFactProvider: _session.OperationFactProvider != null,
             AnalysisGeneration: _session.AnalysisGeneration,
             SnapshotId: _session.SnapshotId.ToString(),
             ProjectRoot: _session.ProjectRoot,
@@ -390,6 +399,13 @@ public sealed class ToolHandler
             "lifeblood_capabilities",
             ServerIdentity.BuildCapabilities(sessionInfo, _session.SourceControl)));
     }
+
+    private McpToolResult HandleContractAudit(
+        JsonElement? args,
+        CancellationToken cancellationToken)
+        => TextResult(WithEnvelope(
+            "lifeblood_contract_audit",
+            _contractAudit.Execute(args, cancellationToken)));
 
     private McpToolResult HandleBatch(JsonElement? args)
     {

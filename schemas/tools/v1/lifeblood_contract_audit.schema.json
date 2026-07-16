@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "properties": {
+    "manifest": {
+      "type": "object",
+      "description": "Inline schema-versioned contract manifest. Supply exactly one of manifest or manifestPath."
+    },
+    "manifestPath": {
+      "type": "string",
+      "description": "Path to a contract-manifest JSON file inside the analyzed workspace. Relative paths resolve from the workspace root. Supply exactly one of manifest or manifestPath."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Optional committed define profile. The primary profile reuses its retained compilation; another profile executes ephemerally after exact input verification."
+    },
+    "moduleScope": {
+      "type": "string",
+      "description": "Optional module/asmdef scope. Especially useful for bounded non-primary-profile execution."
+    },
+    "filePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional source-file allowlist for the fact stream."
+    },
+    "containingSymbolIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional containing-symbol allowlist for occurrence evaluation."
+    },
+    "includeRuleIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional rule-family or exact contract-id allowlist. Unknown selectors fail loudly."
+    },
+    "maxFacts": {
+      "type": "integer",
+      "description": "Maximum emitted operation facts. Default 50000; hard cap 250000."
+    },
+    "maxFindings": {
+      "type": "integer",
+      "description": "Maximum returned findings. Default 200; hard cap 1000. summarize:true further clamps to 25."
+    },
+    "maxEvidencePerFinding": {
+      "type": "integer",
+      "description": "Maximum evidence records per returned finding. Default 8; hard cap 32. summarize:true omits evidence."
+    },
+    "summarize": {
+      "type": "boolean",
+      "description": "Summary-first default true: retain at most 25 findings and omit their evidence arrays while preserving complete counts and breakdowns. Pass false for bounded evidence detail."
+    },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
+    }
+  }
+}

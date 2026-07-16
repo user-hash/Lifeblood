@@ -275,24 +275,25 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(40, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
-        Assert.Equal(22, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
+        Assert.Equal(41, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(23, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var toolCapabilities = doc.RootElement.GetProperty("tools");
         Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
         Assert.Equal(4, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
         Assert.Equal(16, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
+        Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("OperationFacts").GetInt32());
         Assert.Equal(18, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
-        Assert.Equal(34, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
+        Assert.Equal(35, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("RefreshWorkspace").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ManageSnapshotCatalog").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ExecuteCode").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("PreviewChanges").GetInt32());
-        Assert.Equal(37, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
+        Assert.Equal(38, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
         Assert.Equal(3, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
         var behaviorContracts = toolCapabilities.GetProperty("behaviorContracts");
-        Assert.Equal(40, behaviorContracts.GetArrayLength());
+        Assert.Equal(41, behaviorContracts.GetArrayLength());
         var analyzeContract = behaviorContracts.EnumerateArray()
             .Single(e => e.GetProperty("name").GetString() == "lifeblood_analyze");
         Assert.Equal("None", analyzeContract.GetProperty("sessionRequirement").GetString());
@@ -1180,7 +1181,7 @@ public class ToolHandlerTests : IDisposable
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(40, tools.Length);
+        Assert.Equal(41, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_snapshots");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");
@@ -1313,6 +1314,76 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_InlineManifestIsSummaryFirstAndUsesOneSemanticBase()
+    {
+        var (projectRoot, manifest) = CreateContractAuditProject();
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        var analyzed = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot, defineProfiles = new[] { "Editor" } }));
+        Assert.Null(analyzed.IsError);
+
+        var result = handler.Handle("lifeblood_contract_audit", MakeArgs(new { manifest }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.Equal("Completed", root.GetProperty("status").GetString());
+        Assert.Equal(1, root.GetProperty("findingCount").GetInt32());
+        Assert.Equal(1, root.GetProperty("returnedFindingCount").GetInt32());
+        Assert.Empty(root.GetProperty("findings")[0].GetProperty("evidence").EnumerateArray());
+        Assert.Equal(0, root.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+        Assert.Equal("Editor", root.GetProperty("scanReceipt").GetProperty("profileScope").GetString());
+        Assert.True(root.TryGetProperty("envelope", out _));
+    }
+
+    [Fact]
+    public void Handle_ContractAudit_WorkspaceManifestPathReturnsBoundedEvidence()
+    {
+        var (projectRoot, manifest) = CreateContractAuditProject();
+        var manifestPath = Path.Combine(projectRoot, "contracts.json");
+        File.WriteAllText(manifestPath, manifest.GetRawText());
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifestPath = "contracts.json", summarize = false, maxEvidencePerFinding = 2 }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var finding = payload.RootElement.GetProperty("findings")[0];
+        Assert.InRange(finding.GetProperty("evidence").GetArrayLength(), 1, 2);
+        Assert.Equal("acme-contracts", payload.RootElement.GetProperty("manifestId").GetString());
+    }
+
+    [Fact]
+    public void Handle_ContractAudit_RejectsGraphOnlyAndOutOfWorkspaceManifestPath()
+    {
+        var (_, manifest) = CreateContractAuditProject();
+        using var graphSession = new GraphSession(Fs);
+        var graphHandler = CreateHandler(session: graphSession);
+        Assert.Null(graphHandler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath })).IsError);
+        var graphOnly = graphHandler.Handle("lifeblood_contract_audit", MakeArgs(new { manifest }));
+        Assert.True(graphOnly.IsError);
+        Assert.Contains("Operation-fact tools require", graphOnly.Content[0].Text, StringComparison.Ordinal);
+
+        var (projectRoot, _) = CreateContractAuditProject("outside-check");
+        var outsidePath = Path.Combine(_tempDir, "outside-contract.json");
+        File.WriteAllText(outsidePath, manifest.GetRawText());
+        using var liveSession = new GraphSession(Fs);
+        var liveHandler = CreateHandler(session: liveSession);
+        Assert.Null(liveHandler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+        var outside = liveHandler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifestPath = outsidePath }));
+        Assert.True(outside.IsError);
+        Assert.Contains("must stay inside", outside.Content[0].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GetTools_ReadsLiveAvailabilityThroughSessionGate()
     {
         var gate = new RecordingSessionGate();
@@ -1320,9 +1391,40 @@ public class ToolHandlerTests : IDisposable
 
         var tools = handler.GetTools();
 
-        Assert.Equal(40, tools.Length);
+        Assert.Equal(41, tools.Length);
         Assert.Equal(1, gate.ReadCount);
         Assert.Equal(0, gate.WriteCount);
+    }
+
+    private (string ProjectRoot, JsonElement Manifest) CreateContractAuditProject(string name = "contract-audit")
+    {
+        var projectRoot = Path.Combine(_tempDir, name);
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Guard.cs"),
+            "namespace Acme; public static class Guard { " +
+            "public static void Set(int value) { } " +
+            "public static void Run(int input) { Set(input); Set(System.Math.Clamp(input, 0, 10)); } }");
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-contracts",
+            version = "1.0.0",
+            operationGuards = new[]
+            {
+                new
+                {
+                    id = "set-value-clamped",
+                    targetSymbolIds = new[] { "method:Acme.Guard.Set(int)" },
+                    argumentOrdinal = 0,
+                    allowedSourceSymbolIds = new[] { "method:System.Math.Clamp(int,int,int)" },
+                },
+            },
+        });
+        return (projectRoot, manifest);
     }
 
     private sealed class RecordingSessionGate : ISessionGate

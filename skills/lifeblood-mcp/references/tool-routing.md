@@ -64,6 +64,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Field read but never written / delegate slot never wired? | `lifeblood_wire_audit` | Dead-WIRE complement of dead_code: referenced but structurally unplugged. Advisory. |
 | Boolean feature flag gated but never flipped (dormant)? | `lifeblood_feature_switch_audit` | Verdict `AlwaysDefaultInGraph` / `TestOnlyActivation` / `RuntimeMutable`. Advisory. |
 | Do call sites actually pass the new/optional argument? | `lifeblood_callsite_arguments` | Per-site argument facts + supplied/omitted histogram; the API-adoption gap. |
+| Enforce consumer-owned guards or external API cost policy? | `lifeblood_contract_audit` | One versioned manifest, one bounded operation-fact scan, summary-first findings; no extra graph or semantic base. |
 | Measure interface/class liveness | `lifeblood_port_health` | Good for ports, facades, and suspiciously wide contracts. |
 | Quantify facade/dispatcher authority | `lifeblood_authority_report` | Use for types that aggregate many subordinates or interfaces. |
 | Check source-of-truth authority reachability | `lifeblood_authority_coverage` | Matrix of subjects vs required authorities; reports missing authorities, shortest paths, and allowed alternatives. |
