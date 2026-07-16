@@ -3,6 +3,10 @@
 Date: 2026-07-15
 
 Status: active. Wave 1 is closed; Waves 2-7 remain the feature-backlog roadmap.
+The 2026-07-16 consolidation audit approved one controlled semantic-contract
+program for 20 of the 29 remaining intake entries. "One program" means one
+fact authority, one bounded public surface, and natural tested commits; it does
+not mean a big-bang rewrite or one unreviewable commit.
 The 2026-07-16 reliability continuation was executed first because live DAWG
 transport, latency, response-size, provenance, and Unity-wrapper defects made
 Lifeblood unsafe as a release gate. Routing never counts as implementation;
@@ -58,6 +62,110 @@ The existing source also establishes five important facts:
    be copied into diagnostic/performance features.
 5. runtime profiler evidence is a distinct external-evidence boundary. It does
    not belong in the C# adapter or the static semantic graph.
+
+## 2026-07-16 Consolidation Decision
+
+The remaining backlog was re-audited against the live C# adapter, graph edge
+identity, retained-profile ownership, and every active intake heading. The
+hypothesis is confirmed with one correction: the reusable seam is not a new
+graph edge kind or a different architecture-edge count. It is one bounded,
+language-neutral operation-fact stream consumed by stateless rules.
+
+Graph edges intentionally collapse repeated source occurrences by semantic
+identity and retain only the first authoring callsite. That is correct for
+architecture coupling. Contract questions need occurrence-level, often n-ary
+facts such as argument position, value origin, conversion, guard/loop context,
+state access, and ordering. Encoding those as graph edges would both corrupt
+coupling counts and lose the fact relationships the requests need.
+
+### Exact closure set
+
+| Relationship to the controlled swing | Intake IDs | Count |
+|---|---|---:|
+| Direct consumers of the shared operation-fact vocabulary and rule engine | `001`, `006`-`012`, `014`, `015`, `021`-`023`, `025`, `026`, `036` | 16 |
+| Required execution foundation: truthful requested-profile operation facts with zero additional retained semantic bases | `003` | 1 |
+| Same manifest/audit program, but non-operation projections or documented workflow | `004`, `013`, `016` | 3 |
+| **Total controlled semantic-contract program** |  | **20 / 29** |
+
+The nine remaining entries keep their proper owners and MUST NOT be forced
+through the contract kernel merely to improve the consolidation percentage:
+
+| Owner lane | Intake IDs | Reason it stays separate |
+|---|---|---|
+| compile/diff diagnostics | `002`, `029` | compilation ownership and source-control change ownership, not operation policy |
+| explicit governance decline | `005` | a product binary must not mutate Lifeblood's private DevMemory ledger |
+| invariant/evidence projections | `027`, `030`, `032` | invariant tree and graph/snapshot evidence are existing authorities |
+| usage telemetry | `033` | extends the existing per-request `AnalysisUsage` authority |
+| runtime evidence | `034`, `035` | measured external traces are not static semantic facts |
+
+The partially shipped `LB-INTAKE-20260716-044` is adjacent but not silently
+counted among the 29 intake entries. Reflection-string and `Resources.Load`
+call/literal relationships may consume the new call/argument facts as bounded,
+confidence-tagged adapters. Serialized Unity asset relationships remain an
+external asset-evidence adapter. None become proven semantic graph edges.
+
+### One-pass and one-base contract
+
+The controlled swing MUST satisfy all of the following:
+
+1. Domain owns only inert, language-neutral operation fact, manifest, finding,
+   confidence, and limitation records.
+2. Application owns one fact-query port and orchestration contract. It does not
+   add one `ICompilationHost` method per rule family.
+3. `Adapters.CSharp` performs one deterministic Roslyn operation traversal per
+   requested execution scope and emits neutral facts. It makes no DAWG, DSP,
+   Burst, Unity-product, or contract-goodness decisions.
+4. Analysis owns stateless rule modules and shared route/provenance/suppression
+   logic. Multiple selected rule families consume the same traversal.
+5. MCP owns only typed argument binding, caps, pagination/summary projection,
+   and envelope classification. The surface budget remains one
+   `lifeblood_contract_audit` tool for this entire program.
+6. Facts do not enter `SemanticGraph`, do not add `EdgeKind` members, and do not
+   change established symbol/edge counts.
+7. No second Roslyn compilation heap is retained. Requested profiles execute
+   sequentially or use a measured compact neutral index; either design must
+   report `additionalSemanticBaseCount = 0`.
+8. A universal retained fact cache is forbidden until a benchmark proves it is
+   smaller and faster than bounded extraction. The default design is a bounded
+   stream with selected rules sharing the pass.
+9. Existing wire/feature-switch/assignment/callsite/static-table tools migrate
+   only one at a time after byte/semantic parity, limitation parity, and
+   performance parity. The contract kernel may coexist temporarily; a
+   speculative big-bang rewrite is forbidden.
+
+### Controlled-swing acceptance matrix
+
+Every implementation atom must prove its layer locally. Closing an intake ID
+additionally requires its motivating DAWG receipt.
+
+| Gate | Required evidence |
+|---|---|
+| architecture | Domain zero-dependency, Application ports-only, Analysis stateless, no connector-to-adapter dependency, no new graph edge kind |
+| extraction | positive, negative, ambiguous/advisory, deterministic-order, generated-source, and profile-guarded fixtures |
+| compatibility | existing operation-tool focused suite stays green; graph symbol/edge counts and existing v1 schema snapshots stay stable unless an intentional additive surface changes |
+| one base | profile test asserts zero additional retained compilations/semantic bases and releases ephemeral profile state after the call |
+| bounds | request prevalidation, manifest/rule caps, finding/evidence caps, summary-first response, cancellation, and no partial publication |
+| performance | Lifeblood-self full/noop/query timings plus peak working set; frozen/read-only DAWG cold/warm/query comparison against the recorded baseline |
+| value | each rule family detects a known positive and rejects a known negative in synthetic fixtures, then returns an actionable DAWG result without hardcoded DAWG vocabulary |
+| closure | intake moves only after implementation/already-satisfied/decline evidence; routing or partial scaffolding never counts as closure |
+
+### Open reliability verification gate
+
+The semantic-contract program does not subsume transport reliability. A DSP
+handoff after the installed `0.7.13-alpha.0.51` receipt reported three live
+symptoms that must be reproduced before code changes:
+
+- direct Codex Lifeblood connector calls return `Transport closed`;
+- Unity custom-tool calls can remain `_mcp_status: pending` without a job id or
+  terminal result;
+- a previously healthy shared graph can present `noPriorAnalysis`, then close
+  or time out during the attempted full rebuild.
+
+The reliability lane must capture client identity, workspace key, daemon
+identity/handshake, publication generation, pending token/job identity, and
+process lifetime on both success and failure. Classification must distinguish
+server state loss from a stale direct connector, Unity polling-token misuse,
+and maintenance restart. No transport patch lands from the report alone.
 
 ## Non-Negotiable Architecture Gates
 
