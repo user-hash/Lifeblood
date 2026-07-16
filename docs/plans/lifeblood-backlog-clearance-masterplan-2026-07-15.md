@@ -357,12 +357,15 @@ acceptance receipt passes.
 ### 2026-07-16 reliability continuation receipts
 
 These fixes are an urgent interlude, not a declaration that Waves 2-7 are
-implemented. The installed-build DAWG receipt used the canonical Unity bridge
-and an independent direct client against one daemon publication: cold
-Editor+Player server work 51.94 seconds; warm reuse 4.99 seconds; 88,832
+implemented. The final installed-build DAWG receipt used
+`0.7.13-alpha.0.51+55af5d25b2be828e9fb7baeecbf41beb091a9900`, the
+canonical Unity bridge, and an independent direct client against one daemon
+publication: cold Editor+Player server work 53.53 seconds; direct warm reuse
+6.34 seconds; Unity warm reuse 6.70 seconds; 88,832
 symbols / 346,496 edges / 100 modules / 5,567 types / 138 cycles / zero
-configured violations; one retained semantic base; 10,586-character analyze
-result; latest reachable stable tag `v1.2.376.0`.
+configured violations; one retained semantic base; exact snapshot
+`snap_a47f202a590540989e5d6471e8b539f8`; latest reachable stable tag
+`v1.2.376.0`.
 
 | Finding | Permanent owner/fix | Verification | Commit |
 |---|---|---|---|
@@ -383,6 +386,14 @@ Final in-tree verification passed 1,570 tests with 11 native-Clang
 precondition skips and zero failures (1,581 discovered total). The focused
 docs/schema/ledger gate passed 62/62 after lifecycle reconciliation. No tag,
 push, NuGet publication, or release cut was performed.
+
+The two generation-0/closed-server reports emitted during final installation
+coincided with the deliberate stop of the 0.50 proxy/daemon while the global
+tool store was replaced. They are classified as maintenance-restart evidence,
+not a spontaneous 0.51 persistence failure. Post-install, one persistent
+direct proxy completed full analyze, `lifeblood_execute`, and incremental-noop;
+Unity then completed its own polled execute and incremental-noop against the
+same generation-1 snapshot without fallback or transport loss.
 
 ## Failure And Rollback Policy
 

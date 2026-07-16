@@ -4,7 +4,8 @@
 
 > **Shared transport rollout:** `--shared` is the recommended configuration for
 > same-workspace multi-agent use; private stdio remains the rollback path. Exact
-> build `0.7.13-alpha.0.50+827c4f2` passed the current DAWG Editor+Player
+> build `0.7.13-alpha.0.51+55af5d25b2be828e9fb7baeecbf41beb091a9900`
+> passed the final DAWG Editor+Player
 > canonical-bridge dogfood, while the earlier 1/2/4-client rollout remains the
 > memory/concurrency baseline. Unity and a fresh direct client observed one daemon,
 > generation, snapshot, and semantic base; incremental no-op, pinned batch,
@@ -16,17 +17,28 @@
 > that same `recommended` posture from one server-edge authority
 > (`INV-MCP-SHARED-MATURITY-001`).
 
-The current DAWG live gate uses the installed
-`0.7.13-alpha.0.50+827c4f2` build through the canonical Unity package. A cold
+The final installed DAWG live gate uses
+`0.7.13-alpha.0.51+55af5d25b2be828e9fb7baeecbf41beb091a9900`
+through the canonical Unity package. A cold
 Editor+Player retained scan published 88,832 symbols, 346,496 edges, 100
-modules, 5,567 types, 138 cycles, and zero configured violations in 51.94
-seconds of server work. A fresh direct proxy then observed that exact snapshot
-and generation with `semanticBaseCount:1`, performed an incremental no-op in
-4.99 seconds of server work / 10.39 seconds end-to-end, and reused the current
-publication. Its analyze result text was 10,586 characters; package visibility
-reported nine packages as aggregates, returned the one unbound-package row,
-and omitted eight clean rows. These are local prerelease/dirty-workspace
-development receipts, not a published-stable release claim.
+modules, 5,567 types, 138 cycles, and zero configured violations in 53.53
+seconds of server work. The same direct proxy executed against the retained
+graph, returning all 88,832 symbols, then reused the current publication in a
+6.34-second incremental no-op with zero changed files. Unity subsequently
+attached through the pollable bridge, executed against the same 346,496-edge
+graph, and reused generation 1 / snapshot
+`snap_a47f202a590540989e5d6471e8b539f8` in a 6.70-second incremental no-op.
+Package visibility reported nine packages as aggregates, returned the one
+unbound-package row, and omitted eight clean rows. These are local
+prerelease/dirty-workspace development receipts, not a published-stable
+release claim.
+
+During the local 0.50-to-0.51 tool update, the installer deliberately stopped
+the old DAWG proxy and daemon. Concurrent clients therefore observed
+generation 0 / `fallbackReason:"noPriorAnalysis"` and one pending Unity call
+observed `Lifeblood server closed or timed out`. Those events are maintenance
+restart receipts, not spontaneous state loss on 0.51; the post-install
+full/execute/incremental sequence above is the acceptance authority.
 
 Wave 1 of the shared-base plan replaces independently authored read/write and
 lock-name lists with one typed behavior registry. All 40 tools now declare

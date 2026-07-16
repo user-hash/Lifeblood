@@ -3141,6 +3141,18 @@ Resolution evidence:
 - Final combined gate:
   `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~GraphSessionPublicationTests|FullyQualifiedName~UseCaseTests|FullyQualifiedName~SharedMcpTransportProcessTests|FullyQualifiedName~AnalysisRequestCoordinatorTests|FullyQualifiedName~McpProtocolTests|FullyQualifiedName~ToolArgumentContractTests|FullyQualifiedName~DocsTests"`
   passed 122/122.
+- Final installed-build gate used
+  `0.7.13-alpha.0.51+55af5d25b2be828e9fb7baeecbf41beb091a9900`.
+  One direct proxy completed a 53.53-second DAWG Editor+Player full scan,
+  `lifeblood_execute`, and a 6.34-second incremental-noop without losing the
+  daemon publication. Unity then polled `lifeblood_execute` and a 6.70-second
+  incremental-noop against the same generation-1 snapshot
+  `snap_a47f202a590540989e5d6471e8b539f8`.
+- Generation-0 / `noPriorAnalysis` and `server closed or timed out` reports
+  observed during installation coincided with the deliberate termination of
+  the old 0.50 proxy/daemon while the global tool package was replaced. They
+  are maintenance-restart evidence and are not counted as spontaneous state
+  loss on the post-install 0.51 process.
 
 ## LB-INTAKE-20260716-039 - Analyze summary emits oversized package-source inventories
 
