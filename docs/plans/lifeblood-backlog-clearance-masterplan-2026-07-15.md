@@ -379,6 +379,14 @@ Natural commit groups:
 4. hot-path allocation/forbidden/external-cost and shared state;
 5. determinism, sibling parity, ownership/handoff, and cross-layer control law.
 
+Group 1 is now in progress through one generic `value-domain` rule: consumer
+manifests bind arbitrary domains to canonical source symbols and declare exact
+source-domain/operator evidence for accepted conversions. The same streamed
+value record carries nested operators, so numeric units and cadence reuse one
+mechanism. This is not closure for `006` or `010` yet: non-finite policy,
+constant provenance, cadence-boundary fixtures, and motivating DAWG receipts
+remain required.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 

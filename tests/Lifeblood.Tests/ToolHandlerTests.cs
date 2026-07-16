@@ -1363,6 +1363,51 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_InlineValueDomainManifestUsesTheSharedFactStream()
+    {
+        var (projectRoot, _) = CreateContractAuditProject("value-domain-contract");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-value-domains",
+            version = "1.0.0",
+            valueDomains = new[]
+            {
+                new
+                {
+                    id = "set-normalized",
+                    targetSymbolIds = new[] { "method:Acme.Guard.Set(int)" },
+                    targetDomain = "Normalized",
+                    bindings = new[]
+                    {
+                        new
+                        {
+                            domain = "Raw",
+                            sourceSymbolIds = new[] { "parameter:method:Acme.Guard.Run(int)#0:input" },
+                        },
+                    },
+                },
+            },
+        });
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal(ContractRuleId.ValueDomain, payload.RootElement.GetProperty("selectedRuleIds")[0].GetString());
+        Assert.Equal(2, payload.RootElement.GetProperty("findingCount").GetInt32());
+        Assert.All(payload.RootElement.GetProperty("findings").EnumerateArray(), finding =>
+            Assert.Equal(
+                ContractFindingKind.ValueDomainMismatch,
+                finding.GetProperty("kind").GetString()));
+    }
+
+    [Fact]
     public void Handle_ContractAudit_RejectsGraphOnlyAndOutOfWorkspaceManifestPath()
     {
         var (_, manifest) = CreateContractAuditProject();

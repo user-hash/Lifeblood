@@ -26,7 +26,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   resolve/dependants queries on one publication.
 - **Versioned semantic contracts now share one bounded stateless evaluator.**
   Consumer-owned manifests declare operation-argument guards, external API
-  cost annotations, and exact suppressions. `ContractAuditEngine` derives one
+  cost annotations, exact value-domain conversions, and suppressions. Value
+  domains use caller-named symbol bindings plus exact required source/operator
+  evidence; Lifeblood embeds no units or product vocabulary. `ContractAuditEngine` derives one
   target-filtered operation-fact query, fans that stream across every selected
   rule family, counts the complete result, and retains only a deterministic
   bounded finding/evidence projection. `lifeblood_contract_audit` exposes that

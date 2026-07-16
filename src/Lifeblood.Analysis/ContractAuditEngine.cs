@@ -19,6 +19,7 @@ public sealed class ContractAuditEngine
     private readonly ContractManifest _manifest;
     private readonly OperationGuardContract[] _guardContracts;
     private readonly ExternalApiCostContract[] _costContracts;
+    private readonly ValueDomainContract[] _domainContracts;
     private readonly ContractSuppression[] _suppressions;
     private readonly SortedSet<ContractFinding> _findings = new(FindingComparer.Instance);
     private readonly Dictionary<string, RuleCounts> _counts = new(StringComparer.Ordinal);
@@ -32,10 +33,10 @@ public sealed class ContractAuditEngine
     {
         ArgumentNullException.ThrowIfNull(request);
         _manifest = request.Manifest ?? throw new ArgumentException("A contract manifest is required.", nameof(request));
-        ValidateManifest(_manifest);
+        ContractManifestValidator.Validate(_manifest);
 
-        (_guardContracts, _costContracts) = SelectContracts(_manifest, request.IncludeRuleIds);
-        if (_guardContracts.Length == 0 && _costContracts.Length == 0)
+        (_guardContracts, _costContracts, _domainContracts) = SelectContracts(_manifest, request.IncludeRuleIds);
+        if (_guardContracts.Length == 0 && _costContracts.Length == 0 && _domainContracts.Length == 0)
             throw new ArgumentException("The contract audit request did not select any manifest contracts.", nameof(request));
         _suppressions = _manifest.Suppressions ?? Array.Empty<ContractSuppression>();
         _findingLimit = request.Summarize
@@ -47,13 +48,15 @@ public sealed class ContractAuditEngine
 
         var targets = _guardContracts.SelectMany(contract => contract.TargetSymbolIds)
             .Concat(_costContracts.SelectMany(contract => contract.TargetSymbolIds))
+            .Concat(_domainContracts.SelectMany(contract => contract.TargetSymbolIds))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
-        var kinds = _guardContracts.Length > 0
-            ? new[] { OperationFactKind.Call, OperationFactKind.ObjectCreation }
-                .Concat(_costContracts.SelectMany(contract => contract.OperationKinds))
-            : _costContracts.SelectMany(contract => contract.OperationKinds);
+        var kinds = (_guardContracts.Length > 0
+                ? new[] { OperationFactKind.Call, OperationFactKind.ObjectCreation }
+                : Array.Empty<string>())
+            .Concat(_costContracts.SelectMany(contract => contract.OperationKinds))
+            .Concat(_domainContracts.SelectMany(contract => contract.OperationKinds));
 
         Query = new OperationFactQuery
         {
@@ -82,6 +85,7 @@ public sealed class ContractAuditEngine
 
         EvaluateGuards(fact);
         EvaluateExternalCosts(fact);
+        EvaluateValueDomains(fact);
         return true;
     }
 
@@ -94,11 +98,13 @@ public sealed class ContractAuditEngine
 
         var selectedRules = _guardContracts.Select(_ => ContractRuleId.OperationGuard)
             .Concat(_costContracts.Select(_ => ContractRuleId.ExternalApiCost))
+            .Concat(_domainContracts.Select(_ => ContractRuleId.ValueDomain))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
         var selectedContracts = _guardContracts.Select(contract => contract.Id)
             .Concat(_costContracts.Select(contract => contract.Id))
+            .Concat(_domainContracts.Select(contract => contract.Id))
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
 
@@ -256,6 +262,90 @@ public sealed class ContractAuditEngine
         }
     }
 
+    private void EvaluateValueDomains(OperationFact fact)
+    {
+        foreach (var contract in _domainContracts)
+        {
+            var assessment = ValueDomainContractRule.Evaluate(contract, fact);
+            if (assessment == null) continue;
+
+            var evidence = new List<ContractEvidence>();
+            if (fact.TargetSymbolId != null)
+            {
+                evidence.Add(new ContractEvidence
+                {
+                    Kind = "BoundTarget",
+                    Summary = fact.TargetSymbolId,
+                    SymbolIds = new[] { fact.TargetSymbolId },
+                    Source = fact.Source,
+                });
+            }
+
+            if (assessment.Input == null)
+            {
+                evidence.Add(new ContractEvidence
+                {
+                    Kind = "MissingInput",
+                    Summary = contract.InputOrdinal.HasValue
+                        ? $"No '{contract.InputRole}' input exists at ordinal {contract.InputOrdinal}."
+                        : $"No '{contract.InputRole}' input exists.",
+                    Source = fact.Source,
+                });
+            }
+            else
+            {
+                evidence.Add(new ContractEvidence
+                {
+                    Kind = "ValueExpression",
+                    Summary = DescribeValue(assessment.Input.Value),
+                    SymbolIds = assessment.Input.Value.SourceSymbolIds,
+                    Source = fact.Source,
+                });
+                evidence.Add(new ContractEvidence
+                {
+                    Kind = "ObservedDomains",
+                    Summary = assessment.IsUnclassified
+                        ? "No manifest binding classified the value."
+                        : string.Join(", ", assessment.ObservedDomains),
+                    SymbolIds = assessment.Input.Value.SourceSymbolIds,
+                    Source = fact.Source,
+                });
+                if (assessment.Input.Value.Operators.Length > 0)
+                {
+                    evidence.Add(new ContractEvidence
+                    {
+                        Kind = "ValueOperators",
+                        Summary = string.Join(", ", assessment.Input.Value.Operators),
+                        Source = fact.Source,
+                    });
+                }
+            }
+
+            var defaultMessage = assessment.IsUnclassified
+                ? $"Value passed to '{fact.TargetSymbolId}' is unclassified for required domain '{contract.TargetDomain}'."
+                : assessment.Input == null
+                    ? $"Operation '{fact.TargetSymbolId}' has no selected input for required domain '{contract.TargetDomain}'."
+                    : $"Value domains [{string.Join(", ", assessment.ObservedDomains)}] passed to '{fact.TargetSymbolId}' " +
+                      $"do not satisfy required domain '{contract.TargetDomain}' or an allowed conversion.";
+            AddFinding(new ContractFinding
+            {
+                Id = FindingId(ContractRuleId.ValueDomain, contract.Id, fact.Id),
+                Kind = ContractFindingKind.ValueDomainMismatch,
+                RuleId = ContractRuleId.ValueDomain,
+                ContractId = contract.Id,
+                Severity = contract.Severity,
+                Confidence = assessment.IsUnclassified ? ConfidenceBand.Advisory : ConfidenceBand.Proven,
+                Message = contract.Message ?? defaultMessage,
+                Guidance = contract.Guidance,
+                FactId = fact.Id,
+                ContainingSymbolId = fact.ContainingSymbolId,
+                TargetSymbolId = fact.TargetSymbolId,
+                Source = fact.Source,
+                Evidence = BoundEvidence(evidence),
+            });
+        }
+    }
+
     private static bool IsAllowed(
         OperationGuardContract contract,
         OperationInputFact argument,
@@ -360,23 +450,34 @@ public sealed class ContractAuditEngine
                 "External API cost categories are consumer-authored policy annotations, not runtime measurements; " +
                 "Lifeblood proves the bound occurrence and selected lexical context.");
         }
+        if (_domainContracts.Length > 0)
+        {
+            limitations.Add(
+                "Value domains are consumer-authored symbol bindings. Lifeblood proves expression-local origins and " +
+                "operators; it does not infer domains through local assignments, returns, or interprocedural flow.");
+        }
         limitations.Add(
             "Reflection, dynamic dispatch, and string-named invocation are outside the bound operation stream.");
         return limitations.Distinct(StringComparer.Ordinal).ToArray();
     }
 
-    private static (OperationGuardContract[] Guards, ExternalApiCostContract[] Costs) SelectContracts(
+    private static (
+        OperationGuardContract[] Guards,
+        ExternalApiCostContract[] Costs,
+        ValueDomainContract[] Domains) SelectContracts(
         ContractManifest manifest,
         string[]? includeRuleIds)
     {
         var requested = NormalizeOptional(includeRuleIds);
         if (requested is not { Length: > 0 })
-            return (manifest.OperationGuards, manifest.ExternalApiCosts);
+            return (manifest.OperationGuards, manifest.ExternalApiCosts, manifest.ValueDomains);
 
         var known = manifest.OperationGuards.Select(contract => contract.Id)
             .Concat(manifest.ExternalApiCosts.Select(contract => contract.Id))
+            .Concat(manifest.ValueDomains.Select(contract => contract.Id))
             .Append(ContractRuleId.OperationGuard)
             .Append(ContractRuleId.ExternalApiCost)
+            .Append(ContractRuleId.ValueDomain)
             .ToHashSet(StringComparer.Ordinal);
         var unknown = requested.Where(id => !known.Contains(id)).ToArray();
         if (unknown.Length > 0)
@@ -388,97 +489,10 @@ public sealed class ContractAuditEngine
                 || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
             manifest.ExternalApiCosts.Where(contract =>
                 requested.Contains(ContractRuleId.ExternalApiCost, StringComparer.Ordinal)
+                || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
+            manifest.ValueDomains.Where(contract =>
+                requested.Contains(ContractRuleId.ValueDomain, StringComparer.Ordinal)
                 || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray());
-    }
-
-    private static void ValidateManifest(ContractManifest manifest)
-    {
-        if (!string.Equals(manifest.SchemaVersion, ContractManifest.CurrentSchemaVersion, StringComparison.Ordinal))
-            throw new ArgumentException(
-                $"Unsupported contract manifest schema '{manifest.SchemaVersion}'. Expected '{ContractManifest.CurrentSchemaVersion}'.");
-        RequireText(manifest.Id, "Manifest id");
-        RequireText(manifest.Version, "Manifest version");
-
-        var guards = manifest.OperationGuards ?? throw new ArgumentException("operationGuards cannot be null.");
-        var costs = manifest.ExternalApiCosts ?? throw new ArgumentException("externalApiCosts cannot be null.");
-        var suppressions = manifest.Suppressions ?? throw new ArgumentException("suppressions cannot be null.");
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var contract in guards)
-        {
-            ValidateContractIdentity(contract.Id, ids);
-            RequireValues(contract.TargetSymbolIds, $"Operation guard '{contract.Id}' targetSymbolIds");
-            RequireNonNull(contract.AllowedValueKinds, $"Operation guard '{contract.Id}' allowedValueKinds");
-            RequireNonNull(contract.AllowedSourceSymbolIds, $"Operation guard '{contract.Id}' allowedSourceSymbolIds");
-            RequireNonNull(contract.AllowedControlContextKinds, $"Operation guard '{contract.Id}' allowedControlContextKinds");
-            RequireNonNull(contract.AllowedControlOperators, $"Operation guard '{contract.Id}' allowedControlOperators");
-            if (contract.ArgumentOrdinal < 0)
-                throw new ArgumentException($"Operation guard '{contract.Id}' argumentOrdinal cannot be negative.");
-            RequireText(contract.Severity, $"Operation guard '{contract.Id}' severity");
-        }
-
-        foreach (var contract in costs)
-        {
-            ValidateContractIdentity(contract.Id, ids);
-            RequireValues(contract.TargetSymbolIds, $"External API cost '{contract.Id}' targetSymbolIds");
-            RequireValues(contract.OperationKinds, $"External API cost '{contract.Id}' operationKinds");
-            RequireValues(contract.Categories, $"External API cost '{contract.Id}' categories");
-            RequireNonNull(contract.ControlContextKinds, $"External API cost '{contract.Id}' controlContextKinds");
-            RequireNonNull(contract.ContainingSymbolIds, $"External API cost '{contract.Id}' containingSymbolIds");
-            RequireText(contract.AnnotationSource, $"External API cost '{contract.Id}' annotationSource");
-            RequireText(contract.Severity, $"External API cost '{contract.Id}' severity");
-            if (!contract.ReportEveryOccurrence
-                && contract.ControlContextKinds.Length == 0
-                && contract.ContainingSymbolIds.Length == 0)
-            {
-                throw new ArgumentException(
-                    $"External API cost '{contract.Id}' must report every occurrence or select a control/containing-symbol context.");
-            }
-        }
-
-        foreach (var suppression in suppressions)
-        {
-            RequireText(suppression.Id, "Suppression id");
-            RequireText(suppression.Reason, $"Suppression '{suppression.Id}' reason");
-            RequireNonNull(suppression.RuleIds, $"Suppression '{suppression.Id}' ruleIds");
-            RequireNonNull(suppression.ContractIds, $"Suppression '{suppression.Id}' contractIds");
-            RequireNonNull(suppression.FactIds, $"Suppression '{suppression.Id}' factIds");
-            RequireNonNull(suppression.ContainingSymbolIds, $"Suppression '{suppression.Id}' containingSymbolIds");
-            RequireNonNull(suppression.FilePaths, $"Suppression '{suppression.Id}' filePaths");
-            if (suppression.RuleIds.Length == 0
-                && suppression.ContractIds.Length == 0
-                && suppression.FactIds.Length == 0
-                && suppression.ContainingSymbolIds.Length == 0
-                && suppression.FilePaths.Length == 0)
-            {
-                throw new ArgumentException($"Suppression '{suppression.Id}' must declare at least one selector.");
-            }
-        }
-    }
-
-    private static void ValidateContractIdentity(string id, HashSet<string> ids)
-    {
-        RequireText(id, "Contract id");
-        if (!ids.Add(id))
-            throw new ArgumentException($"Duplicate contract id '{id}'.");
-    }
-
-    private static void RequireText(string value, string label)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            throw new ArgumentException(label + " is required.");
-    }
-
-    private static void RequireValues(string[] values, string label)
-    {
-        if (values == null || values.Length == 0 || values.Any(string.IsNullOrWhiteSpace))
-            throw new ArgumentException(label + " must contain non-empty values.");
-    }
-
-    private static void RequireNonNull(string[] values, string label)
-    {
-        if (values == null)
-            throw new ArgumentException(label + " cannot be null.");
     }
 
     private static string DescribeValue(OperationValueFact value)

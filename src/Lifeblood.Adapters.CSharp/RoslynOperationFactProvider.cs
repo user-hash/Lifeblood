@@ -494,6 +494,7 @@ internal sealed class RoslynOperationFactProvider
             IsCompileTimeConstant = unwrapped.ConstantValue.HasValue,
             SourceSymbolIds = sourceSymbols.ToArray(),
             ConversionTypes = conversionTypes.ToArray(),
+            Operators = CollectOperators(operation),
         };
     }
 
