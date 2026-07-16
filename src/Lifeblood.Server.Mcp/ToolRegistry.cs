@@ -26,6 +26,11 @@ public static class ToolRegistry
     ToolEffect.ManageSnapshotCatalog,
     ToolSessionAccess.Exclusive);
 
+  private static readonly ToolBehavior SnapshotCatalogObservation = new(
+    ToolSessionRequirement.None,
+    ToolEffect.Observe,
+    ToolSessionAccess.SharedRead);
+
   private static readonly ToolBehavior GraphObservation = new(
     ToolSessionRequirement.AnalyzedWorkspace,
     ToolEffect.Observe,
@@ -275,6 +280,10 @@ public static class ToolRegistry
   {
   Name = "lifeblood_snapshots",
   Behavior = SnapshotCatalogManagement,
+  CallBehavior = args => SnapshotCatalogRequestBinder.ResolveCallBehavior(
+    args,
+    SnapshotCatalogObservation,
+    SnapshotCatalogManagement),
   EnvelopeClassification = DerivedProven,
   Description = "Inspect and manage the hard-bounded graph-only publication catalog. action=list (default) reports the current publication plus retained history, pin names/protects a current or historical graph-only snapshot, unpin releases that protection, and evict removes an unpinned retained copy. Historical entries share immutable graph/analysis objects but never retain Roslyn services; pinned entries count toward the same hard limit. Use targetSnapshotId for mutations and checkDrift:true only when live source/descriptor/rule hashing is worth the I/O cost. Live-source and compilation tools are unavailable on historical selection; omit snapshotId to use the latest semantic base.",
   },

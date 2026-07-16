@@ -182,12 +182,15 @@ Roslyn services nor source bytes, so compilation-backed, `partial_view`, and
 invariant-tree calls return unavailable instead of mixing historical graph
 facts with changing live state (`INV-MCP-HISTORICAL-READ-001`).
 
-`lifeblood_snapshots` owns history inventory and mutations. The default catalog
-retains at most three graph-only publications, the Application hard maximum is
-16, and unpinned entries expire after 24 hours or by LRU pressure. Pinned
-entries count toward the same bound; if all slots are pinned, automatic
-rollover is refused and reported rather than growing another cache. Use
-`checkDrift:true` on list only when filesystem hashing is worth the I/O cost.
+`lifeblood_snapshots` owns history inventory and mutations. `action:"list"` is
+an observe/shared-read call, so it reports the last committed catalog without
+waiting for an in-flight analyze candidate to publish. `pin`, `unpin`, and
+`evict` are exclusive catalog mutations. The default catalog retains at most
+three graph-only publications, the Application hard maximum is 16, and
+unpinned entries expire after 24 hours or by LRU pressure. Pinned entries count
+toward the same bound; if all slots are pinned, automatic rollover is refused
+and reported rather than growing another cache. Use `checkDrift:true` on list
+only when filesystem hashing is worth the I/O cost.
 
 For several related reads, `lifeblood_batch` pins once and runs the plan in
 stable input order:

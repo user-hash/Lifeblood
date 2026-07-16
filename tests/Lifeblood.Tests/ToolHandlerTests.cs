@@ -1231,8 +1231,9 @@ public class ToolHandlerTests : IDisposable
         {
             gate.Reset();
             var result = handler.Handle(definition.Name, null);
+            var callBehavior = definition.ResolveCallBehavior(null);
 
-            if (definition.Behavior.SessionAccess == ToolSessionAccess.Exclusive)
+            if (callBehavior.SessionAccess == ToolSessionAccess.Exclusive)
             {
                 Assert.Equal(0, gate.ReadCount);
                 Assert.Equal(1, gate.WriteCount);
@@ -1243,12 +1244,41 @@ public class ToolHandlerTests : IDisposable
                 Assert.Equal(0, gate.WriteCount);
             }
 
-            if (definition.Behavior.SessionRequirement != ToolSessionRequirement.None)
+            if (callBehavior.SessionRequirement != ToolSessionRequirement.None)
             {
                 Assert.True(result.IsError, $"{definition.Name} must reject an unsatisfied session requirement.");
                 Assert.Contains("lifeblood_analyze", result.Content[0].Text);
             }
         }
+    }
+
+    [Fact]
+    public void Handle_SnapshotList_RoutesThroughReadSessionGate()
+    {
+        var gate = new RecordingSessionGate();
+        var handler = CreateHandler(gate);
+
+        var result = handler.Handle("lifeblood_snapshots", MakeArgs(new { action = "list" }));
+
+        Assert.Null(result.IsError);
+        Assert.Equal(1, gate.ReadCount);
+        Assert.Equal(0, gate.WriteCount);
+    }
+
+    [Theory]
+    [InlineData("pin")]
+    [InlineData("unpin")]
+    [InlineData("evict")]
+    public void Handle_SnapshotMutations_RouteThroughWriteSessionGate(string action)
+    {
+        var gate = new RecordingSessionGate();
+        var handler = CreateHandler(gate);
+
+        var result = handler.Handle("lifeblood_snapshots", MakeArgs(new { action }));
+
+        Assert.True(result.IsError);
+        Assert.Equal(0, gate.ReadCount);
+        Assert.Equal(1, gate.WriteCount);
     }
 
     [Fact]

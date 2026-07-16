@@ -1012,6 +1012,7 @@ Fix shape:
 
 Type: Bug
 Priority: Critical
+Status: Fixed locally on 2026-07-16; pending release validation batch.
 Source: DAWG shared-daemon repro, 2026-07-16; Lifeblood local `0.7.13-alpha.0.35+9180af4404a21d3894667d84a67567b8666f1b20`
 Workspace: DAWG and Lifeblood self
 
@@ -1043,6 +1044,24 @@ Fix shape:
   client B can list snapshots quickly against the last committed generation.
 - Preserve atomic publication and exact `snapshotId`/generation envelopes. Do
   not let a read observe a half-built candidate.
+
+Resolution evidence:
+- Added registry-owned per-call behavior resolution so mixed-action tools do
+  not move action policy into `ToolHandler` name branches. `lifeblood_snapshots`
+  now resolves `action:"list"` to Observe / SharedRead and `pin`, `unpin`, and
+  `evict` to ManageSnapshotCatalog / Exclusive.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~ToolHandlerTests|FullyQualifiedName~ToolHandlerTelemetryTests|FullyQualifiedName~McpProtocolTests|FullyQualifiedName~ToolArgumentContractTests"`
+  passed 106/106.
+- Live DAWG no-baseline repro after the fix: session A started full
+  Editor+Player analyze; session B called `lifeblood_snapshots action:"list"`
+  while A was still in flight. B returned in 0.039 s with no current snapshot
+  rather than waiting for A, proving the read path no longer queues behind the
+  writer. No half-built candidate was exposed.
+- DAWG full baseline publication remained separately unstable during this run:
+  two attempts failed with retryable `failure:"analysis-input-changed"` after
+  the source fingerprint changed during candidate construction. Track that as
+  pipeline/provenance follow-up instead of hiding it under this gate fix.
 
 ## LB-INTAKE-20260716-038 - Shared daemon pipe loss and recovery publication ambiguity
 

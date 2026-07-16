@@ -27,6 +27,31 @@ internal sealed class SnapshotCatalogContractException : ArgumentException
 
 internal static class SnapshotCatalogRequestBinder
 {
+    public static ToolBehavior ResolveCallBehavior(
+        JsonElement? arguments,
+        ToolBehavior listBehavior,
+        ToolBehavior mutationBehavior)
+    {
+        return RequiresExclusiveAccess(arguments) ? mutationBehavior : listBehavior;
+    }
+
+    private static bool RequiresExclusiveAccess(JsonElement? arguments)
+    {
+        if (arguments is not { ValueKind: JsonValueKind.Object } value)
+            return false;
+        if (!value.TryGetProperty("action", out var actionElement)
+            || actionElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        return actionElement.GetString() switch
+        {
+            "pin" or "unpin" or "evict" => true,
+            _ => false,
+        };
+    }
+
     public static SnapshotCatalogRequest Bind(JsonElement? arguments)
     {
         if (arguments is not { ValueKind: JsonValueKind.Object } value)

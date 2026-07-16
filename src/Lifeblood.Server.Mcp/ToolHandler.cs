@@ -123,7 +123,8 @@ public sealed class ToolHandler
             return HandleAnalyzeCoalesced(arguments, cancellationToken);
 
         var definition = ToolRegistry.FindDefinition(toolName);
-        if (definition?.Behavior.SessionAccess == ToolSessionAccess.Exclusive)
+        var callBehavior = definition?.ResolveCallBehavior(arguments);
+        if (callBehavior?.SessionAccess == ToolSessionAccess.Exclusive)
             return _sessionGate.Write(() => HandleCore(toolName, arguments, cancellationToken));
         if (definition?.SupportsSnapshotRead != true)
             return _sessionGate.Read(() => HandleCore(toolName, arguments, cancellationToken));
@@ -248,7 +249,8 @@ public sealed class ToolHandler
             }
 
             var definition = ToolRegistry.FindDefinition(toolName);
-            if (definition != null && SessionRequirementError(definition) is { } stateError)
+            var callBehavior = definition?.ResolveCallBehavior(arguments);
+            if (callBehavior != null && SessionRequirementError(callBehavior) is { } stateError)
             {
                 operation.SetTag("tool.result", "session_state_error");
                 _telemetry.RecordEvent(
@@ -339,14 +341,14 @@ public sealed class ToolHandler
         }
     }
 
-    private McpToolResult? SessionRequirementError(ToolDefinition definition)
+    private McpToolResult? SessionRequirementError(ToolBehavior behavior)
     {
-        if (CurrentSessionState().Satisfies(definition.Behavior.SessionRequirement))
+        if (CurrentSessionState().Satisfies(behavior.SessionRequirement))
         {
             return null;
         }
 
-        return definition.Behavior.SessionRequirement switch
+        return behavior.SessionRequirement switch
         {
             ToolSessionRequirement.AnalyzedWorkspace =>
                 ErrorResult("No graph loaded. Call lifeblood_analyze first."),
