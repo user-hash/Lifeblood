@@ -17,9 +17,22 @@
 > that same `recommended` posture from one server-edge authority
 > (`INV-MCP-SHARED-MATURITY-001`).
 
-The current installed DAWG live gate uses
-`0.7.13-alpha.0.63+962cf9bb8145c779e1f4ff89e5dc9f38a6ece71b`
-through the canonical global `lifeblood-mcp --shared` tool. A fresh
+The current installed local tools are `0.7.13-alpha.0.70` from commit
+`07d35398ca81`. The packaging lane packed both dotnet tools, installed private
+smoke copies, passed CLI help and closed-stdin MCP smoke, then the global
+`lifeblood` and `lifeblood-mcp` shims were updated from the local package
+source. Unity refreshed the external `Lifeblood/unity` package at generation 21
+(`lifeblood-bridge-deadline-fix-20260716-a1`) with scripts compile requested,
+ready confirmed, and external dirty cleared; the previous `CS0103
+ReadLineWithTimeout` bridge compile error is gone. Installed CLI dogfood on the
+current DAWG tree reported 89,326 symbols, 348,359 edges, 101 modules, 5,619
+types, 140 cycles, and zero configured violations in 56.7 seconds wall time
+with 994 MB peak working set / 919 MB peak private bytes. These are local
+prerelease/dirty-workspace development receipts, not a published-stable release
+claim.
+
+The earlier `0.7.13-alpha.0.63+962cf9bb8145c779e1f4ff89e5dc9f38a6ece71b`
+DAWG bridge gate used the canonical global `lifeblood-mcp --shared` tool. A fresh
 Editor+Player request deliberately asked for incremental analysis with full
 fallback allowed. It recovered from generation zero, analyzed an external
 Unity `file:` package without leaking a `../Lifeblood/...` path, and published
@@ -33,8 +46,7 @@ A subsequent warm incremental request completed in 18.52 seconds and published
 generation 2 / snapshot `snap_952a425a50944d03b2508ef1d82f8419`
 after one real concurrent DAWG source change, with 88,944 symbols and 346,849
 edges. Pinned member/dependant/blast/callsite queries then reported zero files
-changed since analyze. These are local prerelease/dirty-workspace development
-receipts, not a published-stable release claim.
+changed since analyze.
 
 The direct Codex `Transport closed` symptom had a separate deployment cause:
 user-level Codex configuration still launched the obsolete
