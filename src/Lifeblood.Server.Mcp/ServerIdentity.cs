@@ -32,25 +32,39 @@ public static class ServerIdentity
         var informational = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informational))
         {
+            var classification = ClassifyVersionForReleaseGate(informational!);
             return new ServerVersionInfo(
                 Version: informational!,
                 VersionSource: "assemblyInformationalVersion",
-                BuildMetadata: ExtractBuildMetadata(informational!));
+                BuildMetadata: ExtractBuildMetadata(informational!),
+                VersionChannel: classification.VersionChannel,
+                ReleaseGateBuildKind: classification.ReleaseGateBuildKind,
+                ReleaseGateStableCandidate: classification.ReleaseGateStableCandidate,
+                PrereleaseLabel: classification.PrereleaseLabel);
         }
 
         var assemblyVersion = asm.GetName().Version?.ToString(3);
         if (!string.IsNullOrWhiteSpace(assemblyVersion))
         {
+            var classification = ClassifyVersionForReleaseGate(assemblyVersion!);
             return new ServerVersionInfo(
                 Version: assemblyVersion!,
                 VersionSource: "assemblyNameVersion",
-                BuildMetadata: "");
+                BuildMetadata: "",
+                VersionChannel: classification.VersionChannel,
+                ReleaseGateBuildKind: classification.ReleaseGateBuildKind,
+                ReleaseGateStableCandidate: classification.ReleaseGateStableCandidate,
+                PrereleaseLabel: classification.PrereleaseLabel);
         }
 
         return new ServerVersionInfo(
             Version: "0.0.0",
             VersionSource: "unknown",
-            BuildMetadata: "");
+            BuildMetadata: "",
+            VersionChannel: "unknown",
+            ReleaseGateBuildKind: "unknown",
+            ReleaseGateStableCandidate: false,
+            PrereleaseLabel: "");
     }
 
     public static object BuildCapabilities(
@@ -83,11 +97,16 @@ public static class ServerIdentity
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
         var repoRoot = FindServerRepositoryRoot();
+        var sourceControlSnapshot = sourceControl.Capture(repoRoot);
 
         return new
         {
             server = BuildServerBlock(),
-            sourceControl = BuildSourceControlBlock(sourceControl.Capture(repoRoot)),
+            sourceControl = BuildSourceControlBlock(sourceControlSnapshot, "capabilitiesRequest"),
+            releaseGate = BuildReleaseGateReceipt(
+                ResolveVersionInfo(),
+                sourceControlSnapshot,
+                "capabilitiesRequest"),
             tools = new
             {
                 totalCount = definitions.Length,
@@ -198,7 +217,11 @@ public static class ServerIdentity
             kind = "lifeblood.analyze",
             citationSafe = true,
             server = BuildServerBlock(),
-            sourceControl = BuildSourceControlBlock(sourceControl),
+            sourceControl = BuildSourceControlBlock(sourceControl, "analyzeAdmission"),
+            releaseGate = BuildReleaseGateReceipt(
+                ResolveVersionInfo(),
+                sourceControl,
+                "analyzeAdmission"),
             queryRecipe = new
             {
                 tool = "lifeblood_analyze",
@@ -249,12 +272,17 @@ public static class ServerIdentity
         ISourceControlSnapshotProvider sourceControl)
     {
         var serverRepoRoot = FindServerRepositoryRoot();
+        var sourceControlSnapshot = sourceControl.Capture(projectRoot);
         return new
         {
             kind = "lifeblood.invariant_audit",
             citationSafe = true,
             server = BuildServerBlock(),
-            sourceControl = BuildSourceControlBlock(sourceControl.Capture(projectRoot)),
+            sourceControl = BuildSourceControlBlock(sourceControlSnapshot, "invariantAuditRequest"),
+            releaseGate = BuildReleaseGateReceipt(
+                ResolveVersionInfo(),
+                sourceControlSnapshot,
+                "invariantAuditRequest"),
             workspaceRoot = projectRoot,
             queryRecipe = new
             {
@@ -289,12 +317,16 @@ public static class ServerIdentity
             version = version.Version,
             versionSource = version.VersionSource,
             buildMetadata = version.BuildMetadata,
+            versionChannel = version.VersionChannel,
+            releaseGateBuildKind = version.ReleaseGateBuildKind,
+            releaseGateStableCandidate = version.ReleaseGateStableCandidate,
+            prereleaseLabel = version.PrereleaseLabel,
             assemblyName = asm.GetName().Name ?? "",
             targetFramework = asm.GetCustomAttribute<TargetFrameworkAttribute>()?.FrameworkName ?? "",
         };
     }
 
-    private static object BuildSourceControlBlock(SourceControlSnapshot snapshot)
+    private static object BuildSourceControlBlock(SourceControlSnapshot snapshot, string captureTiming)
         => new
         {
             attemptedPath = snapshot.AttemptedPath,
@@ -310,7 +342,86 @@ public static class ServerIdentity
             dirtyEntries = snapshot.DirtyEntries,
             dirtyEntriesTruncated = snapshot.DirtyEntriesTruncated,
             failureReason = snapshot.FailureReason,
+            captureTiming,
+            role = "provenanceContext",
+            semanticEqualityAuthority = false,
         };
+
+    internal static ReleaseVersionClassification ClassifyVersionForReleaseGate(string version)
+    {
+        var withoutBuild = version.Split('+', 2)[0];
+        var prereleaseStart = withoutBuild.IndexOf('-', StringComparison.Ordinal);
+        var core = prereleaseStart >= 0 ? withoutBuild[..prereleaseStart] : withoutBuild;
+        var prereleaseLabel = prereleaseStart >= 0 ? withoutBuild[(prereleaseStart + 1)..] : "";
+        if (!Version.TryParse(core, out _))
+        {
+            return new ReleaseVersionClassification(
+                VersionCore: core,
+                VersionChannel: "unknown",
+                ReleaseGateBuildKind: "unknown",
+                ReleaseGateStableCandidate: false,
+                PrereleaseLabel: prereleaseLabel);
+        }
+
+        if (!string.IsNullOrWhiteSpace(prereleaseLabel))
+        {
+            return new ReleaseVersionClassification(
+                VersionCore: core,
+                VersionChannel: "prerelease",
+                ReleaseGateBuildKind: "localPrerelease",
+                ReleaseGateStableCandidate: false,
+                PrereleaseLabel: prereleaseLabel);
+        }
+
+        var buildMetadata = ExtractBuildMetadata(version);
+        return new ReleaseVersionClassification(
+            VersionCore: core,
+            VersionChannel: "stable",
+            ReleaseGateBuildKind: string.IsNullOrWhiteSpace(buildMetadata)
+                ? "publishedStable"
+                : "localStableWithBuildMetadata",
+            ReleaseGateStableCandidate: string.IsNullOrWhiteSpace(buildMetadata),
+            PrereleaseLabel: "");
+    }
+
+    internal static ReleaseGateReceipt BuildReleaseGateReceipt(
+        ServerVersionInfo version,
+        SourceControlSnapshot snapshot,
+        string sourceControlCaptureTiming)
+    {
+        var sourceControlState = snapshot.Dirty == true
+            ? "dirtyWorkspace"
+            : snapshot.Dirty == false
+                ? "cleanWorkspace"
+                : "unknownWorkspace";
+        var status = version.ReleaseGateStableCandidate switch
+        {
+            false => "developmentBuild",
+            true when snapshot.Dirty == true => "dirtyWorkspace",
+            true when snapshot.Source != "git" || snapshot.Dirty == null => "sourceControlUnknown",
+            _ => "stableClean",
+        };
+        var reason = status switch
+        {
+            "developmentBuild" => "Server build is not a published-stable version shape.",
+            "dirtyWorkspace" => "Analyzed source-control snapshot was dirty when evidence was captured.",
+            "sourceControlUnknown" => "Source-control state was unavailable or incomplete when evidence was captured.",
+            _ => "Server version is stable-shaped and source-control state was clean when captured.",
+        };
+
+        return new ReleaseGateReceipt(
+            Status: status,
+            Reason: reason,
+            ServerVersion: version.Version,
+            ServerVersionChannel: version.VersionChannel,
+            ServerReleaseGateBuildKind: version.ReleaseGateBuildKind,
+            ServerReleaseGateStableCandidate: version.ReleaseGateStableCandidate,
+            SourceControlState: sourceControlState,
+            SourceControlCaptureTiming: sourceControlCaptureTiming,
+            SemanticEqualityAuthority: "analysisIdentity",
+            ProvenanceAuthority: "sourceControlSnapshot",
+            SourceControlRole: "provenanceContext");
+    }
 
     private static string? FindServerRepositoryRoot()
     {
@@ -349,7 +460,34 @@ public static class ServerIdentity
     }
 }
 
-public sealed record ServerVersionInfo(string Version, string VersionSource, string BuildMetadata);
+public sealed record ServerVersionInfo(
+    string Version,
+    string VersionSource,
+    string BuildMetadata,
+    string VersionChannel,
+    string ReleaseGateBuildKind,
+    bool ReleaseGateStableCandidate,
+    string PrereleaseLabel);
+
+internal sealed record ReleaseVersionClassification(
+    string VersionCore,
+    string VersionChannel,
+    string ReleaseGateBuildKind,
+    bool ReleaseGateStableCandidate,
+    string PrereleaseLabel);
+
+internal sealed record ReleaseGateReceipt(
+    string Status,
+    string Reason,
+    string ServerVersion,
+    string ServerVersionChannel,
+    string ServerReleaseGateBuildKind,
+    bool ServerReleaseGateStableCandidate,
+    string SourceControlState,
+    string SourceControlCaptureTiming,
+    string SemanticEqualityAuthority,
+    string ProvenanceAuthority,
+    string SourceControlRole);
 
 public sealed record ServerSessionInfo(
     bool HasGraphLoaded,
