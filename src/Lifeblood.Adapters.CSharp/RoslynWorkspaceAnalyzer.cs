@@ -43,6 +43,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
     private Dictionary<string, CSharpCompilation>? _compilations;
     private AnalysisSnapshot? _snapshot;
     private PackageSourceVisibilityReport? _packageSourceVisibility;
+    private ProfileApplicabilityReport? _profileApplicability;
 
     /// <summary>
     /// INV-MULTI-DEFINE-IOP-001. Name of the profile whose compilations are
@@ -103,6 +104,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
     /// non-Unity workspaces or before the first completed analyze.
     /// </summary>
     public PackageSourceVisibilityReport? PackageSourceVisibility => _packageSourceVisibility;
+
+    /// <summary>
+    /// Current define-profile module applicability receipt. Populated after
+    /// full or incremental analyze for C# workspaces; the MCP layer projects it
+    /// without re-deriving profile membership.
+    /// </summary>
+    public ProfileApplicabilityReport? ProfileApplicability => _profileApplicability;
 
     public RoslynWorkspaceAnalyzer(IFileSystem fs)
         : this(fs, new DefaultDefineProfileResolver())
@@ -205,6 +213,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 pair => pair.Value.ToArray(),
                 StringComparer.Ordinal),
             _packageSourceVisibility = _packageSourceVisibility,
+            _profileApplicability = _profileApplicability,
             RetainedProfileName = RetainedProfileName,
             RetainedProfileNames = RetainedProfileNames.ToArray(),
             OnModuleProgress = OnModuleProgress,
@@ -227,6 +236,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             var modules = _discovery.DiscoverModules(projectRoot);
             var activeProfiles = ResolveActiveProfiles(projectRoot, config);
             var applicableModules = ApplyProfilesToModules(modules, activeProfiles);
+            var profileApplicability = BuildProfileApplicabilityReport(
+                projectRoot,
+                modules,
+                activeProfiles);
 
             var snapshot = new AnalysisSnapshot
             {
@@ -475,6 +488,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 projectRoot,
                 applicableModules,
                 config);
+            _profileApplicability = profileApplicability;
 
             _snapshot = snapshot;
             phase = "graph-build";
@@ -549,6 +563,10 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         var currentModules = _discovery.DiscoverModules(projectRoot);
         var snapshotProfiles = _snapshot.ActiveProfiles;
         var applicableCurrentModules = ApplyProfilesToModules(currentModules, snapshotProfiles);
+        var profileApplicability = BuildProfileApplicabilityReport(
+            projectRoot,
+            currentModules,
+            snapshotProfiles);
 
         // INV-ANALYZE-FALLBACK-001 site 1: module set drift. If modules were
         // added/removed since the snapshot we cannot safely walk per-file
@@ -734,6 +752,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 projectRoot,
                 applicableCurrentModules,
                 config);
+            _profileApplicability = profileApplicability;
             return new IncrementalAnalyzeResult
             {
                 Mode = IncrementalMode.Incremental,
@@ -975,6 +994,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             projectRoot,
             applicableCurrentModules,
             config);
+        _profileApplicability = profileApplicability;
 
         return new IncrementalAnalyzeResult
         {
@@ -1172,6 +1192,74 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             .ToArray();
     }
 
+    private ProfileApplicabilityReport BuildProfileApplicabilityReport(
+        string projectRoot,
+        ModuleInfo[] modules,
+        IReadOnlyList<DefineProfile> profiles)
+    {
+        var profileNames = profiles
+            .Select(profile => profile.Name)
+            .ToArray();
+        var includedCounts = profileNames.ToDictionary(
+            profile => profile,
+            _ => 0,
+            StringComparer.Ordinal);
+        var excludedCounts = profileNames.ToDictionary(
+            profile => profile,
+            _ => 0,
+            StringComparer.Ordinal);
+
+        var shapedModules = modules
+            .OrderBy(module => module.Name, StringComparer.Ordinal)
+            .Select(module =>
+            {
+                var included = new List<string>();
+                var excluded = new List<string>();
+                var exclusions = new List<ProfileApplicabilityExclusion>();
+
+                foreach (var profile in profiles)
+                {
+                    if (IsModuleApplicable(module, profile))
+                    {
+                        included.Add(profile.Name);
+                        includedCounts[profile.Name]++;
+                        continue;
+                    }
+
+                    excluded.Add(profile.Name);
+                    excludedCounts[profile.Name]++;
+                    exclusions.Add(new ProfileApplicabilityExclusion
+                    {
+                        Profile = profile.Name,
+                        Reason = ResolveProfileExclusionReason(module, profile),
+                    });
+                }
+
+                module.Properties.TryGetValue("projectFile", out var projectFile);
+                return new ProfileApplicabilityModule
+                {
+                    Name = module.Name,
+                    ProjectFile = projectFile,
+                    UnityProjectType = module.UnityProjectType,
+                    IsEditorOnly = module.IsEditorOnly,
+                    IncludedProfiles = included.ToArray(),
+                    ExcludedProfiles = excluded.ToArray(),
+                    Exclusions = exclusions.ToArray(),
+                };
+            })
+            .ToArray();
+
+        return new ProfileApplicabilityReport
+        {
+            IsUnityWorkspace = _fs.DirectoryExists(Path.Combine(projectRoot, "Library"))
+                || modules.Any(module => !string.IsNullOrWhiteSpace(module.UnityProjectType)),
+            Profiles = profileNames,
+            Modules = shapedModules,
+            IncludedModuleCountsByProfile = includedCounts,
+            ExcludedModuleCountsByProfile = excludedCounts,
+        };
+    }
+
     private static HashSet<string> GetProfileOwnedModuleNames(
         ModuleInfo[] modules,
         IReadOnlyList<DefineProfile> profiles,
@@ -1205,6 +1293,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 
     private static bool IsModuleApplicable(ModuleInfo module, DefineProfile profile)
         => profile.IncludeEditorOnlyModules || !module.IsEditorOnly;
+
+    private static string ResolveProfileExclusionReason(ModuleInfo module, DefineProfile profile)
+        => module.IsEditorOnly && !profile.IncludeEditorOnlyModules
+            ? ProfileApplicabilityReason.EditorOnlyModuleExcludedByProfile
+            : ProfileApplicabilityReason.ModuleExcludedByProfile;
 
     private static void PruneProfileCarry(
         IDictionary<string, MetadataReference> carry,

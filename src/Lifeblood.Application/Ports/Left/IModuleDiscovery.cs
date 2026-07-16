@@ -115,6 +115,15 @@ public sealed class ModuleInfo
     /// </summary>
     public bool IsEditorOnly { get; init; }
 
+    /// <summary>
+    /// Raw Unity <c>&lt;UnityProjectType&gt;</c> descriptor value, when present
+    /// (for example <c>Game:1</c>, <c>Editor:5</c>, or
+    /// <c>EditorPlugins:7</c>). Discovery owns parsing this descriptor;
+    /// profile-application receipts expose the raw value so evidence deltas
+    /// can be explained without path/name inference.
+    /// </summary>
+    public string? UnityProjectType { get; init; }
+
     public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
 
     /// <summary>

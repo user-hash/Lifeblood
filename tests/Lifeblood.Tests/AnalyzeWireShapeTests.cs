@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Domain.Results;
 using Lifeblood.Server.Mcp;
 using Xunit;
 
@@ -264,6 +265,40 @@ public class AnalyzeWireShapeTests : IDisposable
     }
 
     [Fact]
+    public void Load_MultiProfileUnityAnalyze_ProjectsProfileApplicability()
+    {
+        WriteUnityProfileApplicabilityWorkspace();
+        using var session = new GraphSession(_fs);
+
+        var json = session.Load(
+            _tempDir,
+            graphPath: null,
+            rulesPath: null,
+            defineProfiles: new[] { "Player", "Editor" });
+        using var doc = JsonDocument.Parse(json);
+
+        var applicability = doc.RootElement.GetProperty("profileApplicability");
+        Assert.True(applicability.GetProperty("isUnityWorkspace").GetBoolean());
+        Assert.Equal(new[] { "Player", "Editor" }, JsonStrings(applicability.GetProperty("profiles")));
+        Assert.Equal(3, applicability.GetProperty("moduleCount").GetInt32());
+        Assert.Equal(2, applicability.GetProperty("includedModuleCountsByProfile").GetProperty("Player").GetInt32());
+        Assert.Equal(1, applicability.GetProperty("excludedModuleCountsByProfile").GetProperty("Player").GetInt32());
+
+        var modules = applicability.GetProperty("modules").EnumerateArray().ToArray();
+        var editor = modules.Single(module => module.GetProperty("name").GetString() == "Editor");
+        Assert.Equal("Editor:5", editor.GetProperty("unityProjectType").GetString());
+        Assert.True(editor.GetProperty("isEditorOnly").GetBoolean());
+        Assert.Equal(new[] { "Editor" }, JsonStrings(editor.GetProperty("includedProfiles")));
+        Assert.Equal(new[] { "Player" }, JsonStrings(editor.GetProperty("excludedProfiles")));
+
+        var exclusion = Assert.Single(editor.GetProperty("exclusions").EnumerateArray());
+        Assert.Equal("Player", exclusion.GetProperty("profile").GetString());
+        Assert.Equal(
+            ProfileApplicabilityReason.EditorOnlyModuleExcludedByProfile,
+            exclusion.GetProperty("reason").GetString());
+    }
+
+    [Fact]
     public void Load_IncrementalAfterEdit_WireCarriesIncrementalMode()
     {
         var filePath = WriteSingleFileProject("public class Foo { }");
@@ -376,6 +411,11 @@ public class AnalyzeWireShapeTests : IDisposable
 
     // ── Helpers ──
 
+    private static string[] JsonStrings(JsonElement element)
+        => element.EnumerateArray()
+            .Select(item => item.GetString()!)
+            .ToArray();
+
     private string WriteSingleFileProject(string code)
     {
         var csproj = @"<Project Sdk=""Microsoft.NET.Sdk""><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>";
@@ -406,5 +446,36 @@ public class AnalyzeWireShapeTests : IDisposable
         var examplesDir = Path.Combine(_tempDir, "Assets", "TextMesh Pro", "Examples & Extras");
         Directory.CreateDirectory(examplesDir);
         File.WriteAllText(Path.Combine(examplesDir, "Demo.cs"), "namespace Test; public class VendoredDemo { }");
+    }
+
+    private void WriteUnityProfileApplicabilityWorkspace()
+    {
+        Directory.CreateDirectory(Path.Combine(_tempDir, "Library"));
+        WriteUnityProject("Runtime", "Game:1", "Runtime.cs");
+        WriteUnityProject("Editor", "Editor:5", "Editor.cs");
+        WriteUnityProject("EditorPlugin", "EditorPlugins:7", "EditorPlugin.cs");
+        File.WriteAllText(Path.Combine(_tempDir, "Runtime.cs"), "namespace App; public sealed class RuntimeType { }");
+        File.WriteAllText(Path.Combine(_tempDir, "Editor.cs"), "namespace App; public sealed class EditorType { }");
+        File.WriteAllText(Path.Combine(_tempDir, "EditorPlugin.cs"), "namespace App; public sealed class EditorPluginType { }");
+    }
+
+    private void WriteUnityProject(
+        string assemblyName,
+        string unityProjectType,
+        string sourceFile)
+    {
+        File.WriteAllText(Path.Combine(_tempDir, $"{assemblyName}.csproj"), $$"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <AssemblyName>{{assemblyName}}</AssemblyName>
+                <DefineConstants>UNITY_EDITOR</DefineConstants>
+                <UnityProjectType>{{unityProjectType}}</UnityProjectType>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="{{sourceFile}}" />
+              </ItemGroup>
+            </Project>
+            """);
     }
 }
