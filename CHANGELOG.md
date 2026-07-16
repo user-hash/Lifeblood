@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Warm shared incremental admission no longer hashes every source twice.**
+
 - **External Unity package sources now have one workspace identity.** Package
   discovery mounts a physical local `file:` package at its logical
   `Packages/{name}` path once per analysis attempt. Compilation exclusions,

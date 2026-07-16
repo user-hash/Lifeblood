@@ -4,9 +4,11 @@ using Lifeblood.Domain.Workspaces;
 namespace Lifeblood.Server.Mcp;
 
 /// <summary>
-/// Complete equality key for one execution request. <see cref="AnalysisKey"/>
-/// owns graph/spec/content equality; the policy fingerprint distinguishes
-/// execution semantics such as full versus incremental and caller fallback.
+/// Complete admission key for one execution request. Cold/full preparation
+/// uses the live <see cref="AnalysisKey"/>; a retained same-workspace
+/// incremental request uses the current publication key so concurrent callers
+/// share one authoritative adapter scan instead of hashing the workspace once
+/// per waiter. The policy fingerprint distinguishes every execution semantic.
 /// </summary>
 public sealed record AnalysisCoalescingKey(
     AnalysisKey AnalysisKey,
@@ -212,7 +214,14 @@ public sealed class AnalysisRequestCoordinator<T> : IDisposable
 internal sealed record PreparedAnalyzeRequest(
     AnalyzeToolRequest Request,
     WorkspaceAnalysisIdentity Identity,
-    AnalysisCoalescingKey CoalescingKey);
+    AnalysisCoalescingKey CoalescingKey,
+    AnalysisKey? ExpectedAnalysisKey);
+
+internal enum AnalysisPreparationMode
+{
+    ExactInputIdentity,
+    CommittedIncrementalBase,
+}
 
 internal sealed class AnalysisInputChangedException : InvalidOperationException
 {

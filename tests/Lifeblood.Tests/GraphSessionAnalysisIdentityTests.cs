@@ -186,6 +186,67 @@ public sealed class GraphSessionAnalysisIdentityTests : IDisposable
     }
 
     [Fact]
+    public void PrepareAnalysis_CommittedIncrementalBaseAvoidsDuplicateContentPreflight()
+    {
+        var fileSystem = new CountingReadFileSystem(new PhysicalFileSystem());
+        using var session = new GraphSession(fileSystem);
+        _ = session.Load(_root, graphPath: null, rulesPath: null);
+        fileSystem.ResetReadCount();
+
+        var prepared = session.PrepareAnalysis(
+            new AnalyzeToolRequest { ProjectPath = _root, Incremental = true },
+            AnalysisPreparationMode.CommittedIncrementalBase);
+
+        Assert.Equal(0, fileSystem.ReadAllTextCount);
+        Assert.Equal(session.AnalysisIdentity, prepared.Identity);
+        Assert.Null(prepared.ExpectedAnalysisKey);
+    }
+
+    [Fact]
+    public void PrepareAnalysis_CommittedIncrementalPolicySeparatesScopeAndRetention()
+    {
+        using var session = new GraphSession(new PhysicalFileSystem());
+        _ = session.Load(_root, graphPath: null, rulesPath: null, defineProfiles: new[] { "Editor" });
+
+        PreparedAnalyzeRequest Prepare(AnalyzeToolRequest request)
+            => session.PrepareAnalysis(request, AnalysisPreparationMode.CommittedIncrementalBase);
+
+        var baseline = Prepare(new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            Incremental = true,
+            DefineProfiles = new[] { "Editor" },
+        });
+        var player = Prepare(new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            Incremental = true,
+            DefineProfiles = new[] { "Player" },
+        });
+        var excluded = Prepare(new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            Incremental = true,
+            DefineProfiles = new[] { "Editor" },
+            ExcludePaths = new[] { "generated/**" },
+        });
+        var readOnly = Prepare(new AnalyzeToolRequest
+        {
+            ProjectPath = _root,
+            Incremental = true,
+            ReadOnly = true,
+            DefineProfiles = new[] { "Editor" },
+        });
+
+        Assert.Equal(baseline.Identity, player.Identity);
+        Assert.Equal(baseline.Identity, excluded.Identity);
+        Assert.Equal(baseline.Identity, readOnly.Identity);
+        Assert.NotEqual(baseline.CoalescingKey, player.CoalescingKey);
+        Assert.NotEqual(baseline.CoalescingKey, excluded.CoalescingKey);
+        Assert.NotEqual(baseline.CoalescingKey, readOnly.CoalescingKey);
+    }
+
+    [Fact]
     public void Load_ChangedInputAfterPreparationRejectsCandidateAndPreservesPublication()
     {
         using var session = new GraphSession(new PhysicalFileSystem());
@@ -222,5 +283,32 @@ public sealed class GraphSessionAnalysisIdentityTests : IDisposable
         try { Directory.Delete(_root, recursive: true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+
+    private sealed class CountingReadFileSystem : Lifeblood.Application.Ports.Infrastructure.IFileSystem
+    {
+        private readonly Lifeblood.Application.Ports.Infrastructure.IFileSystem _inner;
+
+        public CountingReadFileSystem(Lifeblood.Application.Ports.Infrastructure.IFileSystem inner)
+            => _inner = inner;
+
+        public int ReadAllTextCount { get; private set; }
+
+        public void ResetReadCount() => ReadAllTextCount = 0;
+
+        public string ReadAllText(string path)
+        {
+            ReadAllTextCount++;
+            return _inner.ReadAllText(path);
+        }
+
+        public IEnumerable<string> ReadLines(string path) => _inner.ReadLines(path);
+        public Stream OpenRead(string path) => _inner.OpenRead(path);
+        public Stream OpenWrite(string path) => _inner.OpenWrite(path);
+        public bool FileExists(string path) => _inner.FileExists(path);
+        public bool DirectoryExists(string path) => _inner.DirectoryExists(path);
+        public string[] FindFiles(string directory, string pattern, bool recursive = true)
+            => _inner.FindFiles(directory, pattern, recursive);
+        public DateTime GetLastWriteTimeUtc(string path) => _inner.GetLastWriteTimeUtc(path);
     }
 }
