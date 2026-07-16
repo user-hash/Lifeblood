@@ -12,21 +12,35 @@ namespace Lifeblood.Adapters.CSharp;
 /// Roslyn-backed compilation host. Provides diagnostics, compile-checking, and reference finding.
 /// Built from retained compilations after workspace analysis.
 /// </summary>
-public sealed class RoslynCompilationHost : ICompilationHost, Internal.IRoslynLookup, IDisposable
+public sealed class RoslynCompilationHost : ICompilationHost, IOperationFactProvider, Internal.IRoslynLookup, IDisposable
 {
   private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
   private readonly Lazy<RoslynWorkspaceManager> _manager;
+  private readonly RoslynOperationFactProvider _operationFacts;
 
   public RoslynCompilationHost(
   IReadOnlyDictionary<string, CSharpCompilation> compilations,
-  IReadOnlyDictionary<string, string[]>? moduleDependencies = null)
+  IReadOnlyDictionary<string, string[]>? moduleDependencies = null,
+  string? retainedProfileName = null,
+  IReadOnlyList<string>? availableProfiles = null)
   {
   _compilations = compilations;
+  var profile = string.IsNullOrWhiteSpace(retainedProfileName) ? "default" : retainedProfileName;
+  _operationFacts = new RoslynOperationFactProvider(
+  compilations,
+  profile,
+  availableProfiles ?? new[] { profile });
   _manager = new Lazy<RoslynWorkspaceManager>(
   () => new RoslynWorkspaceManager(compilations, moduleDependencies));
   }
 
   public bool IsAvailable => _compilations.Count > 0;
+
+  public OperationFactScanReceipt ScanOperationFacts(
+  OperationFactQuery query,
+  Func<OperationFact, bool> consume,
+  CancellationToken cancellationToken = default)
+  => _operationFacts.Scan(query, consume, cancellationToken);
 
   /// <summary>
   /// S8a: <see cref="Internal.IRoslynLookup"/> implementation so

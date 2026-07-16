@@ -114,7 +114,11 @@ public sealed class GraphSession : IDisposable
                 compilations,
                 graph,
                 adapter.ModuleDependencies ?? new Dictionary<string, string[]>(StringComparer.Ordinal));
-            compilationHost = new RoslynCompilationHost(compilations, adapter.ModuleDependencies);
+            compilationHost = new RoslynCompilationHost(
+                compilations,
+                adapter.ModuleDependencies,
+                adapter.RetainedProfileName,
+                adapter.RetainedProfileNames);
             var unityResolver = LooksLikeUnityWorkspace(projectRoot)
                 ? new UnityAssemblyResolver(_fs, projectRoot!)
                 : null;

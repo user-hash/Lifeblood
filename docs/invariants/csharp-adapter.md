@@ -44,6 +44,10 @@ threading raw fields through individual constructors.
   handle. Sharing avoids accidental divergence between consumers' views of
   the same workspace.
 
+## Operation Fact Boundary
+
+- **INV-OPERATION-FACTS-001. Occurrence-level contract evidence streams through one language-neutral port and never changes the semantic graph.** `IOperationFactProvider.ScanOperationFacts` is the sole Application seam for calls/arguments, value origins, assignments, member accesses, control contexts, conversions, allocations, and related operation occurrences. `RoslynOperationFactProvider` walks the retained immutable compilations once per request, emits only Domain records through a caller-controlled bounded callback, and retains neither Roslyn objects nor a second fact graph. Facts carry profile/module/source/containing-symbol provenance, stable order, typed input roles, source-symbol and conversion provenance, and a receipt with `AdditionalSemanticBaseCount`. They MUST NOT add `EdgeKind` members, alter architecture edge dedup/counts, encode DAWG/Unity/Burst policy, or decide whether a contract is good or bad. Multi-profile widening must execute profiles sequentially or consume a measured compact neutral index while keeping `AdditionalSemanticBaseCount = 0`. Existing bespoke operation tools migrate only after behavior, limitation, and performance parity. Pinned by `OperationFactProviderTests` and the existing operation-tool regression suites.
+
 ## BCL Ownership
 
 Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't. They rely on the host runtime BCL.

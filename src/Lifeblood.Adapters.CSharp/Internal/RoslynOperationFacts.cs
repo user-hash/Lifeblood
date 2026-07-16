@@ -30,6 +30,8 @@ internal static class RoslynOperationFacts
                 return ReferenceEquals(inc.Target, reference);
             case IArgumentOperation arg:
                 return arg.Parameter?.RefKind is RefKind.Ref or RefKind.Out;
+            case IEventAssignmentOperation eventAssignment:
+                return ReferenceEquals(eventAssignment.EventReference, reference);
             default:
                 return false;
         }
