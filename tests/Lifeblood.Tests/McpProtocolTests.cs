@@ -196,6 +196,7 @@ public class McpProtocolTests
   var snapshotCatalog = new ToolBehavior(ToolSessionRequirement.None, ToolEffect.ManageSnapshotCatalog, ToolSessionAccess.Exclusive);
   var graphObserve = new ToolBehavior(ToolSessionRequirement.AnalyzedWorkspace, ToolEffect.Observe, ToolSessionAccess.SharedRead);
   var workspaceRootObserve = new ToolBehavior(ToolSessionRequirement.WorkspaceRoot, ToolEffect.Observe, ToolSessionAccess.SharedRead);
+  var operationFactObserve = new ToolBehavior(ToolSessionRequirement.OperationFacts, ToolEffect.Observe, ToolSessionAccess.SharedRead);
   var compilationObserve = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.Observe, ToolSessionAccess.SharedRead);
   var compilationRefresh = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.RefreshWorkspace, ToolSessionAccess.Exclusive);
   var execute = new ToolBehavior(ToolSessionRequirement.RetainedCompilation, ToolEffect.ExecuteCode, ToolSessionAccess.SharedRead);
@@ -234,6 +235,7 @@ public class McpProtocolTests
   ["lifeblood_static_tables"] = compilationObserve,
   ["lifeblood_assignment_coverage"] = compilationObserve,
   ["lifeblood_callsite_arguments"] = compilationObserve,
+  ["lifeblood_contract_audit"] = operationFactObserve,
   ["lifeblood_wire_audit"] = compilationObserve,
   ["lifeblood_feature_switch_audit"] = compilationObserve,
   ["lifeblood_member_count"] = compilationObserve,
@@ -284,7 +286,8 @@ public class McpProtocolTests
   // They must never carry the unavailable decoration.
   var definitions = ToolRegistry.GetDefinitions();
   var readSideNames = definitions
-  .Where(d => d.Behavior.SessionRequirement != ToolSessionRequirement.RetainedCompilation)
+  .Where(d => d.Behavior.SessionRequirement != ToolSessionRequirement.RetainedCompilation
+    && d.Behavior.SessionRequirement != ToolSessionRequirement.OperationFacts)
   .Select(d => d.Name)
   .ToHashSet();
 
@@ -294,6 +297,9 @@ public class McpProtocolTests
   Assert.All(readSideWire, tool =>
   Assert.False(tool.Description.StartsWith("[Unavailable"),
   $"Read-side tool {tool.Name} was incorrectly marked unavailable."));
+  Assert.StartsWith(
+    "[Unavailable",
+    wire.Single(tool => tool.Name == "lifeblood_contract_audit").Description);
   }
 
   [Fact]
@@ -317,6 +323,7 @@ public class McpProtocolTests
   var wire = ToolRegistry.GetTools(new ToolSessionState(
     HasAnalyzedWorkspace: false,
     HasWorkspaceRoot: false,
+    HasOperationFactProvider: false,
     HasRetainedCompilation: false));
   var definitions = ToolRegistry.GetDefinitions().ToDictionary(d => d.Name, StringComparer.Ordinal);
 
@@ -334,6 +341,7 @@ public class McpProtocolTests
   var inconsistent = ToolRegistry.GetTools(new ToolSessionState(
     HasAnalyzedWorkspace: false,
     HasWorkspaceRoot: true,
+    HasOperationFactProvider: true,
     HasRetainedCompilation: true));
   Assert.StartsWith("[Unavailable", inconsistent.Single(t => t.Name == "lifeblood_compile_check").Description);
   }

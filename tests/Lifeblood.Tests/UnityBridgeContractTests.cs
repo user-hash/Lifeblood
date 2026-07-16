@@ -51,6 +51,21 @@ public sealed class UnityBridgeContractTests
             ["symbolId"] = "string",
             ["includeDeclarations"] = "bool",
         });
+
+        AssertParameterTypes(root, "LifebloodContractAudit", new Dictionary<string, string>
+        {
+            ["manifestJson"] = "string",
+            ["manifestPath"] = "string",
+            ["profileScope"] = "string",
+            ["moduleScope"] = "string",
+            ["filePaths"] = "string[]",
+            ["containingSymbolIds"] = "string[]",
+            ["includeRuleIds"] = "string[]",
+            ["maxFacts"] = "int?",
+            ["maxFindings"] = "int?",
+            ["maxEvidencePerFinding"] = "int?",
+            ["summarize"] = "bool",
+        });
     }
 
     [Fact]
@@ -62,7 +77,7 @@ public sealed class UnityBridgeContractTests
             .Where(HasMcpToolAttribute)
             .ToArray();
 
-        Assert.Equal(18, tools.Length);
+        Assert.Equal(19, tools.Length);
         foreach (var tool in tools)
         {
             var attribute = tool.AttributeLists.SelectMany(list => list.Attributes)
@@ -81,6 +96,21 @@ public sealed class UnityBridgeContractTests
                 name.EndsWith("CallToolWithPolling", StringComparison.Ordinal)
                 || name.EndsWith("AnalyzeCurrentProjectWithPolling", StringComparison.Ordinal));
         }
+    }
+
+    [Fact]
+    public void ContractAudit_TranslatesInlineManifestJsonBeforeForwarding()
+    {
+        var root = Parse(ToolsPath);
+        var tool = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .Single(type => type.Identifier.ValueText == "LifebloodContractAudit");
+        var handler = tool.Members.OfType<MethodDeclarationSyntax>()
+            .Single(method => method.Identifier.ValueText == "HandleCommand");
+        var source = handler.ToString();
+
+        Assert.Contains("forwarded.Remove(\"manifestJson\")", source);
+        Assert.Contains("forwarded[\"manifest\"] = JObject.Parse(manifestJson)", source);
+        Assert.Contains("CallToolWithPolling(\"lifeblood_contract_audit\", forwarded)", source);
     }
 
     [Fact]

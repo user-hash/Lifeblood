@@ -11,6 +11,7 @@ public static class ToolRequestBinder
 {
     private const string AnalyzeToolName = "lifeblood_analyze";
     private const string CompileCheckToolName = "lifeblood_compile_check";
+    private const string ContractAuditToolName = "lifeblood_contract_audit";
 
     private static readonly string AnalyzeProjectPath = ArgumentName(AnalyzeToolName, "projectPath");
     private static readonly string AnalyzeGraphPath = ArgumentName(AnalyzeToolName, "graphPath");
@@ -31,6 +32,18 @@ public static class ToolRequestBinder
     private static readonly string CompileCheckModuleName = ArgumentName(CompileCheckToolName, "moduleName");
     private static readonly string CompileCheckStaleRefresh = ArgumentName(CompileCheckToolName, "staleRefresh");
     private static readonly string CompileCheckVerbosity = ArgumentName(CompileCheckToolName, "verbosity");
+
+    private static readonly string ContractAuditManifest = ArgumentName(ContractAuditToolName, "manifest");
+    private static readonly string ContractAuditManifestPath = ArgumentName(ContractAuditToolName, "manifestPath");
+    private static readonly string ContractAuditProfileScope = ArgumentName(ContractAuditToolName, "profileScope");
+    private static readonly string ContractAuditModuleScope = ArgumentName(ContractAuditToolName, "moduleScope");
+    private static readonly string ContractAuditFilePaths = ArgumentName(ContractAuditToolName, "filePaths");
+    private static readonly string ContractAuditContainingSymbolIds = ArgumentName(ContractAuditToolName, "containingSymbolIds");
+    private static readonly string ContractAuditIncludeRuleIds = ArgumentName(ContractAuditToolName, "includeRuleIds");
+    private static readonly string ContractAuditMaxFacts = ArgumentName(ContractAuditToolName, "maxFacts");
+    private static readonly string ContractAuditMaxFindings = ArgumentName(ContractAuditToolName, "maxFindings");
+    private static readonly string ContractAuditMaxEvidence = ArgumentName(ContractAuditToolName, "maxEvidencePerFinding");
+    private static readonly string ContractAuditSummarize = ArgumentName(ContractAuditToolName, "summarize");
 
     public static AnalyzeToolRequest BindAnalyze(JsonElement? args)
     {
@@ -77,6 +90,29 @@ public static class ToolRequestBinder
         };
     }
 
+    public static ContractAuditToolRequest BindContractAudit(JsonElement? args)
+    {
+        if (!TryGetObject(args, out var root))
+        {
+            return ContractAuditToolRequest.Empty;
+        }
+
+        return new ContractAuditToolRequest
+        {
+            Manifest = ReadObject(root, ContractAuditManifest),
+            ManifestPath = ReadString(root, ContractAuditManifestPath),
+            ProfileScope = ReadString(root, ContractAuditProfileScope),
+            ModuleScope = ReadString(root, ContractAuditModuleScope),
+            FilePaths = ReadStringArray(root, ContractAuditFilePaths),
+            ContainingSymbolIds = ReadStringArray(root, ContractAuditContainingSymbolIds),
+            IncludeRuleIds = ReadStringArray(root, ContractAuditIncludeRuleIds),
+            MaxFacts = ReadInt(root, ContractAuditMaxFacts),
+            MaxFindings = ReadInt(root, ContractAuditMaxFindings),
+            MaxEvidencePerFinding = ReadInt(root, ContractAuditMaxEvidence),
+            Summarize = ReadBool(root, ContractAuditSummarize),
+        };
+    }
+
     private static string ArgumentName(string toolName, string argumentName)
     {
         var contract = ToolInputContractCatalog.Get(toolName);
@@ -116,6 +152,11 @@ public static class ToolRequestBinder
            && value.ValueKind == JsonValueKind.Number
            && value.TryGetInt32(out var parsed)
             ? parsed
+            : null;
+
+    private static JsonElement? ReadObject(JsonElement root, string name)
+        => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value.Clone()
             : null;
 
     private static string[]? ReadStringArray(
@@ -181,4 +222,25 @@ public sealed record CompileCheckToolRequest
     public bool? StaleRefresh { get; init; }
     public bool EffectiveStaleRefresh => StaleRefresh ?? true;
     public string? Verbosity { get; init; }
+}
+
+public sealed record ContractAuditToolRequest
+{
+    public static ContractAuditToolRequest Empty { get; } = new();
+
+    public JsonElement? Manifest { get; init; }
+    public string? ManifestPath { get; init; }
+    public string? ProfileScope { get; init; }
+    public string? ModuleScope { get; init; }
+    public string[]? FilePaths { get; init; }
+    public string[]? ContainingSymbolIds { get; init; }
+    public string[]? IncludeRuleIds { get; init; }
+    public int? MaxFacts { get; init; }
+    public int? MaxFindings { get; init; }
+    public int? MaxEvidencePerFinding { get; init; }
+    public bool? Summarize { get; init; }
+    public int EffectiveMaxFacts => MaxFacts ?? 50_000;
+    public int EffectiveMaxFindings => MaxFindings ?? 200;
+    public int EffectiveMaxEvidencePerFinding => MaxEvidencePerFinding ?? 8;
+    public bool EffectiveSummarize => Summarize ?? true;
 }

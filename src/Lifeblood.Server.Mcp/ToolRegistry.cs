@@ -41,6 +41,11 @@ public static class ToolRegistry
     ToolEffect.Observe,
     ToolSessionAccess.SharedRead);
 
+  private static readonly ToolBehavior OperationFactObservation = new(
+    ToolSessionRequirement.OperationFacts,
+    ToolEffect.Observe,
+    ToolSessionAccess.SharedRead);
+
   private static readonly ToolBehavior CompilationObservation = new(
     ToolSessionRequirement.RetainedCompilation,
     ToolEffect.Observe,
@@ -72,6 +77,17 @@ public static class ToolRegistry
     TruthTier = TruthTier.Semantic,
     Confidence = ConfidenceBand.Proven,
     EvidenceSource = "Semantic",
+  };
+
+  private static readonly EnvelopeClassification SemanticAdvisoryContracts = new()
+  {
+    TruthTier = TruthTier.Semantic,
+    Confidence = ConfidenceBand.Advisory,
+    EvidenceSource = "Semantic",
+    Limitations = new[]
+    {
+      "Contract findings combine bound semantic occurrences with consumer-authored policy. Per-finding confidence and report limitations identify which conclusions remain advisory.",
+    },
   };
 
   private static readonly EnvelopeClassification DerivedProven = new()
@@ -196,6 +212,7 @@ public static class ToolRegistry
     => GetTools(new ToolSessionState(
       HasAnalyzedWorkspace: true,
       HasWorkspaceRoot: true,
+      HasOperationFactProvider: true,
       HasRetainedCompilation: true));
 
   /// <summary>
@@ -207,6 +224,7 @@ public static class ToolRegistry
     => GetTools(new ToolSessionState(
       HasAnalyzedWorkspace: true,
       HasWorkspaceRoot: true,
+      HasOperationFactProvider: hasCompilationState,
       HasRetainedCompilation: hasCompilationState));
 
   public static McpToolInfo[] GetTools(ToolSessionState sessionState)
@@ -237,6 +255,8 @@ public static class ToolRegistry
         "[Unavailable. Call lifeblood_analyze first] ",
       ToolSessionRequirement.WorkspaceRoot =>
         "[Unavailable. Analyze a workspace root first] ",
+      ToolSessionRequirement.OperationFacts =>
+        "[Unavailable. Analyze a C# workspace with operation-fact support first] ",
       ToolSessionRequirement.RetainedCompilation =>
         "[Unavailable. Load a C# project with lifeblood_analyze first] ",
       _ => "",
@@ -503,6 +523,13 @@ public static class ToolRegistry
   Behavior = CompilationObservation,
   EnvelopeClassification = SemanticProven,
   Description = "Per-call-site argument facts for a target method or constructor. Walks every loaded compilation's `IInvocationOperation` / `IObjectCreationOperation`, matches the bound callee against the target by canonical id (extension methods matched via their reduced-from definition), and reports for each site the containing symbol, file/line/column, receiver expression, and a per-argument array: bound parameter `name` + `type` + `ordinal`, `supplied` (author-passed) vs omitted (Roslyn-filled `DefaultValue`), `argumentKind` (`Explicit` / `DefaultValue` / `ParamArray`), classified `valueKind` (`Literal` / `NullLiteral` / `Constant` / `FieldReference` / `PropertyReference` / `LocalReference` / `ParameterReference` / `MethodGroup` / `Lambda` / `ObjectCreation` / `Invocation` / `Other`), `isConstant`, and clipped `rawText`. The `parameterSummaries[]` histogram reports `suppliedCount` / `omittedCount` per parameter across ALL discovered sites (computed before `maxSites` truncation), turning 'is this new optional parameter actually adopted?' into a one-call answer — e.g. `lengthSteps omitted by 7/7 call sites`. Default-value arguments are re-sourced to the parameter's own default expression (shared with `lifeblood_static_tables` cell binding) so `rawText` shows the authored default, not the lowered constant. Operation-tree only — never regex. `symbolId` accepts canonical (`method:NS.T.M(P)`), or a short/qualified name routed through the resolver; must resolve to a method or constructor. Optional `moduleScope` restricts to one module, `excludeTests` drops Test-bucket call sites, `maxSites` (default 256) clamps the returned `sites[]` (histogram still counts all). INV-CALLSITE-ARGS-001.",
+  },
+  new()
+  {
+  Name = "lifeblood_contract_audit",
+  Behavior = OperationFactObservation,
+  EnvelopeClassification = SemanticAdvisoryContracts,
+  Description = "Evaluate a schema-versioned consumer contract manifest over one target-filtered neutral operation-fact stream. Supply exactly one of inline `manifest` or workspace-contained `manifestPath`. Typed rule families currently cover operation-argument guards and consumer-annotated external API costs; exact reasoned suppressions live in the same manifest. One scan serves every selected rule, adds no graph edges, and retains no additional semantic base. Summary-first by default: at most 25 findings with evidence omitted; pass `summarize:false` plus explicit caps for bounded detail. Non-primary committed profiles compile only the requested module scope ephemerally after input-identity verification. INV-CONTRACT-AUDIT-001.",
   },
   new()
   {

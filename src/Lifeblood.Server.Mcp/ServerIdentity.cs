@@ -123,6 +123,7 @@ public static class ServerIdentity
             featureFlags = new
             {
                 multiProfileAnalyze = true,
+                semanticContractAudit = definitions.Any(d => d.Name == "lifeblood_contract_audit"),
                 assignmentCoverage = definitions.Any(d => d.Name == "lifeblood_assignment_coverage"),
                 writeSideProfileScope = true,
                 evidenceReceipts = true,
@@ -154,6 +155,7 @@ public static class ServerIdentity
             {
                 hasGraphLoaded = session.HasGraphLoaded,
                 hasCompilationState = session.HasCompilationState,
+                hasOperationFactProvider = session.HasOperationFactProvider,
                 analysisGeneration = session.AnalysisGeneration,
                 snapshotId = session.SnapshotId,
                 projectRoot = session.ProjectRoot,
@@ -492,6 +494,7 @@ internal sealed record ReleaseGateReceipt(
 public sealed record ServerSessionInfo(
     bool HasGraphLoaded,
     bool HasCompilationState,
+    bool HasOperationFactProvider,
     long AnalysisGeneration,
     string SnapshotId,
     string ProjectRoot,

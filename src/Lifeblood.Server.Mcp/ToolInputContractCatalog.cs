@@ -285,6 +285,20 @@ public static class ToolInputContractCatalog
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Define profile to scope IOperation extraction to. Currently must match the retained profile. INV-MULTI-DEFINE-IOP-001.", enumValues: Array.Empty<string>())
         );
 
+        yield return Contract(@"lifeblood_contract_audit",
+            Arg(@"manifest", ToolArgumentType.Object, required: false, arrayItemType: null, description: @"Inline schema-versioned contract manifest. Supply exactly one of manifest or manifestPath.", enumValues: Array.Empty<string>()),
+            Arg(@"manifestPath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Path to a contract-manifest JSON file inside the analyzed workspace. Relative paths resolve from the workspace root. Supply exactly one of manifest or manifestPath.", enumValues: Array.Empty<string>()),
+            Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional committed define profile. The primary profile reuses its retained compilation; another profile executes ephemerally after exact input verification.", enumValues: Array.Empty<string>()),
+            Arg(@"moduleScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional module/asmdef scope. Especially useful for bounded non-primary-profile execution.", enumValues: Array.Empty<string>()),
+            Arg(@"filePaths", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional source-file allowlist for the fact stream.", enumValues: Array.Empty<string>()),
+            Arg(@"containingSymbolIds", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional containing-symbol allowlist for occurrence evaluation.", enumValues: Array.Empty<string>()),
+            Arg(@"includeRuleIds", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Optional rule-family or exact contract-id allowlist. Unknown selectors fail loudly.", enumValues: Array.Empty<string>()),
+            Arg(@"maxFacts", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum emitted operation facts. Default 50000; hard cap 250000.", enumValues: Array.Empty<string>()),
+            Arg(@"maxFindings", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum returned findings. Default 200; hard cap 1000. summarize:true further clamps to 25.", enumValues: Array.Empty<string>()),
+            Arg(@"maxEvidencePerFinding", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum evidence records per returned finding. Default 8; hard cap 32. summarize:true omits evidence.", enumValues: Array.Empty<string>()),
+            Arg(@"summarize", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Summary-first default true: retain at most 25 findings and omit their evidence arrays while preserving complete counts and breakdowns. Pass false for bounded evidence detail.", enumValues: Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_wire_audit",
             Arg(@"typeId", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Restrict findings to members declared on this type (canonical / qualified / short). Read+write counting still scans every loaded compilation.", enumValues: Array.Empty<string>()),
             Arg(@"moduleScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional. Restrict findings to members declared in this module/asmdef.", enumValues: Array.Empty<string>()),

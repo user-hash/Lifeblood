@@ -296,6 +296,43 @@ public class ToolArgumentContractTests
     }
 
     [Fact]
+    public void ToolRequestBinder_BindsContractAuditRequestWithSummaryFirstDefaults()
+    {
+        var request = ToolRequestBinder.BindContractAudit(JsonArgs(new
+        {
+            manifest = new { schemaVersion = 1, manifestId = "contracts" },
+            profileScope = "Player",
+            moduleScope = "Runtime",
+            filePaths = new[] { " Assets/Foo.cs ", "" },
+            containingSymbolIds = new[] { " method:Acme.Foo() ", "" },
+            includeRuleIds = new[] { " operationGuard ", "" },
+            maxFacts = 123,
+            maxFindings = 17,
+            maxEvidencePerFinding = 3,
+            summarize = false,
+        }));
+
+        Assert.True(request.Manifest.HasValue);
+        Assert.Equal("contracts", request.Manifest.Value.GetProperty("manifestId").GetString());
+        Assert.Equal("Player", request.ProfileScope);
+        Assert.Equal("Runtime", request.ModuleScope);
+        Assert.Equal(new[] { "Assets/Foo.cs" }, request.FilePaths);
+        Assert.Equal(new[] { "method:Acme.Foo()" }, request.ContainingSymbolIds);
+        Assert.Equal(new[] { "operationGuard" }, request.IncludeRuleIds);
+        Assert.Equal(123, request.EffectiveMaxFacts);
+        Assert.Equal(17, request.EffectiveMaxFindings);
+        Assert.Equal(3, request.EffectiveMaxEvidencePerFinding);
+        Assert.False(request.EffectiveSummarize);
+
+        var empty = ToolRequestBinder.BindContractAudit(null);
+        Assert.Same(ContractAuditToolRequest.Empty, empty);
+        Assert.Equal(50_000, empty.EffectiveMaxFacts);
+        Assert.Equal(200, empty.EffectiveMaxFindings);
+        Assert.Equal(8, empty.EffectiveMaxEvidencePerFinding);
+        Assert.True(empty.EffectiveSummarize);
+    }
+
+    [Fact]
     public void ReadFromEnvironment_StrictJsonAlias_RemainsStrictAlias()
     {
         const string compatName = "LIFEBLOOD_JSON_COMPAT_TEST";
