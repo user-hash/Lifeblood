@@ -1,19 +1,24 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
+using MCPForUnity.Editor.Helpers;
 using Debug = UnityEngine.Debug;
 
 namespace Lifeblood.UnityBridge
 {
     /// <summary>
-    /// Manages a Lifeblood MCP server as a child process.
-    /// Communicates via JSON-RPC 2.0 over stdin/stdout.
-    /// Singleton — one server per Unity Editor session.
+    /// Manages Unity's proxy connection to the workspace-shared Lifeblood MCP
+    /// daemon. The short-lived proxy communicates via JSON-RPC 2.0 over
+    /// stdin/stdout; the daemon owns the one retained semantic base shared by
+    /// Unity and every agent configured with the same workspace key.
     ///
     /// Architecture: this is a pure outer adapter. It translates
     /// JObject tool calls into JSON-RPC requests and deserializes responses.
@@ -29,13 +34,14 @@ namespace Lifeblood.UnityBridge
         private StreamReader _stdout;
         private int _nextId = 1;
         private bool _initialized;
-        private bool _analyzed;
         private readonly object _lock = new();
+        private readonly object _pendingLock = new();
+        private readonly Dictionary<string, Task<JObject>> _pendingCalls = new();
 
         /// <summary>
-        /// Timeout for individual tool calls. Cold analysis on a 75-module Unity
-        /// workspace runs around 90 seconds, so 5 minutes covers large projects
-        /// with margin.
+        /// Timeout for individual tool calls. Five minutes leaves margin for a
+        /// cold analysis of a large Unity workspace while keeping pipe failure
+        /// finite and observable.
         /// </summary>
         private const int ToolCallTimeoutMs = 300_000;
 
@@ -45,36 +51,32 @@ namespace Lifeblood.UnityBridge
         /// <summary>Whether the Lifeblood server has been started and initialized.</summary>
         public bool IsConnected => _process is { HasExited: false } && _initialized;
 
-        /// <summary>Whether a project has been analyzed (semantic state loaded).</summary>
-        public bool IsAnalyzed => IsConnected && _analyzed;
-
         /// <summary>
-        /// Path to the Lifeblood MCP server DLL. Resolved once at startup.
-        /// Uses EditorPrefs for override, falls back to sibling directory convention.
+        /// Resolve the installed Lifeblood tool used by every client. Preferring
+        /// the global-tool shim over a repository DLL prevents Debug/Release MVID
+        /// drift from splitting Unity and agent proxies across incompatible hosts.
         /// </summary>
-        public static string ServerPath
+        public static string ServerCommand
         {
             get
             {
-                var custom = EditorPrefs.GetString("Lifeblood_ServerPath", "");
-                if (!string.IsNullOrEmpty(custom) && File.Exists(custom))
+                var custom = EditorPrefs.GetString("Lifeblood_McpCommand", "");
+                if (!string.IsNullOrWhiteSpace(custom))
                     return custom;
 
-                // Convention: Lifeblood repo is a sibling of the Unity project
-                var unityRoot = Path.GetDirectoryName(Application.dataPath);
-                var siblingDll = Path.GetFullPath(Path.Combine(
-                    unityRoot, "..", "Lifeblood",
-                    "src", "Lifeblood.Server.Mcp", "bin", "Debug", "net8.0",
-                    "Lifeblood.Server.Mcp.dll"));
+                var environmentCommand = Environment.GetEnvironmentVariable("LIFEBLOOD_MCP_COMMAND");
+                if (!string.IsNullOrWhiteSpace(environmentCommand))
+                    return environmentCommand;
 
-                if (File.Exists(siblingDll)) return siblingDll;
-
-                // Fallback: try environment variable
-                var envPath = Environment.GetEnvironmentVariable("LIFEBLOOD_SERVER_DLL");
-                if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
-                    return envPath;
-
-                return null;
+                var executableName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? "lifeblood-mcp.exe"
+                    : "lifeblood-mcp";
+                var globalTool = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".dotnet",
+                    "tools",
+                    executableName);
+                return File.Exists(globalTool) ? globalTool : executableName;
             }
         }
 
@@ -121,17 +123,6 @@ namespace Lifeblood.UnityBridge
                     if (response["error"] != null)
                         return ErrorResult(response["error"]["message"]?.ToString() ?? "Unknown error");
 
-                    // Track analyze state
-                    if (toolName == "lifeblood_analyze" && response["result"] != null)
-                    {
-                        var content = response["result"]?["content"];
-                        if (content is JArray arr && arr.Count > 0)
-                        {
-                            var text = arr[0]?["text"]?.ToString() ?? "";
-                            _analyzed = text.StartsWith("Loaded:") || text.StartsWith("Incremental:");
-                        }
-                    }
-
                     return response["result"] as JObject ?? new JObject();
                 }
                 catch (Exception ex)
@@ -143,19 +134,102 @@ namespace Lifeblood.UnityBridge
         }
 
         /// <summary>
-        /// Analyze the current Unity project. Must be called before query tools.
-        /// Pass incremental=true after the first analysis for fast re-analyze.
+        /// Starts a sidecar call on a worker and returns a polling receipt before
+        /// Unity MCP's short synchronous gateway deadline. A later
+        /// <c>action:"status"</c> call retrieves the same task-owned terminal
+        /// result. One coordinator owns this lifecycle for every bridge tool, so
+        /// analyze, diagnostics, reference search, and future expensive calls do
+        /// not each invent timeout or result-publication state.
         /// </summary>
-        public JObject AnalyzeCurrentProject(bool incremental = false)
+        public object CallToolWithPolling(string toolName, JObject arguments = null)
         {
-            var unityRoot = Path.GetDirectoryName(Application.dataPath);
-            var args = new JObject
+            var forwarded = arguments == null
+                ? new JObject()
+                : (JObject)arguments.DeepClone();
+            forwarded.Remove("action");
+            var callKey = CreateCallKey(toolName, forwarded);
+
+            if (string.Equals(arguments?["action"]?.ToString(), "status", StringComparison.OrdinalIgnoreCase))
+                return PollToolCall(toolName, callKey);
+
+            lock (_pendingLock)
             {
-                ["projectPath"] = unityRoot
-            };
-            if (incremental)
-                args["incremental"] = true;
-            return CallTool("lifeblood_analyze", args);
+                if (_pendingCalls.TryGetValue(callKey, out var existing))
+                {
+                    if (!existing.IsCompleted)
+                        return Pending(toolName);
+
+                    // A completed task remains owned by its original poller until
+                    // that poll consumes it. Coalesce a duplicate admission onto
+                    // the same terminal result instead of replacing evidence.
+                    return Pending(toolName);
+                }
+
+                try
+                {
+                    // ServerCommand reads Unity Editor state. Complete process start
+                    // and the MCP handshake on the main thread before Task.Run;
+                    // the worker then performs only process/stream I/O.
+                    lock (_lock)
+                        EnsureStarted();
+                }
+                catch (Exception ex)
+                {
+                    return new ErrorResponse($"Lifeblood bridge start failed: {ex.Message}");
+                }
+
+                _pendingCalls[callKey] = Task.Run(() => CallTool(toolName, forwarded));
+                return Pending(toolName);
+            }
+        }
+
+        private object PollToolCall(string toolName, string callKey)
+        {
+            Task<JObject> pending;
+            lock (_pendingLock)
+            {
+                if (!_pendingCalls.TryGetValue(callKey, out pending))
+                    return new ErrorResponse($"No pending Lifeblood call for '{toolName}'.");
+
+                if (!pending.IsCompleted)
+                    return Pending(toolName);
+
+                _pendingCalls.Remove(callKey);
+            }
+
+            try
+            {
+                return pending.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                return new ErrorResponse($"Lifeblood call '{toolName}' failed: {ex.Message}");
+            }
+        }
+
+        private static PendingResponse Pending(string toolName)
+            => new PendingResponse(
+                $"Lifeblood call '{toolName}' is in progress.",
+                pollIntervalSeconds: 0.25);
+
+        private static string CreateCallKey(string toolName, JObject arguments)
+            => toolName + "\n" + arguments.ToString(Formatting.None);
+
+        /// <summary>
+        /// Polling form used by the Unity custom-tool surface. The bridge owns
+        /// the current Unity project path; callers may still select retained vs
+        /// read-only analysis, incremental fallback policy, and define profiles.
+        /// </summary>
+        public object AnalyzeCurrentProjectWithPolling(JObject arguments = null)
+        {
+            var args = arguments == null
+                ? new JObject()
+                : (JObject)arguments.DeepClone();
+            // Admission and status must derive the same call identity. The
+            // bridge-owned project root therefore participates in every poll,
+            // not only the initial request.
+            args["projectPath"] = Path.GetDirectoryName(Application.dataPath);
+            return CallToolWithPolling("lifeblood_analyze", args);
         }
 
         private void EnsureStarted()
@@ -165,18 +239,17 @@ namespace Lifeblood.UnityBridge
 
             Kill(); // Clean up any dead process
 
-            var dllPath = ServerPath;
-            if (dllPath == null)
-                throw new InvalidOperationException(
-                    "Lifeblood server not found. Set EditorPrefs 'Lifeblood_ServerPath' " +
-                    "or place the Lifeblood repo as a sibling directory.");
+            var unityRoot = Path.GetDirectoryName(Application.dataPath);
+            if (string.IsNullOrEmpty(unityRoot))
+                throw new InvalidOperationException("Unity project root could not be resolved.");
 
             _process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "dotnet",
-                    Arguments = $"\"{dllPath}\"",
+                    FileName = ServerCommand,
+                    Arguments = $"--shared --shared-key {QuoteArgument(unityRoot)}",
+                    WorkingDirectory = unityRoot,
                     RedirectStandardInput = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -240,15 +313,13 @@ namespace Lifeblood.UnityBridge
             _stdin.Flush();
 
             _initialized = true;
-            _analyzed = false;
 
-            Debug.Log("[Lifeblood] Bridge connected to MCP server");
+            Debug.Log("[Lifeblood] Bridge connected to shared MCP session");
         }
 
         private void Kill()
         {
             _initialized = false;
-            _analyzed = false;
 
             try
             {
@@ -320,6 +391,9 @@ namespace Lifeblood.UnityBridge
                 ["isError"] = true
             };
         }
+
+        private static string QuoteArgument(string value)
+            => $"\"{value.Replace("\"", "\\\"")}\"";
 
         public void Dispose() => Kill();
 
