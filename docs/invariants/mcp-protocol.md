@@ -35,7 +35,7 @@ testable through its normal public API.
 
 - **INV-MCP-SHARED-MATURITY-001. Shared-transport maturity has one machine-readable owner and must match the verified rollout posture.**
 
-- **INV-MCP-UNITY-BRIDGE-001. The Unity MCP bridge is one canonical UPM outer adapter onto the installed workspace-shared Lifeblood host, with discoverable typed parameters and a pollable response lifecycle.**
+- **INV-MCP-UNITY-BRIDGE-001. The Unity MCP bridge is one canonical UPM outer adapter onto the installed workspace-shared Lifeblood host, with server-contract-derived typed parameters and a pollable response lifecycle.**
 
 - **INV-WORKSPACE-BINDING-001. A shared daemon may publish analysis state only for its canonical bound workspace.**
 
