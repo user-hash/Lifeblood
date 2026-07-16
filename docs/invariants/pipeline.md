@@ -11,6 +11,7 @@ the MCP server.
 - **INV-STREAM-003**: `AnalysisConfig.RetainCompilations` controls mode. `false` (default, CLI) = streaming/memory-safe. `true` (MCP server) = retained for write-side tools.
 - **INV-STREAM-004**: Unity csproj support: if `<Compile Include>` items exist (old-format), use them. If absent (SDK-style), scan filesystem.
 - **INV-STREAM-005**: `GraphBuilder.Build()` deduplicates ALL edges by `(sourceId, targetId, kind)`. Partial classes emit duplicate edges. The builder is the authoritative dedup boundary.
+- **INV-STREAM-006. Compact PE emission is an optimization, never an analysis availability boundary.** After extraction, `ModuleCompilationBuilder` normally emits a module to an in-memory PE so downstream modules retain only a lightweight metadata image. If Roslyn cannot emit an error-bearing compilation or throws a recoverable internal compiler fault, Lifeblood must instead retain `CSharpCompilation.ToMetadataReference()` and continue the same workspace scan. Cancellation and process-health failures (`OutOfMemoryException`, `StackOverflowException`, `AccessViolationException`) remain terminal because retaining a larger compilation cannot safely recover them. This keeps temporarily stale Unity project descriptors diagnosable while preserving the O(1)-compilation fast path for healthy modules. Pinned by `ModuleCompilationDowngradeTests` and DAWG dogfood against a descriptor/source mismatch where a new nested delegate type was referenced before Unity regenerated its `.csproj`.
 
 ## Derived File Edges
 

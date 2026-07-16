@@ -196,7 +196,10 @@ internal sealed class ModuleCompilationBuilder
 
     /// <summary>
     /// Emit the compilation to a PE image and wrap it as a MetadataReference.
-    /// Falls back to ToMetadataReference() if emit fails (compilation errors).
+    /// Falls back to ToMetadataReference() if emit fails (compilation errors
+    /// or a recoverable Roslyn emitter fault). Emit is an optimization
+    /// boundary, so an internal compiler exception must not terminate the
+    /// authoritative workspace scan.
     /// The fallback keeps the full compilation alive — acceptable for the few
     /// modules that have errors, while most modules get the memory savings.
     /// </summary>
@@ -209,14 +212,27 @@ internal sealed class ModuleCompilationBuilder
             if (emitResult.Success)
                 return MetadataReference.CreateFromImage(ms.ToArray());
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or BadImageFormatException)
+        catch (Exception ex) when (IsRecoverableEmitFailure(ex))
         {
-            // Emit can throw for pathological compilations. Fall back gracefully.
+            // Error-bearing compilations can drive Roslyn's emitter through
+            // internal fault paths (including NullReferenceException). The
+            // semantic compilation remains usable, so retain it by reference.
         }
 
         // Fallback: wrap the in-memory compilation. More expensive but correct.
         return compilation.ToMetadataReference();
     }
+
+    /// <summary>
+    /// Classifies faults at the optional PE-compaction boundary. Cancellation
+    /// and process-health failures remain terminal; ordinary emitter failures
+    /// fall back to the already-built immutable compilation.
+    /// </summary>
+    internal static bool IsRecoverableEmitFailure(Exception exception)
+        => exception is not OperationCanceledException
+            and not OutOfMemoryException
+            and not StackOverflowException
+            and not AccessViolationException;
 
     private CSharpCompilation? CreateCompilation(
         ModuleInfo module, string projectRoot, AnalysisConfig config,
