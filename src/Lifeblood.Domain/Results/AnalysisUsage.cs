@@ -2,7 +2,7 @@ namespace Lifeblood.Domain.Results;
 
 /// <summary>
 /// Runtime usage snapshot for a single analyze run. Wall time, CPU time,
-/// peak memory, GC pressure, per-phase breakdown, host core count.
+/// start/end/peak memory, GC pressure, per-phase breakdown, host core count.
 ///
 /// Populated by <c>IUsageProbe</c> from the Application layer. The Domain
 /// itself does not compute these values. It just carries them.
@@ -26,8 +26,20 @@ public sealed class AnalysisUsage
     /// <summary>Kernel-mode CPU time during the run, in milliseconds.</summary>
     public long CpuTimeKernelMs { get; init; }
 
+    /// <summary>Working set observed when the run started, in bytes.</summary>
+    public long StartWorkingSetBytes { get; init; }
+
+    /// <summary>Working set observed when the run ended, in bytes.</summary>
+    public long EndWorkingSetBytes { get; init; }
+
     /// <summary>Peak working set observed during the run, in bytes.</summary>
     public long PeakWorkingSetBytes { get; init; }
+
+    /// <summary>Private bytes observed when the run started, in bytes.</summary>
+    public long StartPrivateBytesBytes { get; init; }
+
+    /// <summary>Private bytes observed when the run ended, in bytes.</summary>
+    public long EndPrivateBytesBytes { get; init; }
 
     /// <summary>Peak private bytes observed during the run, in bytes.</summary>
     public long PeakPrivateBytesBytes { get; init; }
@@ -55,6 +67,20 @@ public sealed class AnalysisUsage
     /// </summary>
     public double CpuUtilizationPercent =>
         WallTimeMs > 0 ? (double)CpuTimeTotalMs / WallTimeMs * 100.0 : 0.0;
+
+    /// <summary>Signed working-set change from start to end, in bytes.</summary>
+    public long WorkingSetDeltaBytes => EndWorkingSetBytes - StartWorkingSetBytes;
+
+    /// <summary>Peak working-set growth above the start sample, in bytes.</summary>
+    public long PeakWorkingSetAboveStartBytes =>
+        Math.Max(0L, PeakWorkingSetBytes - StartWorkingSetBytes);
+
+    /// <summary>Signed private-byte change from start to end, in bytes.</summary>
+    public long PrivateBytesDeltaBytes => EndPrivateBytesBytes - StartPrivateBytesBytes;
+
+    /// <summary>Peak private-byte growth above the start sample, in bytes.</summary>
+    public long PeakPrivateBytesAboveStartBytes =>
+        Math.Max(0L, PeakPrivateBytesBytes - StartPrivateBytesBytes);
 }
 
 /// <summary>

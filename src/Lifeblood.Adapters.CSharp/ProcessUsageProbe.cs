@@ -6,8 +6,9 @@ namespace Lifeblood.Adapters.CSharp;
 
 /// <summary>
 /// Concrete <see cref="IUsageProbe"/> backed by <see cref="Process.GetCurrentProcess"/>
-/// and <see cref="Stopwatch"/>. Samples peak working set and peak private
-/// bytes on a background <see cref="Timer"/> at a fixed interval. Captures
+/// and <see cref="Stopwatch"/>. Samples working set and private bytes at the
+/// start, end, and on a background <see cref="Timer"/> for the absolute peak.
+/// Captures
 /// CPU time as a delta of <see cref="Process.UserProcessorTime"/> and
 /// <see cref="Process.PrivilegedProcessorTime"/> across the run, so the
 /// reported numbers are specific to the analyze call and not contaminated
@@ -52,6 +53,10 @@ public sealed class ProcessUsageProbe : IUsageProbe
         private readonly List<PhaseTiming> _phases = new();
         private readonly object _peakLock = new();
 
+        private readonly long _startWs;
+        private readonly long _startPrivate;
+        private long _lastWs;
+        private long _lastPrivate;
         private long _peakWs;
         private long _peakPrivate;
         private long _lastPhaseMs;
@@ -75,8 +80,12 @@ public sealed class ProcessUsageProbe : IUsageProbe
             // Initial RSS sample, so tiny runs that finish before the first
             // timer tick still get a non-zero peak.
             _proc.Refresh();
-            _peakWs = _proc.WorkingSet64;
-            _peakPrivate = _proc.PrivateMemorySize64;
+            _startWs = _proc.WorkingSet64;
+            _startPrivate = _proc.PrivateMemorySize64;
+            _lastWs = _startWs;
+            _lastPrivate = _startPrivate;
+            _peakWs = _startWs;
+            _peakPrivate = _startPrivate;
 
             _sw = Stopwatch.StartNew();
             _timer = new Timer(SamplePeak, null, sampleIntervalMs, sampleIntervalMs);
@@ -85,6 +94,13 @@ public sealed class ProcessUsageProbe : IUsageProbe
         private void SamplePeak(object? _)
         {
             if (_stopped) return;
+            if (!TryReadMemory(out var ws, out var priv)) return;
+
+            RecordMemorySample(ws, priv);
+        }
+
+        private bool TryReadMemory(out long workingSet, out long privateBytes)
+        {
             try
             {
                 // Refresh() is cheap on Windows and Linux. It re-reads
@@ -92,18 +108,28 @@ public sealed class ProcessUsageProbe : IUsageProbe
                 // Windows. Safe to call from the timer thread alongside the
                 // owning thread's MarkPhase calls.
                 _proc.Refresh();
-                lock (_peakLock)
-                {
-                    var ws = _proc.WorkingSet64;
-                    var priv = _proc.PrivateMemorySize64;
-                    if (ws > _peakWs) _peakWs = ws;
-                    if (priv > _peakPrivate) _peakPrivate = priv;
-                }
+                workingSet = _proc.WorkingSet64;
+                privateBytes = _proc.PrivateMemorySize64;
+                return true;
             }
             catch
             {
                 // Process is being torn down or the handle is in a weird
                 // state. Swallow and let the next tick retry.
+                workingSet = 0;
+                privateBytes = 0;
+                return false;
+            }
+        }
+
+        private void RecordMemorySample(long workingSet, long privateBytes)
+        {
+            lock (_peakLock)
+            {
+                _lastWs = workingSet;
+                _lastPrivate = privateBytes;
+                if (workingSet > _peakWs) _peakWs = workingSet;
+                if (privateBytes > _peakPrivate) _peakPrivate = privateBytes;
             }
         }
 
@@ -120,23 +146,34 @@ public sealed class ProcessUsageProbe : IUsageProbe
             if (_final != null) return _final;
 
             _stopped = true;
-            _timer.Dispose();
+            // Stop and drain the sampler before taking the end sample. A
+            // callback that already passed its stopped check must not race a
+            // later sample into the finalized start/end receipt.
+            using (var drained = new ManualResetEvent(false))
+            {
+                if (_timer.Dispose(drained))
+                    drained.WaitOne();
+            }
             _sw.Stop();
 
-            // Final peak sample so that spikes between the last timer tick
-            // and the explicit stop are captured.
-            try
+            long endWs;
+            long endPrivate;
+            if (TryReadMemory(out var finalWs, out var finalPrivate))
             {
-                _proc.Refresh();
+                RecordMemorySample(finalWs, finalPrivate);
+                endWs = finalWs;
+                endPrivate = finalPrivate;
+            }
+            else
+            {
+                // A failed final OS read remains honest and usable: the end
+                // sample falls back to the last successful periodic sample.
                 lock (_peakLock)
                 {
-                    var ws = _proc.WorkingSet64;
-                    var priv = _proc.PrivateMemorySize64;
-                    if (ws > _peakWs) _peakWs = ws;
-                    if (priv > _peakPrivate) _peakPrivate = priv;
+                    endWs = _lastWs;
+                    endPrivate = _lastPrivate;
                 }
             }
-            catch { /* best effort */ }
 
             var userNow = _proc.UserProcessorTime;
             var kernelNow = _proc.PrivilegedProcessorTime;
@@ -158,7 +195,11 @@ public sealed class ProcessUsageProbe : IUsageProbe
                 CpuTimeTotalMs = userMs + kernelMs,
                 CpuTimeUserMs = userMs,
                 CpuTimeKernelMs = kernelMs,
+                StartWorkingSetBytes = _startWs,
+                EndWorkingSetBytes = endWs,
                 PeakWorkingSetBytes = peakWs,
+                StartPrivateBytesBytes = _startPrivate,
+                EndPrivateBytesBytes = endPrivate,
                 PeakPrivateBytesBytes = peakPrivate,
                 HostLogicalCores = _hostCores,
                 GcGen0Collections = Math.Max(0, GC.CollectionCount(0) - _gen0Start),

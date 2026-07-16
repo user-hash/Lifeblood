@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Retained-session memory growth receipts.**
+
 - **Compact invariant-audit provenance.**
   `lifeblood_invariant_check(mode:"audit", summarize:true)` preserves totals,
   category counts, duplicate occurrences, parse warnings, and coverage while

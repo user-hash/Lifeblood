@@ -1512,9 +1512,17 @@ public sealed class GraphSession : IDisposable
                 cpuAvgPerCorePercent = usage.HostLogicalCores > 0
                     ? Math.Round(usage.CpuUtilizationPercent / usage.HostLogicalCores, 2)
                     : 0.0,
+                startWorkingSetBytes = usage.StartWorkingSetBytes,
+                endWorkingSetBytes = usage.EndWorkingSetBytes,
+                workingSetDeltaBytes = usage.WorkingSetDeltaBytes,
                 peakWorkingSetBytes = usage.PeakWorkingSetBytes,
+                peakWorkingSetAboveStartBytes = usage.PeakWorkingSetAboveStartBytes,
                 peakWorkingSetMb = Math.Round(usage.PeakWorkingSetBytes / 1024.0 / 1024.0, 0),
+                startPrivateBytesBytes = usage.StartPrivateBytesBytes,
+                endPrivateBytesBytes = usage.EndPrivateBytesBytes,
+                privateBytesDeltaBytes = usage.PrivateBytesDeltaBytes,
                 peakPrivateBytesBytes = usage.PeakPrivateBytesBytes,
+                peakPrivateBytesAboveStartBytes = usage.PeakPrivateBytesAboveStartBytes,
                 peakPrivateBytesMb = Math.Round(usage.PeakPrivateBytesBytes / 1024.0 / 1024.0, 0),
                 hostLogicalCores = usage.HostLogicalCores,
                 gcGen0Collections = usage.GcGen0Collections,

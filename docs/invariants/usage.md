@@ -7,13 +7,13 @@ The probe lives in `Lifeblood.Adapters.CSharp` (touches
 
 - **INV-USAGE-001. Usage is inert data.** `AnalysisUsage` and `PhaseTiming` hold only primitive fields and arrays of primitive fields. No `System.Diagnostics` types leak onto the records. Consumers read freely on any thread.
 
-- **INV-USAGE-002. Units are documented on every field.** Bytes for memory, milliseconds for time. No implicit conversions. Only derived property: `CpuUtilizationPercent = CpuTimeTotalMs / WallTimeMs * 100`.
+- **INV-USAGE-002. Units are documented on every field.** Bytes for memory, milliseconds for time. No implicit conversions. `CpuUtilizationPercent`, signed end-minus-start memory deltas, and nonnegative absolute-peak-minus-start memory growth are derived from the primitive samples rather than stored as competing facts.
 
 - **INV-USAGE-PORT-001. The probe returns a fresh capture on every `Start`.** Two captures started back-to-back do not share peak samples, CPU deltas, phase lists, or GC counters. A capture's lifetime is scoped to the single analyze run.
 
 - **INV-USAGE-PORT-002. `IUsageCapture.Stop` is idempotent.** A second call returns the same `AnalysisUsage` instance; `Dispose` on an already-stopped capture is a no-op. `AnalyzeWorkspaceUseCase` disposes the capture on the error path so the sampling timer cannot outlive a failed run.
 
-- **INV-USAGE-PROBE-001. `ProcessUsageProbe` takes an initial RSS sample in its constructor.**
+- **INV-USAGE-PROBE-001. `ProcessUsageProbe` takes an initial RSS sample in its constructor and drains the sampler before its final sample.** Sub-sample-interval runs still report a non-zero peak; start, end, and absolute peak remain internally ordered without a timer race. Pinned by `ProcessUsageProbeTests` and the retained full/noop/edit/fallback wire sequence.
 
 - **INV-USAGE-PROBE-002. The sampling timer is disposed at `Stop` or `Dispose`.** Leaked timers would corrupt the next capture's peak samples. Pinned by `Probe_TwoCaptures_AreIndependent`.
 

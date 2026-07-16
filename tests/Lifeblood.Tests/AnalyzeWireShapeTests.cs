@@ -428,6 +428,80 @@ public class AnalyzeWireShapeTests : IDisposable
         Assert.NotEqual(JsonValueKind.Null, doc.RootElement.GetProperty("summary").ValueKind);
     }
 
+    [Fact]
+    public void Load_RetainedFullNoopEditFallback_MemoryReceiptStaysInternallyConsistent()
+    {
+        WriteTwoModuleProject();
+        using var session = new GraphSession(_fs);
+
+        using var full = JsonDocument.Parse(session.Load(
+            _tempDir, graphPath: null, rulesPath: null, incremental: false));
+        Assert.Equal("full", full.RootElement.GetProperty("mode").GetString());
+        AssertUsageMemory(full.RootElement.GetProperty("usage"));
+        var fullSymbols = full.RootElement.GetProperty("summary").GetProperty("symbols").GetInt32();
+        var fullEdges = full.RootElement.GetProperty("summary").GetProperty("edges").GetInt32();
+
+        using var noop = JsonDocument.Parse(session.Load(
+            _tempDir, graphPath: null, rulesPath: null, incremental: true));
+        Assert.Equal("incremental-noop", noop.RootElement.GetProperty("mode").GetString());
+        AssertUsageMemory(noop.RootElement.GetProperty("usage"));
+        Assert.Equal(fullSymbols, noop.RootElement.GetProperty("summary").GetProperty("symbols").GetInt32());
+        Assert.Equal(fullEdges, noop.RootElement.GetProperty("summary").GetProperty("edges").GetInt32());
+
+        var editedPath = Path.Combine(_tempDir, "ModuleA", "A.cs");
+        var originalWriteTime = File.GetLastWriteTimeUtc(editedPath);
+        File.WriteAllText(
+            editedPath,
+            "namespace A; public class ATypeA { public void Added() { } }");
+        File.SetLastWriteTimeUtc(editedPath, originalWriteTime.AddSeconds(2));
+        using var edit = JsonDocument.Parse(session.Load(
+            _tempDir, graphPath: null, rulesPath: null, incremental: true));
+        Assert.Equal("incremental", edit.RootElement.GetProperty("mode").GetString());
+        AssertUsageMemory(edit.RootElement.GetProperty("usage"));
+        Assert.True(
+            edit.RootElement.GetProperty("summary").GetProperty("symbols").GetInt32() > fullSymbols);
+
+        File.Delete(Path.Combine(_tempDir, "ModuleB", "ModuleB.csproj"));
+        File.Delete(Path.Combine(_tempDir, "ModuleB", "B.cs"));
+        using var fallback = JsonDocument.Parse(session.Load(
+            _tempDir,
+            graphPath: null,
+            rulesPath: null,
+            incremental: true,
+            allowFullFallback: true));
+        Assert.Equal("full", fallback.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("incremental", fallback.RootElement.GetProperty("requestedMode").GetString());
+        Assert.Equal("moduleSetChanged", fallback.RootElement.GetProperty("fallbackReason").GetString());
+        AssertUsageMemory(fallback.RootElement.GetProperty("usage"));
+    }
+
+    private static void AssertUsageMemory(JsonElement usage)
+    {
+        var startWorkingSet = usage.GetProperty("startWorkingSetBytes").GetInt64();
+        var endWorkingSet = usage.GetProperty("endWorkingSetBytes").GetInt64();
+        var peakWorkingSet = usage.GetProperty("peakWorkingSetBytes").GetInt64();
+        Assert.True(startWorkingSet > 0);
+        Assert.True(endWorkingSet > 0);
+        Assert.True(peakWorkingSet >= startWorkingSet);
+        Assert.True(peakWorkingSet >= endWorkingSet);
+        Assert.Equal(endWorkingSet - startWorkingSet, usage.GetProperty("workingSetDeltaBytes").GetInt64());
+        Assert.Equal(
+            Math.Max(0L, peakWorkingSet - startWorkingSet),
+            usage.GetProperty("peakWorkingSetAboveStartBytes").GetInt64());
+
+        var startPrivate = usage.GetProperty("startPrivateBytesBytes").GetInt64();
+        var endPrivate = usage.GetProperty("endPrivateBytesBytes").GetInt64();
+        var peakPrivate = usage.GetProperty("peakPrivateBytesBytes").GetInt64();
+        Assert.True(startPrivate > 0);
+        Assert.True(endPrivate > 0);
+        Assert.True(peakPrivate >= startPrivate);
+        Assert.True(peakPrivate >= endPrivate);
+        Assert.Equal(endPrivate - startPrivate, usage.GetProperty("privateBytesDeltaBytes").GetInt64());
+        Assert.Equal(
+            Math.Max(0L, peakPrivate - startPrivate),
+            usage.GetProperty("peakPrivateBytesAboveStartBytes").GetInt64());
+    }
+
     private static void AssertNullProperty(JsonElement element, string propertyName)
     {
         Assert.True(element.TryGetProperty(propertyName, out var prop),
