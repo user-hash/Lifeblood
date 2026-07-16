@@ -5,9 +5,9 @@ namespace Lifeblood.Application.Ports.Right.Invariants;
 /// <see cref="IInvariantProvider.Audit"/> and surfaced by the
 /// <c>lifeblood_invariant_check</c> MCP tool in audit mode.
 ///
-/// The audit is a cheap read over the parsed invariant set — no graph
-/// walks, no filesystem scans beyond reading <c>CLAUDE.md</c>. Callers
-/// use it to spot-check coverage ("how many invariants does this
+/// The audit is a bounded read over the discovered and cached invariant
+/// source set — no graph or Roslyn walk. Callers use it to spot-check
+/// coverage ("how many invariants does this
 /// project declare?"), find collisions ("any duplicate ids?"), and
 /// discover the category breakdown.
 /// </summary>

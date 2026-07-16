@@ -12,7 +12,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Load a project | `lifeblood_analyze` | Use `projectPath` for C# / Unity, `graphPath` for JSON graph input. Use `excludePaths` to drop vendored/sample sources before compilation. |
 | Fast re-load after edits | `lifeblood_analyze incremental:true` | Source mtimes are a prefilter and content hashes decide actual re-extraction. Pass `authoritativeChangedFiles` when the editor/watcher has exact changed paths. On rejected fallback, retry with `allowFullFallback:true` only when wider scope is acceptable. Changing `excludePaths` reports `analysisScopeChanged`; read-only-to-retained recovery reports `compilationStateUnavailable`. |
 | Small context pack | `lifeblood_context summarize:true` | Good first read for unfamiliar repos or when handing off to another agent. |
-| Architecture invariant audit | `lifeblood_invariant_check mode:"audit"` | Use before architecture-sensitive changes; fetch specific ids as needed. |
+| Architecture invariant audit | `lifeblood_invariant_check mode:"audit" summarize:true` | Use compact audit first on large invariant trees; it keeps duplicates/warnings/coverage while omitting zero-only source rows and duplicate ledgers. Fetch specific ids as needed; omit summarize only for the complete source inventory. |
 | Check generated evidence freshness | `lifeblood_evidence_drift` | Compare the repo-owned generated baseline with the exact current publication and live invariant audit. Pin `expectedSnapshotId` / `expectedAnalysisGeneration`; refresh analysis on `verdict:"unavailable"`, refresh evidence when `evidenceRefreshRecommended:true`. |
 
 ## Finding Symbols

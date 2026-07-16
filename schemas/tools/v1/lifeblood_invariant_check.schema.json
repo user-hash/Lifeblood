@@ -9,6 +9,10 @@
       "type": "string",
       "description": "\u0027audit\u0027 (default) or \u0027list\u0027. Mutually exclusive with \u0027id\u0027."
     },
+    "summarize": {
+      "type": "boolean",
+      "description": "Audit mode only. When true, keep totals/categories/duplicates/warnings but emit nonzero source counts exactly once in evidenceReceipt.sourceProjection; the top level carries a reference instead of duplicating the source ledger. Default false preserves the full v1 response."
+    },
     "snapshotId": {
       "type": "string",
       "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."

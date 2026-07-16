@@ -272,42 +272,52 @@ public static class ServerIdentity
     public static object BuildInvariantEvidenceReceipt(
         string projectRoot,
         Lifeblood.Application.Ports.Right.Invariants.InvariantAudit audit,
-        ISourceControlSnapshotProvider sourceControl)
+        ISourceControlSnapshotProvider sourceControl,
+        bool summarize = false)
     {
         var serverRepoRoot = FindServerRepositoryRoot();
         var sourceControlSnapshot = sourceControl.Capture(projectRoot);
-        return new
+        var sourceProjection = summarize
+            ? InvariantAuditSourceProjection.BuildNonzero(audit)
+            : null;
+        var receipt = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            kind = "lifeblood.invariant_audit",
-            citationSafe = true,
-            server = BuildServerBlock(),
-            sourceControl = BuildSourceControlBlock(sourceControlSnapshot, "invariantAuditRequest"),
-            releaseGate = BuildReleaseGateReceipt(
+            ["kind"] = "lifeblood.invariant_audit",
+            ["citationSafe"] = true,
+            ["server"] = BuildServerBlock(),
+            ["sourceControl"] = BuildSourceControlBlock(sourceControlSnapshot, "invariantAuditRequest"),
+            ["releaseGate"] = BuildReleaseGateReceipt(
                 ResolveVersionInfo(),
                 sourceControlSnapshot,
                 "invariantAuditRequest"),
-            workspaceRoot = projectRoot,
-            queryRecipe = new
-            {
-                tool = "lifeblood_invariant_check",
-                mode = "audit",
-            },
-            invariantTotal = audit.TotalCount,
-            declaredCount = audit.DeclaredCount,
-            duplicateDeclarationCount = audit.DuplicateDeclarationCount,
-            sourcePaths = audit.SourcePaths,
-            sourceCounts = audit.SourceCounts,
-            coverage = audit.Coverage,
-            coverageWarnings = audit.CoverageWarnings,
-            duplicateIds = audit.Duplicates.Select(d => d.Id).ToArray(),
-            duplicates = audit.Duplicates,
-            parseWarnings = audit.ParseWarnings,
-            contract = new
+            ["workspaceRoot"] = projectRoot,
+            ["queryRecipe"] = sourceProjection == null
+                ? new { tool = "lifeblood_invariant_check", mode = "audit" }
+                : new { tool = "lifeblood_invariant_check", mode = "audit", summarize = true },
+            ["invariantTotal"] = audit.TotalCount,
+            ["declaredCount"] = audit.DeclaredCount,
+            ["duplicateDeclarationCount"] = audit.DuplicateDeclarationCount,
+        };
+        if (sourceProjection == null)
+        {
+            receipt["sourcePaths"] = audit.SourcePaths;
+            receipt["sourceCounts"] = audit.SourceCounts;
+        }
+        else
+        {
+            receipt["sourceProjection"] = sourceProjection;
+        }
+        receipt["coverage"] = audit.Coverage;
+        receipt["coverageWarnings"] = audit.CoverageWarnings;
+        receipt["duplicateIds"] = audit.Duplicates.Select(d => d.Id).ToArray();
+        receipt["duplicates"] = audit.Duplicates;
+        receipt["parseWarnings"] = audit.ParseWarnings;
+        receipt["contract"] = new
             {
                 statusDocAnchorPath = BuildRepoPath(serverRepoRoot, "docs", "STATUS.md"),
-            },
-            doNotCite = SessionLocalDoNotCiteFields,
-        };
+            };
+        receipt["doNotCite"] = SessionLocalDoNotCiteFields;
+        return receipt;
     }
 
     private static object BuildServerBlock()
