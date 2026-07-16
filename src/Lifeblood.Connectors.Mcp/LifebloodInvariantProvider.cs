@@ -139,6 +139,8 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
                 SourceLines = kv.Value.Select(o => o.Line).ToArray(),
             })
             .ToArray();
+        var coverage = BuildCoverage(aggregated.SourceCounts, aggregated.DeclaredCount);
+        var coverageWarnings = BuildCoverageWarnings(coverage);
 
         return new InvariantAudit
         {
@@ -151,6 +153,53 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
             SourcePath = aggregated.SourcePaths.Length > 0 ? aggregated.SourcePaths[0] : "",
             SourcePaths = aggregated.SourcePaths,
             SourceCounts = aggregated.SourceCounts,
+            Coverage = coverage,
+            CoverageWarnings = coverageWarnings,
+        };
+    }
+
+    private static InvariantCoverage BuildCoverage(
+        InvariantSourceCount[] sourceCounts,
+        int declaredCount)
+    {
+        var sourceFileCount = sourceCounts.Length;
+        var recognizedSourceFileCount = sourceCounts.Count(source => source.Count > 0);
+        var emptySourceFileCount = sourceFileCount - recognizedSourceFileCount;
+        var recognizedSourceRatio = sourceFileCount == 0
+            ? 0.0
+            : recognizedSourceFileCount / (double)sourceFileCount;
+        var status = sourceFileCount == 0
+            ? "noSources"
+            : declaredCount == 0
+                ? "noRecognizedDeclarations"
+                : sourceFileCount >= 5 && recognizedSourceRatio < 0.25
+                    ? "lowRecognizedSourceRatio"
+                    : "ok";
+
+        return new InvariantCoverage
+        {
+            SourceFileCount = sourceFileCount,
+            RecognizedSourceFileCount = recognizedSourceFileCount,
+            EmptySourceFileCount = emptySourceFileCount,
+            DeclaredCount = declaredCount,
+            RecognizedSourceRatio = recognizedSourceRatio,
+            Status = status,
+        };
+    }
+
+    private static string[] BuildCoverageWarnings(InvariantCoverage coverage)
+    {
+        return coverage.Status switch
+        {
+            "noRecognizedDeclarations" => new[]
+            {
+                $"Discovered {coverage.SourceFileCount} invariant source file(s), but none contained parser-recognized declarations.",
+            },
+            "lowRecognizedSourceRatio" => new[]
+            {
+                $"Only {coverage.RecognizedSourceFileCount} of {coverage.SourceFileCount} discovered invariant source file(s) contained parser-recognized declarations; audit coverage may be partial.",
+            },
+            _ => System.Array.Empty<string>(),
         };
     }
 

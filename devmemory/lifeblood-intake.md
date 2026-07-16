@@ -1197,6 +1197,7 @@ Resolution evidence:
 
 Type: UX
 Priority: High
+Status: Fixed locally on 2026-07-16; pending release validation batch.
 Source: DAWG invariant-audit repro, 2026-07-16; 56 discovered sources, 2 recognized declaration openings
 Workspace: DAWG
 
@@ -1224,6 +1225,21 @@ Fix shape:
   warnings to shame intentionally prose-only routing pages.
 - Add a DAWG-shaped fixture with many zero-declaration sources and two valid
   declarations, proving the warning and compact source projection are stable.
+
+Resolution evidence:
+- Added `InvariantAudit.Coverage` with source-file count, recognized-source
+  count, empty-source count, declared count, recognized-source ratio, and
+  status (`ok`, `noSources`, `noRecognizedDeclarations`,
+  `lowRecognizedSourceRatio`).
+- Added `CoverageWarnings` as advisory warnings separate from parser warnings.
+  Prose-only routing pages are not parse errors, but low recognition is now
+  visible before an agent cites audit coverage.
+- Projected the coverage object and warnings through
+  `lifeblood_invariant_check(mode:"audit")` and the docs-safe invariant
+  evidence receipt.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~InvariantProviderAndHandlerTests`
+  passed 17/17.
 
 ## LB-INTAKE-20260716-042 - Multi-profile edge deltas need explicit applicability provenance
 

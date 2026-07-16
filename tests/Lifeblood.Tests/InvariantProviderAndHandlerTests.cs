@@ -205,6 +205,31 @@ public class InvariantProviderAndHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Provider_Audit_WarnsWhenMostDiscoveredSourcesHaveNoRecognizedDeclarations()
+    {
+        var invDir = Path.Combine(_tempDir, "docs", "invariants");
+        Directory.CreateDirectory(invDir);
+        File.WriteAllText(
+            Path.Combine(invDir, "declared.md"),
+            "- **INV-DECLARED-001**: recognized rule.\n");
+        for (var index = 0; index < 9; index++)
+        {
+            File.WriteAllText(
+                Path.Combine(invDir, $"routing-{index:D2}.md"),
+                "# Routing page\n\nThis file has prose but no parser-recognized invariant declarations.\n");
+        }
+
+        var provider = new LifebloodInvariantProvider(Fs);
+        var audit = provider.Audit(_tempDir);
+
+        Assert.Equal(10, audit.Coverage.SourceFileCount);
+        Assert.Equal(1, audit.Coverage.RecognizedSourceFileCount);
+        Assert.Equal(9, audit.Coverage.EmptySourceFileCount);
+        Assert.Equal("lowRecognizedSourceRatio", audit.Coverage.Status);
+        Assert.NotEmpty(audit.CoverageWarnings);
+    }
+
+    [Fact]
     public void Provider_Caches_SecondCallDoesNotReparse()
     {
         File.WriteAllText(
