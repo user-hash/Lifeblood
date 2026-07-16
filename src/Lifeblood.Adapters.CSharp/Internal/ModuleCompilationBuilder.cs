@@ -90,8 +90,10 @@ internal sealed class ModuleCompilationBuilder
         List<SkippedFile>? skippedCollector = null,
         Dictionary<string, MetadataReference>? carryDowngraded = null,
         Action<string, ContentFingerprint>? contentHashCollector = null,
-        ModuleInfo[]? moduleUniverse = null)
+        ModuleInfo[]? moduleUniverse = null,
+        WorkspaceSourcePathMap? sourcePaths = null)
     {
+        sourcePaths ??= WorkspaceSourcePathMap.Create(projectRoot);
         var sorted = TopologicalSort(modules);
         var moduleLookup = (moduleUniverse ?? modules)
             .ToDictionary(m => m.Name, StringComparer.Ordinal);
@@ -150,7 +152,14 @@ internal sealed class ModuleCompilationBuilder
                 .Select(d => downgraded[d])
                 .ToArray();
 
-            var compilation = CreateCompilation(module, projectRoot, config, depRefs, skippedCollector, contentHashCollector);
+            var compilation = CreateCompilation(
+                module,
+                projectRoot,
+                config,
+                depRefs,
+                skippedCollector,
+                contentHashCollector,
+                sourcePaths);
             if (compilation == null) continue;
 
             // Invoke the processor (symbol/edge extraction happens here).
@@ -213,7 +222,8 @@ internal sealed class ModuleCompilationBuilder
         ModuleInfo module, string projectRoot, AnalysisConfig config,
         MetadataReference[] dependencyRefs,
         List<SkippedFile>? skippedCollector,
-        Action<string, ContentFingerprint>? contentHashCollector)
+        Action<string, ContentFingerprint>? contentHashCollector,
+        WorkspaceSourcePathMap sourcePaths)
     {
         // Surface every file the adapter declines to process so consumers
         // can show users exactly what was dropped and why.
@@ -254,7 +264,7 @@ internal sealed class ModuleCompilationBuilder
         {
             sourceFiles = sourceFiles.Where(f =>
             {
-                var rel = Path.GetRelativePath(projectRoot, f).Replace('\\', '/');
+                var rel = sourcePaths.ToWorkspacePath(f);
                 return !config.ExcludePatterns.Any(p => rel.Contains(p, StringComparison.OrdinalIgnoreCase));
             });
         }
@@ -264,7 +274,7 @@ internal sealed class ModuleCompilationBuilder
         {
             sourceFiles = sourceFiles.Where(f =>
             {
-                var rel = Path.GetRelativePath(projectRoot, f).Replace('\\', '/');
+                var rel = sourcePaths.ToWorkspacePath(f);
                 return !PathGlobMatcher.MatchesAny(excludePathGlobs, rel);
             });
         }

@@ -12,11 +12,9 @@ internal static class UnityPackageSourceVisibilityBuilder
     private const string PackageSourceInventoryFingerprintDomain =
         "lifeblood.unity-package-source-inventory.v1";
 
-    public static PackageSourceVisibilityReport? Build(
+    public static UnityPackageWorkspace Discover(
         IFileSystem fs,
-        string projectRoot,
-        ModuleInfo[] modules,
-        AnalysisConfig config)
+        string projectRoot)
     {
         var packagesDir = Path.Combine(projectRoot, "Packages");
         var manifestPath = Path.Combine(packagesDir, "manifest.json");
@@ -25,19 +23,49 @@ internal static class UnityPackageSourceVisibilityBuilder
             fs.DirectoryExists(packagesDir)
             || fs.FileExists(manifestPath)
             || fs.FileExists(lockPath);
-        if (!hasPackageDescriptors)
+        var packages = hasPackageDescriptors
+            ? DiscoverPackages(fs, projectRoot, packagesDir, manifestPath, lockPath)
+                .Values
+                .Where(package => fs.DirectoryExists(package.RootPath))
+                .OrderBy(package => package.RootPath, StringComparer.Ordinal)
+                .ToArray()
+            : Array.Empty<UnityPackageDefinition>();
+        var mounts = packages.Select(package => new WorkspaceSourceMount(
+            package.RootPath,
+            $"Packages/{EncodePackageName(package.Name)}"));
+
+        return new UnityPackageWorkspace(
+            manifestPath,
+            lockPath,
+            hasPackageDescriptors,
+            packages,
+            WorkspaceSourcePathMap.Create(projectRoot, mounts));
+    }
+
+    public static PackageSourceVisibilityReport? Build(
+        IFileSystem fs,
+        UnityPackageWorkspace workspace,
+        ModuleInfo[] modules,
+        AnalysisConfig config)
+    {
+        if (!workspace.IsUnityWorkspace)
             return null;
 
-        var packages = DiscoverPackages(fs, projectRoot, packagesDir, manifestPath, lockPath);
         var moduleBySourcePath = BuildCompiledSourceIndex(modules, fs);
         var excludeGlobs = PathGlobMatcher.Compile(config.ExcludePathGlobs);
         var descriptorPaths = new List<string>();
-        if (fs.FileExists(manifestPath)) descriptorPaths.Add(Relative(projectRoot, manifestPath));
-        if (fs.FileExists(lockPath)) descriptorPaths.Add(Relative(projectRoot, lockPath));
+        if (fs.FileExists(workspace.ManifestPath))
+            descriptorPaths.Add(workspace.SourcePaths.ToWorkspacePath(workspace.ManifestPath));
+        if (fs.FileExists(workspace.LockPath))
+            descriptorPaths.Add(workspace.SourcePaths.ToWorkspacePath(workspace.LockPath));
 
-        var shapedPackages = packages.Values
-            .Where(package => fs.DirectoryExists(package.RootPath))
-            .Select(package => ShapePackage(fs, projectRoot, package, moduleBySourcePath, excludeGlobs))
+        var shapedPackages = workspace.Packages
+            .Select(package => ShapePackage(
+                fs,
+                workspace.SourcePaths,
+                package,
+                moduleBySourcePath,
+                excludeGlobs))
             .Where(package => package.SourceFileCount > 0 || package.AssemblyDefinitionCount > 0)
             .OrderBy(package => package.RootPath, StringComparer.Ordinal)
             .ToArray();
@@ -55,26 +83,16 @@ internal static class UnityPackageSourceVisibilityBuilder
 
     public static IReadOnlyDictionary<string, ContentFingerprint> CaptureInputFingerprints(
         IFileSystem fs,
-        string projectRoot)
+        UnityPackageWorkspace workspace)
     {
-        var packagesDir = Path.Combine(projectRoot, "Packages");
-        var manifestPath = Path.Combine(packagesDir, "manifest.json");
-        var lockPath = Path.Combine(packagesDir, "packages-lock.json");
-        var hasPackageDescriptors =
-            fs.DirectoryExists(packagesDir)
-            || fs.FileExists(manifestPath)
-            || fs.FileExists(lockPath);
         var inputs = new Dictionary<string, ContentFingerprint>(PathComparer);
-        if (!hasPackageDescriptors)
+        if (!workspace.IsUnityWorkspace)
             return inputs;
 
-        CaptureTextInput(fs, manifestPath, inputs);
-        CaptureTextInput(fs, lockPath, inputs);
+        CaptureTextInput(fs, workspace.ManifestPath, inputs);
+        CaptureTextInput(fs, workspace.LockPath, inputs);
 
-        var packages = DiscoverPackages(fs, projectRoot, packagesDir, manifestPath, lockPath);
-        foreach (var package in packages.Values
-            .Where(package => fs.DirectoryExists(package.RootPath))
-            .OrderBy(package => package.RootPath, StringComparer.Ordinal))
+        foreach (var package in workspace.Packages)
         {
             CaptureTextInput(fs, Path.Combine(package.RootPath, "package.json"), inputs);
             foreach (var sourcePath in TryFindFiles(fs, package.RootPath, "*.cs"))
@@ -88,14 +106,14 @@ internal static class UnityPackageSourceVisibilityBuilder
         return inputs;
     }
 
-    private static Dictionary<string, MutablePackage> DiscoverPackages(
+    private static Dictionary<string, UnityPackageDefinition> DiscoverPackages(
         IFileSystem fs,
         string projectRoot,
         string packagesDir,
         string manifestPath,
         string lockPath)
     {
-        var packages = new Dictionary<string, MutablePackage>(PathComparer);
+        var packages = new Dictionary<string, UnityPackageDefinition>(PathComparer);
         if (fs.FileExists(manifestPath))
             ReadManifest(fs, projectRoot, packagesDir, manifestPath, packages);
         if (fs.FileExists(lockPath))
@@ -109,7 +127,7 @@ internal static class UnityPackageSourceVisibilityBuilder
         string projectRoot,
         string packagesDir,
         string manifestPath,
-        Dictionary<string, MutablePackage> packages)
+        Dictionary<string, UnityPackageDefinition> packages)
     {
         try
         {
@@ -150,7 +168,7 @@ internal static class UnityPackageSourceVisibilityBuilder
         string projectRoot,
         string packagesDir,
         string lockPath,
-        Dictionary<string, MutablePackage> packages)
+        Dictionary<string, UnityPackageDefinition> packages)
     {
         try
         {
@@ -200,7 +218,7 @@ internal static class UnityPackageSourceVisibilityBuilder
     private static void DiscoverEmbeddedPackageDirectories(
         IFileSystem fs,
         string packagesDir,
-        Dictionary<string, MutablePackage> packages)
+        Dictionary<string, UnityPackageDefinition> packages)
     {
         if (!fs.DirectoryExists(packagesDir))
             return;
@@ -211,7 +229,7 @@ internal static class UnityPackageSourceVisibilityBuilder
             if (string.IsNullOrEmpty(root))
                 continue;
 
-            var relative = Relative(packagesDir, root);
+            var relative = Path.GetRelativePath(packagesDir, root).Replace('\\', '/');
             if (relative.Contains('/', StringComparison.Ordinal))
                 continue;
 
@@ -222,24 +240,29 @@ internal static class UnityPackageSourceVisibilityBuilder
 
     private static PackageSourceVisibilityPackage ShapePackage(
         IFileSystem fs,
-        string projectRoot,
-        MutablePackage package,
+        WorkspaceSourcePathMap sourcePaths,
+        UnityPackageDefinition package,
         IReadOnlyDictionary<string, string> moduleBySourcePath,
         IReadOnlyList<System.Text.RegularExpressions.Regex> excludeGlobs)
     {
-        var packageRoot = Relative(projectRoot, package.RootPath);
-        var assemblyDefinitions = TryFindFiles(fs, package.RootPath, "*.asmdef")
-            .Select(path => new PackageAssemblyDefinition
+        var packageRoot = sourcePaths.ToWorkspacePath(package.RootPath);
+        var discoveredAssemblyDefinitions = TryFindFiles(fs, package.RootPath, "*.asmdef")
+            .Select(path => new DiscoveredAssemblyDefinition(
+                Path.GetFullPath(path),
+                ReadJsonStringProperty(fs, path, "name") ?? Path.GetFileNameWithoutExtension(path)))
+            .ToArray();
+        var assemblyDefinitions = discoveredAssemblyDefinitions
+            .Select(asmdef => new PackageAssemblyDefinition
             {
-                Name = ReadJsonStringProperty(fs, path, "name") ?? Path.GetFileNameWithoutExtension(path),
-                Path = Relative(projectRoot, path),
+                Name = asmdef.Name,
+                Path = sourcePaths.ToWorkspacePath(asmdef.Path),
             })
             .OrderBy(asmdef => asmdef.Path, StringComparer.Ordinal)
             .ToArray();
 
-        var assemblyByDirectory = assemblyDefinitions
+        var assemblyByDirectory = discoveredAssemblyDefinitions
             .Select(asmdef => new AssemblyRoot(
-                Path.GetFullPath(Path.Combine(projectRoot, Path.GetDirectoryName(asmdef.Path) ?? "")),
+                Path.GetDirectoryName(asmdef.Path) ?? package.RootPath,
                 asmdef.Name))
             .OrderByDescending(item => item.Directory.Length)
             .ToArray();
@@ -248,7 +271,7 @@ internal static class UnityPackageSourceVisibilityBuilder
             .Select(path =>
             {
                 var absolute = Path.GetFullPath(path);
-                var relative = Relative(projectRoot, absolute);
+                var relative = sourcePaths.ToWorkspacePath(absolute);
                 var expectedAssembly = FindExpectedAssembly(absolute, assemblyByDirectory);
                 if (PathGlobMatcher.MatchesAny(excludeGlobs, relative))
                 {
@@ -433,7 +456,7 @@ internal static class UnityPackageSourceVisibilityBuilder
     }
 
     private static void AddPackage(
-        Dictionary<string, MutablePackage> packages,
+        Dictionary<string, UnityPackageDefinition> packages,
         string name,
         string rootPath,
         string source)
@@ -441,7 +464,7 @@ internal static class UnityPackageSourceVisibilityBuilder
         var root = Path.GetFullPath(rootPath);
         if (!packages.TryGetValue(root, out var package))
         {
-            package = new MutablePackage(name, root);
+            package = new UnityPackageDefinition(name, root);
             packages[root] = package;
         }
 
@@ -450,8 +473,8 @@ internal static class UnityPackageSourceVisibilityBuilder
         package.DescriptorSources.Add(source);
     }
 
-    private static string Relative(string root, string path)
-        => Path.GetRelativePath(root, path).Replace('\\', '/');
+    private static string EncodePackageName(string packageName)
+        => Uri.EscapeDataString(packageName.Trim());
 
     private static StringComparer PathComparer { get; }
         = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
@@ -459,18 +482,26 @@ internal static class UnityPackageSourceVisibilityBuilder
     private static StringComparison PathComparison { get; }
         = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    private sealed class MutablePackage
-    {
-        public MutablePackage(string name, string rootPath)
-        {
-            Name = name;
-            RootPath = rootPath;
-        }
+    private sealed record AssemblyRoot(string Directory, string Name);
+    private sealed record DiscoveredAssemblyDefinition(string Path, string Name);
+}
 
-        public string Name { get; set; }
-        public string RootPath { get; }
-        public HashSet<string> DescriptorSources { get; } = new(StringComparer.Ordinal);
+internal sealed record UnityPackageWorkspace(
+    string ManifestPath,
+    string LockPath,
+    bool IsUnityWorkspace,
+    UnityPackageDefinition[] Packages,
+    WorkspaceSourcePathMap SourcePaths);
+
+internal sealed class UnityPackageDefinition
+{
+    public UnityPackageDefinition(string name, string rootPath)
+    {
+        Name = name;
+        RootPath = rootPath;
     }
 
-    private sealed record AssemblyRoot(string Directory, string Name);
+    public string Name { get; set; }
+    public string RootPath { get; }
+    public HashSet<string> DescriptorSources { get; } = new(StringComparer.Ordinal);
 }
