@@ -167,6 +167,73 @@ internal static class ContractManifestValidator
                 throw new ArgumentException(
                     $"Value domain '{contract.Id}' cannot allow literal exceptions when raw-literal reporting is disabled.");
             }
+            if (constants.NearEqualPolicy is { } nearEqual)
+            {
+                if (!double.IsFinite(nearEqual.AbsoluteTolerance)
+                    || !double.IsFinite(nearEqual.RelativeTolerance)
+                    || nearEqual.AbsoluteTolerance < 0d
+                    || nearEqual.RelativeTolerance < 0d
+                    || (nearEqual.AbsoluteTolerance == 0d && nearEqual.RelativeTolerance == 0d))
+                {
+                    throw new ArgumentException(
+                        $"Value domain '{contract.Id}' nearEqualPolicy requires a finite positive " +
+                        "absoluteTolerance or relativeTolerance.");
+                }
+                if (nearEqual.MinimumOccurrences < 2)
+                {
+                    throw new ArgumentException(
+                        $"Value domain '{contract.Id}' nearEqualPolicy minimumOccurrences must be at least 2.");
+                }
+            }
+        }
+
+        if (contract.BoundaryPolicy is { } boundary)
+        {
+            RequireValues(boundary.ContextKinds, $"Value domain '{contract.Id}' boundaryPolicy contextKinds");
+            RequireValues(
+                boundary.BoundarySourceSymbolIds,
+                $"Value domain '{contract.Id}' boundaryPolicy boundarySourceSymbolIds");
+            var shapes = boundary.AllowedShapes
+                ?? throw new ArgumentException(
+                    $"Value domain '{contract.Id}' boundaryPolicy allowedShapes cannot be null.");
+            if (shapes.Length == 0)
+            {
+                throw new ArgumentException(
+                    $"Value domain '{contract.Id}' boundaryPolicy allowedShapes must contain at least one entry.");
+            }
+            foreach (var shape in shapes)
+            {
+                if (shape == null)
+                {
+                    throw new ArgumentException(
+                        $"Value domain '{contract.Id}' boundaryPolicy allowedShapes cannot contain null entries.");
+                }
+                RequireText(
+                    shape.ComparisonOperator,
+                    $"Value domain '{contract.Id}' boundaryPolicy comparisonOperator");
+                RequireText(shape.BoundarySide, $"Value domain '{contract.Id}' boundaryPolicy boundarySide");
+                if (!BoundaryOperandSide.All.Contains(shape.BoundarySide, StringComparer.Ordinal))
+                {
+                    throw new ArgumentException(
+                        $"Value domain '{contract.Id}' boundaryPolicy has unknown boundarySide '{shape.BoundarySide}'.");
+                }
+                RequireNonNull(
+                    shape.BoundaryValueKinds,
+                    $"Value domain '{contract.Id}' boundaryPolicy boundaryValueKinds");
+                RequireNonNull(
+                    shape.BoundaryOperators,
+                    $"Value domain '{contract.Id}' boundaryPolicy boundaryOperators");
+                RequireNonNull(
+                    shape.BoundaryConstantValues,
+                    $"Value domain '{contract.Id}' boundaryPolicy boundaryConstantValues");
+                if (shape.BoundaryValueKinds.Any(string.IsNullOrWhiteSpace)
+                    || shape.BoundaryOperators.Any(string.IsNullOrWhiteSpace)
+                    || shape.BoundaryConstantValues.Any(string.IsNullOrWhiteSpace))
+                {
+                    throw new ArgumentException(
+                        $"Value domain '{contract.Id}' boundaryPolicy shape values must be non-empty.");
+                }
+            }
         }
     }
 

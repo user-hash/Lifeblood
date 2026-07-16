@@ -775,6 +775,7 @@ internal sealed class RoslynOperationFactProvider
         };
         if (operatorName != null)
         {
+            var binary = operation as IBinaryOperation;
             var symbols = new List<string>();
             CollectSourceSymbols(
                 operation,
@@ -786,6 +787,9 @@ internal sealed class RoslynOperationFactProvider
                 Operator = operatorName,
                 Expression = Clip(operation.Syntax.ToString()),
                 SourceSymbolIds = symbols.ToArray(),
+                LeftValue = binary == null ? null : DescribeValue(binary.LeftOperand, symbolIds),
+                RightValue = binary == null ? null : DescribeValue(binary.RightOperand, symbolIds),
+                Source = SourceSpan(operation.Syntax),
             });
         }
 

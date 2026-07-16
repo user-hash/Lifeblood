@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Globalization;
 using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Analysis;
@@ -23,6 +24,8 @@ public sealed class ContractAuditEngine
     private readonly ContractSuppression[] _suppressions;
     private readonly SortedSet<ContractFinding> _findings = new(FindingComparer.Instance);
     private readonly Dictionary<string, RuleCounts> _counts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<NearEqualConstantObservation>> _nearEqualObservations =
+        new(StringComparer.Ordinal);
     private readonly int _findingLimit;
     private readonly int _evidenceLimit;
     private bool _completed;
@@ -95,6 +98,7 @@ public sealed class ContractAuditEngine
         if (_completed)
             throw new InvalidOperationException("A contract audit can be completed only once.");
         _completed = true;
+        EvaluateNearEqualConstants();
 
         var selectedRules = _guardContracts.Select(_ => ContractRuleId.OperationGuard)
             .Concat(_costContracts.Select(_ => ContractRuleId.ExternalApiCost))
@@ -266,6 +270,17 @@ public sealed class ContractAuditEngine
     {
         foreach (var contract in _domainContracts)
         {
+            var observations = ValueDomainContractRule.CollectNearEqualObservations(contract, fact);
+            if (observations.Length > 0)
+            {
+                if (!_nearEqualObservations.TryGetValue(contract.Id, out var retained))
+                {
+                    retained = new List<NearEqualConstantObservation>();
+                    _nearEqualObservations.Add(contract.Id, retained);
+                }
+                retained.AddRange(observations);
+            }
+
             foreach (var assessment in ValueDomainContractRule.Evaluate(contract, fact))
             {
                 var evidence = BuildValueDomainEvidence(contract, fact, assessment);
@@ -277,7 +292,7 @@ public sealed class ContractAuditEngine
                         fact.Id,
                         assessment.FindingKind == ContractFindingKind.ValueDomainMismatch
                             ? null
-                            : assessment.FindingKind),
+                            : BoundaryDiscriminator(assessment)),
                     Kind = assessment.FindingKind,
                     RuleId = ContractRuleId.ValueDomain,
                     ContractId = contract.Id,
@@ -290,6 +305,73 @@ public sealed class ContractAuditEngine
                     ContainingSymbolId = fact.ContainingSymbolId,
                     TargetSymbolId = fact.TargetSymbolId,
                     Source = fact.Source,
+                    Evidence = BoundEvidence(evidence),
+                });
+            }
+        }
+    }
+
+    private void EvaluateNearEqualConstants()
+    {
+        foreach (var contract in _domainContracts)
+        {
+            var policy = contract.ConstantPolicy?.NearEqualPolicy;
+            if (policy == null
+                || !_nearEqualObservations.TryGetValue(contract.Id, out var observations))
+                continue;
+
+            foreach (var assessment in ValueDomainContractRule.GroupNearEqualConstants(policy, observations))
+            {
+                var ordered = assessment.Observations
+                    .OrderBy(observation => NormalizePath(observation.Constant.Source.FilePath), StringComparer.Ordinal)
+                    .ThenBy(observation => observation.Constant.Source.Line)
+                    .ThenBy(observation => observation.Constant.Source.Column)
+                    .ThenBy(observation => observation.Fact.Id, StringComparer.Ordinal)
+                    .ToArray();
+                var anchor = ordered[0];
+                var lower = assessment.LowerValue.ToString("G17", CultureInfo.InvariantCulture);
+                var upper = assessment.UpperValue.ToString("G17", CultureInfo.InvariantCulture);
+                var evidence = new List<ContractEvidence>
+                {
+                    new()
+                    {
+                        Kind = "NearEqualPolicy",
+                        Summary = $"absoluteTolerance={policy.AbsoluteTolerance.ToString("G17", CultureInfo.InvariantCulture)}, " +
+                                  $"relativeTolerance={policy.RelativeTolerance.ToString("G17", CultureInfo.InvariantCulture)}",
+                    },
+                };
+                evidence.AddRange(ordered.Select(observation => new ContractEvidence
+                {
+                    Kind = "NearEqualConstant",
+                    Summary = $"{observation.Constant.Value} in {observation.Fact.Kind}",
+                    SymbolIds = observation.Fact.TargetSymbolId == null
+                        ? Array.Empty<string>()
+                        : new[] { observation.Fact.TargetSymbolId },
+                    Source = observation.Constant.Source,
+                }));
+
+                AddFinding(new ContractFinding
+                {
+                    Id = FindingId(
+                        ContractRuleId.ValueDomain,
+                        contract.Id,
+                        anchor.Fact.Id,
+                        $"near-equal:{assessment.OperationKind}:{lower}:{upper}"),
+                    Kind = ContractFindingKind.NearEqualConstantGroup,
+                    RuleId = ContractRuleId.ValueDomain,
+                    ContractId = contract.Id,
+                    Severity = contract.Severity,
+                    Confidence = ConfidenceBand.Proven,
+                    Categories = new[] { "ConstantProvenance", "NearEqual" },
+                    Message = contract.Message
+                        ?? $"Raw numeric literals {lower} and {upper} are within the manifest tolerance for " +
+                           $"domain '{contract.TargetDomain}' and operation kind '{assessment.OperationKind}' " +
+                           $"across {ordered.Length} occurrences.",
+                    Guidance = contract.Guidance,
+                    FactId = anchor.Fact.Id,
+                    ContainingSymbolId = anchor.Fact.ContainingSymbolId,
+                    TargetSymbolId = anchor.Fact.TargetSymbolId,
+                    Source = anchor.Constant.Source,
                     Evidence = BoundEvidence(evidence),
                 });
             }
@@ -362,6 +444,27 @@ public sealed class ContractAuditEngine
                 SymbolIds = contract.NonFinitePolicy?.EvidenceSymbolIds ?? Array.Empty<string>(),
             });
         }
+        if (assessment.BoundaryMissing)
+        {
+            evidence.Add(new ContractEvidence
+            {
+                Kind = "MissingCadenceBoundary",
+                Summary = "No manifest-selected lexical comparison tied the selected input source to the boundary source.",
+                SymbolIds = contract.BoundaryPolicy?.BoundarySourceSymbolIds ?? Array.Empty<string>(),
+                Source = fact.Source,
+            });
+        }
+        else if (assessment.BoundaryPredicate != null && assessment.BoundaryValue != null)
+        {
+            evidence.Add(new ContractEvidence
+            {
+                Kind = "CadenceBoundary",
+                Summary = $"{assessment.BoundaryPredicate.Operator}; boundarySide={assessment.BoundarySide}; " +
+                          $"boundaryValue={DescribeValue(assessment.BoundaryValue)}",
+                SymbolIds = assessment.BoundaryValue.SourceSymbolIds,
+                Source = assessment.BoundaryPredicate.Source,
+            });
+        }
         foreach (var constant in assessment.Constants)
         {
             evidence.Add(new ContractEvidence
@@ -384,6 +487,9 @@ public sealed class ContractAuditEngine
                 assessment.NonFiniteAction ?? NonFinitePolicyAction.CallerOwned,
             },
             ContractFindingKind.ConstantProvenanceMismatch => new[] { "ConstantProvenance", "RawNumericLiteral" },
+            ContractFindingKind.CadenceBoundaryMismatch => assessment.BoundaryMissing
+                ? new[] { "Cadence", "Boundary", "Missing" }
+                : new[] { "Cadence", "Boundary", "Mismatch" },
             _ => Array.Empty<string>(),
         };
 
@@ -404,6 +510,14 @@ public sealed class ContractAuditEngine
         {
             return $"Value passed to '{fact.TargetSymbolId}' contains raw numeric literal(s) not allowed by " +
                    $"domain '{contract.TargetDomain}' constant policy.";
+        }
+        if (assessment.FindingKind == ContractFindingKind.CadenceBoundaryMismatch)
+        {
+            return assessment.BoundaryMissing
+                ? $"Value passed to '{fact.TargetSymbolId}' has no manifest-selected lexical cadence boundary " +
+                  $"for domain '{contract.TargetDomain}'."
+                : $"Cadence boundary '{assessment.BoundaryPredicate?.Expression}' for '{fact.TargetSymbolId}' " +
+                  $"does not match any allowed boundary shape for domain '{contract.TargetDomain}'.";
         }
         if (assessment.IsUnclassified)
             return $"Value passed to '{fact.TargetSymbolId}' is unclassified for required domain '{contract.TargetDomain}'.";
@@ -578,6 +692,17 @@ public sealed class ContractAuditEngine
         if (discriminator != null) identity += "\n" + discriminator;
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
         return "finding_" + Convert.ToHexString(bytes).ToLowerInvariant()[..24];
+    }
+
+    private static string BoundaryDiscriminator(ValueDomainAssessment assessment)
+    {
+        if (assessment.FindingKind != ContractFindingKind.CadenceBoundaryMismatch)
+            return assessment.FindingKind;
+        if (assessment.BoundaryMissing)
+            return assessment.FindingKind + ":missing";
+        var source = assessment.BoundaryPredicate?.Source;
+        return $"{assessment.FindingKind}:{source?.FilePath}:{source?.Line}:{source?.Column}:" +
+               assessment.BoundaryPredicate?.Expression;
     }
 
     private static int Clamp(int value, int minimum, int maximum)
