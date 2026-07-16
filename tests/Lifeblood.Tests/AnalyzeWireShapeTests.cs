@@ -265,7 +265,7 @@ public class AnalyzeWireShapeTests : IDisposable
     }
 
     [Fact]
-    public void Load_MultiProfileUnityAnalyze_ProjectsProfileApplicability()
+    public void Load_MultiProfileUnityAnalyze_DefaultProfileApplicabilitySummaryOmitsModuleLedger()
     {
         WriteUnityProfileApplicabilityWorkspace();
         using var session = new GraphSession(_fs);
@@ -278,11 +278,37 @@ public class AnalyzeWireShapeTests : IDisposable
         using var doc = JsonDocument.Parse(json);
 
         var applicability = doc.RootElement.GetProperty("profileApplicability");
+        Assert.Equal("summary", applicability.GetProperty("mode").GetString());
         Assert.True(applicability.GetProperty("isUnityWorkspace").GetBoolean());
         Assert.Equal(new[] { "Player", "Editor" }, JsonStrings(applicability.GetProperty("profiles")));
         Assert.Equal(3, applicability.GetProperty("moduleCount").GetInt32());
         Assert.Equal(2, applicability.GetProperty("includedModuleCountsByProfile").GetProperty("Player").GetInt32());
         Assert.Equal(1, applicability.GetProperty("excludedModuleCountsByProfile").GetProperty("Player").GetInt32());
+        Assert.Equal(0, applicability.GetProperty("returnedModuleCount").GetInt32());
+        Assert.Equal(3, applicability.GetProperty("omittedModuleCount").GetInt32());
+        Assert.True(applicability.GetProperty("truncated").GetBoolean());
+        Assert.Empty(applicability.GetProperty("modules").EnumerateArray());
+    }
+
+    [Fact]
+    public void Load_MultiProfileUnityAnalyze_DetailProfileApplicabilityProjectsModuleLedger()
+    {
+        WriteUnityProfileApplicabilityWorkspace();
+        using var session = new GraphSession(_fs);
+
+        var json = session.Load(
+            _tempDir,
+            graphPath: null,
+            rulesPath: null,
+            defineProfiles: new[] { "Player", "Editor" },
+            profileApplicabilityProjection: ProfileApplicabilityProjection.Detail);
+        using var doc = JsonDocument.Parse(json);
+
+        var applicability = doc.RootElement.GetProperty("profileApplicability");
+        Assert.Equal("detail", applicability.GetProperty("mode").GetString());
+        Assert.Equal(3, applicability.GetProperty("returnedModuleCount").GetInt32());
+        Assert.Equal(0, applicability.GetProperty("omittedModuleCount").GetInt32());
+        Assert.False(applicability.GetProperty("truncated").GetBoolean());
 
         var modules = applicability.GetProperty("modules").EnumerateArray().ToArray();
         var editor = modules.Single(module => module.GetProperty("name").GetString() == "Editor");

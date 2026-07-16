@@ -24,6 +24,7 @@ public static class ToolRequestBinder
     private static readonly string AnalyzeChangeReceiptMode = ArgumentName(AnalyzeToolName, "changeReceiptMode");
     private static readonly string AnalyzeChangeReceiptLimit = ArgumentName(AnalyzeToolName, "changeReceiptLimit");
     private static readonly string AnalyzePackageSourceVisibilityMode = ArgumentName(AnalyzeToolName, "packageSourceVisibilityMode");
+    private static readonly string AnalyzeProfileApplicabilityMode = ArgumentName(AnalyzeToolName, "profileApplicabilityMode");
 
     private static readonly string CompileCheckCode = ArgumentName(CompileCheckToolName, "code");
     private static readonly string CompileCheckFilePath = ArgumentName(CompileCheckToolName, "filePath");
@@ -55,6 +56,7 @@ public static class ToolRequestBinder
             ChangeReceiptMode = ReadString(root, AnalyzeChangeReceiptMode),
             ChangeReceiptLimit = ReadInt(root, AnalyzeChangeReceiptLimit),
             PackageSourceVisibilityMode = ReadString(root, AnalyzePackageSourceVisibilityMode),
+            ProfileApplicabilityMode = ReadString(root, AnalyzeProfileApplicabilityMode),
         };
     }
 
@@ -156,12 +158,17 @@ public sealed record AnalyzeToolRequest
     public string? ChangeReceiptMode { get; init; }
     public int? ChangeReceiptLimit { get; init; }
     public string? PackageSourceVisibilityMode { get; init; }
+    public string? ProfileApplicabilityMode { get; init; }
     public AcceptedChangeReceiptRequest EffectiveChangeReceipt =>
         AcceptedChangeReceiptRequest.Create(ChangeReceiptMode, ChangeReceiptLimit);
     public PackageSourceVisibilityProjection EffectivePackageSourceVisibilityProjection =>
         string.Equals(PackageSourceVisibilityMode, "detail", StringComparison.OrdinalIgnoreCase)
             ? PackageSourceVisibilityProjection.Detail
             : PackageSourceVisibilityProjection.Summary;
+    public ProfileApplicabilityProjection EffectiveProfileApplicabilityProjection =>
+        string.Equals(ProfileApplicabilityMode, "detail", StringComparison.OrdinalIgnoreCase)
+            ? ProfileApplicabilityProjection.Detail
+            : ProfileApplicabilityProjection.Summary;
 }
 
 public sealed record CompileCheckToolRequest

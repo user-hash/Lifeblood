@@ -1150,6 +1150,11 @@ What:
   plus up to 64 files per package. The C# adapter's neutral
   `PackageSourceVisibilityReport` is not duplicated; the bloat is in the MCP
   response projection.
+- Follow-up DAWG validation after the package-file fix found the remaining
+  default-response bloat in `profileApplicability.modules`: a reused-current
+  DAWG analyze response was 54,785 characters, with about 22 KB from the
+  per-module profile applicability ledger and about 7.4 KB from package
+  metadata. The graph result itself was already small.
 
 Why it matters:
 - Summary mode should keep the default analyze response small enough to be a
@@ -1168,6 +1173,8 @@ Fix shape:
   `PackageSourceVisibilityReport` as the neutral Domain result.
 - Add DAWG-sized or synthetic many-file package tests proving summary size stays
   bounded while detail remains explicit and capped.
+- Apply the same projection rule to profile applicability: counts by default,
+  per-module ledger only by explicit detail request.
 
 Resolution evidence:
 - Added `packageSourceVisibilityMode` to `lifeblood_analyze` at the MCP
@@ -1193,6 +1200,16 @@ Resolution evidence:
 - Follow-up verification:
   `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj --filter PackageSourceVisibilityTests`
   passed 9/9, and the wider analyze/session/shared gate passed 84/84.
+- 2026-07-16 second follow-up: added `profileApplicabilityMode` to
+  `lifeblood_analyze`. Default `summary` returns profile/module counts without
+  the per-module ledger; explicit `detail` returns the previous module ledger.
+  `packageSourceVisibilityMode` and `profileApplicabilityMode` now participate
+  in the analysis coalescing policy fingerprint so simultaneous summary/detail
+  callers cannot share the wrong serialized projection.
+- Added profile applicability summary/detail wire-shape tests and updated the
+  v1 tool schema snapshot. Full release verification:
+  `dotnet test Lifeblood.sln -c Release --no-restore` passed 1557/1568 with
+  11 native-clang precondition skips.
 
 ## LB-INTAKE-20260716-040 - Stable Git tag provenance ignores four-part release tags
 

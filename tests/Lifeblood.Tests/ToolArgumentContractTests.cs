@@ -199,6 +199,8 @@ public class ToolArgumentContractTests
             authoritativeChangedFiles = new[] { "Assets/Foo.cs", "", " Packages/Bar.cs " },
             changeReceiptMode = "detail",
             changeReceiptLimit = 999,
+            packageSourceVisibilityMode = "detail",
+            profileApplicabilityMode = "detail",
         }));
 
         Assert.Equal("D:/repo", request.ProjectPath);
@@ -210,6 +212,8 @@ public class ToolArgumentContractTests
         Assert.Equal(new[] { "Assets/Foo.cs", "Packages/Bar.cs" }, request.AuthoritativeChangedFiles);
         Assert.Equal(AcceptedChangeReceiptMode.Detail, request.EffectiveChangeReceipt.Mode);
         Assert.Equal(AcceptedChangeReceiptRequest.MaximumLimit, request.EffectiveChangeReceipt.Limit);
+        Assert.Equal(PackageSourceVisibilityProjection.Detail, request.EffectivePackageSourceVisibilityProjection);
+        Assert.Equal(ProfileApplicabilityProjection.Detail, request.EffectiveProfileApplicabilityProjection);
         Assert.Same(AnalyzeToolRequest.Empty, ToolRequestBinder.BindAnalyze(null));
 
         var legacyBadTypes = ToolRequestBinder.BindAnalyze(JsonArgs(new
@@ -221,6 +225,8 @@ public class ToolArgumentContractTests
             authoritativeChangedFiles = new object[] { 42, " Assets/Changed.cs " },
             changeReceiptMode = 42,
             changeReceiptLimit = "10",
+            packageSourceVisibilityMode = 42,
+            profileApplicabilityMode = 42,
         }));
         Assert.Null(legacyBadTypes.ProjectPath);
         Assert.False(legacyBadTypes.Incremental);
@@ -229,6 +235,8 @@ public class ToolArgumentContractTests
         Assert.Equal(new[] { "Assets/Changed.cs" }, legacyBadTypes.AuthoritativeChangedFiles);
         Assert.Equal(AcceptedChangeReceiptMode.Summary, legacyBadTypes.EffectiveChangeReceipt.Mode);
         Assert.Equal(AcceptedChangeReceiptRequest.DefaultLimit, legacyBadTypes.EffectiveChangeReceipt.Limit);
+        Assert.Equal(PackageSourceVisibilityProjection.Summary, legacyBadTypes.EffectivePackageSourceVisibilityProjection);
+        Assert.Equal(ProfileApplicabilityProjection.Summary, legacyBadTypes.EffectiveProfileApplicabilityProjection);
 
         var explicitEmpty = ToolRequestBinder.BindAnalyze(JsonArgs(new
         {
@@ -243,13 +251,16 @@ public class ToolArgumentContractTests
     {
         var result = NewBinder().Validate(
             "lifeblood_analyze",
-            JsonArgs(new { changeReceiptMode = "verbose" }),
+            JsonArgs(new { changeReceiptMode = "verbose", profileApplicabilityMode = "verbose" }),
             ToolJsonCompatibilityMode.Strict);
 
         Assert.False(result.Accepted);
         Assert.Contains(result.Diagnostics, diagnostic =>
             diagnostic.Kind == "enumMismatch"
             && diagnostic.Argument == "changeReceiptMode");
+        Assert.Contains(result.Diagnostics, diagnostic =>
+            diagnostic.Kind == "enumMismatch"
+            && diagnostic.Argument == "profileApplicabilityMode");
     }
 
     [Fact]

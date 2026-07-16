@@ -599,6 +599,7 @@ public sealed class GraphSession : IDisposable
                        string[]? authoritativeChangedFiles = null,
                        AcceptedChangeReceiptRequest? acceptedChangeReceipt = null,
                        PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Summary,
+                       ProfileApplicabilityProjection profileApplicabilityProjection = ProfileApplicabilityProjection.Summary,
                        AnalysisKey? expectedAnalysisKey = null,
                        CancellationToken cancellationToken = default)
     {
@@ -637,6 +638,9 @@ public sealed class GraphSession : IDisposable
                     PackageSourceVisibilityMode = packageSourceVisibilityProjection == PackageSourceVisibilityProjection.Detail
                         ? "detail"
                         : null,
+                    ProfileApplicabilityMode = profileApplicabilityProjection == ProfileApplicabilityProjection.Detail
+                        ? "detail"
+                        : null,
                 });
                 if (expectedAnalysisKey != null)
                     EnsureExpectedAnalysisKey(expectedAnalysisKey, livePrepared.Identity);
@@ -648,6 +652,7 @@ public sealed class GraphSession : IDisposable
                         sourceControlSnapshot,
                         changeReceipt,
                         packageSourceVisibilityProjection,
+                        profileApplicabilityProjection,
                         requestedMode: "full",
                         fallbackReason: null,
                         fallbackDetail: null,
@@ -709,6 +714,7 @@ public sealed class GraphSession : IDisposable
                             packageSourceVisibility: committedAdapter?.PackageSourceVisibility,
                             profileApplicability: committedAdapter?.ProfileApplicability,
                             packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+                            profileApplicabilityProjection: profileApplicabilityProjection,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.AnalysisScopeChanged,
                             fallbackDetail: detail,
@@ -739,6 +745,7 @@ public sealed class GraphSession : IDisposable
                             packageSourceVisibility: committedAdapter?.PackageSourceVisibility,
                             profileApplicability: committedAdapter?.ProfileApplicability,
                             packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+                            profileApplicabilityProjection: profileApplicabilityProjection,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.CompilationStateUnavailable,
                             fallbackDetail: detail,
@@ -763,6 +770,7 @@ public sealed class GraphSession : IDisposable
                         authoritativeChangedFiles,
                         changeReceipt,
                         packageSourceVisibilityProjection,
+                        profileApplicabilityProjection,
                         expectedAnalysisKey,
                         cancellationToken);
                 }
@@ -790,6 +798,8 @@ public sealed class GraphSession : IDisposable
                         acceptedChanges: EmptyAcceptedChanges(authoritativeChangedFiles),
                         changeReceipt: changeReceipt,
                         skipped: null,
+                        packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+                        profileApplicabilityProjection: profileApplicabilityProjection,
                         requestedMode: "incremental",
                         fallbackReason: FallbackReason.NoPriorAnalysis,
                         fallbackDetail: noPriorDetail,
@@ -936,6 +946,7 @@ public sealed class GraphSession : IDisposable
                 sourceControlSnapshot,
                 changeReceipt,
                 packageSourceVisibilityProjection,
+                profileApplicabilityProjection,
                 fullRequestedMode,
                 fullFallbackReason,
                 fullFallbackDetail,
@@ -993,6 +1004,7 @@ public sealed class GraphSession : IDisposable
             packageSourceVisibility: candidateRoslynAdapter?.PackageSourceVisibility,
             profileApplicability: candidateRoslynAdapter?.ProfileApplicability,
             packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+            profileApplicabilityProjection: profileApplicabilityProjection,
             requestedMode: fullRequestedMode,
             fallbackReason: fullFallbackReason,
             fallbackDetail: fullFallbackDetail,
@@ -1013,6 +1025,7 @@ public sealed class GraphSession : IDisposable
         SourceControlSnapshot sourceControlSnapshot,
         AcceptedChangeReceiptRequest changeReceipt,
         PackageSourceVisibilityProjection packageSourceVisibilityProjection,
+        ProfileApplicabilityProjection profileApplicabilityProjection,
         string? requestedMode,
         FallbackReason? fallbackReason,
         string? fallbackDetail,
@@ -1035,6 +1048,7 @@ public sealed class GraphSession : IDisposable
             packageSourceVisibility: committed.RoslynAdapter?.PackageSourceVisibility,
             profileApplicability: committed.RoslynAdapter?.ProfileApplicability,
             packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+            profileApplicabilityProjection: profileApplicabilityProjection,
             requestedMode: requestedMode,
             fallbackReason: fallbackReason,
             fallbackDetail: fallbackDetail,
@@ -1059,6 +1073,7 @@ public sealed class GraphSession : IDisposable
         string[]? authoritativeChangedFiles,
         AcceptedChangeReceiptRequest changeReceipt,
         PackageSourceVisibilityProjection packageSourceVisibilityProjection,
+        ProfileApplicabilityProjection profileApplicabilityProjection,
         AnalysisKey? expectedAnalysisKey,
         CancellationToken cancellationToken)
     {
@@ -1116,6 +1131,7 @@ public sealed class GraphSession : IDisposable
                     packageSourceVisibility: committed.RoslynAdapter?.PackageSourceVisibility,
                     profileApplicability: committed.RoslynAdapter?.ProfileApplicability,
                     packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+                    profileApplicabilityProjection: profileApplicabilityProjection,
                     requestedMode: "incremental",
                     fallbackReason: incremental.Reason,
                     fallbackDetail: incremental.Detail,
@@ -1178,6 +1194,7 @@ public sealed class GraphSession : IDisposable
                         packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
                         profileApplicability: candidateAdapter.ProfileApplicability,
                         packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+                        profileApplicabilityProjection: profileApplicabilityProjection,
                         requestedMode: "incremental",
                         activeProfiles: incrActiveProfiles,
                         projectPath: projectPath,
@@ -1210,6 +1227,7 @@ public sealed class GraphSession : IDisposable
                     packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
                     profileApplicability: candidateAdapter.ProfileApplicability,
                     packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+                    profileApplicabilityProjection: profileApplicabilityProjection,
                     requestedMode: "incremental",
                     activeProfiles: incrActiveProfiles,
                     projectPath: projectPath,
@@ -1288,6 +1306,7 @@ public sealed class GraphSession : IDisposable
                 packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
                 profileApplicability: candidateAdapter.ProfileApplicability,
                 packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+                profileApplicabilityProjection: profileApplicabilityProjection,
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
                 fallbackDetail: incremental.Detail,
@@ -1327,6 +1346,7 @@ public sealed class GraphSession : IDisposable
         PackageSourceVisibilityReport? packageSourceVisibility = null,
         ProfileApplicabilityReport? profileApplicability = null,
         PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Summary,
+        ProfileApplicabilityProjection profileApplicabilityProjection = ProfileApplicabilityProjection.Summary,
         string? requestedMode = null,
         FallbackReason? fallbackReason = null,
         string? fallbackDetail = null,
@@ -1431,7 +1451,9 @@ public sealed class GraphSession : IDisposable
             packageSourceVisibility = BuildPackageSourceVisibilityField(
                 packageSourceVisibility,
                 packageSourceVisibilityProjection),
-            profileApplicability = BuildProfileApplicabilityField(profileApplicability),
+            profileApplicability = BuildProfileApplicabilityField(
+                profileApplicability,
+                profileApplicabilityProjection),
             analysisIdentity = identity == null
                 ? null
                 : WorkspaceAnalysisDescriptor.From(identity),
@@ -1516,15 +1538,34 @@ public sealed class GraphSession : IDisposable
         };
     }
 
-    private static ProfileApplicabilityReport? BuildProfileApplicabilityField(
-        ProfileApplicabilityReport? report)
+    private static object? BuildProfileApplicabilityField(
+        ProfileApplicabilityReport? report,
+        ProfileApplicabilityProjection projection)
     {
         if (report == null)
             return null;
 
-        return report.Profiles.Length > 1 || report.HasExcludedModules
-            ? report
-            : null;
+        if (report.Profiles.Length <= 1 && !report.HasExcludedModules)
+            return null;
+
+        var includeModules = projection == ProfileApplicabilityProjection.Detail;
+        var modules = includeModules
+            ? report.Modules
+            : Array.Empty<ProfileApplicabilityModule>();
+        return new
+        {
+            mode = includeModules ? "detail" : "summary",
+            report.IsUnityWorkspace,
+            report.Profiles,
+            report.ModuleCount,
+            report.IncludedModuleCountsByProfile,
+            report.ExcludedModuleCountsByProfile,
+            report.HasExcludedModules,
+            returnedModuleCount = modules.Length,
+            omittedModuleCount = report.Modules.Length - modules.Length,
+            truncated = report.Modules.Length > modules.Length,
+            modules,
+        };
     }
 
     /// <summary>INV-MULTI-DEFINE-ANALYZE-001 per-profile edge count summary.</summary>
@@ -1636,6 +1677,12 @@ public sealed class GraphSession : IDisposable
                     : "change-receipt-summary",
                 request.EffectiveChangeReceipt.Limit.ToString(
                     System.Globalization.CultureInfo.InvariantCulture),
+                request.EffectivePackageSourceVisibilityProjection == PackageSourceVisibilityProjection.Detail
+                    ? "package-visibility-detail"
+                    : "package-visibility-summary",
+                request.EffectiveProfileApplicabilityProjection == ProfileApplicabilityProjection.Detail
+                    ? "profile-applicability-detail"
+                    : "profile-applicability-summary",
                 NormalizeExecutionPath(null, projectPath),
                 NormalizeExecutionPath(null, graphPath),
                 effectiveRulesSource ?? "",
