@@ -184,6 +184,16 @@ public sealed class ToolDefinition
   public required ToolBehavior Behavior { get; init; }
 
   /// <summary>
+  /// Optional per-call behavior resolver for action-based tools. The registry
+  /// still owns the policy; dispatch asks this definition for the call's
+  /// effective behavior instead of branching on tool names.
+  /// </summary>
+  public Func<JsonElement?, ToolBehavior>? CallBehavior { get; init; }
+
+  public ToolBehavior ResolveCallBehavior(JsonElement? arguments)
+    => CallBehavior?.Invoke(arguments) ?? Behavior;
+
+  /// <summary>
   /// Backward-compatible read/write projection. This is derived, never
   /// registered independently, so it cannot drift from the retained-state
   /// requirement that the old labels represented.
