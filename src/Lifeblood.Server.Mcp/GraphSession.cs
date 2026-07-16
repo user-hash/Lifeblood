@@ -598,7 +598,7 @@ public sealed class GraphSession : IDisposable
                        string[]? excludePaths = null,
                        string[]? authoritativeChangedFiles = null,
                        AcceptedChangeReceiptRequest? acceptedChangeReceipt = null,
-                       PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Detail,
+                       PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Summary,
                        AnalysisKey? expectedAnalysisKey = null,
                        CancellationToken cancellationToken = default)
     {
@@ -1326,7 +1326,7 @@ public sealed class GraphSession : IDisposable
         IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null,
         PackageSourceVisibilityReport? packageSourceVisibility = null,
         ProfileApplicabilityReport? profileApplicability = null,
-        PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Detail,
+        PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Summary,
         string? requestedMode = null,
         FallbackReason? fallbackReason = null,
         string? fallbackDetail = null,

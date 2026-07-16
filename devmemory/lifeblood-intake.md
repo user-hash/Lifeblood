@@ -1178,9 +1178,21 @@ Resolution evidence:
 - Added package visibility tests for default summary shape, explicit detail
   shape, an 80-file package summary response under 8 KB, and detail capping at
   64 files/package.
+- 2026-07-16 follow-up: reproduced the remaining direct/shared session leak
+  where `GraphSession.Load` still defaulted to detail even when
+  `acceptedChangeReceipt` was summary-oriented. The session contract now
+  defaults to `PackageSourceVisibilityProjection.Summary`; direct callers and
+  shared-daemon internal paths must opt into `Detail` exactly like MCP callers.
+- Added
+  `PackageSourceVisibilityTests.IncrementalAnalyze_DefaultSessionPackageVisibilitySummaryOmitsPerFileInventory`
+  so a synthetic 80-file package stays summary-only across full + incremental
+  session calls unless detail is explicitly requested.
 - Focused verification:
   `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~PackageSourceVisibilityTests`
   passed 8/8.
+- Follow-up verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj --filter PackageSourceVisibilityTests`
+  passed 9/9, and the wider analyze/session/shared gate passed 84/84.
 
 ## LB-INTAKE-20260716-040 - Stable Git tag provenance ignores four-part release tags
 

@@ -45,7 +45,8 @@ public sealed class PackageSourceVisibilityTests : IDisposable
             _root,
             graphPath: null,
             rulesPath: null,
-            excludePaths: new[] { "Packages/com.acme.tools/Editor/*" });
+            excludePaths: new[] { "Packages/com.acme.tools/Editor/*" },
+            packageSourceVisibilityProjection: PackageSourceVisibilityProjection.Detail);
         using var document = JsonDocument.Parse(json);
 
         var visibility = document.RootElement.GetProperty("packageSourceVisibility");
@@ -103,6 +104,41 @@ public sealed class PackageSourceVisibilityTests : IDisposable
         Assert.Equal(3, package.GetProperty("omittedFileCount").GetInt32());
         Assert.True(package.GetProperty("truncated").GetBoolean());
         Assert.Empty(package.GetProperty("files").EnumerateArray());
+    }
+
+    [Fact]
+    public void IncrementalAnalyze_DefaultSessionPackageVisibilitySummaryOmitsPerFileInventory()
+    {
+        WriteManyUnboundEmbeddedPackage(_root, "com.acme.large", fileCount: 80);
+        using var session = new GraphSession(_fs);
+
+        using var first = JsonDocument.Parse(session.Load(_root, graphPath: null, rulesPath: null));
+        var firstVisibility = first.RootElement.GetProperty("packageSourceVisibility");
+        var firstPackage = firstVisibility.GetProperty("packages").EnumerateArray()
+            .Single(item => item.GetProperty("name").GetString() == "com.acme.large");
+        Assert.Equal("summary", firstVisibility.GetProperty("mode").GetString());
+        Assert.Equal(0, firstPackage.GetProperty("returnedFileCount").GetInt32());
+
+        File.AppendAllText(
+            Path.Combine(_root, "Packages", "com.acme.tools", "Runtime", "Included.cs"),
+            " public sealed class IncludedSibling { }");
+
+        using var second = JsonDocument.Parse(session.Load(
+            _root,
+            graphPath: null,
+            rulesPath: null,
+            incremental: true,
+            acceptedChangeReceipt: AcceptedChangeReceiptRequest.Summary));
+        var secondVisibility = second.RootElement.GetProperty("packageSourceVisibility");
+        var secondPackage = secondVisibility.GetProperty("packages").EnumerateArray()
+            .Single(item => item.GetProperty("name").GetString() == "com.acme.large");
+
+        Assert.Equal("incremental", second.RootElement.GetProperty("mode").GetString());
+        Assert.Equal("summary", secondVisibility.GetProperty("mode").GetString());
+        Assert.Equal(80, secondPackage.GetProperty("sourceFileCount").GetInt32());
+        Assert.Equal(0, secondPackage.GetProperty("returnedFileCount").GetInt32());
+        Assert.Equal(80, secondPackage.GetProperty("omittedFileCount").GetInt32());
+        Assert.Empty(secondPackage.GetProperty("files").EnumerateArray());
     }
 
     [Fact]
