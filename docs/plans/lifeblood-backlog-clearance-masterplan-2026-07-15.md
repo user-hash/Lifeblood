@@ -464,6 +464,14 @@ until a frozen DAWG Editor+Player publication proves the default generated
 baseline path, exact snapshot/generation preconditions, refresh guidance, and
 zero additional semantic bases on the motivating workspace.
 
+`LB-INTAKE-20260714-032` implementation is repository-verified at the existing
+invariant-tool boundary. The Application audit remains the sole complete
+ledger; audit `summarize:true` filters its nonzero source rows at the MCP edge,
+stores that projection once in the citation-safe receipt, and returns a JSON
+reference from the top level. A 56-source zero-heavy fixture retains duplicate
+occurrences and parse warnings while staying inside the compact response
+budget. Lifecycle closure remains pending the frozen DAWG receipt.
+
 ### Wave 6 - Runtime Performance Evidence
 
 Covers `034`, `035`.

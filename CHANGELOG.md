@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Compact invariant-audit provenance.**
+  `lifeblood_invariant_check(mode:"audit", summarize:true)` preserves totals,
+  category counts, duplicate occurrences, parse warnings, and coverage while
+  projecting only nonzero source counts. The citation-safe receipt owns that
+  source projection once and the top level references it, eliminating the two
+  identical zero-heavy ledgers without changing the default v1 response.
+  (`INV-INVARIANT-002`, `LB-INTAKE-20260714-032`.)
+
 - **First-class generated-evidence drift verdict.**
   `lifeblood_evidence_drift` compares one workspace-contained Markdown stamp
   with the exact leased graph and a live invariant audit, after recapturing

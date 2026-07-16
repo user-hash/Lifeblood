@@ -208,7 +208,8 @@ public static class ToolInputContractCatalog
 
         yield return Contract(@"lifeblood_invariant_check",
             Arg(@"id", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Exact invariant id (e.g. 'INV-CANONICAL-001'). Mutually exclusive with 'mode'.", enumValues: Array.Empty<string>()),
-            Arg(@"mode", ToolArgumentType.String, required: false, arrayItemType: null, description: @"'audit' (default) or 'list'. Mutually exclusive with 'id'.", enumValues: Array.Empty<string>())
+            Arg(@"mode", ToolArgumentType.String, required: false, arrayItemType: null, description: @"'audit' (default) or 'list'. Mutually exclusive with 'id'.", enumValues: Array.Empty<string>()),
+            Arg(@"summarize", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"Audit mode only. When true, keep totals/categories/duplicates/warnings but emit nonzero source counts exactly once in evidenceReceipt.sourceProjection; the top level carries a reference instead of duplicating the source ledger. Default false preserves the full v1 response.", enumValues: Array.Empty<string>())
         );
 
         yield return Contract(@"lifeblood_authority_report",

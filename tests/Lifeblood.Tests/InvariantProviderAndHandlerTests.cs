@@ -304,10 +304,17 @@ public class InvariantProviderAndHandlerTests : IDisposable
 
         Assert.Null(result.IsError);
         var text = result.Content[0].Text;
+        using var document = JsonDocument.Parse(text);
+        var root = document.RootElement;
         Assert.Contains("\"mode\": \"audit\"", text);
         Assert.Contains("\"totalCount\": 2", text);
-        Assert.Contains("\"sourcePaths\":", text);
-        Assert.Contains("\"sourceCounts\":", text);
+        Assert.True(root.TryGetProperty("sourcePaths", out _));
+        Assert.True(root.TryGetProperty("sourceCounts", out _));
+        var receipt = root.GetProperty("evidenceReceipt");
+        Assert.True(receipt.TryGetProperty("sourcePaths", out _));
+        Assert.True(receipt.TryGetProperty("sourceCounts", out _));
+        Assert.False(root.TryGetProperty("summarize", out _));
+        Assert.False(receipt.TryGetProperty("sourceProjection", out _));
         Assert.Contains("\"evidenceReceipt\":", text);
         Assert.Contains("\"kind\": \"lifeblood.invariant_audit\"", text);
         Assert.Contains("\"doNotCite\":", text);
@@ -315,6 +322,82 @@ public class InvariantProviderAndHandlerTests : IDisposable
         // the two categories derived from the invariants' id prefixes.
         Assert.Contains("\"category\": \"FOO\"", text);
         Assert.Contains("\"category\": \"BAR\"", text);
+    }
+
+    [Fact]
+    public void Handle_InvariantCheck_Summarize_ProjectsZeroHeavySourcesOnce()
+    {
+        CreateMinimalRoslynWorkspace();
+        var invariantDir = Path.Combine(_tempDir, "docs", "invariants");
+        Directory.CreateDirectory(invariantDir);
+        for (var index = 0; index < 55; index++)
+        {
+            File.WriteAllText(
+                Path.Combine(invariantDir, $"routing-{index:D2}.md"),
+                "# Routing page\n\nNo parser-recognized declarations live here.\n");
+        }
+        File.WriteAllText(
+            Path.Combine(invariantDir, "declared.md"),
+            "- **INV-COMPACT-001. Canonical rule.** first declaration.\n" +
+            "- **INV-COMPACT-001. Duplicate rule.** second declaration.\n" +
+            "**INV-WARN-002: Unclosed title\n");
+        var handler = CreateHandlerWithFreshSession();
+        Assert.Null(handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = _tempDir })).IsError);
+
+        var fullText = handler.Handle("lifeblood_invariant_check", null).Content[0].Text;
+        var result = handler.Handle(
+            "lifeblood_invariant_check",
+            MakeArgs(new { mode = "audit", summarize = true }));
+
+        Assert.Null(result.IsError);
+        var compactText = result.Content[0].Text;
+        using var document = JsonDocument.Parse(compactText);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("summarize").GetBoolean());
+        Assert.Equal("nonzero", root.GetProperty("sourceMode").GetString());
+        Assert.Equal(
+            "$.evidenceReceipt.sourceProjection",
+            root.GetProperty("sourceProjectionReference").GetString());
+        Assert.False(root.TryGetProperty("sourcePaths", out _));
+        Assert.False(root.TryGetProperty("sourceCounts", out _));
+
+        var receipt = root.GetProperty("evidenceReceipt");
+        Assert.False(receipt.TryGetProperty("sourcePaths", out _));
+        Assert.False(receipt.TryGetProperty("sourceCounts", out _));
+        var projection = receipt.GetProperty("sourceProjection");
+        Assert.Equal("nonzero", projection.GetProperty("mode").GetString());
+        Assert.Equal(56, projection.GetProperty("discoveredSourceCount").GetInt32());
+        Assert.Equal(1, projection.GetProperty("returnedSourceCount").GetInt32());
+        Assert.Equal(55, projection.GetProperty("zeroDeclarationSourceCount").GetInt32());
+        Assert.Equal(55, projection.GetProperty("omittedSourceCount").GetInt32());
+        Assert.False(projection.GetProperty("truncated").GetBoolean());
+        var source = Assert.Single(projection.GetProperty("sourceCounts").EnumerateArray());
+        Assert.EndsWith("declared.md", source.GetProperty("sourcePath").GetString());
+        Assert.Equal(3, source.GetProperty("count").GetInt32());
+        var duplicate = Assert.Single(root.GetProperty("duplicates").EnumerateArray());
+        Assert.Equal(2, duplicate.GetProperty("occurrences").GetArrayLength());
+        Assert.Single(root.GetProperty("parseWarnings").EnumerateArray());
+        Assert.True(compactText.Length < fullText.Length);
+        Assert.InRange(compactText.Length, 1, 16_384);
+    }
+
+    [Fact]
+    public void Handle_InvariantCheck_SummarizeOutsideAudit_IsRejected()
+    {
+        CreateMinimalRoslynWorkspaceWithClaudeMd();
+        var handler = CreateHandlerWithFreshSession();
+        Assert.Null(handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = _tempDir })).IsError);
+
+        var result = handler.Handle(
+            "lifeblood_invariant_check",
+            MakeArgs(new { mode = "list", summarize = true }));
+
+        Assert.True(result.IsError);
+        Assert.Contains("only valid for invariant audit", result.Content[0].Text);
     }
 
     [Fact]
@@ -413,12 +496,16 @@ public class InvariantProviderAndHandlerTests : IDisposable
 
     private void CreateMinimalRoslynWorkspaceWithClaudeMd()
     {
+        CreateMinimalRoslynWorkspace();
         File.WriteAllText(Path.Combine(_tempDir, "CLAUDE.md"),
             "# Test project\n\n" +
             "## Invariants\n\n" +
             "- **INV-FOO-001**: first invariant body text.\n" +
             "- **INV-BAR-001**: second invariant body text.\n");
+    }
 
+    private void CreateMinimalRoslynWorkspace()
+    {
         File.WriteAllText(Path.Combine(_tempDir, "TestProject.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk\">\n" +
             "  <PropertyGroup>\n" +

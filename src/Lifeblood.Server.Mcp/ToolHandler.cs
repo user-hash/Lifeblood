@@ -1633,21 +1633,31 @@ public sealed class ToolHandler
     ///     lean — callers who need the body should query by id).</item>
     /// </list>
     ///
-    /// No graph required. The provider parses <c>CLAUDE.md</c> at the
-    /// loaded project root; callers who haven't run lifeblood_analyze
-    /// yet get a clear error rather than an empty response.
+    /// No graph required. The provider discovers the loaded project root's
+    /// agent files and invariant Markdown tree; callers who haven't run
+    /// lifeblood_analyze yet get a clear error rather than an empty response.
+    /// Audit <c>summarize:true</c> projects nonzero source rows once through
+    /// the citation receipt while preserving every actionable audit fact.
     /// </summary>
     private McpToolResult HandleInvariantCheck(JsonElement? args)
     {
         var projectRoot = _session.ProjectRoot;
         var id = WriteToolHandler.GetString(args, "id");
         var mode = WriteToolHandler.GetString(args, "mode");
+        var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
 
         // Exactly one of {id, mode} must be populated. Both → error,
         // neither → default to audit.
         if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(mode))
         {
             return ErrorResult("Specify exactly one of 'id' or 'mode', not both.");
+        }
+        if (summarize
+            && (!string.IsNullOrEmpty(id)
+                || (!string.IsNullOrEmpty(mode)
+                    && !string.Equals(mode, "audit", System.StringComparison.OrdinalIgnoreCase))))
+        {
+            return ErrorResult("summarize is only valid for invariant audit mode.");
         }
 
         if (!string.IsNullOrEmpty(id))
@@ -1674,6 +1684,31 @@ public sealed class ToolHandler
         if (string.IsNullOrEmpty(mode) || string.Equals(mode, "audit", System.StringComparison.OrdinalIgnoreCase))
         {
             var audit = _invariants.Audit(projectRoot);
+            if (summarize)
+            {
+                return TextResult(WithEnvelope("lifeblood_invariant_check", new
+                {
+                    mode = "audit",
+                    summarize = true,
+                    sourceMode = "nonzero",
+                    audit.SourcePath,
+                    audit.TotalCount,
+                    audit.DeclaredCount,
+                    audit.DuplicateDeclarationCount,
+                    audit.CategoryCounts,
+                    audit.Duplicates,
+                    audit.ParseWarnings,
+                    sourceProjectionReference = "$.evidenceReceipt.sourceProjection",
+                    audit.Coverage,
+                    audit.CoverageWarnings,
+                    evidenceReceipt = ServerIdentity.BuildInvariantEvidenceReceipt(
+                        projectRoot,
+                        audit,
+                        _session.SourceControl,
+                        summarize: true),
+                }));
+            }
+
             return TextResult(WithEnvelope("lifeblood_invariant_check", new
             {
                 mode = "audit",
