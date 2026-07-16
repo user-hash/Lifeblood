@@ -16,6 +16,8 @@ the MCP server.
 
 - **INV-STREAM-005**: `GraphBuilder.Build()` deduplicates ALL edges by `(sourceId, targetId, kind)`. Partial classes emit duplicate edges. The builder is the authoritative dedup boundary.
 
+- **INV-STREAM-006. Compact PE emission is an optimization, never an analysis availability boundary.**
+
 ## Derived File Edges
 
 - **INV-FILE-EDGE-001**: `GraphBuilder.Build()` derives file-level `References` edges from symbol-level edges. For each non-Contains edge between symbols in different files, a `file:X → file:Y References` edge is emitted with an `edgeCount` property. Evidence: `Inferred`, adapter: `GraphBuilder`. File edges are derived truth. Not primary.
