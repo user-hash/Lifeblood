@@ -58,7 +58,22 @@ public sealed class OperationControlContext
 {
     public required string Kind { get; init; }
     public string? Condition { get; init; }
+    public OperationValueFact? ConditionValue { get; init; }
+    public string[] Operators { get; init; } = Array.Empty<string>();
+    public OperationControlPredicate[] Predicates { get; init; } = Array.Empty<OperationControlPredicate>();
     public required OperationSourceSpan Source { get; init; }
+}
+
+/// <summary>
+/// One operator-local predicate inside a control condition. Keeping source
+/// symbols attached to their exact operator prevents a compound condition's
+/// unrelated comparison from being mistaken for a guard.
+/// </summary>
+public sealed class OperationControlPredicate
+{
+    public required string Operator { get; init; }
+    public string? Expression { get; init; }
+    public string[] SourceSymbolIds { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>Stable, adapter-neutral source occurrence.</summary>
@@ -78,6 +93,7 @@ public sealed class OperationFactQuery
     public string? ProfileScope { get; init; }
     public IReadOnlyList<string>? FilePaths { get; init; }
     public IReadOnlyList<string>? ContainingSymbolIds { get; init; }
+    public IReadOnlyList<string>? TargetSymbolIds { get; init; }
     public IReadOnlyList<string>? IncludeKinds { get; init; }
     public bool IncludeImplicit { get; init; }
     public int MaxFacts { get; init; } = 10_000;

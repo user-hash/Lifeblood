@@ -58,7 +58,11 @@ public sealed class OperationFactProviderTests
         Assert.Contains(
             "parameter:method:Acme.Engine.Run(float,bool)#0:input",
             argument.Value.SourceSymbolIds);
-        Assert.Contains(call.ControlContexts, context => context.Kind == OperationControlContextKind.Loop);
+        Assert.Contains(call.ControlContexts, context =>
+            context.Kind == OperationControlContextKind.Loop
+            && context.Predicates.Any(predicate =>
+                predicate.Operator == "LessThan"
+                && predicate.SourceSymbolIds.Any(id => id.EndsWith(":i", StringComparison.Ordinal))));
         Assert.Equal("Editor", receipt.ProfileScope);
         Assert.Equal(0, receipt.AdditionalSemanticBaseCount);
     }
@@ -82,7 +86,10 @@ public sealed class OperationFactProviderTests
         Assert.Contains("float", value.ConversionTypes);
         Assert.Contains(assignment.ControlContexts, context =>
             context.Kind == OperationControlContextKind.Branch
-            && context.Condition == "enabled");
+            && context.Condition == "enabled"
+            && context.ConditionValue != null
+            && context.ConditionValue.SourceSymbolIds.Contains(
+                "parameter:method:Acme.Engine.Run(float,bool)#1:enabled"));
     }
 
     [Fact]
@@ -177,6 +184,21 @@ public sealed class OperationFactProviderTests
 
         var secondFact = Assert.Single(allFacts, fact => fact.Source.FilePath.EndsWith("Second.cs", StringComparison.Ordinal));
         Assert.Equal(secondFact.Id, Assert.Single(filteredFacts).Id);
+    }
+
+    [Fact]
+    public void Scan_TargetFilterEmitsOnlyRequestedBoundTargets()
+    {
+        using var host = HostWith(Source);
+        var (facts, receipt) = Scan(host, new OperationFactQuery
+        {
+            TargetSymbolIds = new[] { "method:Acme.Engine.Sink(float)" },
+            IncludeKinds = new[] { OperationFactKind.Call },
+        });
+
+        Assert.Equal(3, facts.Length);
+        Assert.All(facts, fact => Assert.Equal("method:Acme.Engine.Sink(float)", fact.TargetSymbolId));
+        Assert.Equal(3, receipt.EmittedFactCount);
     }
 
     private static (OperationFact[] Facts, OperationFactScanReceipt Receipt) Scan(

@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Versioned semantic contracts now share one bounded stateless evaluator.**
+  Consumer-owned manifests declare operation-argument guards, external API
+  cost annotations, and exact suppressions. `ContractAuditEngine` derives one
+  target-filtered operation-fact query, fans that stream across every selected
+  rule family, counts the complete result, and retains only a deterministic
+  bounded finding/evidence projection. It adds no graph edge kind and no
+  retained semantic base. (`INV-CONTRACT-AUDIT-001`.)
 - **Occurrence-level semantic evidence now has one neutral streaming boundary.**
   `IOperationFactProvider` carries bounded call, argument, value-origin,
   assignment, member-access, conversion, allocation, and control-context facts
