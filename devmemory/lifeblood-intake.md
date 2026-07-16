@@ -1067,6 +1067,7 @@ Resolution evidence:
 
 Type: Bug
 Priority: Critical
+Status: Fixed locally on 2026-07-16; pending DAWG-scale release validation batch.
 Source: DAWG first-session field report, 2026-07-16; follow-up local repro did not yet deterministically trigger pipe loss
 Workspace: DAWG and Lifeblood self
 
@@ -1101,6 +1102,35 @@ Fix shape:
 - Keep snapshot identity immutable. If the graph identity is identical but the
   publication is new, the receipt must explain that distinction instead of
   relying on generation alone.
+
+Resolution evidence:
+- Added `GraphSessionPublicationTests.Load_FullAnalyzeWithSameIdentity_ReusesCurrentPublication`.
+  Pre-fix it reproduced duplicate publication by advancing generation from 1 to
+  2 for an identical full-analysis identity. Post-fix, the second call performs
+  a live identity preflight, skips full reanalysis when the current publication
+  already matches, preserves `snapshotId`/generation, reports
+  `publication.action:"reusedCurrent"`, and returns no full-analysis `usage`
+  block.
+- Added `GraphSessionPublicationTests.Load_FullAnalyzePreparedBeforeSourceEdit_RejectsInsteadOfReusingStalePublication`.
+  A caller-prepared key captured before a source edit now rejects through the
+  existing `AnalysisInputChangedException` contract instead of reusing stale
+  evidence.
+- `WorkspaceSnapshot` now carries the neutral `SourceControlSnapshot` captured
+  at publication time, so reused/current-publication responses do not recapture
+  current Git state and attach it to an older semantic graph.
+- Added `SharedMcpTransportProcessTests.DisconnectedAnalyzeWaiter_DoesNotPoisonSurvivingSharedWaiter`.
+  A real shared daemon with three proxies starts one analyze, admits a surviving
+  coalesced waiter, kills the first proxy, and proves the surviving waiter still
+  receives the generation-1 publication while the daemon remains alive.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~GraphSessionPublicationTests|FullyQualifiedName~UseCaseTests"`
+  passed 21/21.
+- Shared-process verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~SharedMcpTransportProcessTests.DisconnectedAnalyzeWaiter_DoesNotPoisonSurvivingSharedWaiter`
+  passed 1/1.
+- Final combined gate:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~GraphSessionPublicationTests|FullyQualifiedName~UseCaseTests|FullyQualifiedName~SharedMcpTransportProcessTests|FullyQualifiedName~AnalysisRequestCoordinatorTests|FullyQualifiedName~McpProtocolTests|FullyQualifiedName~ToolArgumentContractTests|FullyQualifiedName~DocsTests"`
+  passed 122/122.
 
 ## LB-INTAKE-20260716-039 - Analyze summary emits oversized package-source inventories
 

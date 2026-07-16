@@ -314,6 +314,60 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task DisconnectedAnalyzeWaiter_DoesNotPoisonSurvivingSharedWaiter()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll),
+            $"Server dll not found at {dll}. Run `dotnet build tests/Lifeblood.Tests` first.");
+
+        WriteCSharpWorkspace(fileCount: 500);
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var disappearingProxy = StartProxy(dll, pipeName, _tempDirectory);
+        await using var survivingProxy = StartProxy(dll, pipeName, _tempDirectory);
+        await using var observerProxy = StartProxy(dll, pipeName, _tempDirectory);
+        using var disappearingInitialize = await disappearingProxy.InitializeAsync();
+        using var survivingInitialize = await survivingProxy.InitializeAsync();
+        using var observerInitialize = await observerProxy.InitializeAsync();
+
+        var disappearingCall = disappearingProxy.CallToolAsync(
+            "lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = false },
+            TimeSpan.FromSeconds(90));
+        await WaitUntilSharedAnalyzeInFlightAsync(observerProxy);
+
+        var survivingCall = survivingProxy.CallToolAsync(
+            "lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = false },
+            TimeSpan.FromSeconds(90));
+        await Task.Delay(100);
+        await disappearingProxy.TerminateAsync();
+
+        using var survivingResponse = await survivingCall;
+        using var payload = McpProcessTestClient.ParseToolPayload(survivingResponse);
+
+        Assert.Equal("full", payload.RootElement.GetProperty("mode").GetString());
+        Assert.StartsWith(
+            "analysis_request_",
+            payload.RootElement.GetProperty("analysisRequestId").GetString(),
+            StringComparison.Ordinal);
+
+        try
+        {
+            using var ignored = await disappearingCall;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or TimeoutException)
+        {
+            // The first proxy is the intentionally broken pipe in this test.
+        }
+
+        var session = await ReadSessionAsync(observerProxy);
+        Assert.True(session.HasGraphLoaded);
+        Assert.Equal(1, session.AnalysisGeneration);
+        Assert.False(daemon.HasExited);
+    }
+
+    [SkippableFact]
     public async Task PersistentProxy_CancelledAnalyzeDoesNotPublishAndRetrySucceeds()
     {
         var dll = McpProcessTestClient.LocateServerDll();
@@ -688,7 +742,24 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
             status.GetProperty("mode").GetString() ?? "",
             status.GetProperty("protocolVersion").GetInt32(),
             status.GetProperty("daemonInstanceId").GetString() ?? "",
-            status.GetProperty("clientCount").GetInt32());
+            status.GetProperty("clientCount").GetInt32(),
+            status.GetProperty("inFlightAnalysisCount").GetInt32());
+    }
+
+    private static async Task WaitUntilSharedAnalyzeInFlightAsync(
+        McpProcessTestClient observerProxy)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            var status = await ReadSharedStatusAsync(observerProxy);
+            if (status.InFlightAnalysisCount > 0)
+                return;
+
+            await Task.Delay(50);
+        }
+
+        throw new TimeoutException("Shared daemon did not report an in-flight analyze.");
     }
 
     private readonly record struct SessionState(
@@ -701,5 +772,6 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         string Mode,
         int ProtocolVersion,
         string DaemonInstanceId,
-        int ClientCount);
+        int ClientCount,
+        int InFlightAnalysisCount);
 }

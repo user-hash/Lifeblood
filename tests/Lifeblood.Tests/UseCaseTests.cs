@@ -378,6 +378,9 @@ public class UseCaseTests
         var host = new StubCompilationHost();
         var executor = new StubCodeExecutor();
         var refactoring = new StubRefactoring();
+        var sourceControl = SourceControlSnapshot.Unavailable(
+            attemptedPath: "D:/repo",
+            source: "test");
         using var source = WorkspaceSnapshot.Create(
             graph,
             analysis,
@@ -388,7 +391,8 @@ public class UseCaseTests
             analysisGeneration: 7,
             host,
             executor,
-            refactoring);
+            refactoring,
+            sourceControl: sourceControl);
 
         using var replica = source.CreateGraphOnlyReplica();
 
@@ -396,6 +400,7 @@ public class UseCaseTests
         Assert.Same(analysis, replica.Analysis);
         Assert.Equal(source.SnapshotId, replica.SnapshotId);
         Assert.Equal(source.AnalysisGeneration, replica.AnalysisGeneration);
+        Assert.Equal(sourceControl, replica.SourceControl);
         Assert.True(source.RetainsSemanticServices);
         Assert.False(replica.RetainsSemanticServices);
         Assert.False(replica.HasCompilationState);

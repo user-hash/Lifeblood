@@ -549,7 +549,8 @@ public sealed class GraphSession : IDisposable
                         analysis,
                         identity,
                         DateTime.UtcNow,
-                        checked(committed.Workspace.AnalysisGeneration + 1));
+                        checked(committed.Workspace.AnalysisGeneration + 1),
+                        committed.Workspace.SourceControl);
                 }
                 else
                 {
@@ -566,7 +567,8 @@ public sealed class GraphSession : IDisposable
                         newCompilationHost,
                         newCodeExecutor,
                         newRefactoring,
-                        identity: identity);
+                        identity: identity,
+                        sourceControl: committed.Workspace.SourceControl);
                 }
                 Commit(new CommittedGraphSessionState(
                     workspace,
@@ -607,6 +609,62 @@ public sealed class GraphSession : IDisposable
         var fullRequestedMode = "full";
         FallbackReason? fullFallbackReason = null;
         string? fullFallbackDetail = null;
+
+        if (!incremental
+            && committed.Workspace.Identity != null
+            && committed.Workspace.Graph != null
+            && committed.Workspace.Analysis != null)
+        {
+            try
+            {
+                var livePrepared = PrepareAnalysis(new AnalyzeToolRequest
+                {
+                    ProjectPath = projectPath,
+                    GraphPath = graphPath,
+                    RulesPath = rulesPath,
+                    Incremental = false,
+                    ReadOnly = readOnly,
+                    DefineProfiles = defineProfiles,
+                    ExcludePaths = excludePaths,
+                    AuthoritativeChangedFiles = authoritativeChangedFiles,
+                    ChangeReceiptMode = acceptedChangeReceipt?.Mode == AcceptedChangeReceiptMode.Detail
+                        ? "detail"
+                        : null,
+                    ChangeReceiptLimit = acceptedChangeReceipt?.Limit,
+                    PackageSourceVisibilityMode = packageSourceVisibilityProjection == PackageSourceVisibilityProjection.Detail
+                        ? "detail"
+                        : null,
+                });
+                if (expectedAnalysisKey != null)
+                    EnsureExpectedAnalysisKey(expectedAnalysisKey, livePrepared.Identity);
+                if (committed.Workspace.Identity == livePrepared.Identity)
+                {
+                    return BuildCurrentPublicationReuseResult(
+                        committed,
+                        usage: null,
+                        sourceControlSnapshot,
+                        changeReceipt,
+                        packageSourceVisibilityProjection,
+                        requestedMode: "full",
+                        fallbackReason: null,
+                        fallbackDetail: null,
+                        projectPath,
+                        graphPath,
+                        rulesPath);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // Fall through to the normal analyze path so the established
+                // structured validation / analysis-input-changed handling owns
+                // the response shape. The fast reuse path must never turn a
+                // live-input change into stale evidence.
+            }
+        }
 
         // Incremental path: reuse existing adapter, only recompile changed modules.
         // INV-ANALYZE-FALLBACK-001: caller's allowFullFallback flag flows through
@@ -863,6 +921,24 @@ public sealed class GraphSession : IDisposable
                 resolvedRuleSet.Identity);
         EnsureExpectedAnalysisKey(expectedAnalysisKey, identity);
 
+        if (committed.Workspace.Identity == identity
+            && committed.Workspace.Graph != null
+            && committed.Workspace.Analysis != null)
+        {
+            return BuildCurrentPublicationReuseResult(
+                committed,
+                usage,
+                sourceControlSnapshot,
+                changeReceipt,
+                packageSourceVisibilityProjection,
+                fullRequestedMode,
+                fullFallbackReason,
+                fullFallbackDetail,
+                projectPath,
+                graphPath,
+                resolvedRuleSet.Source);
+        }
+
         if (candidateRoslynAdapter != null)
         {
             (newCompilationHost, newCodeExecutor, newRefactoring) =
@@ -872,12 +948,13 @@ public sealed class GraphSession : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         // Publish the complete host + Application state through one reference.
+        WorkspaceSnapshot publishedWorkspace;
         using (TelemetryPhase("session-commit"))
         {
             var context = string.IsNullOrEmpty(candidateProjectPath)
                 ? null
                 : new WorkspaceContext(candidateProjectPath);
-            var workspace = WorkspaceSnapshot.Create(
+            publishedWorkspace = WorkspaceSnapshot.Create(
                 graph,
                 analysis,
                 capability,
@@ -888,9 +965,10 @@ public sealed class GraphSession : IDisposable
                 newCompilationHost,
                 newCodeExecutor,
                 newRefactoring,
-                identity: identity);
+                identity: identity,
+                sourceControl: sourceControlSnapshot);
             Commit(new CommittedGraphSessionState(
-                workspace,
+                publishedWorkspace,
                 candidateRoslynAdapter,
                 resolvedRuleSet,
                 candidateExcludePaths));
@@ -916,7 +994,52 @@ public sealed class GraphSession : IDisposable
             projectPath: projectPath,
             graphPath: graphPath,
             rulesPath: resolvedRuleSet.Source,
-            identity: identity);
+            identity: identity,
+            publicationAction: "published",
+            publicationSnapshotId: publishedWorkspace.SnapshotId,
+            publicationAnalysisGeneration: publishedWorkspace.AnalysisGeneration,
+            sameAnalysisIdentity: false);
+    }
+
+    private static string BuildCurrentPublicationReuseResult(
+        CommittedGraphSessionState committed,
+        AnalysisUsage? usage,
+        SourceControlSnapshot sourceControlSnapshot,
+        AcceptedChangeReceiptRequest changeReceipt,
+        PackageSourceVisibilityProjection packageSourceVisibilityProjection,
+        string? requestedMode,
+        FallbackReason? fallbackReason,
+        string? fallbackDetail,
+        string? projectPath,
+        string? graphPath,
+        string? rulesPath)
+    {
+        var activeProfiles = committed.RoslynAdapter?.RetainedProfileNames is { Count: > 1 } names
+            ? names.ToArray()
+            : null;
+        return BuildLoadResult(
+            mode: "full",
+            graph: committed.Workspace.Graph,
+            analysis: committed.Workspace.Analysis,
+            usage: usage,
+            sourceControl: committed.Workspace.SourceControl ?? sourceControlSnapshot,
+            acceptedChanges: null,
+            changeReceipt: changeReceipt,
+            skipped: committed.RoslynAdapter?.SkippedFiles,
+            packageSourceVisibility: committed.RoslynAdapter?.PackageSourceVisibility,
+            packageSourceVisibilityProjection: packageSourceVisibilityProjection,
+            requestedMode: requestedMode,
+            fallbackReason: fallbackReason,
+            fallbackDetail: fallbackDetail,
+            activeProfiles: activeProfiles,
+            projectPath: projectPath,
+            graphPath: graphPath,
+            rulesPath: rulesPath ?? committed.RuleSet.Source,
+            identity: committed.Workspace.Identity,
+            publicationAction: "reusedCurrent",
+            publicationSnapshotId: committed.Workspace.SnapshotId,
+            publicationAnalysisGeneration: committed.Workspace.AnalysisGeneration,
+            sameAnalysisIdentity: true);
     }
 
     private string LoadIncremental(
@@ -1018,13 +1141,15 @@ public sealed class GraphSession : IDisposable
                     cancellationToken.ThrowIfCancellationRequested();
                     capture.MarkPhase("rules-analyze");
 
+                    WorkspaceSnapshot workspace;
                     using (TelemetryPhase("incremental-session-commit"))
                     {
-                        var workspace = committed.Workspace.DeriveAnalysis(
+                        workspace = committed.Workspace.DeriveAnalysis(
                             refreshedAnalysis,
                             candidateIdentity,
                             DateTime.UtcNow,
-                            checked(committed.Workspace.AnalysisGeneration + 1));
+                            checked(committed.Workspace.AnalysisGeneration + 1),
+                            sourceControlSnapshot);
                         Commit(new CommittedGraphSessionState(
                             workspace,
                             candidateAdapter,
@@ -1048,7 +1173,11 @@ public sealed class GraphSession : IDisposable
                         activeProfiles: incrActiveProfiles,
                         projectPath: projectPath,
                         rulesPath: effectiveRuleSet.Source,
-                        identity: candidateIdentity);
+                        identity: candidateIdentity,
+                        publicationAction: "published",
+                        publicationSnapshotId: workspace.SnapshotId,
+                        publicationAnalysisGeneration: workspace.AnalysisGeneration,
+                        sameAnalysisIdentity: false);
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -1075,7 +1204,11 @@ public sealed class GraphSession : IDisposable
                     activeProfiles: incrActiveProfiles,
                     projectPath: projectPath,
                     rulesPath: effectiveRuleSet.Source,
-                    identity: committed.Workspace.Identity);
+                    identity: committed.Workspace.Identity,
+                    publicationAction: "reusedCurrent",
+                    publicationSnapshotId: committed.Workspace.SnapshotId,
+                    publicationAnalysisGeneration: committed.Workspace.AnalysisGeneration,
+                    sameAnalysisIdentity: true);
             }
 
             // Validate the rebuilt graph
@@ -1103,9 +1236,10 @@ public sealed class GraphSession : IDisposable
 
             cancellationToken.ThrowIfCancellationRequested();
 
+            WorkspaceSnapshot publishedWorkspace;
             using (TelemetryPhase("incremental-session-commit"))
             {
-                var workspace = WorkspaceSnapshot.Create(
+                publishedWorkspace = WorkspaceSnapshot.Create(
                     graph,
                     analysis,
                     candidateAdapter.Capability,
@@ -1116,9 +1250,10 @@ public sealed class GraphSession : IDisposable
                     newCompilationHost,
                     newCodeExecutor,
                     newRefactoring,
-                    identity: candidateIdentity);
+                    identity: candidateIdentity,
+                    sourceControl: sourceControlSnapshot);
                 Commit(new CommittedGraphSessionState(
-                    workspace,
+                    publishedWorkspace,
                     candidateAdapter,
                     effectiveRuleSet,
                     config.ExcludePathGlobs));
@@ -1148,7 +1283,11 @@ public sealed class GraphSession : IDisposable
                 activeProfiles: incrActiveProfiles,
                 projectPath: projectPath,
                 rulesPath: effectiveRuleSet.Source,
-                identity: candidateIdentity);
+                identity: candidateIdentity,
+                publicationAction: "published",
+                publicationSnapshotId: publishedWorkspace.SnapshotId,
+                publicationAnalysisGeneration: publishedWorkspace.AnalysisGeneration,
+                sameAnalysisIdentity: false);
         }
         catch
         {
@@ -1184,7 +1323,11 @@ public sealed class GraphSession : IDisposable
         string? projectPath = null,
         string? graphPath = null,
         string? rulesPath = null,
-        WorkspaceAnalysisIdentity? identity = null)
+        WorkspaceAnalysisIdentity? identity = null,
+        string? publicationAction = null,
+        SnapshotId? publicationSnapshotId = null,
+        long? publicationAnalysisGeneration = null,
+        bool sameAnalysisIdentity = false)
     {
         var changedFileCount = acceptedChanges?.ChangedFileCount;
         var mtimeTouchedFileCount = acceptedChanges?.MtimeTouchedFileCount;
@@ -1256,6 +1399,13 @@ public sealed class GraphSession : IDisposable
             fallbackDetail,
             canRetryFull,
             suggestedRetry,
+            publication = graph == null ? null : new
+            {
+                action = publicationAction ?? "unknown",
+                snapshotId = publicationSnapshotId?.Value ?? "",
+                analysisGeneration = publicationAnalysisGeneration,
+                sameAnalysisIdentity,
+            },
             // Legacy field — kept for back-compat with callers that
             // already read it. The signal is split into the two named
             // fields below; new callers should prefer those.

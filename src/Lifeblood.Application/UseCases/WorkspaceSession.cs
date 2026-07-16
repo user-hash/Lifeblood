@@ -93,7 +93,8 @@ public sealed class WorkspaceSession
             refactoring,
             workspaceOps,
             snapshotId: current.SnapshotId,
-            identity: current.Identity));
+            identity: current.Identity,
+            sourceControl: current.SourceControl));
     }
 
     /// <summary>
