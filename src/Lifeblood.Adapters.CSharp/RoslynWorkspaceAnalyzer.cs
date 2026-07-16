@@ -1337,6 +1337,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             ProfileScope = profileScope,
             FilePaths = source.FilePaths,
             ContainingSymbolIds = source.ContainingSymbolIds,
+            TargetSymbolIds = source.TargetSymbolIds,
             IncludeKinds = source.IncludeKinds,
             IncludeImplicit = source.IncludeImplicit,
             MaxFacts = maxFacts,

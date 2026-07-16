@@ -59,6 +59,10 @@ internal sealed class RoslynOperationFactProvider
             query.ContainingSymbolIds,
             value => value,
             StringComparer.Ordinal);
+        var targetFilter = NormalizeSet(
+            query.TargetSymbolIds,
+            value => value,
+            StringComparer.Ordinal);
         var kindFilter = NormalizeSet(
             query.IncludeKinds,
             value => value,
@@ -100,6 +104,7 @@ internal sealed class RoslynOperationFactProvider
                             moduleName,
                             query,
                             containingFilter,
+                            targetFilter,
                             kindFilter,
                             visited,
                             consume,
@@ -153,6 +158,7 @@ internal sealed class RoslynOperationFactProvider
         string moduleName,
         OperationFactQuery query,
         HashSet<string>? containingFilter,
+        HashSet<string>? targetFilter,
         HashSet<string>? kindFilter,
         HashSet<IOperation> visited,
         Func<OperationFact, bool> consume,
@@ -172,6 +178,8 @@ internal sealed class RoslynOperationFactProvider
         if (fact != null
             && (query.IncludeImplicit || !fact.IsImplicit)
             && (containingFilter is not { Count: > 0 } || containingFilter.Contains(fact.ContainingSymbolId))
+            && (targetFilter is not { Count: > 0 }
+                || (fact.TargetSymbolId != null && targetFilter.Contains(fact.TargetSymbolId)))
             && (kindFilter is not { Count: > 0 } || kindFilter.Contains(fact.Kind)))
         {
             if (emittedFacts >= query.MaxFacts)
@@ -197,6 +205,7 @@ internal sealed class RoslynOperationFactProvider
                     moduleName,
                     query,
                     containingFilter,
+                    targetFilter,
                     kindFilter,
                     visited,
                     consume,
@@ -568,20 +577,20 @@ internal sealed class RoslynOperationFactProvider
         for (var parent = operation.Parent; parent != null; parent = parent.Parent)
         {
             string? kind = null;
-            string? condition = null;
+            IOperation? conditionOperation = null;
             switch (parent)
             {
                 case IConditionalOperation conditional:
                     kind = OperationControlContextKind.Branch;
-                    condition = Clip(conditional.Condition.Syntax.ToString());
+                    conditionOperation = conditional.Condition;
                     break;
                 case ILoopOperation loop:
                     kind = OperationControlContextKind.Loop;
-                    condition = Clip(LoopCondition(loop)?.Syntax.ToString());
+                    conditionOperation = LoopCondition(loop);
                     break;
                 case ISwitchOperation switchOperation:
                     kind = OperationControlContextKind.Switch;
-                    condition = Clip(switchOperation.Value.Syntax.ToString());
+                    conditionOperation = switchOperation.Value;
                     break;
                 case ITryOperation:
                     kind = OperationControlContextKind.Try;
@@ -602,13 +611,74 @@ internal sealed class RoslynOperationFactProvider
                 contexts.Add(new OperationControlContext
                 {
                     Kind = kind,
-                    Condition = condition,
+                    Condition = Clip(conditionOperation?.Syntax.ToString()),
+                    ConditionValue = conditionOperation == null ? null : DescribeValue(conditionOperation),
+                    Operators = conditionOperation == null
+                        ? Array.Empty<string>()
+                        : CollectOperators(conditionOperation),
+                    Predicates = conditionOperation == null
+                        ? Array.Empty<OperationControlPredicate>()
+                        : CollectPredicates(conditionOperation),
                     Source = SourceSpan(parent.Syntax),
                 });
             }
         }
         contexts.Reverse();
         return contexts.ToArray();
+    }
+
+    private static string[] CollectOperators(IOperation operation)
+    {
+        var result = new List<string>();
+        CollectOperators(operation, result);
+        return result.Distinct(StringComparer.Ordinal).ToArray();
+    }
+
+    private static void CollectOperators(IOperation operation, List<string> result)
+    {
+        switch (operation)
+        {
+            case IBinaryOperation binary:
+                result.Add(binary.OperatorKind.ToString());
+                break;
+            case IUnaryOperation unary:
+                result.Add(unary.OperatorKind.ToString());
+                break;
+        }
+
+        foreach (var child in operation.ChildOperations)
+            CollectOperators(child, result);
+    }
+
+    private static OperationControlPredicate[] CollectPredicates(IOperation operation)
+    {
+        var result = new List<OperationControlPredicate>();
+        CollectPredicates(operation, result);
+        return result.ToArray();
+    }
+
+    private static void CollectPredicates(IOperation operation, List<OperationControlPredicate> result)
+    {
+        var operatorName = operation switch
+        {
+            IBinaryOperation binary => binary.OperatorKind.ToString(),
+            IUnaryOperation unary => unary.OperatorKind.ToString(),
+            _ => null,
+        };
+        if (operatorName != null)
+        {
+            var symbols = new List<string>();
+            CollectSourceSymbols(operation, symbols, new HashSet<string>(StringComparer.Ordinal));
+            result.Add(new OperationControlPredicate
+            {
+                Operator = operatorName,
+                Expression = Clip(operation.Syntax.ToString()),
+                SourceSymbolIds = symbols.ToArray(),
+            });
+        }
+
+        foreach (var child in operation.ChildOperations)
+            CollectPredicates(child, result);
     }
 
     private static IOperation? LoopCondition(ILoopOperation loop) => loop switch
