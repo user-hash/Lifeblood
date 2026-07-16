@@ -65,6 +65,14 @@
         "summary",
         "detail"
       ]
+    },
+    "profileApplicabilityMode": {
+      "type": "string",
+      "description": "Define-profile module-applicability projection. \u0060summary\u0060 (default) returns profile/module counts without the per-module ledger; \u0060detail\u0060 returns the module ledger with project file, UnityProjectType, included/excluded profiles, and exclusion reasons.",
+      "enum": [
+        "summary",
+        "detail"
+      ]
     }
   }
 }

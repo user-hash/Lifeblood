@@ -805,6 +805,7 @@ public sealed class ToolHandler
                 request.AuthoritativeChangedFiles,
                 request.EffectiveChangeReceipt,
                 request.EffectivePackageSourceVisibilityProjection,
+                request.EffectiveProfileApplicabilityProjection,
                 expectedAnalysisKey: prepared?.Identity.AnalysisKey,
                 cancellationToken: cancellationToken);
             RecordAnalyzeTelemetry(result);
