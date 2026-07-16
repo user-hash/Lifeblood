@@ -4,7 +4,7 @@
 
 > **Shared transport rollout:** `--shared` is the recommended configuration for
 > same-workspace multi-agent use; private stdio remains the rollback path. Exact
-> build `0.7.13-alpha.0.59+3af37e074aa920f2c54e4cda8c450b916d30ad25`
+> build `0.7.13-alpha.0.63+962cf9bb8145c779e1f4ff89e5dc9f38a6ece71b`
 > passed the final DAWG Editor+Player
 > canonical-bridge dogfood, while the earlier 1/2/4-client rollout remains the
 > memory/concurrency baseline. Unity and a fresh direct client observed one daemon,
@@ -18,21 +18,23 @@
 > (`INV-MCP-SHARED-MATURITY-001`).
 
 The current installed DAWG live gate uses
-`0.7.13-alpha.0.59+3af37e074aa920f2c54e4cda8c450b916d30ad25`
-through both the canonical global tool and Unity package. A cold Editor+Player
-retained scan published 88,896 symbols, 346,714 edges, 100 modules, 5,577
-types, 138 cycles, and zero configured violations in 72.34 seconds of server
-work / 86.35 seconds of client wall time. Its summary-first response was 9,956
-characters. After that client disconnected, a fresh raw proxy attached to the
-same daemon and observed generation 1 / snapshot
-`snap_b279f6dfc6814fc9b5a7f2a8381a75ea`, then resolved a DAWG symbol from the
-retained graph. Unity subsequently completed a documented action-only poll in
-4.92 seconds as `incremental-noop`, reused the exact publication, and reported
-zero changed files. A Unity resolve plus dependants query also completed on
-that snapshot. Package visibility reported nine packages as aggregates,
-returned the one actionable unbound-package row, and omitted eight clean rows.
-These are local prerelease/dirty-workspace development receipts, not a
-published-stable release claim.
+`0.7.13-alpha.0.63+962cf9bb8145c779e1f4ff89e5dc9f38a6ece71b`
+through the canonical global `lifeblood-mcp --shared` tool. A fresh
+Editor+Player request deliberately asked for incremental analysis with full
+fallback allowed. It recovered from generation zero, analyzed an external
+Unity `file:` package without leaking a `../Lifeblood/...` path, and published
+generation 1 / snapshot `snap_0a7853d321ff44188c5326488a83e9d1` with
+88,944 symbols, 346,846 edges, 101 modules, 5,581 types, 138 cycles, and zero
+configured violations in 63.71 seconds of client wall time. Its detailed
+accepted-change receipt contained 4,386 project-relative workspace identities;
+the four bridge sources used the single logical
+`Packages/com.dawgtools.lifeblood-bridge/...` namespace and no traversal path.
+A subsequent warm incremental request completed in 18.52 seconds and published
+generation 2 / snapshot `snap_952a425a50944d03b2508ef1d82f8419`
+after one real concurrent DAWG source change, with 88,944 symbols and 346,849
+edges. Pinned member/dependant/blast/callsite queries then reported zero files
+changed since analyze. These are local prerelease/dirty-workspace development
+receipts, not a published-stable release claim.
 
 The direct Codex `Transport closed` symptom had a separate deployment cause:
 user-level Codex configuration still launched the obsolete
@@ -133,7 +135,7 @@ publishes the same contract through discoverable parameters instead of an empty
 | adapters/python | Standalone ast-based adapter. Zero dependencies. Self-analyzing. |
 | adapters/native-clang | Standalone C extractor built on libclang (beta, v0.7.7). Reads `compile_commands.json`, emits Lifeblood-shape `graph.json` through the same `JsonGraphImporter` boundary the other external adapters use. Surfaces translation units, functions, globals, fields, type shells, enum members, macros, includes, callback-table rows and cells, and per-module, per-file, per-symbol pressure metrics. Partial-parse tolerant. Pinned by `NativeClangAdapterContractTests` and `NativeClangExecutableRatchetTests` over nine C fixture families (`tiny-c`, `direct-refs-c`, `multi-tu-c`, `cross-tu-c`, `callback-table-c`, `profile-c`, `partial-parse-c`, `warning-c`, `return-type-c`). FFmpeg scout workflow at `adapters/native-clang/tools/ffmpeg-scout/` documents the libclang reconnaissance path. First 5-file slice produced 9264 symbols, 1067 methods, 14494 imported edges, 0 architecture violations, 1 likely real cycle in libswscale. LLVM, Clang, and CMake stay outside `Lifeblood.Domain`, `Lifeblood.Application`, `Lifeblood.Analysis`, and every connector. See `docs/NATIVE_CLANG.md` for the capability page. |
 | Unity bridge | Canonical UPM outer adapter under `unity/`. Coplay-discoverable typed nested parameters, one poll coordinator, and the installed `lifeblood-mcp --shared --shared-key <UnityRoot>` proxy converge Unity and direct agents on one daemon-owned base. Wire constants mirror `McpProtocolSpec` with a byte-equal ratchet. |
-| Lifeblood.Tests | 1612 discovered test cases (including 11 native-clang environment gates). Coverage includes the neutral operation-fact boundary and bounded contract-audit surface, source-control root/failure/bounds receipts, latest-tag release metadata, atomic publication/read leases, snapshot preconditions, exact historical selection, bounded graph-only retention, forced-refresh read batches, canonical analysis identity/envelope projection, rule-only semantic sharing, exact in-flight and process-level coalescing, persistent request cancellation, canonical accepted-change receipts, client leases, idle/maintenance drain, live shared status, waiter-aware cancellation/failure isolation, input-drift rejection, DevMemory authority, multi-profile applicability/scope safety, unsupported relationship receipts, Unity bridge schema/action-only-poll/conflict/shared-launch contracts, deterministic parallel extraction, registry routing, all-tools dispatch, process transport, architecture, documentation, packaging, and adapter contract ratchets. |
+| Lifeblood.Tests | 1,623 discovered test cases: 1,612 pass and 11 native-clang environment gates skip when their executable precondition is absent. Coverage includes the neutral operation-fact boundary and bounded contract-audit surface, source-control root/failure/bounds receipts, latest-tag release metadata, atomic publication/read leases, snapshot preconditions, exact historical selection, bounded graph-only retention, forced-refresh read batches, canonical analysis identity/envelope projection, rule-only semantic sharing, exact in-flight and process-level coalescing, persistent request cancellation, canonical accepted-change receipts, client leases, idle/maintenance drain, live shared status, waiter-aware cancellation/failure isolation, input-drift rejection, DevMemory authority, multi-profile applicability/scope safety, unsupported relationship receipts, Unity bridge schema/action-only-poll/conflict/shared-launch contracts, deterministic parallel extraction, registry routing, all-tools dispatch, process transport, architecture, documentation, packaging, and adapter contract ratchets. |
 
 ## Rule Packs
 
