@@ -1106,6 +1106,7 @@ Fix shape:
 
 Type: Optimization
 Priority: High
+Status: Fixed locally on 2026-07-16; pending release validation batch.
 Source: DAWG shared-daemon repro, 2026-07-16; Lifeblood local `0.7.13-alpha.0.35+9180af4404a21d3894667d84a67567b8666f1b20`
 Workspace: DAWG
 
@@ -1130,13 +1131,26 @@ Why it matters:
 
 Fix shape:
 - Add one package-visibility projection contract at the MCP boundary:
-  default/summary returns counts, package names/root/status counts, truncation
-  facts, and a small bounded preview; detail mode returns bounded per-file
-  evidence by explicit request.
+  default/summary returns counts, package names/root/status counts, and
+  truncation facts without per-file inventories; detail mode returns bounded
+  per-file evidence by explicit request.
 - Keep `UnityPackageSourceVisibilityBuilder` as the sole scanner and
   `PackageSourceVisibilityReport` as the neutral Domain result.
 - Add DAWG-sized or synthetic many-file package tests proving summary size stays
   bounded while detail remains explicit and capped.
+
+Resolution evidence:
+- Added `packageSourceVisibilityMode` to `lifeblood_analyze` at the MCP
+  boundary. Default `summary` omits package per-file inventories; explicit
+  `detail` returns the existing bounded previews.
+- Kept `UnityPackageSourceVisibilityBuilder` and `PackageSourceVisibilityReport`
+  as the only scanner/result authority; the change is a Server.Mcp projection.
+- Added package visibility tests for default summary shape, explicit detail
+  shape, an 80-file package summary response under 8 KB, and detail capping at
+  64 files/package.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~PackageSourceVisibilityTests`
+  passed 8/8.
 
 ## LB-INTAKE-20260716-040 - Stable Git tag provenance ignores four-part release tags
 

@@ -34,11 +34,13 @@ Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOP
 For Unity package workspaces, `lifeblood_analyze` includes
 `packageSourceVisibility`: package roots discovered from
 `Packages/manifest.json`, `Packages/packages-lock.json`, and embedded package
-descriptors; package asmdefs; included/excluded/unbound source counts; and a
-bounded deterministic file preview. Included means the package file is in the
-loaded Roslyn descriptor set after `excludePaths`; excluded means
-`excludePaths` removed it from analysis; unbound means the file lives under a
-known package source root but is absent from the loaded project descriptors.
+descriptors; package asmdefs; included/excluded/unbound source counts; and
+truncation facts. The default `packageSourceVisibilityMode:"summary"` omits
+per-file inventories; pass `packageSourceVisibilityMode:"detail"` for a bounded
+deterministic file preview. Included means the package file is in the loaded
+Roslyn descriptor set after `excludePaths`; excluded means `excludePaths`
+removed it from analysis; unbound means the file lives under a known package
+source root but is absent from the loaded project descriptors.
 
 When `lifeblood_compile_check(filePath)` targets a known package file, the
 response adds `packageSourceResolution` with package name/root, status, reason,

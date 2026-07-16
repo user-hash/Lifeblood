@@ -57,6 +57,14 @@
     "changeReceiptLimit": {
       "type": "integer",
       "description": "Maximum path records returned when changeReceiptMode is \u0060detail\u0060. Default 50; clamped to 1..200. Counts and evidenceFileCount always describe the complete accepted set."
+    },
+    "packageSourceVisibilityMode": {
+      "type": "string",
+      "description": "Unity package visibility projection. \u0060summary\u0060 (default) returns package/source counts without per-file inventories; \u0060detail\u0060 returns bounded per-package file previews for investigations that need exact source rows.",
+      "enum": [
+        "summary",
+        "detail"
+      ]
     }
   }
 }
