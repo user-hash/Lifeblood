@@ -9,6 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Secondary-profile operation audits without secondary retention.**
+  `lifeblood_contract_audit(profileScope)` may select any profile committed by
+  the current analysis. The retained profile reuses its immutable compilation;
+  another profile verifies the exact snapshot inputs, compiles only the
+  requested module scope sequentially, and releases it immediately. Receipts
+  expose available profiles, execution mode, input verification, module/file
+  counts, and `additionalSemanticBaseCount:0`. Existing specialized IOperation
+  projectors remain honestly retained-profile-only until they migrate to the
+  neutral fact stream. MCP and live DAWG receipts close the earlier workflow
+  gap without N-profile heaps. (`INV-MULTI-DEFINE-IOP-001`,
+  `INV-OPERATION-FACTS-001`, `LB-INTAKE-20260629-003`.)
+
 - **Bounded changed-set compile checks.** `lifeblood_compile_check` now accepts
   an additive `filePaths` mode for 1..32 files. It prevalidates the whole set,
   performs at most one shared stale refresh, and returns aggregate counts plus

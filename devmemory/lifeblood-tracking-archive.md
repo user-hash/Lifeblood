@@ -3519,3 +3519,58 @@ Impact:
 - Changed-set compile verification is now one bounded auditable operation over
   Lifeblood's one semantic authority, closing `INV-COMPILE-CHECK-BATCH-001`
   without duplicating data types or retention.
+
+## LB-INTAKE-20260629-003 - Operation-walking tools need multi-profile support
+
+Type: Improvement
+Priority: High
+Status: Shipped (in-tree, untagged) - 2026-07-16 backlog Wave 2
+Source: DAWG Unity/Burst dogfood, 2026-06-29
+Workspace: DAWG and Lifeblood self
+
+What:
+- Operation-exact audits needed to query Player or another analyzed profile
+  without retaining one Roslyn heap per profile or forcing a full re-analysis.
+- Older bespoke IOperation projections exposed only the retained first profile
+  and correctly rejected a mismatched `profileScope`.
+
+Resolution:
+- The controlled semantic-contract program supersedes bespoke cross-profile
+  audit expansion with one `IOperationFactProvider` authority.
+  `lifeblood_contract_audit(profileScope)` accepts any profile committed in the
+  current snapshot. The retained profile reuses its immutable compilations; a
+  secondary profile first verifies source, reference, source-generator, and
+  resolved NuGet inputs, then compiles only the selected module scope
+  sequentially from snapshot-owned downgraded references and releases it.
+- `OperationFactScanReceipt` reports `profileScope`, `availableProfiles`,
+  execution mode, admission-time identity verification, compiled/scanned
+  counts, truncation, and `additionalSemanticBaseCount:0`. Drift rejects before
+  facts are emitted. No extra graph, fact cache, or semantic base exists.
+- Specialized projectors such as `static_tables`, `enum_coverage`, and
+  `assignment_coverage` remain honestly retained-profile-only until they can
+  reach fact-stream parity; exact specialized output for another profile uses
+  the documented re-analyze-with-that-profile-first workflow. This avoids
+  duplicating their DTOs or retaining N profile heaps merely to satisfy the
+  older broad request wording.
+
+Verification:
+- `ProfileScopedOperationFactTests` already pinned retained reuse, ephemeral
+  Player execution, input/reference drift rejection, global bounds, consumer
+  stop, one compiled module, and zero additional bases. Added
+  `ToolHandlerTests.Handle_ContractAudit_SecondaryProfileIsEphemeralAndKeepsOneSemanticBase`
+  to prove the complete MCP request/response contract and retained-generation
+  stability; the focused gate passed 8/8.
+- Full release verification passed 1,631/1,642 with 11 native-clang executable
+  precondition skips.
+- Live installed 0.70 DAWG dogfood used shared generation 7 / snapshot
+  `snap_39365c47b1114268a8c23e4ebbc2345f`, pinned by expected identifiers.
+  A Player audit compiled one module ephemerally, scanned 106 files, observed
+  53,924 operations, verified input identity, reported zero files changed, and
+  left generation/snapshot unchanged. Capabilities before/after reported one
+  semantic base and zero additional semantic bases.
+
+Impact:
+- Player/runtime-only contract questions are now answerable from the one shared
+  publication without a second retained Lifeblood base. The remaining
+  retained-only specialized tools are explicit supported limitations, not
+  silent profile misclassification.

@@ -1496,6 +1496,52 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_SecondaryProfileIsEphemeralAndKeepsOneSemanticBase()
+    {
+        var (projectRoot, manifest) = CreateMultiProfileContractAuditProject();
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        var analyzed = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new
+            {
+                projectPath = projectRoot,
+                defineProfiles = new[] { "Editor", "Player" },
+            }));
+        Assert.Null(analyzed.IsError);
+        var generation = session.AnalysisGeneration;
+        Assert.Equal("Editor", session.RetainedProfileName);
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new
+            {
+                manifest,
+                profileScope = "Player",
+                summarize = false,
+            }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.Equal("Completed", root.GetProperty("status").GetString());
+        Assert.Equal(1, root.GetProperty("findingCount").GetInt32());
+        var receipt = root.GetProperty("scanReceipt");
+        Assert.Equal("Player", receipt.GetProperty("profileScope").GetString());
+        Assert.Contains("Editor", receipt.GetProperty("availableProfiles").EnumerateArray()
+            .Select(profile => profile.GetString()));
+        Assert.Contains("Player", receipt.GetProperty("availableProfiles").EnumerateArray()
+            .Select(profile => profile.GetString()));
+        Assert.Equal("EphemeralProfileCompilation", receipt.GetProperty("executionMode").GetString());
+        Assert.True(receipt.GetProperty("inputIdentityVerifiedAtStart").GetBoolean());
+        Assert.Equal(1, receipt.GetProperty("compiledModuleCount").GetInt32());
+        Assert.Equal(0, receipt.GetProperty("additionalSemanticBaseCount").GetInt32());
+        Assert.Equal(generation, session.AnalysisGeneration);
+        Assert.Equal("Editor", session.RetainedProfileName);
+        Assert.True(session.LatestSnapshot.RetainsSemanticServices);
+    }
+
+    [Fact]
     public void Handle_ContractAudit_WorkspaceManifestPathReturnsBoundedEvidence()
     {
         var (projectRoot, manifest) = CreateContractAuditProject();
@@ -1776,6 +1822,39 @@ public class ToolHandlerTests : IDisposable
         {
             schemaVersion = "1",
             id = "acme-contracts",
+            version = "1.0.0",
+            operationGuards = new[]
+            {
+                new
+                {
+                    id = "set-value-clamped",
+                    targetSymbolIds = new[] { "method:Acme.Guard.Set(int)" },
+                    argumentOrdinal = 0,
+                    allowedSourceSymbolIds = new[] { "method:System.Math.Clamp(int,int,int)" },
+                },
+            },
+        });
+        return (projectRoot, manifest);
+    }
+
+    private (string ProjectRoot, JsonElement Manifest) CreateMultiProfileContractAuditProject()
+    {
+        var projectRoot = Path.Combine(_tempDir, "contract-audit-secondary-profile");
+        Directory.CreateDirectory(projectRoot);
+        Directory.CreateDirectory(Path.Combine(projectRoot, "Library"));
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework>" +
+            "<DefineConstants>UNITY_EDITOR</DefineConstants></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Guard.cs"),
+            "namespace Acme; public static class Guard { public static void Set(int value) { }\n" +
+            "public static void Run(int input) {\n#if UNITY_EDITOR\nSet(System.Math.Clamp(input, 0, 10));\n" +
+            "#else\nSet(input);\n#endif\n} }");
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-secondary-profile",
             version = "1.0.0",
             operationGuards = new[]
             {

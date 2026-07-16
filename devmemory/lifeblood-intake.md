@@ -59,36 +59,6 @@ Fix shape:
   callsite span, callee, argument expression, detected guard or missing guard,
   and profile scope.
 
-## LB-INTAKE-20260629-003 - Operation-walking tools need multi-profile support
-
-Type: Improvement
-Priority: High
-Source: DAWG Unity/Burst dogfood, 2026-06-29; schema review of `lifeblood_wire_audit` and `lifeblood_static_tables`
-Workspace: DAWG
-Rating for DAWG work: 8/10 value if shipped
-
-What:
-- Lifeblood's operation-walking tools document that `profileScope` must match
-  the retained profile from the most recent analyze. In a Unity workspace,
-  DAWG usually analyzes `Editor` and `Player` together, but operation-level
-  audits cannot freely ask the same question against Player-only code without
-  changing the retained profile.
-
-Why it matters:
-- Burst and runtime-only bugs often live behind Player or platform define sets.
-  Graph-level multi-profile analysis is useful, but operation-exact tools are
-  where value-domain and wiring bugs become actionable.
-- The current limit is honest and safe; it is still a workflow gap for Unity
-  dogfood because the user thinks in "Editor plus Player" while the operation
-  tool answers one retained compilation profile.
-
-Fix shape:
-- Allow operation-walking tools to run against any loaded define profile from
-  the retained session, or expose a fast profile-switch/re-analyze path that is
-  explicit in the response.
-- Responses should include `profileScope`, `availableProfiles`, and clear
-  failure guidance when a requested profile was not retained.
-
 ## LB-INTAKE-20260629-004 - Source-comment drift audit for retired authority prose
 
 Type: Feature request

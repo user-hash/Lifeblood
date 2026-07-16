@@ -2,8 +2,8 @@
 
 Date: 2026-07-15
 
-Status: active. Wave 1 and Wave 2 entry `002` are closed; entries `003` and
-`029` remain in Wave 2, followed by Waves 3-7.
+Status: active. Wave 1 and Wave 2 entries `002` / `003` are closed; entry `029`
+remains in Wave 2, followed by Waves 3-7.
 The 2026-07-16 consolidation audit approved one controlled semantic-contract
 program for 20 of the 29 remaining intake entries. "One program" means one
 fact authority, one bounded public surface, and natural tested commits; it does
@@ -342,10 +342,15 @@ Covers `002`, `003`, `029`.
   five owning modules with 10 successes and zero diagnostics under one pinned
   Editor compilation host.
 - [ ] Add diff ownership to `diagnose` using the Wave 1 source-control snapshot.
-- [ ] Prototype profile-specific operation querying and measure two choices:
+- [x] Prototype profile-specific operation querying and measure two choices:
   compact precomputed neutral facts versus an ephemeral sequential compilation
   pass. The accepted design must expose every requested active profile while
   `additionalSemanticBaseCount` remains zero and peak memory stays bounded.
+  Closed by the existing `IOperationFactProvider` ephemeral-profile path plus
+  a new MCP ratchet. Live DAWG generation 7 / snapshot
+  `snap_39365c47b1114268a8c23e4ebbc2345f` scanned the Player view of one
+  106-file module (53,924 observed operations), preserved generation/snapshot,
+  and kept `semanticBaseCount:1`, `additionalSemanticBaseCount:0`.
 
 Exit: touched-file verification is one auditable call, diagnostics name their
 change owner, and profile queries do not multiply retained Roslyn heaps.
