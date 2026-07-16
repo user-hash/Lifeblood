@@ -291,7 +291,7 @@ public class DocsTests
   {
     var sourceControl = new GitSourceControlSnapshotProvider().Capture(RepoRoot);
     Assert.Equal("git", sourceControl.Source);
-    Assert.Matches(@"^v\d+\.\d+\.\d+$", sourceControl.LatestSemanticVersionTag);
+    Assert.Matches(@"^v\d+\.\d+\.\d+(?:\.\d+)?$", sourceControl.LatestSemanticVersionTag);
 
     var tag = sourceControl.LatestSemanticVersionTag;
     var version = tag[1..];

@@ -223,7 +223,7 @@ public sealed partial class GitSourceControlSnapshotProvider : ISourceControlSna
         return normalized[..Math.Min(MaxFailureChars, normalized.Length)];
     }
 
-    [GeneratedRegex(@"^v(\d+\.\d+\.\d+)$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^v(\d+\.\d+\.\d+(?:\.\d+)?)$", RegexOptions.CultureInvariant)]
     private static partial Regex StableSemanticVersionTag();
 
     private enum GitFailureKind
