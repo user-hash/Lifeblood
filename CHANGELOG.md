@@ -18,6 +18,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   values, and process tests pin exact generation/snapshot retention across a
   disconnect. (`INV-MCP-IDLE-DRAIN-001`.)
 
+- **Direct and Unity clients now converge on one installed command.**
+
 - **Versioned semantic contracts now share one bounded stateless evaluator.**
   Consumer-owned manifests declare operation-argument guards, external API
   cost annotations, and exact suppressions. `ContractAuditEngine` derives one
