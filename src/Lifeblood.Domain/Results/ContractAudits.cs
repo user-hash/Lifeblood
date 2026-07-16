@@ -15,6 +15,7 @@ public sealed class ContractManifest
     public string? Description { get; init; }
     public OperationGuardContract[] OperationGuards { get; init; } = Array.Empty<OperationGuardContract>();
     public ExternalApiCostContract[] ExternalApiCosts { get; init; } = Array.Empty<ExternalApiCostContract>();
+    public ValueDomainContract[] ValueDomains { get; init; } = Array.Empty<ValueDomainContract>();
     public ContractSuppression[] Suppressions { get; init; } = Array.Empty<ContractSuppression>();
 }
 
@@ -61,6 +62,52 @@ public sealed class ExternalApiCostContract
     public string Severity { get; init; } = ContractSeverity.Warning;
     public string? Message { get; init; }
     public string? Guidance { get; init; }
+}
+
+/// <summary>
+/// Requires a selected input to carry one declared value domain or an exact
+/// manifest-declared conversion into that domain. Domain names are open
+/// consumer vocabulary; Lifeblood binds only symbols and operators.
+/// </summary>
+public sealed class ValueDomainContract
+{
+    public required string Id { get; init; }
+    public string[] TargetSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] OperationKinds { get; init; } = new[]
+    {
+        OperationFactKind.Call,
+        OperationFactKind.ObjectCreation,
+        OperationFactKind.Assignment,
+    };
+    public string InputRole { get; init; } = OperationInputRole.Argument;
+    public int? InputOrdinal { get; init; } = 0;
+    public required string TargetDomain { get; init; }
+    public ValueDomainBinding[] Bindings { get; init; } = Array.Empty<ValueDomainBinding>();
+    public ValueDomainConversion[] AllowedConversions { get; init; } = Array.Empty<ValueDomainConversion>();
+    public bool AllowCompileTimeConstants { get; init; }
+    public bool ReportUnclassifiedValues { get; init; }
+    public string Severity { get; init; } = ContractSeverity.Warning;
+    public string? Message { get; init; }
+    public string? Guidance { get; init; }
+}
+
+/// <summary>Exact source symbols that identify one consumer-named domain.</summary>
+public sealed class ValueDomainBinding
+{
+    public required string Domain { get; init; }
+    public string[] SourceSymbolIds { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Exact evidence required to accept a conversion from a set of source
+/// domains into the parent contract's target domain.
+/// </summary>
+public sealed class ValueDomainConversion
+{
+    public required string Id { get; init; }
+    public string[] SourceDomains { get; init; } = Array.Empty<string>();
+    public string[] RequiredSourceSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] RequiredOperators { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -150,12 +197,14 @@ public static class ContractRuleId
 {
     public const string OperationGuard = "operation-guard";
     public const string ExternalApiCost = "external-api-cost";
+    public const string ValueDomain = "value-domain";
 }
 
 public static class ContractFindingKind
 {
     public const string MissingOperationGuard = "MissingOperationGuard";
     public const string ExternalApiCostExposure = "ExternalApiCostExposure";
+    public const string ValueDomainMismatch = "ValueDomainMismatch";
 }
 
 public static class ContractSeverity

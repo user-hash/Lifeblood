@@ -39,7 +39,8 @@ public sealed class OperationInputFact
 /// Compact value provenance for an operation input. <see cref="SourceSymbolIds"/>
 /// records every symbol contributing to the expression in deterministic order;
 /// <see cref="ConversionTypes"/> records explicit and implicit conversion
-/// destinations without retaining compiler objects.
+/// destinations, and <see cref="Operators"/> records nested value operators,
+/// without retaining compiler objects.
 /// </summary>
 public sealed class OperationValueFact
 {
@@ -51,6 +52,7 @@ public sealed class OperationValueFact
     public required bool IsCompileTimeConstant { get; init; }
     public string[] SourceSymbolIds { get; init; } = Array.Empty<string>();
     public string[] ConversionTypes { get; init; } = Array.Empty<string>();
+    public string[] Operators { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>Control-flow ancestor surrounding an operation occurrence.</summary>

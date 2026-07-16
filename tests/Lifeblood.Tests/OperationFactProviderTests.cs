@@ -93,6 +93,33 @@ public sealed class OperationFactProviderTests
     }
 
     [Fact]
+    public void Scan_ValueCarriesNestedOperatorsWithoutRetainingCompilerObjects()
+    {
+        const string source = """
+            namespace Acme;
+            public sealed class Clock
+            {
+                private void SetSeconds(float seconds) { }
+                public void Run(float frames, float sampleRate) => SetSeconds(frames / sampleRate);
+            }
+            """;
+        using var host = HostWith(source);
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            TargetSymbolIds = new[] { "method:Acme.Clock.SetSeconds(float)" },
+            IncludeKinds = new[] { OperationFactKind.Call },
+        });
+
+        var argument = Assert.Single(
+            Assert.Single(facts).Inputs,
+            input => input.Role == OperationInputRole.Argument).Value;
+
+        Assert.Equal(new[] { "Divide" }, argument.Operators);
+        Assert.Contains("parameter:method:Acme.Clock.Run(float,float)#0:frames", argument.SourceSymbolIds);
+        Assert.Contains("parameter:method:Acme.Clock.Run(float,float)#1:sampleRate", argument.SourceSymbolIds);
+    }
+
+    [Fact]
     public void Scan_ArrayCreationCarriesDimensionOrigin()
     {
         using var host = HostWith(Source);

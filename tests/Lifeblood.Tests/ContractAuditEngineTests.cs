@@ -14,6 +14,10 @@ public sealed class ContractAuditEngineTests
 {
     private const string GuardTarget = "method:Acme.Dsp.SetRate(float)";
     private const string CostTarget = "method:Vendor.Api.Allocate(int)";
+    private const string DomainTarget = "method:Acme.Clock.SetSeconds(float)";
+    private const string Frames = "parameter:method:Acme.Clock.Run(float,float,float)#0:frames";
+    private const string SampleRate = "parameter:method:Acme.Clock.Run(float,float,float)#1:sampleRate";
+    private const string Seconds = "parameter:method:Acme.Clock.Run(float,float,float)#2:seconds";
 
     [Fact]
     public void OneStream_EvaluatesSelectedRuleFamiliesWithBoundedDeterministicFindings()
@@ -171,6 +175,115 @@ public sealed class ContractAuditEngineTests
     }
 
     [Fact]
+    public void ValueDomain_AcceptsDirectDomainAndExactDeclaredConversionButReportsMismatch()
+    {
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(),
+        });
+
+        engine.Observe(Call("direct", DomainTarget, "Clock.cs", 10, Argument(
+            OperationValueKind.Parameter,
+            new[] { Seconds })));
+        engine.Observe(Call("converted", DomainTarget, "Clock.cs", 20, Argument(
+            OperationValueKind.Binary,
+            new[] { Frames, SampleRate },
+            new[] { "Divide" },
+            "frames / sampleRate")));
+        engine.Observe(Call("mismatch", DomainTarget, "Clock.cs", 30, Argument(
+            OperationValueKind.Parameter,
+            new[] { Frames })));
+
+        var report = engine.Complete(Receipt(emitted: 3));
+
+        Assert.Equal(new[] { ContractRuleId.ValueDomain }, report.SelectedRuleIds);
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal("mismatch", finding.FactId);
+        Assert.Equal(ContractFindingKind.ValueDomainMismatch, finding.Kind);
+        Assert.Equal(ConfidenceBand.Proven, finding.Confidence);
+        Assert.Contains(finding.Evidence, evidence =>
+            evidence.Kind == "ObservedDomains"
+            && evidence.Summary.Contains("Frames", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValueDomain_UnclassifiedPolicyIsExplicitAndAdvisory()
+    {
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(reportUnclassifiedValues: true),
+        });
+
+        engine.Observe(Call("unknown", DomainTarget, "Clock.cs", 10, Argument(
+            OperationValueKind.Parameter,
+            new[] { "parameter:method:Acme.Clock.Other(float)#0:value" })));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 1)).Findings);
+
+        Assert.Equal(ConfidenceBand.Advisory, finding.Confidence);
+        Assert.Contains("unclassified", finding.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ValueDomain_DeclaredSourceDomainsDoNotBypassRequiredConversionEvidence()
+    {
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(),
+        });
+
+        engine.Observe(Call("missing-operator", DomainTarget, "Clock.cs", 10, Argument(
+            OperationValueKind.Binary,
+            new[] { Frames, SampleRate },
+            Array.Empty<string>(),
+            "frames + sampleRate")));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 1)).Findings);
+
+        Assert.Equal("missing-operator", finding.FactId);
+        Assert.Equal(ConfidenceBand.Proven, finding.Confidence);
+    }
+
+    [Fact]
+    public void ValueDomain_ValidationRejectsUndeclaredConversionDomain()
+    {
+        var manifest = DomainManifest();
+        manifest = new ContractManifest
+        {
+            Id = manifest.Id,
+            Version = manifest.Version,
+            ValueDomains = new[]
+            {
+                new ValueDomainContract
+                {
+                    Id = "seconds-input",
+                    TargetSymbolIds = new[] { DomainTarget },
+                    TargetDomain = "Seconds",
+                    Bindings = new[]
+                    {
+                        new ValueDomainBinding { Domain = "Frames", SourceSymbolIds = new[] { Frames } },
+                    },
+                    AllowedConversions = new[]
+                    {
+                        new ValueDomainConversion
+                        {
+                            Id = "ticks-to-seconds",
+                            SourceDomains = new[] { "Ticks" },
+                        },
+                    },
+                },
+            },
+        };
+
+        var error = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = manifest,
+        }));
+
+        Assert.Contains("undeclared source domain 'Ticks'", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ManifestValidation_RejectsUnknownSchemaAndSelectorlessSuppression()
     {
         var schemaError = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
@@ -263,6 +376,39 @@ public sealed class ContractAuditEngineTests
             Suppressions = suppressions ?? Array.Empty<ContractSuppression>(),
         };
 
+    private static ContractManifest DomainManifest(bool reportUnclassifiedValues = false)
+        => new()
+        {
+            Id = "acme-time-domains",
+            Version = "2026.07.16",
+            ValueDomains = new[]
+            {
+                new ValueDomainContract
+                {
+                    Id = "seconds-input",
+                    TargetSymbolIds = new[] { DomainTarget },
+                    TargetDomain = "Seconds",
+                    Bindings = new[]
+                    {
+                        new ValueDomainBinding { Domain = "Frames", SourceSymbolIds = new[] { Frames } },
+                        new ValueDomainBinding { Domain = "SampleRate", SourceSymbolIds = new[] { SampleRate } },
+                        new ValueDomainBinding { Domain = "Seconds", SourceSymbolIds = new[] { Seconds } },
+                    },
+                    AllowedConversions = new[]
+                    {
+                        new ValueDomainConversion
+                        {
+                            Id = "frames-at-rate-to-seconds",
+                            SourceDomains = new[] { "Frames", "SampleRate" },
+                            RequiredSourceSymbolIds = new[] { SampleRate },
+                            RequiredOperators = new[] { "Divide" },
+                        },
+                    },
+                    ReportUnclassifiedValues = reportUnclassifiedValues,
+                },
+            },
+        };
+
     private static OperationFact Call(
         string id,
         string target,
@@ -316,6 +462,13 @@ public sealed class ContractAuditEngineTests
         };
 
     private static OperationInputFact Argument(string kind, params string[] sourceIds)
+        => Argument(kind, sourceIds, Array.Empty<string>(), "value");
+
+    private static OperationInputFact Argument(
+        string kind,
+        string[] sourceIds,
+        string[] operators,
+        string expression = "value")
         => new()
         {
             Role = OperationInputRole.Argument,
@@ -325,9 +478,10 @@ public sealed class ContractAuditEngineTests
             Value = new OperationValueFact
             {
                 Kind = kind,
-                Expression = "value",
+                Expression = expression,
                 IsCompileTimeConstant = kind == OperationValueKind.Literal,
                 SourceSymbolIds = sourceIds,
+                Operators = operators,
             },
         };
 
