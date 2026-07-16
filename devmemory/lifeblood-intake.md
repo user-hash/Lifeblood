@@ -1282,6 +1282,7 @@ Fix shape:
 
 Type: UX
 Priority: Medium
+Status: Fixed locally on 2026-07-16; pending DAWG-scale release validation batch.
 Source: DAWG shared-daemon repro and first-session report, 2026-07-16
 Workspace: DAWG
 
@@ -1310,6 +1311,19 @@ Fix shape:
   arrays.
 - Add focused tests for cold fallback wording/counts and update docs so agents
   know to expect a full run when no master semantic base exists.
+
+Resolution evidence:
+- Added `acceptedChanges.interpretation` at the MCP projection seam, leaving
+  `AcceptedChangeSet` as the single Application authority. Summary and detail
+  receipts now expose `work`, `changedSourceFilesMeaning`,
+  `contentChangeStatus`, and a short human `summary`.
+- Cold fallback now reports `work:"fullFallbackReanalysis"`,
+  `changedSourceFilesMeaning:"reanalyzedOrDeleted"`, and
+  `contentChangeStatus:"none"` while keeping `contentChangedSourceFiles:0` and
+  summary-mode `files:[]`.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~AnalyzeWireShapeTests`
+  passed 12/12.
 
 ## LB-INTAKE-20260716-044 - Static semantic blind spots need explicit unsupported-edge receipts
 

@@ -90,6 +90,13 @@ public static class AcceptedChangeReceipt
             scanMode = WireScanMode(changes.ScanMode),
             fullFallback = changes.FullFallback,
             causes = causes.ToArray(),
+            interpretation = BuildInterpretation(
+                changes,
+                reanalyzed.Count,
+                mtimeOnlyCount,
+                contentChanged.Count,
+                descriptorForced.Count,
+                deleted.Count),
             counts = new
             {
                 changedSourceFiles = changes.ChangedFileCount,
@@ -106,6 +113,109 @@ public static class AcceptedChangeReceipt
             truncated = request.Mode == AcceptedChangeReceiptMode.Detail && omittedFileCount > 0,
         };
     }
+
+    private static object BuildInterpretation(
+        AcceptedChangeSet changes,
+        int reanalyzedSourceFiles,
+        int mtimeOnlySourceFiles,
+        int contentChangedSourceFiles,
+        int descriptorForcedSourceFiles,
+        int deletedSourceFiles)
+    {
+        var work = WorkClassification(
+            changes,
+            mtimeOnlySourceFiles,
+            contentChangedSourceFiles,
+            descriptorForcedSourceFiles,
+            deletedSourceFiles);
+        return new
+        {
+            work,
+            changedSourceFilesMeaning = "reanalyzedOrDeleted",
+            contentChangeStatus = contentChangedSourceFiles == 0 ? "none" : "present",
+            summary = BuildHumanSummary(
+                changes,
+                reanalyzedSourceFiles,
+                mtimeOnlySourceFiles,
+                contentChangedSourceFiles,
+                descriptorForcedSourceFiles,
+                deletedSourceFiles),
+        };
+    }
+
+    private static string WorkClassification(
+        AcceptedChangeSet changes,
+        int mtimeOnlySourceFiles,
+        int contentChangedSourceFiles,
+        int descriptorForcedSourceFiles,
+        int deletedSourceFiles)
+    {
+        if (changes.FullFallback)
+            return "fullFallbackReanalysis";
+        if (contentChangedSourceFiles > 0
+            && (mtimeOnlySourceFiles > 0 || descriptorForcedSourceFiles > 0 || deletedSourceFiles > 0))
+            return "mixedAcceptedChanges";
+        if (contentChangedSourceFiles > 0)
+            return "sourceContentChange";
+        if (descriptorForcedSourceFiles > 0)
+            return "descriptorRecompile";
+        if (deletedSourceFiles > 0)
+            return "sourceDeletion";
+        if (mtimeOnlySourceFiles > 0)
+            return "mtimeOnlyTouch";
+        if (changes.ReanalyzedSourceFiles.Count > 0)
+            return "sourceReanalysis";
+        return "none";
+    }
+
+    private static string BuildHumanSummary(
+        AcceptedChangeSet changes,
+        int reanalyzedSourceFiles,
+        int mtimeOnlySourceFiles,
+        int contentChangedSourceFiles,
+        int descriptorForcedSourceFiles,
+        int deletedSourceFiles)
+    {
+        if (changes.FullFallback)
+        {
+            return $"Full fallback reanalyzed {DescribeCount(reanalyzedSourceFiles, "source file")}; "
+                   + "this is not evidence of source content churn. "
+                   + $"contentChangedSourceFiles={contentChangedSourceFiles}.";
+        }
+
+        if (contentChangedSourceFiles > 0)
+        {
+            return $"Reanalyzed {DescribeCount(reanalyzedSourceFiles, "source file")}; "
+                   + $"{DescribeCount(contentChangedSourceFiles, "source file")} had content changes.";
+        }
+
+        if (descriptorForcedSourceFiles > 0)
+        {
+            return $"Reanalyzed {DescribeCount(reanalyzedSourceFiles, "source file")} because descriptor changes forced recompilation; "
+                   + "source content changes were not detected.";
+        }
+
+        if (deletedSourceFiles > 0)
+        {
+            return $"Accepted {DescribeCount(deletedSourceFiles, "deleted source file")}; "
+                   + "deleted files are counted as changedSourceFiles but not reanalyzed.";
+        }
+
+        if (mtimeOnlySourceFiles > 0)
+        {
+            return $"Observed {DescribeCount(mtimeOnlySourceFiles, "mtime-only source touch")} without source content changes.";
+        }
+
+        if (reanalyzedSourceFiles > 0)
+        {
+            return $"Reanalyzed {DescribeCount(reanalyzedSourceFiles, "source file")} without detected source content changes.";
+        }
+
+        return "No accepted source file changes.";
+    }
+
+    private static string DescribeCount(int count, string singular)
+        => count == 1 ? $"1 {singular}" : $"{count} {singular}s";
 
     private static string WireScanMode(ChangeScanMode mode) => mode switch
     {
