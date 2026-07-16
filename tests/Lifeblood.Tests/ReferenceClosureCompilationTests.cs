@@ -199,6 +199,7 @@ namespace Acme.App
                 (mod, comp) =>
                 {
                     if (mod.Name == "Consumer") consumerComp = (CSharpCompilation)comp;
+                    return true;
                 });
 
             Assert.NotNull(consumerComp);

@@ -32,12 +32,16 @@ namespace Lifeblood.Adapters.CSharp;
 ///
 /// INV-ADAPT-002: C# adapter is the reference. Most complete, best tested.
 /// </summary>
-public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInputFingerprintProvider
+public sealed class RoslynWorkspaceAnalyzer :
+    IWorkspaceAnalyzer,
+    IWorkspaceInputFingerprintProvider,
+    IOperationFactProvider
 {
     private readonly IFileSystem _fs;
     private readonly RoslynModuleDiscovery _discovery;
     private readonly CompilationTreeExtractor _treeExtractor = new();
     private readonly IDefineProfileResolver _profileResolver;
+    private readonly NuGetReferenceResolver _nugetResolver;
 
     private Dictionary<string, CSharpCompilation>? _compilations;
     private AnalysisSnapshot? _snapshot;
@@ -122,6 +126,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         _fs = fs;
         _discovery = new RoslynModuleDiscovery(fs);
         _profileResolver = profileResolver;
+        _nugetResolver = new NuGetReferenceResolver(fs);
     }
 
     public AdapterCapability Capability => RoslynCapabilityDescriptor.Capability;
@@ -171,7 +176,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
 
-        var referenceContent = CaptureReferenceContent(applicableModules);
+        var referenceContent = CaptureReferenceContent(applicableModules, projectRoot);
         var packageVisibilityContent =
             UnityPackageSourceVisibilityBuilder.CaptureInputFingerprints(_fs, projectRoot);
         var sourceFingerprint = WorkspaceInputFingerprintBuilder.Build(
@@ -244,6 +249,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             {
                 ProjectRoot = projectRoot,
                 Modules = modules,
+                ExcludePatterns = NormalizeExcludePatterns(config.ExcludePatterns),
                 ExcludePathGlobs = NormalizeExcludePathGlobs(config.ExcludePathGlobs),
             };
             ReplaceDictionary(
@@ -427,6 +433,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                                 snapshot.AppendProfileEdges(extracted.FileId, extracted.Edges);
                             }
                         }
+                        return true;
                     },
                     contentHashCollector: (path, hash) => snapshot.FileContentHashes[path] = hash);
 
@@ -538,14 +545,16 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 
         var projectRoot = _snapshot.ProjectRoot;
 
+        var requestedExcludePatterns = NormalizeExcludePatterns(config.ExcludePatterns);
         var requestedExcludePathGlobs = NormalizeExcludePathGlobs(config.ExcludePathGlobs);
-        if (!SameExcludePathGlobs(_snapshot.ExcludePathGlobs, requestedExcludePathGlobs))
+        if (!SamePathExclusions(_snapshot.ExcludePatterns, requestedExcludePatterns)
+            || !SamePathExclusions(_snapshot.ExcludePathGlobs, requestedExcludePathGlobs))
         {
             return HandleFallback(
                 config,
                 projectRoot,
                 FallbackReason.AnalysisScopeChanged,
-                detail: "Analysis excludePath glob set changed; full re-analyze required to add/remove files from the cached graph scope.");
+                detail: "Analysis source-exclusion set changed; full re-analyze required to add/remove files from the cached graph scope.");
         }
 
         // Rediscover modules — cheap, just XML parsing
@@ -591,7 +600,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 detail: "Unity asmdef edit/add/remove detected (descriptorKind=asmdef).");
         }
 
-        if (HasReferenceInputDrift(applicableCurrentModules))
+        if (HasReferenceInputDrift(applicableCurrentModules, projectRoot))
         {
             return HandleFallback(
                 config,
@@ -889,6 +898,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                             _snapshot.AppendProfileEdges(extracted.FileId, extracted.Edges);
                         }
                     }
+                    return true;
                 },
                 contentHashCollector: (path, hash) => _snapshot.FileContentHashes[path] = hash);
 
@@ -1070,6 +1080,267 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 
         return null;
     }
+
+    /// <summary>
+    /// Stream occurrence-level facts from the retained primary profile or an
+    /// exact-input-verified ephemeral compilation of another committed
+    /// profile. Non-primary compilations are released module-by-module and
+    /// never become another retained semantic base. INV-OPERATION-FACTS-001.
+    /// </summary>
+    public OperationFactScanReceipt ScanOperationFacts(
+        OperationFactQuery query,
+        Func<OperationFact, bool> consume,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(consume);
+        if (query.MaxFacts <= 0)
+            throw new ArgumentOutOfRangeException(nameof(query), "maxFacts must be greater than zero.");
+
+        var snapshot = _snapshot
+            ?? throw new InvalidOperationException("Operation facts require a completed workspace analysis.");
+        var availableProfiles = snapshot.ActiveProfiles
+            .Select(profile => profile.Name)
+            .ToArray();
+        var profileName = query.ProfileScope ?? RetainedProfileName
+            ?? throw new InvalidOperationException("Operation facts require an analyzed define profile.");
+        var profile = snapshot.ActiveProfiles.FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, profileName, StringComparison.Ordinal));
+        if (profile == null)
+        {
+            throw new ArgumentException(
+                $"Requested profile '{profileName}' is not part of the committed analysis. " +
+                $"Available profiles: {string.Join(", ", availableProfiles)}.",
+                nameof(query));
+        }
+
+        if (string.Equals(profileName, RetainedProfileName, StringComparison.Ordinal)
+            && _compilations is { Count: > 0 } retained)
+        {
+            return new RoslynOperationFactProvider(retained, profileName, availableProfiles)
+                .Scan(query, consume, cancellationToken);
+        }
+
+        var profileModules = ApplyProfileToModules(snapshot.Modules, profile);
+        var selectedModules = profileModules;
+        if (!string.IsNullOrWhiteSpace(query.ModuleScope))
+        {
+            selectedModules = profileModules
+                .Where(module => string.Equals(module.Name, query.ModuleScope, StringComparison.Ordinal))
+                .ToArray();
+        }
+
+        var carryAvailable = snapshot.DowngradedRefsByProfile.TryGetValue(profileName, out var committedCarry);
+        var modulesToCompile = !carryAvailable && selectedModules.Length < profileModules.Length
+            ? profileModules
+            : selectedModules;
+        var drift = FindEphemeralOperationInputDrift(snapshot, modulesToCompile, cancellationToken);
+        if (drift.Length > 0)
+        {
+            return new OperationFactScanReceipt
+            {
+                Status = OperationFactScanStatus.Rejected,
+                RejectionReason = OperationFactRejectionReason.InputDrift,
+                ProfileScope = profileName,
+                AvailableProfiles = availableProfiles,
+                ExecutionMode = OperationFactExecutionMode.EphemeralProfileCompilation,
+                InputIdentityVerifiedAtStart = false,
+                AdditionalSemanticBaseCount = 0,
+                CompiledModuleCount = 0,
+                ScannedModuleCount = 0,
+                ScannedFileCount = 0,
+                ObservedOperationCount = 0,
+                EmittedFactCount = 0,
+                Truncated = false,
+                StoppedByConsumer = false,
+                Limitations = new[]
+                {
+                    "Committed analysis inputs changed before ephemeral profile execution: " +
+                    string.Join(", ", drift),
+                },
+            };
+        }
+
+        var carry = carryAvailable
+            ? new Dictionary<string, MetadataReference>(committedCarry!, StringComparer.Ordinal)
+            : new Dictionary<string, MetadataReference>(StringComparer.Ordinal);
+        var config = new AnalysisConfig
+        {
+            ExcludePatterns = snapshot.ExcludePatterns,
+            ExcludePathGlobs = snapshot.ExcludePathGlobs,
+            DefineProfiles = new[] { profileName },
+            RetainCompilations = false,
+        };
+
+        var compiledModules = 0;
+        var scannedModules = 0;
+        var scannedFiles = 0;
+        var observedOperations = 0;
+        var emittedFacts = 0;
+        var truncated = false;
+        var stoppedByConsumer = false;
+        var builder = new ModuleCompilationBuilder(_fs, new SharedMetadataReferenceCache());
+        builder.ProcessInOrder(
+            modulesToCompile,
+            snapshot.ProjectRoot,
+            config,
+            processor: (module, compilation) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                compiledModules++;
+                var probingPastLimit = emittedFacts >= query.MaxFacts;
+                var scopedQuery = CopyOperationFactQuery(
+                    query,
+                    profileName,
+                    probingPastLimit ? 1 : query.MaxFacts - emittedFacts);
+                var foundPastLimit = false;
+                var receipt = new RoslynOperationFactProvider(
+                        new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal)
+                        {
+                            [module.Name] = compilation,
+                        },
+                        profileName,
+                        availableProfiles)
+                    .Scan(
+                        scopedQuery,
+                        fact =>
+                        {
+                            if (probingPastLimit)
+                            {
+                                foundPastLimit = true;
+                                return false;
+                            }
+                            return consume(fact);
+                        },
+                        cancellationToken);
+
+                scannedModules += receipt.ScannedModuleCount;
+                scannedFiles += receipt.ScannedFileCount;
+                observedOperations += receipt.ObservedOperationCount;
+                if (!probingPastLimit)
+                    emittedFacts += receipt.EmittedFactCount;
+
+                if (foundPastLimit || receipt.Truncated)
+                {
+                    truncated = true;
+                    return false;
+                }
+                if (receipt.StoppedByConsumer)
+                {
+                    stoppedByConsumer = true;
+                    return false;
+                }
+                return true;
+            },
+            carryDowngraded: carry,
+            moduleUniverse: profileModules);
+
+        return new OperationFactScanReceipt
+        {
+            Status = OperationFactScanStatus.Completed,
+            ProfileScope = profileName,
+            AvailableProfiles = availableProfiles,
+            ExecutionMode = OperationFactExecutionMode.EphemeralProfileCompilation,
+            InputIdentityVerifiedAtStart = true,
+            AdditionalSemanticBaseCount = 0,
+            CompiledModuleCount = compiledModules,
+            ScannedModuleCount = scannedModules,
+            ScannedFileCount = scannedFiles,
+            ObservedOperationCount = observedOperations,
+            EmittedFactCount = emittedFacts,
+            Truncated = truncated,
+            StoppedByConsumer = stoppedByConsumer,
+        };
+    }
+
+    private string[] FindEphemeralOperationInputDrift(
+        AnalysisSnapshot snapshot,
+        ModuleInfo[] modules,
+        CancellationToken cancellationToken)
+    {
+        var drift = new SortedSet<string>(PathComparer);
+        var excludeGlobs = PathGlobMatcher.Compile(snapshot.ExcludePathGlobs);
+        foreach (var path in modules
+                     .SelectMany(module => module.FilePaths)
+                     .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                     .Distinct(PathComparer))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relative = Path.GetRelativePath(snapshot.ProjectRoot, path).Replace('\\', '/');
+            if (snapshot.ExcludePatterns.Any(pattern =>
+                    relative.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                || PathGlobMatcher.MatchesAny(excludeGlobs, relative))
+            {
+                continue;
+            }
+
+            if (!_fs.FileExists(path)
+                || !snapshot.FileContentHashes.TryGetValue(path, out var committedHash))
+            {
+                drift.Add(relative);
+                continue;
+            }
+
+            try
+            {
+                if (SourceContentHasher.HashText(_fs.ReadAllText(path)) != committedHash)
+                    drift.Add(relative);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                drift.Add(relative);
+            }
+        }
+
+        foreach (var module in modules)
+        {
+            var currentPaths = GetReferenceInputPaths(new[] { module }, snapshot.ProjectRoot);
+            var committedPaths = snapshot.ReferenceInputPathsByModule.TryGetValue(module.Name, out var paths)
+                ? paths.ToHashSet(PathComparer)
+                : new HashSet<string>(PathComparer);
+            if (!committedPaths.SetEquals(currentPaths))
+                drift.Add($"reference-set:{module.Name}");
+
+            foreach (var path in committedPaths.Concat(currentPaths).Distinct(PathComparer))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var display = Path.GetRelativePath(snapshot.ProjectRoot, path).Replace('\\', '/');
+                if (!_fs.FileExists(path)
+                    || !snapshot.ReferenceContentHashes.TryGetValue(path, out var committedHash))
+                {
+                    drift.Add(display);
+                    continue;
+                }
+
+                try
+                {
+                    if (HashBinaryDescriptor(path) != committedHash)
+                        drift.Add(display);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    drift.Add(display);
+                }
+            }
+        }
+
+        return drift.Take(16).ToArray();
+    }
+
+    private static OperationFactQuery CopyOperationFactQuery(
+        OperationFactQuery source,
+        string profileScope,
+        int maxFacts)
+        => new()
+        {
+            ModuleScope = source.ModuleScope,
+            ProfileScope = profileScope,
+            FilePaths = source.FilePaths,
+            ContainingSymbolIds = source.ContainingSymbolIds,
+            IncludeKinds = source.IncludeKinds,
+            IncludeImplicit = source.IncludeImplicit,
+            MaxFacts = maxFacts,
+        };
 
     private static AcceptedChangeSet BuildAcceptedChanges(
         string projectRoot,
@@ -1290,6 +1561,13 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         }
     }
 
+    private static string[] NormalizeExcludePatterns(string[]? patterns)
+        => patterns?
+            .Where(pattern => !string.IsNullOrWhiteSpace(pattern))
+            .Select(pattern => pattern.Trim().Replace('\\', '/'))
+            .ToArray()
+           ?? Array.Empty<string>();
+
     private static string[] NormalizeExcludePathGlobs(string[]? globs)
         => globs?
             .Where(g => !string.IsNullOrWhiteSpace(g))
@@ -1297,7 +1575,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             .ToArray()
            ?? Array.Empty<string>();
 
-    private static bool SameExcludePathGlobs(string[] left, string[] right)
+    private static bool SamePathExclusions(string[] left, string[] right)
         => new HashSet<string>(left, StringComparer.OrdinalIgnoreCase)
             .SetEquals(right);
 
@@ -1429,11 +1707,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         return false;
     }
 
-    private bool HasReferenceInputDrift(ModuleInfo[] modules)
+    private bool HasReferenceInputDrift(ModuleInfo[] modules, string projectRoot)
     {
         if (_snapshot == null) return false;
 
-        var currentPaths = GetReferenceInputPaths(modules);
+        var currentPaths = GetReferenceInputPaths(modules, projectRoot);
         if (!_snapshot.ReferenceContentHashes.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)
             .SetEquals(currentPaths))
         {
@@ -1470,7 +1748,20 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 
     private void CaptureReferenceInputs(AnalysisSnapshot snapshot, ModuleInfo[] modules)
     {
-        var content = CaptureReferenceContent(modules);
+        var content = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
+        snapshot.ReferenceInputPathsByModule.Clear();
+        foreach (var module in modules)
+        {
+            var paths = GetReferenceInputPaths(new[] { module }, snapshot.ProjectRoot)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            snapshot.ReferenceInputPathsByModule[module.Name] = paths;
+            foreach (var path in paths)
+            {
+                try { content[path] = HashBinaryDescriptor(path); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+        }
         ReplaceDictionary(snapshot.ReferenceContentHashes, content);
         foreach (var path in content.Keys)
         {
@@ -1493,10 +1784,12 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         ReplaceDictionary(snapshot.PackageVisibilityInputHashes, content);
     }
 
-    private Dictionary<string, ContentFingerprint> CaptureReferenceContent(ModuleInfo[] modules)
+    private Dictionary<string, ContentFingerprint> CaptureReferenceContent(
+        ModuleInfo[] modules,
+        string projectRoot)
     {
         var content = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
-        foreach (var path in GetReferenceInputPaths(modules))
+        foreach (var path in GetReferenceInputPaths(modules, projectRoot))
         {
             try { content[path] = HashBinaryDescriptor(path); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
@@ -1505,9 +1798,11 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
         return content;
     }
 
-    private static HashSet<string> GetReferenceInputPaths(ModuleInfo[] modules)
+    private HashSet<string> GetReferenceInputPaths(ModuleInfo[] modules, string projectRoot)
         => modules
-            .SelectMany(module => module.ExternalDllPaths.Concat(module.SourceGeneratorAnalyzerPaths))
+            .SelectMany(module => module.ExternalDllPaths
+                .Concat(module.SourceGeneratorAnalyzerPaths)
+                .Concat(_nugetResolver.ResolveInputPaths(module, projectRoot)))
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(Path.GetFullPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);

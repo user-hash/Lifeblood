@@ -89,9 +89,14 @@ public sealed class OperationFactQuery
 /// </summary>
 public sealed class OperationFactScanReceipt
 {
+    public required string Status { get; init; }
+    public string? RejectionReason { get; init; }
     public required string ProfileScope { get; init; }
     public string[] AvailableProfiles { get; init; } = Array.Empty<string>();
+    public required string ExecutionMode { get; init; }
+    public required bool InputIdentityVerifiedAtStart { get; init; }
     public required int AdditionalSemanticBaseCount { get; init; }
+    public required int CompiledModuleCount { get; init; }
     public required int ScannedModuleCount { get; init; }
     public required int ScannedFileCount { get; init; }
     public required int ObservedOperationCount { get; init; }
@@ -99,6 +104,26 @@ public sealed class OperationFactScanReceipt
     public required bool Truncated { get; init; }
     public required bool StoppedByConsumer { get; init; }
     public string[] Limitations { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>Open operation-fact scan status vocabulary.</summary>
+public static class OperationFactScanStatus
+{
+    public const string Completed = "Completed";
+    public const string Rejected = "Rejected";
+}
+
+/// <summary>Open operation-fact scan rejection-reason vocabulary.</summary>
+public static class OperationFactRejectionReason
+{
+    public const string InputDrift = "InputDrift";
+}
+
+/// <summary>Open operation-fact execution-mode vocabulary.</summary>
+public static class OperationFactExecutionMode
+{
+    public const string RetainedCompilation = "RetainedCompilation";
+    public const string EphemeralProfileCompilation = "EphemeralProfileCompilation";
 }
 
 /// <summary>Open operation-kind vocabulary.</summary>

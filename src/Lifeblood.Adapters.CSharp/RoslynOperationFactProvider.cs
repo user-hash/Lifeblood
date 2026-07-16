@@ -123,9 +123,13 @@ internal sealed class RoslynOperationFactProvider
 
         return new OperationFactScanReceipt
         {
+            Status = OperationFactScanStatus.Completed,
             ProfileScope = _profileScope,
             AvailableProfiles = _availableProfiles,
+            ExecutionMode = OperationFactExecutionMode.RetainedCompilation,
+            InputIdentityVerifiedAtStart = true,
             AdditionalSemanticBaseCount = 0,
+            CompiledModuleCount = 0,
             ScannedModuleCount = scannedModules,
             ScannedFileCount = scannedFiles,
             ObservedOperationCount = observedOperations,
