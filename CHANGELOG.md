@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Diff-scoped diagnostic ownership without a baseline compilation.**
+  `lifeblood_diagnose(diagnosticOwnershipMode)` now joins its existing Roslyn
+  diagnostics to bounded Git working-tree, staged, or since-commit line
+  evidence, or to caller-supplied touched paths. It reports
+  `introducedByDiff`, `preExistingTouchedFile`, `preExistingUnrelated`, and
+  `unknownOwnership` groups by diagnostic index so the full payload is not
+  duplicated. Truncated/failed Git evidence, external paths, explicit files
+  without line history, and stale retained diagnostics fail closed to unknown;
+  no baseline compilation or additional semantic base is created.
+  (`INV-DIAGNOSTIC-OWNERSHIP-001`, `LB-INTAKE-20260714-029`.)
+
 - **Secondary-profile operation audits without secondary retention.**
   `lifeblood_contract_audit(profileScope)` may select any profile committed by
   the current analysis. The retained profile reuses its immutable compilation;

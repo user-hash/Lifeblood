@@ -265,6 +265,25 @@ Pre-fix the same call emitted ~120 spurious CS0246 / CS0103 errors (UnityEngine,
 
 `lifeblood_diagnose` and `lifeblood_compile_check` share one ownership resolver (`INV-COMPILATION-FILE-OWNERSHIP-001`). Exact normalized paths outrank suffix matches. If the best path matches more than one loaded compilation, neither tool selects the first module: `fileOwnership.outcome` is `Ambiguous`, `candidateModules` lists the stable choices, and the caller must pass `moduleName` or a more specific path. A pinned module miss remains `NotInModule`; an unknown module is `ModuleNotFound`; a path absent from every compilation is `NotFound` and compile-check composes the existing stale-descriptor guidance at the disk-aware handler boundary.
 
+### Diagnose only the warnings owned by the current change
+
+`lifeblood_diagnose` accepts `diagnosticOwnershipMode` with `workingTree`,
+`staged`, `sinceCommit`, or `explicitFiles`. The first three modes join the
+existing Roslyn diagnostics to Git's current-side changed lines; `sinceCommit`
+also requires `sinceCommit`. `explicitFiles` requires 1..128 `touchedFiles` and
+does not invent line history.
+
+The additive `diagnosticOwnership` block groups entries as
+`introducedByDiff`, `preExistingTouchedFile`, `preExistingUnrelated`, and
+`unknownOwnership`. Each row contains only `diagnosticIndex` plus its evidence
+reason; the full diagnostic remains in the existing `diagnostics[]` array and
+is not duplicated. New files and diagnostics located on current-side changed
+lines are current-change-owned. Diagnostics elsewhere in a touched file are
+conservatively pre-existing. Missing/truncated Git evidence, external/generated
+paths, caller paths without line spans, and diagnostics older than the current
+source state fail closed to `unknownOwnership`. This is location ownership,
+not proof that a changed line caused an error reported somewhere else.
+
 ## Truth envelope on every read-side response
 
 Every read-side tool response ships a top-level `envelope` field (`INV-ENVELOPE-001`):

@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Adapters.Git;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Right;
@@ -34,7 +36,11 @@ public class ToolHandlerTests : IDisposable
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))
+        {
+            foreach (var path in Directory.EnumerateFiles(_tempDir, "*", SearchOption.AllDirectories))
+                File.SetAttributes(path, FileAttributes.Normal);
             Directory.Delete(_tempDir, recursive: true);
+        }
     }
 
     private void RewriteGraphWithExtraType(string typeName)
@@ -262,6 +268,143 @@ public class ToolHandlerTests : IDisposable
                 $"<AssemblyName>{moduleName}</AssemblyName><EnableDefaultCompileItems>false</EnableDefaultCompileItems>" +
                 "</PropertyGroup><ItemGroup><Compile Include=\"../Shared/Shared.cs\" /></ItemGroup></Project>");
         }
+    }
+
+    [Fact]
+    public void Handle_Diagnose_WorkingTreeOwnershipGroupsWithoutDuplicatingDiagnostics()
+    {
+        var projectRoot = Path.Combine(_tempDir, "diagnostic-ownership-project");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(Path.Combine(projectRoot, "Ownership.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <WarningLevel>5</WarningLevel>
+              </PropertyGroup>
+            </Project>
+            """);
+        var changedPath = Path.Combine(projectRoot, "Changed.cs");
+        var touchedPath = Path.Combine(projectRoot, "Touched.cs");
+        var unrelatedPath = Path.Combine(projectRoot, "Unrelated.cs");
+        File.WriteAllText(changedPath, """
+            namespace Ownership;
+            public static class Changed
+            {
+                public static void Run() { int value = 1; }
+            }
+            """);
+        File.WriteAllText(touchedPath, """
+            namespace Ownership;
+            public static class Touched
+            {
+                public static void Run() { int unused; }
+            }
+            """);
+        File.WriteAllText(unrelatedPath, """
+            namespace Ownership;
+            public static class Unrelated
+            {
+                public static void Run() { int unused; }
+            }
+            """);
+        RunGit(projectRoot, "init", "--quiet");
+        RunGit(projectRoot, "add", ".");
+        RunGit(projectRoot, "-c", "user.name=Lifeblood Tests", "-c", "user.email=tests@lifeblood.local",
+            "commit", "--quiet", "-m", "baseline");
+
+        File.WriteAllText(changedPath, """
+            namespace Ownership;
+            public static class Changed
+            {
+                public static void Run() { MissingType value; }
+            }
+            """);
+        File.WriteAllText(touchedPath, """
+            namespace Ownership;
+            // Current atom touched this file but not its warning line.
+            public static class Touched
+            {
+                public static void Run() { int unused; }
+            }
+            """);
+
+        using var session = new GraphSession(
+            Fs,
+            sourceControl: new GitSourceControlSnapshotProvider());
+        var handler = CreateHandler(session: session);
+        var analyze = handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
+        Assert.Null(analyze.IsError);
+
+        var result = handler.Handle("lifeblood_diagnose", MakeArgs(new
+        {
+            diagnosticOwnershipMode = "workingTree",
+            verbosity = "compact",
+        }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        var diagnostics = root.GetProperty("diagnostics").EnumerateArray().ToArray();
+        var changedIndex = Array.FindIndex(diagnostics, diagnostic =>
+            diagnostic.GetProperty("id").GetString() == "CS0246"
+            && Path.GetFileName(diagnostic.GetProperty("filePath").GetString()) == "Changed.cs");
+        var touchedIndex = Array.FindIndex(diagnostics, diagnostic =>
+            diagnostic.GetProperty("id").GetString() == "CS0168"
+            && Path.GetFileName(diagnostic.GetProperty("filePath").GetString()) == "Touched.cs");
+        var unrelatedIndex = Array.FindIndex(diagnostics, diagnostic =>
+            diagnostic.GetProperty("id").GetString() == "CS0168"
+            && Path.GetFileName(diagnostic.GetProperty("filePath").GetString()) == "Unrelated.cs");
+        Assert.True(changedIndex >= 0);
+        Assert.True(touchedIndex >= 0);
+        Assert.True(unrelatedIndex >= 0);
+
+        var ownership = root.GetProperty("diagnosticOwnership");
+        Assert.Equal("workingTree", ownership.GetProperty("mode").GetString());
+        Assert.True(ownership.GetProperty("sourceControl").GetProperty("evidenceComplete").GetBoolean());
+        Assert.Contains(
+            ownership.GetProperty("introducedByDiff").EnumerateArray(),
+            row => row.GetProperty("diagnosticIndex").GetInt32() == changedIndex);
+        Assert.Contains(
+            ownership.GetProperty("preExistingTouchedFile").EnumerateArray(),
+            row => row.GetProperty("diagnosticIndex").GetInt32() == touchedIndex);
+        Assert.Contains(
+            ownership.GetProperty("preExistingUnrelated").EnumerateArray(),
+            row => row.GetProperty("diagnosticIndex").GetInt32() == unrelatedIndex);
+        Assert.DoesNotContain("\"diagnostic\":", ownership.GetRawText(), StringComparison.Ordinal);
+
+        var missingMode = handler.Handle(
+            "lifeblood_diagnose",
+            MakeArgs(new { sinceCommit = "HEAD" }));
+        var missingExplicitFiles = handler.Handle(
+            "lifeblood_diagnose",
+            MakeArgs(new { diagnosticOwnershipMode = "explicitFiles" }));
+        var conflictingInput = handler.Handle(
+            "lifeblood_diagnose",
+            MakeArgs(new
+            {
+                diagnosticOwnershipMode = "workingTree",
+                touchedFiles = new[] { "Changed.cs" },
+            }));
+        Assert.True(missingMode.IsError);
+        Assert.True(missingExplicitFiles.IsError);
+        Assert.True(conflictingInput.IsError);
+
+        File.AppendAllText(changedPath, Environment.NewLine);
+        File.SetLastWriteTimeUtc(changedPath, DateTime.UtcNow.AddSeconds(2));
+        var stale = handler.Handle("lifeblood_diagnose", MakeArgs(new
+        {
+            diagnosticOwnershipMode = "workingTree",
+            verbosity = "compact",
+        }));
+        Assert.Null(stale.IsError);
+        using var stalePayload = JsonDocument.Parse(stale.Content[0].Text);
+        var staleRoot = stalePayload.RootElement;
+        Assert.True(staleRoot.GetProperty("possiblyStale").GetBoolean());
+        var staleOwnership = staleRoot.GetProperty("diagnosticOwnership");
+        Assert.True(staleOwnership.GetProperty("diagnosticsPossiblyStale").GetBoolean());
+        Assert.Equal(
+            staleRoot.GetProperty("count").GetInt32(),
+            staleOwnership.GetProperty("counts").GetProperty("unknownOwnership").GetInt32());
     }
 
     [Fact]
@@ -2201,5 +2344,26 @@ public class ToolHandlerTests : IDisposable
             }
             """);
         return _tempDir;
+    }
+
+    private static void RunGit(string workingDirectory, params string[] arguments)
+    {
+        var start = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Git did not start.");
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        Assert.True(
+            process.ExitCode == 0,
+            $"git {string.Join(' ', arguments)} failed ({process.ExitCode}).\n{output}\n{error}");
     }
 }

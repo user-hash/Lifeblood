@@ -2,8 +2,7 @@
 
 Date: 2026-07-15
 
-Status: active. Wave 1 and Wave 2 entries `002` / `003` are closed; entry `029`
-remains in Wave 2, followed by Waves 3-7.
+Status: active. Waves 1-2 are closed; Waves 3-7 remain.
 The 2026-07-16 consolidation audit approved one controlled semantic-contract
 program for 20 of the 29 remaining intake entries. "One program" means one
 fact authority, one bounded public surface, and natural tested commits; it does
@@ -341,7 +340,14 @@ Covers `002`, `003`, `029`.
   `snap_57788656fb494cd2b7ef23e5a705198c` checked 10 current C# changes across
   five owning modules with 10 successes and zero diagnostics under one pinned
   Editor compilation host.
-- [ ] Add diff ownership to `diagnose` using the Wave 1 source-control snapshot.
+- [x] Add diff ownership to `diagnose` through the existing Wave 1
+  source-control port. Working-tree, staged, since-commit, and explicit-file
+  scopes join one existing diagnostic report to bounded current-side change
+  evidence. Groups reference diagnostic indexes rather than duplicating
+  payloads; incomplete Git evidence, stale diagnostics, and paths without
+  trustworthy line ownership fail closed to unknown. No baseline compilation
+  or retained semantic base was added. Closed by
+  `INV-DIAGNOSTIC-OWNERSHIP-001` and the temporary-repository plus MCP fixtures.
 - [x] Prototype profile-specific operation querying and measure two choices:
   compact precomputed neutral facts versus an ephemeral sequential compilation
   pass. The accepted design must expose every requested active profile while
