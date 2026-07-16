@@ -9,6 +9,35 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Shared ExampleApp analysis is responsive, reusable, and loss-tolerant.**
+
+- **Analyze defaults are summary-first and provenance-complete.** Package
+  visibility returns aggregate counts plus only excluded/unbound package rows;
+  profile applicability returns counts unless detail is requested; both modes
+  participate in coalescing identity. Cold incremental fallback distinguishes
+  reanalysis from content change, four-component stable Git tags are accepted,
+  invariant audit reports declaration-coverage confidence, multi-profile
+  receipts explain module applicability, and release-gate blocks distinguish
+  local prerelease evidence from published stable builds.
+  (`LB-INTAKE-20260716-039` through `LB-INTAKE-20260716-043`,
+  `LB-INTAKE-20260716-045`.)
+
+- **Unsupported relationship coverage is explicit and opt-in.**
+  `lifeblood_file_impact(includeUnsupportedRelationships:true)` keeps semantic
+  impact counts graph-proven while separately returning a bounded advisory
+  receipt for source-file IO literals. Reflection strings, Unity resource
+  paths, and serialized asset references remain named limitations until a
+  target-resolving adapter can support them without inventing graph edges.
+  (`LB-INTAKE-20260716-044`, partially shipped.)
+
+- **The Unity bridge has one canonical, pollable package authority.** The UPM
+  source lives under `unity/`; consumers reference it instead of copying it.
+  All 18 wrappers expose Coplay-discoverable typed nested parameters and the
+  polling lifecycle, while one coordinator launches the installed
+  `lifeblood-mcp --shared --shared-key <UnityRoot>` proxy. Unity and direct
+  clients therefore converge on the same daemon-owned semantic base rather
+  than private Debug/Release processes. (`INV-MCP-UNITY-BRIDGE-001`.)
+
 - **Unity package source visibility is explicit on analyze and compile-check.**
   `lifeblood_analyze` now reports `packageSourceVisibility` for Unity package
   workspaces: package roots from `Packages/manifest.json`,
