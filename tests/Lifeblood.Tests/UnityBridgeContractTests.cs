@@ -79,7 +79,7 @@ public sealed class UnityBridgeContractTests
                 .Single(IsMcpToolAttribute);
             var text = attribute.ToString();
             Assert.Contains("RequiresPolling = true", text);
-            Assert.Contains("MaxPollSeconds = 360", text);
+            Assert.DoesNotContain("MaxPollSeconds", text);
 
             var handler = tool.Members.OfType<MethodDeclarationSyntax>()
                 .Single(method => method.Identifier.ValueText == "HandleCommand");
@@ -91,6 +91,18 @@ public sealed class UnityBridgeContractTests
                 name.EndsWith("CallToolWithPolling", StringComparison.Ordinal)
                 || name.EndsWith("AnalyzeCurrentProjectWithPolling", StringComparison.Ordinal));
         }
+    }
+
+    [Fact]
+    public void PollingCoordinator_DoesNotImposeAFixedToolCallDeadline()
+    {
+        var source = File.ReadAllText(ClientPath);
+
+        Assert.DoesNotContain("ToolCallTimeoutMs", source);
+        Assert.DoesNotContain("Response timed out", source);
+        Assert.DoesNotContain("killing server", source);
+        Assert.Contains("ReadLineUntilProcessExit(_stdout)", source);
+        Assert.Contains("ReadLineWithTimeout(_stdout, InitTimeoutMs)", source);
     }
 
     [Fact]

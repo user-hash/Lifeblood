@@ -345,7 +345,7 @@ Overrides name one executable, not a command line. The bridge owns `--shared --s
 
 - **Domain reload.** The bridge disposes Unity's proxy before recompilation. The daemon keeps its base while another client lease exists; the next Unity call reconnects.
 - **Unity quit.** Unity's proxy is disposed; the daemon retains the latest base unless an operator-configured idle policy or explicit maintenance drain ends it.
-- **Crash recovery.** EOF or timeout closes the broken proxy. The next independent call connects a replacement; failed effectful requests are never replayed automatically.
+- **Crash recovery.** Process exit or pipe closure marks the proxy broken. The next independent call connects a replacement; failed effectful requests are never replayed automatically. Tool duration is observed through polling rather than a Lifeblood-authored wall-clock deadline.
 
 ### When to use Unity bridge vs standalone CLI
 

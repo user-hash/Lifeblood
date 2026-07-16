@@ -36,13 +36,6 @@ namespace Lifeblood.UnityBridge
         private readonly object _lock = new();
         private readonly PendingToolCallRegistry<JObject> _pendingCalls = new();
 
-        /// <summary>
-        /// Timeout for individual tool calls. Five minutes leaves margin for a
-        /// cold analysis of a large Unity workspace while keeping pipe failure
-        /// finite and observable.
-        /// </summary>
-        private const int ToolCallTimeoutMs = 300_000;
-
         /// <summary>Timeout for the MCP initialize handshake.</summary>
         private const int InitTimeoutMs = 15_000;
 
@@ -107,12 +100,11 @@ namespace Lifeblood.UnityBridge
                     _stdin.WriteLine(request.ToString(Formatting.None));
                     _stdin.Flush();
 
-                    // Read response with timeout — prevents hanging forever if server dies
-                    var line = ReadLineWithTimeout(_stdout, ToolCallTimeoutMs);
+                    var line = ReadLineUntilProcessExit(_stdout);
                     if (line == null)
                     {
                         Kill();
-                        return ErrorResult("Lifeblood server closed or timed out");
+                        return ErrorResult("Lifeblood server closed without a response");
                     }
 
                     var response = JObject.Parse(line);
@@ -327,11 +319,12 @@ namespace Lifeblood.UnityBridge
         }
 
         /// <summary>
-        /// Read a line from the server with timeout and process health monitoring.
-        /// Returns null if the server process exits, the stream closes, or the timeout
-        /// expires. On timeout, kills the server to unblock the pipe reader.
+        /// Read a line from the server with process health monitoring. Tool
+        /// calls are already on a worker and surfaced through polling, so this
+        /// method must not impose an analysis-duration deadline. It returns
+        /// null only when the proxy process exits or the pipe closes.
         /// </summary>
-        private string ReadLineWithTimeout(StreamReader reader, int timeoutMs)
+        private string ReadLineUntilProcessExit(StreamReader reader)
         {
             var readTask = System.Threading.Tasks.Task.Run(() =>
             {
@@ -340,10 +333,9 @@ namespace Lifeblood.UnityBridge
                 catch (IOException) { return null; }
             });
 
-            // Poll: either the read completes, the process dies, or we time out.
+            // Poll: either the read completes or the process dies.
             // Polling at 100ms is fine — this is editor code, not audio thread.
-            var deadline = System.Environment.TickCount + timeoutMs;
-            while (System.Environment.TickCount < deadline)
+            while (true)
             {
                 if (readTask.IsCompleted)
                     return readTask.Result;
@@ -354,10 +346,33 @@ namespace Lifeblood.UnityBridge
 
                 System.Threading.Thread.Sleep(100);
             }
+        }
 
-            // Timeout — kill the server to unblock the pipe
-            Debug.LogWarning($"[Lifeblood] Response timed out after {timeoutMs / 1000}s — killing server");
-            Kill();
+        /// <summary>
+        /// Read one handshake line with a bounded deadline. This is used only
+        /// before polling is available; tool-call duration is not bounded here.
+        /// </summary>
+        private string ReadLineWithTimeout(StreamReader reader, int timeoutMs)
+        {
+            var readTask = System.Threading.Tasks.Task.Run(() =>
+            {
+                try { return reader.ReadLine(); }
+                catch (ObjectDisposedException) { return null; }
+                catch (IOException) { return null; }
+            });
+
+            var deadline = System.Environment.TickCount + timeoutMs;
+            while (System.Environment.TickCount < deadline)
+            {
+                if (readTask.IsCompleted)
+                    return readTask.Result;
+
+                if (_process == null || _process.HasExited)
+                    return null;
+
+                System.Threading.Thread.Sleep(100);
+            }
+
             return null;
         }
 

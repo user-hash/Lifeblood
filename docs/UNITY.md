@@ -52,7 +52,7 @@ Delete any copied `Packages/com.dawgtools.lifeblood-bridge` directory or old `As
 
 ### Step 4: Verify
 
-Open Unity and refresh scripts. The bridge auto-discovers via `[McpForUnityTool]` attributes. Every parameter is a typed public instance property on the tool's nested `Parameters` class, matching Coplay's discovery contract. All bridge calls use Coplay's polling lifecycle so a cold analysis or reference search can outlive the synchronous gateway deadline without losing its result. Admission owns at most one unconsumed call per tool; an action-only status poll retrieves it without resending the original arguments.
+Open Unity and refresh scripts. The bridge auto-discovers via `[McpForUnityTool]` attributes. Every parameter is a typed public instance property on the tool's nested `Parameters` class or shared snapshot-read base, matching the server input contract and Coplay's discovery contract. All bridge calls use Coplay's polling lifecycle so a cold analysis or reference search can outlive the synchronous gateway deadline without losing its result. Admission owns at most one unconsumed call per tool; an action-only status poll retrieves it without resending the original arguments. Lifeblood does not author per-tool max-poll metadata or kill a healthy proxy after a fixed tool-call wall clock.
 
 ## Server command discovery
 
@@ -94,7 +94,7 @@ Each module on the streaming path is compiled, extracted, then downgraded to a l
 
 - **Domain reload:** The bridge disposes Unity's proxy before recompilation. The daemon and semantic base remain alive while another workspace client lease exists; the next Unity call reconnects.
 - **Editor quit:** Unity's proxy is disposed via `EditorApplication.quitting`; the daemon follows its lease-aware idle policy.
-- **Crash recovery:** EOF or timeout closes the broken proxy. The next independent call starts a replacement proxy; a crashed daemon starts empty rather than replaying a possibly effectful request.
+- **Crash recovery:** Process exit or pipe closure marks the proxy broken. The next independent call starts a replacement proxy; a crashed daemon starts empty rather than replaying a possibly effectful request.
 
 ## Unity-Aware Reachability (`INV-UNITY-001`)
 

@@ -120,6 +120,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   previously hid, and compile-check can publish `filePath` without requiring a
   code snippet. The only intentional Unity translations are current-project
   injection for analyze and `manifestJson` to server-side `manifest`.
+  Lifeblood no longer authors `MaxPollSeconds` on those wrappers and the bridge
+  client no longer kills a healthy proxy after a fixed tool-call wall clock;
+  long-running work stays pending until the daemon responds, the process exits,
+  or the pipe closes. The initialize handshake remains bounded separately.
   (`INV-MCP-UNITY-BRIDGE-001`.)
 - **Unity package source visibility is explicit on analyze and compile-check.**
   `lifeblood_analyze` now reports `packageSourceVisibility` for Unity package
