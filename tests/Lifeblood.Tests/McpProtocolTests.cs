@@ -206,6 +206,7 @@ public class McpProtocolTests
   ["lifeblood_capabilities"] = noneObserve,
   ["lifeblood_batch"] = noneObserve,
   ["lifeblood_snapshots"] = snapshotCatalog,
+  ["lifeblood_evidence_drift"] = workspaceRootObserve,
   ["lifeblood_analyze"] = refresh,
   ["lifeblood_context"] = graphObserve,
   ["lifeblood_lookup"] = graphObserve,

@@ -151,6 +151,20 @@ toward the same bound; if all slots are pinned, automatic rollover is refused
 and reported rather than growing another cache. Use `checkDrift:true` on list
 only when filesystem hashing is worth the I/O cost.
 
+The default `relativeTolerancePercent` is 0.5 for volume metrics. Violations,
+cycles, duplicate declarations, and duplicate IDs have a fixed no-increase
+policy; live invariant parse warnings must remain zero. Missing/conflicting
+baseline metrics fail closed. Before a `current` verdict is allowed, the C#
+adapter recaptures source/descriptor/rule identity. If that differs from the
+leased publication, the response is `unavailable` with
+`refreshAnalysisRecommended:true`; it will not compare a stale graph as if it
+were live. A complete current graph with out-of-policy metrics returns
+`refreshEvidenceRecommended:true`. The tool reports the exact baseline content
+fingerprint and optional baseline/analyze commit comparison as provenance, but
+neither replaces canonical analysis identity. It never runs analyze, compiles
+a baseline, rewrites the generated file, launches Git, or retains another
+semantic base (`INV-EVIDENCE-DRIFT-001`).
+
 For several related reads, `lifeblood_batch` pins once and runs the plan in
 stable input order:
 

@@ -79,6 +79,11 @@ public static class ToolInputContractCatalog
             Arg(@"checkDrift", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"When true on list, recapture live source/descriptor/rule identity once per base key and report current/drifted/unavailable. Default false avoids filesystem hashing.", enumValues: Array.Empty<string>())
         );
 
+        yield return Contract(@"lifeblood_evidence_drift",
+            Arg(@"baselinePath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Repository-contained generated evidence Markdown. Relative paths resolve from the analyzed workspace root. Default: docs/code-maps/EVIDENCE.generated.md.", enumValues: Array.Empty<string>()),
+            Arg(@"relativeTolerancePercent", ToolArgumentType.Number, required: false, arrayItemType: null, description: @"Relative drift tolerance for volume counts such as symbols, edges, modules, types, files, profile edges, and invariant totals. Default 0.5; finite range 0..100. Safety metrics keep fixed no-increase/zero-required policies.", enumValues: Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_analyze",
             Arg(@"projectPath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Path to C# project root (with .sln or .csproj)", enumValues: Array.Empty<string>()),
             Arg(@"graphPath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Path to a graph.json file (alternative to projectPath)", enumValues: Array.Empty<string>()),

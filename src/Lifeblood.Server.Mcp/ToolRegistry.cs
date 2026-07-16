@@ -309,6 +309,13 @@ public static class ToolRegistry
   },
   new()
   {
+  Name = "lifeblood_evidence_drift",
+  Behavior = WorkspaceRootObservation,
+  EnvelopeClassification = DerivedProven,
+  Description = "Compare a repository-owned generated evidence Markdown baseline with the exact leased Lifeblood graph and a live invariant-tree audit. The tool first recaptures canonical source/descriptor/rule identity; a drifted or unavailable publication returns verdict:'unavailable' and recommends analyze instead of claiming the baseline is current. Volume metrics use caller-visible relativeTolerancePercent (default 0.5%); increases in violations, cycles, duplicate declarations, or duplicate ids are flags, and any live invariant parse warning is a flag. Returns exact baseline/current/delta/percent rows, profile edge counts from the same projection as lifeblood_analyze, optional baseline/analyze commit provenance, and separate refreshAnalysisRecommended / refreshEvidenceRecommended signals. Read-only: it does not analyze, rewrite evidence, run a baseline compilation, or retain another graph/Roslyn base. baselinePath must remain inside the workspace and defaults to docs/code-maps/EVIDENCE.generated.md. INV-EVIDENCE-DRIFT-001.",
+  },
+  new()
+  {
   Name = "lifeblood_analyze",
   Behavior = WorkspaceRefresh,
   EnvelopeClassification = SemanticProven,

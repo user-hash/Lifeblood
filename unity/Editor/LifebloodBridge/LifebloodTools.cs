@@ -16,7 +16,7 @@ namespace Lifeblood.UnityBridge
     }
 
     /// <summary>
-    /// All 19 Lifeblood semantic tools exposed as Unity MCP custom tools.
+    /// All 20 Lifeblood semantic tools exposed as Unity MCP custom tools.
     /// Each class is auto-discovered by Unity MCP via [McpForUnityTool].
     /// Architecture: pure outer adapters. JObject in, JObject out, with all
     /// semantic work delegated to the workspace-shared Lifeblood host. Parameters
@@ -112,6 +112,26 @@ namespace Lifeblood.UnityBridge
         public static object HandleCommand(JObject @params)
         {
             return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_context", @params);
+        }
+    }
+
+    [McpForUnityTool("lifeblood_evidence_drift",
+        Description = "Compare the retained Lifeblood snapshot and live invariant audit with the repository generated evidence baseline. Read-only; reports current, stale, flag, or unavailable plus exact deltas and refresh guidance.",
+        Group = "code-intelligence", RequiresPolling = true)]
+    public static class LifebloodEvidenceDrift
+    {
+        public sealed class Parameters : SnapshotReadParameters
+        {
+            [ToolParameter("Repository-contained evidence Markdown path. Defaults to docs/code-maps/EVIDENCE.generated.md.", Required = false)]
+            public string baselinePath { get; set; }
+
+            [ToolParameter("Relative volume-count tolerance percent. Default 0.5; range 0..100.", Required = false)]
+            public double? relativeTolerancePercent { get; set; }
+        }
+
+        public static object HandleCommand(JObject @params)
+        {
+            return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_evidence_drift", @params);
         }
     }
 

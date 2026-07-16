@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.JsonGraph;
+using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
@@ -1458,7 +1459,7 @@ public sealed class GraphSession : IDisposable
                 activeProfiles = activeProfiles,
                 perProfileEdgeCounts = activeProfiles == null || activeProfiles.Length <= 1
                     ? null
-                    : BuildPerProfileEdgeCounts(graph, activeProfiles),
+                    : EvidenceBaselineDriftEvaluator.CountProfileEdges(graph, activeProfiles),
             },
             fallbackReason = fallbackReason.HasValue ? WireReasonName(fallbackReason.Value) : null,
             fallbackDetail,
@@ -1607,22 +1608,6 @@ public sealed class GraphSession : IDisposable
             truncated = report.Modules.Length > modules.Length,
             modules,
         };
-    }
-
-    /// <summary>INV-MULTI-DEFINE-ANALYZE-001 per-profile edge count summary.</summary>
-    private static Dictionary<string, int> BuildPerProfileEdgeCounts(SemanticGraph graph, string[] activeProfiles)
-    {
-        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var name in activeProfiles) counts[name] = 0;
-        foreach (var e in graph.Edges)
-        {
-            if (e.Profiles == null) continue;
-            foreach (var p in e.Profiles)
-            {
-                if (counts.ContainsKey(p)) counts[p]++;
-            }
-        }
-        return counts;
     }
 
     /// <summary>
