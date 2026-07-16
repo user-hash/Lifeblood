@@ -382,10 +382,13 @@ Natural commit groups:
 Group 1 is now in progress through one generic `value-domain` rule: consumer
 manifests bind arbitrary domains to canonical source symbols and declare exact
 source-domain/operator evidence for accepted conversions. The same streamed
-value record carries nested operators, so numeric units and cadence reuse one
-mechanism. This is not closure for `006` or `010` yet: non-finite policy,
-constant provenance, cadence-boundary fixtures, and motivating DAWG receipts
-remain required.
+value record carries nested operators and typed constant occurrences, so
+numeric units, non-finite handling, literal provenance, and cadence reuse one
+mechanism. Exact policy findings now distinguish explicit NaN/infinity or
+missing local sanitizer evidence from raw numeric literals while keeping named
+constants bound to their canonical policy owner. This is not closure for
+`006`, `010`, or `022` yet: near-equal grouping, cadence-boundary/off-by-one
+fixtures, and motivating DAWG receipts remain required.
 
 The first DAWG dogfood exposed a performance defect before closure: a target-
 filtered audit emitted one fact but still materialized value/control evidence

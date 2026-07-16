@@ -84,11 +84,36 @@ public sealed class ValueDomainContract
     public required string TargetDomain { get; init; }
     public ValueDomainBinding[] Bindings { get; init; } = Array.Empty<ValueDomainBinding>();
     public ValueDomainConversion[] AllowedConversions { get; init; } = Array.Empty<ValueDomainConversion>();
+    public ValueDomainNonFinitePolicy? NonFinitePolicy { get; init; }
+    public ValueDomainConstantPolicy? ConstantPolicy { get; init; }
     public bool AllowCompileTimeConstants { get; init; }
     public bool ReportUnclassifiedValues { get; init; }
     public string Severity { get; init; } = ContractSeverity.Warning;
     public string? Message { get; init; }
     public string? Guidance { get; init; }
+}
+
+/// <summary>
+/// Consumer-owned handling contract for non-finite values at one value-domain
+/// boundary. Evidence symbols name the sanitizer/validator authority; the
+/// action describes policy and never comes from product-name inference.
+/// </summary>
+public sealed class ValueDomainNonFinitePolicy
+{
+    public required string Action { get; init; }
+    public string[] EvidenceSymbolIds { get; init; } = Array.Empty<string>();
+    public bool RequireEvidenceForAllValues { get; init; }
+}
+
+/// <summary>
+/// Consumer-owned raw-literal policy for a value-domain boundary. Named
+/// constants stay distinguishable through <see cref="OperationConstantFact"/>;
+/// exact literal exceptions cover universal identities such as zero or one.
+/// </summary>
+public sealed class ValueDomainConstantPolicy
+{
+    public bool ReportRawNumericLiterals { get; init; }
+    public string[] AllowedLiteralValues { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>Exact source symbols that identify one consumer-named domain.</summary>
@@ -205,6 +230,28 @@ public static class ContractFindingKind
     public const string MissingOperationGuard = "MissingOperationGuard";
     public const string ExternalApiCostExposure = "ExternalApiCostExposure";
     public const string ValueDomainMismatch = "ValueDomainMismatch";
+    public const string NonFinitePolicyMismatch = "NonFinitePolicyMismatch";
+    public const string ConstantProvenanceMismatch = "ConstantProvenanceMismatch";
+}
+
+public static class NonFinitePolicyAction
+{
+    public const string Allow = "Allow";
+    public const string Reject = "Reject";
+    public const string ClampToMinimum = "ClampToMinimum";
+    public const string ClampToMaximum = "ClampToMaximum";
+    public const string UseNeutral = "UseNeutral";
+    public const string CallerOwned = "CallerOwned";
+
+    public static readonly string[] All =
+    {
+        Allow,
+        Reject,
+        ClampToMinimum,
+        ClampToMaximum,
+        UseNeutral,
+        CallerOwned,
+    };
 }
 
 public static class ContractSeverity

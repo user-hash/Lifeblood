@@ -35,9 +35,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   resolve/dependants queries on one publication.
 - **Versioned semantic contracts now share one bounded stateless evaluator.**
   Consumer-owned manifests declare operation-argument guards, external API
-  cost annotations, exact value-domain conversions, and suppressions. Value
-  domains use caller-named symbol bindings plus exact required source/operator
-  evidence; Lifeblood embeds no units or product vocabulary. `ContractAuditEngine` derives one
+  cost annotations, exact value-domain conversions, non-finite handling,
+  numeric-literal provenance, and suppressions. Value domains use caller-named
+  symbol bindings plus exact required source/operator evidence; nested constant
+  occurrences preserve literal versus named ownership and finite/NaN/infinity
+  classification without embedding units or product vocabulary. A manifest may
+  require local evidence for `Reject`, `ClampToMinimum`, `ClampToMaximum`,
+  `UseNeutral`, or `CallerOwned` handling, or explicitly `Allow` non-finite
+  values; raw numeric literals are independently reportable with exact
+  allowlisted identities. `ContractAuditEngine` derives one
   target-filtered operation-fact query, fans that stream across every selected
   rule family, counts the complete result, and retains only a deterministic
   bounded finding/evidence projection. `lifeblood_contract_audit` exposes that

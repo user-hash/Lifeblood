@@ -120,6 +120,49 @@ public sealed class OperationFactProviderTests
     }
 
     [Fact]
+    public void Scan_ValueCarriesLiteralNamedAndNonFiniteConstantProvenance()
+    {
+        const string source = """
+            namespace Acme;
+            public sealed class Constants
+            {
+                private const float PolicyFloor = 0.0001f;
+                private void Sink(float value) { }
+                public void Run(float input)
+                {
+                    Sink(input * 0.00011f);
+                    Sink(PolicyFloor);
+                    Sink(float.PositiveInfinity);
+                }
+            }
+            """;
+        using var host = HostWith(source);
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            TargetSymbolIds = new[] { "method:Acme.Constants.Sink(float)" },
+            IncludeKinds = new[] { OperationFactKind.Call },
+        });
+
+        Assert.Equal(3, facts.Length);
+        var raw = Assert.Single(facts, fact => ArgumentValue(fact).Expression == "input * 0.00011f");
+        var rawConstant = Assert.Single(ArgumentValue(raw).Constants);
+        Assert.Equal(OperationConstantOrigin.Literal, rawConstant.Origin);
+        Assert.Equal("0.00011", rawConstant.Value);
+        Assert.Equal(OperationNumericClassification.Finite, rawConstant.NumericClassification);
+
+        var named = Assert.Single(facts, fact => ArgumentValue(fact).Expression == "PolicyFloor");
+        var namedConstant = Assert.Single(ArgumentValue(named).Constants);
+        Assert.Equal(OperationConstantOrigin.NamedConstant, namedConstant.Origin);
+        Assert.Equal("field:Acme.Constants.PolicyFloor", namedConstant.SymbolId);
+        Assert.Equal(OperationNumericClassification.Finite, namedConstant.NumericClassification);
+
+        var infinity = Assert.Single(facts, fact => ArgumentValue(fact).Expression == "float.PositiveInfinity");
+        var infinityConstant = Assert.Single(ArgumentValue(infinity).Constants);
+        Assert.Equal(OperationConstantOrigin.NamedConstant, infinityConstant.Origin);
+        Assert.Equal(OperationNumericClassification.PositiveInfinity, infinityConstant.NumericClassification);
+    }
+
+    [Fact]
     public void Scan_ArrayCreationCarriesDimensionOrigin()
     {
         using var host = HostWith(Source);
@@ -271,6 +314,9 @@ public sealed class OperationFactProviderTests
             });
         return (facts.ToArray(), receipt);
     }
+
+    private static OperationValueFact ArgumentValue(OperationFact fact)
+        => Assert.Single(fact.Inputs, input => input.Role == OperationInputRole.Argument).Value;
 
     private static RoslynCompilationHost HostWith(string source)
         => HostWithSources(("Engine.cs", source));

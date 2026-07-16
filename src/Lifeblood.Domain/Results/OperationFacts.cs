@@ -53,6 +53,23 @@ public sealed class OperationValueFact
     public string[] SourceSymbolIds { get; init; } = Array.Empty<string>();
     public string[] ConversionTypes { get; init; } = Array.Empty<string>();
     public string[] Operators { get; init; } = Array.Empty<string>();
+    public OperationConstantFact[] Constants { get; init; } = Array.Empty<OperationConstantFact>();
+}
+
+/// <summary>
+/// One constant occurrence contributing to a value expression. The adapter
+/// preserves literal versus named-policy provenance and numeric finiteness
+/// without assigning a consumer domain or deciding whether the value is safe.
+/// </summary>
+public sealed class OperationConstantFact
+{
+    public required string Origin { get; init; }
+    public string? SymbolId { get; init; }
+    public string? Type { get; init; }
+    public string? Value { get; init; }
+    public required string NumericClassification { get; init; }
+    public string? Expression { get; init; }
+    public required OperationSourceSpan Source { get; init; }
 }
 
 /// <summary>Control-flow ancestor surrounding an operation occurrence.</summary>
@@ -206,6 +223,25 @@ public static class OperationValueKind
     public const string MethodGroup = "MethodGroup";
     public const string InterpolatedString = "InterpolatedString";
     public const string Other = "Other";
+}
+
+/// <summary>Open constant-provenance vocabulary.</summary>
+public static class OperationConstantOrigin
+{
+    public const string Literal = "Literal";
+    public const string NamedConstant = "NamedConstant";
+    public const string DefaultValue = "DefaultValue";
+    public const string FoldedExpression = "FoldedExpression";
+}
+
+/// <summary>Adapter-neutral numeric classification for constant values.</summary>
+public static class OperationNumericClassification
+{
+    public const string NonNumeric = "NonNumeric";
+    public const string Finite = "Finite";
+    public const string NaN = "NaN";
+    public const string PositiveInfinity = "PositiveInfinity";
+    public const string NegativeInfinity = "NegativeInfinity";
 }
 
 /// <summary>Open control-context vocabulary.</summary>

@@ -1408,6 +1408,79 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_ValueDomainPoliciesUseExtractedConstantProvenance()
+    {
+        var projectRoot = Path.Combine(_tempDir, "value-policy-contract");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Guard.cs"),
+            "namespace Acme; public static class Guard { " +
+            "private const float OwnedHalf = 0.5f; public static void Set(float value) { } " +
+            "public static void Run(float input) { Set(input * 0.25f); Set(OwnedHalf); Set(float.PositiveInfinity); } }");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-value-policies",
+            version = "1.0.0",
+            valueDomains = new[]
+            {
+                new
+                {
+                    id = "set-owned-value",
+                    targetSymbolIds = new[] { "method:Acme.Guard.Set(float)" },
+                    targetDomain = "OwnedValue",
+                    bindings = new[]
+                    {
+                        new
+                        {
+                            domain = "OwnedValue",
+                            sourceSymbolIds = new[] { "parameter:method:Acme.Guard.Run(float)#0:input" },
+                        },
+                    },
+                    allowCompileTimeConstants = true,
+                    nonFinitePolicy = new
+                    {
+                        action = NonFinitePolicyAction.Reject,
+                        evidenceSymbolIds = Array.Empty<string>(),
+                    },
+                    constantPolicy = new
+                    {
+                        reportRawNumericLiterals = true,
+                        allowedLiteralValues = Array.Empty<string>(),
+                    },
+                },
+            },
+        });
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal(2, payload.RootElement.GetProperty("findingCount").GetInt32());
+        var kinds = payload.RootElement.GetProperty("findings")
+            .EnumerateArray()
+            .Select(finding => finding.GetProperty("kind").GetString())
+            .OrderBy(kind => kind, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(new[]
+        {
+            ContractFindingKind.ConstantProvenanceMismatch,
+            ContractFindingKind.NonFinitePolicyMismatch,
+        }, kinds);
+        Assert.Equal(
+            0,
+            payload.RootElement.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+    }
+
+    [Fact]
     public void Handle_ContractAudit_RejectsGraphOnlyAndOutOfWorkspaceManifestPath()
     {
         var (_, manifest) = CreateContractAuditProject();
