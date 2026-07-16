@@ -50,7 +50,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   require local evidence for `Reject`, `ClampToMinimum`, `ClampToMaximum`,
   `UseNeutral`, or `CallerOwned` handling, or explicitly `Allow` non-finite
   values; raw numeric literals are independently reportable with exact
-  allowlisted identities. `ContractAuditEngine` derives one
+  allowlisted identities. Consumer-declared absolute/relative tolerances group
+  distinct near-equal raw literals deterministically without folding named
+  policy constants into the result. The same control-context facts now retain
+  exact comparison operands and source spans, so a manifest can accept precise
+  cadence boundary forms such as `< count` or `<= count - 1` and distinguish a
+  proven mismatch from a missing lexical boundary. `ContractAuditEngine` derives one
   target-filtered operation-fact query, fans that stream across every selected
   rule family, counts the complete result, and retains only a deterministic
   bounded finding/evidence projection. `lifeblood_contract_audit` exposes that

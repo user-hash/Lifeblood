@@ -68,6 +68,45 @@ public sealed class OperationFactProviderTests
     }
 
     [Fact]
+    public void Scan_ComparisonPredicateCarriesExactOperandProvenanceAndSource()
+    {
+        const string source = """
+            namespace Acme;
+            public sealed class Boundary
+            {
+                private void Sink(int value) { }
+                public void Run(int frames)
+                {
+                    for (var i = 0; i <= frames - 1; i++)
+                        Sink(i);
+                }
+            }
+            """;
+        using var host = HostWithSources(("Boundary.cs", source));
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            TargetSymbolIds = new[] { "method:Acme.Boundary.Sink(int)" },
+            IncludeKinds = new[] { OperationFactKind.Call },
+        });
+
+        var context = Assert.Single(Assert.Single(facts).ControlContexts);
+        var predicate = Assert.Single(
+            context.Predicates,
+            candidate => candidate.Operator == "LessThanOrEqual");
+
+        Assert.Equal("LessThanOrEqual", predicate.Operator);
+        Assert.EndsWith("Boundary.cs", predicate.Source.FilePath, StringComparison.Ordinal);
+        Assert.Equal(7, predicate.Source.Line);
+        Assert.Contains(predicate.LeftValue!.SourceSymbolIds, id => id.EndsWith(":i", StringComparison.Ordinal));
+        Assert.Equal(OperationValueKind.Binary, predicate.RightValue!.Kind);
+        Assert.Contains(
+            "parameter:method:Acme.Boundary.Run(int)#0:frames",
+            predicate.RightValue.SourceSymbolIds);
+        Assert.Equal(new[] { "Subtract" }, predicate.RightValue.Operators);
+        Assert.Equal("1", Assert.Single(predicate.RightValue.Constants).Value);
+    }
+
+    [Fact]
     public void Scan_AssignmentCarriesTargetValueConversionAndBranchContext()
     {
         using var host = HostWith(Source);

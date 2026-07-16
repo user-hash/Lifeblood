@@ -1481,6 +1481,95 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_BindsNearEqualAndCadenceBoundaryPoliciesOnTheSharedStream()
+    {
+        var projectRoot = Path.Combine(_tempDir, "cadence-contract");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Guard.cs"),
+            "namespace Acme; public static class Guard { public static void Set(float value) { } " +
+            "public static void Run(float input, int frames) { for (var i = 0; i <= frames; i++) { " +
+            "Set(input * 0.001f); Set(input * 0.00105f); } } }");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-cadence-policy",
+            version = "1.0.0",
+            valueDomains = new[]
+            {
+                new
+                {
+                    id = "set-owned-value",
+                    targetSymbolIds = new[] { "method:Acme.Guard.Set(float)" },
+                    targetDomain = "OwnedValue",
+                    bindings = new[]
+                    {
+                        new
+                        {
+                            domain = "OwnedValue",
+                            sourceSymbolIds = new[] { "parameter:method:Acme.Guard.Run(float,int)#0:input" },
+                        },
+                    },
+                    constantPolicy = new
+                    {
+                        nearEqualPolicy = new
+                        {
+                            absoluteTolerance = 0.0001,
+                            relativeTolerance = 0.0,
+                            minimumOccurrences = 2,
+                        },
+                    },
+                    boundaryPolicy = new
+                    {
+                        boundarySourceSymbolIds = new[]
+                        {
+                            "parameter:method:Acme.Guard.Run(float,int)#1:frames",
+                        },
+                        requireInputSourceInPredicate = false,
+                        allowedShapes = new[]
+                        {
+                            new
+                            {
+                                comparisonOperator = "LessThan",
+                                boundarySide = BoundaryOperandSide.Right,
+                                boundaryValueKinds = new[] { OperationValueKind.Parameter },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal(3, payload.RootElement.GetProperty("findingCount").GetInt32());
+        var kinds = payload.RootElement.GetProperty("findings")
+            .EnumerateArray()
+            .Select(finding => finding.GetProperty("kind").GetString())
+            .OrderBy(kind => kind, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(new[]
+        {
+            ContractFindingKind.CadenceBoundaryMismatch,
+            ContractFindingKind.CadenceBoundaryMismatch,
+            ContractFindingKind.NearEqualConstantGroup,
+        }, kinds);
+        Assert.Equal(
+            0,
+            payload.RootElement.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+    }
+
+    [Fact]
     public void Handle_ContractAudit_RejectsGraphOnlyAndOutOfWorkspaceManifestPath()
     {
         var (_, manifest) = CreateContractAuditProject();

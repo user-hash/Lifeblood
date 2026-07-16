@@ -386,9 +386,14 @@ value record carries nested operators and typed constant occurrences, so
 numeric units, non-finite handling, literal provenance, and cadence reuse one
 mechanism. Exact policy findings now distinguish explicit NaN/infinity or
 missing local sanitizer evidence from raw numeric literals while keeping named
-constants bound to their canonical policy owner. This is not closure for
-`006`, `010`, or `022` yet: near-equal grouping, cadence-boundary/off-by-one
-fixtures, and motivating DAWG receipts remain required.
+constants bound to their canonical policy owner. Consumer-owned absolute and
+relative tolerances now group distinct raw numeric literals without treating
+named constants as duplicates. Exact comparison operands/source spans support
+manifest-authored direct and offset cadence boundaries, including the
+`< count` versus `<= count - 1` equivalence class and proven mismatch versus
+missing-boundary confidence. Synthetic engine, extractor, validation, and MCP
+wire fixtures are complete with zero additional semantic bases. The motivating
+DAWG receipt remains the final closure gate for `006`, `010`, and `022`.
 
 The first DAWG dogfood exposed a performance defect before closure: a target-
 filtered audit emitted one fact but still materialized value/control evidence

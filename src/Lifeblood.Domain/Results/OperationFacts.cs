@@ -93,6 +93,9 @@ public sealed class OperationControlPredicate
     public required string Operator { get; init; }
     public string? Expression { get; init; }
     public string[] SourceSymbolIds { get; init; } = Array.Empty<string>();
+    public OperationValueFact? LeftValue { get; init; }
+    public OperationValueFact? RightValue { get; init; }
+    public required OperationSourceSpan Source { get; init; }
 }
 
 /// <summary>Stable, adapter-neutral source occurrence.</summary>

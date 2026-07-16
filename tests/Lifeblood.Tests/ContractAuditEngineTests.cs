@@ -387,6 +387,160 @@ public sealed class ContractAuditEngineTests
     }
 
     [Fact]
+    public void ValueDomain_NearEqualPolicyGroupsDistinctRawLiteralsAcrossOneBoundedStream()
+    {
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(constantPolicy: new ValueDomainConstantPolicy
+            {
+                NearEqualPolicy = new ValueDomainNearEqualPolicy
+                {
+                    AbsoluteTolerance = 0.0001,
+                    MinimumOccurrences = 2,
+                },
+            }),
+        });
+
+        engine.Observe(Call("raw-low", DomainTarget, "Clock.cs", 10, ArgumentWithConstants(
+            OperationValueKind.Binary,
+            new[] { Seconds },
+            Constant(OperationConstantOrigin.Literal, "0.001", OperationNumericClassification.Finite))));
+        engine.Observe(Call("raw-high", DomainTarget, "Clock.cs", 20, ArgumentWithConstants(
+            OperationValueKind.Binary,
+            new[] { Seconds },
+            Constant(OperationConstantOrigin.Literal, "0.00105", OperationNumericClassification.Finite))));
+        engine.Observe(Call("named-near", DomainTarget, "Clock.cs", 30, ArgumentWithConstants(
+            OperationValueKind.Binary,
+            new[] { Seconds, "field:Acme.Clock.PolicyEpsilon" },
+            Constant(
+                OperationConstantOrigin.NamedConstant,
+                "0.00104",
+                OperationNumericClassification.Finite,
+                "field:Acme.Clock.PolicyEpsilon"))));
+        engine.Observe(Call("raw-far", DomainTarget, "Clock.cs", 40, ArgumentWithConstants(
+            OperationValueKind.Binary,
+            new[] { Seconds },
+            Constant(OperationConstantOrigin.Literal, "0.002", OperationNumericClassification.Finite))));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 4)).Findings);
+
+        Assert.Equal(ContractFindingKind.NearEqualConstantGroup, finding.Kind);
+        Assert.Equal(new[] { "ConstantProvenance", "NearEqual" }, finding.Categories);
+        Assert.Equal(2, finding.Evidence.Count(evidence => evidence.Kind == "NearEqualConstant"));
+        Assert.Contains(finding.Evidence, evidence =>
+            evidence.Kind == "NearEqualPolicy"
+            && evidence.Summary.Contains("absoluteTolerance=0.0001", StringComparison.Ordinal));
+        Assert.DoesNotContain(finding.Evidence, evidence =>
+            evidence.Summary.Contains("0.00104", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValueDomain_BoundaryPolicyAcceptsDeclaredCadenceShapesAndReportsMismatchOrAbsence()
+    {
+        var policy = new ValueDomainBoundaryPolicy
+        {
+            BoundarySourceSymbolIds = new[] { Frames },
+            AllowedShapes = new[]
+            {
+                new ValueDomainBoundaryShape
+                {
+                    ComparisonOperator = "LessThan",
+                    BoundarySide = BoundaryOperandSide.Right,
+                    BoundaryValueKinds = new[] { OperationValueKind.Parameter },
+                },
+                new ValueDomainBoundaryShape
+                {
+                    ComparisonOperator = "LessThanOrEqual",
+                    BoundarySide = BoundaryOperandSide.Right,
+                    BoundaryValueKinds = new[] { OperationValueKind.Binary },
+                    BoundaryOperators = new[] { "Subtract" },
+                    BoundaryConstantValues = new[] { "1" },
+                },
+            },
+        };
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(boundaryPolicy: policy),
+        });
+        var cursor = Value(OperationValueKind.Parameter, new[] { Seconds });
+        var directBoundary = Value(OperationValueKind.Parameter, new[] { Frames });
+        var offsetBoundary = Value(
+            OperationValueKind.Binary,
+            new[] { Frames },
+            new[] { "Subtract" },
+            Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite));
+        var duplicateOffsetBoundary = Value(
+            OperationValueKind.Binary,
+            new[] { Frames },
+            new[] { "Subtract", "Subtract" },
+            Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite),
+            Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite));
+
+        engine.Observe(Call(
+            "direct",
+            DomainTarget,
+            "Clock.cs",
+            10,
+            Argument(OperationValueKind.Parameter, Seconds),
+            OperationControlContextKind.Loop,
+            new[] { Seconds, Frames },
+            new[] { "LessThan" },
+            new[] { BoundaryPredicate("LessThan", cursor, directBoundary, 9) }));
+        engine.Observe(Call(
+            "offset",
+            DomainTarget,
+            "Clock.cs",
+            20,
+            Argument(OperationValueKind.Parameter, Seconds),
+            OperationControlContextKind.Loop,
+            new[] { Seconds, Frames },
+            new[] { "LessThanOrEqual" },
+            new[] { BoundaryPredicate("LessThanOrEqual", cursor, offsetBoundary, 19) }));
+        engine.Observe(Call(
+            "mismatch",
+            DomainTarget,
+            "Clock.cs",
+            30,
+            Argument(OperationValueKind.Parameter, Seconds),
+            OperationControlContextKind.Loop,
+            new[] { Seconds, Frames },
+            new[] { "LessThanOrEqual" },
+            new[] { BoundaryPredicate("LessThanOrEqual", cursor, directBoundary, 29) }));
+        engine.Observe(Call(
+            "duplicate-offset",
+            DomainTarget,
+            "Clock.cs",
+            35,
+            Argument(OperationValueKind.Parameter, Seconds),
+            OperationControlContextKind.Loop,
+            new[] { Seconds, Frames },
+            new[] { "LessThanOrEqual" },
+            new[] { BoundaryPredicate("LessThanOrEqual", cursor, duplicateOffsetBoundary, 34) }));
+        engine.Observe(Call(
+            "missing",
+            DomainTarget,
+            "Clock.cs",
+            40,
+            Argument(OperationValueKind.Parameter, Seconds)));
+
+        var findings = engine.Complete(Receipt(emitted: 5)).Findings;
+
+        Assert.Equal(3, findings.Length);
+        var mismatch = Assert.Single(findings, finding => finding.FactId == "mismatch");
+        Assert.Equal(ContractFindingKind.CadenceBoundaryMismatch, mismatch.Kind);
+        Assert.Equal(ConfidenceBand.Proven, mismatch.Confidence);
+        Assert.Equal(new[] { "Cadence", "Boundary", "Mismatch" }, mismatch.Categories);
+        Assert.Contains(mismatch.Evidence, evidence =>
+            evidence.Kind == "CadenceBoundary"
+            && evidence.Source?.Line == 29);
+        var duplicateOffset = Assert.Single(findings, finding => finding.FactId == "duplicate-offset");
+        Assert.Equal(ConfidenceBand.Proven, duplicateOffset.Confidence);
+        var missing = Assert.Single(findings, finding => finding.FactId == "missing");
+        Assert.Equal(ConfidenceBand.Advisory, missing.Confidence);
+        Assert.Equal(new[] { "Cadence", "Boundary", "Missing" }, missing.Categories);
+    }
+
+    [Fact]
     public void ValueDomain_PolicyValidationRejectsUnknownOrUnsatisfiableShapes()
     {
         var unknownAction = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
@@ -406,6 +560,34 @@ public sealed class ContractAuditEngineTests
             }),
         }));
         Assert.Contains("raw-literal reporting is disabled", inertException.Message, StringComparison.Ordinal);
+
+        var inertNearEqual = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(constantPolicy: new ValueDomainConstantPolicy
+            {
+                NearEqualPolicy = new ValueDomainNearEqualPolicy(),
+            }),
+        }));
+        Assert.Contains("requires a finite positive", inertNearEqual.Message, StringComparison.Ordinal);
+
+        var missingBoundaryShape = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(boundaryPolicy: new ValueDomainBoundaryPolicy
+            {
+                BoundarySourceSymbolIds = new[] { Frames },
+            }),
+        }));
+        Assert.Contains("allowedShapes must contain", missingBoundaryShape.Message, StringComparison.Ordinal);
+
+        var nullBoundaryShape = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(boundaryPolicy: new ValueDomainBoundaryPolicy
+            {
+                BoundarySourceSymbolIds = new[] { Frames },
+                AllowedShapes = new ValueDomainBoundaryShape[] { null! },
+            }),
+        }));
+        Assert.Contains("cannot contain null", nullBoundaryShape.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -504,7 +686,8 @@ public sealed class ContractAuditEngineTests
     private static ContractManifest DomainManifest(
         bool reportUnclassifiedValues = false,
         ValueDomainNonFinitePolicy? nonFinitePolicy = null,
-        ValueDomainConstantPolicy? constantPolicy = null)
+        ValueDomainConstantPolicy? constantPolicy = null,
+        ValueDomainBoundaryPolicy? boundaryPolicy = null)
         => new()
         {
             Id = "acme-time-domains",
@@ -534,6 +717,7 @@ public sealed class ContractAuditEngineTests
                     },
                     NonFinitePolicy = nonFinitePolicy,
                     ConstantPolicy = constantPolicy,
+                    BoundaryPolicy = boundaryPolicy,
                     ReportUnclassifiedValues = reportUnclassifiedValues,
                 },
             },
@@ -589,6 +773,37 @@ public sealed class ContractAuditEngineTests
             Operator = operatorName,
             Expression = "predicate",
             SourceSymbolIds = sourceIds,
+            Source = Span("Clock.cs", 1),
+        };
+
+    private static OperationControlPredicate BoundaryPredicate(
+        string operatorName,
+        OperationValueFact left,
+        OperationValueFact right,
+        int line)
+        => new()
+        {
+            Operator = operatorName,
+            Expression = $"{left.Expression} {operatorName} {right.Expression}",
+            SourceSymbolIds = left.SourceSymbolIds.Concat(right.SourceSymbolIds).Distinct(StringComparer.Ordinal).ToArray(),
+            LeftValue = left,
+            RightValue = right,
+            Source = Span("Clock.cs", line),
+        };
+
+    private static OperationValueFact Value(
+        string kind,
+        string[] sourceIds,
+        string[]? operators = null,
+        params OperationConstantFact[] constants)
+        => new()
+        {
+            Kind = kind,
+            Expression = "value",
+            IsCompileTimeConstant = false,
+            SourceSymbolIds = sourceIds,
+            Operators = operators ?? Array.Empty<string>(),
+            Constants = constants,
         };
 
     private static OperationInputFact Argument(string kind, params string[] sourceIds)

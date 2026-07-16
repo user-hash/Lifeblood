@@ -86,6 +86,7 @@ public sealed class ValueDomainContract
     public ValueDomainConversion[] AllowedConversions { get; init; } = Array.Empty<ValueDomainConversion>();
     public ValueDomainNonFinitePolicy? NonFinitePolicy { get; init; }
     public ValueDomainConstantPolicy? ConstantPolicy { get; init; }
+    public ValueDomainBoundaryPolicy? BoundaryPolicy { get; init; }
     public bool AllowCompileTimeConstants { get; init; }
     public bool ReportUnclassifiedValues { get; init; }
     public string Severity { get; init; } = ContractSeverity.Warning;
@@ -114,6 +115,51 @@ public sealed class ValueDomainConstantPolicy
 {
     public bool ReportRawNumericLiterals { get; init; }
     public string[] AllowedLiteralValues { get; init; } = Array.Empty<string>();
+    public ValueDomainNearEqualPolicy? NearEqualPolicy { get; init; }
+}
+
+/// <summary>
+/// Consumer-owned tolerance for grouping distinct raw numeric literals inside
+/// one value domain and operation kind. The rule reports deterministic adjacent
+/// value pairs; it never invents a unit or tolerance from source names.
+/// </summary>
+public sealed class ValueDomainNearEqualPolicy
+{
+    public double AbsoluteTolerance { get; init; }
+    public double RelativeTolerance { get; init; }
+    public int MinimumOccurrences { get; init; } = 2;
+}
+
+/// <summary>
+/// Consumer-owned lexical cadence boundary. Source symbols select the boundary
+/// value; allowed shapes state the exact comparison side, operator, value kind,
+/// nested operators, and constants accepted at the selected operation.
+/// </summary>
+public sealed class ValueDomainBoundaryPolicy
+{
+    public string[] ContextKinds { get; init; } = new[] { OperationControlContextKind.Loop };
+    public string[] BoundarySourceSymbolIds { get; init; } = Array.Empty<string>();
+    public ValueDomainBoundaryShape[] AllowedShapes { get; init; } = Array.Empty<ValueDomainBoundaryShape>();
+    public bool RequireInputSourceInPredicate { get; init; } = true;
+    public bool ReportMissingBoundary { get; init; } = true;
+}
+
+public sealed class ValueDomainBoundaryShape
+{
+    public required string ComparisonOperator { get; init; }
+    public string BoundarySide { get; init; } = BoundaryOperandSide.Either;
+    public string[] BoundaryValueKinds { get; init; } = Array.Empty<string>();
+    public string[] BoundaryOperators { get; init; } = Array.Empty<string>();
+    public string[] BoundaryConstantValues { get; init; } = Array.Empty<string>();
+}
+
+public static class BoundaryOperandSide
+{
+    public const string Left = "Left";
+    public const string Right = "Right";
+    public const string Either = "Either";
+
+    public static readonly string[] All = { Left, Right, Either };
 }
 
 /// <summary>Exact source symbols that identify one consumer-named domain.</summary>
@@ -232,6 +278,8 @@ public static class ContractFindingKind
     public const string ValueDomainMismatch = "ValueDomainMismatch";
     public const string NonFinitePolicyMismatch = "NonFinitePolicyMismatch";
     public const string ConstantProvenanceMismatch = "ConstantProvenanceMismatch";
+    public const string NearEqualConstantGroup = "NearEqualConstantGroup";
+    public const string CadenceBoundaryMismatch = "CadenceBoundaryMismatch";
 }
 
 public static class NonFinitePolicyAction
