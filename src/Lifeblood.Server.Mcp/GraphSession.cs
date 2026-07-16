@@ -1501,6 +1501,11 @@ public sealed class GraphSession : IDisposable
 
         const int maxFilesPerPackage = 64;
         var includeFiles = projection == PackageSourceVisibilityProjection.Detail;
+        var projectedPackages = includeFiles
+            ? report.Packages
+            : report.Packages
+                .Where(package => package.ExcludedSourceFileCount > 0 || package.UnboundSourceFileCount > 0)
+                .ToArray();
         return new
         {
             mode = projection == PackageSourceVisibilityProjection.Detail ? "detail" : "summary",
@@ -1510,7 +1515,10 @@ public sealed class GraphSession : IDisposable
             report.IncludedSourceFileCount,
             report.ExcludedSourceFileCount,
             report.UnboundSourceFileCount,
-            packages = report.Packages.Select(package =>
+            returnedPackageCount = projectedPackages.Length,
+            omittedPackageCount = report.Packages.Length - projectedPackages.Length,
+            truncated = projectedPackages.Length < report.Packages.Length,
+            packages = projectedPackages.Select(package =>
             {
                 var files = includeFiles
                     ? package.Files

@@ -100,10 +100,38 @@ public sealed class PackageSourceVisibilityTests : IDisposable
         var package = Assert.Single(visibility.GetProperty("packages").EnumerateArray());
 
         Assert.Equal("summary", visibility.GetProperty("mode").GetString());
+        Assert.Equal(1, visibility.GetProperty("returnedPackageCount").GetInt32());
+        Assert.Equal(0, visibility.GetProperty("omittedPackageCount").GetInt32());
+        Assert.False(visibility.GetProperty("truncated").GetBoolean());
         Assert.Equal(0, package.GetProperty("returnedFileCount").GetInt32());
         Assert.Equal(3, package.GetProperty("omittedFileCount").GetInt32());
         Assert.True(package.GetProperty("truncated").GetBoolean());
         Assert.Empty(package.GetProperty("files").EnumerateArray());
+    }
+
+    [Fact]
+    public void Analyze_DefaultPackageVisibilitySummaryOmitsCleanPackageRows()
+    {
+        WriteIncludedEmbeddedPackage(_root, "com.acme.clean", "Acme.Clean");
+        using var session = new GraphSession(_fs);
+        var handler = CreateHandler(session);
+
+        var result = handler.Handle(
+            "lifeblood_analyze",
+            JsonArgs(new { projectPath = _root }));
+
+        Assert.NotEqual(true, result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var visibility = payload.RootElement.GetProperty("packageSourceVisibility");
+
+        Assert.Equal("summary", visibility.GetProperty("mode").GetString());
+        Assert.Equal(2, visibility.GetProperty("packageCount").GetInt32());
+        Assert.Equal(1, visibility.GetProperty("returnedPackageCount").GetInt32());
+        Assert.Equal(1, visibility.GetProperty("omittedPackageCount").GetInt32());
+        Assert.True(visibility.GetProperty("truncated").GetBoolean());
+        var package = Assert.Single(visibility.GetProperty("packages").EnumerateArray());
+        Assert.Equal("com.acme.tools", package.GetProperty("name").GetString());
+        Assert.True(package.GetProperty("unboundSourceFileCount").GetInt32() > 0);
     }
 
     [Fact]
@@ -391,6 +419,41 @@ public sealed class PackageSourceVisibilityTests : IDisposable
         File.WriteAllText(
             Path.Combine(runtime, "Loose.cs"),
             $"namespace Acme.Loose; public sealed class Loose {{ }}");
+    }
+
+    private static void WriteIncludedEmbeddedPackage(
+        string root,
+        string packageName,
+        string assemblyName)
+    {
+        var runtime = Path.Combine(root, "Packages", packageName, "Runtime");
+        Directory.CreateDirectory(runtime);
+        File.WriteAllText(
+            Path.Combine(root, "Packages", packageName, "package.json"),
+            $$"""
+            { "name": "{{packageName}}", "version": "1.0.0" }
+            """);
+        File.WriteAllText(
+            Path.Combine(runtime, $"{assemblyName}.asmdef"),
+            $$"""
+            { "name": "{{assemblyName}}" }
+            """);
+        File.WriteAllText(
+            Path.Combine(runtime, "Included.cs"),
+            $"namespace {assemblyName}; public sealed class Included {{ }}");
+        File.WriteAllText(
+            Path.Combine(root, $"{assemblyName}.csproj"),
+            $$"""
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <PropertyGroup>
+                <AssemblyName>{{assemblyName}}</AssemblyName>
+                <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="Packages\{{packageName}}\Runtime\Included.cs" />
+              </ItemGroup>
+            </Project>
+            """);
     }
 
     private static void WriteManyUnboundEmbeddedPackage(string root, string packageName, int fileCount)
