@@ -36,8 +36,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
 {
     private readonly IFileSystem _fs;
     private readonly RoslynModuleDiscovery _discovery;
-    private readonly RoslynSymbolExtractor _symbolExtractor = new();
-    private readonly RoslynEdgeExtractor _edgeExtractor = new();
+    private readonly CompilationTreeExtractor _treeExtractor = new();
     private readonly IDefineProfileResolver _profileResolver;
 
     private Dictionary<string, CSharpCompilation>? _compilations;
@@ -303,7 +302,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             // instead of O(N compilations). Set known module assemblies so the edge
             // extractor creates cross-module edges (metadata symbols from other
             // analyzed modules are tracked, not filtered).
-            _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
+            var knownModuleAssemblies = new HashSet<string>(
                 applicableModules.Select(m => m.Name), StringComparer.Ordinal);
 
             var refCache = new SharedMetadataReferenceCache();
@@ -392,50 +391,40 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                     carryDowngraded: profileCarry,
                     processor: (module, compilation) =>
                     {
-                        var moduleId = SymbolIds.Module(module.Name);
                         cursorModule = module.Name;
+                        var ownsSymbols = profileOwnedModuleNames.Contains(module.Name);
+                        var extractedFiles = _treeExtractor.Extract(
+                            compilation,
+                            projectRoot,
+                            module.Name,
+                            profile.Name,
+                            profileTag,
+                            ownsSymbols,
+                            knownModuleAssemblies);
 
-                        foreach (var tree in compilation.SyntaxTrees)
+                        foreach (var extracted in extractedFiles)
                         {
-                            if (string.IsNullOrEmpty(tree.FilePath)) continue;
-                            if (tree.FilePath.StartsWith("<")) continue;
-
-                            var model = compilation.GetSemanticModel(tree);
-                            var pathIdentity = SyntaxTreePathIdentity.Resolve(
-                                projectRoot,
-                                module.Name,
-                                tree.FilePath);
-                            var relPath = pathIdentity.GraphPath;
-                            cursorFile = relPath;
-
-                            var fileId = SymbolIds.File(relPath);
-                            var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
-                            var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
-
-                            if (profileOwnedModuleNames.Contains(module.Name))
+                            cursorFile = extracted.PathIdentity.GraphPath;
+                            if (ownsSymbols)
                             {
-                                var fileSymbol = new Symbol
-                                {
-                                    Id = fileId,
-                                    Name = Path.GetFileName(tree.FilePath),
-                                    QualifiedName = $"{module.Name}/{relPath}",
-                                    Kind = DomainSymbolKind.File,
-                                    FilePath = relPath,
-                                    ParentId = moduleId,
-                                };
-
-                                var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
-                                snapshot.ReplaceFile(fileId, fileSymbol, symbols, taggedEdges);
+                                snapshot.ReplaceFile(
+                                    extracted.FileId,
+                                    extracted.FileSymbol!,
+                                    extracted.Symbols!,
+                                    extracted.Edges);
                                 // Source-generated trees have no on-disk file. Tracking them in
                                 // FileTimestamps makes the incremental deleted-file prune treat
                                 // them as removed every run (they are never in module.FilePaths),
                                 // silently dropping every generated symbol. INV-INCREMENTAL-XREF-001.
-                                if (!pathIdentity.IsGenerated && _fs.FileExists(tree.FilePath))
-                                    snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
+                                if (!extracted.PathIdentity.IsGenerated && _fs.FileExists(extracted.TreePath))
+                                {
+                                    snapshot.FileTimestamps[extracted.TreePath] =
+                                        _fs.GetLastWriteTimeUtc(extracted.TreePath);
+                                }
                             }
                             else
                             {
-                                snapshot.AppendProfileEdges(fileId, taggedEdges);
+                                snapshot.AppendProfileEdges(extracted.FileId, extracted.Edges);
                             }
                         }
                     },
@@ -774,7 +763,7 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
             .ToArray();
 
         // Ensure cross-module edge extraction uses the full module set
-        _edgeExtractor.KnownModuleAssemblies = new HashSet<string>(
+        var knownModuleAssemblies = new HashSet<string>(
             applicableCurrentModules.Select(m => m.Name), StringComparer.Ordinal);
 
         var refCache = new SharedMetadataReferenceCache();
@@ -862,54 +851,42 @@ public sealed class RoslynWorkspaceAnalyzer : IWorkspaceAnalyzer, IWorkspaceInpu
                 carryDowngraded: profileCarry,
                 processor: (module, compilation) =>
                 {
-                    var moduleId = SymbolIds.Module(module.Name);
+                    var ownsSymbols = profileOwnedModuleNames.Contains(module.Name);
+                    var extractedFiles = _treeExtractor.Extract(
+                        compilation,
+                        projectRoot,
+                        module.Name,
+                        profile.Name,
+                        profileTag,
+                        ownsSymbols,
+                        knownModuleAssemblies,
+                        changedFiles);
 
-                    foreach (var tree in compilation.SyntaxTrees)
+                    foreach (var extracted in extractedFiles)
                     {
-                        if (string.IsNullOrEmpty(tree.FilePath)) continue;
-                        if (tree.FilePath.StartsWith("<")) continue;
-
-                        var pathIdentity = SyntaxTreePathIdentity.Resolve(
-                            projectRoot,
-                            module.Name,
-                            tree.FilePath);
-
                         // Re-extract changed disk files AND every source-generated tree
                         // (no on-disk file) of this recompiling module: generated output
                         // can shift with any source edit and is not tracked per disk-file,
                         // so it must be rebuilt whenever its module recompiles, never pruned
                         // as a phantom deleted file. INV-INCREMENTAL-XREF-001.
-                        if (!pathIdentity.IsGenerated && !changedFiles.Contains(tree.FilePath)) continue;
-
-                        var model = compilation.GetSemanticModel(tree);
-                        var relPath = pathIdentity.GraphPath;
-
-                        var fileId = SymbolIds.File(relPath);
-                        var rawEdges = _edgeExtractor.Extract(model, tree.GetRoot(), relPath);
-                        var taggedEdges = EdgeProfileTagger.Tag(rawEdges, profileTag);
-
-                        if (profileOwnedModuleNames.Contains(module.Name))
+                        if (ownsSymbols)
                         {
-                            var fileSymbol = new Symbol
-                            {
-                                Id = fileId,
-                                Name = Path.GetFileName(tree.FilePath),
-                                QualifiedName = $"{module.Name}/{relPath}",
-                                Kind = DomainSymbolKind.File,
-                                FilePath = relPath,
-                                ParentId = moduleId,
-                            };
-
-                            var symbols = _symbolExtractor.Extract(model, tree.GetRoot(), relPath, fileId);
-                            _snapshot.ReplaceFile(fileId, fileSymbol, symbols, taggedEdges);
+                            _snapshot.ReplaceFile(
+                                extracted.FileId,
+                                extracted.FileSymbol!,
+                                extracted.Symbols!,
+                                extracted.Edges);
                             // Same disk-file-lifecycle guard as the full path: never track a
                             // source-generated tree's timestamp. INV-INCREMENTAL-XREF-001.
-                            if (!pathIdentity.IsGenerated && _fs.FileExists(tree.FilePath))
-                                _snapshot.FileTimestamps[tree.FilePath] = _fs.GetLastWriteTimeUtc(tree.FilePath);
+                            if (!extracted.PathIdentity.IsGenerated && _fs.FileExists(extracted.TreePath))
+                            {
+                                _snapshot.FileTimestamps[extracted.TreePath] =
+                                    _fs.GetLastWriteTimeUtc(extracted.TreePath);
+                            }
                         }
                         else
                         {
-                            _snapshot.AppendProfileEdges(fileId, taggedEdges);
+                            _snapshot.AppendProfileEdges(extracted.FileId, extracted.Edges);
                         }
                     }
                 },

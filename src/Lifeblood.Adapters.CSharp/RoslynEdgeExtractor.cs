@@ -40,6 +40,8 @@ public sealed class RoslynEdgeExtractor
     /// <see cref="KnownModuleAssemblies"/>).
     /// </summary>
     private string _currentRelPath = "";
+    private readonly Dictionary<SyntaxNode, IMethodSymbol?> _containingMethodCache = new();
+    private readonly Dictionary<SyntaxNode, INamedTypeSymbol?> _containingTypeCache = new();
 
     public List<Edge> Extract(SemanticModel model, SyntaxNode root)
         => Extract(model, root, relPath: "");
@@ -47,11 +49,17 @@ public sealed class RoslynEdgeExtractor
     public List<Edge> Extract(SemanticModel model, SyntaxNode root, string relPath)
     {
         _currentRelPath = relPath ?? "";
+        _containingMethodCache.Clear();
+        _containingTypeCache.Clear();
         var edges = new List<Edge>();
         var seen = new HashSet<(string, string, EdgeKind)>();
+        var handledSemanticNodes = new HashSet<SyntaxNode>(ReferenceEqualityComparer.Instance);
 
         foreach (var node in root.DescendantNodes())
         {
+            if (handledSemanticNodes.Contains(node))
+                continue;
+
             switch (node)
             {
                 case TypeDeclarationSyntax typeDecl:
@@ -59,7 +67,8 @@ public sealed class RoslynEdgeExtractor
                     break;
 
                 case InvocationExpressionSyntax invocation:
-                    ExtractCallEdge(model, invocation, edges, seen);
+                    if (ExtractCallEdge(model, invocation, edges, seen))
+                        MarkInvocationExpressionHandled(invocation, handledSemanticNodes);
                     break;
 
                 case BaseObjectCreationExpressionSyntax creation:
@@ -71,11 +80,19 @@ public sealed class RoslynEdgeExtractor
                     break;
 
                 case MemberAccessExpressionSyntax memberAccess:
-                    ExtractMemberAccessEdge(model, memberAccess, edges, seen);
+                    if (ExtractMemberAccessEdge(model, memberAccess, edges, seen)
+                        && memberAccess.Name is IdentifierNameSyntax memberName)
+                    {
+                        handledSemanticNodes.Add(memberName);
+                    }
                     break;
 
                 case MemberBindingExpressionSyntax memberBinding:
-                    ExtractMemberBindingEdge(model, memberBinding, edges, seen);
+                    if (ExtractMemberBindingEdge(model, memberBinding, edges, seen)
+                        && memberBinding.Name is IdentifierNameSyntax bindingName)
+                    {
+                        handledSemanticNodes.Add(bindingName);
+                    }
                     break;
 
                 case GenericNameSyntax genericName:
@@ -93,6 +110,28 @@ public sealed class RoslynEdgeExtractor
         }
 
         return edges;
+    }
+
+    private static void MarkInvocationExpressionHandled(
+        InvocationExpressionSyntax invocation,
+        ISet<SyntaxNode> handledSemanticNodes)
+    {
+        switch (invocation.Expression)
+        {
+            case IdentifierNameSyntax identifier:
+                handledSemanticNodes.Add(identifier);
+                break;
+            case MemberAccessExpressionSyntax memberAccess:
+                handledSemanticNodes.Add(memberAccess);
+                if (memberAccess.Name is IdentifierNameSyntax memberName)
+                    handledSemanticNodes.Add(memberName);
+                break;
+            case MemberBindingExpressionSyntax memberBinding:
+                handledSemanticNodes.Add(memberBinding);
+                if (memberBinding.Name is IdentifierNameSyntax bindingName)
+                    handledSemanticNodes.Add(bindingName);
+                break;
+        }
     }
 
     private void ExtractInheritanceEdges(
@@ -208,17 +247,24 @@ public sealed class RoslynEdgeExtractor
         }
     }
 
-    private void ExtractCallEdge(
+    private bool ExtractCallEdge(
         SemanticModel model, InvocationExpressionSyntax invocation,
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
     {
         var symbolInfo = model.GetSymbolInfo(invocation);
         var target = symbolInfo.Symbol as IMethodSymbol;
-        if (target?.ContainingType == null) return;
-        if (!IsTracked(target)) return;
+        if (target?.ContainingType == null) return false;
+        // A delegate-valued field/property invocation binds the invocation node
+        // to the compiler-synthesized DelegateInvoke method, not to the member
+        // that supplied the delegate instance. DelegateInvoke has no extracted
+        // graph symbol. Let the child identifier/member-access handler retain
+        // ownership so `_callback()` and `feature.Probe()` produce the real
+        // field/property References edge instead of a dangling Calls edge.
+        if (target.MethodKind == MethodKind.DelegateInvoke) return false;
+        if (!IsTracked(target)) return false;
 
         var caller = FindContainingMethodOrLocal(model, invocation);
-        if (caller == null) return;
+        if (caller == null) return false;
 
         var sourceId = GetMethodId(caller);
         // INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001: route through
@@ -229,6 +275,52 @@ public sealed class RoslynEdgeExtractor
 
         AddEdge(edges, seen, sourceId, targetId, EdgeKind.Calls,
             originatingNode: invocation, containingSymbolId: sourceId);
+
+        // The legacy identifier pass also records initializer ownership for
+        // direct and qualified method invocations in field/property initializers.
+        // Once InvocationExpression owns the semantic bind, preserve that
+        // distinct References edge here before suppressing the child identifier.
+        var invocationIdentifier = invocation.Expression switch
+        {
+            IdentifierNameSyntax identifier => identifier,
+            MemberAccessExpressionSyntax { Name: IdentifierNameSyntax name } => name,
+            MemberBindingExpressionSyntax { Name: IdentifierNameSyntax name } => name,
+            _ => null,
+        };
+        if (invocationIdentifier != null)
+        {
+            AddInitializerOwnerReferenceEdge(
+                model,
+                invocationIdentifier,
+                targetId,
+                edges,
+                seen);
+        }
+
+        // InvocationExpression owns the method binding. When its expression is
+        // a member access, project the type-level coupling here as well so the
+        // child MemberAccessExpression does not repeat the same Roslyn bind.
+        // Delegate-valued fields/properties are intentionally excluded above:
+        // their invocation target is System.Action.Invoke (untracked), so the
+        // child identifier/member-access path still records the field/property
+        // reference rather than being marked handled.
+        if (invocation.Expression is MemberAccessExpressionSyntax or MemberBindingExpressionSyntax)
+        {
+            var containingType = FindContainingType(model, invocation);
+            if (containingType != null)
+            {
+                var containingTypeId = CanonicalSymbolFormat.BuildTypeId(containingType);
+                var targetTypeId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType);
+                if (containingTypeId != targetTypeId)
+                {
+                    AddEdge(edges, seen, containingTypeId, targetTypeId, EdgeKind.References,
+                        originatingNode: invocation.Expression,
+                        containingSymbolId: containingTypeId);
+                }
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -336,38 +428,51 @@ public sealed class RoslynEdgeExtractor
             && methodSymbol.ContainingType != null
             && IsTracked(methodSymbol))
         {
-            var caller = FindContainingMethodOrLocal(model, identifier);
-            if (caller == null) return;
-            var callerMethodId = GetMethodId(caller);
-            var targetMethodId = GetMethodId(methodSymbol);
-            AddEdge(edges, seen, callerMethodId, targetMethodId, EdgeKind.Calls,
-                originatingNode: identifier, containingSymbolId: callerMethodId);
-            AddInitializerOwnerReferenceEdge(model, identifier, targetMethodId, edges, seen);
+            EmitMethodGroupEdge(model, identifier, methodSymbol, edges, seen);
         }
     }
 
-    private void ExtractMemberAccessEdge(
+    private bool ExtractMemberAccessEdge(
         SemanticModel model, MemberAccessExpressionSyntax memberAccess,
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
     {
         var symbolInfo = model.GetSymbolInfo(memberAccess);
-        var target = symbolInfo.Symbol;
-        if (target?.ContainingType == null) return;
-        if (!IsTracked(target.ContainingType)) return;
+        var target = symbolInfo.Symbol ?? ResolveCandidateMethodGroup(symbolInfo);
+        if (target?.ContainingType == null) return false;
+        if (!IsTracked(target.ContainingType)) return false;
 
         var containingType = FindContainingType(model, memberAccess);
-        if (containingType == null) return;
+        if (containingType == null) return false;
 
         // Type-level References edge (existing behavior — valuable for module coupling)
         var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
         var targetId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType);
 
         if (sourceId != targetId)
+        {
+            // An unresolved overloaded method group (notably inside nameof)
+            // did not previously own this type reference; its left-hand type
+            // identifier did. Preserve that precise provenance span while the
+            // parent now owns the single semantic bind.
+            var typeReferenceNode = symbolInfo.Symbol == null
+                ? memberAccess.Expression
+                : memberAccess;
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.References,
-                originatingNode: memberAccess, containingSymbolId: sourceId);
+                originatingNode: typeReferenceNode, containingSymbolId: sourceId);
+        }
 
         // Symbol-level References edge so properties/fields show incoming references
         EmitSymbolLevelEdge(model, memberAccess, target, edges, seen);
+
+        if (target is IMethodSymbol methodSymbol
+            && methodSymbol.MethodKind != MethodKind.Constructor)
+        {
+            // Preserve the identifier-level source span emitted by the legacy
+            // identifier pass while moving semantic ownership to this parent.
+            EmitMethodGroupEdge(model, memberAccess.Name, methodSymbol, edges, seen);
+        }
+
+        return target is IFieldSymbol or IPropertySymbol or IEventSymbol or IMethodSymbol;
     }
 
     /// <summary>
@@ -375,18 +480,18 @@ public sealed class RoslynEdgeExtractor
     /// (not MemberAccessExpressionSyntax). Method calls via ?. are already captured by the
     /// InvocationExpressionSyntax case; this handles property, field, and event access.
     /// </summary>
-    private void ExtractMemberBindingEdge(
+    private bool ExtractMemberBindingEdge(
         SemanticModel model, MemberBindingExpressionSyntax memberBinding,
         List<Edge> edges, HashSet<(string, string, EdgeKind)> seen)
     {
         var symbolInfo = model.GetSymbolInfo(memberBinding);
-        var target = symbolInfo.Symbol;
-        if (target?.ContainingType == null) return;
-        if (!IsTracked(target.ContainingType)) return;
+        var target = symbolInfo.Symbol ?? ResolveCandidateMethodGroup(symbolInfo);
+        if (target?.ContainingType == null) return false;
+        if (!IsTracked(target.ContainingType)) return false;
 
         // Type-level References edge
         var containingType = FindContainingType(model, memberBinding);
-        if (containingType == null) return;
+        if (containingType == null) return false;
 
         var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
         var targetTypeId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType);
@@ -397,6 +502,14 @@ public sealed class RoslynEdgeExtractor
 
         // Symbol-level edge (shared helper)
         EmitSymbolLevelEdge(model, memberBinding, target, edges, seen);
+
+        if (target is IMethodSymbol methodSymbol
+            && methodSymbol.MethodKind != MethodKind.Constructor)
+        {
+            EmitMethodGroupEdge(model, memberBinding.Name, methodSymbol, edges, seen);
+        }
+
+        return target is IFieldSymbol or IPropertySymbol or IEventSymbol or IMethodSymbol;
     }
 
     /// <summary>
@@ -455,6 +568,25 @@ public sealed class RoslynEdgeExtractor
             {
                 [EdgePropertyKeys.InitializerOwner] = EdgePropertyKeys.InitializerOwnerMethodGroup,
             });
+    }
+
+    private void EmitMethodGroupEdge(
+        SemanticModel model,
+        SyntaxNode node,
+        IMethodSymbol methodSymbol,
+        List<Edge> edges,
+        HashSet<(string, string, EdgeKind)> seen)
+    {
+        if (!IsTracked(methodSymbol)) return;
+
+        var caller = FindContainingMethodOrLocal(model, node);
+        if (caller == null) return;
+
+        var callerMethodId = GetMethodId(caller);
+        var targetMethodId = GetMethodId(methodSymbol);
+        AddEdge(edges, seen, callerMethodId, targetMethodId, EdgeKind.Calls,
+            originatingNode: node, containingSymbolId: callerMethodId);
+        AddInitializerOwnerReferenceEdge(model, node, targetMethodId, edges, seen);
     }
 
     /// <summary>
@@ -544,7 +676,48 @@ public sealed class RoslynEdgeExtractor
     /// `public int X { get; } = Compute()`), the containing "method" is the synthesized
     /// static (`.cctor`) or instance (`.ctor`) constructor that runs the initializer.
     /// </summary>
-    private static IMethodSymbol? FindContainingMethodOrLocal(SemanticModel model, SyntaxNode node)
+    private IMethodSymbol? FindContainingMethodOrLocal(SemanticModel model, SyntaxNode node)
+    {
+        var owner = FindContainingMethodOwner(node);
+        if (owner == null) return null;
+        if (_containingMethodCache.TryGetValue(owner, out var cached))
+            return cached;
+
+        var resolved = FindContainingMethodOrLocalUncached(model, node);
+        _containingMethodCache[owner] = resolved;
+        return resolved;
+    }
+
+    private static SyntaxNode? FindContainingMethodOwner(SyntaxNode node)
+    {
+        foreach (var ancestor in node.Ancestors())
+        {
+            switch (ancestor)
+            {
+                case LocalFunctionStatementSyntax:
+                case ParenthesizedLambdaExpressionSyntax:
+                case SimpleLambdaExpressionSyntax:
+                case AnonymousMethodExpressionSyntax:
+                    continue;
+                case AccessorDeclarationSyntax:
+                case MethodDeclarationSyntax:
+                case ConstructorDeclarationSyntax:
+                    return ancestor;
+                case VariableDeclaratorSyntax variable
+                    when variable.Parent is VariableDeclarationSyntax variableList
+                      && variableList.Parent is FieldDeclarationSyntax:
+                    return variable;
+                case PropertyDeclarationSyntax:
+                    return ancestor;
+                case IndexerDeclarationSyntax indexer when indexer.ExpressionBody != null:
+                    return indexer;
+            }
+        }
+
+        return null;
+    }
+
+    private static IMethodSymbol? FindContainingMethodOrLocalUncached(SemanticModel model, SyntaxNode node)
     {
         foreach (var ancestor in node.Ancestors())
         {
@@ -652,7 +825,20 @@ public sealed class RoslynEdgeExtractor
         return null;
     }
 
-    private static INamedTypeSymbol? FindContainingType(SemanticModel model, SyntaxNode node)
+    private INamedTypeSymbol? FindContainingType(SemanticModel model, SyntaxNode node)
+    {
+        SyntaxNode? owner = node.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+        owner ??= node.Ancestors().OfType<EnumDeclarationSyntax>().FirstOrDefault();
+        if (owner == null) return null;
+        if (_containingTypeCache.TryGetValue(owner, out var cached))
+            return cached;
+
+        var resolved = FindContainingTypeUncached(model, node);
+        _containingTypeCache[owner] = resolved;
+        return resolved;
+    }
+
+    private static INamedTypeSymbol? FindContainingTypeUncached(SemanticModel model, SyntaxNode node)
     {
         var typeNode = node.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
         if (typeNode != null)

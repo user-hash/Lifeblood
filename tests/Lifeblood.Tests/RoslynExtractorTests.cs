@@ -1044,6 +1044,35 @@ public class Service
     }
 
     [Fact]
+    public void ExtractEdges_DelegateFieldInvocation_PreservesFieldReference()
+    {
+        var (model, root) = Compile(@"
+using System;
+namespace App;
+public class Service
+{
+    private Action _callback = () => { };
+    public void Run() { _callback(); }
+}");
+
+        var edges = new RoslynEdgeExtractor
+        {
+            // Reproduce workspace analysis, where synthesized delegate members
+            // share a known module assembly and would otherwise look tracked.
+            KnownModuleAssemblies = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "TestAssembly",
+            },
+        }.Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "method:App.Service.Run()"
+            && e.TargetId == "field:App.Service._callback");
+        Assert.DoesNotContain(edges, e => e.Kind == EdgeKind.Calls
+            && e.TargetId.Contains(".Invoke(", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ExtractEdges_PropertyAccess_StillEmitsTypeLevelEdge()
     {
         var (model, root) = Compile(@"
@@ -1144,6 +1173,88 @@ public class Monitor
 
         Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
             && e.TargetId.Contains("Monitor.Tick"));
+    }
+
+    [Fact]
+    public void ExtractEdges_QualifiedMethodGroup_EmitsCallsEdge()
+    {
+        var (model, root) = Compile(@"
+using System;
+namespace App;
+public class Worker { public void Run() { } }
+public class Host
+{
+    private readonly Worker _worker = new();
+    public Action Bind() { return _worker.Run; }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.Calls
+            && e.SourceId == "method:App.Host.Bind()"
+            && e.TargetId == "method:App.Worker.Run()");
+    }
+
+    [Fact]
+    public void ExtractEdges_OverloadedQualifiedMethodGroup_PreservesTypeIdentifierCallSite()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public interface ITransport
+{
+    void Send();
+    void Send(int value);
+}
+public sealed class Host
+{
+    public string Name => nameof(ITransport.Send);
+}");
+
+        var edge = Assert.Single(
+            new RoslynEdgeExtractor().Extract(model, root),
+            e => e.Kind == EdgeKind.References
+                && e.SourceId == "type:App.Host"
+                && e.TargetId == "type:App.ITransport");
+
+        Assert.NotNull(edge.CallSite);
+        Assert.Equal("ITransport".Length, edge.CallSite!.EndColumn - edge.CallSite.Column);
+    }
+
+    [Fact]
+    public void ExtractEdges_TrackedMethodInvocation_PreservesTypeLevelReference()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Worker { public void Run() { } }
+public class Host
+{
+    public void Drive(Worker worker) { worker.Run(); }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "type:App.Host"
+            && e.TargetId == "type:App.Worker");
+    }
+
+    [Fact]
+    public void ExtractEdges_GenericInvocation_PreservesTrackedTypeArgumentReference()
+    {
+        var (model, root) = Compile(@"
+namespace App;
+public class Payload { }
+public static class Helper { public static void Use<T>() { } }
+public class Host
+{
+    public void Drive() { Helper.Use<Payload>(); }
+}");
+
+        var edges = new RoslynEdgeExtractor().Extract(model, root);
+
+        Assert.Contains(edges, e => e.Kind == EdgeKind.References
+            && e.SourceId == "type:App.Host"
+            && e.TargetId == "type:App.Payload");
     }
 
     // ──────────────────────────────────────────────────────────────
