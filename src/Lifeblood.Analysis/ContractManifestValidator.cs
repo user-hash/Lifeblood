@@ -119,7 +119,53 @@ internal static class ContractManifestValidator
             {
                 throw new ArgumentException(
                     $"Value domain '{contract.Id}' conversion '{conversion.Id}' must require at least one " +
-                    "source symbol or operator as conversion evidence.");
+                "source symbol or operator as conversion evidence.");
+            }
+        }
+
+        if (contract.NonFinitePolicy is { } nonFinite)
+        {
+            RequireText(nonFinite.Action, $"Value domain '{contract.Id}' nonFinitePolicy action");
+            if (!NonFinitePolicyAction.All.Contains(nonFinite.Action, StringComparer.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"Value domain '{contract.Id}' has unknown nonFinitePolicy action '{nonFinite.Action}'.");
+            }
+            RequireNonNull(
+                nonFinite.EvidenceSymbolIds,
+                $"Value domain '{contract.Id}' nonFinitePolicy evidenceSymbolIds");
+            if (nonFinite.EvidenceSymbolIds.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new ArgumentException(
+                    $"Value domain '{contract.Id}' nonFinitePolicy evidenceSymbolIds must contain non-empty values.");
+            }
+            if (nonFinite.RequireEvidenceForAllValues
+                && string.Equals(nonFinite.Action, NonFinitePolicyAction.Allow, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"Value domain '{contract.Id}' cannot require non-finite policy evidence when action is Allow.");
+            }
+            if (nonFinite.RequireEvidenceForAllValues && nonFinite.EvidenceSymbolIds.Length == 0)
+            {
+                throw new ArgumentException(
+                    $"Value domain '{contract.Id}' requires non-finite policy evidence but declares no evidenceSymbolIds.");
+            }
+        }
+
+        if (contract.ConstantPolicy is { } constants)
+        {
+            RequireNonNull(
+                constants.AllowedLiteralValues,
+                $"Value domain '{contract.Id}' constantPolicy allowedLiteralValues");
+            if (constants.AllowedLiteralValues.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new ArgumentException(
+                    $"Value domain '{contract.Id}' constantPolicy allowedLiteralValues must contain non-empty values.");
+            }
+            if (!constants.ReportRawNumericLiterals && constants.AllowedLiteralValues.Length > 0)
+            {
+                throw new ArgumentException(
+                    $"Value domain '{contract.Id}' cannot allow literal exceptions when raw-literal reporting is disabled.");
             }
         }
     }

@@ -526,6 +526,7 @@ internal sealed class RoslynOperationFactProvider
             SourceSymbolIds = sourceSymbols.ToArray(),
             ConversionTypes = conversionTypes.ToArray(),
             Operators = CollectOperators(operation),
+            Constants = CollectConstants(operation, symbolIds),
         };
     }
 
@@ -540,6 +541,85 @@ internal sealed class RoslynOperationFactProvider
         foreach (var child in operation.ChildOperations)
             CollectSourceSymbols(child, result, seen, symbolIds);
     }
+
+    private static OperationConstantFact[] CollectConstants(
+        IOperation operation,
+        ScanSymbolIds symbolIds)
+    {
+        var result = new List<OperationConstantFact>();
+        CollectConstantLeaves(operation, result, symbolIds);
+
+        var foldedClassification = NumericClassification(operation.ConstantValue);
+        if (IsNonFinite(foldedClassification)
+            && !result.Any(constant => IsNonFinite(constant.NumericClassification)))
+        {
+            result.Add(new OperationConstantFact
+            {
+                Origin = OperationConstantOrigin.FoldedExpression,
+                Type = operation.Type == null ? null : TypeDisplay(operation.Type),
+                Value = ConstantText(operation.ConstantValue),
+                NumericClassification = foldedClassification,
+                Expression = Clip(operation.Syntax.ToString()),
+                Source = SourceSpan(operation.Syntax),
+            });
+        }
+
+        return result.ToArray();
+    }
+
+    private static void CollectConstantLeaves(
+        IOperation operation,
+        List<OperationConstantFact> result,
+        ScanSymbolIds symbolIds)
+    {
+        var origin = operation switch
+        {
+            ILiteralOperation => OperationConstantOrigin.Literal,
+            IFieldReferenceOperation field when field.Field.IsConst => OperationConstantOrigin.NamedConstant,
+            ILocalReferenceOperation local when local.Local.IsConst => OperationConstantOrigin.NamedConstant,
+            IDefaultValueOperation => OperationConstantOrigin.DefaultValue,
+            _ => null,
+        };
+        if (origin != null)
+        {
+            result.Add(new OperationConstantFact
+            {
+                Origin = origin,
+                SymbolId = ReferencedSymbolId(operation, symbolIds),
+                Type = operation.Type == null ? null : TypeDisplay(operation.Type),
+                Value = ConstantText(operation.ConstantValue),
+                NumericClassification = NumericClassification(operation.ConstantValue),
+                Expression = Clip(operation.Syntax.ToString()),
+                Source = SourceSpan(operation.Syntax),
+            });
+            return;
+        }
+
+        foreach (var child in operation.ChildOperations)
+            CollectConstantLeaves(child, result, symbolIds);
+    }
+
+    private static string NumericClassification(Optional<object?> constant)
+    {
+        if (!constant.HasValue) return OperationNumericClassification.NonNumeric;
+        return constant.Value switch
+        {
+            float value when float.IsNaN(value) => OperationNumericClassification.NaN,
+            float value when float.IsPositiveInfinity(value) => OperationNumericClassification.PositiveInfinity,
+            float value when float.IsNegativeInfinity(value) => OperationNumericClassification.NegativeInfinity,
+            double value when double.IsNaN(value) => OperationNumericClassification.NaN,
+            double value when double.IsPositiveInfinity(value) => OperationNumericClassification.PositiveInfinity,
+            double value when double.IsNegativeInfinity(value) => OperationNumericClassification.NegativeInfinity,
+            sbyte or byte or short or ushort or int or uint or long or ulong or decimal or float or double
+                => OperationNumericClassification.Finite,
+            _ => OperationNumericClassification.NonNumeric,
+        };
+    }
+
+    private static bool IsNonFinite(string classification)
+        => classification is OperationNumericClassification.NaN
+            or OperationNumericClassification.PositiveInfinity
+            or OperationNumericClassification.NegativeInfinity;
 
     private static string ValueKind(IOperation operation) => operation switch
     {

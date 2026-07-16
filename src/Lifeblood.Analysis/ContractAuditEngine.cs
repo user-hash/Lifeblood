@@ -266,84 +266,151 @@ public sealed class ContractAuditEngine
     {
         foreach (var contract in _domainContracts)
         {
-            var assessment = ValueDomainContractRule.Evaluate(contract, fact);
-            if (assessment == null) continue;
-
-            var evidence = new List<ContractEvidence>();
-            if (fact.TargetSymbolId != null)
+            foreach (var assessment in ValueDomainContractRule.Evaluate(contract, fact))
             {
-                evidence.Add(new ContractEvidence
+                var evidence = BuildValueDomainEvidence(contract, fact, assessment);
+                AddFinding(new ContractFinding
                 {
-                    Kind = "BoundTarget",
-                    Summary = fact.TargetSymbolId,
-                    SymbolIds = new[] { fact.TargetSymbolId },
+                    Id = FindingId(
+                        ContractRuleId.ValueDomain,
+                        contract.Id,
+                        fact.Id,
+                        assessment.FindingKind == ContractFindingKind.ValueDomainMismatch
+                            ? null
+                            : assessment.FindingKind),
+                    Kind = assessment.FindingKind,
+                    RuleId = ContractRuleId.ValueDomain,
+                    ContractId = contract.Id,
+                    Severity = contract.Severity,
+                    Confidence = assessment.Confidence,
+                    Categories = ValueDomainCategories(assessment),
+                    Message = contract.Message ?? ValueDomainMessage(contract, fact, assessment),
+                    Guidance = contract.Guidance,
+                    FactId = fact.Id,
+                    ContainingSymbolId = fact.ContainingSymbolId,
+                    TargetSymbolId = fact.TargetSymbolId,
                     Source = fact.Source,
+                    Evidence = BoundEvidence(evidence),
                 });
             }
+        }
+    }
 
-            if (assessment.Input == null)
+    private static List<ContractEvidence> BuildValueDomainEvidence(
+        ValueDomainContract contract,
+        OperationFact fact,
+        ValueDomainAssessment assessment)
+    {
+        var evidence = new List<ContractEvidence>();
+        if (fact.TargetSymbolId != null)
+        {
+            evidence.Add(new ContractEvidence
             {
-                evidence.Add(new ContractEvidence
-                {
-                    Kind = "MissingInput",
-                    Summary = contract.InputOrdinal.HasValue
-                        ? $"No '{contract.InputRole}' input exists at ordinal {contract.InputOrdinal}."
-                        : $"No '{contract.InputRole}' input exists.",
-                    Source = fact.Source,
-                });
-            }
-            else
-            {
-                evidence.Add(new ContractEvidence
-                {
-                    Kind = "ValueExpression",
-                    Summary = DescribeValue(assessment.Input.Value),
-                    SymbolIds = assessment.Input.Value.SourceSymbolIds,
-                    Source = fact.Source,
-                });
-                evidence.Add(new ContractEvidence
-                {
-                    Kind = "ObservedDomains",
-                    Summary = assessment.IsUnclassified
-                        ? "No manifest binding classified the value."
-                        : string.Join(", ", assessment.ObservedDomains),
-                    SymbolIds = assessment.Input.Value.SourceSymbolIds,
-                    Source = fact.Source,
-                });
-                if (assessment.Input.Value.Operators.Length > 0)
-                {
-                    evidence.Add(new ContractEvidence
-                    {
-                        Kind = "ValueOperators",
-                        Summary = string.Join(", ", assessment.Input.Value.Operators),
-                        Source = fact.Source,
-                    });
-                }
-            }
-
-            var defaultMessage = assessment.IsUnclassified
-                ? $"Value passed to '{fact.TargetSymbolId}' is unclassified for required domain '{contract.TargetDomain}'."
-                : assessment.Input == null
-                    ? $"Operation '{fact.TargetSymbolId}' has no selected input for required domain '{contract.TargetDomain}'."
-                    : $"Value domains [{string.Join(", ", assessment.ObservedDomains)}] passed to '{fact.TargetSymbolId}' " +
-                      $"do not satisfy required domain '{contract.TargetDomain}' or an allowed conversion.";
-            AddFinding(new ContractFinding
-            {
-                Id = FindingId(ContractRuleId.ValueDomain, contract.Id, fact.Id),
-                Kind = ContractFindingKind.ValueDomainMismatch,
-                RuleId = ContractRuleId.ValueDomain,
-                ContractId = contract.Id,
-                Severity = contract.Severity,
-                Confidence = assessment.IsUnclassified ? ConfidenceBand.Advisory : ConfidenceBand.Proven,
-                Message = contract.Message ?? defaultMessage,
-                Guidance = contract.Guidance,
-                FactId = fact.Id,
-                ContainingSymbolId = fact.ContainingSymbolId,
-                TargetSymbolId = fact.TargetSymbolId,
+                Kind = "BoundTarget",
+                Summary = fact.TargetSymbolId,
+                SymbolIds = new[] { fact.TargetSymbolId },
                 Source = fact.Source,
-                Evidence = BoundEvidence(evidence),
             });
         }
+
+        if (assessment.Input == null)
+        {
+            evidence.Add(new ContractEvidence
+            {
+                Kind = "MissingInput",
+                Summary = contract.InputOrdinal.HasValue
+                    ? $"No '{contract.InputRole}' input exists at ordinal {contract.InputOrdinal}."
+                    : $"No '{contract.InputRole}' input exists.",
+                Source = fact.Source,
+            });
+            return evidence;
+        }
+
+        evidence.Add(new ContractEvidence
+        {
+            Kind = "ValueExpression",
+            Summary = DescribeValue(assessment.Input.Value),
+            SymbolIds = assessment.Input.Value.SourceSymbolIds,
+            Source = fact.Source,
+        });
+        evidence.Add(new ContractEvidence
+        {
+            Kind = "ObservedDomains",
+            Summary = assessment.IsUnclassified
+                ? "No manifest binding classified the value."
+                : assessment.ObservedDomains.Length == 0
+                    ? "No domain classification was required for this policy finding."
+                    : string.Join(", ", assessment.ObservedDomains),
+            SymbolIds = assessment.Input.Value.SourceSymbolIds,
+            Source = fact.Source,
+        });
+        if (assessment.Input.Value.Operators.Length > 0)
+        {
+            evidence.Add(new ContractEvidence
+            {
+                Kind = "ValueOperators",
+                Summary = string.Join(", ", assessment.Input.Value.Operators),
+                Source = fact.Source,
+            });
+        }
+        if (assessment.NonFiniteAction != null)
+        {
+            evidence.Add(new ContractEvidence
+            {
+                Kind = "NonFinitePolicy",
+                Summary = $"Action: {assessment.NonFiniteAction}",
+                SymbolIds = contract.NonFinitePolicy?.EvidenceSymbolIds ?? Array.Empty<string>(),
+            });
+        }
+        foreach (var constant in assessment.Constants)
+        {
+            evidence.Add(new ContractEvidence
+            {
+                Kind = "ConstantProvenance",
+                Summary = $"{constant.Origin}: {constant.Value ?? "<unknown>"} ({constant.NumericClassification})",
+                SymbolIds = constant.SymbolId == null ? Array.Empty<string>() : new[] { constant.SymbolId },
+                Source = constant.Source,
+            });
+        }
+        return evidence;
+    }
+
+    private static string[] ValueDomainCategories(ValueDomainAssessment assessment)
+        => assessment.FindingKind switch
+        {
+            ContractFindingKind.NonFinitePolicyMismatch => new[]
+            {
+                "NonFinite",
+                assessment.NonFiniteAction ?? NonFinitePolicyAction.CallerOwned,
+            },
+            ContractFindingKind.ConstantProvenanceMismatch => new[] { "ConstantProvenance", "RawNumericLiteral" },
+            _ => Array.Empty<string>(),
+        };
+
+    private static string ValueDomainMessage(
+        ValueDomainContract contract,
+        OperationFact fact,
+        ValueDomainAssessment assessment)
+    {
+        if (assessment.FindingKind == ContractFindingKind.NonFinitePolicyMismatch)
+        {
+            return assessment.Constants.Length > 0
+                ? $"Value passed to '{fact.TargetSymbolId}' contains explicit non-finite input but domain " +
+                  $"'{contract.TargetDomain}' requires policy action '{assessment.NonFiniteAction}' with declared evidence."
+                : $"Value passed to '{fact.TargetSymbolId}' lacks required local evidence for non-finite policy " +
+                  $"'{assessment.NonFiniteAction}' in domain '{contract.TargetDomain}'.";
+        }
+        if (assessment.FindingKind == ContractFindingKind.ConstantProvenanceMismatch)
+        {
+            return $"Value passed to '{fact.TargetSymbolId}' contains raw numeric literal(s) not allowed by " +
+                   $"domain '{contract.TargetDomain}' constant policy.";
+        }
+        if (assessment.IsUnclassified)
+            return $"Value passed to '{fact.TargetSymbolId}' is unclassified for required domain '{contract.TargetDomain}'.";
+        if (assessment.Input == null)
+            return $"Operation '{fact.TargetSymbolId}' has no selected input for required domain '{contract.TargetDomain}'.";
+        return $"Value domains [{string.Join(", ", assessment.ObservedDomains)}] passed to '{fact.TargetSymbolId}' " +
+               $"do not satisfy required domain '{contract.TargetDomain}' or an allowed conversion.";
     }
 
     private static bool IsAllowed(
@@ -501,9 +568,15 @@ public sealed class ContractAuditEngine
         return $"{value.Kind}: {expression}";
     }
 
-    private static string FindingId(string ruleId, string contractId, string factId)
+    private static string FindingId(
+        string ruleId,
+        string contractId,
+        string factId,
+        string? discriminator = null)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(ruleId + "\n" + contractId + "\n" + factId));
+        var identity = ruleId + "\n" + contractId + "\n" + factId;
+        if (discriminator != null) identity += "\n" + discriminator;
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(identity));
         return "finding_" + Convert.ToHexString(bytes).ToLowerInvariant()[..24];
     }
 

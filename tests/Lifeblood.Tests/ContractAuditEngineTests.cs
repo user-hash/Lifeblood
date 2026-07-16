@@ -284,6 +284,131 @@ public sealed class ContractAuditEngineTests
     }
 
     [Fact]
+    public void ValueDomain_NonFinitePolicyReportsExplicitValueAndAcceptsDeclaredEvidence()
+    {
+        const string sanitizer = "method:Acme.Math.RejectNonFinite(float)";
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(nonFinitePolicy: new ValueDomainNonFinitePolicy
+            {
+                Action = NonFinitePolicyAction.Reject,
+                EvidenceSymbolIds = new[] { sanitizer },
+            }),
+        });
+        var infinity = Constant(
+            OperationConstantOrigin.NamedConstant,
+            "Infinity",
+            OperationNumericClassification.PositiveInfinity,
+            "field:float.PositiveInfinity");
+
+        engine.Observe(Call("unsafe-infinity", DomainTarget, "Clock.cs", 10, ArgumentWithConstants(
+            OperationValueKind.Constant,
+            new[] { Seconds, "field:float.PositiveInfinity" },
+            infinity)));
+        engine.Observe(Call("sanitized-infinity", DomainTarget, "Clock.cs", 20, ArgumentWithConstants(
+            OperationValueKind.Invocation,
+            new[] { Seconds, sanitizer, "field:float.PositiveInfinity" },
+            infinity)));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 2)).Findings);
+
+        Assert.Equal("unsafe-infinity", finding.FactId);
+        Assert.Equal(ContractFindingKind.NonFinitePolicyMismatch, finding.Kind);
+        Assert.Equal(ConfidenceBand.Proven, finding.Confidence);
+        Assert.Equal(new[] { "NonFinite", NonFinitePolicyAction.Reject }, finding.Categories);
+        Assert.Contains(finding.Evidence, evidence =>
+            evidence.Kind == "ConstantProvenance"
+            && evidence.Summary.Contains("PositiveInfinity", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValueDomain_NonFinitePolicyCanRequireLocalEvidenceForRuntimeValues()
+    {
+        const string sanitizer = "method:Acme.Math.ClampFinite(float)";
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(nonFinitePolicy: new ValueDomainNonFinitePolicy
+            {
+                Action = NonFinitePolicyAction.UseNeutral,
+                EvidenceSymbolIds = new[] { sanitizer },
+                RequireEvidenceForAllValues = true,
+            }),
+        });
+
+        engine.Observe(Call("raw-runtime", DomainTarget, "Clock.cs", 10, Argument(
+            OperationValueKind.Parameter,
+            new[] { Seconds })));
+        engine.Observe(Call("sanitized-runtime", DomainTarget, "Clock.cs", 20, Argument(
+            OperationValueKind.Invocation,
+            new[] { Seconds, sanitizer })));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 2)).Findings);
+
+        Assert.Equal("raw-runtime", finding.FactId);
+        Assert.Equal(ContractFindingKind.NonFinitePolicyMismatch, finding.Kind);
+        Assert.Equal(ConfidenceBand.Advisory, finding.Confidence);
+        Assert.Contains("UseNeutral", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ValueDomain_ConstantPolicyDistinguishesRawLiteralsFromNamedPolicyConstants()
+    {
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(constantPolicy: new ValueDomainConstantPolicy
+            {
+                ReportRawNumericLiterals = true,
+                AllowedLiteralValues = new[] { "1" },
+            }),
+        });
+
+        engine.Observe(Call("identity", DomainTarget, "Clock.cs", 10, ArgumentWithConstants(
+            OperationValueKind.Binary,
+            new[] { Seconds },
+            Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite))));
+        engine.Observe(Call("raw-half", DomainTarget, "Clock.cs", 20, ArgumentWithConstants(
+            OperationValueKind.Binary,
+            new[] { Seconds },
+            Constant(OperationConstantOrigin.Literal, "0.5", OperationNumericClassification.Finite))));
+        engine.Observe(Call("named-half", DomainTarget, "Clock.cs", 30, ArgumentWithConstants(
+            OperationValueKind.Binary,
+            new[] { Seconds, "field:Acme.Clock.Half" },
+            Constant(
+                OperationConstantOrigin.NamedConstant,
+                "0.5",
+                OperationNumericClassification.Finite,
+                "field:Acme.Clock.Half"))));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 3)).Findings);
+
+        Assert.Equal("raw-half", finding.FactId);
+        Assert.Equal(ContractFindingKind.ConstantProvenanceMismatch, finding.Kind);
+        Assert.Equal(new[] { "ConstantProvenance", "RawNumericLiteral" }, finding.Categories);
+    }
+
+    [Fact]
+    public void ValueDomain_PolicyValidationRejectsUnknownOrUnsatisfiableShapes()
+    {
+        var unknownAction = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(nonFinitePolicy: new ValueDomainNonFinitePolicy
+            {
+                Action = "MakeItFine",
+            }),
+        }));
+        Assert.Contains("unknown nonFinitePolicy action", unknownAction.Message, StringComparison.Ordinal);
+
+        var inertException = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = DomainManifest(constantPolicy: new ValueDomainConstantPolicy
+            {
+                AllowedLiteralValues = new[] { "0" },
+            }),
+        }));
+        Assert.Contains("raw-literal reporting is disabled", inertException.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ManifestValidation_RejectsUnknownSchemaAndSelectorlessSuppression()
     {
         var schemaError = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
@@ -376,7 +501,10 @@ public sealed class ContractAuditEngineTests
             Suppressions = suppressions ?? Array.Empty<ContractSuppression>(),
         };
 
-    private static ContractManifest DomainManifest(bool reportUnclassifiedValues = false)
+    private static ContractManifest DomainManifest(
+        bool reportUnclassifiedValues = false,
+        ValueDomainNonFinitePolicy? nonFinitePolicy = null,
+        ValueDomainConstantPolicy? constantPolicy = null)
         => new()
         {
             Id = "acme-time-domains",
@@ -404,6 +532,8 @@ public sealed class ContractAuditEngineTests
                             RequiredOperators = new[] { "Divide" },
                         },
                     },
+                    NonFinitePolicy = nonFinitePolicy,
+                    ConstantPolicy = constantPolicy,
                     ReportUnclassifiedValues = reportUnclassifiedValues,
                 },
             },
@@ -483,6 +613,42 @@ public sealed class ContractAuditEngineTests
                 SourceSymbolIds = sourceIds,
                 Operators = operators,
             },
+        };
+
+    private static OperationInputFact ArgumentWithConstants(
+        string kind,
+        string[] sourceIds,
+        params OperationConstantFact[] constants)
+        => new()
+        {
+            Role = OperationInputRole.Argument,
+            Ordinal = 0,
+            ParameterName = "value",
+            AuthorSupplied = true,
+            Value = new OperationValueFact
+            {
+                Kind = kind,
+                Expression = "value expression",
+                IsCompileTimeConstant = kind == OperationValueKind.Constant,
+                SourceSymbolIds = sourceIds,
+                Constants = constants,
+            },
+        };
+
+    private static OperationConstantFact Constant(
+        string origin,
+        string value,
+        string numericClassification,
+        string? symbolId = null)
+        => new()
+        {
+            Origin = origin,
+            SymbolId = symbolId,
+            Type = "float",
+            Value = value,
+            NumericClassification = numericClassification,
+            Expression = symbolId == null ? value : symbolId,
+            Source = Span("Clock.cs", 1),
         };
 
     private static OperationSourceSpan Span(string path, int line)
