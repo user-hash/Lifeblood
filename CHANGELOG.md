@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Shared graph retention no longer has an implicit wall-clock deadline.**
+  Disconnecting the last proxy keeps the daemon-owned latest semantic base by
+  default, so an agent handoff cannot silently turn the next incremental call
+  into `noPriorAnalysis`. Operators may still opt into automatic reclamation
+  with `LIFEBLOOD_SHARED_IDLE_SECONDS` or request a lease-aware maintenance
+  drain. Capabilities expose explicit enablement plus nullable timeout/deadline
+  values, and process tests pin exact generation/snapshot retention across a
+  disconnect. (`INV-MCP-IDLE-DRAIN-001`.)
+
 - **Versioned semantic contracts now share one bounded stateless evaluator.**
   Consumer-owned manifests declare operation-argument guards, external API
   cost annotations, and exact suppressions. `ContractAuditEngine` derives one

@@ -772,6 +772,7 @@ public sealed class ToolHandler
                 ActiveRequestCount: 0,
                 InFlightAnalysisCount: _analysisCoordinator.InFlightCount,
                 LastActivityUtc: null,
+                IdleEvictionEnabled: false,
                 IdleTimeoutSeconds: null,
                 IdleDeadlineUtc: null,
                 WorkingSetBytes: process.WorkingSet64,
@@ -792,7 +793,8 @@ public sealed class ToolHandler
             ActiveRequestCount: shared.ActiveRequestCount,
             InFlightAnalysisCount: _analysisCoordinator.InFlightCount,
             LastActivityUtc: shared.LastActivityUtc,
-            IdleTimeoutSeconds: shared.IdleTimeout.TotalSeconds,
+            IdleEvictionEnabled: shared.IdleTimeout.HasValue,
+            IdleTimeoutSeconds: shared.IdleTimeout?.TotalSeconds,
             IdleDeadlineUtc: shared.IdleDeadlineUtc,
             WorkingSetBytes: process.WorkingSet64,
             PrivateMemoryBytes: process.PrivateMemorySize64);

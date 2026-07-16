@@ -324,6 +324,9 @@ public class ToolHandlerTests : IDisposable
         Assert.False(sharedService.GetProperty("active").GetBoolean());
         Assert.Equal("stdio", sharedService.GetProperty("mode").GetString());
         Assert.Equal("not-applicable", sharedService.GetProperty("lifecycleState").GetString());
+        Assert.False(sharedService.GetProperty("idleEvictionEnabled").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, sharedService.GetProperty("idleTimeoutSeconds").ValueKind);
+        Assert.Equal(JsonValueKind.Null, sharedService.GetProperty("idleDeadlineUtc").ValueKind);
         // INV-TELEMETRY-002: the advertised surface is exactly the
         // emitted-event SSoT, so an emitted-but-unadvertised event fails here.
         Assert.Equal(McpTelemetryEvents.All, telemetryEvents);

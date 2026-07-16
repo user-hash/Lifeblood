@@ -23,7 +23,7 @@ public enum SharedDaemonLifecycleState
 public sealed record SharedDaemonStatusSnapshot(
     string DaemonInstanceId,
     DateTimeOffset StartedAtUtc,
-    TimeSpan IdleTimeout,
+    TimeSpan? IdleTimeout,
     SharedDaemonLifecycleState State,
     int ClientCount,
     int ActiveRequestCount,
@@ -39,15 +39,16 @@ public sealed record SharedMaintenanceDrainResult(
     string? RejectionReason);
 
 /// <summary>
-/// Owns shared-daemon client leases and the last-client idle transition. Pipe
-/// connections are transport details; this coordinator owns only lifecycle
-/// state, request activity, and the shutdown signal consumed by the host.
+/// Owns shared-daemon client leases and the optional operator-configured
+/// last-client idle transition. Pipe connections are transport details; this
+/// coordinator owns only lifecycle state, request activity, and the shutdown
+/// signal consumed by the host.
 /// </summary>
 internal sealed class SharedDaemonLifecycle : IDisposable, ISharedDaemonStatusProvider
 {
     private readonly object _sync = new();
     private readonly Dictionary<string, ClientRegistration> _clients = new(StringComparer.Ordinal);
-    private readonly TimeSpan _idleTimeout;
+    private readonly TimeSpan? _idleTimeout;
     private readonly ISharedDaemonTimeSource _timeSource;
     private readonly CancellationTokenSource _shutdown = new();
     private IDisposable? _idleSchedule;
@@ -59,10 +60,11 @@ internal sealed class SharedDaemonLifecycle : IDisposable, ISharedDaemonStatusPr
     private int _disposed;
 
     public SharedDaemonLifecycle(
-        TimeSpan idleTimeout,
+        TimeSpan? idleTimeout,
         ISharedDaemonTimeSource? timeSource = null)
     {
-        if (idleTimeout < TimeSpan.Zero)
+        if (idleTimeout is { } configuredIdleTimeout
+            && configuredIdleTimeout < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(idleTimeout));
 
         _idleTimeout = idleTimeout;
@@ -232,8 +234,15 @@ internal sealed class SharedDaemonLifecycle : IDisposable, ISharedDaemonStatusPr
                 return;
             }
 
+            if (_idleTimeout == null)
+            {
+                _state = SharedDaemonLifecycleState.Running;
+                _idleDeadlineUtc = null;
+                return;
+            }
+
             _state = SharedDaemonLifecycleState.IdleWaiting;
-            _idleDeadlineUtc = _lastActivityUtc + _idleTimeout;
+            _idleDeadlineUtc = _lastActivityUtc + _idleTimeout.Value;
             scheduleEpoch = ++_idleEpoch;
         }
 
@@ -241,7 +250,7 @@ internal sealed class SharedDaemonLifecycle : IDisposable, ISharedDaemonStatusPr
         try
         {
             schedule = _timeSource.Schedule(
-                _idleTimeout,
+                _idleTimeout.Value,
                 () => OnIdleDeadline(scheduleEpoch.Value));
         }
         catch
@@ -362,17 +371,68 @@ internal sealed class SystemSharedDaemonTimeSource : ISharedDaemonTimeSource
 
     private sealed class OneShotTimer : IDisposable
     {
+        // System.Threading.Timer limits one due-time segment to UInt32.MaxValue
+        // milliseconds. Segmentation is a scheduler detail; it must not shorten
+        // the operator's configured lifecycle policy.
+        private static readonly TimeSpan MaximumTimerSegment =
+            TimeSpan.FromMilliseconds(uint.MaxValue - 1d);
+        private readonly object _sync = new();
+        private readonly Action _callback;
         private readonly Timer _timer;
+        private TimeSpan _remaining;
+        private bool _disposed;
 
         public OneShotTimer(TimeSpan delay, Action callback)
         {
+            _callback = callback;
+            _remaining = delay;
             _timer = new Timer(
-                static state => ((Action)state!).Invoke(),
-                callback,
-                delay,
+                static state => ((OneShotTimer)state!).OnTimer(),
+                this,
+                Timeout.InfiniteTimeSpan,
                 Timeout.InfiniteTimeSpan);
+            lock (_sync)
+                ScheduleNextUnderLock();
         }
 
-        public void Dispose() => _timer.Dispose();
+        public void Dispose()
+        {
+            lock (_sync)
+            {
+                if (_disposed)
+                    return;
+
+                _disposed = true;
+                _timer.Dispose();
+            }
+        }
+
+        private void OnTimer()
+        {
+            lock (_sync)
+            {
+                if (_disposed)
+                    return;
+                if (_remaining > TimeSpan.Zero)
+                {
+                    ScheduleNextUnderLock();
+                    return;
+                }
+
+                _disposed = true;
+            }
+
+            _timer.Dispose();
+            _callback();
+        }
+
+        private void ScheduleNextUnderLock()
+        {
+            var segment = _remaining > MaximumTimerSegment
+                ? MaximumTimerSegment
+                : _remaining;
+            _remaining -= segment;
+            _timer.Change(segment, Timeout.InfiniteTimeSpan);
+        }
     }
 }

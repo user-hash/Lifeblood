@@ -332,7 +332,7 @@ Overrides name one executable, not a command line. The bridge owns `--shared --s
 
 - **Domain reload.** The bridge disposes Unity's proxy before recompilation. The daemon keeps its base while another client lease exists; the next Unity call reconnects.
 
-- **Unity quit.** Unity's proxy is disposed; the daemon follows the shared idle/drain policy.
+- **Unity quit.** Unity's proxy is disposed; the daemon retains the latest base unless an operator-configured idle policy or explicit maintenance drain ends it.
 
 - **Crash recovery.** EOF or timeout closes the broken proxy. The next independent call connects a replacement; failed effectful requests are never replayed automatically.
 
