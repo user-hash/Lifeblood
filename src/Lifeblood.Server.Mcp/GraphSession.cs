@@ -593,6 +593,7 @@ public sealed class GraphSession : IDisposable
                        string[]? excludePaths = null,
                        string[]? authoritativeChangedFiles = null,
                        AcceptedChangeReceiptRequest? acceptedChangeReceipt = null,
+                       PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Detail,
                        AnalysisKey? expectedAnalysisKey = null,
                        CancellationToken cancellationToken = default)
     {
@@ -645,6 +646,7 @@ public sealed class GraphSession : IDisposable
                             changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
                             packageSourceVisibility: committedAdapter?.PackageSourceVisibility,
+                            packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.AnalysisScopeChanged,
                             fallbackDetail: detail,
@@ -673,6 +675,7 @@ public sealed class GraphSession : IDisposable
                             changeReceipt: changeReceipt,
                             skipped: committedAdapter?.SkippedFiles,
                             packageSourceVisibility: committedAdapter?.PackageSourceVisibility,
+                            packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                             requestedMode: "incremental",
                             fallbackReason: FallbackReason.CompilationStateUnavailable,
                             fallbackDetail: detail,
@@ -696,6 +699,7 @@ public sealed class GraphSession : IDisposable
                         excludePaths,
                         authoritativeChangedFiles,
                         changeReceipt,
+                        packageSourceVisibilityProjection,
                         expectedAnalysisKey,
                         cancellationToken);
                 }
@@ -904,6 +908,7 @@ public sealed class GraphSession : IDisposable
             changeReceipt: changeReceipt,
             skipped: candidateRoslynAdapter?.SkippedFiles,
             packageSourceVisibility: candidateRoslynAdapter?.PackageSourceVisibility,
+            packageSourceVisibilityProjection: packageSourceVisibilityProjection,
             requestedMode: fullRequestedMode,
             fallbackReason: fullFallbackReason,
             fallbackDetail: fullFallbackDetail,
@@ -923,6 +928,7 @@ public sealed class GraphSession : IDisposable
         string[]? excludePaths,
         string[]? authoritativeChangedFiles,
         AcceptedChangeReceiptRequest changeReceipt,
+        PackageSourceVisibilityProjection packageSourceVisibilityProjection,
         AnalysisKey? expectedAnalysisKey,
         CancellationToken cancellationToken)
     {
@@ -978,6 +984,7 @@ public sealed class GraphSession : IDisposable
                     changeReceipt: changeReceipt,
                     skipped: committed.RoslynAdapter?.SkippedFiles,
                     packageSourceVisibility: committed.RoslynAdapter?.PackageSourceVisibility,
+                    packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                     requestedMode: "incremental",
                     fallbackReason: incremental.Reason,
                     fallbackDetail: incremental.Detail,
@@ -1036,6 +1043,7 @@ public sealed class GraphSession : IDisposable
                         changeReceipt: changeReceipt,
                         skipped: candidateAdapter.SkippedFiles,
                         packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
+                        packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                         requestedMode: "incremental",
                         activeProfiles: incrActiveProfiles,
                         projectPath: projectPath,
@@ -1062,6 +1070,7 @@ public sealed class GraphSession : IDisposable
                     changeReceipt: changeReceipt,
                     skipped: candidateAdapter.SkippedFiles,
                     packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
+                    packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                     requestedMode: "incremental",
                     activeProfiles: incrActiveProfiles,
                     projectPath: projectPath,
@@ -1132,6 +1141,7 @@ public sealed class GraphSession : IDisposable
                 changeReceipt: changeReceipt,
                 skipped: candidateAdapter.SkippedFiles,
                 packageSourceVisibility: candidateAdapter.PackageSourceVisibility,
+                packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
                 fallbackDetail: incremental.Detail,
@@ -1165,6 +1175,7 @@ public sealed class GraphSession : IDisposable
         AcceptedChangeReceiptRequest? changeReceipt = null,
         IReadOnlyList<Lifeblood.Domain.Results.SkippedFile>? skipped = null,
         PackageSourceVisibilityReport? packageSourceVisibility = null,
+        PackageSourceVisibilityProjection packageSourceVisibilityProjection = PackageSourceVisibilityProjection.Detail,
         string? requestedMode = null,
         FallbackReason? fallbackReason = null,
         string? fallbackDetail = null,
@@ -1255,7 +1266,9 @@ public sealed class GraphSession : IDisposable
             contentChangedSourceFiles = contentChangedFileCount,
             acceptedChanges = acceptedChangesField,
             skipped = skippedField,
-            packageSourceVisibility = BuildPackageSourceVisibilityField(packageSourceVisibility),
+            packageSourceVisibility = BuildPackageSourceVisibilityField(
+                packageSourceVisibility,
+                packageSourceVisibilityProjection),
             analysisIdentity = identity == null
                 ? null
                 : WorkspaceAnalysisDescriptor.From(identity),
@@ -1294,14 +1307,18 @@ public sealed class GraphSession : IDisposable
         return JsonSerializer.Serialize(response, JsonOpts);
     }
 
-    private static object? BuildPackageSourceVisibilityField(PackageSourceVisibilityReport? report)
+    private static object? BuildPackageSourceVisibilityField(
+        PackageSourceVisibilityReport? report,
+        PackageSourceVisibilityProjection projection)
     {
         if (report == null)
             return null;
 
         const int maxFilesPerPackage = 64;
+        var includeFiles = projection == PackageSourceVisibilityProjection.Detail;
         return new
         {
+            mode = projection == PackageSourceVisibilityProjection.Detail ? "detail" : "summary",
             report.IsUnityWorkspace,
             report.DescriptorPaths,
             report.PackageCount,
@@ -1310,10 +1327,12 @@ public sealed class GraphSession : IDisposable
             report.UnboundSourceFileCount,
             packages = report.Packages.Select(package =>
             {
-                var files = package.Files
-                    .OrderBy(file => file.Path, StringComparer.Ordinal)
-                    .Take(maxFilesPerPackage)
-                    .ToArray();
+                var files = includeFiles
+                    ? package.Files
+                        .OrderBy(file => file.Path, StringComparer.Ordinal)
+                        .Take(maxFilesPerPackage)
+                        .ToArray()
+                    : Array.Empty<PackageSourceVisibilityFile>();
                 return new
                 {
                     package.Name,
