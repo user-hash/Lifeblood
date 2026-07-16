@@ -32,6 +32,7 @@ internal static class DefineProfileApplier
             Dependencies = module.Dependencies,
             IsPure = module.IsPure,
             IsEditorOnly = module.IsEditorOnly,
+            UnityProjectType = module.UnityProjectType,
             ExternalDllPaths = module.ExternalDllPaths,
             BclOwnership = module.BclOwnership,
             AllowUnsafeCode = module.AllowUnsafeCode,

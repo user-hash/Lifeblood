@@ -1275,6 +1275,7 @@ Resolution evidence:
 
 Type: Improvement
 Priority: High
+Status: Fixed locally on 2026-07-16; pending DAWG-scale release validation batch.
 Source: DAWG evidence comparison, 2026-07-16; Player edges dropped from prior stamped evidence while union edges grew
 Workspace: DAWG
 
@@ -1307,6 +1308,22 @@ Fix shape:
   changing the predicate.
 - Keep profile filtering owned by the C# adapter; MCP should project the receipt
   rather than infer profile membership from paths or names.
+
+Resolution evidence:
+- Added `ProfileApplicabilityReport` in Domain Results and
+  `RoslynWorkspaceAnalyzer.ProfileApplicability` as the adapter-owned receipt.
+  The receipt lists active profiles, per-profile included/excluded module
+  counts, module name, project file, raw `UnityProjectType`, included profiles,
+  excluded profiles, and stable exclusion reasons.
+- Preserved raw `<UnityProjectType>` on `ModuleInfo.UnityProjectType`; the
+  existing `IsEditorOnly` predicate remains unchanged. `EditorPlugins:7` is
+  now visible in the receipt but is not silently reclassified as `Editor`.
+- `lifeblood_analyze` projects `profileApplicability` for multi-profile or
+  excluding profile runs. MCP does not infer membership from paths/names; it
+  serializes the adapter receipt.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter "FullyQualifiedName~MultiProfileAnalyzeTests.ProfileApplicabilityReport_ExplainsUnityDescriptorProfileMembership|FullyQualifiedName~AnalyzeWireShapeTests.Load_MultiProfileUnityAnalyze_ProjectsProfileApplicability"`
+  passed 2/2.
 
 ## LB-INTAKE-20260716-043 - Cold incremental fallback diagnostics conflate reanalysis with content change
 

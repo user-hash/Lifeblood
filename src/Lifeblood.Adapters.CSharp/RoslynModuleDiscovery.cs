@@ -421,6 +421,9 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 Dependencies = deps,
                 IsPure = isPure,
                 IsEditorOnly = isEditorOnly,
+                UnityProjectType = string.IsNullOrWhiteSpace(unityProjectType)
+                    ? null
+                    : unityProjectType,
                 ExternalDllPaths = externalDlls,
                 BclOwnership = ownsBcl
                     ? BclOwnershipMode.ModuleProvided

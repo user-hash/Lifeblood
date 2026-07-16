@@ -2,6 +2,7 @@ using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -382,6 +383,55 @@ public class MultiProfileAnalyzeTests
         }
     }
 
+    [Fact]
+    public void ProfileApplicabilityReport_ExplainsUnityDescriptorProfileMembership()
+    {
+        var fs = new PhysicalFileSystem();
+        var tempDir = CreateUnityProfileApplicabilityWorkspace();
+        try
+        {
+            var analyzer = new RoslynWorkspaceAnalyzer(fs, new UnityDefineProfileResolver(fs));
+            analyzer.AnalyzeWorkspace(tempDir, new AnalysisConfig
+            {
+                DefineProfiles = new[] { "Player", "Editor" },
+            });
+
+            Assert.NotNull(analyzer.ProfileApplicability);
+            var report = analyzer.ProfileApplicability!;
+            Assert.True(report.IsUnityWorkspace);
+            Assert.Equal(new[] { "Player", "Editor" }, report.Profiles);
+            Assert.Equal(3, report.ModuleCount);
+            Assert.Equal(2, report.IncludedModuleCountsByProfile["Player"]);
+            Assert.Equal(3, report.IncludedModuleCountsByProfile["Editor"]);
+            Assert.Equal(1, report.ExcludedModuleCountsByProfile["Player"]);
+
+            var runtime = report.Modules.Single(module => module.Name == "Runtime");
+            Assert.Equal("Game:1", runtime.UnityProjectType);
+            Assert.False(runtime.IsEditorOnly);
+            Assert.Equal(new[] { "Player", "Editor" }, runtime.IncludedProfiles);
+            Assert.Empty(runtime.ExcludedProfiles);
+
+            var editor = report.Modules.Single(module => module.Name == "Editor");
+            Assert.Equal("Editor:5", editor.UnityProjectType);
+            Assert.True(editor.IsEditorOnly);
+            Assert.Equal(new[] { "Editor" }, editor.IncludedProfiles);
+            Assert.Equal(new[] { "Player" }, editor.ExcludedProfiles);
+            var exclusion = Assert.Single(editor.Exclusions);
+            Assert.Equal("Player", exclusion.Profile);
+            Assert.Equal(ProfileApplicabilityReason.EditorOnlyModuleExcludedByProfile, exclusion.Reason);
+
+            var editorPlugin = report.Modules.Single(module => module.Name == "EditorPlugin");
+            Assert.Equal("EditorPlugins:7", editorPlugin.UnityProjectType);
+            Assert.False(editorPlugin.IsEditorOnly);
+            Assert.Equal(new[] { "Player", "Editor" }, editorPlugin.IncludedProfiles);
+            Assert.Empty(editorPlugin.Exclusions);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
     private static string CreateUnityEditorModuleWorkspace()
     {
         var root = Path.Combine(Path.GetTempPath(), $"lifeblood-unity-modules-{Guid.NewGuid():N}");
@@ -434,5 +484,41 @@ public class MultiProfileAnalyzeTests
             """);
 
         return root;
+    }
+
+    private static string CreateUnityProfileApplicabilityWorkspace()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"lifeblood-profile-app-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "Library"));
+
+        WriteUnityProject(root, "Runtime", "Game:1", "Runtime.cs");
+        WriteUnityProject(root, "Editor", "Editor:5", "Editor.cs");
+        WriteUnityProject(root, "EditorPlugin", "EditorPlugins:7", "EditorPlugin.cs");
+        File.WriteAllText(Path.Combine(root, "Runtime.cs"), "namespace App; public sealed class RuntimeType { }");
+        File.WriteAllText(Path.Combine(root, "Editor.cs"), "namespace App; public sealed class EditorType { }");
+        File.WriteAllText(Path.Combine(root, "EditorPlugin.cs"), "namespace App; public sealed class EditorPluginType { }");
+        return root;
+    }
+
+    private static void WriteUnityProject(
+        string root,
+        string assemblyName,
+        string unityProjectType,
+        string sourceFile)
+    {
+        File.WriteAllText(Path.Combine(root, $"{assemblyName}.csproj"), $$"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <AssemblyName>{{assemblyName}}</AssemblyName>
+                <DefineConstants>UNITY_EDITOR</DefineConstants>
+                <UnityProjectType>{{unityProjectType}}</UnityProjectType>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="{{sourceFile}}" />
+              </ItemGroup>
+            </Project>
+            """);
     }
 }
