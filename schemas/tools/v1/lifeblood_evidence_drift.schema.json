@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "baselinePath": {
+      "type": "string",
+      "description": "Repository-contained generated evidence Markdown. Relative paths resolve from the analyzed workspace root. Default: docs/code-maps/EVIDENCE.generated.md."
+    },
+    "relativeTolerancePercent": {
+      "type": "number",
+      "description": "Relative drift tolerance for volume counts such as symbols, edges, modules, types, files, profile edges, and invariant totals. Default 0.5; finite range 0..100. Safety metrics keep fixed no-increase/zero-required policies."
+    },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_\u003C32 lowercase hex\u003E` identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
+    }
+  }
+}

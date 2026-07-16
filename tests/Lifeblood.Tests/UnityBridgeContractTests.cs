@@ -49,7 +49,7 @@ public sealed class UnityBridgeContractTests
             .Where(type => type.Parent is CompilationUnitSyntax or NamespaceDeclarationSyntax or FileScopedNamespaceDeclarationSyntax)
             .ToDictionary(type => type.Identifier.ValueText, StringComparer.Ordinal);
 
-        Assert.Equal(19, wrappers.Length);
+        Assert.Equal(20, wrappers.Length);
         foreach (var wrapper in wrappers)
         {
             var unityToolName = ReadMcpToolName(wrapper);
@@ -72,7 +72,7 @@ public sealed class UnityBridgeContractTests
             .Where(HasMcpToolAttribute)
             .ToArray();
 
-        Assert.Equal(19, tools.Length);
+        Assert.Equal(20, tools.Length);
         foreach (var tool in tools)
         {
             var attribute = tool.AttributeLists.SelectMany(list => list.Attributes)

@@ -342,6 +342,25 @@ public class ToolArgumentContractTests
     }
 
     [Fact]
+    public void ToolRequestBinder_BindsEvidenceDriftRequestWithVisibleToleranceDefault()
+    {
+        var request = ToolRequestBinder.BindEvidenceDrift(JsonArgs(new
+        {
+            baselinePath = " docs/evidence.md ",
+            relativeTolerancePercent = 1.25,
+        }));
+
+        Assert.Equal(" docs/evidence.md ", request.BaselinePath);
+        Assert.Equal(1.25, request.EffectiveRelativeTolerancePercent);
+
+        var empty = ToolRequestBinder.BindEvidenceDrift(null);
+        Assert.Same(EvidenceDriftToolRequest.Empty, empty);
+        Assert.Equal(
+            Lifeblood.Analysis.EvidenceBaselineDriftEvaluator.DefaultRelativeTolerancePercent,
+            empty.EffectiveRelativeTolerancePercent);
+    }
+
+    [Fact]
     public void ReadFromEnvironment_StrictJsonAlias_RemainsStrictAlias()
     {
         const string compatName = "LIFEBLOOD_JSON_COMPAT_TEST";

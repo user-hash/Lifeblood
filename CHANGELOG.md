@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **First-class generated-evidence drift verdict.**
+  `lifeblood_evidence_drift` compares one workspace-contained Markdown stamp
+  with the exact leased graph and a live invariant audit, after recapturing
+  canonical source/descriptor/rule identity. It returns exact metric deltas,
+  caller-visible relative tolerance, fixed safety flags, commit/content
+  provenance, and separate analysis-versus-evidence refresh guidance. Stale
+  publications and incomplete baselines fail closed; the shared profile-edge
+  projection now serves both analyze summaries and the drift check. The tool
+  is read-only and adds no baseline compilation or retained semantic base.
+  (`INV-EVIDENCE-DRIFT-001`, `LB-INTAKE-20260714-030`.)
+
 - **Diff-scoped diagnostic ownership without a baseline compilation.**
   `lifeblood_diagnose(diagnosticOwnershipMode)` now joins its existing Roslyn
   diagnostics to bounded Git working-tree, staged, or since-commit line
@@ -142,7 +153,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`LB-INTAKE-20260716-044`, partially shipped.)
 - **The Unity bridge has one canonical, pollable package authority.** The UPM
   source lives under `unity/`; consumers reference it instead of copying it.
-  All 19 wrappers expose Coplay-discoverable typed nested parameters and the
+  All 20 wrappers expose Coplay-discoverable typed nested parameters and the
   polling lifecycle. One coordinator owns at most one unconsumed call per tool,
   resolves action-only status polls by tool identity, coalesces exact duplicate
   admissions, and rejects conflicting arguments. It launches the installed

@@ -12,6 +12,7 @@ public static class ToolRequestBinder
     private const string AnalyzeToolName = "lifeblood_analyze";
     private const string CompileCheckToolName = "lifeblood_compile_check";
     private const string ContractAuditToolName = "lifeblood_contract_audit";
+    private const string EvidenceDriftToolName = "lifeblood_evidence_drift";
 
     private static readonly string AnalyzeProjectPath = ArgumentName(AnalyzeToolName, "projectPath");
     private static readonly string AnalyzeGraphPath = ArgumentName(AnalyzeToolName, "graphPath");
@@ -45,6 +46,9 @@ public static class ToolRequestBinder
     private static readonly string ContractAuditMaxFindings = ArgumentName(ContractAuditToolName, "maxFindings");
     private static readonly string ContractAuditMaxEvidence = ArgumentName(ContractAuditToolName, "maxEvidencePerFinding");
     private static readonly string ContractAuditSummarize = ArgumentName(ContractAuditToolName, "summarize");
+
+    private static readonly string EvidenceDriftBaselinePath = ArgumentName(EvidenceDriftToolName, "baselinePath");
+    private static readonly string EvidenceDriftRelativeTolerance = ArgumentName(EvidenceDriftToolName, "relativeTolerancePercent");
 
     public static AnalyzeToolRequest BindAnalyze(JsonElement? args)
     {
@@ -118,6 +122,18 @@ public static class ToolRequestBinder
         };
     }
 
+    public static EvidenceDriftToolRequest BindEvidenceDrift(JsonElement? args)
+    {
+        if (!TryGetObject(args, out var root))
+            return EvidenceDriftToolRequest.Empty;
+
+        return new EvidenceDriftToolRequest
+        {
+            BaselinePath = ReadString(root, EvidenceDriftBaselinePath),
+            RelativeTolerancePercent = ReadDouble(root, EvidenceDriftRelativeTolerance),
+        };
+    }
+
     private static string ArgumentName(string toolName, string argumentName)
     {
         var contract = ToolInputContractCatalog.Get(toolName);
@@ -156,6 +172,13 @@ public static class ToolRequestBinder
         => root.TryGetProperty(name, out var value)
            && value.ValueKind == JsonValueKind.Number
            && value.TryGetInt32(out var parsed)
+            ? parsed
+            : null;
+
+    private static double? ReadDouble(JsonElement root, string name)
+        => root.TryGetProperty(name, out var value)
+           && value.ValueKind == JsonValueKind.Number
+           && value.TryGetDouble(out var parsed)
             ? parsed
             : null;
 
@@ -249,4 +272,14 @@ public sealed record ContractAuditToolRequest
     public int EffectiveMaxFindings => MaxFindings ?? 200;
     public int EffectiveMaxEvidencePerFinding => MaxEvidencePerFinding ?? 8;
     public bool EffectiveSummarize => Summarize ?? true;
+}
+
+public sealed record EvidenceDriftToolRequest
+{
+    public static EvidenceDriftToolRequest Empty { get; } = new();
+
+    public string? BaselinePath { get; init; }
+    public double? RelativeTolerancePercent { get; init; }
+    public double EffectiveRelativeTolerancePercent =>
+        RelativeTolerancePercent ?? Lifeblood.Analysis.EvidenceBaselineDriftEvaluator.DefaultRelativeTolerancePercent;
 }

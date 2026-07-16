@@ -38,6 +38,7 @@ public sealed class ToolHandler
     private readonly IPortHealthAnalyzer _portHealth;
     private readonly WriteToolHandler _write;
     private readonly ContractAuditToolHandler _contractAudit;
+    private readonly EvidenceDriftToolHandler _evidenceDrift;
     private readonly ITelemetrySink _telemetry;
     private readonly ToolArgumentBinder _argumentBinder;
     private readonly ToolJsonCompatibilityMode _jsonCompatibilityMode;
@@ -101,6 +102,7 @@ public sealed class ToolHandler
         _sharedDaemonStatus = sharedDaemonStatus;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
         _contractAudit = new ContractAuditToolHandler(session, JsonOpts);
+        _evidenceDrift = new EvidenceDriftToolHandler(session, invariants);
     }
 
     private static ToolArgumentBinder BuildArgumentBinder()
@@ -270,6 +272,7 @@ public sealed class ToolHandler
                 "lifeblood_capabilities" => HandleCapabilities(arguments),
                 "lifeblood_batch" => HandleBatch(arguments),
                 "lifeblood_snapshots" => HandleSnapshots(arguments),
+                "lifeblood_evidence_drift" => HandleEvidenceDrift(arguments),
                 "lifeblood_analyze" => HandleAnalyze(arguments, cancellationToken),
                 "lifeblood_context" => HandleContext(arguments),
                 "lifeblood_lookup" => HandleLookup(arguments),
@@ -577,6 +580,11 @@ public sealed class ToolHandler
             catalog = BuildSnapshotCatalogPayload(checkDrift: false),
         }));
     }
+
+    private McpToolResult HandleEvidenceDrift(JsonElement? args)
+        => TextResult(WithEnvelope(
+            "lifeblood_evidence_drift",
+            _evidenceDrift.Execute(args)));
 
     private object BuildSnapshotCatalogPayload(bool checkDrift)
     {

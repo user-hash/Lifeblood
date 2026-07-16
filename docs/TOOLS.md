@@ -71,6 +71,7 @@ delegate methods.
 | **Capabilities** | Report the live MCP server's version, version source, optional git commit / dirty state when running from a repo checkout, tool count with read/write split, feature flags, operational telemetry event names, schema snapshot path, STATUS.md anchor path, and current session state. Use at session start to detect local-server / local-doc drift before relying on stale prose. |
 | **Batch** | Execute 1–32 registered observation/shared-read calls serially under one immutable snapshot lease. The whole plan is validated before call zero: unknown tools, nested batches, and exclusive/effectful tools are rejected without partial execution. Every nested call still uses its ordinary argument, prerequisite, envelope, and telemetry path; stable input order is preserved. Use this for multi-tool evidence that must not mix generations while another agent refreshes. |
 | **Snapshots** | Inspect and manage the hard-bounded graph-only publication catalog. `action:"list"` reports current + retained publications, canonical identities, pin/name/lease facts, policy, zero additional semantic bases, and optional `checkDrift:true` source/descriptor/rule recapture. `pin`, `unpin`, and `evict` target a canonical `SnapshotId`; pinned entries consume the same hard bound. |
+| **Evidence drift** | Compare a workspace-contained generated evidence Markdown baseline with the exact leased graph and a live invariant audit. Snapshot input identity is recaptured first; source/descriptor/rule drift fails closed to `unavailable`. Returns exact stamped/live/delta/percent rows, `current` / `stale` / `flag` / `unavailable`, optional commit provenance, and separate analysis/evidence refresh guidance. Volume tolerance is caller-visible (default 0.5%); safety metrics keep no-increase/zero-warning rules. Read-only, no extra semantic base. `INV-EVIDENCE-DRIFT-001`. |
 | **Analyze** | Load a project into a verified semantic graph. Symbols, edges, modules, violations. Pass `incremental: true` after the first analysis for fast re-analysis. Source mtimes are a prefilter; source content hashes decide whether touched files re-extract, so mtime-only touches return `mode:"incremental-noop"` while `mtimeTouchedSourceFiles` and `contentChangedSourceFiles` explain the difference. If an editor or watcher knows the exact changed set, pass `authoritativeChangedFiles:["Assets/Foo.cs"]` to narrow source scanning; descriptor drift and analysis-scope drift are still checked independently. For Unity cross-define analysis, `defineProfiles:["Editor","Player","Standalone"]` covers editor identity, generic player `!UNITY_EDITOR`, and platform-neutral desktop `UNITY_STANDALONE && !UNITY_EDITOR` callsites. Pass `excludePaths:["Packages/*","*/Samples*/*","*/Examples*/*"]` to exclude vendored/sample source before Roslyn compilation. **Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`)**: by default `incremental: true` REJECTS when the adapter detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited, analysis-scope excludePath set changed, or retained compilation state unavailable after `readOnly:true`). Pass `allowFullFallback: true` to opt into silent widening. Wire shape: `mode` reports what the adapter DID (`full` / `incremental` / `incremental-noop` / `rejected`), `requestedMode` separately reports what the caller ASKED, `fallbackReason` (`noPriorAnalysis` / `moduleSetChanged` / `moduleDescriptorChanged` / `analysisScopeChanged` / `compilationStateUnavailable`) + `fallbackDetail` populate alongside whenever the cheap path could not be honored. Rejection responses additionally carry `canRetryFull: true` and a `suggestedRetry: { incremental: true, allowFullFallback: true }` block - the next move is self-documenting, no out-of-band knowledge required. Rejection is a NORMAL structured result, not a transport / tool error. Every response carries a `usage` field with wall time, CPU time, peak memory, and GC counters. Opt-in operational telemetry records `lifeblood.analyze.result` and `lifeblood.analyze.fallback` events for the same shape. |
 | **Context** | AI context pack with summary, high-value files, boundaries, invariants, hotspots, reading order, and a module dependency matrix. **Smart-dynamic shaping (`LB-FR-022`)**: every list-section has a sensible default cap (25 files / 50 boundaries / 20 hotspots / 50 reading-order / 100 matrix entries) so the response fits inside conservative tool-result budgets even on multi-module Unity workspaces. Override per-section caps with `maxFiles` / `maxBoundaries` / `maxHotspots` / `maxReadingOrder` / `maxMatrixEntries` (`-1` unlimited; `0` drops the section). Pass `summarize:true` for the smallest viable shape (only summary + invariants + violations). Pass `sections:["boundaries"]` to allow-list specific sections. Every clipped section is reported in the response's `truncated` map with its full pre-clip count. |
 | **Lookup** | Symbol details: kind, file, line, visibility, properties. For partial types, returns the deterministic primary `filePath` and the full sorted `filePaths[]` of every partial declaration. |
@@ -195,6 +196,29 @@ unpinned entries expire after 24 hours or by LRU pressure. Pinned entries count
 toward the same bound; if all slots are pinned, automatic rollover is refused
 and reported rather than growing another cache. Use `checkDrift:true` on list
 only when filesystem hashing is worth the I/O cost.
+
+`lifeblood_evidence_drift` turns the repository's generated evidence stamp
+into a first-class read-only verdict. It reads a workspace-contained Markdown
+file (default `docs/code-maps/EVIDENCE.generated.md`, strict UTF-8, 1 MiB
+maximum), joins its canonical counts to the exact leased graph plus a live
+invariant audit, and returns one row per metric with `baseline`, `current`,
+`delta`, `absolutePercentDrift`, `status`, and the policy that produced it.
+Multi-profile rows use the same `CountProfileEdges` implementation as
+`lifeblood_analyze.summary.perProfileEdgeCounts`.
+
+The default `relativeTolerancePercent` is 0.5 for volume metrics. Violations,
+cycles, duplicate declarations, and duplicate IDs have a fixed no-increase
+policy; live invariant parse warnings must remain zero. Missing/conflicting
+baseline metrics fail closed. Before a `current` verdict is allowed, the C#
+adapter recaptures source/descriptor/rule identity. If that differs from the
+leased publication, the response is `unavailable` with
+`refreshAnalysisRecommended:true`; it will not compare a stale graph as if it
+were live. A complete current graph with out-of-policy metrics returns
+`refreshEvidenceRecommended:true`. The tool reports the exact baseline content
+fingerprint and optional baseline/analyze commit comparison as provenance, but
+neither replaces canonical analysis identity. It never runs analyze, compiles
+a baseline, rewrites the generated file, launches Git, or retains another
+semantic base (`INV-EVIDENCE-DRIFT-001`).
 
 For several related reads, `lifeblood_batch` pins once and runs the plan in
 stable input order:

@@ -227,7 +227,7 @@ healthy server.
 
 ### Surface budget
 
-At most two new MCP tools are justified by this backlog:
+At most two general-purpose new MCP tools are justified by this backlog:
 
 1. `lifeblood_contract_audit` for the shared semantic-contract family;
 2. `lifeblood_performance_evidence` for import/correlation/comparison of runtime
@@ -239,12 +239,20 @@ Every other request extends an existing tool or closes through tests/docs:
 - `diagnose`: diff ownership;
 - `compile_check`: bounded multi-file mode and typed ownership;
 - `invariant_check`: compact source projection and invariant coverage;
-- `snapshots` or analyze evidence projection: baseline drift comparison;
+- one bounded evidence-drift projection: baseline comparison;
 - existing usage block: start/end/peak-above-start memory facts.
 
-A third new tool requires a written proof that neither existing owner nor the
-two new bounded contexts can express the behavior without becoming a god
-surface.
+The 2026-07-16 Wave 5 implementation approved one narrow exception:
+`lifeblood_evidence_drift`. Baseline drift needs the exact leased graph, a live
+invariant audit, and one bounded workspace-owned Markdown baseline. `analyze`
+must remain the publication writer and cannot read a documentation baseline;
+`lifeblood_snapshots` owns graph-history catalog operations and does not own
+invariant or evidence-file policy; `lifeblood_invariant_check` does not own graph
+volume/profile counts. Folding the operation into any of those surfaces would
+create a mixed owner or force callers to duplicate the comparison policy. The
+exception is therefore a stateless read-side projection with
+`additionalSemanticBaseCount:0`; it does not create another graph, Roslyn base,
+baseline compiler, or evidence writer.
 
 ## Complete Routing Table
 
@@ -446,6 +454,15 @@ Covers `004`, `005`, `013`, `016`, `027`, `030`, `032`, `033`.
 
 Exit: evidence payloads stay bounded and non-duplicated; memory receipts explain
 growth; governance requests close without turning Lifeblood into a repo editor.
+
+`LB-INTAKE-20260714-030` implementation is repository-verified: the Analysis
+evaluator owns baseline parsing, tolerance, safety flags, and the shared
+per-profile edge projection; the MCP handler owns bounded path/file policy and
+freshness enforcement. Focused evaluator/handler/schema/Unity/registry tests
+and the full suite are its in-tree gates. Lifecycle closure remains pending
+until a frozen DAWG Editor+Player publication proves the default generated
+baseline path, exact snapshot/generation preconditions, refresh guidance, and
+zero additional semantic bases on the motivating workspace.
 
 ### Wave 6 - Runtime Performance Evidence
 
