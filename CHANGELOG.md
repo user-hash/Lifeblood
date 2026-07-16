@@ -9,6 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Secondary-profile operation audits without secondary retention.**
+
 - **Bounded changed-set compile checks.** `lifeblood_compile_check` now accepts
   an additive `filePaths` mode for 1..32 files. It prevalidates the whole set,
   performs at most one shared stale refresh, and returns aggregate counts plus
