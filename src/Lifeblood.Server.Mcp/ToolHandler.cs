@@ -1725,6 +1725,7 @@ public sealed class ToolHandler
     // INV-FILE-IMPACT-SUMMARIZE-001 + INV-LIST-SHAPE-UNIFORM-001.
     private const int FileImpactDefaultMaxResults = 500;
     private const int FileImpactSummarizeMaxResults = 25;
+    private const int FileImpactUnsupportedRelationshipMaxHits = 25;
 
     private McpToolResult HandleFileImpact(JsonElement? args)
     {
@@ -1738,12 +1739,16 @@ public sealed class ToolHandler
             return ErrorResult($"File not found in graph: {filePath} (tried ID: {fileId})");
 
         var summarize = WriteToolHandler.GetBool(args, "summarize") ?? false;
+        var includeUnsupportedRelationships = WriteToolHandler.GetBool(args, "includeUnsupportedRelationships") ?? false;
         var requestedMax = WriteToolHandler.GetInt(args, "maxResults");
         var maxResults = summarize
             ? FileImpactSummarizeMaxResults
             : (requestedMax is > 0 ? requestedMax.Value : FileImpactDefaultMaxResults);
 
         var result = _provider.GetFileImpact(_session.Graph!, fileId);
+        var unsupportedRelationships = includeUnsupportedRelationships
+            ? BuildUnsupportedRelationshipReport(result.FilePath)
+            : null;
 
         var dependsOnTruncated = result.DependsOn.Length > maxResults;
         var dependedOnByTruncated = result.DependedOnBy.Length > maxResults;
@@ -1771,7 +1776,142 @@ public sealed class ToolHandler
             truncated = dependsOnTruncated || dependedOnByTruncated,
             summarize,
             maxResults,
+            unsupportedRelationships,
         }));
+    }
+
+    private UnsupportedRelationshipReport BuildUnsupportedRelationshipReport(string targetFilePath)
+    {
+        var families = BuildUnsupportedRelationshipFamilies();
+        var limitations = new[]
+        {
+            "This receipt is advisory and separate from semantic graph edges.",
+            "Only source-file IO literal matches are scanned here; reflection strings, Resources.Load paths, and serialized asset references remain documented limitations unless a future opt-in scanner supports them.",
+        };
+        var projectRoot = _session.ProjectRoot;
+        if (string.IsNullOrWhiteSpace(projectRoot))
+        {
+            return new UnsupportedRelationshipReport
+            {
+                Families = families,
+                Hits = Array.Empty<UnsupportedRelationshipHit>(),
+                TotalHitCount = 0,
+                Limitations = limitations.Concat(new[]
+                {
+                    "No project root is available for this session, so source-text advisory scanning was skipped.",
+                }).ToArray(),
+            };
+        }
+
+        var allHits = ScanSourceFileIoLiteralRelationships(projectRoot, targetFilePath);
+        return new UnsupportedRelationshipReport
+        {
+            Families = families,
+            Hits = allHits.Take(FileImpactUnsupportedRelationshipMaxHits).ToArray(),
+            TotalHitCount = allHits.Length,
+            Limitations = limitations,
+        };
+    }
+
+    private static UnsupportedRelationshipFamilyReceipt[] BuildUnsupportedRelationshipFamilies()
+        => new[]
+        {
+            new UnsupportedRelationshipFamilyReceipt
+            {
+                Name = UnsupportedRelationshipFamily.SourceFileIoLiteral,
+                Status = UnsupportedRelationshipStatus.Scanned,
+                Description = "Source text calls to File.ReadAllText/ReadAllBytes/ReadAllLines with a literal mentioning the queried file.",
+            },
+            new UnsupportedRelationshipFamilyReceipt
+            {
+                Name = UnsupportedRelationshipFamily.ReflectionString,
+                Status = UnsupportedRelationshipStatus.DocumentedLimitation,
+                Description = "Type/member relationships reachable only through runtime reflection strings are not semantic graph edges.",
+            },
+            new UnsupportedRelationshipFamilyReceipt
+            {
+                Name = UnsupportedRelationshipFamily.UnityResourcesLoad,
+                Status = UnsupportedRelationshipStatus.DocumentedLimitation,
+                Description = "Unity Resources.Load path-to-asset relationships are not semantic graph edges.",
+            },
+            new UnsupportedRelationshipFamilyReceipt
+            {
+                Name = UnsupportedRelationshipFamily.UnitySerializedAssetReference,
+                Status = UnsupportedRelationshipStatus.DocumentedLimitation,
+                Description = "Unity serialized asset/YAML references are not general semantic graph edges.",
+            },
+        };
+
+    private UnsupportedRelationshipHit[] ScanSourceFileIoLiteralRelationships(
+        string projectRoot,
+        string targetFilePath)
+    {
+        var targetVariants = BuildTargetFilePathVariants(targetFilePath);
+        var hits = new List<UnsupportedRelationshipHit>();
+        foreach (var symbol in _session.Graph!.Symbols)
+        {
+            if (symbol.Kind != SymbolKind.File || string.IsNullOrWhiteSpace(symbol.FilePath))
+                continue;
+
+            var sourcePath = symbol.FilePath.Replace('\\', '/');
+            var absolutePath = Path.IsPathRooted(symbol.FilePath)
+                ? symbol.FilePath
+                : Path.Combine(projectRoot, symbol.FilePath);
+            var text = ReadFileSafe(absolutePath);
+            if (string.IsNullOrEmpty(text))
+                continue;
+
+            var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var api = DetectSourceFileIoApi(line);
+                if (api == null)
+                    continue;
+                if (!targetVariants.Any(variant => line.Contains(variant, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                hits.Add(new UnsupportedRelationshipHit
+                {
+                    Family = UnsupportedRelationshipFamily.SourceFileIoLiteral,
+                    SourceFilePath = sourcePath,
+                    TargetFilePath = targetFilePath.Replace('\\', '/'),
+                    Api = api,
+                    Line = i + 1,
+                    Confidence = "BestEffort",
+                    Evidence = line.Trim(),
+                });
+            }
+        }
+
+        return hits
+            .OrderBy(hit => hit.SourceFilePath, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Line)
+            .ToArray();
+    }
+
+    private static string[] BuildTargetFilePathVariants(string targetFilePath)
+    {
+        var normalized = targetFilePath.Replace('\\', '/');
+        var fileName = Path.GetFileName(normalized);
+        return new[] { normalized, fileName }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? DetectSourceFileIoApi(string line)
+    {
+        var apis = new[]
+        {
+            "File.ReadAllText",
+            "File.ReadAllBytes",
+            "File.ReadAllLines",
+            "System.IO.File.ReadAllText",
+            "System.IO.File.ReadAllBytes",
+            "System.IO.File.ReadAllLines",
+        };
+        return apis.FirstOrDefault(api => line.Contains(api, StringComparison.Ordinal));
     }
 
     // ── P5: authority / port_health / cycles ──
