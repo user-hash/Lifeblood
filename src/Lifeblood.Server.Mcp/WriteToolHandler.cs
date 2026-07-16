@@ -17,6 +17,8 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 internal sealed class WriteToolHandler
 {
+    private const int CompileCheckBatchLimit = 32;
+
     private readonly GraphSession _session;
     private readonly JsonSerializerOptions _jsonOpts;
     private readonly ISymbolResolver _resolver;
@@ -240,14 +242,20 @@ internal sealed class WriteToolHandler
         var toolRequest = ToolRequestBinder.BindCompileCheck(args);
         var code = toolRequest.Code;
         var filePath = toolRequest.FilePath;
+        var filePaths = toolRequest.FilePaths;
 
-        // BUG-015: accept either inline `code` or a `filePath`. Exactly one
-        // is required; both being set is a caller error because the result
-        // would silently depend on which one wins in the handler.
-        if (string.IsNullOrEmpty(code) && string.IsNullOrEmpty(filePath))
-            return ErrorResult("Either 'code' or 'filePath' is required.");
-        if (!string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(filePath))
-            return ErrorResult("'code' and 'filePath' are mutually exclusive — supply exactly one.");
+        // One request selects exactly one source authority. The bounded batch
+        // is additive; the legacy code/filePath paths below retain their wire
+        // shape and execution order unchanged.
+        var suppliedModes = (string.IsNullOrEmpty(code) ? 0 : 1)
+            + (string.IsNullOrEmpty(filePath) ? 0 : 1)
+            + (filePaths == null ? 0 : 1);
+        if (suppliedModes == 0)
+            return ErrorResult("Exactly one of 'code', 'filePath', or 'filePaths' is required.");
+        if (suppliedModes > 1)
+            return ErrorResult("'code', 'filePath', and 'filePaths' are mutually exclusive — supply exactly one.");
+        if (filePaths != null)
+            return HandleCompileCheckBatch(toolRequest);
 
         // File-mode hand-off: the host owns owning-compilation detection
         // AND tree-swapping. Reading the file off
@@ -352,6 +360,110 @@ internal sealed class WriteToolHandler
             }, _jsonOpts));
         }
         return TextResult(JsonSerializer.Serialize(commonShape, _jsonOpts));
+    }
+
+    /// <summary>
+    /// Bounded changed-set verification. The complete path set is normalized,
+    /// duplicate-checked, existence-checked, and read before the one optional
+    /// stale refresh. Only then are files checked serially against the same
+    /// committed compilation host/profile. No extra graph or Roslyn base is
+    /// retained. INV-COMPILE-CHECK-BATCH-001.
+    /// </summary>
+    private McpToolResult HandleCompileCheckBatch(CompileCheckToolRequest toolRequest)
+    {
+        var filePaths = toolRequest.FilePaths!;
+        if (filePaths.Length is < 1 or > CompileCheckBatchLimit)
+            return ErrorResult($"'filePaths' must contain between 1 and {CompileCheckBatchLimit} paths.");
+
+        var pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var resolvedPaths = new HashSet<string>(pathComparer);
+        var prepared = new List<(string FilePath, string Code)>(filePaths.Length);
+
+        foreach (var requestedPath in filePaths)
+        {
+            string resolvedPath;
+            try
+            {
+                resolvedPath = Path.GetFullPath(ResolveWorkspacePath(requestedPath));
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return ErrorResult($"Invalid file path '{requestedPath}': {ex.Message}");
+            }
+
+            if (!resolvedPaths.Add(resolvedPath))
+                return ErrorResult($"'filePaths' contains duplicate resolved path '{requestedPath}' ('{resolvedPath}').");
+            if (!_session.FileSystem.FileExists(resolvedPath))
+                return ErrorResult($"File not found: {requestedPath} (resolved to '{resolvedPath}'). The batch was not executed.");
+
+            try
+            {
+                prepared.Add((requestedPath, _session.FileSystem.ReadAllText(resolvedPath)));
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+            {
+                return ErrorResult($"Could not read '{requestedPath}': {ex.Message}. The batch was not executed.");
+            }
+        }
+
+        var staleRefreshEnabled = toolRequest.EffectiveStaleRefresh;
+        var refreshed = staleRefreshEnabled ? _session.MaybeRefreshIfStale() : null;
+        var staleRefreshMode = staleRefreshEnabled ? "sharedAutoRefresh" : "pinnedSession";
+        var compact = IsCompactVerbosity(toolRequest.Verbosity);
+        var analyzedUnderProfile = _session.RetainedProfileName;
+
+        var results = prepared.Select(file =>
+        {
+            var result = _session.CompilationHost!.CompileCheck(new CompileCheckRequest
+            {
+                Code = file.Code,
+                FilePath = file.FilePath,
+                ModuleName = toolRequest.ModuleName,
+            });
+            var packageSource = _session.ResolvePackageSource(file.FilePath);
+            var staleDescriptorHint = result.FileOwnership.Outcome == CompilationFileOwnershipOutcome.NotFound
+                ? BuildStaleDescriptorHint(packageSource)
+                : null;
+            var (definesActiveCount, definesActive) = ProjectDefines(result.DefinesActive, compact);
+
+            return new
+            {
+                filePath = file.FilePath,
+                success = result.Success,
+                diagnostics = result.Diagnostics,
+                resolvedModule = string.IsNullOrEmpty(result.ResolvedModule) ? null : result.ResolvedModule,
+                existingTreeReplaced = result.ExistingTreeReplaced,
+                fileOwnership = result.FileOwnership,
+                definesActiveCount,
+                definesActive,
+                fileResolution = result.FileResolution.ToString(),
+                staleDescriptorHint,
+                packageSourceResolution = BuildPackageSourceResolution(packageSource),
+                analyzedUnderProfile,
+                staleRefreshMode,
+            };
+        }).ToArray();
+
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            success = results.All(result => result.success),
+            source = "filePaths",
+            fileCount = results.Length,
+            successCount = results.Count(result => result.success),
+            failureCount = results.Count(result => !result.success),
+            diagnosticCount = results.Sum(result => result.diagnostics.Length),
+            moduleName = toolRequest.ModuleName,
+            staleRefresh = new
+            {
+                mode = staleRefreshMode,
+                autoRefreshed = refreshed.HasValue,
+                changedFileCount = refreshed ?? 0,
+            },
+            results,
+            limitations = WriteSideRetainedProfileLimitations(),
+        }, _jsonOpts));
     }
 
     /// <summary>

@@ -269,14 +269,23 @@ public class ToolArgumentContractTests
         var request = ToolRequestBinder.BindCompileCheck(JsonArgs(new
         {
             filePath = "src/Foo.cs",
+            filePaths = new[] { " src/A.cs ", "src/B.cs" },
             moduleName = "App",
             verbosity = "compact",
         }));
 
         Assert.Equal("src/Foo.cs", request.FilePath);
+        Assert.Equal(new[] { "src/A.cs", "src/B.cs" }, request.FilePaths);
         Assert.Equal("App", request.ModuleName);
         Assert.Equal("compact", request.Verbosity);
         Assert.True(request.EffectiveStaleRefresh);
+
+        var explicitEmpty = ToolRequestBinder.BindCompileCheck(JsonArgs(new
+        {
+            filePaths = Array.Empty<string>(),
+        }));
+        Assert.NotNull(explicitEmpty.FilePaths);
+        Assert.Empty(explicitEmpty.FilePaths);
 
         var explicitFalse = ToolRequestBinder.BindCompileCheck(JsonArgs(new
         {

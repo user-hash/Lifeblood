@@ -265,6 +265,160 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_CompileCheck_FilePathsReturnsOneTypedAggregateWithoutChangingSingleFileMode()
+    {
+        var projectRoot = CreateCompileCheckBatchProject();
+        var brokenPath = Path.Combine(projectRoot, "Broken.cs");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+
+        var analyze = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot }));
+        Assert.Null(analyze.IsError);
+        var generationBefore = session.AnalysisGeneration;
+
+        File.WriteAllText(brokenPath, "public sealed class Broken : MissingType { }");
+        File.SetLastWriteTimeUtc(brokenPath, DateTime.UtcNow.AddSeconds(1));
+
+        var result = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new
+            {
+                filePaths = new[] { "Clean.cs", "Broken.cs" },
+                staleRefresh = false,
+                verbosity = "compact",
+            }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.False(root.GetProperty("success").GetBoolean());
+        Assert.Equal("filePaths", root.GetProperty("source").GetString());
+        Assert.Equal(2, root.GetProperty("fileCount").GetInt32());
+        Assert.Equal(1, root.GetProperty("successCount").GetInt32());
+        Assert.Equal(1, root.GetProperty("failureCount").GetInt32());
+        Assert.True(root.GetProperty("diagnosticCount").GetInt32() >= 1);
+        Assert.Equal(generationBefore, session.AnalysisGeneration);
+
+        var refresh = root.GetProperty("staleRefresh");
+        Assert.Equal("pinnedSession", refresh.GetProperty("mode").GetString());
+        Assert.False(refresh.GetProperty("autoRefreshed").GetBoolean());
+        Assert.Equal(0, refresh.GetProperty("changedFileCount").GetInt32());
+
+        var rows = root.GetProperty("results").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "Clean.cs", "Broken.cs" }, rows.Select(row => row.GetProperty("filePath").GetString()).ToArray());
+        Assert.True(rows[0].GetProperty("success").GetBoolean());
+        Assert.False(rows[1].GetProperty("success").GetBoolean());
+        Assert.Equal("BatchApp", rows[0].GetProperty("resolvedModule").GetString());
+        Assert.Equal("Unique", rows[0].GetProperty("fileOwnership").GetProperty("outcome").GetString());
+        Assert.Equal("Editor", rows[0].GetProperty("analyzedUnderProfile").GetString());
+        Assert.Equal("pinnedSession", rows[0].GetProperty("staleRefreshMode").GetString());
+        Assert.Equal(JsonValueKind.Null, rows[0].GetProperty("definesActive").ValueKind);
+        Assert.Contains("CS0246", rows[1].GetProperty("diagnostics").GetRawText());
+    }
+
+    [Fact]
+    public void Handle_CompileCheck_FilePathsRefreshesOnceAndKeepsEditedFileDiagnostics()
+    {
+        var projectRoot = CreateCompileCheckBatchProject();
+        var cleanPath = Path.Combine(projectRoot, "Clean.cs");
+        var brokenPath = Path.Combine(projectRoot, "Broken.cs");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+
+        var analyze = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot }));
+        Assert.Null(analyze.IsError);
+        var generationBefore = session.AnalysisGeneration;
+
+        File.WriteAllText(cleanPath, "public sealed class Clean { public int Value => 1; }");
+        File.WriteAllText(brokenPath, "public sealed class Broken : MissingType { }");
+        var changedAt = DateTime.UtcNow.AddSeconds(1);
+        File.SetLastWriteTimeUtc(cleanPath, changedAt);
+        File.SetLastWriteTimeUtc(brokenPath, changedAt);
+
+        var result = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new { filePaths = new[] { "Clean.cs", "Broken.cs" } }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.False(root.GetProperty("success").GetBoolean());
+        Assert.Equal(generationBefore + 1, session.AnalysisGeneration);
+        var refresh = root.GetProperty("staleRefresh");
+        Assert.Equal("sharedAutoRefresh", refresh.GetProperty("mode").GetString());
+        Assert.True(refresh.GetProperty("autoRefreshed").GetBoolean());
+        Assert.Equal(2, refresh.GetProperty("changedFileCount").GetInt32());
+        var broken = root.GetProperty("results").EnumerateArray()
+            .Single(row => row.GetProperty("filePath").GetString() == "Broken.cs");
+        Assert.False(broken.GetProperty("success").GetBoolean());
+        Assert.Contains("CS0246", broken.GetProperty("diagnostics").GetRawText());
+
+        // The target-tree diagnostic rule is shared with legacy single-file
+        // mode. Once refresh has committed the broken source, checking that
+        // file again must still report its current diagnostic rather than
+        // subtracting it as a pre-existing module error.
+        var single = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new { filePath = "Broken.cs", staleRefresh = false }));
+        Assert.Null(single.IsError);
+        using var singlePayload = JsonDocument.Parse(single.Content[0].Text);
+        Assert.False(singlePayload.RootElement.GetProperty("success").GetBoolean());
+        Assert.Contains("CS0246", singlePayload.RootElement.GetProperty("diagnostics").GetRawText());
+    }
+
+    [Fact]
+    public void Handle_CompileCheck_FilePathsPrevalidatesWholeBoundedRequest()
+    {
+        var projectRoot = CreateCompileCheckBatchProject();
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot })).IsError);
+        var generationBefore = session.AnalysisGeneration;
+
+        var duplicate = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new { filePaths = new[] { "Clean.cs", ".\\Clean.cs" } }));
+        var mixed = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new { code = "class C {}", filePaths = new[] { "Clean.cs" } }));
+        var oversized = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new { filePaths = Enumerable.Range(0, 33).Select(i => $"File{i}.cs").ToArray() }));
+        var empty = handler.Handle(
+            "lifeblood_compile_check",
+            MakeArgs(new { filePaths = Array.Empty<string>() }));
+
+        Assert.True(duplicate.IsError);
+        Assert.Contains("duplicate", duplicate.Content[0].Text, StringComparison.OrdinalIgnoreCase);
+        Assert.True(mixed.IsError);
+        Assert.Contains("mutually exclusive", mixed.Content[0].Text, StringComparison.OrdinalIgnoreCase);
+        Assert.True(oversized.IsError);
+        Assert.Contains("32", oversized.Content[0].Text);
+        Assert.True(empty.IsError);
+        Assert.Contains("between 1 and 32", empty.Content[0].Text);
+        Assert.Equal(generationBefore, session.AnalysisGeneration);
+    }
+
+    private string CreateCompileCheckBatchProject()
+    {
+        var projectRoot = Path.Combine(_tempDir, $"compile-check-batch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "BatchApp.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework>" +
+            "<AssemblyName>BatchApp</AssemblyName></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(projectRoot, "Clean.cs"), "public sealed class Clean { }");
+        File.WriteAllText(Path.Combine(projectRoot, "Broken.cs"), "public sealed class Broken { }");
+        return projectRoot;
+    }
+
+    [Fact]
     public void Handle_Capabilities_WithoutLoad_ReturnsVersionToolCountsAndContractPaths()
     {
         var handler = CreateHandler();

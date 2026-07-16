@@ -305,7 +305,13 @@ public sealed class RoslynCompilationHost : ICompilationHost, IOperationFactProv
 
   var diagnostics = emitResult.Diagnostics
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
-  .Where(d => !preExistingIds.Contains(DiagnosticKey(d)))
+  // A stale refresh may have loaded the edited file immediately before this
+  // check. Diagnostics on the replacement tree are therefore still the
+  // requested file's current truth even when their keys also existed in the
+  // refreshed baseline. Keep every target-tree diagnostic; subtract only
+  // unchanged diagnostics from other trees in the owning compilation.
+  .Where(d => ReferenceEquals(d.Location.SourceTree, newTree)
+      || !preExistingIds.Contains(DiagnosticKey(d)))
   .Select(d =>
   {
   var lineSpan = d.Location.GetMappedLineSpan();
