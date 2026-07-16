@@ -1142,6 +1142,7 @@ Fix shape:
 
 Type: Bug
 Priority: High
+Status: Fixed locally on 2026-07-16; pending release validation batch.
 Source: DAWG provenance repro, 2026-07-16; Git tags `v1.2.356` and `v1.2.376.0`
 Workspace: DAWG and Lifeblood self
 
@@ -1167,6 +1168,16 @@ Fix shape:
   including a prerelease tag that must not win.
 - Keep the adapter bounded and caller-rooted; do not add a second Git tag
   resolver elsewhere.
+
+Resolution evidence:
+- Added `SourceControlEvidenceTests.Capture_SelectsNewestFourPartStableSemanticTag`,
+  a real temporary Git repository containing `v1.2.356`, `v1.2.376.0`, and
+  `v1.2.377.0-preview.1`. Before the fix it failed with actual `v1.2.356`.
+- `GitSourceControlSnapshotProvider.StableSemanticVersionTag` now accepts
+  stable `vX.Y.Z` and `vX.Y.Z.W` tags and still rejects prerelease tags.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~SourceControlEvidenceTests`
+  passed 5/5.
 
 ## LB-INTAKE-20260716-041 - Invariant audit under-reports coverage confidence on zero-heavy trees
 

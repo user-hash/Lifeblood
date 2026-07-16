@@ -40,6 +40,20 @@ public sealed class SourceControlEvidenceTests
     }
 
     [Fact]
+    public void Capture_SelectsNewestFourPartStableSemanticTag()
+    {
+        using var repository = TemporaryGitRepository.Create(
+            "v1.2.356",
+            "v1.2.376.0",
+            "v1.2.377.0-preview.1");
+        var provider = new GitSourceControlSnapshotProvider();
+
+        var snapshot = provider.Capture(repository.Root);
+
+        Assert.Equal("v1.2.376.0", snapshot.LatestSemanticVersionTag);
+    }
+
+    [Fact]
     public void AnalyzeEvidenceReceipt_UsesAnalyzedProjectRepository()
     {
         using var repository = TemporaryGitRepository.Create();
@@ -131,7 +145,7 @@ public sealed class SourceControlEvidenceTests
 
         public string GraphPath { get; }
 
-        public static TemporaryGitRepository Create()
+        public static TemporaryGitRepository Create(params string[] additionalTags)
         {
             var root = Path.GetFullPath(Path.Combine(
                 Path.GetTempPath(),
@@ -158,6 +172,10 @@ public sealed class SourceControlEvidenceTests
             RunGit(root, "tag", "v0.7.11");
             RunGit(root, "tag", "v0.7.12");
             RunGit(root, "tag", "v9.0.0-preview.1");
+            foreach (var tag in additionalTags)
+            {
+                RunGit(root, "tag", tag);
+            }
 
             for (var index = 0; index < 40; index++)
             {

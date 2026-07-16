@@ -4,7 +4,10 @@ Eternal pre-tag gate. Every numbered step must be green before `git tag` runs. N
 
 ## Scope
 
-This document governs every public release tagged `vX.Y.Z`. Pre-release tags (`vX.Y.Z-rc1`, helper tags) are out of scope. They must not match the `v[0-9]+.[0-9]+.[0-9]+` semver pattern that triggers the verification workflow.
+This document governs every public release tagged `vX.Y.Z` or `vX.Y.Z.W`.
+Pre-release tags (`vX.Y.Z-rc1`, `vX.Y.Z.W-preview.1`, helper tags) are out of
+scope. They must not match the stable `v[0-9]+.[0-9]+.[0-9]+(.[0-9]+)?`
+pattern that triggers the verification workflow.
 
 Source of truth for related ratchets:
 
