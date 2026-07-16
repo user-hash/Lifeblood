@@ -7,6 +7,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Bounded changed-set compile checks.** `lifeblood_compile_check` now accepts
+  an additive `filePaths` mode for 1..32 files. It prevalidates the whole set,
+  performs at most one shared stale refresh, and returns aggregate counts plus
+  typed per-file ownership/profile/diagnostic receipts while serially reusing
+  the one retained compilation host. The legacy `code` and `filePath` shapes
+  remain unchanged. The same atom fixes stale-refresh diagnostic subtraction:
+  diagnostics on the requested replacement tree remain visible even when the
+  refreshed baseline already contains them. (`INV-COMPILE-CHECK-BATCH-001`,
+  `LB-INTAKE-20260629-002`.)
+
 ### Changed
 
 - **Warm shared incremental admission no longer hashes every source twice.**

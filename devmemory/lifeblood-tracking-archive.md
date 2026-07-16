@@ -3469,3 +3469,53 @@ Resolution evidence:
 - Focused verification:
   `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj --filter SourceControlEvidenceTests`
   passed 7/7.
+
+## LB-INTAKE-20260629-002 - Batch compile-check for changed file sets
+
+Type: Optimization
+Priority: Medium
+Status: Shipped (in-tree, untagged) - 2026-07-16 backlog Wave 2
+Source: DAWG Burst and tuning dogfood sessions, 2026-06-27 to 2026-06-29
+Workspace: DAWG and Lifeblood self
+
+What:
+- Natural verification atoms commonly touch a small related set of production
+  and test files, while `lifeblood_compile_check` previously accepted only one
+  inline snippet or one file per call.
+- Repeating the call could repeat stale detection and made a complete
+  touched-file receipt harder to audit.
+
+Resolution:
+- Added the bounded additive `filePaths` mode to the existing tool rather than
+  registering a sibling surface. It accepts 1..32 ordered paths, rejects an
+  invalid, unreadable, duplicate, empty, oversized, or mixed-source request
+  before execution, and performs at most one stale refresh.
+- Every file serially reuses the existing retained `ICompilationHost` and
+  ownership resolver. The response carries aggregate counts plus typed
+  per-file module, ownership, profile, diagnostics, define scope, file/package
+  resolution, and stale-refresh mode. No new port, graph, compilation host, or
+  retained semantic base was introduced.
+- Fixed the root stale-refresh diagnostic bug in
+  `RoslynCompilationHost.CompileCheckFile`: diagnostics on the requested
+  replacement tree remain visible even if the refreshed baseline already
+  contains the same diagnostic; only unchanged diagnostics from other module
+  trees are subtracted.
+- Server and Unity schemas derive from the same typed input contract. Legacy
+  `code` and `filePath` response shapes remain additive and unchanged.
+
+Verification:
+- Focused compile-check/schema/Unity/write-side gates passed 138/138 after the
+  new behavior-specific 6/6 gate.
+- Full release suite passed 1,630/1,641 with 11 native-clang executable
+  precondition skips after generated docs anchors were refreshed.
+- Isolated new-build DAWG Editor+Player analysis published generation 1 /
+  snapshot `snap_57788656fb494cd2b7ef23e5a705198c`: 89,373 symbols,
+  348,862 edges, 101 modules, 4,395 files, and zero configured violations.
+  One pinned 10-file batch then resolved five owning modules, passed 10/10
+  files, emitted zero diagnostics, and performed no refresh. The private stdio
+  dogfood process left the installed 0.70 shared daemon untouched.
+
+Impact:
+- Changed-set compile verification is now one bounded auditable operation over
+  Lifeblood's one semantic authority, closing `INV-COMPILE-CHECK-BATCH-001`
+  without duplicating data types or retention.

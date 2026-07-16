@@ -373,6 +373,9 @@ namespace Lifeblood.UnityBridge
             [ToolParameter("Workspace source file to compile-check in its owning module (optional)", Required = false)]
             public string filePath { get; set; }
 
+            [ToolParameter("Ordered set of 1..32 workspace source files checked under one shared refresh.", Required = false)]
+            public string[] filePaths { get; set; }
+
             [ToolParameter("Module context for type resolution (optional)", Required = false)]
             public string moduleName { get; set; }
 

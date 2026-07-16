@@ -3,15 +3,22 @@
   "properties": {
     "code": {
       "type": "string",
-      "description": "C# code to compile-check. Mutually exclusive with filePath."
+      "description": "C# code to compile-check. Mutually exclusive with filePath and filePaths."
     },
     "filePath": {
       "type": "string",
-      "description": "Path to a .cs file (relative to project root, or absolute) to read and compile-check. Mutually exclusive with code."
+      "description": "Path to one .cs file (relative to project root, or absolute) to read and compile-check. Mutually exclusive with code and filePaths."
+    },
+    "filePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ordered set of 1..32 .cs files to compile-check under one prevalidated request and at most one shared stale refresh. Mutually exclusive with code and filePath. Duplicate resolved paths are rejected; moduleName, when supplied, constrains every file."
     },
     "moduleName": {
       "type": "string",
-      "description": "Module context for type resolution"
+      "description": "Module context for type resolution. In filePaths mode the same explicit module constraint applies to every file; omit it to resolve each owner independently."
     },
     "staleRefresh": {
       "type": "boolean",

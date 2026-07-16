@@ -59,39 +59,6 @@ Fix shape:
   callsite span, callee, argument expression, detected guard or missing guard,
   and profile scope.
 
-## LB-INTAKE-20260629-002 - Batch compile-check for changed file sets
-
-Type: Optimization
-Priority: Medium
-Source: DAWG Burst and tuning dogfood sessions, 2026-06-27 to 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 8/10 value if shipped
-
-What:
-- `lifeblood_compile_check` currently accepts one `code` snippet or one
-  `filePath`. During DAWG sessions, natural verification atoms often touched a
-  small set of related files and tests; each file needed a separate compile
-  check or a Unity compile loop.
-- The current single-file shape is precise, but it makes repeated verification
-  slower and easier to under-run when an edit spans kernel, dispatch, tests, and
-  documentation guard files.
-
-Why it matters:
-- Lifeblood already owns the loaded compilation and stale-refresh contract. A
-  batch shape would amortize workspace refresh cost, reduce agent/tool chatter,
-  and make "verify every touched C# file" a single auditable receipt.
-- For DAWG, this is especially useful when Unity is open or MCP is unavailable
-  and batchmode test execution would collide with the editor.
-
-Fix shape:
-- Extend `lifeblood_compile_check` with `filePaths: string[]`, or add a sibling
-  `lifeblood_compile_check_batch`.
-- Return an aggregate status plus one result per file: owning module, profile
-  scope, diagnostics, stale-refresh mode, and any file that could not be mapped
-  to a compilation.
-- Keep the existing single-file response stable; batch mode can be an additive
-  shape.
-
 ## LB-INTAKE-20260629-003 - Operation-walking tools need multi-profile support
 
 Type: Improvement

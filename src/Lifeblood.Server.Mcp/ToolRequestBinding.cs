@@ -29,6 +29,7 @@ public static class ToolRequestBinder
 
     private static readonly string CompileCheckCode = ArgumentName(CompileCheckToolName, "code");
     private static readonly string CompileCheckFilePath = ArgumentName(CompileCheckToolName, "filePath");
+    private static readonly string CompileCheckFilePaths = ArgumentName(CompileCheckToolName, "filePaths");
     private static readonly string CompileCheckModuleName = ArgumentName(CompileCheckToolName, "moduleName");
     private static readonly string CompileCheckStaleRefresh = ArgumentName(CompileCheckToolName, "staleRefresh");
     private static readonly string CompileCheckVerbosity = ArgumentName(CompileCheckToolName, "verbosity");
@@ -84,6 +85,10 @@ public static class ToolRequestBinder
         {
             Code = ReadString(root, CompileCheckCode),
             FilePath = ReadString(root, CompileCheckFilePath),
+            // Preserve [] so the handler can distinguish an explicitly empty
+            // batch from an omitted source mode and report the bounded-batch
+            // contract rather than the generic missing-source error.
+            FilePaths = ReadStringArray(root, CompileCheckFilePaths, preserveExplicitEmpty: true),
             ModuleName = ReadString(root, CompileCheckModuleName),
             StaleRefresh = ReadBool(root, CompileCheckStaleRefresh),
             Verbosity = ReadString(root, CompileCheckVerbosity),
@@ -218,6 +223,7 @@ public sealed record CompileCheckToolRequest
 
     public string? Code { get; init; }
     public string? FilePath { get; init; }
+    public string[]? FilePaths { get; init; }
     public string? ModuleName { get; init; }
     public bool? StaleRefresh { get; init; }
     public bool EffectiveStaleRefresh => StaleRefresh ?? true;

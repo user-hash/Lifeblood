@@ -221,6 +221,26 @@ accepted subcalls and the outer batch envelope remain on the leased snapshot
 
 `lifeblood_compile_check` auto-refreshes the workspace when any tracked file has changed on disk since the last analyze, so you can edit source between an analysis and a compile-check without stale results. Opt out with `staleRefresh: false` to check against the pinned state. The response carries `autoRefreshed: true` + `changedFileCount: N` when a refresh actually ran. Asmdef edits also trigger a full re-analyze on the next round (`INV-UNITY-002`).
 
+For a natural multi-file edit, pass `filePaths` instead of issuing repeated
+single-file calls:
+
+```json
+{
+  "filePaths": ["src/Kernel.cs", "tests/KernelTests.cs"],
+  "staleRefresh": true,
+  "verbosity": "compact"
+}
+```
+
+Batch mode accepts 1..32 ordered paths, prevalidates the complete set, rejects
+duplicate resolved paths, refreshes at most once, and checks every file
+serially against the same retained compilation/profile. The response carries
+aggregate file/success/failure/diagnostic counts plus `results[]` rows with
+module ownership, diagnostics, define count/list, file resolution, package
+source resolution, retained profile, and `staleRefreshMode`. It does not retain
+another graph or Roslyn base. `code`, `filePath`, and `filePaths` are mutually
+exclusive (`INV-COMPILE-CHECK-BATCH-001`).
+
 ## File-mode compile-check (LB-BUG-019)
 
 When called with `filePath`, `lifeblood_compile_check` resolves the file's owning compilation by matching the path against every loaded compilation's syntax trees, then **swaps the existing tree** for the on-disk content via `ReplaceSyntaxTree` instead of adding the file as a new snippet tree to an arbitrary first compilation:

@@ -2,7 +2,8 @@
 
 Date: 2026-07-15
 
-Status: active. Wave 1 is closed; Waves 2-7 remain the feature-backlog roadmap.
+Status: active. Wave 1 and Wave 2 entry `002` are closed; entries `003` and
+`029` remain in Wave 2, followed by Waves 3-7.
 The 2026-07-16 consolidation audit approved one controlled semantic-contract
 program for 20 of the 29 remaining intake entries. "One program" means one
 fact authority, one bounded public surface, and natural tested commits; it does
@@ -332,12 +333,16 @@ first module; package coverage and shared maturity are machine-readable.
 
 Covers `002`, `003`, `029`.
 
-- Extend `compile_check` with a bounded `filePaths` mode. Prevalidate the entire
+- [x] Extend `compile_check` with a bounded `filePaths` mode. Prevalidate the entire
   request, refresh at most once, execute serially under one session generation,
   return one aggregate plus typed per-file ownership/diagnostics. Existing
-  single-file JSON stays additive and byte-compatible.
-- Add diff ownership to `diagnose` using the Wave 1 source-control snapshot.
-- Prototype profile-specific operation querying and measure two choices:
+  single-file JSON stays additive and byte-compatible. Closed by
+  `INV-COMPILE-CHECK-BATCH-001`; DAWG generation 1 / snapshot
+  `snap_57788656fb494cd2b7ef23e5a705198c` checked 10 current C# changes across
+  five owning modules with 10 successes and zero diagnostics under one pinned
+  Editor compilation host.
+- [ ] Add diff ownership to `diagnose` using the Wave 1 source-control snapshot.
+- [ ] Prototype profile-specific operation querying and measure two choices:
   compact precomputed neutral facts versus an ephemeral sequential compilation
   pass. The accepted design must expose every requested active profile while
   `additionalSemanticBaseCount` remains zero and peak memory stays bounded.

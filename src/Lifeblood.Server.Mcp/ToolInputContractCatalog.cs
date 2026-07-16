@@ -166,9 +166,10 @@ public static class ToolInputContractCatalog
         );
 
         yield return Contract(@"lifeblood_compile_check",
-            Arg(@"code", ToolArgumentType.String, required: false, arrayItemType: null, description: @"C# code to compile-check. Mutually exclusive with filePath.", enumValues: Array.Empty<string>()),
-            Arg(@"filePath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Path to a .cs file (relative to project root, or absolute) to read and compile-check. Mutually exclusive with code.", enumValues: Array.Empty<string>()),
-            Arg(@"moduleName", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Module context for type resolution", enumValues: Array.Empty<string>()),
+            Arg(@"code", ToolArgumentType.String, required: false, arrayItemType: null, description: @"C# code to compile-check. Mutually exclusive with filePath and filePaths.", enumValues: Array.Empty<string>()),
+            Arg(@"filePath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Path to one .cs file (relative to project root, or absolute) to read and compile-check. Mutually exclusive with code and filePaths.", enumValues: Array.Empty<string>()),
+            Arg(@"filePaths", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Ordered set of 1..32 .cs files to compile-check under one prevalidated request and at most one shared stale refresh. Mutually exclusive with code and filePath. Duplicate resolved paths are rejected; moduleName, when supplied, constrains every file.", enumValues: Array.Empty<string>()),
+            Arg(@"moduleName", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Module context for type resolution. In filePaths mode the same explicit module constraint applies to every file; omit it to resolve each owner independently.", enumValues: Array.Empty<string>()),
             Arg(@"staleRefresh", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"If true (default), incrementally re-analyze the workspace before compile_check when any tracked file has changed on disk since the last analyze. Set false to check against the pinned workspace state.", enumValues: Array.Empty<string>()),
             Arg(@"verbosity", ToolArgumentType.String, required: false, arrayItemType: null, description: @"'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list.", enumValues: Array.Empty<string>())
         );
