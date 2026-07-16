@@ -127,7 +127,11 @@ public class InternalsVisibleToParityTests
             new[] { producer },
             tempDir.Path,
             new AnalysisConfig(),
-            (m, c) => producerCompilation = c);
+            (m, c) =>
+            {
+                producerCompilation = c;
+                return true;
+            });
 
         Assert.NotNull(producerCompilation);
 
@@ -170,7 +174,11 @@ public class InternalsVisibleToParityTests
             new[] { producer },
             tempDir.Path,
             new AnalysisConfig { RetainCompilations = true },
-            (m, c) => producerCompilation = c);
+            (m, c) =>
+            {
+                producerCompilation = c;
+                return true;
+            });
         Assert.NotNull(producerCompilation);
 
         using var producerPe = new MemoryStream();

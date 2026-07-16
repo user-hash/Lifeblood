@@ -22,6 +22,13 @@ internal sealed class AnalysisSnapshot
     public ModuleInfo[] Modules { get; set; } = Array.Empty<ModuleInfo>();
 
     /// <summary>
+    /// Legacy project-relative substring exclusions applied when this snapshot
+    /// was compiled. Ephemeral profile scans replay the exact same source
+    /// scope; incremental analysis treats changes as scope drift.
+    /// </summary>
+    public string[] ExcludePatterns { get; set; } = Array.Empty<string>();
+
+    /// <summary>
     /// Project-relative path globs excluded from compilation when this
     /// snapshot was built. Changing this set changes the graph scope, so
     /// incremental analyze must reject or widen to full before files are
@@ -62,6 +69,15 @@ internal sealed class AnalysisSnapshot
 
     public Dictionary<string, ContentFingerprint> ReferenceContentHashes { get; }
         = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Module name to the exact external/source-generator/resolved-NuGet input
+    /// path set used by its committed compilation. Ephemeral scoped execution
+    /// uses this to detect a removed or newly selected reference, not only a
+    /// content change on paths that still exist.
+    /// </summary>
+    public Dictionary<string, string[]> ReferenceInputPathsByModule { get; }
+        = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Adapter-owned Unity package source-visibility inputs. These are not all
@@ -171,6 +187,7 @@ internal sealed class AnalysisSnapshot
         {
             ProjectRoot = ProjectRoot,
             Modules = Modules.ToArray(),
+            ExcludePatterns = ExcludePatterns.ToArray(),
             ExcludePathGlobs = ExcludePathGlobs.ToArray(),
             ActiveProfiles = ActiveProfiles.ToArray(),
         };
@@ -180,6 +197,8 @@ internal sealed class AnalysisSnapshot
         CopyDictionary(DescriptorContentHashes, candidate.DescriptorContentHashes);
         CopyDictionary(AsmdefContentHashes, candidate.AsmdefContentHashes);
         CopyDictionary(ReferenceContentHashes, candidate.ReferenceContentHashes);
+        foreach (var (moduleName, paths) in ReferenceInputPathsByModule)
+            candidate.ReferenceInputPathsByModule[moduleName] = paths.ToArray();
         CopyDictionary(PackageVisibilityInputHashes, candidate.PackageVisibilityInputHashes);
         CopyDictionary(ReferenceTimestamps, candidate.ReferenceTimestamps);
         CopyDictionary(CsprojTimestamps, candidate.CsprojTimestamps);

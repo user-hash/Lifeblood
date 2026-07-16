@@ -152,6 +152,12 @@ public sealed class GraphSession : IDisposable
     public ProfileApplicabilityReport? ProfileApplicability =>
         Current.RoslynAdapter?.ProfileApplicability;
 
+    /// <summary>
+    /// Neutral occurrence-fact port for the exact leased Roslyn publication.
+    /// Historical graph-only selections intentionally expose no provider.
+    /// </summary>
+    public IOperationFactProvider? OperationFactProvider => Current.RoslynAdapter;
+
     public PackageSourceVisibilityFile? ResolvePackageSource(string filePath) =>
         Current.RoslynAdapter?.ResolvePackageSource(filePath);
 

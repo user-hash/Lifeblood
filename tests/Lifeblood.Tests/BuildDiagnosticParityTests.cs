@@ -80,7 +80,11 @@ public class BuildDiagnosticParityTests
             modules,
             projectRoot,
             new AnalysisConfig { RetainCompilations = true },
-            (m, c) => compilations[m.Name] = c);
+            (m, c) =>
+            {
+                compilations[m.Name] = c;
+                return true;
+            });
         Assert.NotNull(retained);
 
         using var host = new RoslynCompilationHost(retained!);

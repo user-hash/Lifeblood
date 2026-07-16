@@ -24,85 +24,112 @@ internal sealed class NuGetReferenceResolver
     public MetadataReference[] Resolve(ModuleInfo module, string projectRoot,
         SharedMetadataReferenceCache? cache = null)
     {
-        if (!module.Properties.TryGetValue("projectFile", out var relCsproj))
-            return Array.Empty<MetadataReference>();
+        var references = new List<MetadataReference>();
+        foreach (var dllPath in ResolveAssemblyPaths(module, projectRoot))
+        {
+            try
+            {
+                var reference = cache != null
+                    ? cache.GetOrCreate(dllPath)
+                    : MetadataReference.CreateFromFile(dllPath);
+                references.Add(reference);
+            }
+            catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { }
+        }
+        return references.ToArray();
+    }
 
-        var csprojPath = Path.GetFullPath(Path.Combine(projectRoot, relCsproj));
-        var objDir = Path.Combine(Path.GetDirectoryName(csprojPath)!, "obj");
-        var assetsPath = Path.Combine(objDir, "project.assets.json");
+    /// <summary>
+    /// Managed compile DLLs selected by the assets manifest. Workspace identity
+    /// fingerprints the resolved path set plus each DLL's contents, so harmless
+    /// restore metadata churn does not invalidate the graph while a changed
+    /// compile asset cannot pass unnoticed.
+    /// </summary>
+    public string[] ResolveInputPaths(ModuleInfo module, string projectRoot)
+    {
+        return ResolveAssemblyPaths(module, projectRoot);
+    }
 
-        if (!_fs.FileExists(assetsPath))
-            return Array.Empty<MetadataReference>();
+    private string[] ResolveAssemblyPaths(ModuleInfo module, string projectRoot)
+    {
+        var assetsPath = ResolveAssetsPath(module, projectRoot);
+        if (assetsPath == null || !_fs.FileExists(assetsPath))
+            return Array.Empty<string>();
 
         try
         {
             var json = _fs.ReadAllText(assetsPath);
             using var doc = JsonDocument.Parse(json);
-
-            var packageFolders = new List<string>();
-            if (doc.RootElement.TryGetProperty("packageFolders", out var folders))
-            {
-                foreach (var folder in folders.EnumerateObject())
-                    packageFolders.Add(folder.Name);
-            }
-
-            if (packageFolders.Count == 0)
-                return Array.Empty<MetadataReference>();
-
-            if (!doc.RootElement.TryGetProperty("targets", out var targets))
-                return Array.Empty<MetadataReference>();
-
-            JsonElement targetPackages = default;
-            foreach (var target in targets.EnumerateObject())
-            {
-                targetPackages = target.Value;
-                break; // Use first target framework
-            }
-
-            if (targetPackages.ValueKind != JsonValueKind.Object)
-                return Array.Empty<MetadataReference>();
-
-            var references = new List<MetadataReference>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var package in targetPackages.EnumerateObject())
-            {
-                if (!package.Value.TryGetProperty("compile", out var compileAssets))
-                    continue;
-
-                var pkgId = package.Name;
-
-                foreach (var asset in compileAssets.EnumerateObject())
-                {
-                    var relativeDll = asset.Name;
-                    if (relativeDll == "_._") continue;
-                    if (!relativeDll.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) continue;
-
-                    foreach (var folder in packageFolders)
-                    {
-                        var dllPath = Path.Combine(folder, pkgId.ToLowerInvariant(), relativeDll);
-                        if (!seen.Add(dllPath)) continue;
-
-                        if (_fs.FileExists(dllPath) && !BclReferenceLoader.IsNativeDll(dllPath))
-                        {
-                            try
-                            {
-                                var reference = cache != null
-                                    ? cache.GetOrCreate(dllPath)
-                                    : MetadataReference.CreateFromFile(dllPath);
-                                references.Add(reference);
-                            }
-                            catch (Exception ex) when (ex is IOException or BadImageFormatException or UnauthorizedAccessException) { }
-                        }
-                    }
-                }
-            }
-
-            return references.ToArray();
+            return ResolveAssemblyPaths(doc.RootElement);
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
-            return Array.Empty<MetadataReference>(); // Graceful degradation for I/O and JSON parse errors
+            return Array.Empty<string>();
         }
+    }
+
+    private static string? ResolveAssetsPath(ModuleInfo module, string projectRoot)
+    {
+        if (!module.Properties.TryGetValue("projectFile", out var relCsproj))
+            return null;
+
+        var csprojPath = Path.GetFullPath(Path.Combine(projectRoot, relCsproj));
+        var objDir = Path.Combine(Path.GetDirectoryName(csprojPath)!, "obj");
+        return Path.Combine(objDir, "project.assets.json");
+    }
+
+    private string[] ResolveAssemblyPaths(JsonElement root)
+    {
+        var packageFolders = new List<string>();
+        if (root.TryGetProperty("packageFolders", out var folders))
+        {
+            foreach (var folder in folders.EnumerateObject())
+                packageFolders.Add(folder.Name);
+        }
+
+        if (packageFolders.Count == 0)
+            return Array.Empty<string>();
+
+        if (!root.TryGetProperty("targets", out var targets))
+            return Array.Empty<string>();
+
+        JsonElement targetPackages = default;
+        foreach (var target in targets.EnumerateObject())
+        {
+            targetPackages = target.Value;
+            break; // Use first target framework
+        }
+
+        if (targetPackages.ValueKind != JsonValueKind.Object)
+            return Array.Empty<string>();
+
+        var paths = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var package in targetPackages.EnumerateObject())
+        {
+            if (!package.Value.TryGetProperty("compile", out var compileAssets))
+                continue;
+
+            var pkgId = package.Name;
+
+            foreach (var asset in compileAssets.EnumerateObject())
+            {
+                var relativeDll = asset.Name;
+                if (relativeDll == "_._") continue;
+                if (!relativeDll.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) continue;
+
+                foreach (var folder in packageFolders)
+                {
+                    var dllPath = Path.Combine(folder, pkgId.ToLowerInvariant(), relativeDll);
+                    if (!seen.Add(dllPath)) continue;
+
+                    if (_fs.FileExists(dllPath) && !BclReferenceLoader.IsNativeDll(dllPath))
+                        paths.Add(dllPath);
+                }
+            }
+        }
+
+        return paths.ToArray();
     }
 }

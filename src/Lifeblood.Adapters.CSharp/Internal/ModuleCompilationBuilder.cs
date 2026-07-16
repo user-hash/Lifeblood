@@ -44,9 +44,10 @@ internal sealed class ModuleCompilationBuilder
     /// <summary>
     /// Callback invoked for each module after its compilation is built.
     /// The compilation is valid only during the callback — after return,
-    /// it may be downgraded to a lightweight metadata reference.
+    /// it may be downgraded to a lightweight metadata reference. Return false
+    /// to stop before another module is compiled.
     /// </summary>
-    internal delegate void CompilationProcessor(
+    internal delegate bool CompilationProcessor(
         ModuleInfo module, CSharpCompilation compilation);
 
     /// <summary>
@@ -75,6 +76,11 @@ internal sealed class ModuleCompilationBuilder
     /// processed (or carried forward) has its current PE-image reference
     /// merged back into the same dict. Pass <c>null</c> to start fresh.
     /// INV-INCREMENTAL-XREF-001.</param>
+    /// <param name="moduleUniverse">Optional complete descriptor set used only
+    /// for transitive dependency closure when <paramref name="modules"/> is a
+    /// bounded subset. This permits one-module ephemeral execution to bind
+    /// against snapshot-owned downgraded references without recompiling the
+    /// dependency graph.</param>
     public Dictionary<string, CSharpCompilation>? ProcessInOrder(
         ModuleInfo[] modules,
         string projectRoot,
@@ -83,10 +89,12 @@ internal sealed class ModuleCompilationBuilder
         Action<string, int, int>? onModuleProgress = null,
         List<SkippedFile>? skippedCollector = null,
         Dictionary<string, MetadataReference>? carryDowngraded = null,
-        Action<string, ContentFingerprint>? contentHashCollector = null)
+        Action<string, ContentFingerprint>? contentHashCollector = null,
+        ModuleInfo[]? moduleUniverse = null)
     {
         var sorted = TopologicalSort(modules);
-        var moduleLookup = modules.ToDictionary(m => m.Name, StringComparer.Ordinal);
+        var moduleLookup = (moduleUniverse ?? modules)
+            .ToDictionary(m => m.Name, StringComparer.Ordinal);
 
         // Downgraded references: lightweight PE images for completed modules.
         // Downstream modules reference these instead of full compilations.
@@ -146,7 +154,8 @@ internal sealed class ModuleCompilationBuilder
             if (compilation == null) continue;
 
             // Invoke the processor (symbol/edge extraction happens here).
-            processor(module, compilation);
+            if (!processor(module, compilation))
+                break;
 
             // Retain full compilation if write-side tools are needed.
             if (retained != null)
