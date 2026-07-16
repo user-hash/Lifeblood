@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Warm shared incremental admission no longer hashes every source twice.**
+  Same-workspace incremental callers coalesce from the current immutable
+  publication plus the complete execution policy, then share the adapter's
+  single authoritative timestamp/content scan. Cold/full exact preflight and
+  its retryable input-drift rejection remain unchanged. This removes the
+  duplicate all-source content read that sat ahead of every warm DAWG request
+  while preserving one published semantic base. (`INV-ANALYZE-COALESCE-001`.)
 - **External Unity package sources now have one workspace identity.** Package
   discovery mounts a physical local `file:` package at its logical
   `Packages/{name}` path once per analysis attempt. Compilation exclusions,

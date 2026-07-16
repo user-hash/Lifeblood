@@ -177,7 +177,9 @@ public sealed class ToolHandler
 
             var request = ToolRequestBinder.BindAnalyze(arguments);
             request = _workspaceBinding?.Bind(request) ?? request;
-            prepared = _session.PrepareAnalysis(request);
+            prepared = _session.PrepareAnalysis(
+                request,
+                AnalysisPreparationMode.CommittedIncrementalBase);
             cancellationToken.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -824,7 +826,7 @@ public sealed class ToolHandler
                 request.EffectiveChangeReceipt,
                 request.EffectivePackageSourceVisibilityProjection,
                 request.EffectiveProfileApplicabilityProjection,
-                expectedAnalysisKey: prepared?.Identity.AnalysisKey,
+                expectedAnalysisKey: prepared?.ExpectedAnalysisKey,
                 cancellationToken: cancellationToken);
             RecordAnalyzeTelemetry(result);
             return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));

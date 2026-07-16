@@ -392,7 +392,9 @@ public sealed class GraphSession : IDisposable
     /// <summary>True if the session has a previous Roslyn analysis that supports incremental update.</summary>
     public bool CanIncremental => Current.RoslynAdapter?.HasSnapshot == true;
 
-    internal PreparedAnalyzeRequest PrepareAnalysis(AnalyzeToolRequest request)
+    internal PreparedAnalyzeRequest PrepareAnalysis(
+        AnalyzeToolRequest request,
+        AnalysisPreparationMode mode = AnalysisPreparationMode.ExactInputIdentity)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -400,6 +402,7 @@ public sealed class GraphSession : IDisposable
         AnalysisRuleSetResolver.ResolvedRuleSet ruleSet;
         string? projectPath = null;
         string? graphPath = null;
+        var usedCommittedIncrementalBase = false;
 
         if (!string.IsNullOrWhiteSpace(request.GraphPath))
         {
@@ -451,21 +454,37 @@ public sealed class GraphSession : IDisposable
                 AuthoritativeChangedFiles = request.AuthoritativeChangedFiles,
                 AllowFullFallback = request.AllowFullFallback,
             };
-            IWorkspaceInputFingerprintProvider fingerprintProvider =
-                new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
-            var inputs = fingerprintProvider.CaptureAnalysisInputs(projectPath, config);
-            var spec = new AnalysisSpec(
-                inputs.EffectiveDefineProfiles,
-                excludePaths,
-                retainCompilations
-                    ? AnalysisRetentionMode.RetainedSemantic
-                    : AnalysisRetentionMode.GraphOnly,
-                AnalysisDescriptorPolicy.WorkspaceDiscovery,
-                ruleSet.Identity);
-            identity = new WorkspaceAnalysisIdentity(
-                WorkspacePathIdentity.CreateWorkspaceKey(projectPath),
-                spec,
-                inputs.SourceFingerprint);
+            if (mode == AnalysisPreparationMode.CommittedIncrementalBase
+                && sameIncrementalWorkspace
+                && committed.Workspace.Identity is { } committedIdentity)
+            {
+                identity = committedIdentity;
+                usedCommittedIncrementalBase = true;
+            }
+            else
+            {
+                IWorkspaceInputFingerprintProvider fingerprintProvider =
+                    new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
+                var inputs = fingerprintProvider.CaptureAnalysisInputs(projectPath, config);
+                var spec = new AnalysisSpec(
+                    inputs.EffectiveDefineProfiles,
+                    excludePaths,
+                    retainCompilations
+                        ? AnalysisRetentionMode.RetainedSemantic
+                        : AnalysisRetentionMode.GraphOnly,
+                    AnalysisDescriptorPolicy.WorkspaceDiscovery,
+                    ruleSet.Identity);
+                identity = new WorkspaceAnalysisIdentity(
+                    WorkspacePathIdentity.CreateWorkspaceKey(projectPath),
+                    spec,
+                    inputs.SourceFingerprint);
+            }
+
+            request = request with
+            {
+                DefineProfiles = defineProfiles,
+                ExcludePaths = excludePaths.ToArray(),
+            };
         }
         else
         {
@@ -481,11 +500,15 @@ public sealed class GraphSession : IDisposable
             preparedRequest,
             projectPath,
             graphPath,
-            ruleSet.Source);
+            ruleSet.Identity);
+        var expectedAnalysisKey = usedCommittedIncrementalBase
+                ? null
+                : identity.AnalysisKey;
         return new PreparedAnalyzeRequest(
             preparedRequest,
             identity,
-            new AnalysisCoalescingKey(identity.AnalysisKey, executionPolicy));
+            new AnalysisCoalescingKey(identity.AnalysisKey, executionPolicy),
+            expectedAnalysisKey);
     }
 
     /// <summary>
@@ -1671,7 +1694,7 @@ public sealed class GraphSession : IDisposable
         AnalyzeToolRequest request,
         string? projectPath,
         string? graphPath,
-        string? effectiveRulesSource)
+        RuleSetIdentity effectiveRuleSet)
     {
         var changedFiles = request.AuthoritativeChangedFiles?
             .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -1681,11 +1704,19 @@ public sealed class GraphSession : IDisposable
             .ToArray()
             ?? Array.Empty<string>();
 
+        var profiles = request.DefineProfiles?
+            .Where(profile => !string.IsNullOrWhiteSpace(profile))
+            .Select(profile => profile.Trim())
+            .ToArray()
+            ?? Array.Empty<string>();
+        var excludePaths = NormalizePathGlobs(request.ExcludePaths).ToArray();
+
         return ContentFingerprint.Compute(
-            "lifeblood.analysis-request-policy.v2",
+            "lifeblood.analysis-request-policy.v3",
             new[]
             {
                 request.Incremental ? "incremental" : "full",
+                request.ReadOnly ? "graph-only" : "retained-semantic",
                 request.AllowFullFallback ? "allow-fallback" : "reject-fallback",
                 request.AuthoritativeChangedFiles == null
                     ? "filesystem-prefilter"
@@ -1703,9 +1734,15 @@ public sealed class GraphSession : IDisposable
                     : "profile-applicability-summary",
                 NormalizeExecutionPath(null, projectPath),
                 NormalizeExecutionPath(null, graphPath),
-                effectiveRulesSource ?? "",
+                effectiveRuleSet.Source ?? "",
+                effectiveRuleSet.Fingerprint.Value,
+                profiles.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                excludePaths.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 changedFiles.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            }.Concat(changedFiles));
+            }
+            .Concat(profiles)
+            .Concat(excludePaths)
+            .Concat(changedFiles));
     }
 
     private static string NormalizeExecutionPath(string? projectPath, string? path)
