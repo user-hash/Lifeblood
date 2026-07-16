@@ -177,10 +177,21 @@ disposed the sole retained base and the next proxy correctly found generation
 zero. The lifecycle fix removes every implicit wall-clock deadline, preserves
 the exact publication with zero leases, and keeps automatic reclamation only
 as an explicit `LIFEBLOOD_SHARED_IDLE_SECONDS` operator policy. Focused fake-
-clock, long-policy, capability, and process reconnect tests are green; installed
-DAWG verification remains required before this reliability item closes. Direct
-Codex connector `Transport closed` remains independently open and must not be
-reported as solved by either server fix.
+clock, long-policy, capability, and process reconnect tests are green.
+
+Installed `0.7.13-alpha.0.59+3af37e0` DAWG verification then closed the server
+lane: a cold Editor+Player scan published 88,896 symbols / 346,714 edges in
+72.34 seconds of server work, a fresh raw proxy reattached to the same daemon,
+generation, and snapshot after the first client disconnected, and Unity
+completed a 4.92-second incremental no-op plus exact resolve/dependants calls
+through documented action-only polling. The remaining direct Codex
+`Transport closed` symptom was deployment drift, not daemon transport: global
+Codex configuration still launched an obsolete `dist-shared` 0.47 DLL while
+DAWG/Unity used the installed command. It now points to the same
+`lifeblood-mcp --shared` authority. Existing tasks retain their already-dead
+connector until reload, so a newly started Codex task remains the final
+configuration-reload check; it is not a reason to duplicate or patch the
+healthy server.
 
 ## Non-Negotiable Architecture Gates
 

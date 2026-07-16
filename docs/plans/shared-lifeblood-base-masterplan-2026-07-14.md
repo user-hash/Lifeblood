@@ -130,6 +130,13 @@ All unique test daemons were stopped after the exercises.
 
 ### Configuration audit
 
+> **2026-07-16 supersession.** The machine-specific `dist-shared` route below
+> later drifted to build 0.47 while the installed/Unity path advanced. That
+> duplicate deployment was the root cause of direct Codex `Transport closed`.
+> User-level Codex, DAWG, and Unity now all launch the canonical installed
+> `lifeblood-mcp --shared` command; repository DLL paths are development-only
+> and must not be restored as client configuration.
+
 - The user-level Codex configuration now points at the one exact
   `D:/Projekti/Lifeblood/dist-shared/Lifeblood.Server.Mcp.dll` distribution with
   `--shared`. Every newly started Codex task uses that build and derives a

@@ -4,7 +4,7 @@
 
 > **Shared transport rollout:** `--shared` is the recommended configuration for
 > same-workspace multi-agent use; private stdio remains the rollback path. Exact
-> build `0.7.13-alpha.0.51+55af5d25b2be828e9fb7baeecbf41beb091a9900`
+> build `0.7.13-alpha.0.59+3af37e074aa920f2c54e4cda8c450b916d30ad25`
 > passed the final DAWG Editor+Player
 > canonical-bridge dogfood, while the earlier 1/2/4-client rollout remains the
 > memory/concurrency baseline. Unity and a fresh direct client observed one daemon,
@@ -17,21 +17,33 @@
 > that same `recommended` posture from one server-edge authority
 > (`INV-MCP-SHARED-MATURITY-001`).
 
-The final installed DAWG live gate uses
-`0.7.13-alpha.0.51+55af5d25b2be828e9fb7baeecbf41beb091a9900`
-through the canonical Unity package. A cold
-Editor+Player retained scan published 88,832 symbols, 346,496 edges, 100
-modules, 5,567 types, 138 cycles, and zero configured violations in 53.53
-seconds of server work. The same direct proxy executed against the retained
-graph, returning all 88,832 symbols, then reused the current publication in a
-6.34-second incremental no-op with zero changed files. Unity subsequently
-attached through the pollable bridge, executed against the same 346,496-edge
-graph, and reused generation 1 / snapshot
-`snap_a47f202a590540989e5d6471e8b539f8` in a 6.70-second incremental no-op.
-Package visibility reported nine packages as aggregates, returned the one
-unbound-package row, and omitted eight clean rows. These are local
-prerelease/dirty-workspace development receipts, not a published-stable
-release claim.
+The current installed DAWG live gate uses
+`0.7.13-alpha.0.59+3af37e074aa920f2c54e4cda8c450b916d30ad25`
+through both the canonical global tool and Unity package. A cold Editor+Player
+retained scan published 88,896 symbols, 346,714 edges, 100 modules, 5,577
+types, 138 cycles, and zero configured violations in 72.34 seconds of server
+work / 86.35 seconds of client wall time. Its summary-first response was 9,956
+characters. After that client disconnected, a fresh raw proxy attached to the
+same daemon and observed generation 1 / snapshot
+`snap_b279f6dfc6814fc9b5a7f2a8381a75ea`, then resolved a DAWG symbol from the
+retained graph. Unity subsequently completed a documented action-only poll in
+4.92 seconds as `incremental-noop`, reused the exact publication, and reported
+zero changed files. A Unity resolve plus dependants query also completed on
+that snapshot. Package visibility reported nine packages as aggregates,
+returned the one actionable unbound-package row, and omitted eight clean rows.
+These are local prerelease/dirty-workspace development receipts, not a
+published-stable release claim.
+
+The direct Codex `Transport closed` symptom had a separate deployment cause:
+user-level Codex configuration still launched the obsolete
+`dist-shared/Lifeblood.Server.Mcp.dll` build `0.7.13-alpha.0.47`, while DAWG and
+Unity launched the installed tool. The configuration now uses the same
+`lifeblood-mcp --shared` command as every other client. Already-running tasks
+retain their dead MCP handle until task/app reload; raw direct MCP and Unity
+both prove the installed daemon itself is healthy. An older Unity pending call
+was likewise not lost: action-only status returned its terminal
+`analysis-input-changed` failure, and the uncontended retry produced the warm
+success above.
 
 During the local 0.50-to-0.51 tool update, the installer deliberately stopped
 the old DAWG proxy and daemon. Concurrent clients therefore observed

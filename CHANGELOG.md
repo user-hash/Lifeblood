@@ -17,6 +17,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drain. Capabilities expose explicit enablement plus nullable timeout/deadline
   values, and process tests pin exact generation/snapshot retention across a
   disconnect. (`INV-MCP-IDLE-DRAIN-001`.)
+- **Direct and Unity clients now converge on one installed command.** A stale
+  user-level Codex route to a repository `dist-shared` DLL allowed the direct
+  connector to trail Unity by twelve local builds and die independently. The
+  verified deployment uses `lifeblood-mcp --shared` for Codex, DAWG, and Unity;
+  no copied/repository binary is a client authority. The live 0.59 DAWG gate
+  proves raw reconnect retention, action-only Unity polling, and exact semantic
+  resolve/dependants queries on one publication.
 - **Versioned semantic contracts now share one bounded stateless evaluator.**
   Consumer-owned manifests declare operation-argument guards, external API
   cost annotations, and exact suppressions. `ContractAuditEngine` derives one
