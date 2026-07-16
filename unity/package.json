@@ -1,0 +1,8 @@
+{
+  "name": "com.dawgtools.lifeblood-bridge",
+  "version": "1.0.0",
+  "displayName": "Lifeblood Unity Bridge",
+  "description": "Canonical Unity MCP outer adapter for the workspace-shared Lifeblood semantic host.",
+  "unity": "6000.0",
+  "type": "tool"
+}
