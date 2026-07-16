@@ -75,10 +75,50 @@ public class ProcessUsageProbeTests
         var usage = capture.Stop();
 
         // The constructor takes an initial RSS sample. Stop takes a final
-        // sample. Peak must be positive and the two measurements must not
-        // disagree with each other's sign.
+        // sample. The absolute peak owns the maximum; delta and peak growth
+        // are pure derivations over those three samples.
+        Assert.True(usage.StartWorkingSetBytes > 0);
+        Assert.True(usage.EndWorkingSetBytes > 0);
         Assert.True(usage.PeakWorkingSetBytes > 0);
+        Assert.True(usage.PeakWorkingSetBytes >= usage.StartWorkingSetBytes);
+        Assert.True(usage.PeakWorkingSetBytes >= usage.EndWorkingSetBytes);
+        Assert.Equal(
+            usage.EndWorkingSetBytes - usage.StartWorkingSetBytes,
+            usage.WorkingSetDeltaBytes);
+        Assert.Equal(
+            Math.Max(0L, usage.PeakWorkingSetBytes - usage.StartWorkingSetBytes),
+            usage.PeakWorkingSetAboveStartBytes);
+
+        Assert.True(usage.StartPrivateBytesBytes > 0);
+        Assert.True(usage.EndPrivateBytesBytes > 0);
         Assert.True(usage.PeakPrivateBytesBytes > 0);
+        Assert.True(usage.PeakPrivateBytesBytes >= usage.StartPrivateBytesBytes);
+        Assert.True(usage.PeakPrivateBytesBytes >= usage.EndPrivateBytesBytes);
+        Assert.Equal(
+            usage.EndPrivateBytesBytes - usage.StartPrivateBytesBytes,
+            usage.PrivateBytesDeltaBytes);
+        Assert.Equal(
+            Math.Max(0L, usage.PeakPrivateBytesBytes - usage.StartPrivateBytesBytes),
+            usage.PeakPrivateBytesAboveStartBytes);
+    }
+
+    [Fact]
+    public void AnalysisUsage_MemoryDerivations_PreserveSignedDeltaAndClampPeakGrowth()
+    {
+        var usage = new AnalysisUsage
+        {
+            StartWorkingSetBytes = 1_000,
+            EndWorkingSetBytes = 800,
+            PeakWorkingSetBytes = 900,
+            StartPrivateBytesBytes = 2_000,
+            EndPrivateBytesBytes = 2_300,
+            PeakPrivateBytesBytes = 2_500,
+        };
+
+        Assert.Equal(-200, usage.WorkingSetDeltaBytes);
+        Assert.Equal(0, usage.PeakWorkingSetAboveStartBytes);
+        Assert.Equal(300, usage.PrivateBytesDeltaBytes);
+        Assert.Equal(500, usage.PeakPrivateBytesAboveStartBytes);
     }
 
     [Fact]

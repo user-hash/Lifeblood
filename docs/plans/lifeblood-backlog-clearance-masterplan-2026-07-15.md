@@ -472,6 +472,23 @@ reference from the top level. A 56-source zero-heavy fixture retains duplicate
 occurrences and parse warnings while staying inside the compact response
 budget. Lifecycle closure remains pending the frozen DAWG receipt.
 
+`LB-INTAKE-20260714-033` implementation is repository-verified without a
+second telemetry type. `AnalysisUsage` stores start/end/absolute-peak memory
+samples, derives signed delta and nonnegative peak-above-start values, and the
+process adapter drains its sampler before finalization without a wall-clock
+deadline. Unit tests pin negative deltas and peak clamping; one retained
+GraphSession fixture runs full, incremental-noop, one-file edit, and
+descriptor-triggered full fallback while preserving semantic parity and the
+additive MCP wire shape. Lifecycle closure remains pending a real DAWG
+full/noop memory receipt from this build. The first private Editor+Player
+attempt on 2026-07-16 reached all 84 module compilations plus graph validation,
+then correctly rejected publication as `analysis-input-changed` because DAWG
+moved from expected analysis key
+`analysis_f0dd51fe20201a791517096db43ab683887fed0e865553f79604406063979c07`
+to `analysis_638579ee73980eabc487d1717dc02ac0550b92435187a35e6ada8a4a824cccb3`
+during construction. That is a valid fail-closed drift receipt, not a memory
+measurement and not grounds to claim lifecycle closure.
+
 ### Wave 6 - Runtime Performance Evidence
 
 Covers `034`, `035`.

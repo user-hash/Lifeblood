@@ -128,8 +128,16 @@ class Program
         var avgPerCore = u.HostLogicalCores > 0
             ? u.CpuUtilizationPercent / u.HostLogicalCores
             : 0.0;
+        var startWsMb = u.StartWorkingSetBytes / 1024.0 / 1024.0;
+        var endWsMb = u.EndWorkingSetBytes / 1024.0 / 1024.0;
+        var wsDeltaMb = u.WorkingSetDeltaBytes / 1024.0 / 1024.0;
         var peakWsMb = u.PeakWorkingSetBytes / 1024.0 / 1024.0;
+        var peakWsAboveStartMb = u.PeakWorkingSetAboveStartBytes / 1024.0 / 1024.0;
+        var startPrivateMb = u.StartPrivateBytesBytes / 1024.0 / 1024.0;
+        var endPrivateMb = u.EndPrivateBytesBytes / 1024.0 / 1024.0;
+        var privateDeltaMb = u.PrivateBytesDeltaBytes / 1024.0 / 1024.0;
         var peakPrivateMb = u.PeakPrivateBytesBytes / 1024.0 / 1024.0;
+        var peakPrivateAboveStartMb = u.PeakPrivateBytesAboveStartBytes / 1024.0 / 1024.0;
         var wallSec = u.WallTimeMs / 1000.0;
 
         var err = Console.Error;
@@ -141,8 +149,16 @@ class Program
         err.WriteLine(string.Format(inv, "    kernel mode      : {0,10:N0} ms", u.CpuTimeKernelMs));
         err.WriteLine(string.Format(inv, "  CPU utilization    : {0,9:N1}% of one core", u.CpuUtilizationPercent));
         err.WriteLine(string.Format(inv, "  CPU avg per core   : {0,9:N1}% across {1} logical cores", avgPerCore, u.HostLogicalCores));
+        err.WriteLine(string.Format(inv, "  Working set start  : {0,10:N0} MB", startWsMb));
+        err.WriteLine(string.Format(inv, "  Working set end    : {0,10:N0} MB", endWsMb));
+        err.WriteLine(string.Format(inv, "  Working set delta  : {0,10:N0} MB", wsDeltaMb));
         err.WriteLine(string.Format(inv, "  Peak working set   : {0,10:N0} MB", peakWsMb));
+        err.WriteLine(string.Format(inv, "    above start      : {0,10:N0} MB", peakWsAboveStartMb));
+        err.WriteLine(string.Format(inv, "  Private bytes start: {0,10:N0} MB", startPrivateMb));
+        err.WriteLine(string.Format(inv, "  Private bytes end  : {0,10:N0} MB", endPrivateMb));
+        err.WriteLine(string.Format(inv, "  Private bytes delta: {0,10:N0} MB", privateDeltaMb));
         err.WriteLine(string.Format(inv, "  Peak private bytes : {0,10:N0} MB", peakPrivateMb));
+        err.WriteLine(string.Format(inv, "    above start      : {0,10:N0} MB", peakPrivateAboveStartMb));
         err.WriteLine(string.Format(inv, "  GC collections     : gen0={0}  gen1={1}  gen2={2}", u.GcGen0Collections, u.GcGen1Collections, u.GcGen2Collections));
         if (u.Phases.Length > 0)
         {

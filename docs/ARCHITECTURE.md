@@ -113,7 +113,7 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 
 ### Infrastructure
 - `IFileSystem`. Filesystem abstraction for testability.
-- `IUsageProbe`. Creates a fresh `IUsageCapture` per analyze run. Every analyze carries a structured `AnalysisUsage` snapshot with wall time, CPU time, peak memory, and GC counts (`INV-USAGE-001..002`, `INV-USAGE-PORT-001..002`, `INV-USAGE-PROBE-001..002`).
+- `IUsageProbe`. Creates a fresh `IUsageCapture` per analyze run. Every analyze carries one structured `AnalysisUsage` snapshot with wall time, CPU time, start/end/absolute-peak memory, derived signed delta/peak-above-start memory, and GC counts (`INV-USAGE-001..002`, `INV-USAGE-PORT-001..002`, `INV-USAGE-PROBE-001..002`).
 - `IUsageCapture`. One-shot usage capture scoped to a single analyze run.
 - `ITelemetrySink`. Optional operational telemetry port. The server default is no-op; `DotNetDiagnosticsTelemetrySink` maps `StartOperation` / `RecordEvent` to .NET `ActivitySource` and `Meter` counters when `LIFEBLOOD_TELEMETRY` opts in. Tool argument diagnostics, analyze phase events, allocation deltas, and invariant cache outcomes all travel through this port (`INV-TELEMETRY-001`).
 - `ITelemetryOperation`. The `IDisposable` scope returned by `ITelemetrySink.StartOperation`. Carries `SetTag` / `SetError`; dispose records the operation's duration + success/error status. Neutral primitive-tag surface only — no `Activity` / `Meter` types leak across the port.

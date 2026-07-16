@@ -3,7 +3,7 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Application.Ports.Infrastructure;
 
 /// <summary>
-/// Captures runtime usage (wall time, CPU time, peak memory, GC pressure,
+/// Captures runtime usage (wall time, CPU time, start/end/peak memory, GC pressure,
 /// per-phase timings) for one analyze run. The port exists so the use case
 /// can stay free of System.Diagnostics types. Concrete implementations live
 /// in adapter assemblies.
@@ -45,8 +45,8 @@ public interface IUsageCapture : IDisposable
     void MarkPhase(string name);
 
     /// <summary>
-    /// Finalize the capture. Stops the wall clock, takes a final peak-memory
-    /// sample, and returns the usage snapshot. Idempotent.
+    /// Finalize the capture. Stops the sampler, takes the end-memory sample,
+    /// and returns the usage snapshot. Idempotent.
     /// </summary>
     AnalysisUsage Stop();
 }

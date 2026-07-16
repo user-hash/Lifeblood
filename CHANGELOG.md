@@ -9,6 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Retained-session memory growth receipts.** `AnalysisUsage` remains the one
+  per-request usage authority and now records start/end/absolute-peak working
+  set and private bytes. Signed end-minus-start deltas and nonnegative
+  peak-above-start values are derived, not stored as competing facts. The
+  process probe drains its periodic sampler before the final sample, while MCP
+  and CLI projections preserve the existing absolute-peak fields. A retained
+  full/noop/edit/fallback sequence pins the wire contract.
+  (`INV-USAGE-001..002`, `INV-USAGE-PROBE-001`,
+  `LB-INTAKE-20260714-033`.)
+
 - **Compact invariant-audit provenance.**
   `lifeblood_invariant_check(mode:"audit", summarize:true)` preserves totals,
   category counts, duplicate occurrences, parse warnings, and coverage while
