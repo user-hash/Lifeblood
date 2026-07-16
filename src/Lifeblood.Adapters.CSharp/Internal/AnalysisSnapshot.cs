@@ -222,9 +222,9 @@ internal sealed class AnalysisSnapshot
         return candidate;
     }
 
-    public SourceFingerprint BuildSourceFingerprint()
+    public SourceFingerprint BuildSourceFingerprint(WorkspaceSourcePathMap sourcePaths)
         => WorkspaceInputFingerprintBuilder.Build(
-            ProjectRoot,
+            sourcePaths,
             FileContentHashes,
             DescriptorContentHashes,
             AsmdefContentHashes,

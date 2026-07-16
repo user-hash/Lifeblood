@@ -72,7 +72,12 @@ the neutral result shapes (`PackageSourceVisibilityReport`,
 `PackageSourceVisibilityPackage`, `PackageSourceVisibilityFile`). The Roslyn
 adapter owns descriptor interpretation through
 `Internal.UnityPackageSourceVisibilityBuilder`, combining package descriptors,
-package asmdefs, module file membership, and `excludePaths`. `GraphSession`
+package asmdefs, module file membership, and `excludePaths`. Its discovered
+workspace registers physical package roots once with
+`Internal.WorkspaceSourcePathMap`; compilation filtering, graph extraction,
+fingerprints, package receipts, and incremental receipts consume the same
+logical `Packages/{name}/...` identity even when a `file:` dependency lives
+outside the project root. `GraphSession`
 projects the bounded `lifeblood_analyze.packageSourceVisibility` view (summary
 is aggregate plus excluded/unbound package rows; detail returns every package), and
 `WriteToolHandler` projects `lifeblood_compile_check.packageSourceResolution`

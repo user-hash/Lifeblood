@@ -14,17 +14,20 @@ internal readonly record struct SyntaxTreePathIdentity(string GraphPath, bool Is
         string projectRoot,
         string moduleName,
         string treePath)
+        => Resolve(WorkspaceSourcePathMap.Create(projectRoot), moduleName, treePath);
+
+    public static SyntaxTreePathIdentity Resolve(
+        WorkspaceSourcePathMap sourcePaths,
+        string moduleName,
+        string treePath)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
+        ArgumentNullException.ThrowIfNull(sourcePaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
         ArgumentException.ThrowIfNullOrWhiteSpace(treePath);
 
         if (Path.IsPathFullyQualified(treePath))
         {
-            var relativePath = Path.GetRelativePath(
-                    Path.GetFullPath(projectRoot),
-                    Path.GetFullPath(treePath))
-                .Replace('\\', '/');
+            var relativePath = sourcePaths.ToWorkspacePath(treePath);
 
             return new SyntaxTreePathIdentity(
                 EscapeReservedPhysicalPath(relativePath),

@@ -28,14 +28,16 @@ internal sealed class CompilationTreeExtractor
         string? profileTag,
         bool ownsSymbols,
         HashSet<string> knownModuleAssemblies,
-        IReadOnlySet<string>? changedFiles = null)
+        IReadOnlySet<string>? changedFiles = null,
+        WorkspaceSourcePathMap? sourcePaths = null)
     {
+        sourcePaths ??= WorkspaceSourcePathMap.Create(projectRoot);
         var candidates = compilation.SyntaxTrees
             .Where(tree => !string.IsNullOrEmpty(tree.FilePath)
                            && !tree.FilePath.StartsWith("<", StringComparison.Ordinal))
             .Select(tree => new TreeCandidate(
                 tree,
-                SyntaxTreePathIdentity.Resolve(projectRoot, moduleName, tree.FilePath)))
+                SyntaxTreePathIdentity.Resolve(sourcePaths, moduleName, tree.FilePath)))
             .Where(candidate => changedFiles == null
                                 || candidate.PathIdentity.IsGenerated
                                 || changedFiles.Contains(candidate.Tree.FilePath))

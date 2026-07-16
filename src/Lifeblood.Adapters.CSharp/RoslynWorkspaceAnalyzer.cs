@@ -45,6 +45,7 @@ public sealed class RoslynWorkspaceAnalyzer :
 
     private Dictionary<string, CSharpCompilation>? _compilations;
     private AnalysisSnapshot? _snapshot;
+    private WorkspaceSourcePathMap? _sourcePaths;
     private PackageSourceVisibilityReport? _packageSourceVisibility;
     private ProfileApplicabilityReport? _profileApplicability;
 
@@ -88,7 +89,10 @@ public sealed class RoslynWorkspaceAnalyzer :
     /// Content-authoritative receipt for the exact source and descriptor
     /// inputs retained by the current adapter snapshot.
     /// </summary>
-    public SourceFingerprint? CurrentSourceFingerprint => _snapshot?.BuildSourceFingerprint();
+    public SourceFingerprint? CurrentSourceFingerprint => _snapshot == null
+        ? null
+        : _snapshot.BuildSourceFingerprint(
+            _sourcePaths ?? WorkspaceSourcePathMap.Create(_snapshot.ProjectRoot));
 
     /// <summary>
     /// Files the analyzer declined to process during the most recent
@@ -136,6 +140,8 @@ public sealed class RoslynWorkspaceAnalyzer :
         var modules = _discovery.DiscoverModules(projectRoot);
         var activeProfiles = ResolveActiveProfiles(projectRoot, config);
         var applicableModules = ApplyProfilesToModules(modules, activeProfiles);
+        var packageWorkspace = UnityPackageSourceVisibilityBuilder.Discover(_fs, projectRoot);
+        var sourcePaths = packageWorkspace.SourcePaths;
         var sourceContent = new Dictionary<string, ContentFingerprint>(StringComparer.OrdinalIgnoreCase);
         var excludePathGlobs = PathGlobMatcher.Compile(config.ExcludePathGlobs);
 
@@ -150,7 +156,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                 continue;
             }
 
-            var relativePath = Path.GetRelativePath(projectRoot, path).Replace('\\', '/');
+            var relativePath = sourcePaths.ToWorkspacePath(path);
             if (config.ExcludePatterns.Any(pattern =>
                     relativePath.Contains(pattern, StringComparison.OrdinalIgnoreCase))
                 || PathGlobMatcher.MatchesAny(excludePathGlobs, relativePath))
@@ -178,9 +184,9 @@ public sealed class RoslynWorkspaceAnalyzer :
 
         var referenceContent = CaptureReferenceContent(applicableModules, projectRoot);
         var packageVisibilityContent =
-            UnityPackageSourceVisibilityBuilder.CaptureInputFingerprints(_fs, projectRoot);
+            UnityPackageSourceVisibilityBuilder.CaptureInputFingerprints(_fs, packageWorkspace);
         var sourceFingerprint = WorkspaceInputFingerprintBuilder.Build(
-            projectRoot,
+            sourcePaths,
             sourceContent,
             _discovery.LastDescriptorContentHashes,
             asmdefContent,
@@ -216,6 +222,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                 pair => pair.Key,
                 pair => pair.Value.ToArray(),
                 StringComparer.Ordinal),
+            _sourcePaths = _sourcePaths,
             _packageSourceVisibility = _packageSourceVisibility,
             _profileApplicability = _profileApplicability,
             RetainedProfileName = RetainedProfileName,
@@ -240,6 +247,13 @@ public sealed class RoslynWorkspaceAnalyzer :
             var modules = _discovery.DiscoverModules(projectRoot);
             var activeProfiles = ResolveActiveProfiles(projectRoot, config);
             var applicableModules = ApplyProfilesToModules(modules, activeProfiles);
+            var packageWorkspace = UnityPackageSourceVisibilityBuilder.Discover(_fs, projectRoot);
+            var sourcePaths = packageWorkspace.SourcePaths;
+            var packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
+                _fs,
+                packageWorkspace,
+                applicableModules,
+                config);
             var profileApplicability = BuildProfileApplicabilityReport(
                 projectRoot,
                 modules,
@@ -288,7 +302,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             }
 
             CaptureReferenceInputs(snapshot, applicableModules);
-            CapturePackageVisibilityInputs(snapshot, projectRoot);
+            CapturePackageVisibilityInputs(snapshot, packageWorkspace);
 
             // Create module symbols (lightweight — just names and metadata).
             foreach (var module in applicableModules)
@@ -406,7 +420,8 @@ public sealed class RoslynWorkspaceAnalyzer :
                             profile.Name,
                             profileTag,
                             ownsSymbols,
-                            knownModuleAssemblies);
+                            knownModuleAssemblies,
+                            sourcePaths: sourcePaths);
 
                         foreach (var extracted in extractedFiles)
                         {
@@ -435,7 +450,8 @@ public sealed class RoslynWorkspaceAnalyzer :
                         }
                         return true;
                     },
-                    contentHashCollector: (path, hash) => snapshot.FileContentHashes[path] = hash);
+                    contentHashCollector: (path, hash) => snapshot.FileContentHashes[path] = hash,
+                    sourcePaths: sourcePaths);
 
                 if (!isFirstProfile)
                 {
@@ -479,11 +495,8 @@ public sealed class RoslynWorkspaceAnalyzer :
                 activeProfiles.Count == 0
                     ? Array.Empty<ModuleInfo>()
                     : ApplyProfileToModules(modules, activeProfiles[0]));
-            _packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
-                _fs,
-                projectRoot,
-                applicableModules,
-                config);
+            _sourcePaths = sourcePaths;
+            _packageSourceVisibility = packageSourceVisibility;
             _profileApplicability = profileApplicability;
 
             _snapshot = snapshot;
@@ -609,7 +622,14 @@ public sealed class RoslynWorkspaceAnalyzer :
                 detail: "Referenced binary or source-generator input changed (descriptorKind=reference).");
         }
 
-        CapturePackageVisibilityInputs(_snapshot, projectRoot);
+        var packageWorkspace = UnityPackageSourceVisibilityBuilder.Discover(_fs, projectRoot);
+        var sourcePaths = packageWorkspace.SourcePaths;
+        var packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
+            _fs,
+            packageWorkspace,
+            applicableCurrentModules,
+            config);
+        CapturePackageVisibilityInputs(_snapshot, packageWorkspace);
 
         // Detect changed files by timestamp + content-hash comparison.
         // An editor/build integration can pass an authoritative changed-file
@@ -725,7 +745,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         {
             if (!currentFilePaths.Contains(prevFile))
             {
-                var relPath = Path.GetRelativePath(projectRoot, prevFile).Replace('\\', '/');
+                var relPath = sourcePaths.ToWorkspacePath(prevFile);
                 var fileId = SymbolIds.File(relPath);
                 if (previousModuleByFile.TryGetValue(prevFile, out var moduleName))
                     changedModules.Add(moduleName);
@@ -745,18 +765,15 @@ public sealed class RoslynWorkspaceAnalyzer :
 
         if (changedFiles.Count == 0 && deletedFiles.Count == 0)
         {
-            _packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
-                _fs,
-                projectRoot,
-                applicableCurrentModules,
-                config);
+            _sourcePaths = sourcePaths;
+            _packageSourceVisibility = packageSourceVisibility;
             _profileApplicability = profileApplicability;
             return new IncrementalAnalyzeResult
             {
                 Mode = IncrementalMode.Incremental,
                 Graph = _snapshot.RebuildGraph(),
                 AcceptedChanges = BuildAcceptedChanges(
-                    projectRoot,
+                    sourcePaths,
                     scanMode,
                     changedFiles,
                     mtimeTouchedFiles,
@@ -869,7 +886,8 @@ public sealed class RoslynWorkspaceAnalyzer :
                         profileTag,
                         ownsSymbols,
                         knownModuleAssemblies,
-                        changedFiles);
+                        changedFiles,
+                        sourcePaths);
 
                     foreach (var extracted in extractedFiles)
                     {
@@ -900,7 +918,8 @@ public sealed class RoslynWorkspaceAnalyzer :
                     }
                     return true;
                 },
-                contentHashCollector: (path, hash) => _snapshot.FileContentHashes[path] = hash);
+                contentHashCollector: (path, hash) => _snapshot.FileContentHashes[path] = hash,
+                sourcePaths: sourcePaths);
 
             if (!isFirstProfile)
             {
@@ -976,11 +995,8 @@ public sealed class RoslynWorkspaceAnalyzer :
         }
 
         _moduleDependencies = BuildModuleDependencyMap(retainedProfileModules);
-        _packageSourceVisibility = UnityPackageSourceVisibilityBuilder.Build(
-            _fs,
-            projectRoot,
-            applicableCurrentModules,
-            config);
+        _sourcePaths = sourcePaths;
+        _packageSourceVisibility = packageSourceVisibility;
         _profileApplicability = profileApplicability;
 
         return new IncrementalAnalyzeResult
@@ -988,7 +1004,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             Mode = IncrementalMode.Incremental,
             Graph = _snapshot.RebuildGraph(),
             AcceptedChanges = BuildAcceptedChanges(
-                projectRoot,
+                sourcePaths,
                 scanMode,
                 changedFiles,
                 mtimeTouchedFiles,
@@ -1043,11 +1059,12 @@ public sealed class RoslynWorkspaceAnalyzer :
     {
         var snapshot = _snapshot
             ?? throw new InvalidOperationException("No completed analysis snapshot is available.");
+        var sourcePaths = _sourcePaths ?? WorkspaceSourcePathMap.Create(snapshot.ProjectRoot);
         return AcceptedChangeSet.Create(
             ChangeScanMode.FullFallback,
             fullFallback: true,
-            reanalyzedSourceFiles: ToProjectRelativePaths(
-                snapshot.ProjectRoot,
+            reanalyzedSourceFiles: ToWorkspacePaths(
+                sourcePaths,
                 snapshot.FileTimestamps.Keys));
     }
 
@@ -1062,7 +1079,8 @@ public sealed class RoslynWorkspaceAnalyzer :
             var fullPath = Path.IsPathRooted(filePath)
                 ? Path.GetFullPath(filePath)
                 : Path.GetFullPath(Path.Combine(_snapshot.ProjectRoot, filePath));
-            query = Path.GetRelativePath(_snapshot.ProjectRoot, fullPath).Replace('\\', '/');
+            query = (_sourcePaths ?? WorkspaceSourcePathMap.Create(_snapshot.ProjectRoot))
+                .ToWorkspacePath(fullPath);
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
@@ -1233,7 +1251,8 @@ public sealed class RoslynWorkspaceAnalyzer :
                 return true;
             },
             carryDowngraded: carry,
-            moduleUniverse: profileModules);
+            moduleUniverse: profileModules,
+            sourcePaths: _sourcePaths ?? WorkspaceSourcePathMap.Create(snapshot.ProjectRoot));
 
         return new OperationFactScanReceipt
         {
@@ -1259,6 +1278,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         CancellationToken cancellationToken)
     {
         var drift = new SortedSet<string>(PathComparer);
+        var sourcePaths = _sourcePaths ?? WorkspaceSourcePathMap.Create(snapshot.ProjectRoot);
         var excludeGlobs = PathGlobMatcher.Compile(snapshot.ExcludePathGlobs);
         foreach (var path in modules
                      .SelectMany(module => module.FilePaths)
@@ -1266,7 +1286,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                      .Distinct(PathComparer))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var relative = Path.GetRelativePath(snapshot.ProjectRoot, path).Replace('\\', '/');
+            var relative = sourcePaths.ToWorkspacePath(path);
             if (snapshot.ExcludePatterns.Any(pattern =>
                     relative.Contains(pattern, StringComparison.OrdinalIgnoreCase))
                 || PathGlobMatcher.MatchesAny(excludeGlobs, relative))
@@ -1344,7 +1364,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         };
 
     private static AcceptedChangeSet BuildAcceptedChanges(
-        string projectRoot,
+        WorkspaceSourcePathMap sourcePaths,
         ChangeScanMode scanMode,
         IEnumerable<string> reanalyzedSourceFiles,
         IEnumerable<string> mtimeTouchedSourceFiles,
@@ -1353,17 +1373,17 @@ public sealed class RoslynWorkspaceAnalyzer :
         IEnumerable<string> deletedSourceFiles)
         => AcceptedChangeSet.Create(
             scanMode,
-            reanalyzedSourceFiles: ToProjectRelativePaths(projectRoot, reanalyzedSourceFiles),
-            mtimeTouchedSourceFiles: ToProjectRelativePaths(projectRoot, mtimeTouchedSourceFiles),
-            contentChangedSourceFiles: ToProjectRelativePaths(projectRoot, contentChangedSourceFiles),
-            descriptorForcedSourceFiles: ToProjectRelativePaths(projectRoot, descriptorForcedSourceFiles),
-            deletedSourceFiles: ToProjectRelativePaths(projectRoot, deletedSourceFiles));
+            reanalyzedSourceFiles: ToWorkspacePaths(sourcePaths, reanalyzedSourceFiles),
+            mtimeTouchedSourceFiles: ToWorkspacePaths(sourcePaths, mtimeTouchedSourceFiles),
+            contentChangedSourceFiles: ToWorkspacePaths(sourcePaths, contentChangedSourceFiles),
+            descriptorForcedSourceFiles: ToWorkspacePaths(sourcePaths, descriptorForcedSourceFiles),
+            deletedSourceFiles: ToWorkspacePaths(sourcePaths, deletedSourceFiles));
 
-    private static string[] ToProjectRelativePaths(
-        string projectRoot,
+    private static string[] ToWorkspacePaths(
+        WorkspaceSourcePathMap sourcePaths,
         IEnumerable<string> absolutePaths)
         => absolutePaths
-            .Select(path => Path.GetRelativePath(projectRoot, path).Replace('\\', '/'))
+            .Select(sourcePaths.ToWorkspacePath)
             .ToArray();
 
     private static ChangeScanMode ResolveChangeScanMode(AnalysisConfig config)
@@ -1779,9 +1799,13 @@ public sealed class RoslynWorkspaceAnalyzer :
         }
     }
 
-    private void CapturePackageVisibilityInputs(AnalysisSnapshot snapshot, string projectRoot)
+    private void CapturePackageVisibilityInputs(
+        AnalysisSnapshot snapshot,
+        UnityPackageWorkspace packageWorkspace)
     {
-        var content = UnityPackageSourceVisibilityBuilder.CaptureInputFingerprints(_fs, projectRoot);
+        var content = UnityPackageSourceVisibilityBuilder.CaptureInputFingerprints(
+            _fs,
+            packageWorkspace);
         ReplaceDictionary(snapshot.PackageVisibilityInputHashes, content);
     }
 

@@ -345,6 +345,104 @@ public sealed class PackageSourceVisibilityTests : IDisposable
         Assert.Equal(1, visibility.GetProperty("packageCount").GetInt32());
     }
 
+    [Fact]
+    public void FreshIncrementalFallback_ExternalFilePackageUsesOneLogicalSourceIdentity()
+    {
+        var externalPackageRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"lifeblood-external-package-{Guid.NewGuid():N}");
+        try
+        {
+            var externalSource = WriteExternalFilePackage(
+                _root,
+                externalPackageRoot,
+                "com.acme.external",
+                "Acme.External");
+            using var session = new GraphSession(_fs);
+
+            using var document = JsonDocument.Parse(session.Load(
+                _root,
+                graphPath: null,
+                rulesPath: null,
+                incremental: true,
+                allowFullFallback: true,
+                acceptedChangeReceipt: new AcceptedChangeReceiptRequest(
+                    AcceptedChangeReceiptMode.Detail,
+                    200),
+                packageSourceVisibilityProjection: PackageSourceVisibilityProjection.Detail));
+
+            Assert.Equal("full", document.RootElement.GetProperty("mode").GetString());
+            Assert.Equal("incremental", document.RootElement.GetProperty("requestedMode").GetString());
+            Assert.Equal("noPriorAnalysis", document.RootElement.GetProperty("fallbackReason").GetString());
+
+            const string logicalSource = "Packages/com.acme.external/Runtime/External.cs";
+            var receiptPaths = document.RootElement
+                .GetProperty("acceptedChanges")
+                .GetProperty("files")
+                .EnumerateArray()
+                .Select(file => file.GetProperty("path").GetString())
+                .ToArray();
+            Assert.Contains(logicalSource, receiptPaths);
+            Assert.DoesNotContain(receiptPaths, path => path?.StartsWith("../", StringComparison.Ordinal) == true);
+
+            var package = document.RootElement
+                .GetProperty("packageSourceVisibility")
+                .GetProperty("packages")
+                .EnumerateArray()
+                .Single(item => item.GetProperty("name").GetString() == "com.acme.external");
+            Assert.Equal("Packages/com.acme.external", package.GetProperty("rootPath").GetString());
+            Assert.Contains(
+                package.GetProperty("files").EnumerateArray(),
+                file => file.GetProperty("path").GetString() == logicalSource);
+
+            Assert.Contains(
+                session.CurrentSnapshot.Graph!.Symbols,
+                symbol => symbol.FilePath == logicalSource);
+            Assert.Equal(
+                logicalSource,
+                session.ResolvePackageSource(externalSource)!.Path);
+
+            using var excludedSession = new GraphSession(_fs);
+            using var excludedDocument = JsonDocument.Parse(excludedSession.Load(
+                _root,
+                graphPath: null,
+                rulesPath: null,
+                incremental: true,
+                allowFullFallback: true,
+                excludePaths: new[] { logicalSource },
+                acceptedChangeReceipt: new AcceptedChangeReceiptRequest(
+                    AcceptedChangeReceiptMode.Detail,
+                    200),
+                packageSourceVisibilityProjection: PackageSourceVisibilityProjection.Detail));
+            var excludedPackageFile = excludedDocument.RootElement
+                .GetProperty("packageSourceVisibility")
+                .GetProperty("packages")
+                .EnumerateArray()
+                .Single(item => item.GetProperty("name").GetString() == "com.acme.external")
+                .GetProperty("files")
+                .EnumerateArray()
+                .Single(file => file.GetProperty("path").GetString() == logicalSource);
+            Assert.Equal(
+                PackageSourceVisibilityStatus.Excluded,
+                excludedPackageFile.GetProperty("status").GetString());
+            Assert.DoesNotContain(
+                excludedSession.CurrentSnapshot.Graph!.Symbols,
+                symbol => symbol.FilePath == logicalSource);
+            Assert.DoesNotContain(
+                excludedDocument.RootElement
+                    .GetProperty("acceptedChanges")
+                    .GetProperty("files")
+                    .EnumerateArray(),
+                file => file.GetProperty("path").GetString() == logicalSource);
+        }
+        finally
+        {
+            try { Directory.Delete(externalPackageRoot, recursive: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
     private static void WriteUnityPackageFixture(string root)
     {
         Directory.CreateDirectory(Path.Combine(root, "Library"));
@@ -419,6 +517,55 @@ public sealed class PackageSourceVisibilityTests : IDisposable
         File.WriteAllText(
             Path.Combine(runtime, "Loose.cs"),
             $"namespace Acme.Loose; public sealed class Loose {{ }}");
+    }
+
+    private static string WriteExternalFilePackage(
+        string projectRoot,
+        string packageRoot,
+        string packageName,
+        string assemblyName)
+    {
+        var runtime = Path.Combine(packageRoot, "Runtime");
+        Directory.CreateDirectory(runtime);
+        File.WriteAllText(
+            Path.Combine(packageRoot, "package.json"),
+            $$"""
+            { "name": "{{packageName}}", "version": "1.0.0" }
+            """);
+        File.WriteAllText(
+            Path.Combine(runtime, $"{assemblyName}.asmdef"),
+            $$"""
+            { "name": "{{assemblyName}}" }
+            """);
+        var sourcePath = Path.Combine(runtime, "External.cs");
+        File.WriteAllText(
+            sourcePath,
+            $"namespace {assemblyName}; public sealed class External {{ }}");
+
+        var dependencyPath = Path.GetRelativePath(projectRoot, packageRoot).Replace('\\', '/');
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Packages", "manifest.json"),
+            $$"""
+            {
+              "dependencies": {
+                "{{packageName}}": "file:{{dependencyPath}}"
+              }
+            }
+            """);
+        File.WriteAllText(
+            Path.Combine(projectRoot, $"{assemblyName}.csproj"),
+            $$"""
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <PropertyGroup>
+                <AssemblyName>{{assemblyName}}</AssemblyName>
+                <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
+              </PropertyGroup>
+              <ItemGroup>
+                <Compile Include="{{sourcePath}}" />
+              </ItemGroup>
+            </Project>
+            """);
+        return sourcePath;
     }
 
     private static void WriteIncludedEmbeddedPackage(

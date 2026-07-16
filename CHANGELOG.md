@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **External Unity package sources now have one workspace identity.** Package
+  discovery mounts a physical local `file:` package at its logical
+  `Packages/{name}` path once per analysis attempt. Compilation exclusions,
+  graph file IDs, source fingerprints, package visibility, incremental
+  deletion, and accepted-change receipts reuse that map. A fresh incremental
+  request with full fallback can therefore publish a project that references
+  Lifeblood's bridge outside its root instead of finishing the analysis and
+  then failing on a `../Lifeblood/...` receipt path. The strict traversal-path
+  rejection remains unchanged. (`INV-WORKSPACE-SOURCE-PATH-001`.)
 - **Shared graph retention no longer has an implicit wall-clock deadline.**
   Disconnecting the last proxy keeps the daemon-owned latest semantic base by
   default, so an agent handoff cannot silently turn the next incremental call
