@@ -81,6 +81,56 @@ public sealed class SourceControlEvidenceTests
     }
 
     [Fact]
+    public void ReleaseVersionClassification_DistinguishesPublishedStableFromLocalPrerelease()
+    {
+        var stable = ServerIdentity.ClassifyVersionForReleaseGate("0.7.12");
+        var alpha = ServerIdentity.ClassifyVersionForReleaseGate(
+            "0.7.13-alpha.0.35+9180af4404a21d3894667d84a67567b8666f1b20");
+
+        Assert.Equal("stable", stable.VersionChannel);
+        Assert.Equal("publishedStable", stable.ReleaseGateBuildKind);
+        Assert.True(stable.ReleaseGateStableCandidate);
+        Assert.Equal("prerelease", alpha.VersionChannel);
+        Assert.Equal("localPrerelease", alpha.ReleaseGateBuildKind);
+        Assert.False(alpha.ReleaseGateStableCandidate);
+        Assert.Equal("alpha.0.35", alpha.PrereleaseLabel);
+    }
+
+    [Fact]
+    public void AnalyzeEvidenceReceipt_LabelsReleaseGateAndSourceControlTiming()
+    {
+        using var repository = TemporaryGitRepository.Create();
+        var snapshot = ServerIdentity.CaptureAnalyzeSourceControl(
+            new GitSourceControlSnapshotProvider(),
+            repository.NestedDirectory,
+            graphPath: null);
+        var receipt = ServerIdentity.BuildAnalyzeEvidenceReceipt(
+            mode: "full",
+            requestedMode: null,
+            graph: new SemanticGraph(),
+            analysis: null,
+            projectPath: repository.NestedDirectory,
+            graphPath: null,
+            rulesPath: null,
+            activeProfiles: null,
+            fallbackReason: null,
+            sourceControl: snapshot);
+
+        var root = Serialize(receipt);
+        var sourceControl = root.GetProperty("sourceControl");
+        var releaseGate = root.GetProperty("releaseGate");
+
+        Assert.Equal("analyzeAdmission", sourceControl.GetProperty("captureTiming").GetString());
+        Assert.Equal("provenanceContext", sourceControl.GetProperty("role").GetString());
+        Assert.False(sourceControl.GetProperty("semanticEqualityAuthority").GetBoolean());
+        Assert.Equal("analyzeAdmission", releaseGate.GetProperty("sourceControlCaptureTiming").GetString());
+        Assert.Equal("analysisIdentity", releaseGate.GetProperty("semanticEqualityAuthority").GetString());
+        Assert.Equal("sourceControlSnapshot", releaseGate.GetProperty("provenanceAuthority").GetString());
+        Assert.Equal("dirtyWorkspace", releaseGate.GetProperty("sourceControlState").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(releaseGate.GetProperty("status").GetString()));
+    }
+
+    [Fact]
     public void GraphSessionLoad_UsesGraphPathRepositoryAtPublicAnalyzeBoundary()
     {
         using var repository = TemporaryGitRepository.Create();
@@ -126,7 +176,9 @@ public sealed class SourceControlEvidenceTests
 
     private static JsonElement Serialize(object? value)
     {
-        using var document = JsonDocument.Parse(JsonSerializer.Serialize(value));
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(
+            value,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
         return document.RootElement.Clone();
     }
 

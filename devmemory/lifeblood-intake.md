@@ -1436,6 +1436,7 @@ Resolution evidence:
 
 Type: UX
 Priority: Medium
+Status: Fixed locally on 2026-07-16; pending release validation batch.
 Source: DAWG first-session field report, 2026-07-16; Lifeblood local `0.7.13-alpha.0.35+9180af4404a21d3894667d84a67567b8666f1b20`
 Workspace: DAWG and Lifeblood self
 
@@ -1462,3 +1463,18 @@ Fix shape:
   label which facts are semantic equality authority versus provenance context.
 - Add tests around `ServerIdentity`/source-control receipt projection so local
   alpha builds cannot masquerade as stable release gates.
+
+Resolution evidence:
+- `ServerIdentity` now classifies server versions for release-gate receipts:
+  stable no-build-metadata versions project `publishedStable`, prereleases such
+  as `0.7.13-alpha.0.35+...` project `localPrerelease`, stable versions with
+  build metadata project `localStableWithBuildMetadata`, and unparsable versions
+  project `unknown`.
+- `lifeblood_capabilities`, `lifeblood_analyze` evidence receipts, and invariant
+  audit receipts now carry additive `releaseGate` blocks plus source-control
+  `captureTiming`, `role:"provenanceContext"`, and
+  `semanticEqualityAuthority:false`. `analysisIdentity` remains the semantic
+  equality authority; Git/server-version data is provenance context.
+- Focused verification:
+  `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj --filter SourceControlEvidenceTests`
+  passed 7/7.

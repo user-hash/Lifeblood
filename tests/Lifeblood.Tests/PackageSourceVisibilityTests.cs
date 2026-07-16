@@ -179,7 +179,9 @@ public sealed class PackageSourceVisibilityTests : IDisposable
             JsonArgs(new { projectPath = _root }));
 
         Assert.NotEqual(true, result.IsError);
-        Assert.True(result.Content[0].Text.Length < 8_000);
+        Assert.True(
+            result.Content[0].Text.Length < 12_000,
+            $"Expected bounded summary response under 12 KB; got {result.Content[0].Text.Length} chars.");
         using var payload = JsonDocument.Parse(result.Content[0].Text);
         var visibility = payload.RootElement.GetProperty("packageSourceVisibility");
         var package = visibility.GetProperty("packages").EnumerateArray()

@@ -213,8 +213,11 @@ provenance once at request admission, before compiler work, selecting the analyz
 project/graph path; invariant receipts select the audited workspace, and
 capabilities select server-build provenance. Dirty details and
 failures are bounded; absent repository, unavailable Git, and command failure are
-different states. Release metadata consumes the same adapter, so no docs test or
-handler grows a second Git launcher. Invariants: `INV-SOURCE-CONTROL-001`,
+different states. Release-gate receipts classify the server build version and
+captured workspace state beside the source-control receipt; `analysisIdentity`
+remains semantic equality authority while source control stays provenance
+context. Release metadata consumes the same adapter, so no docs test or handler
+grows a second Git launcher. Invariants: `INV-SOURCE-CONTROL-001`,
 `INV-CHANGELOG-LATEST-TAG-001`.
 
 ## Invariant Enforcement
