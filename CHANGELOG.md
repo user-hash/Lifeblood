@@ -113,7 +113,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   admissions, and rejects conflicting arguments. It launches the installed
   `lifeblood-mcp --shared --shared-key <UnityRoot>` proxy. Unity and direct
   clients therefore converge on the same daemon-owned semantic base rather
-  than private Debug/Release processes. (`INV-MCP-UNITY-BRIDGE-001`.)
+  than private Debug/Release processes. The wrapper surface is now ratcheted
+  against `ToolRegistry.GetDefinitions().InputContract`: shared-read tools
+  expose `snapshotId`, `expectedSnapshotId`, and `expectedAnalysisGeneration`,
+  analyze exposes the summary/detail and authoritative-changes controls Unity
+  previously hid, and compile-check can publish `filePath` without requiring a
+  code snippet. The only intentional Unity translations are current-project
+  injection for analyze and `manifestJson` to server-side `manifest`.
+  (`INV-MCP-UNITY-BRIDGE-001`.)
 - **Unity package source visibility is explicit on analyze and compile-check.**
   `lifeblood_analyze` now reports `packageSourceVisibility` for Unity package
   workspaces: package roots from `Packages/manifest.json`,

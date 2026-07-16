@@ -3,6 +3,18 @@ using MCPForUnity.Editor.Tools;
 
 namespace Lifeblood.UnityBridge
 {
+    public abstract class SnapshotReadParameters
+    {
+        [ToolParameter("Optional exact-publication selection.", Required = false)]
+        public string snapshotId { get; set; }
+
+        [ToolParameter("Optional optimistic-read snapshot precondition.", Required = false)]
+        public string expectedSnapshotId { get; set; }
+
+        [ToolParameter("Optional optimistic-read analysis generation precondition.", Required = false)]
+        public long? expectedAnalysisGeneration { get; set; }
+    }
+
     /// <summary>
     /// All 19 Lifeblood semantic tools exposed as Unity MCP custom tools.
     /// Each class is auto-discovered by Unity MCP via [McpForUnityTool].
@@ -35,6 +47,27 @@ namespace Lifeblood.UnityBridge
 
             [ToolParameter("Optional Lifeblood define profiles, for example Editor and Player.", Required = false)]
             public string[] defineProfiles { get; set; }
+
+            [ToolParameter("Optional built-in rule pack name or workspace-contained rules path.", Required = false)]
+            public string rulesPath { get; set; }
+
+            [ToolParameter("Optional project-relative POSIX globs excluded before Roslyn compilation.", Required = false)]
+            public string[] excludePaths { get; set; }
+
+            [ToolParameter("Optional editor-supplied changed source paths for bounded incremental scanning.", Required = false)]
+            public string[] authoritativeChangedFiles { get; set; }
+
+            [ToolParameter("Accepted-change receipt projection: summary or detail.", Required = false)]
+            public string changeReceiptMode { get; set; }
+
+            [ToolParameter("Maximum path records returned when changeReceiptMode is detail.", Required = false)]
+            public int? changeReceiptLimit { get; set; }
+
+            [ToolParameter("Unity package visibility projection: summary or detail.", Required = false)]
+            public string packageSourceVisibilityMode { get; set; }
+
+            [ToolParameter("Define-profile module-applicability projection: summary or detail.", Required = false)]
+            public string profileApplicabilityMode { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -52,6 +85,30 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodContext
     {
+        public sealed class Parameters : SnapshotReadParameters
+        {
+            [ToolParameter("Smallest viable response: summary, invariants, and violations only.", Required = false)]
+            public bool summarize { get; set; }
+
+            [ToolParameter("Optional allowlist of section names to include.", Required = false)]
+            public string[] sections { get; set; }
+
+            [ToolParameter("Cap on highValueFiles entries.", Required = false)]
+            public int? maxFiles { get; set; }
+
+            [ToolParameter("Cap on boundaries entries.", Required = false)]
+            public int? maxBoundaries { get; set; }
+
+            [ToolParameter("Cap on hotspots entries.", Required = false)]
+            public int? maxHotspots { get; set; }
+
+            [ToolParameter("Cap on readingOrder entries.", Required = false)]
+            public int? maxReadingOrder { get; set; }
+
+            [ToolParameter("Cap on dependencyMatrix entries.", Required = false)]
+            public int? maxMatrixEntries { get; set; }
+        }
+
         public static object HandleCommand(JObject @params)
         {
             return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_context", @params);
@@ -63,7 +120,7 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodLookup
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Symbol ID (e.g. type:MyApp.AuthService or method:MyApp.AuthService.Login(string))")]
             public string symbolId { get; set; }
@@ -80,10 +137,28 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodDependencies
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Symbol ID")]
             public string symbolId { get; set; }
+
+            [ToolParameter("Optional define profiles to keep.", Required = false)]
+            public string[] profileFilter { get; set; }
+
+            [ToolParameter("Optional grouping mode: none, bucket, module, or both.", Required = false)]
+            public string groupBy { get; set; }
+
+            [ToolParameter("Drop Test-bucket endpoints.", Required = false)]
+            public bool excludeTests { get; set; }
+
+            [ToolParameter("Drop Generated-bucket endpoints.", Required = false)]
+            public bool excludeGenerated { get; set; }
+
+            [ToolParameter("Optional endpoint bucket allowlist.", Required = false)]
+            public string[] includeBuckets { get; set; }
+
+            [ToolParameter("Preview endpoint cap per group.", Required = false)]
+            public int? previewPerGroup { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -97,10 +172,28 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodDependants
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Symbol ID")]
             public string symbolId { get; set; }
+
+            [ToolParameter("Optional define profiles to keep.", Required = false)]
+            public string[] profileFilter { get; set; }
+
+            [ToolParameter("Optional grouping mode: none, bucket, module, or both.", Required = false)]
+            public string groupBy { get; set; }
+
+            [ToolParameter("Drop Test-bucket callers.", Required = false)]
+            public bool excludeTests { get; set; }
+
+            [ToolParameter("Drop Generated-bucket callers.", Required = false)]
+            public bool excludeGenerated { get; set; }
+
+            [ToolParameter("Optional caller bucket allowlist.", Required = false)]
+            public string[] includeBuckets { get; set; }
+
+            [ToolParameter("Preview caller cap per group.", Required = false)]
+            public int? previewPerGroup { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -114,13 +207,25 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodBlastRadius
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Symbol ID to analyze")]
             public string symbolId { get; set; }
 
             [ToolParameter("Maximum traversal depth (default: 10)", Required = false)]
             public int? maxDepth { get; set; }
+
+            [ToolParameter("Return counts plus a bounded preview instead of the full affected-id list.", Required = false)]
+            public bool summarize { get; set; }
+
+            [ToolParameter("Maximum affected-symbol ids embedded in the response.", Required = false)]
+            public int? maxResults { get; set; }
+
+            [ToolParameter("Optional grouping mode: none, bucket, module, or both.", Required = false)]
+            public string groupBy { get; set; }
+
+            [ToolParameter("Preview affected-id cap per group.", Required = false)]
+            public int? previewPerGroup { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -134,10 +239,19 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodFileImpact
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Relative file path (e.g. Assets/_Project/Scripts/BeatGrid/AdaptiveBeatGrid.cs)")]
             public string filePath { get; set; }
+
+            [ToolParameter("Maximum results embedded in the response.", Required = false)]
+            public int? maxResults { get; set; }
+
+            [ToolParameter("Return compact counts plus previews.", Required = false)]
+            public bool summarize { get; set; }
+
+            [ToolParameter("Include unsupported relationship receipts.", Required = false)]
+            public bool includeUnsupportedRelationships { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -151,10 +265,13 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodResolveShortName
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Short symbol name (no namespace, e.g. 'MidiLearnManager')")]
             public string name { get; set; }
+
+            [ToolParameter("Resolution mode: exact, contains, or fuzzy.", Required = false)]
+            public string mode { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -172,7 +289,7 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodContractAudit
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Inline contract manifest JSON. Supply exactly one of manifestJson or manifestPath.", Required = false)]
             public string manifestJson { get; set; }
@@ -225,10 +342,16 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodDiagnose
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
+            [ToolParameter("Source file path to diagnose (optional)", Required = false)]
+            public string filePath { get; set; }
+
             [ToolParameter("Module name to filter (optional)", Required = false)]
             public string moduleName { get; set; }
+
+            [ToolParameter("Diagnostic verbosity (optional)", Required = false)]
+            public string verbosity { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -244,11 +367,20 @@ namespace Lifeblood.UnityBridge
     {
         public sealed class Parameters
         {
-            [ToolParameter("C# code to compile-check")]
+            [ToolParameter("C# code to compile-check", Required = false)]
             public string code { get; set; }
+
+            [ToolParameter("Workspace source file to compile-check in its owning module (optional)", Required = false)]
+            public string filePath { get; set; }
 
             [ToolParameter("Module context for type resolution (optional)", Required = false)]
             public string moduleName { get; set; }
+
+            [ToolParameter("Refresh stale generated project descriptors before resolving file ownership.", Required = false)]
+            public bool staleRefresh { get; set; }
+
+            [ToolParameter("Diagnostic verbosity (optional)", Required = false)]
+            public string verbosity { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -262,13 +394,16 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodFindReferences
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Symbol ID to search for")]
             public string symbolId { get; set; }
 
             [ToolParameter("Include declaration sites in the result. Default: false.", Required = false, DefaultValue = "false")]
             public bool includeDeclarations { get; set; }
+
+            [ToolParameter("Optional retained-profile honesty gate.", Required = false)]
+            public string profileScope { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -282,10 +417,13 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodFindDefinition
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Symbol ID to find definition for")]
             public string symbolId { get; set; }
+
+            [ToolParameter("Optional retained-profile honesty gate.", Required = false)]
+            public string profileScope { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -303,10 +441,13 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodFindImplementations
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Interface, abstract class, or virtual method symbol ID")]
             public string symbolId { get; set; }
+
+            [ToolParameter("Optional retained-profile honesty gate.", Required = false)]
+            public string profileScope { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -320,7 +461,7 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodSymbolAtPosition
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Source file path (absolute or relative)")]
             public string filePath { get; set; }
@@ -343,7 +484,7 @@ namespace Lifeblood.UnityBridge
         Group = "code-intelligence", RequiresPolling = true, MaxPollSeconds = 360)]
     public static class LifebloodDocumentation
     {
-        public sealed class Parameters
+        public sealed class Parameters : SnapshotReadParameters
         {
             [ToolParameter("Symbol ID")]
             public string symbolId { get; set; }
@@ -367,6 +508,9 @@ namespace Lifeblood.UnityBridge
 
             [ToolParameter("The new name")]
             public string newName { get; set; }
+
+            [ToolParameter("Optional retained-profile honesty gate.", Required = false)]
+            public string profileScope { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -407,6 +551,9 @@ namespace Lifeblood.UnityBridge
 
             [ToolParameter("Execution timeout in milliseconds (default: 5000)", Required = false)]
             public int? timeoutMs { get; set; }
+
+            [ToolParameter("Optional target define profile.", Required = false)]
+            public string targetProfile { get; set; }
         }
 
         public static object HandleCommand(JObject @params)

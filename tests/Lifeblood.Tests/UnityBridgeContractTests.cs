@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Lifeblood.Server.Mcp;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -27,45 +28,39 @@ public sealed class UnityBridgeContractTests
         {
             var property = Assert.IsType<PropertyDeclarationSyntax>(member);
             var owner = Assert.IsType<ClassDeclarationSyntax>(property.Parent);
-            Assert.Equal("Parameters", owner.Identifier.ValueText);
+            Assert.True(
+                owner.Identifier.ValueText is "Parameters" or "SnapshotReadParameters",
+                $"Tool parameter '{property.Identifier.ValueText}' must live on a nested Parameters type or the shared snapshot-read base.");
             Assert.Contains(property.Modifiers, modifier => modifier.IsKind(SyntaxKind.PublicKeyword));
             Assert.DoesNotContain(property.Modifiers, modifier => modifier.IsKind(SyntaxKind.StaticKeyword));
         }
     }
 
     [Fact]
-    public void AnalyzeAndFindReferences_PublishTheirTypedArguments()
+    public void EveryBridgeTool_PublishesTheServerInputContractArguments()
     {
         var root = Parse(ToolsPath);
+        var wrappers = root.DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .Where(HasMcpToolAttribute)
+            .ToArray();
+        var parameterTypes = root.DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .Where(type => type.Parent is CompilationUnitSyntax or NamespaceDeclarationSyntax or FileScopedNamespaceDeclarationSyntax)
+            .ToDictionary(type => type.Identifier.ValueText, StringComparer.Ordinal);
 
-        AssertParameterTypes(root, "LifebloodAnalyzeProject", new Dictionary<string, string>
+        Assert.Equal(19, wrappers.Length);
+        foreach (var wrapper in wrappers)
         {
-            ["incremental"] = "bool",
-            ["readOnly"] = "bool",
-            ["allowFullFallback"] = "bool",
-            ["defineProfiles"] = "string[]",
-        });
+            var unityToolName = ReadMcpToolName(wrapper);
+            var serverToolName = unityToolName == "lifeblood_analyze_project"
+                ? "lifeblood_analyze"
+                : unityToolName;
+            var expected = ExpectedUnityArguments(serverToolName);
+            var actual = ReadUnityArguments(wrapper, parameterTypes);
 
-        AssertParameterTypes(root, "LifebloodFindReferences", new Dictionary<string, string>
-        {
-            ["symbolId"] = "string",
-            ["includeDeclarations"] = "bool",
-        });
-
-        AssertParameterTypes(root, "LifebloodContractAudit", new Dictionary<string, string>
-        {
-            ["manifestJson"] = "string",
-            ["manifestPath"] = "string",
-            ["profileScope"] = "string",
-            ["moduleScope"] = "string",
-            ["filePaths"] = "string[]",
-            ["containingSymbolIds"] = "string[]",
-            ["includeRuleIds"] = "string[]",
-            ["maxFacts"] = "int?",
-            ["maxFindings"] = "int?",
-            ["maxEvidencePerFinding"] = "int?",
-            ["summarize"] = "bool",
-        });
+            Assert.Equal(expected, actual);
+        }
     }
 
     [Fact]
@@ -177,23 +172,96 @@ public sealed class UnityBridgeContractTests
     private static bool IsMcpToolAttribute(AttributeSyntax attribute)
         => attribute.Name.ToString().EndsWith("McpForUnityTool", StringComparison.Ordinal);
 
-    private static void AssertParameterTypes(
-        CompilationUnitSyntax root,
-        string toolClassName,
-        IReadOnlyDictionary<string, string> expected)
+    private static string ReadMcpToolName(ClassDeclarationSyntax tool)
+        => tool.AttributeLists.SelectMany(list => list.Attributes)
+            .Single(IsMcpToolAttribute)
+            .ArgumentList!.Arguments[0]
+            .Expression
+            .ToString()
+            .Trim('"');
+
+    private static IReadOnlyDictionary<string, string> ExpectedUnityArguments(string serverToolName)
     {
-        var tool = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-            .Single(type => type.Identifier.ValueText == toolClassName);
+        var definition = ToolRegistry.GetDefinitions().Single(d => d.Name == serverToolName);
+        var expected = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var argument in definition.InputContract.ArgumentList)
+        {
+            if (serverToolName == "lifeblood_analyze"
+                && argument.Name is "projectPath" or "graphPath")
+            {
+                continue;
+            }
+
+            if (serverToolName == "lifeblood_contract_audit"
+                && argument.Name == "manifest")
+            {
+                expected["manifestJson"] = "string:false";
+                continue;
+            }
+
+            expected[argument.Name] = ToUnityType(argument) + ":" + argument.Required.ToString().ToLowerInvariant();
+        }
+
+        return expected;
+    }
+
+    private static string ToUnityType(ToolArgumentContract argument)
+        => argument.Name == "expectedAnalysisGeneration" ? "long?"
+            : argument.Type switch
+            {
+                ToolArgumentType.String => "string",
+                ToolArgumentType.Integer => argument.Required ? "int" : "int?",
+                ToolArgumentType.Number => argument.Required ? "double" : "double?",
+                ToolArgumentType.Boolean => "bool",
+                ToolArgumentType.Array => argument.ArrayItemType == ToolArgumentType.String
+                    ? "string[]"
+                    : "object[]",
+                ToolArgumentType.Object => "object",
+                _ => "object",
+            };
+
+    private static IReadOnlyDictionary<string, string> ReadUnityArguments(
+        ClassDeclarationSyntax tool,
+        IReadOnlyDictionary<string, ClassDeclarationSyntax> parameterTypes)
+    {
         var parameters = tool.Members.OfType<ClassDeclarationSyntax>()
             .Single(type => type.Identifier.ValueText == "Parameters");
-        var actual = parameters.Members.OfType<PropertyDeclarationSyntax>()
-            .Where(HasToolParameterAttribute)
+        return EnumerateParameterProperties(parameters, parameterTypes)
             .ToDictionary(
                 property => property.Identifier.ValueText,
-                property => property.Type.ToString(),
+                property => property.Type.ToString() + ":" + IsRequired(property).ToString().ToLowerInvariant(),
                 StringComparer.Ordinal);
+    }
 
-        Assert.Equal(expected, actual);
+    private static IEnumerable<PropertyDeclarationSyntax> EnumerateParameterProperties(
+        ClassDeclarationSyntax parameterType,
+        IReadOnlyDictionary<string, ClassDeclarationSyntax> parameterTypes)
+    {
+        if (parameterType.BaseList?.Types.FirstOrDefault()?.Type.ToString() is { Length: > 0 } baseName
+            && parameterTypes.TryGetValue(baseName, out var baseType))
+        {
+            foreach (var property in EnumerateParameterProperties(baseType, parameterTypes))
+                yield return property;
+        }
+
+        foreach (var property in parameterType.Members.OfType<PropertyDeclarationSyntax>().Where(HasToolParameterAttribute))
+            yield return property;
+    }
+
+    private static bool IsRequired(PropertyDeclarationSyntax property)
+    {
+        var attribute = property.AttributeLists.SelectMany(list => list.Attributes)
+            .Single(attribute => attribute.Name.ToString().EndsWith("ToolParameter", StringComparison.Ordinal));
+        foreach (var argument in attribute.ArgumentList?.Arguments ?? default(SeparatedSyntaxList<AttributeArgumentSyntax>))
+        {
+            if (argument.NameEquals?.Name.Identifier.ValueText == "Required"
+                && argument.Expression.IsKind(SyntaxKind.FalseLiteralExpression))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static CompilationUnitSyntax Parse(string path)
