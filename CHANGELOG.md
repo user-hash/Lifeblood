@@ -57,7 +57,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The Unity bridge has one canonical, pollable package authority.** The UPM
   source lives under `unity/`; consumers reference it instead of copying it.
   All 19 wrappers expose Coplay-discoverable typed nested parameters and the
-  polling lifecycle, while one coordinator launches the installed
+  polling lifecycle. One coordinator owns at most one unconsumed call per tool,
+  resolves action-only status polls by tool identity, coalesces exact duplicate
+  admissions, and rejects conflicting arguments. It launches the installed
   `lifeblood-mcp --shared --shared-key <UnityRoot>` proxy. Unity and direct
   clients therefore converge on the same daemon-owned semantic base rather
   than private Debug/Release processes. (`INV-MCP-UNITY-BRIDGE-001`.)

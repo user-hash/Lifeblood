@@ -329,7 +329,7 @@ Adjust the relative path for your layout. The package ships its own Editor-only 
 lifeblood_analyze_project incremental=false readOnly=false defineProfiles=["Editor","Player"]
 ```
 
-The bridge injects the current Unity project root, starts the installed shared proxy, performs the MCP `initialize` handshake, and returns a polling receipt before Coplay's synchronous deadline. Status polls use the same arguments and project root, so they retrieve the original task's terminal result. Subsequent bridge and direct-agent calls reuse the same daemon graph.
+The bridge injects the current Unity project root, starts the installed shared proxy, performs the MCP `initialize` handshake, and returns a polling receipt before Coplay's synchronous deadline. Coplay status calls need only `action:"status"`: the bridge resolves the one unconsumed call by tool identity, while retaining original-argument identity solely to coalesce exact retries or reject a conflicting replacement. Subsequent bridge and direct-agent calls reuse the same daemon graph.
 
 ### Locating the server command
 
