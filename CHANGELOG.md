@@ -43,6 +43,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   truncation, input drift, compiled-module count, and
   `AdditionalSemanticBaseCount`. (`INV-OPERATION-FACTS-001`.)
 
+- **Targeted contract scans avoid materializing rejected operation evidence.**
+
 - **Shared ExampleApp analysis is responsive, reusable, and loss-tolerant.**
 
 - **Analyze defaults are summary-first and provenance-complete.** Package
