@@ -98,6 +98,12 @@ public class AnalyzeWireShapeTests : IDisposable
         Assert.Equal(1, receipt.GetProperty("counts").GetProperty("reanalyzedSourceFiles").GetInt32());
         Assert.Equal(0, receipt.GetProperty("counts").GetProperty("mtimeTouchedSourceFiles").GetInt32());
         Assert.Equal(0, receipt.GetProperty("counts").GetProperty("contentChangedSourceFiles").GetInt32());
+        var interpretation = receipt.GetProperty("interpretation");
+        Assert.Equal("fullFallbackReanalysis", interpretation.GetProperty("work").GetString());
+        Assert.Equal("reanalyzedOrDeleted", interpretation.GetProperty("changedSourceFilesMeaning").GetString());
+        Assert.Equal("none", interpretation.GetProperty("contentChangeStatus").GetString());
+        Assert.Contains("not evidence of source content churn", interpretation.GetProperty("summary").GetString());
+        Assert.Empty(receipt.GetProperty("files").EnumerateArray());
         Assert.NotEqual(JsonValueKind.Null, doc.RootElement.GetProperty("summary").ValueKind);
     }
 
