@@ -1797,6 +1797,123 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_RouteFactsShareOneStreamAcrossRequiredParityAndOwnershipPolicies()
+    {
+        var projectRoot = Path.Combine(_tempDir, "contract-audit-route-facts");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Routes.cs"),
+            "namespace Acme; public static class Routes { private static int Generation; " +
+            "public static void Editor() => EditorCore(); private static void EditorCore() { Publish(1); Generation = 1; } " +
+            "public static void Player() => PlayerCore(); private static void PlayerCore() { Publish(2); } " +
+            "public static void Bypass() { Generation = 2; } private static void Publish(int value) { } }");
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-route-facts",
+            version = "1.0.0",
+            callRoutes = new object[]
+            {
+                new
+                {
+                    id = "editor",
+                    rootSymbolIds = new[] { "method:Acme.Routes.Editor()" },
+                    maxDepth = 4,
+                    maxMembers = 16,
+                },
+                new
+                {
+                    id = "player",
+                    rootSymbolIds = new[] { "method:Acme.Routes.Player()" },
+                    maxDepth = 4,
+                    maxMembers = 16,
+                },
+            },
+            routeFacts = new object[]
+            {
+                new
+                {
+                    id = "publish-required",
+                    policy = RouteFactPolicy.RequiredOnEveryRoute,
+                    callRouteIds = new[] { "editor", "player" },
+                    operationKinds = new[] { OperationFactKind.Call },
+                    targetSymbolIds = new[] { "method:Acme.Routes.Publish(int)" },
+                    categories = new[] { "Publication" },
+                },
+                new
+                {
+                    id = "publish-parity",
+                    policy = RouteFactPolicy.EquivalentAcrossRoutes,
+                    callRouteIds = new[] { "editor", "player" },
+                    operationKinds = new[] { OperationFactKind.Call },
+                    targetSymbolIds = new[] { "method:Acme.Routes.Publish(int)" },
+                    signatureParts = new[]
+                    {
+                        RouteFactSignaturePart.Kind,
+                        RouteFactSignaturePart.TargetSymbol,
+                        RouteFactSignaturePart.InputConstants,
+                    },
+                    categories = new[] { "Determinism" },
+                },
+                new
+                {
+                    id = "generation-owner",
+                    policy = RouteFactPolicy.AllowedRoutesOnly,
+                    callRouteIds = new[] { "editor" },
+                    operationKinds = new[] { OperationFactKind.MemberWrite },
+                    targetSymbolIds = new[] { "field:Acme.Routes.Generation" },
+                    categories = new[] { "Ownership" },
+                },
+            },
+        });
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot, defineProfiles = new[] { "Editor" } })).IsError);
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.True(result.IsError != true, result.Content[0].Text);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.Equal(new[] { ContractRuleId.RouteFact }, root.GetProperty("selectedRuleIds")
+            .EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal(3, root.GetProperty("findingCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+        Assert.Equal(4, root.GetProperty("scanReceipt").GetProperty("emittedFactCount").GetInt32());
+        Assert.Equal(
+            new[]
+            {
+                ContractFindingKind.RouteFactOutsideOwner,
+                ContractFindingKind.RouteFactParityMismatch,
+                ContractFindingKind.RouteFactParityMismatch,
+            },
+            root.GetProperty("findings").EnumerateArray()
+                .Select(finding => finding.GetProperty("kind").GetString())
+                .OrderBy(kind => kind, StringComparer.Ordinal));
+
+        var receipts = root.GetProperty("routeFacts").EnumerateArray().ToDictionary(
+            receipt => receipt.GetProperty("contractId").GetString()!,
+            StringComparer.Ordinal);
+        Assert.All(receipts["publish-required"].GetProperty("routes").EnumerateArray(), route =>
+            Assert.True(route.GetProperty("requirementSatisfied").GetBoolean()));
+        Assert.Equal(2, receipts["publish-parity"].GetProperty("signatureCount").GetInt32());
+        Assert.All(receipts["publish-parity"].GetProperty("routes").EnumerateArray(), route =>
+            Assert.False(route.GetProperty("requirementSatisfied").GetBoolean()));
+        Assert.Equal(2, receipts["generation-owner"].GetProperty("selectedFactCount").GetInt32());
+        Assert.False(receipts["generation-owner"].GetProperty("routes")[0]
+            .GetProperty("requirementSatisfied").GetBoolean());
+        Assert.All(root.GetProperty("callRoutes").EnumerateArray(), route =>
+            Assert.Equal(1, route.GetProperty("roots").GetArrayLength()));
+    }
+
+    [Fact]
     public void Handle_ContractAudit_StateAccessClassifiesFiveRiskBucketsFromOneGraphAndFactStream()
     {
         var projectRoot = Path.Combine(_tempDir, "contract-audit-state-access");

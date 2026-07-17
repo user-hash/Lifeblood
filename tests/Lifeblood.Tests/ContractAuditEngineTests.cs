@@ -451,11 +451,13 @@ public sealed class ContractAuditEngineTests
                     new ContractCallRouteReceipt
                     {
                         RouteId = "a", RootSymbolIds = roots[..20], MaxDepth = 8, MaxMembers = 20,
+                        Roots = roots[..20].Select(RootEvidence).ToArray(),
                         ReachableMemberCount = 1, MembershipCount = 20, Truncated = false,
                     },
                     new ContractCallRouteReceipt
                     {
                         RouteId = "b", RootSymbolIds = roots[20..], MaxDepth = 8, MaxMembers = 20,
+                        Roots = roots[20..].Select(RootEvidence).ToArray(),
                         ReachableMemberCount = 1, MembershipCount = 20, Truncated = false,
                     },
                 },
@@ -469,6 +471,165 @@ public sealed class ContractAuditEngineTests
         Assert.Equal(40, finding.CallRouteMatchCount);
         Assert.Equal(32, finding.CallRouteMatches.Length);
         Assert.True(finding.CallRouteMatchesTruncated);
+    }
+
+    [Fact]
+    public void RouteFact_RequiredOnEveryRoute_ReportsTheMissingRouteAtItsRoot()
+    {
+        const string target = "method:Acme.Transport.Publish()";
+        const string rootA = "method:Acme.Editor.Refresh()";
+        const string rootB = "method:Acme.Player.Refresh()";
+        const string workA = "method:Acme.Editor.Publish()";
+        const string workB = "method:Acme.Player.Publish()";
+        var engine = RouteFactEngine(
+            new RouteFactContract
+            {
+                Id = "publish-everywhere",
+                Policy = RouteFactPolicy.RequiredOnEveryRoute,
+                CallRouteIds = new[] { "editor", "player" },
+                OperationKinds = new[] { OperationFactKind.Call },
+                TargetSymbolIds = new[] { target },
+                Categories = new[] { "Publication" },
+            },
+            RoutePlan(("editor", rootA, new[] { workA }), ("player", rootB, new[] { workB })));
+
+        engine.Observe(Call(
+            "editor-publish",
+            target,
+            "EditorPublisher.cs",
+            12,
+            Argument(OperationValueKind.Parameter),
+            containingSymbolId: workA));
+
+        var report = engine.Complete(Receipt(emitted: 1));
+
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(ContractFindingKind.MissingRequiredRouteFact, finding.Kind);
+        Assert.Equal(rootB, finding.ContainingSymbolId);
+        Assert.Equal("method_Acme.Player.Refresh__.cs", finding.Source.FilePath);
+        Assert.Equal(ConfidenceBand.Proven, finding.Confidence);
+        var coverage = Assert.Single(Assert.Single(report.RuleBreakdown).Contracts);
+        Assert.Equal(2, coverage.EvaluatedOccurrenceCount);
+        Assert.Equal(1, coverage.FindingFreeOccurrenceCount);
+        var receipt = Assert.Single(report.RouteFacts);
+        Assert.Equal(1, receipt.SelectedFactCount);
+        Assert.True(Assert.Single(receipt.Routes, route => route.RouteId == "editor").RequirementSatisfied);
+        Assert.False(Assert.Single(receipt.Routes, route => route.RouteId == "player").RequirementSatisfied);
+    }
+
+    [Fact]
+    public void RouteFact_EquivalentAcrossRoutes_ComparesOnlyDeclaredSemanticDimensions()
+    {
+        const string target = "method:Acme.Kernel.Configure(int)";
+        const string rootA = "method:Acme.Editor.Configure()";
+        const string rootB = "method:Acme.Player.Configure()";
+        const string workA = "method:Acme.Editor.ConfigureCore()";
+        const string workB = "method:Acme.Player.ConfigureCore()";
+        var engine = RouteFactEngine(
+            new RouteFactContract
+            {
+                Id = "configuration-parity",
+                Policy = RouteFactPolicy.EquivalentAcrossRoutes,
+                CallRouteIds = new[] { "editor", "player" },
+                OperationKinds = new[] { OperationFactKind.Call },
+                TargetSymbolIds = new[] { target },
+                SignatureParts = new[]
+                {
+                    RouteFactSignaturePart.Kind,
+                    RouteFactSignaturePart.TargetSymbol,
+                    RouteFactSignaturePart.InputConstants,
+                },
+                Categories = new[] { "Determinism" },
+            },
+            RoutePlan(("editor", rootA, new[] { workA }), ("player", rootB, new[] { workB })));
+
+        engine.Observe(Call(
+            "editor-shared",
+            target,
+            "EditorConfig.cs",
+            10,
+            ArgumentWithConstants(
+                OperationValueKind.Literal,
+                Array.Empty<string>(),
+                Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite)),
+            containingSymbolId: workA));
+        engine.Observe(Call(
+            "player-shared",
+            target,
+            "PlayerConfig.cs",
+            10,
+            ArgumentWithConstants(
+                OperationValueKind.Literal,
+                Array.Empty<string>(),
+                Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite)),
+            containingSymbolId: workB));
+        engine.Observe(Call(
+            "editor-extra",
+            target,
+            "EditorConfig.cs",
+            20,
+            ArgumentWithConstants(
+                OperationValueKind.Literal,
+                Array.Empty<string>(),
+                Constant(OperationConstantOrigin.Literal, "2", OperationNumericClassification.Finite)),
+            containingSymbolId: workA));
+
+        var report = engine.Complete(Receipt(emitted: 3));
+
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(ContractFindingKind.RouteFactParityMismatch, finding.Kind);
+        Assert.Equal(rootB, finding.ContainingSymbolId);
+        Assert.Contains("InputConstants", Assert.Single(finding.Evidence, item => item.Kind == "RouteFactSignature").Summary);
+        var coverage = Assert.Single(Assert.Single(report.RuleBreakdown).Contracts);
+        Assert.Equal(4, coverage.EvaluatedOccurrenceCount);
+        Assert.Equal(3, coverage.FindingFreeOccurrenceCount);
+        var receipt = Assert.Single(report.RouteFacts);
+        Assert.Equal(2, receipt.SignatureCount);
+        Assert.Equal(2, Assert.Single(receipt.Routes, route => route.RouteId == "editor").SignatureCount);
+        Assert.Equal(1, Assert.Single(receipt.Routes, route => route.RouteId == "player").SignatureCount);
+    }
+
+    [Fact]
+    public void RouteFact_AllowedRoutesOnly_ReportsExactTargetBypasses()
+    {
+        const string field = "field:Acme.State.Owner._generation";
+        const string root = "method:Acme.State.Owner.Publish()";
+        const string owner = "method:Acme.State.Owner.Commit()";
+        var engine = RouteFactEngine(
+            new RouteFactContract
+            {
+                Id = "generation-owner",
+                Policy = RouteFactPolicy.AllowedRoutesOnly,
+                CallRouteIds = new[] { "owner" },
+                OperationKinds = new[] { OperationFactKind.MemberWrite },
+                TargetSymbolIds = new[] { field },
+                Categories = new[] { "Ownership" },
+            },
+            RoutePlan(truncated: true, ("owner", root, new[] { owner })));
+
+        engine.Observe(ShapeFact(
+            "owned-write",
+            OperationFactKind.MemberWrite,
+            owner,
+            targetSymbolId: field));
+        engine.Observe(ShapeFact(
+            "bypass-write",
+            OperationFactKind.MemberWrite,
+            "method:Acme.State.Bypass.Commit()",
+            targetSymbolId: field));
+
+        var report = engine.Complete(Receipt(emitted: 2));
+
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(ContractFindingKind.RouteFactOutsideOwner, finding.Kind);
+        Assert.Equal("bypass-write", finding.FactId);
+        Assert.Equal(ConfidenceBand.Advisory, finding.Confidence);
+        var coverage = Assert.Single(Assert.Single(report.RuleBreakdown).Contracts);
+        Assert.Equal(2, coverage.EvaluatedOccurrenceCount);
+        Assert.Equal(1, coverage.FindingFreeOccurrenceCount);
+        var receipt = Assert.Single(report.RouteFacts);
+        Assert.True(receipt.Incomplete);
+        Assert.False(Assert.Single(receipt.Routes).RequirementSatisfied);
     }
 
     [Fact]
@@ -1466,6 +1627,82 @@ public sealed class ContractAuditEngineTests
         Assert.Equal(1, consumed);
         Assert.Equal(1, receipt.EmittedFactCount);
     }
+
+    private static ContractAuditEngine RouteFactEngine(
+        RouteFactContract contract,
+        ContractCallRoutePlan plan)
+        => new(new ContractAuditRequest
+        {
+            Manifest = new ContractManifest
+            {
+                Id = "route-fact-policy",
+                Version = "1",
+                CallRoutes = plan.Routes.Select(receipt => new ContractCallRoute
+                {
+                    Id = receipt.RouteId,
+                    RootSymbolIds = receipt.RootSymbolIds,
+                    MaxDepth = receipt.MaxDepth,
+                    MaxMembers = receipt.MaxMembers,
+                }).ToArray(),
+                RouteFacts = new[] { contract },
+            },
+            CallRoutePlan = plan,
+        });
+
+    private static ContractCallRoutePlan RoutePlan(
+        params (string RouteId, string RootId, string[] MemberIds)[] routes)
+        => RoutePlan(truncated: false, routes);
+
+    private static ContractCallRoutePlan RoutePlan(
+        bool truncated,
+        params (string RouteId, string RootId, string[] MemberIds)[] routes)
+        => new()
+        {
+            Routes = routes.Select(route =>
+            {
+                var members = route.MemberIds
+                    .Prepend(route.RootId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                return new ContractCallRouteReceipt
+                {
+                    RouteId = route.RouteId,
+                    RootSymbolIds = new[] { route.RootId },
+                    Roots = new[] { RootEvidence(route.RootId) },
+                    MaxDepth = 8,
+                    MaxMembers = 64,
+                    ReachableMemberCount = members.Length,
+                    MembershipCount = members.Length,
+                    Truncated = truncated,
+                };
+            }).ToArray(),
+            Matches = routes.SelectMany(route => route.MemberIds
+                .Prepend(route.RootId)
+                .Distinct(StringComparer.Ordinal)
+                .Select(memberId => new ContractCallRouteMatch
+                {
+                    RouteId = route.RouteId,
+                    RootSymbolId = route.RootId,
+                    ContainingSymbolId = memberId,
+                    Distance = string.Equals(memberId, route.RootId, StringComparison.Ordinal) ? 0 : 1,
+                    Placement = string.Equals(memberId, route.RootId, StringComparison.Ordinal)
+                        ? ContractCallRoutePlacement.Direct
+                        : ContractCallRoutePlacement.Transitive,
+                    PathSymbolIds = string.Equals(memberId, route.RootId, StringComparison.Ordinal)
+                        ? new[] { route.RootId }
+                        : new[] { route.RootId, memberId },
+                }))
+                .ToArray(),
+        };
+
+    private static ContractCallRouteRootReceipt RootEvidence(string symbolId)
+        => new()
+        {
+            SymbolId = symbolId,
+            Source = Span(
+                symbolId.Replace(':', '_').Replace('(', '_').Replace(')', '_') + ".cs",
+                1),
+        };
 
     private static ContractAuditReport AuditOneUnsafeGuard()
     {

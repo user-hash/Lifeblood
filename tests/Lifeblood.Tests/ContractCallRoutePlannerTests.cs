@@ -38,6 +38,10 @@ public sealed class ContractCallRoutePlannerTests
         Assert.Equal(3, receipt.ReachableMemberCount);
         Assert.Equal(3, receipt.MembershipCount);
         Assert.False(receipt.Truncated);
+        var root = Assert.Single(receipt.Roots);
+        Assert.Equal(Root, root.SymbolId);
+        Assert.Equal("Root.Run.cs", root.Source.FilePath);
+        Assert.Equal(7, root.Source.Line);
 
         var editor = ContractCallRoutePlanner.Plan(graph, new[] { route }, "Editor");
         Assert.Equal(new[] { Root, EditorOnly, Direct }, editor.Matches.Select(match => match.ContainingSymbolId));
@@ -150,6 +154,82 @@ public sealed class ContractCallRoutePlannerTests
             Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(noSelector)).Message);
     }
 
+    [Fact]
+    public void ManifestValidation_RouteFactsRequireKnownRoutesBoundedTargetsAndPolicySignatures()
+    {
+        ContractManifest Manifest(RouteFactContract routeFact, params string[] routeIds)
+            => new()
+            {
+                Id = "policy",
+                Version = "1",
+                CallRoutes = routeIds.Select(id => new ContractCallRoute
+                {
+                    Id = id,
+                    RootSymbolIds = new[] { $"method:Acme.{id}.Run()" },
+                }).ToArray(),
+                RouteFacts = new[] { routeFact },
+            };
+
+        RouteFactContract Fact(string policy, params string[] routeIds)
+            => new()
+            {
+                Id = "route-fact",
+                Policy = policy,
+                CallRouteIds = routeIds,
+                OperationKinds = new[] { OperationFactKind.Call },
+                TargetSymbolIds = new[] { "method:Acme.Publish()" },
+                Categories = new[] { "Publication" },
+            };
+
+        var unknownPolicy = Fact("MaybeEquivalent", "editor");
+        Assert.Contains(
+            "unknown policy",
+            Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(
+                Manifest(unknownPolicy, "editor"))).Message);
+
+        var unknownRoute = Fact(RouteFactPolicy.RequiredOnEveryRoute, "missing");
+        Assert.Contains(
+            "unknown call routes",
+            Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(
+                Manifest(unknownRoute, "editor"))).Message);
+
+        var oneRouteParity = Fact(RouteFactPolicy.EquivalentAcrossRoutes, "editor");
+        oneRouteParity = new RouteFactContract
+        {
+            Id = oneRouteParity.Id,
+            Policy = oneRouteParity.Policy,
+            CallRouteIds = oneRouteParity.CallRouteIds,
+            OperationKinds = oneRouteParity.OperationKinds,
+            TargetSymbolIds = oneRouteParity.TargetSymbolIds,
+            SignatureParts = new[] { RouteFactSignaturePart.Kind },
+            Categories = oneRouteParity.Categories,
+        };
+        Assert.Contains(
+            "at least two call routes",
+            Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(
+                Manifest(oneRouteParity, "editor"))).Message);
+
+        var missingParitySignature = Fact(RouteFactPolicy.EquivalentAcrossRoutes, "editor", "player");
+        Assert.Contains(
+            "signatureParts exactly when",
+            Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(
+                Manifest(missingParitySignature, "editor", "player"))).Message);
+
+        var unboundedOwner = new RouteFactContract
+        {
+            Id = "route-fact",
+            Policy = RouteFactPolicy.AllowedRoutesOnly,
+            CallRouteIds = new[] { "owner" },
+            OperationKinds = new[] { OperationFactKind.MemberWrite },
+            MatchAnyTarget = true,
+            Categories = new[] { "Ownership" },
+        };
+        Assert.Contains(
+            "requires exact targetSymbolIds",
+            Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(
+                Manifest(unboundedOwner, "owner"))).Message);
+    }
+
     private static ContractCallRoute Route(int maxDepth, int maxMembers)
         => new()
         {
@@ -177,6 +257,8 @@ public sealed class ContractCallRoutePlannerTests
             Id = id,
             Name = id[(id.LastIndexOf('.') + 1)..],
             Kind = SymbolKind.Method,
+            FilePath = id == Root ? "Root.Run.cs" : "Work.cs",
+            Line = 7,
         };
 
     private static Edge Call(string source, string target, params string[] profiles)

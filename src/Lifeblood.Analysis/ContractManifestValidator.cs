@@ -14,6 +14,7 @@ public static class ContractManifestValidator
         RequireText(manifest.Version, "Manifest version");
 
         var routes = manifest.CallRoutes ?? throw new ArgumentException("callRoutes cannot be null.");
+        var routeFacts = manifest.RouteFacts ?? throw new ArgumentException("routeFacts cannot be null.");
         var guards = manifest.OperationGuards ?? throw new ArgumentException("operationGuards cannot be null.");
         var costs = manifest.ExternalApiCosts ?? throw new ArgumentException("externalApiCosts cannot be null.");
         var stateAccesses = manifest.StateAccesses ?? throw new ArgumentException("stateAccesses cannot be null.");
@@ -28,6 +29,10 @@ public static class ContractManifestValidator
         foreach (var route in routes)
             ValidateCallRoute(route, routeIds);
 
+        if (routeFacts.Length > 32)
+            throw new ArgumentException("routeFacts cannot contain more than 32 entries.");
+        foreach (var contract in routeFacts)
+            ValidateRouteFact(contract, ids, routeIds);
         foreach (var contract in guards)
             ValidateGuard(contract, ids);
         foreach (var contract in costs)
@@ -42,6 +47,78 @@ public static class ContractManifestValidator
             ValidateOperationShape(contract, ids);
         foreach (var suppression in suppressions)
             ValidateSuppression(suppression);
+    }
+
+    private static void ValidateRouteFact(
+        RouteFactContract contract,
+        HashSet<string> ids,
+        HashSet<string> routeIds)
+    {
+        ValidateContractIdentity(contract.Id, ids);
+        RequireText(contract.Policy, $"Route fact '{contract.Id}' policy");
+        if (!RouteFactPolicy.All.Contains(contract.Policy, StringComparer.Ordinal))
+            throw new ArgumentException($"Route fact '{contract.Id}' has unknown policy '{contract.Policy}'.");
+        RequireValues(contract.CallRouteIds, $"Route fact '{contract.Id}' callRouteIds");
+        if (contract.CallRouteIds.Distinct(StringComparer.Ordinal).Count() != contract.CallRouteIds.Length)
+            throw new ArgumentException($"Route fact '{contract.Id}' callRouteIds cannot contain duplicates.");
+        var unknownRoutes = contract.CallRouteIds
+            .Where(id => !routeIds.Contains(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownRoutes.Length > 0)
+        {
+            throw new ArgumentException(
+                $"Route fact '{contract.Id}' references unknown call routes [{string.Join(", ", unknownRoutes)}].");
+        }
+        if (string.Equals(contract.Policy, RouteFactPolicy.EquivalentAcrossRoutes, StringComparison.Ordinal)
+            && contract.CallRouteIds.Length < 2)
+        {
+            throw new ArgumentException(
+                $"Route fact '{contract.Id}' EquivalentAcrossRoutes policy requires at least two call routes.");
+        }
+
+        RequireValues(contract.OperationKinds, $"Route fact '{contract.Id}' operationKinds");
+        RequireNonNull(contract.TargetSymbolIds, $"Route fact '{contract.Id}' targetSymbolIds");
+        RequireNoBlankValues(contract.TargetSymbolIds, $"Route fact '{contract.Id}' targetSymbolIds");
+        if (contract.MatchAnyTarget == (contract.TargetSymbolIds.Length > 0))
+        {
+            throw new ArgumentException(
+                $"Route fact '{contract.Id}' must declare exactly one of matchAnyTarget:true or targetSymbolIds.");
+        }
+        if (string.Equals(contract.Policy, RouteFactPolicy.AllowedRoutesOnly, StringComparison.Ordinal)
+            && contract.MatchAnyTarget)
+        {
+            throw new ArgumentException(
+                $"Route fact '{contract.Id}' AllowedRoutesOnly policy requires exact targetSymbolIds to keep the global bypass scan bounded.");
+        }
+
+        RequireNonNull(contract.Operators, $"Route fact '{contract.Id}' operators");
+        RequireNoBlankValues(contract.Operators, $"Route fact '{contract.Id}' operators");
+        RequireNonNull(contract.SignatureParts, $"Route fact '{contract.Id}' signatureParts");
+        RequireNoBlankValues(contract.SignatureParts, $"Route fact '{contract.Id}' signatureParts");
+        var unknownParts = contract.SignatureParts
+            .Where(part => !RouteFactSignaturePart.All.Contains(part, StringComparer.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownParts.Length > 0)
+        {
+            throw new ArgumentException(
+                $"Route fact '{contract.Id}' has unknown signatureParts [{string.Join(", ", unknownParts)}].");
+        }
+        if (contract.SignatureParts.Distinct(StringComparer.Ordinal).Count() != contract.SignatureParts.Length)
+            throw new ArgumentException($"Route fact '{contract.Id}' signatureParts cannot contain duplicates.");
+        var equivalent = string.Equals(
+            contract.Policy,
+            RouteFactPolicy.EquivalentAcrossRoutes,
+            StringComparison.Ordinal);
+        if (equivalent != (contract.SignatureParts.Length > 0))
+        {
+            throw new ArgumentException(
+                $"Route fact '{contract.Id}' must declare signatureParts exactly when policy is EquivalentAcrossRoutes.");
+        }
+
+        RequireValues(contract.Categories, $"Route fact '{contract.Id}' categories");
+        RequireText(contract.Severity, $"Route fact '{contract.Id}' severity");
     }
 
     private static void ValidateCallRoute(ContractCallRoute route, HashSet<string> routeIds)
