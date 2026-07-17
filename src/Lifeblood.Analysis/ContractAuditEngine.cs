@@ -82,7 +82,8 @@ public sealed class ContractAuditEngine
             .Concat(_costContracts.SelectMany(contract => contract.OperationKinds))
             .Concat(_domainContracts.SelectMany(contract => contract.OperationKinds))
             .Concat(_shapeContracts.SelectMany(contract => contract.OperationKinds));
-        var everyContractHasBoundTargets = _shapeContracts.All(contract => contract.TargetSymbolIds.Length > 0);
+        var everyContractHasBoundTargets = _costContracts.All(contract => !contract.MatchAnyTarget)
+            && _shapeContracts.All(contract => contract.TargetSymbolIds.Length > 0);
 
         Query = new OperationFactQuery
         {
@@ -398,12 +399,12 @@ public sealed class ContractAuditEngine
 
     private void EvaluateExternalCosts(OperationFact fact)
     {
-        if (fact.TargetSymbolId == null) return;
-
         foreach (var contract in _costContracts)
         {
             var routeMatches = CallRouteMatches(contract.CallRouteIds, fact.ContainingSymbolId);
-            if (!Contains(contract.TargetSymbolIds, fact.TargetSymbolId)
+            var targetMatches = contract.MatchAnyTarget
+                || (fact.TargetSymbolId != null && Contains(contract.TargetSymbolIds, fact.TargetSymbolId));
+            if (!targetMatches
                 || !Contains(contract.OperationKinds, fact.Kind)
                 || !CostContextMatches(contract, fact, routeMatches.Length > 0))
                 continue;
@@ -421,8 +422,12 @@ public sealed class ContractAuditEngine
                 new()
                 {
                     Kind = "BoundOccurrence",
-                    Summary = $"{fact.Kind} {fact.TargetSymbolId}",
-                    SymbolIds = new[] { fact.TargetSymbolId },
+                    Summary = fact.TargetSymbolId == null
+                        ? fact.Kind
+                        : $"{fact.Kind} {fact.TargetSymbolId}",
+                    SymbolIds = fact.TargetSymbolId == null
+                        ? new[] { fact.ContainingSymbolId }
+                        : new[] { fact.TargetSymbolId },
                     Source = fact.Source,
                 },
             };
@@ -450,7 +455,7 @@ public sealed class ContractAuditEngine
                 Confidence = ConfidenceBand.Proven,
                 Categories = contract.Categories.OrderBy(category => category, StringComparer.Ordinal).ToArray(),
                 Message = contract.Message
-                    ?? $"Cost-annotated API '{fact.TargetSymbolId}' occurs in a manifest-selected execution context.",
+                    ?? $"Cost-annotated operation '{fact.TargetSymbolId ?? fact.Kind}' occurs in a manifest-selected execution context.",
                 Guidance = contract.Guidance,
                 FactId = fact.Id,
                 ContainingSymbolId = fact.ContainingSymbolId,
@@ -953,7 +958,9 @@ public sealed class ContractAuditEngine
             .Concat(_costContracts.Select(contract => new OperationFactSelector
             {
                 IncludeKinds = contract.OperationKinds,
-                TargetSymbolIds = contract.TargetSymbolIds,
+                TargetSymbolIds = contract.MatchAnyTarget
+                    ? Array.Empty<string>()
+                    : contract.TargetSymbolIds,
                 ContainingSymbolIds = RouteContainingSymbolIds(contract.CallRouteIds),
             }))
             .Concat(_domainContracts.Select(contract => new OperationFactSelector

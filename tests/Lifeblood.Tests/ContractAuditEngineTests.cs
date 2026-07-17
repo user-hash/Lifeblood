@@ -214,6 +214,65 @@ public sealed class ContractAuditEngineTests
     }
 
     [Fact]
+    public void ExternalCost_MatchAnyTargetSelectsTargetlessOperationsOnlyInsideTheRoute()
+    {
+        const string root = "method:Acme.Audio.Process()";
+        const string helper = "method:Acme.Audio.ProcessVoice()";
+        const string outside = "method:Acme.Tools.Warmup()";
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { root, helper, outside }.Select(id => new Symbol
+            {
+                Id = id,
+                Name = id,
+                Kind = SymbolKind.Method,
+            }))
+            .AddEdge(new Edge { SourceId = root, TargetId = helper, Kind = EdgeKind.Calls })
+            .Build();
+        var manifest = new ContractManifest
+        {
+            Id = "realtime-policy",
+            Version = "1",
+            CallRoutes = new[]
+            {
+                new ContractCallRoute { Id = "audio", RootSymbolIds = new[] { root } },
+            },
+            ExternalApiCosts = new[]
+            {
+                new ExternalApiCostContract
+                {
+                    Id = "targetless-realtime-operations",
+                    MatchAnyTarget = true,
+                    OperationKinds = new[] { OperationFactKind.ArrayCreation, OperationFactKind.Throw },
+                    Categories = new[] { "RealtimeForbidden" },
+                    CallRouteIds = new[] { "audio" },
+                    AnnotationSource = "Acme realtime policy",
+                },
+            },
+        };
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = manifest,
+            CallRoutePlan = ContractCallRoutePlanner.Plan(graph, manifest.CallRoutes, "Player"),
+        });
+
+        Assert.Null(engine.Query.TargetSymbolIds);
+        Assert.Empty(Assert.Single(engine.Query.Selectors!).TargetSymbolIds);
+        engine.Observe(ShapeFact("outside", OperationFactKind.ArrayCreation, outside));
+        engine.Observe(ShapeFact("array", OperationFactKind.ArrayCreation, helper));
+        engine.Observe(ShapeFact("throw", OperationFactKind.Throw, helper));
+
+        var report = engine.Complete(Receipt(emitted: 3));
+
+        Assert.Equal(2, report.FindingCount);
+        Assert.All(report.Findings, finding =>
+        {
+            Assert.Null(finding.TargetSymbolId);
+            Assert.Equal(ContractCallRoutePlacement.Transitive, Assert.Single(finding.CallRouteMatches).Placement);
+            Assert.Contains(finding.Evidence, evidence => evidence.Kind == "BoundOccurrence");
+        });
+    }
+
+    [Fact]
     public void StableFindingIdentity_DoesNotDependOnEngineInstance()
     {
         var first = AuditOneUnsafeGuard();

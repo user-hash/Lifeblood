@@ -2,6 +2,8 @@
 
 - **INV-CONTRACT-AUDIT-001. Consumer-owned semantic contracts evaluate through one neutral, selector-bounded operation stream and never create another graph or retained compilation.**
 
+External-cost target selection under `INV-CONTRACT-AUDIT-001` is explicit and cannot broaden silently. Each external-cost contract declares exactly one of nonempty `targetSymbolIds[]` or `matchAnyTarget:true`. The explicit wildcard admits targetless/all-target operation kinds for caller-owned allocation, interpolation, throw, await, and lock policy; an empty target array alone is invalid. Call routes and the existing fact selector bound the stream before value/control materialization, and findings retain the target when one exists or the containing method when the operation is targetless. Pinned by `ContractAuditEngineTests.ExternalCost_MatchAnyTargetSelectsTargetlessOperationsOnlyInsideTheRoute`, manifest validation, and the real Roslyn/MCP call-route fixture.
+
 Per-tool semantic contracts: dead-code reachability, invariant
 introspection, authority report, forwarder classification, execute
 robustness, Unity reachability, find-implementations.
