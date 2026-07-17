@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Status: active. Waves 1-3 and Wave 4 groups 1-3 are closed; Wave 5 is
+Status: active. Waves 1-3 and Wave 4 groups 1-5 are closed; Wave 5 is
 underway, and Waves 6-7 remain.
 The 2026-07-16 consolidation audit approved one controlled semantic-contract
 program for 20 of the 29 remaining intake entries. "One program" means one
@@ -589,6 +589,27 @@ later combined retry encountered real DAWG source drift and correctly rejected
 before scanning rather than publishing stale evidence. Intake IDs `014` and
 `021` are archived with the exact receipts.
 
+Group 5 is closed by commit `dd55932`. One additive `routeFacts[]` family
+compares selected facts across existing call routes through three explicit
+policies: required on every route, equivalent across routes over
+consumer-selected signature dimensions, and exact-target allowed-routes-only.
+The planner reuses graph `Calls` membership, the evaluator reuses one operation
+stream, and receipts expose fact/signature counts per route. Truncation fails
+safe to Advisory; no route name, execution lane, determinism meaning, or
+control-law vocabulary is inferred.
+
+Focused route/planner/engine/public-MCP tests passed 35/35. The full Release
+suite passed 1,681 with 11 explicit native-Clang precondition skips (1,692
+total), and the exact alpha.91 package passed private install/CLI/MCP smokes.
+Live DAWG validation first rejected a candidate whose inputs changed during
+construction, then completed an 83.1-second stable Editor analysis. The real
+route audit resolved canonical LFO lane/composite/Lerp symbols, scanned 102
+modules / 4,370 files / 3,004,820 operations, emitted 63 selected facts,
+exercised all three policies, and retained zero additional semantic bases.
+Intake IDs `012`, `023`, `025`, and `026` are archived. Their broader prose,
+test-coverage, runtime-replay, and runtime-threading aspects remain with their
+existing owner lanes instead of being duplicated into this static contract.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 
@@ -741,6 +762,10 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-008` | lifecycle assignment alternatives reuse exact operation shapes and branch-arm control context | extractor/evaluator/handler fixtures; 1,672-case suite; corrected 0.84 DAWG Player receipt classified both current-state writes finding-free with zero additional bases | `6745bb3`, `b166581` |
 | `LB-INTAKE-20260629-009` | declared smoother calls and loop placement reuse the same selector-bounded operation stream | exact/direct-route fixtures; 1,672-case suite; corrected 0.84 DAWG Player receipt classified both `SmootherNext` calls finding-free | `6745bb3`, `b166581` |
 | `LB-INTAKE-20260629-015` | advisory hard-gate policy reuses return values, branch arms, constants, and exact consumer policy | branch/switch/suppression fixtures; 1,672-case suite; corrected 0.84 DAWG Player receipt accepted three returns and identified the one hard-zero branch at line 168 | `6745bb3`, `b166581` |
+| `LB-INTAKE-20260629-012` | mandatory control-law handoffs compose `RequiredOnEveryRoute` with existing value-domain/operation-shape contracts | 35 focused route-fact tests; 1,692-case suite; live DAWG required-route receipt over canonical LFO routes with zero additional bases | `dd55932` |
+| `LB-INTAKE-20260629-023` | caller-authored determinism policy composes exact cost/state selectors with required seed/order facts and consumer-selected route equivalence | synthetic required/parity/owner MCP fixture; complete DAWG route-fact scan; no inferred runtime replay claim | `dd55932` |
+| `LB-INTAKE-20260629-025` | sibling parity is a count-framed multiset of consumer-selected fact dimensions across declared routes | exact/missing/asymmetric/truncated fixtures; live DAWG lane/composite parity evidence | `dd55932` |
+| `LB-INTAKE-20260629-026` | handoff ownership uses exact-target `AllowedRoutesOnly` plus required route handoffs without guessing framework lanes | outside-owner/route-root evidence fixtures; live DAWG owner-only audit returned bounded bypass findings | `dd55932` |
 
 ### 2026-07-16 reliability continuation receipts
 

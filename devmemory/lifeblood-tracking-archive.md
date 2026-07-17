@@ -4081,3 +4081,137 @@ Impact:
 - Callers can express realtime safety policy over exact production routes and
   receive bounded semantic evidence without Lifeblood embedding DAWG, Burst,
   or audio-specific policy.
+
+## LB-INTAKE-20260629-012 - Cross-layer control-law trace
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 5
+Type: Shipped
+Source: DAWG tuning GUI to Burst DSP dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `dd55932`; 35 focused route-fact tests; full 1,692-case
+Release suite; installed alpha.90 DAWG route receipt
+
+Resolution:
+- `routeFacts[].policy:RequiredOnEveryRoute` declares the exact handoff fact
+  that every caller-selected route must carry. Existing `valueDomains[]` and
+  `operationShapes[]` own domain/conversion/control-shape evidence; the route
+  rule does not copy it into a control-law database.
+- Missing routes report root declaration evidence even when no occurrence was
+  emitted. A truncated route or scan downgrades the conclusion to Advisory.
+- Product controls, units, musical ranges, and route meanings stay in the
+  versioned manifest. Prose/invariant conflicts and invariant-to-test coverage
+  remain with active governance entries `004` and `016` rather than being
+  duplicated here.
+
+Verification:
+- Planner, evaluator, validator, and public real-Roslyn/MCP fixtures cover
+  present/missing facts, multiple routes, bad route ids, bounds, truncation,
+  and root evidence.
+- Live DAWG alpha.90 dogfood resolved canonical LFO lane/composite/Lerp
+  symbols. Both routes satisfied the required Lerp contract in a complete
+  102-module / 4,370-file scan with zero additional semantic bases.
+
+Impact:
+- A project can prove that each declared layer/route carries a required
+  semantic handoff while reusing the one graph and one neutral fact stream.
+
+## LB-INTAKE-20260629-023 - Determinism and replay contract audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 5
+Type: Shipped
+Source: DAWG sync/DSP dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `dd55932`; full 1,692-case Release suite; installed
+alpha.90 DAWG route receipt
+
+Resolution:
+- Static replay policy composes existing exact external-cost contracts for
+  clock/random/IO/thread APIs, route-scoped `stateAccesses[]`, required seed or
+  ordering facts, and `EquivalentAcrossRoutes` over consumer-selected inputs,
+  constants, operators, targets, and control context.
+- Lifeblood proves the declared semantic evidence. It does not infer which API
+  is nondeterministic, whether an unordered collection affects output, or that
+  two runtime executions replay identically. Those are consumer/runtime
+  contracts, not universal compiler facts.
+- This composition adds no determinism tool, runtime simulator, fact store,
+  graph relationship, or additional retained compilation.
+
+Verification:
+- Synthetic fixtures exercise required, asymmetric, owner-only, truncated,
+  and exact public MCP projections from one four-fact stream.
+- The live DAWG audit selected control-law/parity dimensions across two
+  concrete routes, returned complete per-route signatures, and retained zero
+  additional semantic bases. Its deliberate signature differences were
+  reported as bounded policy findings rather than hidden as a clean pass.
+
+Impact:
+- Repositories can encode reviewable static determinism preconditions without
+  Lifeblood pretending that static structure is runtime replay proof.
+
+## LB-INTAKE-20260629-025 - Sibling implementation parity audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 5
+Type: Shipped
+Source: DAWG DSP/Burst dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `dd55932`; full 1,692-case Release suite; installed
+alpha.90 DAWG route receipt
+
+Resolution:
+- `EquivalentAcrossRoutes` compares a count-framed multiset of neutral facts
+  across two or more manifest-declared routes. Consumers choose any combination
+  of kind, target, operator, result type, input value/type/constant/source/
+  operator facts, and lexical control kind/source/operator facts.
+- Source spans and raw expressions are excluded from signatures so equivalent
+  implementations are not made unequal by location or spelling. Lifeblood does
+  not suggest sibling pairs from naming patterns or claim equivalence outside
+  the selected dimensions and bounded call graph.
+- Each route receipt exposes fact/signature counts and satisfaction, while each
+  missing signature produces route-local evidence.
+
+Verification:
+- Exact, asymmetric, duplicate-count, ambiguous-concatenation, missing-route,
+  and truncated cases are pinned in engine/planner tests and the public MCP
+  fixture.
+- Live DAWG lane/composite routes produced five distinct selected signatures;
+  both route receipts exposed four local signatures and truthfully failed the
+  deliberately broad parity contract. The scan was complete and used the one
+  retained Editor compilation.
+
+Impact:
+- Sibling algorithms can be compared through explicit, stable semantic
+  dimensions without a duplicate call graph, syntax diff engine, or fact cache.
+
+## LB-INTAKE-20260629-026 - Ownership and handoff contract audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 5
+Type: Shipped
+Source: DAWG sync/audio-thread dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `dd55932`; full 1,692-case Release suite; installed
+alpha.90 DAWG route receipt
+
+Resolution:
+- `AllowedRoutesOnly` reports selected exact-target calls or writes whose
+  containing method is outside every manifest-declared owner route.
+  `RequiredOnEveryRoute` separately expresses the handoff that must exist on
+  each declared side.
+- Exact targets are mandatory for the owner-only policy, keeping the bypass
+  scan bounded and reviewable. Routes name the consumer's main/audio/job/async
+  meaning; Lifeblood does not guess framework lanes from method names,
+  attributes, or vendor vocabulary.
+- Existing state access classification, external-cost policy, and call-route
+  evidence compose in the same manifest and scan. No ownership index, lane
+  classifier, second scanner, or semantic base was introduced.
+
+Verification:
+- Synthetic fixtures prove in-route ownership, outside-owner findings, root
+  evidence, validation, bounds, and Advisory truncation behavior.
+- Live DAWG owner-only policy selected 63 exact Lerp call facts, found four
+  within the declared lane route, and returned bounded outside-owner evidence.
+  The same request scanned 3,004,820 operations, emitted only 63 selected facts,
+  and reported `additionalSemanticBaseCount:0`.
+
+Impact:
+- Handoff bypasses become exact consumer-owned semantic findings without
+  hardcoding execution frameworks or retaining another workspace model.
