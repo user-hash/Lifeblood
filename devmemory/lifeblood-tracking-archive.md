@@ -3862,3 +3862,131 @@ Impact:
 - Projects can attach reviewable external-cost knowledge to exact semantic
   occurrences without Lifeblood baking vendor policy into code or maintaining
   another cost-fact store.
+
+## LB-INTAKE-20260629-008 - Temporal DSP state lifecycle audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 3
+Type: Shipped
+Source: DAWG release-tail and filter-glitch dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `6745bb3`, `b166581`; full 1,672-case release suite;
+pinned DAWG Player lifecycle receipt
+
+Resolution:
+- Extended the existing neutral operation shape with exact branch-arm
+  placement and consumer-declared forbidden constants. A lifecycle manifest
+  selects assignments/calls plus exact state targets, branch sources,
+  operators, constants, and `Condition` / `WhenTrue` / `WhenFalse` placement.
+- Exact threshold policy remains in the existing value-domain family, and
+  downstream reads remain owned by reference/dependant tools. Lifeblood does
+  not infer lifecycle meaning from product names or copy downstream-read facts
+  into a temporal ledger.
+- Per-contract evaluated, occurrence-local finding-free, finding, and
+  suppressed counts come from the evaluator's own counters. A zero-match
+  lifecycle selector is therefore an explicit coverage gap rather than a
+  misleading zero-finding success.
+
+Verification:
+- Extractor, evaluator, validator, and public-handler fixtures cover correct
+  and mismatched reset arms, exact guard sources/operators/constants,
+  suppressions, and zero evaluated occurrences.
+- Release build completed with zero warnings/errors. The full suite passed
+  1,661 tests with 11 native-clang executable-precondition skips (1,672 total),
+  and self-analysis reported 7,631 symbols, 40,232 edges, 12 modules, and 821
+  types.
+- Post-implementation review reproduced and fixed statement branch bodies
+  leaking into value inputs. The corrected adapter keeps statement arms only as
+  nested-occurrence control context while conditional expressions retain real
+  arm values; focused semantic/handler tests passed 110/110.
+- Installed `0.7.13-alpha.0.84+b166581` published shared DAWG Editor+Player
+  generation 2 / `snap_54166c21d03045d08ff30c4a4bd5e805`; later accepted
+  DAWG source changes advanced the closure lease to generation 4 /
+  `snap_34eca30432944f57ab4a97dc2deece62`. A pinned Player
+  scan of `BurstFilterKernel.cs` classified both selected
+  `ControlRateSmootherBurst.Current` assignments: the coefficient-driven
+  progression and the exact true-arm denormal reset were 2/2 finding-free.
+  Input identity was verified, the module compilation was ephemeral, and zero
+  additional semantic bases were retained.
+
+Impact:
+- Projects can review exact lifecycle reset placement through the same bounded
+  operation stream used by other contract families, with one retained semantic
+  authority and no lifecycle-specific analyzer.
+
+## LB-INTAKE-20260629-009 - Control-rate automation smoothing audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 3
+Type: Shipped
+Source: DAWG filter sweep / LFO / pan dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `6745bb3`, `b166581`; full 1,672-case release suite;
+pinned DAWG Player smoother-route receipt
+
+Resolution:
+- The generic operation-shape rule can require caller-declared smoother/source
+  symbols on a selected call, assignment, or sink input and require the exact
+  lexical loop context. Direct alternatives fail the same contract without a
+  smoothing-specific extractor or MCP tool.
+- The result is deliberately lexical and expression-local. It does not claim
+  interprocedural/local-assignment flow; cross-layer routing remains owned by
+  intake `012` rather than being approximated here.
+- Rule observations use the same selector-bounded fact stream and disappear
+  with the request. No smoother database, graph edge, fact cache, or retained
+  semantic base was added.
+
+Verification:
+- Synthetic fixtures cover a declared smoother route and a direct unsmoothed
+  route in the selected loop, plus exact public JSON binding and per-contract
+  coverage counts.
+- On the pinned DAWG publication above, the Player contract selected the exact
+  canonical `BurstFilterKernel.SmootherNext` method inside
+  `BurstFilterKernel.Process`. Both selected calls were inside the per-frame
+  loop and were 2/2 occurrence-local finding-free. The one-file scan observed
+  756 operations but emitted only the eight facts required by the combined
+  temporal manifest, with zero additional retained semantic bases.
+
+Impact:
+- Consumer-authored smoothing policy can prove exact lexical sample-loop routes
+  without Lifeblood hardcoding audio vocabulary or manufacturing a second
+  control-flow authority.
+
+## LB-INTAKE-20260629-015 - Discontinuity-risk lint for branchy math
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 3
+Type: Shipped
+Source: DAWG pop/crackle dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `6745bb3`, `b166581`; full 1,672-case release suite;
+pinned DAWG Player hard-gate receipt
+
+Resolution:
+- Operation shapes now expose return/assignment/conditional inputs, exact
+  branch arms, and caller-declared forbidden constants. A consumer can accept
+  continuous or mode-switch alternatives while reporting only the hard gate it
+  considers risky.
+- Findings are advisory consumer-policy evidence. Lifeblood proves the bound
+  occurrence, returned value, branch condition, canonical symbols, and source
+  span; it does not infer audibility, runtime reachability, or measured output
+  discontinuity.
+- Known intentional gates use the existing exact, versioned suppression model.
+  No discontinuity rule family, signal simulator, or product-specific constant
+  list was introduced.
+
+Verification:
+- Synthetic fixtures cover continuous and hard-zero branch returns, exact arm
+  placement, suppression counts, and zero-match coverage gaps.
+- On the same pinned Player scan, the contract evaluated four returns in
+  `BurstFilterKernel.ProcessSample`. Three mode-switch returns were accepted;
+  exactly one proven `Info` finding identified the `return 0f` non-finite
+  branch at line 168, including `WhenTrue` placement and the `Ic1` / `Ic2`
+  condition symbols. The scan retained zero additional semantic bases.
+- The corrected installed build's cold shared publication used 49.481 seconds
+  of server work / 66.002 seconds client wall time. A following no-fallback
+  incremental no-op used 5.576 seconds of server work / 12.742 seconds client
+  wall time, and the final pinned audit reported zero files changed since
+  analysis.
+
+Impact:
+- Branchy numeric seams can be ranked by exact reviewable project policy on the
+  shared contract stream, without pretending that static syntax proves an
+  audible or runtime defect.

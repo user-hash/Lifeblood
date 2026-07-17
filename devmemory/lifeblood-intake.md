@@ -82,72 +82,6 @@ Fix shape:
 - The command should reject duplicate IDs, keep entries ASCII/Markdown-clean,
   and optionally run `IntakeLedgerTests` after writing.
 
-## LB-INTAKE-20260629-008 - Temporal DSP state lifecycle audit
-
-Type: Feature request
-Priority: High
-Source: DAWG release-tail and filter-glitch dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 10/10 value if shipped
-
-What:
-- The hardest DAWG audio failures lived in temporal state: a note is releasing,
-  a filter/reverb/tail still has energy, then state is reset, retired, reused,
-  or bypassed at a threshold that does not match the audible lifecycle.
-- Lifeblood can find state fields and callers, but it does not yet classify
-  state writes that happen during lifecycle transitions such as attack, release,
-  retire, tail drain, gate close, buffer boundary, or voice reuse.
-
-Why it matters:
-- Pops and crackles often come from discontinuities, not from the oscillator
-  formula itself. Static dependency graphs do not make temporal discontinuity
-  risk visible enough.
-- The tool would be useful for DSP, animation state machines, gameplay cooldowns,
-  pooling systems, and network reconnect/resync flows.
-
-Fix shape:
-- Add a lifecycle-state audit that finds state fields written or zeroed inside
-  branches involving names/contracts like `release`, `retire`, `tail`, `active`,
-  `gate`, `reset`, `dispose`, `reuse`, `pool`, `phase`, or caller-supplied
-  lifecycle markers.
-- Report early-reset risks where the reset threshold differs from the final idle
-  threshold, or where a stateful filter/delay/ring/phase object is cleared while
-  the owning entity can still output non-zero values.
-- Include evidence: state member, write expression, guard condition, lifecycle
-  variable, adjacent thresholds, and downstream read sites.
-
-## LB-INTAKE-20260629-009 - Control-rate automation smoothing audit
-
-Type: Feature request
-Priority: High
-Source: DAWG filter sweep / LFO / pan dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- DAWG glitches exposed the need to prove that fast-moving controls are smoothed
-  or otherwise safe before hitting audio-rate math. Examples include filter
-  cutoff, resonance, pan, gain, LFO depth, drive, delay time, and reverb mix.
-- Existing tools can show the field is referenced, but not whether a control
-  path crosses from UI/control-rate state into sample-rate DSP without a
-  smoother, slew limiter, coefficient interpolation, or bounded direct lane.
-
-Why it matters:
-- Zipper noise, metallic stepping, and deterministic crackle commonly come from
-  discontinuous automation, especially when values feed filters or time-varying
-  delay lines.
-- This should be generic: any project can label "control-rate input" and
-  "sample-rate consumer" contracts without Lifeblood knowing the product.
-
-Fix shape:
-- Add a control-rate audit that traces fields/parameters from UI, automation,
-  LFO, MIDI, network, or serialized state into per-sample loops.
-- Detect missing smoothing on caller-supplied sensitive consumers: filter
-  coefficient update, pan/gain multiply, delay read position, oscillator phase
-  increment, wavetable index, saturation drive, and custom method IDs.
-- Return the path, detected smoother/interpolator if present, direct writes if
-  absent, and whether the consumer is inside a loop identified as sample-rate.
-
 ## LB-INTAKE-20260629-012 - Cross-layer control-law trace
 
 Type: Feature request
@@ -253,36 +187,6 @@ Fix shape:
   methods, thread callbacks, and user-supplied realtime method markers.
 - Return evidence plus a risk bucket: readonly table, initialized-once cache,
   runtime mutable, shared scratch, or unknown.
-
-## LB-INTAKE-20260629-015 - Discontinuity-risk lint for branchy math
-
-Type: Feature request
-Priority: Medium
-Source: DAWG pop/crackle dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 8/10 value if shipped
-
-What:
-- DAWG's audible bugs often came from branch boundaries: different equations on
-  either side of a threshold, hard zeroing, bypass toggles, retire thresholds,
-  denormal floors, min/max gates, or fallback paths that introduce a sample
-  discontinuity.
-
-Why it matters:
-- A static discontinuity-risk pass would not prove an audible bug, but it would
-  put the riskiest math seams in front of the agent before random code reading.
-- The concept applies to any continuous system: DSP, physics, animation,
-  interpolation, camera motion, and control loops.
-
-Fix shape:
-- Add an advisory lint over numeric branches inside caller-selected hot methods
-  or loops.
-- Flag branches that return constants on one side and continuous values on the
-  other, reset state, switch filters/modes, bypass processing, clamp abruptly, or
-  compare against multiple nearby thresholds.
-- Include the branch condition, returned/assigned expressions, affected state,
-  and nearby downstream consumers. Let callers suppress known intentional hard
-  gates through comments or a manifest.
 
 ## LB-INTAKE-20260629-016 - Generic "contract coverage" score for critical paths
 

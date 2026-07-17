@@ -2,7 +2,8 @@
 
 Date: 2026-07-15
 
-Status: active. Waves 1-2 are closed; Waves 3-7 remain.
+Status: active. Waves 1-3 and Wave 4 groups 1-3 are closed; Wave 5 is
+underway, and Waves 6-7 remain.
 The 2026-07-16 consolidation audit approved one controlled semantic-contract
 program for 20 of the 29 remaining intake entries. "One program" means one
 fact authority, one bounded public surface, and natural tested commits; it does
@@ -13,7 +14,8 @@ Lifeblood unsafe as a release gate. Routing never counts as implementation;
 only the receipts below close work.
 
 Scope: `D:/Projekti/Lifeblood`, dogfooded read-only against
-`D:/Projekti/DAWG`. No push, tag, NuGet publication, or release cut is part of
+`D:/Projekti/DAWG`. Branch pushes were later explicitly authorized and are
+recorded as they succeed. No tag, NuGet publication, or release cut is part of
 this goal.
 
 ## Goal
@@ -473,9 +475,11 @@ shift facts with zero findings and zero additional bases in 18 ms.
 
 Group 3 implementation is repository-verified at the same `operation-shape`
 boundary. The neutral C# record now names a nested occurrence's exact
-`Condition` / `WhenTrue` / `WhenFalse` arm and exposes conditional arms as
-ordinary inputs. Shape policy can select those arms and forbid exact
-consumer-declared constants; existing source-symbol and loop constraints prove
+`Condition` / `WhenTrue` / `WhenFalse` arm and exposes value-producing
+conditional-expression arms as ordinary inputs. Statement branch bodies remain
+control structure rather than being misclassified as values. Shape policy can
+select those arms and forbid exact consumer-declared constants; existing
+source-symbol and loop constraints prove
 declared smoother routes, while existing value-domain boundary policy remains
 the sole exact threshold authority. Rule breakdowns derive per-contract
 evaluated, occurrence-local finding-free, finding, and suppressed counts from
@@ -486,9 +490,39 @@ cover safe and mismatched lifecycle reset arms, smoothed versus direct sample-
 loop inputs, hard-zero branch returns, suppression counts, and a zero-match
 contract. Release build is warning-free; the full suite passes 1,661 with 11
 native-clang environment skips (1,672 total); self-analysis reports 7,631
-symbols, 40,232 edges, 12 modules, and 821 types. Intake closure remains
-pending pinned DAWG lifecycle/smoothing/discontinuity receipts from the
-installed build.
+symbols, 40,232 edges, 12 modules, and 821 types. A post-implementation review
+then reproduced a real adapter defect: statement `if` / `else` blocks were
+incorrectly exposed as `WhenTrue` / `WhenFalse` value inputs, leaking their
+body symbols and operators into value-policy evidence. Commit `b166581` fixes
+the root projection contract while preserving exact nested-occurrence arm
+placement in control context; focused semantic/handler tests pass 110/110 and
+the same full suite remains green.
+
+Installed build `0.7.13-alpha.0.84+b166581` then replaced the older global
+tools. One fresh shared DAWG Editor+Player publication used 49.481 seconds of
+server work / 66.002 seconds client wall time and published generation 2 /
+`snap_54166c21d03045d08ff30c4a4bd5e805`: 89,766 symbols, 350,416 edges,
+101 modules, 5,662 types, 4,395 files, 146 cycles, and zero configured graph
+violations. The catalog reported `semanticBaseCount:1` and
+`additionalSemanticBaseCount:0` with live drift status `current`; a following
+no-fallback incremental no-op reused that lease in 5.576 seconds of server work
+/ 12.742 seconds client wall time. Concurrent DAWG source commits were then
+accepted through the incremental path, advancing the current graph to
+generation 4 / `snap_34eca30432944f57ab4a97dc2deece62` with 89,766 symbols
+and 350,418 edges while retaining the same single semantic base.
+
+A corrected-build pinned Player audit on generation 4 compiled only
+`Nebulae.BeatGrid.Audio.DSP.Burst`
+ephemerally and scanned only `BurstFilterKernel.cs`. Its single eight-fact
+operation stream evaluated all three consumer contracts: the exact lifecycle
+reset/progress alternatives were 2/2 occurrence-local finding-free, the two
+declared `SmootherNext` calls were both inside the selected sample loop, and
+the discontinuity policy accepted three mode-switch returns while reporting
+the one hard-zero non-finite branch at line 168. The scan verified input
+identity at admission, retained zero additional semantic bases, and left the
+generation/snapshot unchanged with zero files changed since analysis.
+Group 3 and intake IDs `008`, `009`, and `015` are therefore closed without a
+temporal analyzer, downstream-read copy, or retained fact authority.
 
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
@@ -639,6 +673,9 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-022` | literal/named/default/folded provenance and consumer-toleranced near-equal grouping reuse the same value record | provenance/tolerance/validation fixtures; 1,669-case full suite; pinned DAWG raw `69`/`12` evidence on the accepted pitch conversion | `c3e8ce0`, `ef3a126` |
 | `LB-INTAKE-20260629-001` | one target-filtered operation-fact authority plus stateless `operation-guard` policy replaces bespoke control-math walkers | exact/negative/suppression/profile/MCP fixtures; 1,669-case suite; pinned DAWG `Mathf.Pow` literal-base pass and binary-exponent advisory finding with zero additional bases | `fb035ff`, `8865ccd`, `40c94ca`, `44f507e`, `2d78b9a` |
 | `LB-INTAKE-20260714-036` | consumer-authored external symbol costs join the same fact stream by canonical ID and selected lexical/owner context | cost/context/bounds/MCP fixtures; 1,669-case suite; pinned DAWG bootstrap cache receipt with 21 proven `FunctionPointer.Invoke` occurrences and zero additional bases | `fb035ff`, `8865ccd`, `40c94ca`, `44f507e` |
+| `LB-INTAKE-20260629-008` | lifecycle assignment alternatives reuse exact operation shapes and branch-arm control context | extractor/evaluator/handler fixtures; 1,672-case suite; corrected 0.84 DAWG Player receipt classified both current-state writes finding-free with zero additional bases | `6745bb3`, `b166581` |
+| `LB-INTAKE-20260629-009` | declared smoother calls and loop placement reuse the same selector-bounded operation stream | exact/direct-route fixtures; 1,672-case suite; corrected 0.84 DAWG Player receipt classified both `SmootherNext` calls finding-free | `6745bb3`, `b166581` |
+| `LB-INTAKE-20260629-015` | advisory hard-gate policy reuses return values, branch arms, constants, and exact consumer policy | branch/switch/suppression fixtures; 1,672-case suite; corrected 0.84 DAWG Player receipt accepted three returns and identified the one hard-zero branch at line 168 | `6745bb3`, `b166581` |
 
 ### 2026-07-16 reliability continuation receipts
 

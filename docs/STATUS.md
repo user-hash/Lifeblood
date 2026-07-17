@@ -91,8 +91,21 @@ pinned `filePaths` request then checked 10 current C# changes across five owning
 modules with 10 successes, zero diagnostics, and no stale refresh. This receipt
 validates bounded compile-check only; diagnostic ownership and evidence drift
 still await a frozen DAWG window. It used the newly built private stdio server
-so the installed 0.70 shared daemon and other live DAWG clients were not
-restarted.
+so the then-installed 0.70 shared daemon and other live DAWG clients were not
+restarted. The installed global tools now exactly match
+`0.7.13-alpha.0.84+b16658139124b498dc50c27d0535bdd7eb504f38`. After the
+intentional daemon replacement, one cold shared Editor+Player publication used
+49.481 seconds of server work / 66.002 seconds client wall time and published
+generation 2 / `snap_54166c21d03045d08ff30c4a4bd5e805`: 89,766 symbols,
+350,416 edges, 101 modules, 5,662 types, 4,395 files, 146 cycles, and zero
+configured violations. Live drift was `current`; the snapshot catalog reported
+exactly one semantic base and zero additional semantic bases. A following
+no-fallback incremental no-op reused that generation in 5.576 seconds of server
+work / 12.742 seconds client wall time with zero changed files. Later concurrent
+DAWG source commits advanced the closure sequence to generation 4 /
+`snap_34eca30432944f57ab4a97dc2deece62` through a 9.239-second accepted
+increment. That receipt reports 89,766 symbols / 350,418 edges, while the
+catalog retained only one semantic base.
 
 Shared protocol v2 keeps one persistent connection and lease per proxy, retains
 the daemon-owned latest base after the last disconnect unless an operator opts
@@ -170,6 +183,24 @@ server input-contract authority instead of empty or hand-picked `args:{}`
 schemas; snapshot-read preconditions are inherited once, analyze keeps only the
 current-project path injection special case, and contract audit keeps only the
 `manifestJson` to `manifest` translation (`INV-MCP-UNITY-BRIDGE-001`).
+
+The installed-build temporal dogfood was pinned at execution to generation 4 /
+`snap_34eca30432944f57ab4a97dc2deece62`. The post-implementation review found
+and corrected one adapter defect before closure: statement `if` / `else` blocks
+were being projected as value inputs. Only value-producing conditional
+expressions now expose arm values; nested statement occurrences keep exact arm
+placement solely through their control context.
+
+One Player-profile scan compiled only the selected Burst module ephemerally,
+scanned one file, observed 756 operations, emitted eight selected facts, and
+kept `additionalSemanticBaseCount:0`. The lifecycle contract classified both
+the smoother progression and exact true-arm denormal reset as finding-free;
+the smoothing contract classified both `SmootherNext` calls in the sample loop
+as finding-free; the discontinuity contract accepted three mode-switch returns
+and returned one proven advisory finding for the hard-zero non-finite branch at
+`BurstFilterKernel.cs:168`. These are lexical consumer-policy receipts: they do
+not infer interprocedural/local-assignment flow, downstream audibility, or
+runtime cost.
 
 ## Components
 
