@@ -8,6 +8,28 @@ Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOP
 
 ## Write-side (compiler-as-a-service)
 
+### Contract Audit Route Facts
+
+Use manifest `routeFacts[]` when several declared `callRoutes[]` must carry the
+same semantic handoff, must expose equivalent selected operation shapes, or are
+the only routes allowed to touch an exact target:
+
+- `RequiredOnEveryRoute` reports each selected route with no matching fact.
+- `EquivalentAcrossRoutes` compares multisets of consumer-selected signature
+  dimensions such as target, input kinds/types/constants/sources/operators, and
+  lexical control context. It does not claim broader behavioral equivalence.
+- `AllowedRoutesOnly` reports matching calls or writes outside the declared
+  owner routes. It requires exact target ids so the global bypass check remains
+  bounded and reviewable.
+
+Each receipt exposes selected fact/signature totals and per-route satisfaction.
+Missing/parity/owner conclusions become Advisory when the fact scan or a route
+is truncated. Put related external-cost, state-access, operation-shape, and
+route-fact contracts in one manifest so they share the route plan, fact scan,
+and any ephemeral secondary-profile compilation. This family does not infer
+thread/audio/job lanes; the manifest names the meaningful routes and signature
+dimensions.
+
 ### Contract Audit State Access
 
 Use manifest `stateAccesses[]` to classify state touched by bounded

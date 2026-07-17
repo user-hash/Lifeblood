@@ -9,6 +9,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Required, equivalent, and exclusively owned facts across call routes.**
+  Contract manifests can evaluate one selected operation-fact stream through
+  `routeFacts[]` using `RequiredOnEveryRoute`, `EquivalentAcrossRoutes`, or
+  `AllowedRoutesOnly`. Consumers choose exact call routes, operation/target
+  selectors, and parity dimensions; Lifeblood returns per-route fact/signature
+  counts plus missing, asymmetric, or outside-owner evidence. Truncated routes
+  or scans downgrade absence/parity conclusions instead of manufacturing proof.
+  This closes control-law, determinism, sibling-parity, and handoff-policy
+  requests without a new tool, graph edge, scanner, cache, inferred execution
+  lane, or retained semantic base. (`INV-CONTRACT-AUDIT-001`.)
+
 - **Profile-aware contract call routes.** Consumer manifests may declare bounded
   method roots in `callRoutes[]` and select them from
   `externalApiCosts[].callRouteIds`. Lifeblood derives deterministic shortest
