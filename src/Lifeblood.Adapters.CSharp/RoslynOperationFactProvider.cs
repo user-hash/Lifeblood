@@ -400,8 +400,13 @@ internal sealed class RoslynOperationFactProvider
 
             case IConditionalOperation conditional:
                 AddInput(inputs, OperationInputRole.Condition, conditional.Condition, symbolIds);
-                AddInput(inputs, OperationInputRole.WhenTrue, conditional.WhenTrue, symbolIds);
-                AddInput(inputs, OperationInputRole.WhenFalse, conditional.WhenFalse, symbolIds);
+                // Statement arms are control structure. Only a value-producing
+                // conditional has a result type and therefore value inputs.
+                if (conditional.Type != null)
+                {
+                    AddInput(inputs, OperationInputRole.WhenTrue, conditional.WhenTrue, symbolIds);
+                    AddInput(inputs, OperationInputRole.WhenFalse, conditional.WhenFalse, symbolIds);
+                }
                 break;
 
             case ILoopOperation loop:
