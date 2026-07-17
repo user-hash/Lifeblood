@@ -13,11 +13,30 @@ public sealed class ContractManifest
     public required string Id { get; init; }
     public required string Version { get; init; }
     public string? Description { get; init; }
+    public ContractCallRoute[] CallRoutes { get; init; } = Array.Empty<ContractCallRoute>();
     public OperationGuardContract[] OperationGuards { get; init; } = Array.Empty<OperationGuardContract>();
     public ExternalApiCostContract[] ExternalApiCosts { get; init; } = Array.Empty<ExternalApiCostContract>();
     public ValueDomainContract[] ValueDomains { get; init; } = Array.Empty<ValueDomainContract>();
     public OperationShapeContract[] OperationShapes { get; init; } = Array.Empty<OperationShapeContract>();
     public ContractSuppression[] Suppressions { get; init; } = Array.Empty<ContractSuppression>();
+}
+
+/// <summary>
+/// Consumer-owned bounded execution scope. Analysis expands exact method roots
+/// through semantic call edges; operation extraction then scans only methods in
+/// the derived route. The plan is request-local and never becomes another graph.
+/// </summary>
+public sealed class ContractCallRoute
+{
+    public const int DefaultMaxDepth = 8;
+    public const int DefaultMaxMembers = 4_096;
+    public const int MaximumDepth = 32;
+    public const int MaximumMembers = 50_000;
+
+    public required string Id { get; init; }
+    public string[] RootSymbolIds { get; init; } = Array.Empty<string>();
+    public int MaxDepth { get; init; } = DefaultMaxDepth;
+    public int MaxMembers { get; init; } = DefaultMaxMembers;
 }
 
 /// <summary>
@@ -58,6 +77,7 @@ public sealed class ExternalApiCostContract
     public bool ReportEveryOccurrence { get; init; }
     public string[] ControlContextKinds { get; init; } = Array.Empty<string>();
     public string[] ContainingSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] CallRouteIds { get; init; } = Array.Empty<string>();
     public required string AnnotationSource { get; init; }
     public string? AppliesToVersion { get; init; }
     public string Severity { get; init; } = ContractSeverity.Warning;
@@ -285,6 +305,7 @@ public sealed class ContractAuditRequest
     public string[]? FilePaths { get; init; }
     public string[]? ContainingSymbolIds { get; init; }
     public string[]? IncludeRuleIds { get; init; }
+    public ContractCallRoutePlan? CallRoutePlan { get; init; }
     public int MaxFacts { get; init; } = 50_000;
     public int MaxFindings { get; init; } = 200;
     public int MaxEvidencePerFinding { get; init; } = 8;
@@ -306,6 +327,7 @@ public sealed class ContractAuditReport
     public required int SuppressedFindingCount { get; init; }
     public required bool Truncated { get; init; }
     public ContractRuleBreakdown[] RuleBreakdown { get; init; } = Array.Empty<ContractRuleBreakdown>();
+    public ContractCallRouteReceipt[] CallRoutes { get; init; } = Array.Empty<ContractCallRouteReceipt>();
     public ContractFinding[] Findings { get; init; } = Array.Empty<ContractFinding>();
     public string[] Limitations { get; init; } = Array.Empty<string>();
 }
@@ -348,7 +370,50 @@ public sealed class ContractFinding
     public required string ContainingSymbolId { get; init; }
     public string? TargetSymbolId { get; init; }
     public required OperationSourceSpan Source { get; init; }
+    public ContractCallRouteMatch[] CallRouteMatches { get; init; } = Array.Empty<ContractCallRouteMatch>();
     public ContractEvidence[] Evidence { get; init; } = Array.Empty<ContractEvidence>();
+}
+
+/// <summary>Request-local call-route expansion consumed by contract rules.</summary>
+public sealed class ContractCallRoutePlan
+{
+    public static ContractCallRoutePlan Empty { get; } = new();
+
+    public ContractCallRouteReceipt[] Routes { get; init; } = Array.Empty<ContractCallRouteReceipt>();
+    public ContractCallRouteMatch[] Matches { get; init; } = Array.Empty<ContractCallRouteMatch>();
+}
+
+/// <summary>Bounded route expansion receipt; member identities stay in the plan.</summary>
+public sealed class ContractCallRouteReceipt
+{
+    public required string RouteId { get; init; }
+    public string[] RootSymbolIds { get; init; } = Array.Empty<string>();
+    public required int MaxDepth { get; init; }
+    public required int MaxMembers { get; init; }
+    public required int ReachableMemberCount { get; init; }
+    public required int MembershipCount { get; init; }
+    public required bool Truncated { get; init; }
+}
+
+/// <summary>
+/// Exact shortest call route from one declared root to a containing method.
+/// Distance zero means the selected operation occurs directly in the root;
+/// positive distance means it occurs in a transitive callee.
+/// </summary>
+public sealed class ContractCallRouteMatch
+{
+    public required string RouteId { get; init; }
+    public required string RootSymbolId { get; init; }
+    public required string ContainingSymbolId { get; init; }
+    public required int Distance { get; init; }
+    public required string Placement { get; init; }
+    public string[] PathSymbolIds { get; init; } = Array.Empty<string>();
+}
+
+public static class ContractCallRoutePlacement
+{
+    public const string Direct = "Direct";
+    public const string Transitive = "Transitive";
 }
 
 public sealed class ContractEvidence

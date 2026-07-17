@@ -23,6 +23,9 @@ public sealed class ContractAuditEngine
     private readonly ValueDomainContract[] _domainContracts;
     private readonly OperationShapeContract[] _shapeContracts;
     private readonly ContractSuppression[] _suppressions;
+    private readonly ContractCallRouteReceipt[] _callRouteReceipts;
+    private readonly ContractCallRouteMatch[] _callRouteMatches;
+    private readonly IReadOnlyDictionary<string, ContractCallRouteMatch[]> _callRouteMatchesByContaining;
     private readonly SortedSet<ContractFinding> _findings = new(FindingComparer.Instance);
     private readonly Dictionary<string, RuleCounts> _counts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ContractCounts> _contractCounts = new(StringComparer.Ordinal);
@@ -50,6 +53,15 @@ public sealed class ContractAuditEngine
             && _shapeContracts.Length == 0)
             throw new ArgumentException("The contract audit request did not select any manifest contracts.", nameof(request));
         _suppressions = _manifest.Suppressions ?? Array.Empty<ContractSuppression>();
+        (_callRouteReceipts, _callRouteMatches) = SelectCallRoutePlan(
+            request.CallRoutePlan,
+            _costContracts.SelectMany(contract => contract.CallRouteIds));
+        _callRouteMatchesByContaining = _callRouteMatches
+            .GroupBy(match => match.ContainingSymbolId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.ToArray(),
+                StringComparer.Ordinal);
         _findingLimit = request.Summarize
             ? Math.Min(SummaryFindingLimit, Clamp(request.MaxFindings, 1, MaximumFindings))
             : Clamp(request.MaxFindings, 1, MaximumFindings);
@@ -163,6 +175,7 @@ public sealed class ContractAuditEngine
                     }).ToArray(),
                 };
             }).ToArray(),
+            CallRoutes = _callRouteReceipts,
             Findings = _findings.ToArray(),
             Limitations = BuildLimitations(receipt),
         };
@@ -389,9 +402,10 @@ public sealed class ContractAuditEngine
 
         foreach (var contract in _costContracts)
         {
+            var routeMatches = CallRouteMatches(contract.CallRouteIds, fact.ContainingSymbolId);
             if (!Contains(contract.TargetSymbolIds, fact.TargetSymbolId)
                 || !Contains(contract.OperationKinds, fact.Kind)
-                || !CostContextMatches(contract, fact))
+                || !CostContextMatches(contract, fact, routeMatches.Length > 0))
                 continue;
             RecordEvaluation(contract.Id, findingFree: false);
 
@@ -418,6 +432,13 @@ public sealed class ContractAuditEngine
                 Summary = DescribeControl(context),
                 Source = context.Source,
             }));
+            evidence.AddRange(routeMatches.Select(match => new ContractEvidence
+            {
+                Kind = "CallRoute",
+                Summary = $"{match.RouteId}; {match.Placement}; distance={match.Distance}",
+                SymbolIds = match.PathSymbolIds,
+                Source = fact.Source,
+            }));
 
             AddFinding(new ContractFinding
             {
@@ -435,6 +456,7 @@ public sealed class ContractAuditEngine
                 ContainingSymbolId = fact.ContainingSymbolId,
                 TargetSymbolId = fact.TargetSymbolId,
                 Source = fact.Source,
+                CallRouteMatches = routeMatches,
                 Evidence = BoundEvidence(evidence),
             });
         }
@@ -734,10 +756,31 @@ public sealed class ContractAuditEngine
             context.ConditionValue.SourceSymbolIds.Contains(id, StringComparer.Ordinal));
     }
 
-    private static bool CostContextMatches(ExternalApiCostContract contract, OperationFact fact)
-        => contract.ReportEveryOccurrence
+    private static bool CostContextMatches(
+        ExternalApiCostContract contract,
+        OperationFact fact,
+        bool hasCallRouteMatch)
+    {
+        if (contract.CallRouteIds.Length > 0 && !hasCallRouteMatch) return false;
+
+        var hasLocalSelector = contract.ReportEveryOccurrence
+            || contract.ContainingSymbolIds.Length > 0
+            || contract.ControlContextKinds.Length > 0;
+        if (!hasLocalSelector) return true;
+        return contract.ReportEveryOccurrence
             || Contains(contract.ContainingSymbolIds, fact.ContainingSymbolId)
             || fact.ControlContexts.Any(context => Contains(contract.ControlContextKinds, context.Kind));
+    }
+
+    private ContractCallRouteMatch[] CallRouteMatches(string[] routeIds, string containingSymbolId)
+    {
+        if (routeIds.Length == 0) return Array.Empty<ContractCallRouteMatch>();
+        if (!_callRouteMatchesByContaining.TryGetValue(containingSymbolId, out var matches))
+            return Array.Empty<ContractCallRouteMatch>();
+        return matches
+            .Where(match => Contains(routeIds, match.RouteId))
+            .ToArray();
+    }
 
     private void AddFinding(ContractFinding finding)
     {
@@ -829,6 +872,17 @@ public sealed class ContractAuditEngine
                 "External API cost categories are consumer-authored policy annotations, not runtime measurements; " +
                 "Lifeblood proves the bound occurrence and selected lexical context.");
         }
+        if (_callRouteReceipts.Length > 0)
+        {
+            limitations.Add(
+                "Call routes follow profile-applicable semantic Calls edges to a manifest-owned depth/member bound. " +
+                "Reflection, dynamic dispatch, delegates, and string-named invocation do not extend route membership.");
+            if (_callRouteReceipts.Any(route => route.Truncated))
+            {
+                limitations.Add(
+                    "At least one call route reached its member bound; findings cover only retained route membership.");
+            }
+        }
         if (_domainContracts.Length > 0)
         {
             limitations.Add(
@@ -900,6 +954,7 @@ public sealed class ContractAuditEngine
             {
                 IncludeKinds = contract.OperationKinds,
                 TargetSymbolIds = contract.TargetSymbolIds,
+                ContainingSymbolIds = RouteContainingSymbolIds(contract.CallRouteIds),
             }))
             .Concat(_domainContracts.Select(contract => new OperationFactSelector
             {
@@ -914,6 +969,58 @@ public sealed class ContractAuditEngine
                 Operators = contract.Operators,
             }))
             .ToArray();
+
+    private string[] RouteContainingSymbolIds(string[] routeIds)
+        => routeIds.Length == 0
+            ? Array.Empty<string>()
+            : _callRouteMatches
+                .Where(match => Contains(routeIds, match.RouteId))
+                .Select(match => match.ContainingSymbolId)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+
+    private static (ContractCallRouteReceipt[] Receipts, ContractCallRouteMatch[] Matches) SelectCallRoutePlan(
+        ContractCallRoutePlan? plan,
+        IEnumerable<string> referencedRouteIds)
+    {
+        var required = referencedRouteIds
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+        if (required.Length == 0)
+            return (Array.Empty<ContractCallRouteReceipt>(), Array.Empty<ContractCallRouteMatch>());
+        if (plan == null)
+        {
+            throw new ArgumentException(
+                "A call-route plan is required when selected contracts reference call routes.");
+        }
+
+        var duplicateReceipts = plan.Routes
+            .GroupBy(receipt => receipt.RouteId, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicateReceipts != null)
+            throw new ArgumentException($"Call-route plan contains duplicate receipt '{duplicateReceipts.Key}'.");
+
+        var receipts = plan.Routes
+            .Where(receipt => required.Contains(receipt.RouteId, StringComparer.Ordinal))
+            .OrderBy(receipt => receipt.RouteId, StringComparer.Ordinal)
+            .ToArray();
+        var missing = required
+            .Where(id => receipts.All(receipt => !string.Equals(receipt.RouteId, id, StringComparison.Ordinal)))
+            .ToArray();
+        if (missing.Length > 0)
+            throw new ArgumentException("Call-route plan is missing routes: " + string.Join(", ", missing));
+
+        var matches = plan.Matches
+            .Where(match => required.Contains(match.RouteId, StringComparer.Ordinal))
+            .OrderBy(match => match.RouteId, StringComparer.Ordinal)
+            .ThenBy(match => match.RootSymbolId, StringComparer.Ordinal)
+            .ThenBy(match => match.Distance)
+            .ThenBy(match => match.ContainingSymbolId, StringComparer.Ordinal)
+            .ToArray();
+        return (receipts, matches);
+    }
 
     private static string DescribeValue(OperationValueFact value)
     {

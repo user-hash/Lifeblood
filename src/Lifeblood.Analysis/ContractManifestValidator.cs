@@ -3,9 +3,9 @@ using Lifeblood.Domain.Results;
 namespace Lifeblood.Analysis;
 
 /// <summary>Validates inert consumer policy before any fact scan begins.</summary>
-internal static class ContractManifestValidator
+public static class ContractManifestValidator
 {
-    internal static void Validate(ContractManifest manifest)
+    public static void Validate(ContractManifest manifest)
     {
         if (!string.Equals(manifest.SchemaVersion, ContractManifest.CurrentSchemaVersion, StringComparison.Ordinal))
             throw new ArgumentException(
@@ -13,23 +13,57 @@ internal static class ContractManifestValidator
         RequireText(manifest.Id, "Manifest id");
         RequireText(manifest.Version, "Manifest version");
 
+        var routes = manifest.CallRoutes ?? throw new ArgumentException("callRoutes cannot be null.");
         var guards = manifest.OperationGuards ?? throw new ArgumentException("operationGuards cannot be null.");
         var costs = manifest.ExternalApiCosts ?? throw new ArgumentException("externalApiCosts cannot be null.");
         var domains = manifest.ValueDomains ?? throw new ArgumentException("valueDomains cannot be null.");
         var shapes = manifest.OperationShapes ?? throw new ArgumentException("operationShapes cannot be null.");
         var suppressions = manifest.Suppressions ?? throw new ArgumentException("suppressions cannot be null.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
+        var routeIds = new HashSet<string>(StringComparer.Ordinal);
+
+        if (routes.Length > 32)
+            throw new ArgumentException("callRoutes cannot contain more than 32 entries.");
+        foreach (var route in routes)
+            ValidateCallRoute(route, routeIds);
 
         foreach (var contract in guards)
             ValidateGuard(contract, ids);
         foreach (var contract in costs)
-            ValidateCost(contract, ids);
+            ValidateCost(contract, ids, routeIds);
         foreach (var contract in domains)
             ValidateValueDomain(contract, ids);
         foreach (var contract in shapes)
             ValidateOperationShape(contract, ids);
         foreach (var suppression in suppressions)
             ValidateSuppression(suppression);
+    }
+
+    private static void ValidateCallRoute(ContractCallRoute route, HashSet<string> routeIds)
+    {
+        RequireText(route.Id, "Call route id");
+        if (!routeIds.Add(route.Id))
+            throw new ArgumentException($"Duplicate call route id '{route.Id}'.");
+        RequireValues(route.RootSymbolIds, $"Call route '{route.Id}' rootSymbolIds");
+        if (route.RootSymbolIds.Length > 32)
+            throw new ArgumentException($"Call route '{route.Id}' cannot contain more than 32 roots.");
+        if (route.RootSymbolIds.Distinct(StringComparer.Ordinal).Count() != route.RootSymbolIds.Length)
+            throw new ArgumentException($"Call route '{route.Id}' rootSymbolIds cannot contain duplicates.");
+        if (route.MaxDepth < 0 || route.MaxDepth > ContractCallRoute.MaximumDepth)
+        {
+            throw new ArgumentException(
+                $"Call route '{route.Id}' maxDepth must be between 0 and {ContractCallRoute.MaximumDepth}.");
+        }
+        if (route.MaxMembers < 1 || route.MaxMembers > ContractCallRoute.MaximumMembers)
+        {
+            throw new ArgumentException(
+                $"Call route '{route.Id}' maxMembers must be between 1 and {ContractCallRoute.MaximumMembers}.");
+        }
+        if (route.MaxMembers < route.RootSymbolIds.Length)
+        {
+            throw new ArgumentException(
+                $"Call route '{route.Id}' maxMembers must retain all {route.RootSymbolIds.Length} declared roots.");
+        }
     }
 
     private static void ValidateOperationShape(OperationShapeContract contract, HashSet<string> ids)
@@ -210,7 +244,10 @@ internal static class ContractManifestValidator
         RequireText(contract.Severity, $"Operation guard '{contract.Id}' severity");
     }
 
-    private static void ValidateCost(ExternalApiCostContract contract, HashSet<string> ids)
+    private static void ValidateCost(
+        ExternalApiCostContract contract,
+        HashSet<string> ids,
+        HashSet<string> routeIds)
     {
         ValidateContractIdentity(contract.Id, ids);
         RequireValues(contract.TargetSymbolIds, $"External API cost '{contract.Id}' targetSymbolIds");
@@ -218,11 +255,24 @@ internal static class ContractManifestValidator
         RequireValues(contract.Categories, $"External API cost '{contract.Id}' categories");
         RequireNonNull(contract.ControlContextKinds, $"External API cost '{contract.Id}' controlContextKinds");
         RequireNonNull(contract.ContainingSymbolIds, $"External API cost '{contract.Id}' containingSymbolIds");
+        RequireNonNull(contract.CallRouteIds, $"External API cost '{contract.Id}' callRouteIds");
+        RequireNoBlankValues(contract.CallRouteIds, $"External API cost '{contract.Id}' callRouteIds");
+        var unknownRoutes = contract.CallRouteIds
+            .Where(id => !routeIds.Contains(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownRoutes.Length > 0)
+        {
+            throw new ArgumentException(
+                $"External API cost '{contract.Id}' references unknown call routes " +
+                $"[{string.Join(", ", unknownRoutes)}].");
+        }
         RequireText(contract.AnnotationSource, $"External API cost '{contract.Id}' annotationSource");
         RequireText(contract.Severity, $"External API cost '{contract.Id}' severity");
         if (!contract.ReportEveryOccurrence
             && contract.ControlContextKinds.Length == 0
-            && contract.ContainingSymbolIds.Length == 0)
+            && contract.ContainingSymbolIds.Length == 0
+            && contract.CallRouteIds.Length == 0)
         {
             throw new ArgumentException(
                 $"External API cost '{contract.Id}' must report every occurrence or select a control/containing-symbol context.");

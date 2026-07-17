@@ -9,6 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Profile-aware contract call routes.** Consumer manifests may declare bounded
+  method roots in `callRoutes[]` and select them from
+  `externalApiCosts[].callRouteIds`. Lifeblood derives deterministic shortest
+  direct/transitive membership from the selected publication's existing
+  semantic `Calls` edges, filters by the requested define profile, and returns
+  typed root/distance/path evidence plus a truncation receipt. The expansion is
+  a request-local query plan over the one immutable graph; it adds no edge kind,
+  graph, call authority, cache, or retained semantic base.
+  (`INV-CONTRACT-AUDIT-001`.)
+
 - **Temporal contract evidence without temporal product policy.** The existing
   neutral operation stream now preserves the exact `WhenTrue` / `WhenFalse` /
   `Condition` arm occupied by an occurrence and exposes value-producing
