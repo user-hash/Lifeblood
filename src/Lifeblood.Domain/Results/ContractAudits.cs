@@ -16,6 +16,7 @@ public sealed class ContractManifest
     public ContractCallRoute[] CallRoutes { get; init; } = Array.Empty<ContractCallRoute>();
     public OperationGuardContract[] OperationGuards { get; init; } = Array.Empty<OperationGuardContract>();
     public ExternalApiCostContract[] ExternalApiCosts { get; init; } = Array.Empty<ExternalApiCostContract>();
+    public StateAccessContract[] StateAccesses { get; init; } = Array.Empty<StateAccessContract>();
     public ValueDomainContract[] ValueDomains { get; init; } = Array.Empty<ValueDomainContract>();
     public OperationShapeContract[] OperationShapes { get; init; } = Array.Empty<OperationShapeContract>();
     public ContractSuppression[] Suppressions { get; init; } = Array.Empty<ContractSuppression>();
@@ -84,6 +85,58 @@ public sealed class ExternalApiCostContract
     public string Severity { get; init; } = ContractSeverity.Warning;
     public string? Message { get; init; }
     public string? Guidance { get; init; }
+}
+
+/// <summary>
+/// Consumer-owned policy for state members touched from bounded call routes.
+/// Lifeblood classifies declaration and semantic access evidence; the caller
+/// chooses which risk buckets are acceptable for the selected execution path.
+/// </summary>
+public sealed class StateAccessContract
+{
+    public const int DefaultMaxMembers = 4_096;
+    public const int MaximumMembers = 50_000;
+
+    public required string Id { get; init; }
+    public string[] TargetSymbolIds { get; init; } = Array.Empty<string>();
+    public bool MatchAnyMember { get; init; }
+    public string MemberScope { get; init; } = StateMemberScope.Static;
+    public string[] CallRouteIds { get; init; } = Array.Empty<string>();
+    public string[] AllowedRiskBuckets { get; init; } = new[]
+    {
+        StateRiskBucket.ReadonlyTable,
+        StateRiskBucket.InitializedOnceCache,
+    };
+    public string[] Categories { get; init; } = Array.Empty<string>();
+    public int MaxMembers { get; init; } = DefaultMaxMembers;
+    public string Severity { get; init; } = ContractSeverity.Warning;
+    public string? Message { get; init; }
+    public string? Guidance { get; init; }
+}
+
+public static class StateMemberScope
+{
+    public const string Static = "Static";
+    public const string Instance = "Instance";
+    public const string Any = "Any";
+    public static readonly string[] All = { Static, Instance, Any };
+}
+
+public static class StateRiskBucket
+{
+    public const string ReadonlyTable = "ReadonlyTable";
+    public const string InitializedOnceCache = "InitializedOnceCache";
+    public const string RuntimeMutable = "RuntimeMutable";
+    public const string SharedScratch = "SharedScratch";
+    public const string Unknown = "Unknown";
+    public static readonly string[] All =
+    {
+        ReadonlyTable,
+        InitializedOnceCache,
+        RuntimeMutable,
+        SharedScratch,
+        Unknown,
+    };
 }
 
 /// <summary>
@@ -307,6 +360,7 @@ public sealed class ContractAuditRequest
     public string[]? ContainingSymbolIds { get; init; }
     public string[]? IncludeRuleIds { get; init; }
     public ContractCallRoutePlan? CallRoutePlan { get; init; }
+    public ContractStatePlan? StatePlan { get; init; }
     public int MaxFacts { get; init; } = 50_000;
     public int MaxFindings { get; init; } = 200;
     public int MaxEvidencePerFinding { get; init; } = 8;
@@ -329,6 +383,7 @@ public sealed class ContractAuditReport
     public required bool Truncated { get; init; }
     public ContractRuleBreakdown[] RuleBreakdown { get; init; } = Array.Empty<ContractRuleBreakdown>();
     public ContractCallRouteReceipt[] CallRoutes { get; init; } = Array.Empty<ContractCallRouteReceipt>();
+    public ContractStateAccessReceipt[] StateAccesses { get; init; } = Array.Empty<ContractStateAccessReceipt>();
     public ContractFinding[] Findings { get; init; } = Array.Empty<ContractFinding>();
     public string[] Limitations { get; init; } = Array.Empty<string>();
 }
@@ -370,7 +425,10 @@ public sealed class ContractFinding
     public required string FactId { get; init; }
     public required string ContainingSymbolId { get; init; }
     public string? TargetSymbolId { get; init; }
+    public string? StateRiskBucket { get; init; }
     public required OperationSourceSpan Source { get; init; }
+    public int CallRouteMatchCount { get; init; }
+    public bool CallRouteMatchesTruncated { get; init; }
     public ContractCallRouteMatch[] CallRouteMatches { get; init; } = Array.Empty<ContractCallRouteMatch>();
     public ContractEvidence[] Evidence { get; init; } = Array.Empty<ContractEvidence>();
 }
@@ -417,6 +475,53 @@ public static class ContractCallRoutePlacement
     public const string Transitive = "Transitive";
 }
 
+/// <summary>Bounded request-local projection of graph member declarations.</summary>
+public sealed class ContractStatePlan
+{
+    public static ContractStatePlan Empty { get; } = new();
+    public ContractStatePlanReceipt[] Contracts { get; init; } = Array.Empty<ContractStatePlanReceipt>();
+    public ContractStateMember[] Members { get; init; } = Array.Empty<ContractStateMember>();
+}
+
+public sealed class ContractStatePlanReceipt
+{
+    public required string ContractId { get; init; }
+    public required int CandidateMemberCount { get; init; }
+    public required int RetainedMemberCount { get; init; }
+    public required int MaxMembers { get; init; }
+    public required bool Truncated { get; init; }
+}
+
+public sealed class ContractStateMember
+{
+    public required string ContractId { get; init; }
+    public required string SymbolId { get; init; }
+    public required string MemberKind { get; init; }
+    public required string ValueType { get; init; }
+    public required bool IsStatic { get; init; }
+    public required bool IsReadOnly { get; init; }
+    public required bool IsConst { get; init; }
+    public required bool HasSetter { get; init; }
+    public required bool HasInitializer { get; init; }
+    public required OperationSourceSpan DeclarationSource { get; init; }
+}
+
+public sealed class ContractStateAccessReceipt
+{
+    public required string ContractId { get; init; }
+    public required int CandidateMemberCount { get; init; }
+    public required int RetainedMemberCount { get; init; }
+    public required int AccessedMemberCount { get; init; }
+    public required bool Truncated { get; init; }
+    public ContractStateRiskBucketCount[] RiskBuckets { get; init; } = Array.Empty<ContractStateRiskBucketCount>();
+}
+
+public sealed class ContractStateRiskBucketCount
+{
+    public required string RiskBucket { get; init; }
+    public required int MemberCount { get; init; }
+}
+
 public sealed class ContractEvidence
 {
     public required string Kind { get; init; }
@@ -429,6 +534,7 @@ public static class ContractRuleId
 {
     public const string OperationGuard = "operation-guard";
     public const string ExternalApiCost = "external-api-cost";
+    public const string StateAccess = "state-access";
     public const string ValueDomain = "value-domain";
     public const string OperationShape = "operation-shape";
 }
@@ -437,6 +543,7 @@ public static class ContractFindingKind
 {
     public const string MissingOperationGuard = "MissingOperationGuard";
     public const string ExternalApiCostExposure = "ExternalApiCostExposure";
+    public const string StateAccessRisk = "StateAccessRisk";
     public const string ValueDomainMismatch = "ValueDomainMismatch";
     public const string NonFinitePolicyMismatch = "NonFinitePolicyMismatch";
     public const string ConstantProvenanceMismatch = "ConstantProvenanceMismatch";

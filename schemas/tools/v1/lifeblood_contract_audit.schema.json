@@ -3,7 +3,7 @@
   "properties": {
     "manifest": {
       "type": "object",
-      "description": "Inline schema-versioned contract manifest. Families include bounded callRoutes, operationGuards, externalApiCosts, valueDomains, and exact operationShapes for multi-input/result/control/branch-arm/constant/uniqueness policy. External-cost contracts may select direct/transitive occurrences through callRouteIds and use explicit matchAnyTarget for targetless operation kinds. Supply exactly one of manifest or manifestPath."
+      "description": "Inline schema-versioned contract manifest. Families include bounded callRoutes, operationGuards, externalApiCosts, stateAccesses, valueDomains, and exact operationShapes for multi-input/result/control/branch-arm/constant/uniqueness policy. External-cost and shared-state contracts may select direct/transitive occurrences through callRouteIds; explicit matchAnyTarget and matchAnyMember modes are bounded by operation kind or route-referenced members. Supply exactly one of manifest or manifestPath."
     },
     "manifestPath": {
       "type": "string",

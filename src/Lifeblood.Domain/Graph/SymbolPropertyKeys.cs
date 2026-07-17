@@ -59,6 +59,16 @@ public static class SymbolPropertyKeys
     /// reopening a Roslyn compilation.
     /// </summary>
     public const string FieldType = "fieldType";
+    public const string FieldKind = "fieldKind";
+
+    /// <summary>Source property type display string.</summary>
+    public const string PropertyType = "propertyType";
+
+    /// <summary>True/false declaration mutability facts for source members.</summary>
+    public const string IsReadOnly = "isReadOnly";
+    public const string IsConst = "isConst";
+    public const string HasSetter = "hasSetter";
+    public const string HasInitializer = "hasInitializer";
 
     /// <summary>
     /// Compile-time constant value written for fields whose source symbol has

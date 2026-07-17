@@ -126,7 +126,7 @@ public static class ContractCallRoutePlanner
         return targets;
     }
 
-    private static bool AppliesToProfile(Edge edge, string? profileScope)
+    internal static bool AppliesToProfile(Edge edge, string? profileScope)
         => string.IsNullOrWhiteSpace(profileScope)
             || edge.Profiles == null
             || edge.Profiles.Contains(profileScope, StringComparer.Ordinal);

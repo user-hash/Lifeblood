@@ -20,6 +20,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   may explicitly set `matchAnyTarget:true` to select targetless operations such
   as array/delegate creation, interpolation, throw, await, or lock; empty target
   arrays never become an implicit wildcard.
+
+- **Call-route shared-state classification.** Contract manifests may declare
+  `stateAccesses[]` over exact fields/properties or the profile-applicable state
+  referenced by selected call routes. The existing graph supplies bounded
+  declaration metadata and route membership; the existing operation stream
+  supplies reads, direct writes, and element writes. Results classify each
+  accessed member as `ReadonlyTable`, `InitializedOnceCache`, `RuntimeMutable`,
+  `SharedScratch`, or `Unknown`, with complete bucket counts, bounded route/write
+  evidence, and fail-safe unknown classification when the fact scan truncates.
+  Wildcard discovery is route-scoped rather than a workspace-wide member sweep,
+  and the request retains no graph, fact cache, or additional semantic base.
   (`INV-CONTRACT-AUDIT-001`.)
 
 - **Temporal contract evidence without temporal product policy.** The existing

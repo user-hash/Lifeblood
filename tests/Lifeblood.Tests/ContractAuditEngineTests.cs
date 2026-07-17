@@ -273,6 +273,205 @@ public sealed class ContractAuditEngineTests
     }
 
     [Fact]
+    public void StateAccess_TruncatedFactScanFailsSafeToUnknown()
+    {
+        const string root = "method:Acme.Audio.Process()";
+        const string table = "field:Acme.Audio.Table";
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = root, Name = "Process", Kind = SymbolKind.Method })
+            .AddSymbol(new Symbol
+            {
+                Id = table,
+                Name = "Table",
+                Kind = SymbolKind.Field,
+                IsStatic = true,
+                FilePath = "Audio.cs",
+                Line = 3,
+                Properties = new Dictionary<string, string>
+                {
+                    [SymbolPropertyKeys.FieldType] = "float[]",
+                    [SymbolPropertyKeys.IsReadOnly] = "true",
+                    [SymbolPropertyKeys.HasInitializer] = "true",
+                },
+            })
+            .Build();
+        var manifest = new ContractManifest
+        {
+            Id = "state-policy",
+            Version = "1",
+            CallRoutes = new[]
+            {
+                new ContractCallRoute { Id = "audio", RootSymbolIds = new[] { root } },
+            },
+            StateAccesses = new[]
+            {
+                new StateAccessContract
+                {
+                    Id = "state",
+                    TargetSymbolIds = new[] { table },
+                    CallRouteIds = new[] { "audio" },
+                    Categories = new[] { "SharedState" },
+                },
+            },
+        };
+        var callRoutePlan = ContractCallRoutePlanner.Plan(graph, manifest.CallRoutes, "Player");
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = manifest,
+            CallRoutePlan = callRoutePlan,
+            StatePlan = ContractStatePlanner.Plan(
+                graph,
+                manifest.StateAccesses,
+                callRoutePlan,
+                "Player"),
+        });
+        engine.Observe(ShapeFact(
+            "table-read",
+            OperationFactKind.MemberRead,
+            root,
+            targetSymbolId: table));
+
+        var report = engine.Complete(Receipt(emitted: 1, truncated: true));
+
+        Assert.True(report.Truncated);
+        var finding = Assert.Single(report.Findings);
+        Assert.Equal(StateRiskBucket.Unknown, finding.StateRiskBucket);
+        Assert.Equal(1, Assert.Single(report.StateAccesses).RiskBuckets
+            .Single(bucket => bucket.RiskBucket == StateRiskBucket.Unknown).MemberCount);
+    }
+
+    [Fact]
+    public void StateAccess_ForeignStaticConstructorWriteIsRuntimeMutation()
+    {
+        const string root = "method:Acme.Audio.Process()";
+        const string cache = "field:Acme.Audio.Cache";
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = root, Name = "Process", Kind = SymbolKind.Method })
+            .AddSymbol(new Symbol
+            {
+                Id = cache,
+                Name = "Cache",
+                Kind = SymbolKind.Field,
+                IsStatic = true,
+                FilePath = "Audio.cs",
+                Line = 3,
+                Properties = new Dictionary<string, string>
+                {
+                    [SymbolPropertyKeys.FieldType] = "int",
+                },
+            })
+            .Build();
+        var manifest = new ContractManifest
+        {
+            Id = "state-policy",
+            Version = "1",
+            CallRoutes = new[]
+            {
+                new ContractCallRoute { Id = "audio", RootSymbolIds = new[] { root } },
+            },
+            StateAccesses = new[]
+            {
+                new StateAccessContract
+                {
+                    Id = "state",
+                    TargetSymbolIds = new[] { cache },
+                    CallRouteIds = new[] { "audio" },
+                    Categories = new[] { "SharedState" },
+                },
+            },
+        };
+        var callRoutePlan = ContractCallRoutePlanner.Plan(graph, manifest.CallRoutes, "Player");
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = manifest,
+            CallRoutePlan = callRoutePlan,
+            StatePlan = ContractStatePlanner.Plan(
+                graph,
+                manifest.StateAccesses,
+                callRoutePlan,
+                "Player"),
+        });
+        engine.Observe(ShapeFact(
+            "cache-read",
+            OperationFactKind.MemberRead,
+            root,
+            targetSymbolId: cache));
+        engine.Observe(ShapeFact(
+            "cache-write",
+            OperationFactKind.MemberWrite,
+            "method:Acme.Other..cctor()",
+            targetSymbolId: cache));
+
+        var report = engine.Complete(Receipt(emitted: 2));
+
+        Assert.Equal(StateRiskBucket.RuntimeMutable, Assert.Single(report.Findings).StateRiskBucket);
+    }
+
+    [Fact]
+    public void Finding_CallRouteMatchesHaveAVisibleHardBound()
+    {
+        var roots = Enumerable.Range(0, 40).Select(index => $"method:Acme.Root{index}.Run()").ToArray();
+        var manifest = new ContractManifest
+        {
+            Id = "route-bound-policy",
+            Version = "1",
+            CallRoutes = new[]
+            {
+                new ContractCallRoute { Id = "a", RootSymbolIds = roots[..20], MaxMembers = 20 },
+                new ContractCallRoute { Id = "b", RootSymbolIds = roots[20..], MaxMembers = 20 },
+            },
+            ExternalApiCosts = new[]
+            {
+                new ExternalApiCostContract
+                {
+                    Id = "cost",
+                    TargetSymbolIds = new[] { CostTarget },
+                    CallRouteIds = new[] { "a", "b" },
+                    Categories = new[] { "Allocation" },
+                    AnnotationSource = "policy",
+                },
+            },
+        };
+        var matches = roots.Select((root, index) => new ContractCallRouteMatch
+        {
+            RouteId = index < 20 ? "a" : "b",
+            RootSymbolId = root,
+            ContainingSymbolId = "method:Acme.Dsp.Run()",
+            Distance = 1,
+            Placement = ContractCallRoutePlacement.Transitive,
+            PathSymbolIds = new[] { root, "method:Acme.Dsp.Run()" },
+        }).ToArray();
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = manifest,
+            CallRoutePlan = new ContractCallRoutePlan
+            {
+                Routes = new[]
+                {
+                    new ContractCallRouteReceipt
+                    {
+                        RouteId = "a", RootSymbolIds = roots[..20], MaxDepth = 8, MaxMembers = 20,
+                        ReachableMemberCount = 1, MembershipCount = 20, Truncated = false,
+                    },
+                    new ContractCallRouteReceipt
+                    {
+                        RouteId = "b", RootSymbolIds = roots[20..], MaxDepth = 8, MaxMembers = 20,
+                        ReachableMemberCount = 1, MembershipCount = 20, Truncated = false,
+                    },
+                },
+                Matches = matches,
+            },
+        });
+        engine.Observe(Call("cost", CostTarget, "Dsp.cs", 4, Argument(OperationValueKind.Literal)));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 1)).Findings);
+
+        Assert.Equal(40, finding.CallRouteMatchCount);
+        Assert.Equal(32, finding.CallRouteMatches.Length);
+        Assert.True(finding.CallRouteMatchesTruncated);
+    }
+
+    [Fact]
     public void StableFindingIdentity_DoesNotDependOnEngineInstance()
     {
         var first = AuditOneUnsafeGuard();
@@ -1629,7 +1828,7 @@ public sealed class ContractAuditEngineTests
             EndColumn = 2,
         };
 
-    private static OperationFactScanReceipt Receipt(int emitted)
+    private static OperationFactScanReceipt Receipt(int emitted, bool truncated = false)
         => new()
         {
             Status = OperationFactScanStatus.Completed,
@@ -1642,7 +1841,7 @@ public sealed class ContractAuditEngineTests
             ScannedFileCount = 1,
             ObservedOperationCount = emitted,
             EmittedFactCount = emitted,
-            Truncated = false,
+            Truncated = truncated,
             StoppedByConsumer = false,
         };
 

@@ -43,13 +43,23 @@ internal sealed class ContractAuditToolHandler
         var profileScope = string.IsNullOrWhiteSpace(request.ProfileScope)
             ? _session.RetainedProfileName
             : request.ProfileScope.Trim();
+        var graph = manifest.CallRoutes.Length > 0 || manifest.StateAccesses.Length > 0
+            ? _session.Graph
+                ?? throw new InvalidOperationException(
+                    "Call routes and state access contracts require a loaded semantic graph from the selected publication.")
+            : null;
         var callRoutePlan = manifest.CallRoutes.Length == 0
             ? ContractCallRoutePlan.Empty
             : ContractCallRoutePlanner.Plan(
-                _session.Graph
-                    ?? throw new InvalidOperationException(
-                        "Call routes require a loaded semantic graph from the selected publication."),
+                graph!,
                 manifest.CallRoutes,
+                profileScope);
+        var statePlan = manifest.StateAccesses.Length == 0
+            ? ContractStatePlan.Empty
+            : ContractStatePlanner.Plan(
+                graph!,
+                manifest.StateAccesses,
+                callRoutePlan,
                 profileScope);
         var engine = new ContractAuditEngine(new ContractAuditRequest
         {
@@ -60,6 +70,7 @@ internal sealed class ContractAuditToolHandler
             ContainingSymbolIds = request.ContainingSymbolIds,
             IncludeRuleIds = request.IncludeRuleIds,
             CallRoutePlan = callRoutePlan,
+            StatePlan = statePlan,
             MaxFacts = request.EffectiveMaxFacts,
             MaxFindings = request.EffectiveMaxFindings,
             MaxEvidencePerFinding = request.EffectiveMaxEvidencePerFinding,
