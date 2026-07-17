@@ -337,15 +337,15 @@ public static class ToolRegistry
   new()
   {
   Name = "lifeblood_performance_evidence",
-  Behavior = WorkspaceRootObservation,
+  Behavior = CapabilityObservation,
   CallBehavior = args => string.Equals(
     ToolRequestBinder.BindPerformanceEvidence(args).EffectiveAction,
     "correlate",
     StringComparison.OrdinalIgnoreCase)
       ? SourceEvidenceObservation
-      : WorkspaceRootObservation,
+      : CapabilityObservation,
   EnvelopeClassification = RuntimeEvidenceAdvisory,
-  Description = "Import, correlate, or compare request-local runtime performance evidence without creating another graph, Roslyn workspace, or capture cache. Generic JSON/CSV and structural Unity ProfilerRecorder receipts become one neutral capture model with explicit unavailable counters. action:correlate resolves caller aliases, capture symbol hints, exact symbol names, then request-local string-literal ownership; every marker returns Unique, Ambiguous, or Unmapped plus symbol/file/module, related invariant occurrences, and bounded test impact. action:compare validates scenario/product/app/build/git/dirty/profiles/features/platform/API/device/audio/frame/workload/counter identity before emitting normalized deltas; verdict is Comparable, PartiallyComparable, or RejectComparison, and rejected captures emit no numeric ranking. Runtime truth remains separate from semantic truth. Summary-first and hard-bounded. INV-PERFORMANCE-EVIDENCE-001.",
+  Description = "Import, correlate, or compare request-local runtime performance evidence without creating another graph, Roslyn workspace, or capture cache. Import and compare accept an explicit workspaceRoot and do not require analyze; correlate alone requires the current source-evidence publication and pins workspaceRoot to it. Generic JSON/CSV and structural Unity ProfilerRecorder receipts become one neutral capture model with explicit unavailable counters. action:correlate resolves caller aliases, capture symbol hints, exact symbol names, then request-local string-literal ownership; every marker returns Unique, Ambiguous, or Unmapped plus symbol/file/module, related invariant occurrences, and bounded test impact. action:compare validates scenario/product/app/build/git/dirty/profiles/features/platform/API/device/audio/frame/workload/counter identity before emitting normalized deltas; verdict is Comparable, PartiallyComparable, or RejectComparison, and rejected captures emit no numeric ranking. Runtime truth remains separate from semantic truth. Summary-first and hard-bounded. INV-PERFORMANCE-EVIDENCE-001.",
   },
   new()
   {

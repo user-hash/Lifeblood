@@ -14,7 +14,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Small context pack | `lifeblood_context summarize:true` | Good first read for unfamiliar repos or when handing off to another agent. |
 | Architecture invariant audit | `lifeblood_invariant_check mode:"audit" summarize:true` | Use compact audit first on large invariant trees; it keeps duplicates/warnings/coverage while omitting zero-only source rows and duplicate ledgers. Fetch specific ids as needed; omit summarize only for the complete source inventory. |
 | Check generated evidence freshness | `lifeblood_evidence_drift` | Compare the repo-owned generated baseline with the exact current publication and live invariant audit. Pin `expectedSnapshotId` / `expectedAnalysisGeneration`; refresh analysis on `verdict:"unavailable"`, refresh evidence when `evidenceRefreshRecommended:true`. |
-| Import/correlate/compare runtime performance evidence | `lifeblood_performance_evidence` | Use `import` to validate one generic JSON/CSV or Unity ProfilerRecorder receipt, `correlate` to join marker evidence to the current graph with explicit Unique/Ambiguous/Unmapped outcomes, and `compare` to reject unlike captures before reading normalized deltas. Runtime evidence stays separate from semantic truth. |
+| Import/correlate/compare runtime performance evidence | `lifeblood_performance_evidence` | `import` and `compare` accept an absolute `workspaceRoot` and need no loaded graph. `correlate` alone joins marker evidence to the current source-evidence publication with explicit Unique/Ambiguous/Unmapped outcomes and rejects a mismatched root. Runtime evidence stays separate from semantic truth. |
 
 ## Finding Symbols
 

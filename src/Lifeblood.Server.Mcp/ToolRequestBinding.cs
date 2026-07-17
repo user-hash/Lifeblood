@@ -52,6 +52,7 @@ public static class ToolRequestBinder
     private static readonly string EvidenceDriftRelativeTolerance = ArgumentName(EvidenceDriftToolName, "relativeTolerancePercent");
 
     private static readonly string PerformanceAction = ArgumentName(PerformanceEvidenceToolName, "action");
+    private static readonly string PerformanceWorkspaceRoot = ArgumentName(PerformanceEvidenceToolName, "workspaceRoot");
     private static readonly string PerformanceSourcePath = ArgumentName(PerformanceEvidenceToolName, "sourcePath");
     private static readonly string PerformanceCandidatePath = ArgumentName(PerformanceEvidenceToolName, "candidatePath");
     private static readonly string PerformanceFormat = ArgumentName(PerformanceEvidenceToolName, "format");
@@ -157,6 +158,7 @@ public static class ToolRequestBinder
         return new PerformanceEvidenceToolRequest
         {
             Action = ReadString(root, PerformanceAction),
+            WorkspaceRoot = ReadString(root, PerformanceWorkspaceRoot),
             SourcePath = ReadString(root, PerformanceSourcePath),
             CandidatePath = ReadString(root, PerformanceCandidatePath),
             Format = ReadString(root, PerformanceFormat),
@@ -337,6 +339,7 @@ public sealed record PerformanceEvidenceToolRequest
     public static PerformanceEvidenceToolRequest Empty { get; } = new();
 
     public string? Action { get; init; }
+    public string? WorkspaceRoot { get; init; }
     public string? SourcePath { get; init; }
     public string? CandidatePath { get; init; }
     public string? Format { get; init; }

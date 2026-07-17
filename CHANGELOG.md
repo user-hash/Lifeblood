@@ -24,7 +24,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   workload hash, the adapter derives a labeled fingerprint from explicit setup
   fields and stage modes; observed output counters such as processed commands
   never become identity gates. Rejected comparisons return no deltas. The
-  stateless adapter retains no capture and every response
+  stateless adapter retains no capture; import and compare accept an explicit
+  workspace root and run before analyze, while correlation alone requires and
+  is pinned to the current source-evidence publication. Every response
   reports `additionalSemanticBaseCount:0`. (`INV-PERFORMANCE-EVIDENCE-001`;
   closes `LB-INTAKE-20260714-034` and `LB-INTAKE-20260714-035`.)
 

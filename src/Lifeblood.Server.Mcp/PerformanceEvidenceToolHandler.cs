@@ -43,15 +43,25 @@ internal sealed class PerformanceEvidenceToolHandler
         var request = ToolRequestBinder.BindPerformanceEvidence(arguments);
         Validate(request);
         cancellationToken.ThrowIfCancellationRequested();
-        var source = Import(request.SourcePath!, request.Format, request.EffectiveMaxMeasurements);
+        var workspaceRoot = ResolveWorkspaceRoot(request);
+        var source = Import(
+            request.SourcePath!,
+            request.Format,
+            request.EffectiveMaxMeasurements,
+            workspaceRoot);
         return request.EffectiveAction switch
         {
-            "import" => BuildImportResult(source, request),
+            "import" => BuildImportResult(source, request, workspaceRoot),
             "correlate" => BuildCorrelationResult(source, request, cancellationToken),
             "compare" => BuildComparisonResult(
                 source,
-                Import(request.CandidatePath!, request.CandidateFormat, request.EffectiveMaxMeasurements),
-                request),
+                Import(
+                    request.CandidatePath!,
+                    request.CandidateFormat,
+                    request.EffectiveMaxMeasurements,
+                    workspaceRoot),
+                request,
+                workspaceRoot),
             _ => throw new ArgumentException("action must be 'import', 'correlate', or 'compare'."),
         };
     }
@@ -78,9 +88,13 @@ internal sealed class PerformanceEvidenceToolHandler
             throw new ArgumentException($"markerAliases is capped at {MaximumMarkerAliases} entries.");
     }
 
-    private PerformanceCapture Import(string rawPath, string? formatHint, int maximumMeasurements)
+    private PerformanceCapture Import(
+        string rawPath,
+        string? formatHint,
+        int maximumMeasurements,
+        string workspaceRoot)
     {
-        var path = ResolveContainedPath(rawPath);
+        var path = ResolveContainedPath(rawPath, workspaceRoot);
         var content = ReadBoundedUtf8(path.FullPath);
         return _import.Execute(new PerformanceEvidenceDocument(
             path.RelativePath,
@@ -89,19 +103,23 @@ internal sealed class PerformanceEvidenceToolHandler
             maximumMeasurements));
     }
 
-    private object BuildImportResult(PerformanceCapture capture, PerformanceEvidenceToolRequest request)
+    private object BuildImportResult(
+        PerformanceCapture capture,
+        PerformanceEvidenceToolRequest request,
+        string workspaceRoot)
         => new
         {
             kind = "lifeblood.performance_evidence",
             action = "import",
+            workspaceRoot,
             runtimeTruth = ProjectCapture(capture, request.EffectiveSummarize),
             semanticCorrelation = new
             {
                 status = "NotRequested",
                 additionalSemanticBaseCount = 0,
             },
-            retainedGraphBaseCount = 1,
-            retainedSemanticBaseCount = _session.CurrentSnapshot.RetainsSemanticServices ? 1 : 0,
+            retainedGraphBaseCount = _session.IsLoaded ? 1 : 0,
+            retainedSemanticBaseCount = RetainedSemanticBaseCount,
             additionalSemanticBaseCount = 0,
         };
 
@@ -176,7 +194,8 @@ internal sealed class PerformanceEvidenceToolHandler
     private object BuildComparisonResult(
         PerformanceCapture baseline,
         PerformanceCapture candidate,
-        PerformanceEvidenceToolRequest request)
+        PerformanceEvidenceToolRequest request,
+        string workspaceRoot)
     {
         var comparison = PerformanceEvidenceAnalyzer.Compare(
             baseline,
@@ -188,6 +207,7 @@ internal sealed class PerformanceEvidenceToolHandler
         {
             kind = "lifeblood.performance_evidence",
             action = "compare",
+            workspaceRoot,
             comparisonMode = request.EffectiveComparisonMode,
             baseline = ProjectCapture(baseline, summarize: true),
             candidate = ProjectCapture(candidate, summarize: true),
@@ -197,8 +217,8 @@ internal sealed class PerformanceEvidenceToolHandler
                 status = "NotRequested",
                 additionalSemanticBaseCount = 0,
             },
-            retainedGraphBaseCount = 1,
-            retainedSemanticBaseCount = _session.CurrentSnapshot.RetainsSemanticServices ? 1 : 0,
+            retainedGraphBaseCount = _session.IsLoaded ? 1 : 0,
+            retainedSemanticBaseCount = RetainedSemanticBaseCount,
             additionalSemanticBaseCount = 0,
         };
     }
@@ -277,21 +297,67 @@ internal sealed class PerformanceEvidenceToolHandler
         return aliases.Distinct().ToArray();
     }
 
-    private (string FullPath, string RelativePath) ResolveContainedPath(string rawPath)
+    private string ResolveWorkspaceRoot(PerformanceEvidenceToolRequest request)
     {
-        var workspaceRoot = _session.ProjectRoot;
-        if (string.IsNullOrWhiteSpace(workspaceRoot))
-            throw new InvalidOperationException("Runtime-evidence paths require an analyzed workspace root.");
+        var currentRoot = _session.ProjectRoot;
+        var requestedRoot = request.WorkspaceRoot?.Trim();
+        if (!string.IsNullOrWhiteSpace(requestedRoot) && !Path.IsPathRooted(requestedRoot))
+            throw new ArgumentException("workspaceRoot must be an absolute directory path.");
+
+        if (request.EffectiveAction == "correlate")
+        {
+            if (string.IsNullOrWhiteSpace(currentRoot))
+                throw new InvalidOperationException("Correlation requires a current source-evidence workspace publication.");
+            if (!string.IsNullOrWhiteSpace(requestedRoot)
+                && !WorkspacePathIdentity.Equal(requestedRoot, currentRoot))
+            {
+                throw new ArgumentException(
+                    $"workspaceRoot must match the current source-evidence publication root '{currentRoot}' for action:'correlate'.");
+            }
+
+            return Path.GetFullPath(currentRoot);
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentRoot))
+        {
+            if (!string.IsNullOrWhiteSpace(requestedRoot)
+                && !WorkspacePathIdentity.Equal(requestedRoot, currentRoot))
+            {
+                throw new ArgumentException(
+                    $"workspaceRoot must match the current workspace root '{currentRoot}' while a publication is loaded.");
+            }
+
+            return Path.GetFullPath(currentRoot);
+        }
+
+        if (string.IsNullOrWhiteSpace(requestedRoot))
+        {
+            throw new ArgumentException(
+                "workspaceRoot is required for action:'import' or action:'compare' when no analyzed workspace is loaded.");
+        }
+        var root = Path.GetFullPath(requestedRoot);
+        if (!_session.FileSystem.DirectoryExists(root))
+            throw new DirectoryNotFoundException($"Runtime-evidence workspace root was not found: '{root}'.");
+        return root;
+    }
+
+    private (string FullPath, string RelativePath) ResolveContainedPath(
+        string rawPath,
+        string workspaceRoot)
+    {
         if (string.IsNullOrWhiteSpace(rawPath))
             throw new ArgumentException("Runtime-evidence path cannot be empty.", nameof(rawPath));
         var root = Path.GetFullPath(workspaceRoot);
         var path = WorkspacePathIdentity.ResolveFromWorkspace(root, rawPath);
         if (!WorkspacePathIdentity.Contains(root, path))
-            throw new ArgumentException($"Runtime-evidence path must stay inside analyzed workspace root '{root}'.");
+            throw new ArgumentException($"Runtime-evidence path must stay inside workspace root '{root}'.");
         if (!_session.FileSystem.FileExists(path))
             throw new FileNotFoundException("Runtime-evidence capture was not found.", path);
         return (path, Path.GetRelativePath(root, path).Replace('\\', '/'));
     }
+
+    private int RetainedSemanticBaseCount =>
+        _session.IsLoaded && _session.CurrentSnapshot.RetainsSemanticServices ? 1 : 0;
 
     private string ReadBoundedUtf8(string path)
     {

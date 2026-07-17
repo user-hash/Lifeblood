@@ -234,9 +234,12 @@ performance adapter understands generic JSON/CSV and the structural Unity
 ProfilerRecorder receipt shape; `PerformanceEvidenceAnalyzer` correlates those
 records to the already-leased graph, source-evidence, invariant, and test-impact
 authorities, then compares captures only after explicit identity validation.
-The MCP handler owns workspace containment and byte/result bounds. Captures are
-request-local: no profiler process, capture cache, second graph, second invariant
-parser, or second test index is introduced. Invariant:
+The MCP handler owns explicit-root selection, workspace containment, and
+byte/result bounds. Import and compare can run with no loaded graph; correlation
+alone requires the current source-evidence publication and rejects a supplied
+root that does not match it. Captures are request-local: no profiler process,
+capture cache, second graph, second invariant parser, or second test index is
+introduced. Invariant:
 `INV-PERFORMANCE-EVIDENCE-001`.
 
 ## Invariant Enforcement

@@ -577,9 +577,9 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var toolCapabilities = doc.RootElement.GetProperty("tools");
         Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
-        Assert.Equal(4, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
+        Assert.Equal(5, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
         Assert.Equal(16, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
-        Assert.Equal(4, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
+        Assert.Equal(3, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("OperationFacts").GetInt32());
         Assert.Equal(18, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
         Assert.Equal(37, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
