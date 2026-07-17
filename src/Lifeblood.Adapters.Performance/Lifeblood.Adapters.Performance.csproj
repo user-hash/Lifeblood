@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Lifeblood.Adapters.Performance</RootNamespace>
+    <!-- RUNTIME-EVIDENCE ADAPTER. Parses external documents; no graph policy or retention. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
+  </ItemGroup>
+</Project>

@@ -210,6 +210,17 @@ context. Release metadata consumes the same adapter, so no docs test or handler
 grows a second Git launcher. Invariants: `INV-SOURCE-CONTROL-001`,
 `INV-CHANGELOG-LATEST-TAG-001`.
 
+**Seam 11. Runtime performance evidence.** Runtime capture ingestion crosses
+`IPerformanceEvidenceImporter` as neutral Domain records. The stateless
+performance adapter understands generic JSON/CSV and the structural Unity
+ProfilerRecorder receipt shape; `PerformanceEvidenceAnalyzer` correlates those
+records to the already-leased graph, source-evidence, invariant, and test-impact
+authorities, then compares captures only after explicit identity validation.
+The MCP handler owns workspace containment and byte/result bounds. Captures are
+request-local: no profiler process, capture cache, second graph, second invariant
+parser, or second test index is introduced. Invariant:
+`INV-PERFORMANCE-EVIDENCE-001`.
+
 ## Invariant Enforcement
 
 Architecture rules are not just documented. They are tested AND queryable:

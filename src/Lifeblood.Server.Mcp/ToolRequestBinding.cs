@@ -13,6 +13,7 @@ public static class ToolRequestBinder
     private const string CompileCheckToolName = "lifeblood_compile_check";
     private const string ContractAuditToolName = "lifeblood_contract_audit";
     private const string EvidenceDriftToolName = "lifeblood_evidence_drift";
+    private const string PerformanceEvidenceToolName = "lifeblood_performance_evidence";
 
     private static readonly string AnalyzeProjectPath = ArgumentName(AnalyzeToolName, "projectPath");
     private static readonly string AnalyzeGraphPath = ArgumentName(AnalyzeToolName, "graphPath");
@@ -49,6 +50,20 @@ public static class ToolRequestBinder
 
     private static readonly string EvidenceDriftBaselinePath = ArgumentName(EvidenceDriftToolName, "baselinePath");
     private static readonly string EvidenceDriftRelativeTolerance = ArgumentName(EvidenceDriftToolName, "relativeTolerancePercent");
+
+    private static readonly string PerformanceAction = ArgumentName(PerformanceEvidenceToolName, "action");
+    private static readonly string PerformanceSourcePath = ArgumentName(PerformanceEvidenceToolName, "sourcePath");
+    private static readonly string PerformanceCandidatePath = ArgumentName(PerformanceEvidenceToolName, "candidatePath");
+    private static readonly string PerformanceFormat = ArgumentName(PerformanceEvidenceToolName, "format");
+    private static readonly string PerformanceCandidateFormat = ArgumentName(PerformanceEvidenceToolName, "candidateFormat");
+    private static readonly string PerformanceComparisonMode = ArgumentName(PerformanceEvidenceToolName, "comparisonMode");
+    private static readonly string PerformanceAllowedDifferences = ArgumentName(PerformanceEvidenceToolName, "allowedDifferences");
+    private static readonly string PerformanceMarkerAliases = ArgumentName(PerformanceEvidenceToolName, "markerAliases");
+    private static readonly string PerformanceMaxMeasurements = ArgumentName(PerformanceEvidenceToolName, "maxMeasurements");
+    private static readonly string PerformanceMaxMarkers = ArgumentName(PerformanceEvidenceToolName, "maxMarkers");
+    private static readonly string PerformanceMaxTestsPerSymbol = ArgumentName(PerformanceEvidenceToolName, "maxTestsPerSymbol");
+    private static readonly string PerformanceMaxDeltas = ArgumentName(PerformanceEvidenceToolName, "maxDeltas");
+    private static readonly string PerformanceSummarize = ArgumentName(PerformanceEvidenceToolName, "summarize");
 
     public static AnalyzeToolRequest BindAnalyze(JsonElement? args)
     {
@@ -134,6 +149,29 @@ public static class ToolRequestBinder
         };
     }
 
+    public static PerformanceEvidenceToolRequest BindPerformanceEvidence(JsonElement? args)
+    {
+        if (!TryGetObject(args, out var root))
+            return PerformanceEvidenceToolRequest.Empty;
+
+        return new PerformanceEvidenceToolRequest
+        {
+            Action = ReadString(root, PerformanceAction),
+            SourcePath = ReadString(root, PerformanceSourcePath),
+            CandidatePath = ReadString(root, PerformanceCandidatePath),
+            Format = ReadString(root, PerformanceFormat),
+            CandidateFormat = ReadString(root, PerformanceCandidateFormat),
+            ComparisonMode = ReadString(root, PerformanceComparisonMode),
+            AllowedDifferences = ReadStringArray(root, PerformanceAllowedDifferences),
+            MarkerAliases = ReadObjectArray(root, PerformanceMarkerAliases),
+            MaxMeasurements = ReadInt(root, PerformanceMaxMeasurements),
+            MaxMarkers = ReadInt(root, PerformanceMaxMarkers),
+            MaxTestsPerSymbol = ReadInt(root, PerformanceMaxTestsPerSymbol),
+            MaxDeltas = ReadInt(root, PerformanceMaxDeltas),
+            Summarize = ReadBool(root, PerformanceSummarize),
+        };
+    }
+
     private static string ArgumentName(string toolName, string argumentName)
     {
         var contract = ToolInputContractCatalog.Get(toolName);
@@ -186,6 +224,16 @@ public static class ToolRequestBinder
         => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
             ? value.Clone()
             : null;
+
+    private static JsonElement[]? ReadObjectArray(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Array)
+            return null;
+        return value.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.Object)
+            .Select(item => item.Clone())
+            .ToArray();
+    }
 
     private static string[]? ReadStringArray(
         JsonElement root,
@@ -282,4 +330,31 @@ public sealed record EvidenceDriftToolRequest
     public double? RelativeTolerancePercent { get; init; }
     public double EffectiveRelativeTolerancePercent =>
         RelativeTolerancePercent ?? Lifeblood.Analysis.EvidenceBaselineDriftEvaluator.DefaultRelativeTolerancePercent;
+}
+
+public sealed record PerformanceEvidenceToolRequest
+{
+    public static PerformanceEvidenceToolRequest Empty { get; } = new();
+
+    public string? Action { get; init; }
+    public string? SourcePath { get; init; }
+    public string? CandidatePath { get; init; }
+    public string? Format { get; init; }
+    public string? CandidateFormat { get; init; }
+    public string? ComparisonMode { get; init; }
+    public string[]? AllowedDifferences { get; init; }
+    public JsonElement[]? MarkerAliases { get; init; }
+    public int? MaxMeasurements { get; init; }
+    public int? MaxMarkers { get; init; }
+    public int? MaxTestsPerSymbol { get; init; }
+    public int? MaxDeltas { get; init; }
+    public bool? Summarize { get; init; }
+
+    public string EffectiveAction => string.IsNullOrWhiteSpace(Action) ? "import" : Action.Trim().ToLowerInvariant();
+    public string EffectiveComparisonMode => string.IsNullOrWhiteSpace(ComparisonMode) ? "crossDevice" : ComparisonMode.Trim();
+    public bool EffectiveSummarize => Summarize ?? true;
+    public int EffectiveMaxMeasurements => MaxMeasurements ?? 10_000;
+    public int EffectiveMaxMarkers => MaxMarkers ?? (EffectiveSummarize ? 25 : 200);
+    public int EffectiveMaxTestsPerSymbol => MaxTestsPerSymbol ?? (EffectiveSummarize ? 3 : 10);
+    public int EffectiveMaxDeltas => MaxDeltas ?? (EffectiveSummarize ? 50 : 500);
 }

@@ -77,6 +77,7 @@ public enum ToolSessionRequirement
   AnalyzedWorkspace,
   WorkspaceRoot,
   OperationFacts,
+  SourceEvidence,
   RetainedCompilation,
 }
 
@@ -119,7 +120,8 @@ public readonly record struct ToolSessionState(
   bool HasAnalyzedWorkspace,
   bool HasWorkspaceRoot,
   bool HasOperationFactProvider,
-  bool HasRetainedCompilation)
+  bool HasRetainedCompilation,
+  bool HasSourceEvidenceProvider = false)
 {
   public bool Satisfies(ToolSessionRequirement requirement) => requirement switch
   {
@@ -127,6 +129,7 @@ public readonly record struct ToolSessionState(
     ToolSessionRequirement.AnalyzedWorkspace => HasAnalyzedWorkspace,
     ToolSessionRequirement.WorkspaceRoot => HasAnalyzedWorkspace && HasWorkspaceRoot,
     ToolSessionRequirement.OperationFacts => HasAnalyzedWorkspace && HasOperationFactProvider,
+    ToolSessionRequirement.SourceEvidence => HasAnalyzedWorkspace && HasWorkspaceRoot && HasSourceEvidenceProvider,
     ToolSessionRequirement.RetainedCompilation => HasAnalyzedWorkspace && HasRetainedCompilation,
     _ => false,
   };

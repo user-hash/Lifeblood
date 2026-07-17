@@ -39,6 +39,7 @@ public sealed class ToolHandler
     private readonly WriteToolHandler _write;
     private readonly ContractAuditToolHandler _contractAudit;
     private readonly EvidenceDriftToolHandler _evidenceDrift;
+    private readonly PerformanceEvidenceToolHandler _performanceEvidence;
     private readonly ITelemetrySink _telemetry;
     private readonly ToolArgumentBinder _argumentBinder;
     private readonly ToolJsonCompatibilityMode _jsonCompatibilityMode;
@@ -103,6 +104,7 @@ public sealed class ToolHandler
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
         _contractAudit = new ContractAuditToolHandler(session, invariants, JsonOpts);
         _evidenceDrift = new EvidenceDriftToolHandler(session, invariants);
+        _performanceEvidence = new PerformanceEvidenceToolHandler(session, invariants);
     }
 
     private static ToolArgumentBinder BuildArgumentBinder()
@@ -226,7 +228,8 @@ public sealed class ToolHandler
         HasWorkspaceRoot: !_session.IsHistoricalSelection
             && !string.IsNullOrEmpty(_session.ProjectRoot),
         HasOperationFactProvider: _session.OperationFactProvider != null,
-        HasRetainedCompilation: _session.HasCompilationState);
+        HasRetainedCompilation: _session.HasCompilationState,
+        HasSourceEvidenceProvider: _session.SourceEvidenceProvider != null);
 
     private McpToolResult HandleCore(
         string toolName,
@@ -273,6 +276,7 @@ public sealed class ToolHandler
                 "lifeblood_batch" => HandleBatch(arguments),
                 "lifeblood_snapshots" => HandleSnapshots(arguments),
                 "lifeblood_evidence_drift" => HandleEvidenceDrift(arguments),
+                "lifeblood_performance_evidence" => HandlePerformanceEvidence(arguments, cancellationToken),
                 "lifeblood_analyze" => HandleAnalyze(arguments, cancellationToken),
                 "lifeblood_context" => HandleContext(arguments),
                 "lifeblood_lookup" => HandleLookup(arguments),
@@ -369,6 +373,10 @@ public sealed class ToolHandler
                 ErrorResult(
                     "Operation-fact tools require a live C# workspace publication. Call lifeblood_analyze " +
                     "with projectPath first, or omit snapshotId when a historical graph-only publication is selected."),
+            ToolSessionRequirement.SourceEvidence =>
+                ErrorResult(
+                    "Source-evidence tools require a live C# workspace publication. Call lifeblood_analyze " +
+                    "with projectPath first, or omit snapshotId when a historical graph-only publication is selected."),
             ToolSessionRequirement.RetainedCompilation =>
                 ErrorResult(_session.CompilationStateRecoveryHint
                     ?? "Compilation-backed tools require loading via projectPath (Roslyn adapter). Call lifeblood_analyze with projectPath first."),
@@ -411,6 +419,13 @@ public sealed class ToolHandler
         => TextResult(WithEnvelope(
             "lifeblood_contract_audit",
             _contractAudit.Execute(args, cancellationToken)));
+
+    private McpToolResult HandlePerformanceEvidence(
+        JsonElement? args,
+        CancellationToken cancellationToken)
+        => TextResult(WithEnvelope(
+            "lifeblood_performance_evidence",
+            _performanceEvidence.Execute(args, cancellationToken)));
 
     private McpToolResult HandleBatch(JsonElement? args)
     {

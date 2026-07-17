@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Adapters.JsonGrap
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Adapters.Git", "src\Lifeblood.Adapters.Git\Lifeblood.Adapters.Git.csproj", "{B000000C-0000-0000-0000-00000000000C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Adapters.Performance", "src\Lifeblood.Adapters.Performance\Lifeblood.Adapters.Performance.csproj", "{B000000D-0000-0000-0000-00000000000D}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lifeblood.Server.Mcp", "src\Lifeblood.Server.Mcp\Lifeblood.Server.Mcp.csproj", "{B000000B-0000-0000-0000-00000000000B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B3E10B52-FD74-47AF-9D69-A1E2F6989853}"
@@ -74,6 +76,10 @@ Global
 		{B000000C-0000-0000-0000-00000000000C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B000000C-0000-0000-0000-00000000000C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B000000C-0000-0000-0000-00000000000C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B000000D-0000-0000-0000-00000000000D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B000000D-0000-0000-0000-00000000000D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B000000D-0000-0000-0000-00000000000D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B000000D-0000-0000-0000-00000000000D}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B000000B-0000-0000-0000-00000000000B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B000000B-0000-0000-0000-00000000000B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B000000B-0000-0000-0000-00000000000B}.Release|Any CPU.ActiveCfg = Release|Any CPU
