@@ -4,6 +4,8 @@ Canonical symbol IDs, the typed semantic-view handle, BCL ownership, and
 csproj-driven compilation facts. Every rule on this page lives in or is
 consumed by `Lifeblood.Adapters.CSharp`.
 
+- **INV-SOURCE-EVIDENCE-001. Caller-selected lexical evidence streams through one bounded left-side port over the retained C# syntax trees and never becomes another source index or semantic base.** `ISourceEvidenceProvider.ScanSourceEvidence` accepts exact terms, optional module/file scope, selected `Comment` / `XmlDocumentation` / `StringLiteral` kinds, and a hard fact cap. `RoslynSourceEvidenceProvider` reuses the current retained profile's immutable syntax trees and semantic models, emits deterministic request-local facts with physical source spans and the nearest graph-addressable containing symbol, and reports `executionMode:"RetainedSyntaxTrees"`, input identity, truncation, and `additionalSemanticBaseCount:0`. Matching is ordinal case-insensitive substring policy supplied by the caller; the adapter never labels prose stale, invents synonyms, or treats lexical presence as enforcement. It does not scan generated, skipped, non-C#, or another define profile's inactive syntax and says so in `limitations[]`. The callback and all request-local symbol memoization die with the scan. No `EdgeKind`, graph count, compilation cache, package inventory, or invariant declaration authority changes. Pinned by `SourceEvidenceProviderTests` and the contract-audit end-to-end fixture.
+
 ## Canonical Symbol ID Determinism
 
 Lifeblood symbol IDs must be byte-identical for the same underlying

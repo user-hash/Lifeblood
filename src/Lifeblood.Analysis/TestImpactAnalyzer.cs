@@ -15,8 +15,8 @@ namespace Lifeblood.Analysis;
 /// </summary>
 public static class TestImpactAnalyzer
 {
-    /// <summary>
-    /// Method-level attribute names that mark a method as a test case.
+    /*
+    /// TestSymbolClassifier owns the method-level attributes that mark a test case.
     /// Sourced from NUnit (the common .NET testing baseline), Unity Test
     /// Framework, and xUnit. Lifecycle attributes (`SetUp`,
     /// `OneTimeSetUp`, `TearDown`, `OneTimeTearDown`, `UnitySetUp`,
@@ -25,21 +25,9 @@ public static class TestImpactAnalyzer
     /// methods a caller wants to enumerate. The complementary set on
     /// <c>UnityReachabilityAdapter</c> serves a different purpose
     /// (dead-code dispatch-entrypoint detection) so duplication of the
-    /// list across the two analyzers is intentional; consolidation
-    /// belongs to a separate atom if the policies ever diverge.
-    /// </summary>
-    private static readonly HashSet<string> TestCaseAttributes = new(StringComparer.Ordinal)
-    {
-        "Test",
-        "TestCase",
-        "TestCaseSource",
-        "Theory",
-        "UnityTest",
-        "Fact",       // xUnit
-        "Xunit.Fact",
-        "Xunit.Theory",
-    };
-
+    /// runtime-dispatch entrypoint detection. That vocabulary remains separate
+    /// because the two policies answer different questions.
+    */
     /// <summary>
     /// Compute the test-impact report for a target symbol.
     ///
@@ -186,7 +174,7 @@ public static class TestImpactAnalyzer
             var sym = graph.GetSymbol(id);
             if (sym == null) continue;
             if (sym.Kind != SymbolKind.Method) continue;
-            if (!IsTestMethod(sym)) continue;
+            if (!TestSymbolClassifier.IsTestMethod(sym)) continue;
 
             // Walk up to the containing type.
             var containingTypeId = FindContainingType(graph, sym);
@@ -330,7 +318,7 @@ public static class TestImpactAnalyzer
         foreach (var sym in graph.Symbols)
         {
             if (sym.Kind != SymbolKind.Method) continue;
-            if (!IsTestMethod(sym)) continue;
+            if (!TestSymbolClassifier.IsTestMethod(sym)) continue;
             var containingTypeId = FindContainingType(graph, sym);
             if (containingTypeId == null) continue;
             if (alreadyCovered.Contains(containingTypeId)) continue;
@@ -409,17 +397,6 @@ public static class TestImpactAnalyzer
         DirectTestClassCount = 0,
         RecommendedFilters = Array.Empty<string>(),
     };
-
-    private static bool IsTestMethod(Symbol sym)
-    {
-        if (sym.Properties == null) return false;
-        if (!sym.Properties.TryGetValue(SymbolPropertyKeys.Attributes, out var attrs) || string.IsNullOrEmpty(attrs))
-            return false;
-        foreach (var name in attrs.Split(';'))
-            if (TestCaseAttributes.Contains(name))
-                return true;
-        return false;
-    }
 
     /// <summary>
     /// Walk <paramref name="member"/>'s <see cref="Symbol.ParentId"/>

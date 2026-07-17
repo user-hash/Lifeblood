@@ -20,7 +20,88 @@ public sealed class ContractManifest
     public StateAccessContract[] StateAccesses { get; init; } = Array.Empty<StateAccessContract>();
     public ValueDomainContract[] ValueDomains { get; init; } = Array.Empty<ValueDomainContract>();
     public OperationShapeContract[] OperationShapes { get; init; } = Array.Empty<OperationShapeContract>();
+    public SourceTextPolicyContract[] SourceTextPolicies { get; init; } = Array.Empty<SourceTextPolicyContract>();
+    public InvariantEvidenceContract[] InvariantEvidence { get; init; } = Array.Empty<InvariantEvidenceContract>();
     public ContractSuppression[] Suppressions { get; init; } = Array.Empty<ContractSuppression>();
+}
+
+/// <summary>
+/// Caller-authored advisory policy for exact phrases in source comments or XML
+/// documentation. Lifeblood proves the lexical occurrence and nearby symbol;
+/// the caller owns the retired-term decision and suggested action.
+/// </summary>
+public sealed class SourceTextPolicyContract
+{
+    public required string Id { get; init; }
+    public string[] Terms { get; init; } = Array.Empty<string>();
+    public string[] IncludeKinds { get; init; } = new[]
+    {
+        SourceEvidenceKind.Comment,
+        SourceEvidenceKind.XmlDocumentation,
+    };
+    public required string SuggestedAction { get; init; }
+    public string[] InvariantIds { get; init; } = Array.Empty<string>();
+    public string[] CallRouteIds { get; init; } = Array.Empty<string>();
+    public string[] Categories { get; init; } = Array.Empty<string>();
+    public string Severity { get; init; } = ContractSeverity.Warning;
+    public string? Message { get; init; }
+    public string? Guidance { get; init; }
+}
+
+public static class SourceTextSuggestedAction
+{
+    public const string Delete = "Delete";
+    public const string UpdateAuthority = "UpdateAuthority";
+    public const string Keep = "Keep";
+
+    public static readonly string[] All = { Delete, UpdateAuthority, Keep };
+}
+
+/// <summary>
+/// Consumer-selected, named evidence requirements for one invariant family.
+/// Results remain category receipts and concrete gaps; no global quality score
+/// is computed.
+/// </summary>
+public sealed class InvariantEvidenceContract
+{
+    public const int DefaultMaxInvariants = 256;
+    public const int MaximumInvariants = 2_048;
+    public const int DefaultMaxTestDepth = 12;
+    public const int MaximumTestDepth = 32;
+
+    public required string Id { get; init; }
+    public string[] InvariantIds { get; init; } = Array.Empty<string>();
+    public string[] InvariantIdPrefixes { get; init; } = Array.Empty<string>();
+    public InvariantReferenceAlias[] ReferenceAliases { get; init; } = Array.Empty<InvariantReferenceAlias>();
+    public string[] CallRouteIds { get; init; } = Array.Empty<string>();
+    public string[] RequiredEvidenceKinds { get; init; } = new[]
+    {
+        ContractEvidenceKind.InvariantDeclaration,
+        ContractEvidenceKind.SourceReference,
+        ContractEvidenceKind.TestReference,
+    };
+    public string[] OperationContractIds { get; init; } = Array.Empty<string>();
+    public ContractExternalEvidence[] ExternalEvidence { get; init; } = Array.Empty<ContractExternalEvidence>();
+    public int MaxInvariants { get; init; } = DefaultMaxInvariants;
+    public int MaxTestDepth { get; init; } = DefaultMaxTestDepth;
+    public string[] Categories { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>Caller-declared alternate exact term for one invariant id.</summary>
+public sealed class InvariantReferenceAlias
+{
+    public required string InvariantId { get; init; }
+    public string[] Terms { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Explicit external receipt reference. Lifeblood reports it as caller-declared
+/// evidence and never claims to have executed or verified the referenced run.
+/// </summary>
+public sealed class ContractExternalEvidence
+{
+    public required string Kind { get; init; }
+    public required string Reference { get; init; }
 }
 
 /// <summary>
@@ -457,8 +538,125 @@ public sealed class ContractAuditReport
     public ContractCallRouteReceipt[] CallRoutes { get; init; } = Array.Empty<ContractCallRouteReceipt>();
     public ContractRouteFactReceipt[] RouteFacts { get; init; } = Array.Empty<ContractRouteFactReceipt>();
     public ContractStateAccessReceipt[] StateAccesses { get; init; } = Array.Empty<ContractStateAccessReceipt>();
+    public SourceEvidenceScanReceipt? SourceEvidenceScan { get; init; }
+    public ContractTextPolicyReceipt[] SourceTextPolicies { get; init; } = Array.Empty<ContractTextPolicyReceipt>();
+    public ContractTextMatch[] SourceTextMatches { get; init; } = Array.Empty<ContractTextMatch>();
+    public ContractInvariantEvidencePolicyReceipt[] InvariantEvidencePolicies { get; init; } = Array.Empty<ContractInvariantEvidencePolicyReceipt>();
+    public ContractInvariantEvidenceReceipt[] InvariantEvidence { get; init; } = Array.Empty<ContractInvariantEvidenceReceipt>();
     public ContractFinding[] Findings { get; init; } = Array.Empty<ContractFinding>();
     public string[] Limitations { get; init; } = Array.Empty<string>();
+}
+
+public sealed class ContractTextPolicyReceipt
+{
+    public required string ContractId { get; init; }
+    public required int MatchCount { get; init; }
+    public required int ReturnedMatchCount { get; init; }
+    public required int SuppressedMatchCount { get; init; }
+    public required bool Truncated { get; init; }
+}
+
+public sealed class ContractTextMatch
+{
+    public required string ContractId { get; init; }
+    public required string FactId { get; init; }
+    public required string MatchedTerm { get; init; }
+    public required string SuggestedAction { get; init; }
+    public required ConfidenceBand Confidence { get; init; }
+    public required string Authority { get; init; }
+    public string[] InvariantIds { get; init; } = Array.Empty<string>();
+    public string[] Categories { get; init; } = Array.Empty<string>();
+    public required string Message { get; init; }
+    public string? Guidance { get; init; }
+    public required string Text { get; init; }
+    public string? ContainingSymbolId { get; init; }
+    public required OperationSourceSpan Source { get; init; }
+}
+
+public sealed class ContractInvariantEvidenceReceipt
+{
+    public required string ContractId { get; init; }
+    public required string InvariantId { get; init; }
+    public string[] States { get; init; } = Array.Empty<string>();
+    public required bool RequirementsSatisfied { get; init; }
+    public required bool Truncated { get; init; }
+    public ContractEvidenceCategoryReceipt[] Evidence { get; init; } = Array.Empty<ContractEvidenceCategoryReceipt>();
+    public ContractEvidenceGap[] Gaps { get; init; } = Array.Empty<ContractEvidenceGap>();
+}
+
+/// <summary>
+/// Selection receipt for one invariant-evidence policy. It keeps an empty
+/// exact/prefix selection distinguishable from an omitted policy.
+/// </summary>
+public sealed class ContractInvariantEvidencePolicyReceipt
+{
+    public required string ContractId { get; init; }
+    public required int SelectedInvariantCount { get; init; }
+    public required int ReturnedInvariantCount { get; init; }
+    public required bool Truncated { get; init; }
+}
+
+public sealed class ContractEvidenceCategoryReceipt
+{
+    public required string Kind { get; init; }
+    public required bool Required { get; init; }
+    public required string Status { get; init; }
+    public required int EvidenceCount { get; init; }
+    public required int ReturnedEvidenceCount { get; init; }
+    public ContractEvidence[] Evidence { get; init; } = Array.Empty<ContractEvidence>();
+}
+
+public sealed class ContractEvidenceGap
+{
+    public required string Kind { get; init; }
+    public required string Subject { get; init; }
+    public required string Reason { get; init; }
+}
+
+/// <summary>Neutral declaration record passed from invariant authority to Analysis.</summary>
+public sealed class InvariantDeclarationEvidence
+{
+    public required string Id { get; init; }
+    public required string Category { get; init; }
+    public required string Title { get; init; }
+    public required string Body { get; init; }
+    public required OperationSourceSpan Source { get; init; }
+}
+
+public static class ContractEvidenceKind
+{
+    public const string InvariantDeclaration = "InvariantDeclaration";
+    public const string SourceReference = "SourceReference";
+    public const string TestReference = "TestReference";
+    public const string ReachableTest = "ReachableTest";
+    public const string OperationContract = "OperationContract";
+
+    public static readonly string[] BuiltIn =
+    {
+        InvariantDeclaration,
+        SourceReference,
+        TestReference,
+        ReachableTest,
+        OperationContract,
+    };
+}
+
+public static class ContractEvidenceStatus
+{
+    public const string Present = "Present";
+    public const string Missing = "Missing";
+    public const string Failing = "Failing";
+    public const string CallerDeclared = "CallerDeclared";
+}
+
+public static class InvariantEvidenceState
+{
+    public const string Covered = "Covered";
+    public const string ProseOnly = "ProseOnly";
+    public const string SourceOnly = "SourceOnly";
+    public const string TestOnly = "TestOnly";
+    public const string StaleReference = "StaleReference";
+    public const string Orphan = "Orphan";
 }
 
 public sealed class ContractRuleBreakdown
@@ -637,6 +835,8 @@ public static class ContractRuleId
     public const string StateAccess = "state-access";
     public const string ValueDomain = "value-domain";
     public const string OperationShape = "operation-shape";
+    public const string SourceTextPolicy = "source-text-policy";
+    public const string InvariantEvidence = "invariant-evidence";
 }
 
 public static class ContractFindingKind

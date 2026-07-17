@@ -1640,6 +1640,45 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_TextAndInvariantEvidenceReuseOnePublicationWithoutOperationScan()
+    {
+        var (projectRoot, manifest) = CreateContractEvidenceProject();
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        var analyzed = handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot, defineProfiles = new[] { "Editor" } }));
+        Assert.Null(analyzed.IsError);
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.True(result.IsError is null or false, result.Content[0].Text);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.Equal(
+            OperationFactExecutionMode.NotRequested,
+            root.GetProperty("scanReceipt").GetProperty("executionMode").GetString());
+        Assert.Equal(
+            SourceEvidenceExecutionMode.RetainedSyntaxTrees,
+            root.GetProperty("sourceEvidenceScan").GetProperty("executionMode").GetString());
+        Assert.Equal(
+            0,
+            root.GetProperty("sourceEvidenceScan").GetProperty("additionalSemanticBaseCount").GetInt32());
+        var textMatch = Assert.Single(root.GetProperty("sourceTextMatches").EnumerateArray());
+        Assert.Equal("UpdateAuthority", textMatch.GetProperty("suggestedAction").GetString());
+        Assert.Equal("Advisory", textMatch.GetProperty("confidence").GetString());
+        var evidence = Assert.Single(root.GetProperty("invariantEvidence").EnumerateArray());
+        Assert.Equal("INV-ACME-001", evidence.GetProperty("invariantId").GetString());
+        Assert.True(evidence.GetProperty("requirementsSatisfied").GetBoolean());
+        Assert.Contains(
+            evidence.GetProperty("states").EnumerateArray(),
+            state => state.GetString() == InvariantEvidenceState.Covered);
+        Assert.True(root.TryGetProperty("envelope", out _));
+    }
+
+    [Fact]
     public void Handle_ContractAudit_SecondaryProfileIsEphemeralAndKeepsOneSemanticBase()
     {
         var (projectRoot, manifest) = CreateMultiProfileContractAuditProject();
@@ -2458,6 +2497,87 @@ public class ToolHandlerTests : IDisposable
                     targetSymbolIds = new[] { "method:Acme.Guard.Set(int)" },
                     argumentOrdinal = 0,
                     allowedSourceSymbolIds = new[] { "method:System.Math.Clamp(int,int,int)" },
+                },
+            },
+        });
+        return (projectRoot, manifest);
+    }
+
+    private (string ProjectRoot, JsonElement Manifest) CreateContractEvidenceProject()
+    {
+        var projectRoot = Path.Combine(_tempDir, "contract-evidence");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "AGENTS.md"),
+            "- **INV-ACME-001**: Engine production behavior is test-owned.\n");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Engine.cs"),
+            """
+            using System;
+            namespace Acme;
+
+            public sealed class TestAttribute : Attribute { }
+
+            public static class Engine
+            {
+                /// <summary>INV-ACME-001 owns this production path.</summary>
+                public static void Run()
+                {
+                    /* managed mirror authority */
+                }
+            }
+
+            public sealed class EngineTests
+            {
+                [Test]
+                public void Run_is_protected()
+                {
+                    Engine.Run();
+                    /* INV-ACME-001 */
+                }
+            }
+            """);
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-evidence",
+            version = "1.0.0",
+            callRoutes = new[]
+            {
+                new
+                {
+                    id = "production",
+                    rootSymbolIds = new[] { "method:Acme.Engine.Run()" },
+                },
+            },
+            sourceTextPolicies = new[]
+            {
+                new
+                {
+                    id = "retired-authority",
+                    terms = new[] { "managed mirror" },
+                    suggestedAction = "UpdateAuthority",
+                    invariantIds = new[] { "INV-ACME-001" },
+                    callRouteIds = new[] { "production" },
+                },
+            },
+            invariantEvidence = new[]
+            {
+                new
+                {
+                    id = "engine-coverage",
+                    invariantIds = new[] { "INV-ACME-001" },
+                    callRouteIds = new[] { "production" },
+                    requiredEvidenceKinds = new[]
+                    {
+                        "InvariantDeclaration",
+                        "SourceReference",
+                        "TestReference",
+                        "ReachableTest",
+                    },
                 },
             },
         });

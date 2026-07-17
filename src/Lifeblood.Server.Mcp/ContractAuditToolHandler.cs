@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Analysis;
+using Lifeblood.Application.Ports.Right.Invariants;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Domain.Results;
 
@@ -15,11 +16,16 @@ internal sealed class ContractAuditToolHandler
     private const int MaximumManifestCharacters = 1_048_576;
 
     private readonly GraphSession _session;
+    private readonly IInvariantProvider _invariants;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    public ContractAuditToolHandler(GraphSession session, JsonSerializerOptions jsonOptions)
+    public ContractAuditToolHandler(
+        GraphSession session,
+        IInvariantProvider invariants,
+        JsonSerializerOptions jsonOptions)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _invariants = invariants ?? throw new ArgumentNullException(nameof(invariants));
         _jsonOptions = jsonOptions ?? throw new ArgumentNullException(nameof(jsonOptions));
     }
 
@@ -43,10 +49,13 @@ internal sealed class ContractAuditToolHandler
         var profileScope = string.IsNullOrWhiteSpace(request.ProfileScope)
             ? _session.RetainedProfileName
             : request.ProfileScope.Trim();
-        var graph = manifest.CallRoutes.Length > 0 || manifest.StateAccesses.Length > 0
+        var graph = manifest.CallRoutes.Length > 0
+                || manifest.StateAccesses.Length > 0
+                || manifest.SourceTextPolicies.Length > 0
+                || manifest.InvariantEvidence.Length > 0
             ? _session.Graph
                 ?? throw new InvalidOperationException(
-                    "Call routes and state access contracts require a loaded semantic graph from the selected publication.")
+                    "Call routes, state access, and invariant evidence require a loaded semantic graph from the selected publication.")
             : null;
         var callRoutePlan = manifest.CallRoutes.Length == 0
             ? ContractCallRoutePlan.Empty
@@ -76,16 +85,121 @@ internal sealed class ContractAuditToolHandler
             MaxEvidencePerFinding = request.EffectiveMaxEvidencePerFinding,
             Summarize = request.EffectiveSummarize,
         });
+        var receipt = engine.RequiresOperationFacts
+            ? ScanOperationFacts(engine, cancellationToken)
+            : NoOperationScan(profileScope ?? "default");
+        var report = engine.Complete(receipt);
+        if (!engine.RequiresSourceEvidence) return report;
+
+        var selected = report.SelectedContractIds.ToHashSet(StringComparer.Ordinal);
+        var textContracts = manifest.SourceTextPolicies.Where(contract => selected.Contains(contract.Id)).ToArray();
+        var evidenceContracts = manifest.InvariantEvidence.Where(contract => selected.Contains(contract.Id)).ToArray();
+        var declarations = BuildInvariantDeclarations(_session.ProjectRoot);
+        var selectedInvariantIds = evidenceContracts
+            .SelectMany(contract => contract.InvariantIds
+                .Concat(declarations
+                    .Where(declaration => contract.InvariantIdPrefixes.Any(prefix =>
+                        declaration.Id.StartsWith(prefix, StringComparison.Ordinal)))
+                    .Select(declaration => declaration.Id))
+                .Concat(contract.ReferenceAliases.Select(alias => alias.InvariantId)))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var terms = textContracts.SelectMany(contract => contract.Terms)
+            .Concat(selectedInvariantIds)
+            .Concat(evidenceContracts.SelectMany(contract => contract.InvariantIdPrefixes))
+            .Concat(evidenceContracts.SelectMany(contract => contract.ReferenceAliases.SelectMany(alias => alias.Terms)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(term => term, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var kinds = textContracts.SelectMany(contract => contract.IncludeKinds)
+            .Concat(evidenceContracts.Length == 0
+                ? Array.Empty<string>()
+                : SourceEvidenceKind.All)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(kind => kind, StringComparer.Ordinal)
+            .ToArray();
+        var sourceFacts = new List<SourceEvidenceFact>();
+        var sourceProvider = _session.SourceEvidenceProvider
+            ?? throw new InvalidOperationException(
+                "The selected publication does not retain a source-evidence provider. " +
+                "Analyze a C# project with readOnly:false or select the current live publication.");
+        var sourceReceipt = new ScanSourceEvidenceUseCase(sourceProvider).Execute(
+            new SourceEvidenceQuery
+            {
+                ModuleScope = request.ModuleScope,
+                ProfileScope = profileScope,
+                FilePaths = request.FilePaths,
+                SearchTerms = terms,
+                IncludeKinds = kinds,
+                MaxFacts = request.EffectiveMaxFacts,
+            },
+            fact =>
+            {
+                sourceFacts.Add(fact);
+                return true;
+            },
+            cancellationToken);
+        return ContractEvidenceProjector.Project(
+            graph!,
+            manifest,
+            report,
+            callRoutePlan,
+            declarations,
+            sourceFacts,
+            sourceReceipt,
+            request.EffectiveSummarize ? Math.Min(25, request.EffectiveMaxFindings) : request.EffectiveMaxFindings,
+            request.EffectiveSummarize ? 0 : request.EffectiveMaxEvidencePerFinding);
+    }
+
+    private OperationFactScanReceipt ScanOperationFacts(
+        ContractAuditEngine engine,
+        CancellationToken cancellationToken)
+    {
         var provider = _session.OperationFactProvider
             ?? throw new InvalidOperationException(
                 "The selected publication does not retain an operation-fact provider. " +
                 "Analyze a C# project or select the current live publication.");
-        var receipt = new ScanOperationFactsUseCase(provider).Execute(
+        return new ScanOperationFactsUseCase(provider).Execute(
             engine.Query,
             engine.Observe,
             cancellationToken);
-        return engine.Complete(receipt);
     }
+
+    private OperationFactScanReceipt NoOperationScan(string profileScope) => new()
+    {
+        Status = OperationFactScanStatus.Completed,
+        ProfileScope = profileScope,
+        AvailableProfiles = _session.RetainedProfileNames.ToArray(),
+        ExecutionMode = OperationFactExecutionMode.NotRequested,
+        InputIdentityVerifiedAtStart = true,
+        AdditionalSemanticBaseCount = 0,
+        CompiledModuleCount = 0,
+        ScannedModuleCount = 0,
+        ScannedFileCount = 0,
+        ObservedOperationCount = 0,
+        EmittedFactCount = 0,
+        Truncated = false,
+        StoppedByConsumer = false,
+    };
+
+    private InvariantDeclarationEvidence[] BuildInvariantDeclarations(string projectRoot)
+        => _invariants.GetAll(projectRoot)
+            .Select(invariant => new InvariantDeclarationEvidence
+            {
+                Id = invariant.Id,
+                Category = invariant.Category,
+                Title = invariant.Title,
+                Body = invariant.Body,
+                Source = new OperationSourceSpan
+                {
+                    FilePath = invariant.SourcePath,
+                    Line = invariant.SourceLine,
+                    Column = 1,
+                    EndLine = invariant.SourceLine,
+                    EndColumn = 1,
+                },
+            })
+            .ToArray();
 
     private string ReadManifestFile(string rawPath)
     {

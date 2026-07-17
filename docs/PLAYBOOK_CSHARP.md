@@ -214,6 +214,38 @@ retained fact cache, or second range database to Lifeblood. Generation stays in
 the consumer test project where its runtime, framework, and product contracts
 are available.
 
+## 9. Audit invariant evidence and retired source prose
+
+Use one `lifeblood_contract_audit` manifest when a change needs both a stale-
+comment pass and an invariant-to-test coverage receipt. This keeps parsed
+invariants, semantic routes, and lexical source evidence on their established
+authorities.
+
+1. Add `sourceTextPolicies[]` only for phrases the repository explicitly marks
+   retired or authority-sensitive. Each policy names exact terms, comment/XML
+   kinds, optional call routes and invariant ids, and one suggested `Delete`,
+   `UpdateAuthority`, or `Keep` action. A match is always advisory; read its
+   `authority:"CallerPolicy"`, source span, nearby symbol, and truncation receipt.
+2. Add `invariantEvidence[]` for an exact invariant id or bounded id prefix.
+   Select named `requiredEvidenceKinds` rather than asking for a global score.
+   Built-in categories are `InvariantDeclaration`, `SourceReference`,
+   `TestReference`, `ReachableTest`, and `OperationContract`. Caller-owned
+   compile/probe/runtime evidence uses explicit `{ kind, reference }` entries.
+3. Use `referenceAliases[]` only when a repository intentionally names an
+   invariant in symbols/tests with a different exact term. Lifeblood performs
+   case-insensitive exact-term substring matching; it does not invent synonyms.
+4. Read every category's status, counts, bounded evidence, and `gaps[]`. Treat
+   `CallerDeclared` as an attributed external receipt reference, not proof that
+   Lifeblood executed it. Treat zero evaluated operation occurrences and any
+   truncation as unresolved.
+5. Interpret the non-exclusive states as triage: `Covered` means every requested
+   category is present; `ProseOnly`, `SourceOnly`, and `TestOnly` name missing
+   links; `StaleReference` means source/test text names an undeclared id;
+   `Orphan` means a declaration has no configured enforcement link.
+6. After fixing prose or tests, refresh the one retained analysis and repeat the
+   same manifest. Do not create a parallel comment index, invariant ledger,
+   test-coverage database, or numeric quality score.
+
 ## Envelope cheat sheet
 
 | Field | When to act |

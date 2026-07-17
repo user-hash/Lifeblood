@@ -26,6 +26,8 @@ public sealed class ContractAuditEngine
     private readonly IReadOnlyDictionary<string, StateAccessContract> _stateContractsById;
     private readonly ValueDomainContract[] _domainContracts;
     private readonly OperationShapeContract[] _shapeContracts;
+    private readonly SourceTextPolicyContract[] _sourceTextContracts;
+    private readonly InvariantEvidenceContract[] _invariantEvidenceContracts;
     private readonly ContractSuppression[] _suppressions;
     private readonly ContractCallRouteReceipt[] _callRouteReceipts;
     private readonly ContractCallRouteMatch[] _callRouteMatches;
@@ -57,21 +59,26 @@ public sealed class ContractAuditEngine
         _manifest = request.Manifest ?? throw new ArgumentException("A contract manifest is required.", nameof(request));
         ContractManifestValidator.Validate(_manifest);
 
-        (_routeFactContracts, _guardContracts, _costContracts, _stateContracts, _domainContracts, _shapeContracts) =
+        (_routeFactContracts, _guardContracts, _costContracts, _stateContracts, _domainContracts, _shapeContracts,
+            _sourceTextContracts, _invariantEvidenceContracts) =
             SelectContracts(_manifest, request.IncludeRuleIds);
         if (_routeFactContracts.Length == 0
             && _guardContracts.Length == 0
             && _costContracts.Length == 0
             && _stateContracts.Length == 0
             && _domainContracts.Length == 0
-            && _shapeContracts.Length == 0)
+            && _shapeContracts.Length == 0
+            && _sourceTextContracts.Length == 0
+            && _invariantEvidenceContracts.Length == 0)
             throw new ArgumentException("The contract audit request did not select any manifest contracts.", nameof(request));
         _suppressions = _manifest.Suppressions ?? Array.Empty<ContractSuppression>();
         (_callRouteReceipts, _callRouteMatches) = SelectCallRoutePlan(
             request.CallRoutePlan,
             _routeFactContracts.SelectMany(contract => contract.CallRouteIds)
                 .Concat(_costContracts.SelectMany(contract => contract.CallRouteIds))
-                .Concat(_stateContracts.SelectMany(contract => contract.CallRouteIds)));
+                .Concat(_stateContracts.SelectMany(contract => contract.CallRouteIds))
+                .Concat(_sourceTextContracts.SelectMany(contract => contract.CallRouteIds))
+                .Concat(_invariantEvidenceContracts.SelectMany(contract => contract.CallRouteIds)));
         _callRouteMatchesByContaining = _callRouteMatches
             .GroupBy(match => match.ContainingSymbolId, StringComparer.Ordinal)
             .ToDictionary(
@@ -140,6 +147,16 @@ public sealed class ContractAuditEngine
     /// <summary>The exact bounded fact request derived from the selected contracts.</summary>
     public OperationFactQuery Query { get; }
 
+    public bool RequiresOperationFacts => _routeFactContracts.Length > 0
+        || _guardContracts.Length > 0
+        || _costContracts.Length > 0
+        || _stateContracts.Length > 0
+        || _domainContracts.Length > 0
+        || _shapeContracts.Length > 0;
+
+    public bool RequiresSourceEvidence => _sourceTextContracts.Length > 0
+        || _invariantEvidenceContracts.Length > 0;
+
     /// <summary>Consumes one neutral fact. Returns true so the provider owns the fact cap.</summary>
     public bool Observe(OperationFact fact)
     {
@@ -173,6 +190,8 @@ public sealed class ContractAuditEngine
             .Concat(_stateContracts.Select(_ => ContractRuleId.StateAccess))
             .Concat(_domainContracts.Select(_ => ContractRuleId.ValueDomain))
             .Concat(_shapeContracts.Select(_ => ContractRuleId.OperationShape))
+            .Concat(_sourceTextContracts.Select(_ => ContractRuleId.SourceTextPolicy))
+            .Concat(_invariantEvidenceContracts.Select(_ => ContractRuleId.InvariantEvidence))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
@@ -182,6 +201,8 @@ public sealed class ContractAuditEngine
             .Concat(_stateContracts.Select(contract => contract.Id))
             .Concat(_domainContracts.Select(contract => contract.Id))
             .Concat(_shapeContracts.Select(contract => contract.Id))
+            .Concat(_sourceTextContracts.Select(contract => contract.Id))
+            .Concat(_invariantEvidenceContracts.Select(contract => contract.Id))
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
 
@@ -201,7 +222,10 @@ public sealed class ContractAuditEngine
                 || _findingCount > _findings.Count
                 || _callRouteReceipts.Any(route => route.Truncated)
                 || _statePlanReceipts.Any(state => state.Truncated),
-            RuleBreakdown = selectedRules.Select(ruleId =>
+            RuleBreakdown = selectedRules
+                .Where(ruleId => ruleId is not ContractRuleId.SourceTextPolicy
+                    and not ContractRuleId.InvariantEvidence)
+                .Select(ruleId =>
             {
                 _counts.TryGetValue(ruleId, out var count);
                 return new ContractRuleBreakdown
@@ -1461,8 +1485,11 @@ public sealed class ContractAuditEngine
                 "Operation shapes prove manifest-selected lexical inputs, result types, branch arms, and control contexts. " +
                 "They do not infer aliasing, interprocedural array lengths, runtime buffer contents, or enum/table coverage.");
         }
-        limitations.Add(
-            "Reflection, dynamic dispatch, and string-named invocation are outside the bound operation stream.");
+        if (RequiresOperationFacts)
+        {
+            limitations.Add(
+                "Reflection, dynamic dispatch, and string-named invocation are outside the bound operation stream.");
+        }
         return limitations.Distinct(StringComparer.Ordinal).ToArray();
     }
 
@@ -1472,7 +1499,9 @@ public sealed class ContractAuditEngine
         ExternalApiCostContract[] Costs,
         StateAccessContract[] StateAccesses,
         ValueDomainContract[] Domains,
-        OperationShapeContract[] Shapes) SelectContracts(
+        OperationShapeContract[] Shapes,
+        SourceTextPolicyContract[] SourceTextPolicies,
+        InvariantEvidenceContract[] InvariantEvidence) SelectContracts(
         ContractManifest manifest,
         string[]? includeRuleIds)
     {
@@ -1484,7 +1513,9 @@ public sealed class ContractAuditEngine
                 manifest.ExternalApiCosts,
                 manifest.StateAccesses,
                 manifest.ValueDomains,
-                manifest.OperationShapes);
+                manifest.OperationShapes,
+                manifest.SourceTextPolicies,
+                manifest.InvariantEvidence);
 
         var known = manifest.RouteFacts.Select(contract => contract.Id)
             .Concat(manifest.OperationGuards.Select(contract => contract.Id))
@@ -1492,12 +1523,16 @@ public sealed class ContractAuditEngine
             .Concat(manifest.StateAccesses.Select(contract => contract.Id))
             .Concat(manifest.ValueDomains.Select(contract => contract.Id))
             .Concat(manifest.OperationShapes.Select(contract => contract.Id))
+            .Concat(manifest.SourceTextPolicies.Select(contract => contract.Id))
+            .Concat(manifest.InvariantEvidence.Select(contract => contract.Id))
             .Append(ContractRuleId.RouteFact)
             .Append(ContractRuleId.OperationGuard)
             .Append(ContractRuleId.ExternalApiCost)
             .Append(ContractRuleId.StateAccess)
             .Append(ContractRuleId.ValueDomain)
             .Append(ContractRuleId.OperationShape)
+            .Append(ContractRuleId.SourceTextPolicy)
+            .Append(ContractRuleId.InvariantEvidence)
             .ToHashSet(StringComparer.Ordinal);
         var unknown = requested.Where(id => !known.Contains(id)).ToArray();
         if (unknown.Length > 0)
@@ -1521,6 +1556,12 @@ public sealed class ContractAuditEngine
                 || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
             manifest.OperationShapes.Where(contract =>
                 requested.Contains(ContractRuleId.OperationShape, StringComparer.Ordinal)
+                || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
+            manifest.SourceTextPolicies.Where(contract =>
+                requested.Contains(ContractRuleId.SourceTextPolicy, StringComparer.Ordinal)
+                || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
+            manifest.InvariantEvidence.Where(contract =>
+                requested.Contains(ContractRuleId.InvariantEvidence, StringComparer.Ordinal)
                 || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray());
     }
 
@@ -1752,6 +1793,8 @@ public sealed class ContractAuditEngine
                 ContractRuleId.StateAccess => _stateContracts.Select(contract => contract.Id),
                 ContractRuleId.ValueDomain => _domainContracts.Select(contract => contract.Id),
                 ContractRuleId.OperationShape => _shapeContracts.Select(contract => contract.Id),
+                ContractRuleId.SourceTextPolicy => _sourceTextContracts.Select(contract => contract.Id),
+                ContractRuleId.InvariantEvidence => _invariantEvidenceContracts.Select(contract => contract.Id),
                 _ => Array.Empty<string>(),
             })
             .OrderBy(contractId => contractId, StringComparer.Ordinal);
