@@ -13,9 +13,13 @@
         "compare"
       ]
     },
+    "workspaceRoot": {
+      "type": "string",
+      "description": "Absolute workspace directory used to contain runtime-evidence paths. Required for import/compare when no analyzed workspace is loaded; otherwise defaults to the current workspace and must match it when supplied. Correlate always uses and, when supplied, must match the current source-evidence publication root."
+    },
     "sourcePath": {
       "type": "string",
-      "description": "Generic JSON/CSV or structural Unity ProfilerRecorder receipt inside the analyzed workspace. Relative paths resolve from workspace root."
+      "description": "Generic JSON/CSV or structural Unity ProfilerRecorder receipt inside workspaceRoot. Relative paths resolve from that root."
     },
     "candidatePath": {
       "type": "string",

@@ -69,24 +69,41 @@ public sealed class PerformanceEvidenceToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void Execute_Compare_EmitsDeltasForComparableCaptureAndWithholdsThemForReject()
+    public void Execute_ImportAndCompare_DoNotRequireSemanticPublication()
     {
-        using var session = LoadSession();
+        using var session = new GraphSession(_fs);
         var handler = new PerformanceEvidenceToolHandler(session, new LifebloodInvariantProvider(_fs));
+
+        var imported = handler.Execute(JsonSerializer.SerializeToElement(new
+        {
+            action = "import",
+            workspaceRoot = _root,
+            sourcePath = "baseline.json",
+        }));
+        using var importedJson = JsonDocument.Parse(JsonSerializer.Serialize(imported, JsonOptions));
+        Assert.Equal(Path.GetFullPath(_root), importedJson.RootElement.GetProperty("workspaceRoot").GetString());
+        Assert.Equal(0, importedJson.RootElement.GetProperty("retainedGraphBaseCount").GetInt32());
+        Assert.Equal(0, importedJson.RootElement.GetProperty("retainedSemanticBaseCount").GetInt32());
+        Assert.Equal(0, importedJson.RootElement.GetProperty("additionalSemanticBaseCount").GetInt32());
 
         var comparable = handler.Execute(JsonSerializer.SerializeToElement(new
         {
             action = "compare",
+            workspaceRoot = _root,
             sourcePath = "baseline.json",
             candidatePath = "candidate.json",
         }));
         using var comparableJson = JsonDocument.Parse(JsonSerializer.Serialize(comparable, JsonOptions));
         Assert.Equal("Comparable", comparableJson.RootElement.GetProperty("comparison").GetProperty("verdict").GetString());
         Assert.NotEqual(0, comparableJson.RootElement.GetProperty("comparison").GetProperty("returnedDeltaCount").GetInt32());
+        Assert.Equal(0, comparableJson.RootElement.GetProperty("retainedGraphBaseCount").GetInt32());
+        Assert.Equal(0, comparableJson.RootElement.GetProperty("retainedSemanticBaseCount").GetInt32());
+        Assert.Equal(0, comparableJson.RootElement.GetProperty("additionalSemanticBaseCount").GetInt32());
 
         var rejected = handler.Execute(JsonSerializer.SerializeToElement(new
         {
             action = "compare",
+            workspaceRoot = _root,
             sourcePath = "baseline.json",
             candidatePath = "unlike.json",
         }));

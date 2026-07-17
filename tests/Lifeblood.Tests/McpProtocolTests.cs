@@ -207,7 +207,7 @@ public class McpProtocolTests
   ["lifeblood_batch"] = noneObserve,
   ["lifeblood_snapshots"] = snapshotCatalog,
   ["lifeblood_evidence_drift"] = workspaceRootObserve,
-  ["lifeblood_performance_evidence"] = workspaceRootObserve,
+  ["lifeblood_performance_evidence"] = noneObserve,
   ["lifeblood_analyze"] = refresh,
   ["lifeblood_context"] = graphObserve,
   ["lifeblood_lookup"] = graphObserve,
@@ -329,8 +329,8 @@ public class McpProtocolTests
   var compare = definition.ResolveCallBehavior(JsonSerializer.SerializeToElement(new { action = "compare", sourcePath = "a.json", candidatePath = "b.json" }));
   var correlate = definition.ResolveCallBehavior(JsonSerializer.SerializeToElement(new { action = "correlate", sourcePath = "capture.json" }));
 
-  Assert.Equal(ToolSessionRequirement.WorkspaceRoot, import.SessionRequirement);
-  Assert.Equal(ToolSessionRequirement.WorkspaceRoot, compare.SessionRequirement);
+  Assert.Equal(ToolSessionRequirement.None, import.SessionRequirement);
+  Assert.Equal(ToolSessionRequirement.None, compare.SessionRequirement);
   Assert.Equal(ToolSessionRequirement.SourceEvidence, correlate.SessionRequirement);
   Assert.Equal(ToolEffect.Observe, correlate.Effect);
   Assert.Equal(ToolSessionAccess.SharedRead, correlate.SessionAccess);
