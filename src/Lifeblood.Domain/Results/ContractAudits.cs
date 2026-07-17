@@ -227,6 +227,7 @@ public sealed class OperationInputShape
     public string[] RequiredOperators { get; init; } = Array.Empty<string>();
     public string[] AllowedConstantValues { get; init; } = Array.Empty<string>();
     public string[] RequiredConstantValues { get; init; } = Array.Empty<string>();
+    public string[] ForbiddenConstantValues { get; init; } = Array.Empty<string>();
     public bool? CompileTimeConstant { get; init; }
 }
 
@@ -254,6 +255,7 @@ public static class OperationShapeKeyKind
 public sealed class OperationControlShape
 {
     public required string Kind { get; init; }
+    public string[] AllowedBranchArms { get; init; } = Array.Empty<string>();
     public string[] AnySourceSymbolIds { get; init; } = Array.Empty<string>();
     public string[] RequiredSourceSymbolIds { get; init; } = Array.Empty<string>();
     public string[] RequiredOperators { get; init; } = Array.Empty<string>();
@@ -311,6 +313,21 @@ public sealed class ContractAuditReport
 public sealed class ContractRuleBreakdown
 {
     public required string RuleId { get; init; }
+    public required int FindingCount { get; init; }
+    public required int SuppressedFindingCount { get; init; }
+    public ContractEvaluationBreakdown[] Contracts { get; init; } = Array.Empty<ContractEvaluationBreakdown>();
+}
+
+/// <summary>
+/// Per-contract coverage derived from the same evaluation counters as the
+/// enclosing rule row. Zero evaluated occurrences is an explicit evidence gap,
+/// never an implicit pass.
+/// </summary>
+public sealed class ContractEvaluationBreakdown
+{
+    public required string ContractId { get; init; }
+    public required int EvaluatedOccurrenceCount { get; init; }
+    public required int FindingFreeOccurrenceCount { get; init; }
     public required int FindingCount { get; init; }
     public required int SuppressedFindingCount { get; init; }
 }

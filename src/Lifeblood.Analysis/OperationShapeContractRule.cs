@@ -68,7 +68,7 @@ internal static class OperationShapeContractRule
                     .ToArray()))
             .ToArray();
 
-    private static bool Selects(OperationShapeContract contract, OperationFact fact)
+    internal static bool Selects(OperationShapeContract contract, OperationFact fact)
         => contract.OperationKinds.Contains(fact.Kind, StringComparer.Ordinal)
             && MatchesOptional(contract.TargetSymbolIds, fact.TargetSymbolId)
             && MatchesOptional(contract.ContainingSymbolIds, fact.ContainingSymbolId)
@@ -163,6 +163,12 @@ internal static class OperationShapeContractRule
         if (missingConstants.Length > 0)
             reasons.Add($"{label} is missing constants [{string.Join(", ", missingConstants)}]");
 
+        var forbiddenConstants = expected.ForbiddenConstantValues
+            .Where(value => actualConstants.Contains(value, StringComparer.Ordinal))
+            .ToArray();
+        if (forbiddenConstants.Length > 0)
+            reasons.Add($"{label} contains forbidden constants [{string.Join(", ", forbiddenConstants)}]");
+
         if (expected.CompileTimeConstant.HasValue
             && actual.IsCompileTimeConstant != expected.CompileTimeConstant.Value)
         {
@@ -177,6 +183,10 @@ internal static class OperationShapeContractRule
         OperationControlContext actual)
     {
         if (!string.Equals(expected.Kind, actual.Kind, StringComparison.Ordinal)) return false;
+        if (expected.AllowedBranchArms.Length > 0
+            && (actual.BranchArm == null
+                || !expected.AllowedBranchArms.Contains(actual.BranchArm, StringComparer.Ordinal)))
+            return false;
         if (!expected.RequiredOperators.All(value =>
                 actual.Operators.Contains(value, StringComparer.Ordinal)))
             return false;

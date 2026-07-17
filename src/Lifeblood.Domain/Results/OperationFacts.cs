@@ -76,6 +76,7 @@ public sealed class OperationConstantFact
 public sealed class OperationControlContext
 {
     public required string Kind { get; init; }
+    public string? BranchArm { get; init; }
     public string? Condition { get; init; }
     public OperationValueFact? ConditionValue { get; init; }
     public string[] Operators { get; init; } = Array.Empty<string>();
@@ -214,6 +215,8 @@ public static class OperationInputRole
     public const string Right = "Right";
     public const string Operand = "Operand";
     public const string Condition = "Condition";
+    public const string WhenTrue = "WhenTrue";
+    public const string WhenFalse = "WhenFalse";
     public const string Index = "Index";
     public const string Collection = "Collection";
     public const string ReturnedValue = "ReturnedValue";
@@ -273,4 +276,18 @@ public static class OperationControlContextKind
     public const string Catch = "Catch";
     public const string AnonymousFunction = "AnonymousFunction";
     public const string LocalFunction = "LocalFunction";
+}
+
+/// <summary>
+/// Lexical arm occupied by an occurrence inside a branch context. Null on a
+/// non-branch context. This is occurrence placement, not a control-flow or
+/// runtime-reachability claim.
+/// </summary>
+public static class OperationBranchArm
+{
+    public const string Condition = "Condition";
+    public const string WhenTrue = "WhenTrue";
+    public const string WhenFalse = "WhenFalse";
+
+    public static readonly string[] All = { Condition, WhenTrue, WhenFalse };
 }

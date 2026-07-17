@@ -10,11 +10,14 @@ namespace Lifeblood.Analysis;
 /// </summary>
 internal static class ValueDomainContractRule
 {
+    internal static bool Selects(ValueDomainContract contract, OperationFact fact)
+        => fact.TargetSymbolId != null
+            && contract.TargetSymbolIds.Contains(fact.TargetSymbolId, StringComparer.Ordinal)
+            && contract.OperationKinds.Contains(fact.Kind, StringComparer.Ordinal);
+
     internal static ValueDomainAssessment[] Evaluate(ValueDomainContract contract, OperationFact fact)
     {
-        if (fact.TargetSymbolId == null
-            || !contract.TargetSymbolIds.Contains(fact.TargetSymbolId, StringComparer.Ordinal)
-            || !contract.OperationKinds.Contains(fact.Kind, StringComparer.Ordinal))
+        if (!Selects(contract, fact))
             return Array.Empty<ValueDomainAssessment>();
 
         var input = SelectInput(contract, fact);
@@ -77,10 +80,7 @@ internal static class ValueDomainContractRule
         ValueDomainContract contract,
         OperationFact fact)
     {
-        if (contract.ConstantPolicy?.NearEqualPolicy == null
-            || fact.TargetSymbolId == null
-            || !contract.TargetSymbolIds.Contains(fact.TargetSymbolId, StringComparer.Ordinal)
-            || !contract.OperationKinds.Contains(fact.Kind, StringComparer.Ordinal))
+        if (contract.ConstantPolicy?.NearEqualPolicy == null || !Selects(contract, fact))
             return Array.Empty<NearEqualConstantObservation>();
 
         var input = SelectInput(contract, fact);
