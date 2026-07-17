@@ -146,7 +146,7 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
     private static PerformanceDeviceIdentity ReadUnityDevice(JsonElement root) => new()
     {
         DeviceModel = String(root, "deviceModel") ?? "",
-        DeviceClass = String(root, "deviceClass") ?? "",
+        DeviceClass = String(root, "deviceClass") ?? String(root, "deviceType") ?? "",
         Platform = String(root, "platform") ?? "",
         OperatingSystem = String(root, "operatingSystem") ?? "",
         Processor = String(root, "processorType") ?? String(root, "processor") ?? "",
@@ -174,7 +174,26 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
     private static PerformanceWorkloadIdentity ReadUnityWorkload(JsonElement root)
     {
         var counters = new Dictionary<string, double>(NumberMap(root, "workloadCounters"), StringComparer.Ordinal);
-        foreach (var name in new[] { "parallelTabs", "activeNotes", "synthVoices", "workerCount", "shaderTier" })
+        foreach (var name in new[]
+                 {
+                     "parallelTabs",
+                     "patternCommands",
+                     "stockPresetCommands",
+                     "stockPresetIndex",
+                     "presetCommands",
+                     "stepCount",
+                     "bpm",
+                     "requiredCallbacks",
+                     "loopLengthTicks",
+                     "melodicNoteCount",
+                     "melodicNoteCountPerTab",
+                     "baselineCallbackCount",
+                     "baselineSynthVoiceCount",
+                     "activeNotes",
+                     "synthVoices",
+                     "workerCount",
+                     "shaderTier",
+                 })
         {
             if (Number(root, name) is { } value) counters[name] = value;
         }
@@ -183,10 +202,13 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
             Fingerprint = String(root, "workloadHash")
                 ?? String(root, "audioWorkloadHash")
                 ?? String(root, "workloadFingerprint")
+                ?? String(root, "midiEventHash")
                 ?? "",
             CaptureMode = String(root, "captureMode") ?? "",
             AudioSampleRate = Int(root, "audioSampleRate"),
-            AudioBufferFrames = Int(root, "dspBufferLength") ?? Int(root, "audioBufferFrames"),
+            AudioBufferFrames = Int(root, "audioDspBufferFrames")
+                ?? Int(root, "dspBufferLength")
+                ?? Int(root, "audioBufferFrames"),
             TargetFrameRate = Int(root, "targetFrameRate"),
             Counters = counters,
         };
@@ -265,15 +287,25 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
                     continue;
                 }
 
-                var emitted = false;
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "averageMilliseconds", PerformanceStatistic.Average, "milliseconds", emit);
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "p95Milliseconds", PerformanceStatistic.P95, "milliseconds", emit);
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "maximumMilliseconds", PerformanceStatistic.Maximum, "milliseconds", emit);
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "totalMilliseconds", PerformanceStatistic.Total, "milliseconds", emit);
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "averageValue", PerformanceStatistic.Average, unit, emit);
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "p95Value", PerformanceStatistic.P95, unit, emit);
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "maximumValue", PerformanceStatistic.Maximum, unit, emit);
-                emitted |= EmitMetricAggregate(metric, stageName, category, marker, thread, "valueSum", PerformanceStatistic.Total, unit, emit);
+                var emitted = IsTimeUnit(unit)
+                    ? EmitMetricAggregates(
+                        metric,
+                        stageName,
+                        category,
+                        marker,
+                        thread,
+                        milliseconds: true,
+                        unit,
+                        emit)
+                    : EmitMetricAggregates(
+                        metric,
+                        stageName,
+                        category,
+                        marker,
+                        thread,
+                        milliseconds: false,
+                        unit,
+                        emit);
                 if (!emitted)
                 {
                     emit(new PerformanceMeasurement
@@ -342,6 +374,39 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
         });
         return true;
     }
+
+    private static bool EmitMetricAggregates(
+        JsonElement source,
+        string stage,
+        string category,
+        string marker,
+        string thread,
+        bool milliseconds,
+        string unit,
+        Action<PerformanceMeasurement> emit)
+    {
+        var emitted = false;
+        if (milliseconds)
+        {
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "averageMilliseconds", PerformanceStatistic.Average, "milliseconds", emit);
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "p95Milliseconds", PerformanceStatistic.P95, "milliseconds", emit);
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "maximumMilliseconds", PerformanceStatistic.Maximum, "milliseconds", emit);
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "totalMilliseconds", PerformanceStatistic.Total, "milliseconds", emit);
+        }
+        else
+        {
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "averageValue", PerformanceStatistic.Average, unit, emit);
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "p95Value", PerformanceStatistic.P95, unit, emit);
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "maximumValue", PerformanceStatistic.Maximum, unit, emit);
+            emitted |= EmitMetricAggregate(source, stage, category, marker, thread, "valueSum", PerformanceStatistic.Total, unit, emit);
+        }
+        return emitted;
+    }
+
+    private static bool IsTimeUnit(string unit)
+        => unit.Trim().ToLowerInvariant() is
+            "ns" or "nanosecond" or "nanoseconds" or "timenanoseconds"
+            or "ms" or "millisecond" or "milliseconds" or "timemilliseconds";
 
     private static PerformanceCapture ImportCsv(PerformanceEvidenceDocument document)
     {
