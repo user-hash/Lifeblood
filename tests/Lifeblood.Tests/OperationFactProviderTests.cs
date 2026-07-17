@@ -171,6 +171,15 @@ public sealed class OperationFactProviderTests
             Assert.Single(resets[1].ControlContexts, context =>
                 context.Kind == OperationControlContextKind.Branch).BranchArm);
 
+        var statementBranch = Assert.Single(facts, fact =>
+            fact.Kind == OperationFactKind.Branch
+            && fact.Inputs.Any(input =>
+                input.Role == OperationInputRole.Condition
+                && input.Value.Expression == "level <= 0.001f"));
+        Assert.Equal(
+            new[] { OperationInputRole.Condition },
+            statementBranch.Inputs.Select(input => input.Role));
+
         var conditional = Assert.Single(facts, fact =>
             fact.Kind == OperationFactKind.Branch
             && fact.Inputs.Any(input =>

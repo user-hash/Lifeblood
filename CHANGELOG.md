@@ -11,8 +11,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Temporal contract evidence without temporal product policy.** The existing
   neutral operation stream now preserves the exact `WhenTrue` / `WhenFalse` /
-  `Condition` arm occupied by an occurrence and exposes conditional arms as
-  ordinary input roles. `operationShapes[]` can require branch-arm placement
+  `Condition` arm occupied by an occurrence and exposes value-producing
+  conditional-expression arms as ordinary input roles. `operationShapes[]` can
+  require branch-arm placement
   and reject caller-declared hard constants, so lifecycle reset, control-rate
   smoothing, and discontinuity contracts reuse the same stateless evaluator.
   Each rule breakdown now includes per-contract evaluated, finding-free,
@@ -83,6 +84,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   diagnostics on the requested replacement tree remain visible even when the
   refreshed baseline already contains them. (`INV-COMPILE-CHECK-BATCH-001`,
   `LB-INTAKE-20260629-002`.)
+
+### Fixed
+
+- **Statement branch bodies are control evidence, not values.** `if`/`else`
+  operations no longer project their complete statement blocks as
+  `WhenTrue`/`WhenFalse` value inputs. Only value-producing conditional
+  expressions expose arm inputs; nested occurrences still retain exact branch
+  placement through `OperationControlContext.BranchArm`. This prevents branch
+  body symbols and operators from leaking into value-policy evidence.
+  (`INV-OPERATION-FACTS-001`.)
 
 ### Changed
 
