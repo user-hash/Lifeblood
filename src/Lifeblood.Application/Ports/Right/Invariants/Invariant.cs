@@ -51,4 +51,10 @@ public sealed class Invariant
     /// Zero if the source location is unknown.
     /// </summary>
     public int SourceLine { get; init; }
+
+    /// <summary>
+    /// Absolute path of the declaration source selected by the invariant
+    /// provider. Empty only for providers that cannot attribute a source.
+    /// </summary>
+    public string SourcePath { get; init; } = "";
 }

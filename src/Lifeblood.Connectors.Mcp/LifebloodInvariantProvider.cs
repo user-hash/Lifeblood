@@ -240,8 +240,17 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
             var declarationSitesInFile = 0;
             foreach (var inv in entry.Result.Invariants)
             {
+                var attributed = new Invariant
+                {
+                    Id = inv.Id,
+                    Title = inv.Title,
+                    Body = inv.Body,
+                    Category = inv.Category,
+                    SourceLine = inv.SourceLine,
+                    SourcePath = sourcePath,
+                };
                 if (seenIds.Add(inv.Id))
-                    allInvariants.Add(inv);
+                    allInvariants.Add(attributed);
 
                 if (!occurrencesById.TryGetValue(inv.Id, out var sites))
                 {

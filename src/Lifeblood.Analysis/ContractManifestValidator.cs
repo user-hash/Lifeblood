@@ -20,6 +20,8 @@ public static class ContractManifestValidator
         var stateAccesses = manifest.StateAccesses ?? throw new ArgumentException("stateAccesses cannot be null.");
         var domains = manifest.ValueDomains ?? throw new ArgumentException("valueDomains cannot be null.");
         var shapes = manifest.OperationShapes ?? throw new ArgumentException("operationShapes cannot be null.");
+        var textPolicies = manifest.SourceTextPolicies ?? throw new ArgumentException("sourceTextPolicies cannot be null.");
+        var invariantEvidence = manifest.InvariantEvidence ?? throw new ArgumentException("invariantEvidence cannot be null.");
         var suppressions = manifest.Suppressions ?? throw new ArgumentException("suppressions cannot be null.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var routeIds = new HashSet<string>(StringComparer.Ordinal);
@@ -45,9 +47,165 @@ public static class ContractManifestValidator
             ValidateValueDomain(contract, ids);
         foreach (var contract in shapes)
             ValidateOperationShape(contract, ids);
+        var operationContractIds = routeFacts.Select(contract => contract.Id)
+            .Concat(guards.Select(contract => contract.Id))
+            .Concat(costs.Select(contract => contract.Id))
+            .Concat(stateAccesses.Select(contract => contract.Id))
+            .Concat(domains.Select(contract => contract.Id))
+            .Concat(shapes.Select(contract => contract.Id))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var contract in textPolicies)
+            ValidateSourceTextPolicy(contract, ids, routeIds);
+        foreach (var contract in invariantEvidence)
+            ValidateInvariantEvidence(contract, ids, routeIds, operationContractIds);
         foreach (var suppression in suppressions)
             ValidateSuppression(suppression);
     }
+
+    private static void ValidateSourceTextPolicy(
+        SourceTextPolicyContract contract,
+        HashSet<string> ids,
+        HashSet<string> routeIds)
+    {
+        ValidateContractIdentity(contract.Id, ids);
+        RequireValues(contract.Terms, $"Source text policy '{contract.Id}' terms");
+        RequireValues(contract.IncludeKinds, $"Source text policy '{contract.Id}' includeKinds");
+        var unknownKinds = contract.IncludeKinds
+            .Where(kind => !string.Equals(kind, SourceEvidenceKind.Comment, StringComparison.Ordinal)
+                && !string.Equals(kind, SourceEvidenceKind.XmlDocumentation, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownKinds.Length > 0)
+        {
+            throw new ArgumentException(
+                $"Source text policy '{contract.Id}' has unsupported includeKinds [{string.Join(", ", unknownKinds)}]. " +
+                "Advisory prose policy is limited to comments and XML documentation.");
+        }
+        RequireText(contract.SuggestedAction, $"Source text policy '{contract.Id}' suggestedAction");
+        if (!SourceTextSuggestedAction.All.Contains(contract.SuggestedAction, StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Source text policy '{contract.Id}' has unknown suggestedAction '{contract.SuggestedAction}'.");
+        }
+        RequireNonNull(contract.InvariantIds, $"Source text policy '{contract.Id}' invariantIds");
+        RequireNoBlankValues(contract.InvariantIds, $"Source text policy '{contract.Id}' invariantIds");
+        RequireNonNull(contract.CallRouteIds, $"Source text policy '{contract.Id}' callRouteIds");
+        RequireNoBlankValues(contract.CallRouteIds, $"Source text policy '{contract.Id}' callRouteIds");
+        var unknownRoutes = contract.CallRouteIds
+            .Where(id => !routeIds.Contains(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownRoutes.Length > 0)
+        {
+            throw new ArgumentException(
+                $"Source text policy '{contract.Id}' references unknown call routes [{string.Join(", ", unknownRoutes)}].");
+        }
+        RequireNonNull(contract.Categories, $"Source text policy '{contract.Id}' categories");
+        RequireNoBlankValues(contract.Categories, $"Source text policy '{contract.Id}' categories");
+        RequireText(contract.Severity, $"Source text policy '{contract.Id}' severity");
+    }
+
+    private static void ValidateInvariantEvidence(
+        InvariantEvidenceContract contract,
+        HashSet<string> ids,
+        HashSet<string> routeIds,
+        HashSet<string> operationContractIds)
+    {
+        ValidateContractIdentity(contract.Id, ids);
+        RequireNonNull(contract.InvariantIds, $"Invariant evidence '{contract.Id}' invariantIds");
+        RequireNonNull(contract.InvariantIdPrefixes, $"Invariant evidence '{contract.Id}' invariantIdPrefixes");
+        RequireNoBlankValues(contract.InvariantIds, $"Invariant evidence '{contract.Id}' invariantIds");
+        RequireNoBlankValues(contract.InvariantIdPrefixes, $"Invariant evidence '{contract.Id}' invariantIdPrefixes");
+        if (contract.InvariantIds.Length == 0 && contract.InvariantIdPrefixes.Length == 0)
+        {
+            throw new ArgumentException(
+                $"Invariant evidence '{contract.Id}' must select invariantIds or invariantIdPrefixes.");
+        }
+        RequireValues(contract.RequiredEvidenceKinds, $"Invariant evidence '{contract.Id}' requiredEvidenceKinds");
+        if (contract.RequiredEvidenceKinds.Distinct(StringComparer.Ordinal).Count()
+            != contract.RequiredEvidenceKinds.Length)
+            throw new ArgumentException($"Invariant evidence '{contract.Id}' requiredEvidenceKinds cannot contain duplicates.");
+
+        RequireNonNull(contract.CallRouteIds, $"Invariant evidence '{contract.Id}' callRouteIds");
+        RequireNoBlankValues(contract.CallRouteIds, $"Invariant evidence '{contract.Id}' callRouteIds");
+        var unknownRoutes = contract.CallRouteIds
+            .Where(id => !routeIds.Contains(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownRoutes.Length > 0)
+        {
+            throw new ArgumentException(
+                $"Invariant evidence '{contract.Id}' references unknown call routes [{string.Join(", ", unknownRoutes)}].");
+        }
+
+        RequireNonNull(contract.OperationContractIds, $"Invariant evidence '{contract.Id}' operationContractIds");
+        RequireNoBlankValues(contract.OperationContractIds, $"Invariant evidence '{contract.Id}' operationContractIds");
+        var unknownContracts = contract.OperationContractIds
+            .Where(id => !operationContractIds.Contains(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownContracts.Length > 0)
+        {
+            throw new ArgumentException(
+                $"Invariant evidence '{contract.Id}' references unknown operation contracts " +
+                $"[{string.Join(", ", unknownContracts)}].");
+        }
+        if (contract.RequiredEvidenceKinds.Contains(ContractEvidenceKind.OperationContract, StringComparer.Ordinal)
+            && contract.OperationContractIds.Length == 0)
+        {
+            throw new ArgumentException(
+                $"Invariant evidence '{contract.Id}' requires OperationContract evidence but declares no operationContractIds.");
+        }
+
+        var aliases = contract.ReferenceAliases
+            ?? throw new ArgumentException($"Invariant evidence '{contract.Id}' referenceAliases cannot be null.");
+        var aliasIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var alias in aliases)
+        {
+            RequireText(alias.InvariantId, $"Invariant evidence '{contract.Id}' reference alias invariantId");
+            if (!aliasIds.Add(alias.InvariantId))
+                throw new ArgumentException($"Invariant evidence '{contract.Id}' repeats reference alias '{alias.InvariantId}'.");
+            if (!SelectsInvariant(contract, alias.InvariantId))
+            {
+                throw new ArgumentException(
+                    $"Invariant evidence '{contract.Id}' alias '{alias.InvariantId}' is outside its invariant selector.");
+            }
+            RequireValues(alias.Terms, $"Invariant evidence '{contract.Id}' alias '{alias.InvariantId}' terms");
+        }
+
+        var external = contract.ExternalEvidence
+            ?? throw new ArgumentException($"Invariant evidence '{contract.Id}' externalEvidence cannot be null.");
+        var externalKeys = new HashSet<(string Kind, string Reference)>();
+        foreach (var evidence in external)
+        {
+            RequireText(evidence.Kind, $"Invariant evidence '{contract.Id}' external evidence kind");
+            RequireText(evidence.Reference, $"Invariant evidence '{contract.Id}' external evidence reference");
+            if (!externalKeys.Add((evidence.Kind, evidence.Reference)))
+            {
+                throw new ArgumentException(
+                    $"Invariant evidence '{contract.Id}' repeats external evidence '{evidence.Kind}:{evidence.Reference}'.");
+            }
+        }
+
+        if (contract.MaxInvariants < 1 || contract.MaxInvariants > InvariantEvidenceContract.MaximumInvariants)
+        {
+            throw new ArgumentException(
+                $"Invariant evidence '{contract.Id}' maxInvariants must be between 1 and " +
+                $"{InvariantEvidenceContract.MaximumInvariants}.");
+        }
+        if (contract.MaxTestDepth < 0 || contract.MaxTestDepth > InvariantEvidenceContract.MaximumTestDepth)
+        {
+            throw new ArgumentException(
+                $"Invariant evidence '{contract.Id}' maxTestDepth must be between 0 and " +
+                $"{InvariantEvidenceContract.MaximumTestDepth}.");
+        }
+        RequireNonNull(contract.Categories, $"Invariant evidence '{contract.Id}' categories");
+        RequireNoBlankValues(contract.Categories, $"Invariant evidence '{contract.Id}' categories");
+    }
+
+    private static bool SelectsInvariant(InvariantEvidenceContract contract, string invariantId)
+        => contract.InvariantIds.Contains(invariantId, StringComparer.Ordinal)
+            || contract.InvariantIdPrefixes.Any(prefix => invariantId.StartsWith(prefix, StringComparison.Ordinal));
 
     private static void ValidateRouteFact(
         RouteFactContract contract,

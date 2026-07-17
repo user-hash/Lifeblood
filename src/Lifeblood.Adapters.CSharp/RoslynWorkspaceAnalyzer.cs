@@ -35,7 +35,8 @@ namespace Lifeblood.Adapters.CSharp;
 public sealed class RoslynWorkspaceAnalyzer :
     IWorkspaceAnalyzer,
     IWorkspaceInputFingerprintProvider,
-    IOperationFactProvider
+    IOperationFactProvider,
+    ISourceEvidenceProvider
 {
     private readonly IFileSystem _fs;
     private readonly RoslynModuleDiscovery _discovery;
@@ -1270,6 +1271,28 @@ public sealed class RoslynWorkspaceAnalyzer :
             Truncated = truncated,
             StoppedByConsumer = stoppedByConsumer,
         };
+    }
+
+    /// <summary>
+    /// Streams caller-selected lexical evidence from the one retained syntax
+    /// tree set. Unlike secondary-profile operation facts, lexical evidence
+    /// never builds an ephemeral compilation or another semantic base.
+    /// </summary>
+    public SourceEvidenceScanReceipt ScanSourceEvidence(
+        SourceEvidenceQuery query,
+        Func<SourceEvidenceFact, bool> consume,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(consume);
+        var retained = _compilations is { Count: > 0 } compilations
+            ? compilations
+            : throw new InvalidOperationException(
+                "Source evidence requires retained C# syntax trees. Analyze with readOnly:false first.");
+        var retainedProfile = RetainedProfileName
+            ?? throw new InvalidOperationException("Source evidence requires an analyzed define profile.");
+        return new RoslynSourceEvidenceProvider(retained, retainedProfile, RetainedProfileNames)
+            .Scan(query, consume, cancellationToken);
     }
 
     private string[] FindEphemeralOperationInputDrift(

@@ -159,6 +159,12 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     public IOperationFactProvider? OperationFactProvider => Current.RoslynAdapter;
 
+    /// <summary>
+    /// Bounded lexical-evidence port over the exact leased Roslyn publication.
+    /// Graph-only historical selections intentionally expose no source trees.
+    /// </summary>
+    public ISourceEvidenceProvider? SourceEvidenceProvider => Current.RoslynAdapter;
+
     public PackageSourceVisibilityFile? ResolvePackageSource(string filePath) =>
         Current.RoslynAdapter?.ResolvePackageSource(filePath);
 

@@ -178,6 +178,7 @@ public static class OperationFactExecutionMode
 {
     public const string RetainedCompilation = "RetainedCompilation";
     public const string EphemeralProfileCompilation = "EphemeralProfileCompilation";
+    public const string NotRequested = "NotRequested";
 }
 
 /// <summary>Open operation-kind vocabulary.</summary>

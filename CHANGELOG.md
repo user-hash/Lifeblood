@@ -9,6 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **One source-evidence seam for comment drift and invariant coverage.**
+  `lifeblood_contract_audit` manifests can add `sourceTextPolicies[]` for
+  caller-owned advisory retired-term matches and `invariantEvidence[]` for
+  named declaration/source/test/reachable-test/operation/external-receipt
+  categories, concrete gaps, and coverage states. One bounded
+  `ISourceEvidenceProvider` stream reuses retained C# syntax trees and reports
+  `additionalSemanticBaseCount:0`; the existing invariant provider, semantic
+  graph, operation breakdown, and shared test classifier remain their sole
+  fact authorities. No comment index, second invariant ledger, new MCP tool,
+  or global quality score was added. (`INV-SOURCE-EVIDENCE-001`,
+  `INV-CONTRACT-EVIDENCE-001`.)
+
 - **Contract-derived DSP/math probe workflow.** The C# playbook and Lifeblood
   skill now route generated numerical probes through one consumer-owned range
   or contract authority, project-context `compile_check`, and the consumer's

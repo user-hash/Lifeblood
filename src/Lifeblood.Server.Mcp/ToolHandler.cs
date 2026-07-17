@@ -101,7 +101,7 @@ public sealed class ToolHandler
         _analysisCoordinator = analysisCoordinator ?? new AnalysisRequestCoordinator<McpToolResult>();
         _sharedDaemonStatus = sharedDaemonStatus;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
-        _contractAudit = new ContractAuditToolHandler(session, JsonOpts);
+        _contractAudit = new ContractAuditToolHandler(session, invariants, JsonOpts);
         _evidenceDrift = new EvidenceDriftToolHandler(session, invariants);
     }
 

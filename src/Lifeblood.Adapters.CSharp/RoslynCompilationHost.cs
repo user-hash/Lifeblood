@@ -12,11 +12,17 @@ namespace Lifeblood.Adapters.CSharp;
 /// Roslyn-backed compilation host. Provides diagnostics, compile-checking, and reference finding.
 /// Built from retained compilations after workspace analysis.
 /// </summary>
-public sealed class RoslynCompilationHost : ICompilationHost, IOperationFactProvider, Internal.IRoslynLookup, IDisposable
+public sealed class RoslynCompilationHost :
+  ICompilationHost,
+  IOperationFactProvider,
+  ISourceEvidenceProvider,
+  Internal.IRoslynLookup,
+  IDisposable
 {
   private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
   private readonly Lazy<RoslynWorkspaceManager> _manager;
   private readonly RoslynOperationFactProvider _operationFacts;
+  private readonly RoslynSourceEvidenceProvider _sourceEvidence;
 
   public RoslynCompilationHost(
   IReadOnlyDictionary<string, CSharpCompilation> compilations,
@@ -27,6 +33,10 @@ public sealed class RoslynCompilationHost : ICompilationHost, IOperationFactProv
   _compilations = compilations;
   var profile = string.IsNullOrWhiteSpace(retainedProfileName) ? "default" : retainedProfileName;
   _operationFacts = new RoslynOperationFactProvider(
+  compilations,
+  profile,
+  availableProfiles ?? new[] { profile });
+  _sourceEvidence = new RoslynSourceEvidenceProvider(
   compilations,
   profile,
   availableProfiles ?? new[] { profile });
@@ -41,6 +51,12 @@ public sealed class RoslynCompilationHost : ICompilationHost, IOperationFactProv
   Func<OperationFact, bool> consume,
   CancellationToken cancellationToken = default)
   => _operationFacts.Scan(query, consume, cancellationToken);
+
+  public SourceEvidenceScanReceipt ScanSourceEvidence(
+  SourceEvidenceQuery query,
+  Func<SourceEvidenceFact, bool> consume,
+  CancellationToken cancellationToken = default)
+  => _sourceEvidence.Scan(query, consume, cancellationToken);
 
   /// <summary>
   /// S8a: <see cref="Internal.IRoslynLookup"/> implementation so
