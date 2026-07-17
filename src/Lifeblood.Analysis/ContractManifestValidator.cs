@@ -16,6 +16,7 @@ public static class ContractManifestValidator
         var routes = manifest.CallRoutes ?? throw new ArgumentException("callRoutes cannot be null.");
         var guards = manifest.OperationGuards ?? throw new ArgumentException("operationGuards cannot be null.");
         var costs = manifest.ExternalApiCosts ?? throw new ArgumentException("externalApiCosts cannot be null.");
+        var stateAccesses = manifest.StateAccesses ?? throw new ArgumentException("stateAccesses cannot be null.");
         var domains = manifest.ValueDomains ?? throw new ArgumentException("valueDomains cannot be null.");
         var shapes = manifest.OperationShapes ?? throw new ArgumentException("operationShapes cannot be null.");
         var suppressions = manifest.Suppressions ?? throw new ArgumentException("suppressions cannot be null.");
@@ -31,6 +32,10 @@ public static class ContractManifestValidator
             ValidateGuard(contract, ids);
         foreach (var contract in costs)
             ValidateCost(contract, ids, routeIds);
+        if (stateAccesses.Length > 32)
+            throw new ArgumentException("stateAccesses cannot contain more than 32 entries.");
+        foreach (var contract in stateAccesses)
+            ValidateStateAccess(contract, ids, routeIds);
         foreach (var contract in domains)
             ValidateValueDomain(contract, ids);
         foreach (var contract in shapes)
@@ -283,6 +288,56 @@ public static class ContractManifestValidator
             throw new ArgumentException(
                 $"External API cost '{contract.Id}' must report every occurrence or select a control/containing-symbol context.");
         }
+    }
+
+    private static void ValidateStateAccess(
+        StateAccessContract contract,
+        HashSet<string> ids,
+        HashSet<string> routeIds)
+    {
+        ValidateContractIdentity(contract.Id, ids);
+        RequireNonNull(contract.TargetSymbolIds, $"State access '{contract.Id}' targetSymbolIds");
+        RequireNoBlankValues(contract.TargetSymbolIds, $"State access '{contract.Id}' targetSymbolIds");
+        if (contract.MatchAnyMember == (contract.TargetSymbolIds.Length > 0))
+        {
+            throw new ArgumentException(
+                $"State access '{contract.Id}' must declare exactly one of matchAnyMember:true or targetSymbolIds.");
+        }
+        RequireText(contract.MemberScope, $"State access '{contract.Id}' memberScope");
+        if (!StateMemberScope.All.Contains(contract.MemberScope, StringComparer.Ordinal))
+            throw new ArgumentException($"State access '{contract.Id}' has unknown memberScope '{contract.MemberScope}'.");
+        RequireValues(contract.CallRouteIds, $"State access '{contract.Id}' callRouteIds");
+        var unknownRoutes = contract.CallRouteIds
+            .Where(id => !routeIds.Contains(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownRoutes.Length > 0)
+        {
+            throw new ArgumentException(
+                $"State access '{contract.Id}' references unknown call routes [{string.Join(", ", unknownRoutes)}].");
+        }
+        RequireValues(contract.AllowedRiskBuckets, $"State access '{contract.Id}' allowedRiskBuckets");
+        var unknownBuckets = contract.AllowedRiskBuckets
+            .Where(bucket => !StateRiskBucket.All.Contains(bucket, StringComparer.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownBuckets.Length > 0)
+        {
+            throw new ArgumentException(
+                $"State access '{contract.Id}' has unknown allowedRiskBuckets [{string.Join(", ", unknownBuckets)}].");
+        }
+        RequireValues(contract.Categories, $"State access '{contract.Id}' categories");
+        if (contract.MaxMembers < 1 || contract.MaxMembers > StateAccessContract.MaximumMembers)
+        {
+            throw new ArgumentException(
+                $"State access '{contract.Id}' maxMembers must be between 1 and {StateAccessContract.MaximumMembers}.");
+        }
+        if (!contract.MatchAnyMember && contract.MaxMembers < contract.TargetSymbolIds.Length)
+        {
+            throw new ArgumentException(
+                $"State access '{contract.Id}' maxMembers must retain all exact targetSymbolIds.");
+        }
+        RequireText(contract.Severity, $"State access '{contract.Id}' severity");
     }
 
     private static void ValidateValueDomain(ValueDomainContract contract, HashSet<string> ids)

@@ -1797,6 +1797,104 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_StateAccessClassifiesFiveRiskBucketsFromOneGraphAndFactStream()
+    {
+        var projectRoot = Path.Combine(_tempDir, "contract-audit-state-access");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "State.cs"),
+            "namespace Acme; public static class AudioState { " +
+            "private static readonly float[] Table = new float[4]; " +
+            "private static int Cache = 7; private static int Mutable; " +
+            "private static float[] Scratch = new float[4]; " +
+            "private static int Unknown { get; set; } " +
+            "public static int Run(int index) => Process(index); " +
+            "private static int Process(int index) { var table = Table[index]; var cache = Cache; " +
+            "Mutable++; Scratch[index] = table; var unknown = Unknown; " +
+            "return cache + Mutable + unknown; } " +
+            "public static void MutateOutside() { Mutable = 9; } }");
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-state-policy",
+            version = "1.0.0",
+            callRoutes = new[]
+            {
+                new
+                {
+                    id = "audio-production",
+                    rootSymbolIds = new[] { "method:Acme.AudioState.Run(int)" },
+                    maxDepth = 4,
+                    maxMembers = 16,
+                },
+            },
+            stateAccesses = new[]
+            {
+                new
+                {
+                    id = "shared-state",
+                    matchAnyMember = true,
+                    memberScope = "Static",
+                    callRouteIds = new[] { "audio-production" },
+                    allowedRiskBuckets = new[] { "ReadonlyTable", "InitializedOnceCache" },
+                    categories = new[] { "SharedState" },
+                    maxMembers = 32,
+                },
+            },
+        });
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot, defineProfiles = new[] { "Editor" } })).IsError);
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.True(result.IsError != true, result.Content[0].Text);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.Equal(3, root.GetProperty("findingCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+        var state = Assert.Single(root.GetProperty("stateAccesses").EnumerateArray());
+        Assert.Equal(5, state.GetProperty("candidateMemberCount").GetInt32());
+        Assert.Equal(5, state.GetProperty("retainedMemberCount").GetInt32());
+        Assert.Equal(5, state.GetProperty("accessedMemberCount").GetInt32());
+        Assert.False(state.GetProperty("truncated").GetBoolean());
+        var counts = state.GetProperty("riskBuckets").EnumerateArray().ToDictionary(
+            row => row.GetProperty("riskBucket").GetString()!,
+            row => row.GetProperty("memberCount").GetInt32(),
+            StringComparer.Ordinal);
+        Assert.Equal(1, counts["ReadonlyTable"]);
+        Assert.Equal(1, counts["InitializedOnceCache"]);
+        Assert.Equal(1, counts["RuntimeMutable"]);
+        Assert.Equal(1, counts["SharedScratch"]);
+        Assert.Equal(1, counts["Unknown"]);
+        Assert.Equal(new[] { "state-access" }, root.GetProperty("selectedRuleIds").EnumerateArray()
+            .Select(rule => rule.GetString()));
+        var coverage = Assert.Single(Assert.Single(root.GetProperty("ruleBreakdown").EnumerateArray())
+            .GetProperty("contracts").EnumerateArray());
+        Assert.Equal(5, coverage.GetProperty("evaluatedOccurrenceCount").GetInt32());
+        Assert.Equal(2, coverage.GetProperty("findingFreeOccurrenceCount").GetInt32());
+        Assert.Equal(3, coverage.GetProperty("findingCount").GetInt32());
+        Assert.Equal(
+            new[] { "RuntimeMutable", "SharedScratch", "Unknown" },
+            root.GetProperty("findings").EnumerateArray()
+                .Select(finding => finding.GetProperty("stateRiskBucket").GetString())
+                .OrderBy(bucket => Array.IndexOf(new[] { "RuntimeMutable", "SharedScratch", "Unknown" }, bucket)));
+        Assert.All(root.GetProperty("findings").EnumerateArray(), finding =>
+        {
+            Assert.Equal(1, finding.GetProperty("callRouteMatchCount").GetInt32());
+            Assert.False(finding.GetProperty("callRouteMatchesTruncated").GetBoolean());
+            Assert.Equal("Transitive", finding.GetProperty("callRouteMatches")[0].GetProperty("placement").GetString());
+        });
+    }
+
+    [Fact]
     public void Handle_ContractAudit_WorkspaceManifestPathReturnsBoundedEvidence()
     {
         var (projectRoot, manifest) = CreateContractAuditProject();

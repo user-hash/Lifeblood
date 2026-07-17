@@ -48,7 +48,13 @@ public class SymbolPropertyKeysParityTests
     public void FieldShapeKeys_ConstantValues_AreStable()
     {
         Assert.Equal("fieldType", SymbolPropertyKeys.FieldType);
+        Assert.Equal("fieldKind", SymbolPropertyKeys.FieldKind);
         Assert.Equal("constantValue", SymbolPropertyKeys.ConstantValue);
+        Assert.Equal("propertyType", SymbolPropertyKeys.PropertyType);
+        Assert.Equal("isReadOnly", SymbolPropertyKeys.IsReadOnly);
+        Assert.Equal("isConst", SymbolPropertyKeys.IsConst);
+        Assert.Equal("hasSetter", SymbolPropertyKeys.HasSetter);
+        Assert.Equal("hasInitializer", SymbolPropertyKeys.HasInitializer);
     }
 
     [Fact]

@@ -452,6 +452,57 @@ public sealed class OperationFactProviderTests
     }
 
     [Fact]
+    public void Scan_MemberAndElementReferencesCarryExactReadWriteMode()
+    {
+        const string source = """
+            namespace Acme;
+            public static class State
+            {
+                private static readonly int[] Buffer = new int[4];
+                private static int Value;
+                public static int Run(int index)
+                {
+                    var read = Buffer[index];
+                    Buffer[index] = read + 1;
+                    Value++;
+                    return Value;
+                }
+            }
+            """;
+        using var host = HostWithSources(("State.cs", source));
+        var containing = "method:Acme.State.Run(int)";
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            Selectors = new[]
+            {
+                new OperationFactSelector
+                {
+                    IncludeKinds = new[]
+                    {
+                        OperationFactKind.MemberRead,
+                        OperationFactKind.MemberWrite,
+                        OperationFactKind.ElementAccess,
+                    },
+                    ContainingSymbolIds = new[] { containing },
+                },
+            },
+        });
+
+        Assert.Contains(facts, fact =>
+            fact.Kind == OperationFactKind.ElementAccess && fact.Operator == OperationAccessMode.Read);
+        Assert.Contains(facts, fact =>
+            fact.Kind == OperationFactKind.ElementAccess && fact.Operator == OperationAccessMode.Write);
+        Assert.Contains(facts, fact =>
+            fact.TargetSymbolId == "field:Acme.State.Value"
+            && fact.Kind == OperationFactKind.MemberWrite
+            && fact.Operator == OperationAccessMode.Write);
+        Assert.Contains(facts, fact =>
+            fact.TargetSymbolId == "field:Acme.State.Value"
+            && fact.Kind == OperationFactKind.MemberRead
+            && fact.Operator == OperationAccessMode.Read);
+    }
+
+    [Fact]
     public void Scan_PointerIndexingCarriesReceiverAndIndexShape()
     {
         const string source = """

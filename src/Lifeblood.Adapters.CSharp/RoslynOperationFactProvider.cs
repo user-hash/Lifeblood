@@ -320,6 +320,23 @@ internal sealed class RoslynOperationFactProvider
         IUnaryOperation unary => unary.OperatorKind.ToString(),
         IConversionOperation conversion => conversion.IsChecked ? "Checked" : "Unchecked",
         ILoopOperation loop => loop.LoopKind.ToString(),
+        IFieldReferenceOperation field => RoslynOperationFacts.IsWriteContext(field)
+            ? OperationAccessMode.Write
+            : OperationAccessMode.Read,
+        IPropertyReferenceOperation property => RoslynOperationFacts.IsWriteContext(property)
+            ? OperationAccessMode.Write
+            : OperationAccessMode.Read,
+        IEventReferenceOperation eventReference => RoslynOperationFacts.IsWriteContext(eventReference)
+            ? OperationAccessMode.Write
+            : OperationAccessMode.Read,
+        IArrayElementReferenceOperation element => RoslynOperationFacts.IsWriteContext(element)
+            ? OperationAccessMode.Write
+            : OperationAccessMode.Read,
+        _ when operation.Syntax.IsKind(SyntaxKind.ElementAccessExpression)
+               && TryGetPointerElementOperands(operation, out _, out _)
+            => RoslynOperationFacts.IsWriteContext(operation)
+                ? OperationAccessMode.Write
+                : OperationAccessMode.Read,
         _ => null,
     };
 

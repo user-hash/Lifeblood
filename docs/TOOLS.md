@@ -30,6 +30,24 @@ Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOP
 | **Rename** | Safe rename across the workspace. Returns text edits as preview. The agent decides whether to apply. |
 | **Format** | Roslyn's own formatter. Not regex hacks. |
 
+### Contract Audit State Access
+
+Use manifest `stateAccesses[]` to classify state touched by bounded
+`callRoutes[]`. Select exact `targetSymbolIds[]` or `matchAnyMember:true`, a
+`memberScope` (`Static`, `Instance`, or `Any`), allowed risk buckets, and a hard
+member cap. Wildcard discovery follows only profile-applicable graph
+`References` edges from retained route methods; it does not sweep and retain a
+second workspace member index. The existing operation stream then supplies
+route reads, direct writes to retained candidates, and route element writes.
+
+The receipt reports candidate, retained, and accessed member counts plus all
+five buckets: `ReadonlyTable`, `InitializedOnceCache`, `RuntimeMutable`,
+`SharedScratch`, and `Unknown`. A truncated fact scan forces observed members to
+`Unknown`. Findings carry bounded route and write evidence. Reflection, native
+or alias mutation, and container mutation outside selected direct/element
+evidence remain limitations; do not interpret a bucket as runtime proof beyond
+the reported semantic evidence.
+
 ### Unity Package Source Visibility
 
 For Unity package workspaces, `lifeblood_analyze` includes

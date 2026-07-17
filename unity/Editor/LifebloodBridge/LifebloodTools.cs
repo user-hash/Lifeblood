@@ -305,7 +305,7 @@ namespace Lifeblood.UnityBridge
     // ═══════════════════════════════════════════════════════════════
 
     [McpForUnityTool("lifeblood_contract_audit",
-        Description = "Evaluate a versioned consumer contract manifest over one bounded operation-fact scan, including exact branch-arm and temporal-shape evidence. Supply manifestJson or a workspace-contained manifestPath. Summary-first by default.",
+        Description = "Evaluate a versioned consumer contract manifest over one bounded operation-fact scan, including call-route shared-state, exact branch-arm, and temporal-shape evidence. Supply manifestJson or a workspace-contained manifestPath. Summary-first by default.",
         Group = "code-intelligence", RequiresPolling = true)]
     public static class LifebloodContractAudit
     {

@@ -204,6 +204,13 @@ public static class OperationFactKind
     public const string InterpolatedString = "InterpolatedString";
 }
 
+/// <summary>Neutral read/write placement for member and element references.</summary>
+public static class OperationAccessMode
+{
+    public const string Read = "Read";
+    public const string Write = "Write";
+}
+
 /// <summary>Open input-role vocabulary.</summary>
 public static class OperationInputRole
 {

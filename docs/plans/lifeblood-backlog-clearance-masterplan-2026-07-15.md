@@ -552,6 +552,21 @@ semantic bases. `021` still requires the installed DAWG hot-route manifest and
 receipt before archive; `014` still requires its member-mutability/shared-state
 classification owner.
 
+The shared-state owner is now implemented through the same route/fact kernel.
+`stateAccesses[]` selects exact members or profile-applicable state referenced
+by the already-bounded call-route methods; declaration mutability comes from
+the immutable graph and route reads/direct writes/element writes come from the
+one operation stream. The result reports complete
+`ReadonlyTable`/`InitializedOnceCache`/`RuntimeMutable`/`SharedScratch`/`Unknown`
+bucket counts, bounded route/write evidence, and fails safe to `Unknown` on a
+truncated fact scan. Wildcard candidates are route-referenced rather than an
+alphabetical whole-workspace slice, and foreign static constructors cannot be
+mistaken for initialization. Synthetic planner/provider/engine/MCP fixtures
+cover all five buckets, exact/profile bounds, foreign-constructor mutation,
+scan truncation, and zero additional bases. `014` remains in intake only until
+the installed DAWG manifest/receipt proves the motivating path; `021` likewise
+awaits its installed hot-route receipt.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 

@@ -193,7 +193,7 @@ public sealed class RoslynSymbolExtractor
 
             var memberProps = new Dictionary<string, string>
             {
-                ["fieldKind"] = "enumMember",
+                [SymbolPropertyKeys.FieldKind] = "enumMember",
                 [SymbolPropertyKeys.FieldType] = enumFqn,
             };
             var constantValue = memberSym.ConstantValue;
@@ -406,6 +406,9 @@ public sealed class RoslynSymbolExtractor
             var fieldProps = new Dictionary<string, string>
             {
                 [SymbolPropertyKeys.FieldType] = sym.Type.ToDisplayString(),
+                [SymbolPropertyKeys.IsReadOnly] = sym.IsReadOnly.ToString(),
+                [SymbolPropertyKeys.IsConst] = sym.IsConst.ToString(),
+                [SymbolPropertyKeys.HasInitializer] = (variable.Initializer != null).ToString(),
             };
             if (sym.ConstantValue != null)
                 fieldProps[SymbolPropertyKeys.ConstantValue] = sym.ConstantValue.ToString() ?? "";
@@ -436,7 +439,10 @@ public sealed class RoslynSymbolExtractor
         var typeName = ExtractTypeFromId(containingTypeId);
         var propProps = new Dictionary<string, string>
         {
-            ["propertyType"] = sym.Type.ToDisplayString(),
+            [SymbolPropertyKeys.PropertyType] = sym.Type.ToDisplayString(),
+            [SymbolPropertyKeys.IsReadOnly] = sym.IsReadOnly.ToString(),
+            [SymbolPropertyKeys.HasSetter] = (sym.SetMethod != null).ToString(),
+            [SymbolPropertyKeys.HasInitializer] = (propDecl.Initializer != null).ToString(),
             ["isProperty"] = "true",
         };
         AttachXmlDocSummary(propProps, sym);
@@ -477,7 +483,7 @@ public sealed class RoslynSymbolExtractor
             IsAbstract = sym.IsAbstract,
             Properties = new Dictionary<string, string>
             {
-                ["propertyType"] = sym.Type.ToDisplayString(),
+                [SymbolPropertyKeys.PropertyType] = sym.Type.ToDisplayString(),
                 ["isIndexer"] = "true",
             },
         });
