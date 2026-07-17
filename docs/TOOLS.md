@@ -48,6 +48,12 @@ or alias mutation, and container mutation outside selected direct/element
 evidence remain limitations; do not interpret a bucket as runtime proof beyond
 the reported semantic evidence.
 
+Put external-cost, state-access, and other policies that share a route/profile
+in the same manifest. The contract engine then pays for one route plan, one
+ephemeral secondary-profile compilation, and one neutral operation-fact pass.
+Separate calls are separate requests and intentionally do not retain a second
+profile compilation as a hidden cache.
+
 ### Unity Package Source Visibility
 
 For Unity package workspaces, `lifeblood_analyze` includes

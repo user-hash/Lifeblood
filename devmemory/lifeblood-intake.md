@@ -159,35 +159,6 @@ Fix shape:
 - Keep execution in the user's test framework/project; Lifeblood should produce
   scaffolding and structural checks, not own audio playback.
 
-## LB-INTAKE-20260629-014 - Mutable static and shared-state audit for Burst-style code
-
-Type: Improvement
-Priority: Medium
-Source: DAWG Burst migration dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 7/10 value if shipped
-
-What:
-- Real-time/Burst-style code is sensitive to hidden shared state: mutable
-  statics, cached buffers, lookup tables that can be rewritten, static scratch
-  arrays, and cross-voice/shared filter or smoother state.
-
-Why it matters:
-- These bugs often build over time, differ between first and later notes, or
-  appear only under multiple voices/jobs. They can look like DSP math failures
-  even when the local formula is fine.
-- Generic detection helps any performance-oriented codebase, not only Unity
-  Burst.
-
-Fix shape:
-- Add or extend an audit that identifies mutable static fields, shared scratch
-  buffers, static properties with setters, and instance fields written from
-  multiple scheduling contexts.
-- Correlate findings with call graph entrypoints, job/kernel methods, async
-  methods, thread callbacks, and user-supplied realtime method markers.
-- Return evidence plus a risk bucket: readonly table, initialized-once cache,
-  runtime mutable, shared scratch, or unknown.
-
 ## LB-INTAKE-20260629-016 - Generic "contract coverage" score for critical paths
 
 Type: UX
@@ -215,38 +186,6 @@ Fix shape:
   presence.
 - Return scores by category plus concrete missing-evidence links. Avoid a
   global quality number; make it a triage aid with named evidence gaps.
-
-## LB-INTAKE-20260629-021 - Realtime allocation and forbidden-API audit for hot paths
-
-Type: Feature request
-Priority: High
-Source: DAWG Burst/DSP dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- DSP/Burst-style code needs a generic way to ask whether a caller-selected hot
-  path allocates, logs, formats strings, throws exceptions, uses LINQ/delegates,
-  touches Unity APIs, or calls other APIs that are unsafe for realtime work.
-- Lifeblood can show dependencies, but it does not yet classify realtime
-  unsafety as a first-class audit over operation trees.
-
-Why it matters:
-- Audio glitches can come from GC pressure, logging, exception paths, or hidden
-  managed work even when the math is correct.
-- The same audit applies to physics loops, render loops, jobs, game networking,
-  robotics, and embedded-style control loops. It should be caller-configured,
-  not DAWG-specific.
-
-Fix shape:
-- Add a hot-path audit where callers provide root symbols, attributes, or naming
-  patterns such as `Burst`, `Job`, `Audio`, `Render`, `Update`, or custom method
-  IDs.
-- Use semantic operation walking to flag object/array/delegate creation,
-  closures, string interpolation/formatting, LINQ, reflection, exceptions,
-  logging, locks, async waits, and caller-supplied forbidden APIs.
-- Return grouped findings by hot root with callsite, operation kind, callee,
-  allocation/forbidden category, and whether the path is direct or transitive.
 
 ## LB-INTAKE-20260629-023 - Determinism and replay contract audit
 

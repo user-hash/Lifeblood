@@ -17,17 +17,20 @@
 > that same `recommended` posture from one server-edge authority
 > (`INV-MCP-SHARED-MATURITY-001`).
 
-The current installed local tools are `0.7.13-alpha.0.70` from commit
-`07d35398ca81`. The packaging lane packed both dotnet tools, installed private
-smoke copies, passed CLI help and closed-stdin MCP smoke, then the global
-`lifeblood` and `lifeblood-mcp` shims were updated from the local package
-source. Unity refreshed the external `Lifeblood/unity` package at generation 21
-(`lifeblood-bridge-deadline-fix-20260716-a1`) with scripts compile requested,
-ready confirmed, and external dirty cleared; the previous `CS0103
-ReadLineWithTimeout` bridge compile error is gone. Installed CLI dogfood on the
-current DAWG tree reported 89,326 symbols, 348,359 edges, 101 modules, 5,619
-types, 140 cycles, and zero configured violations in 56.7 seconds wall time
-with 994 MB peak working set / 919 MB peak private bytes. These are local
+The current installed local tools are
+`0.7.13-alpha.0.88+d5a01312e85ac5e994f7589d8c8bec68e8e69859`. The packaging
+lane packed both dotnet tools, installed private smoke copies, passed CLI help,
+`dnx` help, and closed-stdin MCP smoke, then updated the global `lifeblood` and
+`lifeblood-mcp` shims from the exact local package source. A persistent shared
+proxy reported the same build/version and all 42 tools. Installed DAWG
+Editor+Player dogfood truthfully rejected an unsafe incremental refresh after
+the module set grew from 101 to 102; the explicitly allowed full fallback then
+published generation 2 / `snap_3d32a64bef8f42a4abc5f64222bbf32a` with 89,460
+symbols, 348,583 edges, 102 modules, 5,655 types, 4,379 files, 143 cycles, and
+zero configured violations. Server analysis work took 56.537 seconds. The
+process started with a 4.25 GB retained working set after earlier cancelled
+development scans and peaked at 4.61 GB, so this is a feature/provenance
+receipt, not a claim that retained-memory behavior is closed. These are local
 prerelease/dirty-workspace development receipts, not a published-stable release
 claim.
 
@@ -92,7 +95,7 @@ modules with 10 successes, zero diagnostics, and no stale refresh. This receipt
 validates bounded compile-check only; diagnostic ownership and evidence drift
 still await a frozen DAWG window. It used the newly built private stdio server
 so the then-installed 0.70 shared daemon and other live DAWG clients were not
-restarted. The installed global tools now exactly match
+restarted. At the Wave 4 group-3 checkpoint, the installed global tools exactly matched
 `0.7.13-alpha.0.84+b16658139124b498dc50c27d0535bdd7eb504f38`. After the
 intentional daemon replacement, one cold shared Editor+Player publication used
 49.481 seconds of server work / 66.002 seconds client wall time and published
@@ -106,6 +109,20 @@ DAWG source commits advanced the closure sequence to generation 4 /
 `snap_34eca30432944f57ab4a97dc2deece62` through a 9.239-second accepted
 increment. That receipt reports 89,766 symbols / 350,418 edges, while the
 catalog retained only one semantic base.
+
+Wave 4 group 4 is now verified by the current alpha.88 build above. A pinned
+Player call route rooted at the canonical
+`GlobalMasterChain.ProcessBlock(float[],int)` method contained 34 members
+without truncation. The shared-state contract classified 117 route-accessed
+members (110 `RuntimeMutable`, seven `Unknown`), while the targetless realtime
+contract found three transitive construction occurrences. Both scans verified
+input identity, emitted complete selector-bounded fact streams, preserved
+generation 2 / `snap_3d32a64bef8f42a4abc5f64222bbf32a`, and reported
+`additionalSemanticBaseCount:0`. A combined manifest is the intended usage
+when contracts share a secondary profile and route: it reuses one route plan,
+one ephemeral profile compilation, and one fact pass. A later combined DAWG
+retry correctly rejected after concurrent source drift; no stale finding was
+accepted.
 
 Shared protocol v2 keeps one persistent connection and lease per proxy, retains
 the daemon-owned latest base after the last disconnect unless an operator opts

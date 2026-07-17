@@ -3990,3 +3990,94 @@ Impact:
 - Branchy numeric seams can be ranked by exact reviewable project policy on the
   shared contract stream, without pretending that static syntax proves an
   audible or runtime defect.
+
+## LB-INTAKE-20260629-014 - Mutable static and shared-state audit for Burst-style code
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 4
+Type: Shipped
+Source: DAWG Burst migration dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `b693eae`, `d5a0131`; full 1,687-case release suite;
+installed `0.7.13-alpha.0.88+d5a0131` DAWG Player receipt
+
+Resolution:
+- Added `stateAccesses[]` to the existing schema-versioned contract manifest.
+  It selects exact members or profile-applicable state referenced by methods in
+  a bounded `callRoutes[]` plan. It does not scan an alphabetical workspace
+  slice or infer product roots from names.
+- Declaration mutability comes from the immutable semantic graph; reads,
+  direct writes, and element writes reuse the one neutral operation-fact
+  stream. The request-local result classifies `ReadonlyTable`,
+  `InitializedOnceCache`, `RuntimeMutable`, `SharedScratch`, and `Unknown` and
+  fails safe to `Unknown` when the fact scan is truncated.
+- The planner, evaluator, and MCP projection are stateless request owners. No
+  graph edge, state database, duplicate call extractor, fact cache, tool, or
+  additional retained semantic base was added.
+
+Verification:
+- Synthetic planner/provider/engine/MCP fixtures cover all five buckets, exact
+  and wildcard selection, profile applicability, foreign static constructors,
+  route evidence, bounds, and truncation. Release build completed with zero
+  warnings/errors; the full suite passed 1,676 tests with 11 explicit
+  native-clang environment skips (1,687 total).
+- The installed build widened a requested DAWG incremental refresh to a full
+  rebuild only after the receipt proved module-set drift from 101 to 102. It
+  published Editor+Player generation 2 / snapshot
+  `snap_3d32a64bef8f42a4abc5f64222bbf32a` with 89,460 symbols, 348,583 edges,
+  102 modules, 5,655 types, 4,379 files, 143 cycles, and zero configured graph
+  violations.
+- A pinned Player audit rooted at the exact canonical
+  `GlobalMasterChain.ProcessBlock(float[],int)` route expanded to 34 members
+  without truncation. It compiled 85 Player-applicable modules ephemerally,
+  scanned 3,013 files and 1,727,205 operations, emitted 545 selected facts,
+  classified all 117 route-accessed state members (110 `RuntimeMutable`, seven
+  `Unknown`), verified input identity, and reported
+  `additionalSemanticBaseCount:0`. The findings are review candidates, not a
+  claim that every mutable instance field is globally shared.
+
+Impact:
+- Performance-sensitive projects can now review shared/mutable state on an
+  exact semantic execution route while retaining one master graph and one
+  neutral fact authority.
+
+## LB-INTAKE-20260629-021 - Realtime allocation and forbidden-API audit for hot paths
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 4
+Type: Shipped
+Source: DAWG Burst/DSP dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `b693eae`, `61e3346`; full 1,687-case release suite;
+installed `0.7.13-alpha.0.88+d5a0131` DAWG Player receipt
+
+Resolution:
+- External-cost policy now chooses exactly one target mode: explicit canonical
+  `targetSymbolIds[]` for consumer-annotated LINQ/logging/reflection/Unity APIs,
+  or `matchAnyTarget:true` plus declared operation kinds for allocations,
+  interpolation, throw, await, and lock. Empty targets never broaden silently.
+- The same bounded `callRoutes[]` projection supplies direct/transitive root,
+  distance, placement, and shortest-path evidence. Caller-owned categories
+  describe forbidden or costly policy; Lifeblood proves occurrence and route,
+  not measured runtime expense.
+- This reuses the existing contract rule, graph calls, selector-bound operation
+  provider, and MCP surface. No hot-path graph, product-name heuristic, second
+  scanner, retained fact cache, or additional semantic base exists.
+
+Verification:
+- Synthetic route/profile/bounds fixtures and real Roslyn/MCP tests cover
+  targetless array/object/delegate creation, interpolation, throw, outside-route
+  exclusion, direct/transitive evidence, and explicit-target parity.
+- On the same pinned DAWG generation 2 Player route, the audit scanned 3,013
+  files and 1,727,250 operations but emitted only three selected construction
+  facts. All three were proven transitive `ExternalApiCostExposure` findings:
+  two Burst mirror value constructors and one dynamics-envelope parameter
+  constructor. The scan was complete, input identity was verified, and
+  `additionalSemanticBaseCount` remained zero.
+- Multiple route contracts should be placed in one manifest so secondary-
+  profile compilation and the neutral operation pass are paid once. A later
+  combined live retry correctly rejected after DAWG changed during input
+  verification; no stale receipt was published or cited.
+
+Impact:
+- Callers can express realtime safety policy over exact production routes and
+  receive bounded semantic evidence without Lifeblood embedding DAWG, Burst,
+  or audio-specific policy.

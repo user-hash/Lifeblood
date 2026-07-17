@@ -535,10 +535,10 @@ containing symbol for per-fact lookup. This adds no edge kind, graph, call
 extractor, cache, tool, or retained semantic base. Synthetic cycle/profile/
 bound/root-validation tests, direct/transitive engine tests, and a real MCP
 Roslyn-workspace transitive fixture pass; the full gate is 1,667 pass with 11
-explicit native-clang environment skips (1,678 total). Intake IDs `014` and
-`021` remain active until targetless forbidden operations, mutable/shared-state
-policy, installed DAWG dogfood, and their final tracking receipts reuse this
-route foundation.
+explicit native-clang environment skips (1,678 total). At that foundation
+checkpoint, intake IDs `014` and `021` still required targetless forbidden
+operations, mutable/shared-state policy, installed DAWG dogfood, and final
+tracking receipts over this route foundation.
 
 The realtime rule now also has its targetless operation seam. External-cost
 policy must choose exactly one of explicit `targetSymbolIds[]` or
@@ -548,9 +548,8 @@ LINQ/logging/reflection/Unity/consumer APIs stay explicit target annotations.
 An empty target list never silently broadens the scan. Route-filtered engine and
 real Roslyn/MCP fixtures prove targetless array/throw/interpolation findings,
 direct/transitive provenance, outside-route exclusion, and zero additional
-semantic bases. `021` still requires the installed DAWG hot-route manifest and
-receipt before archive; `014` still requires its member-mutability/shared-state
-classification owner.
+semantic bases. This completed the in-tree realtime rule; installed DAWG proof
+was still required before archive.
 
 The shared-state owner is now implemented through the same route/fact kernel.
 `stateAccesses[]` selects exact members or profile-applicable state referenced
@@ -563,9 +562,32 @@ truncated fact scan. Wildcard candidates are route-referenced rather than an
 alphabetical whole-workspace slice, and foreign static constructors cannot be
 mistaken for initialization. Synthetic planner/provider/engine/MCP fixtures
 cover all five buckets, exact/profile bounds, foreign-constructor mutation,
-scan truncation, and zero additional bases. `014` remains in intake only until
-the installed DAWG manifest/receipt proves the motivating path; `021` likewise
-awaits its installed hot-route receipt.
+scan truncation, and zero additional bases. This completed the in-tree state
+owner; installed DAWG proof was still required before archive.
+
+Group 4 is closed by commits `b693eae`, `61e3346`, and `d5a0131`. Installed
+build `0.7.13-alpha.0.88+d5a0131` published a fresh DAWG Editor+Player
+generation 2 / `snap_3d32a64bef8f42a4abc5f64222bbf32a` after a no-fallback
+incremental request truthfully rejected module-set drift from 101 to 102 and an
+explicitly authorized full fallback rebuilt the 102-module workspace. The
+publication contains 89,460 symbols, 348,583 edges, 5,655 types, 4,379 files,
+143 cycles, and zero configured graph violations. Its default package source
+projection returned aggregate counts plus the one actionable unbound package
+row instead of the prior per-file inventory.
+
+Two pinned Player audits reused the exact canonical
+`GlobalMasterChain.ProcessBlock(float[],int)` route. The bounded route contained
+34 members without truncation. Shared-state policy classified all 117 selected
+members (110 `RuntimeMutable`, seven `Unknown`); targetless realtime policy
+reported three transitive construction occurrences. Both scans verified input
+identity, completed without fact or finding truncation, preserved the same
+generation/snapshot, and reported `additionalSemanticBaseCount:0`. The two
+calls compiled the 85 Player-applicable modules ephemerally and released them;
+consumer manifests should combine both rule families when they share a profile
+and route so that compilation and the neutral operation pass occur once. A
+later combined retry encountered real DAWG source drift and correctly rejected
+before scanning rather than publishing stale evidence. Intake IDs `014` and
+`021` are archived with the exact receipts.
 
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
