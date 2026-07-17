@@ -14,6 +14,7 @@ public sealed class ContractManifest
     public required string Version { get; init; }
     public string? Description { get; init; }
     public ContractCallRoute[] CallRoutes { get; init; } = Array.Empty<ContractCallRoute>();
+    public RouteFactContract[] RouteFacts { get; init; } = Array.Empty<RouteFactContract>();
     public OperationGuardContract[] OperationGuards { get; init; } = Array.Empty<OperationGuardContract>();
     public ExternalApiCostContract[] ExternalApiCosts { get; init; } = Array.Empty<ExternalApiCostContract>();
     public StateAccessContract[] StateAccesses { get; init; } = Array.Empty<StateAccessContract>();
@@ -38,6 +39,77 @@ public sealed class ContractCallRoute
     public string[] RootSymbolIds { get; init; } = Array.Empty<string>();
     public int MaxDepth { get; init; } = DefaultMaxDepth;
     public int MaxMembers { get; init; } = DefaultMaxMembers;
+}
+
+/// <summary>
+/// Consumer-owned policy over neutral operation facts partitioned by bounded
+/// call routes. Required, parity, and owner-only policies share one evaluator;
+/// product execution-lane or sibling vocabulary remains in the manifest.
+/// </summary>
+public sealed class RouteFactContract
+{
+    public required string Id { get; init; }
+    public required string Policy { get; init; }
+    public string[] CallRouteIds { get; init; } = Array.Empty<string>();
+    public string[] OperationKinds { get; init; } = Array.Empty<string>();
+    public string[] TargetSymbolIds { get; init; } = Array.Empty<string>();
+    public bool MatchAnyTarget { get; init; }
+    public string[] Operators { get; init; } = Array.Empty<string>();
+    public string[] SignatureParts { get; init; } = Array.Empty<string>();
+    public string[] Categories { get; init; } = Array.Empty<string>();
+    public string Severity { get; init; } = ContractSeverity.Warning;
+    public string? Message { get; init; }
+    public string? Guidance { get; init; }
+}
+
+public static class RouteFactPolicy
+{
+    public const string RequiredOnEveryRoute = "RequiredOnEveryRoute";
+    public const string EquivalentAcrossRoutes = "EquivalentAcrossRoutes";
+    public const string AllowedRoutesOnly = "AllowedRoutesOnly";
+
+    public static readonly string[] All =
+    {
+        RequiredOnEveryRoute,
+        EquivalentAcrossRoutes,
+        AllowedRoutesOnly,
+    };
+}
+
+/// <summary>
+/// Open, consumer-selected dimensions used to compare neutral facts between
+/// sibling routes. Source locations and expressions are deliberately absent.
+/// </summary>
+public static class RouteFactSignaturePart
+{
+    public const string Kind = "Kind";
+    public const string TargetSymbol = "TargetSymbol";
+    public const string Operator = "Operator";
+    public const string ResultType = "ResultType";
+    public const string InputValueKinds = "InputValueKinds";
+    public const string InputTypes = "InputTypes";
+    public const string InputConstants = "InputConstants";
+    public const string InputSourceSymbols = "InputSourceSymbols";
+    public const string InputOperators = "InputOperators";
+    public const string ControlKinds = "ControlKinds";
+    public const string ControlSourceSymbols = "ControlSourceSymbols";
+    public const string ControlOperators = "ControlOperators";
+
+    public static readonly string[] All =
+    {
+        Kind,
+        TargetSymbol,
+        Operator,
+        ResultType,
+        InputValueKinds,
+        InputTypes,
+        InputConstants,
+        InputSourceSymbols,
+        InputOperators,
+        ControlKinds,
+        ControlSourceSymbols,
+        ControlOperators,
+    };
 }
 
 /// <summary>
@@ -383,6 +455,7 @@ public sealed class ContractAuditReport
     public required bool Truncated { get; init; }
     public ContractRuleBreakdown[] RuleBreakdown { get; init; } = Array.Empty<ContractRuleBreakdown>();
     public ContractCallRouteReceipt[] CallRoutes { get; init; } = Array.Empty<ContractCallRouteReceipt>();
+    public ContractRouteFactReceipt[] RouteFacts { get; init; } = Array.Empty<ContractRouteFactReceipt>();
     public ContractStateAccessReceipt[] StateAccesses { get; init; } = Array.Empty<ContractStateAccessReceipt>();
     public ContractFinding[] Findings { get; init; } = Array.Empty<ContractFinding>();
     public string[] Limitations { get; init; } = Array.Empty<string>();
@@ -447,11 +520,19 @@ public sealed class ContractCallRouteReceipt
 {
     public required string RouteId { get; init; }
     public string[] RootSymbolIds { get; init; } = Array.Empty<string>();
+    public ContractCallRouteRootReceipt[] Roots { get; init; } = Array.Empty<ContractCallRouteRootReceipt>();
     public required int MaxDepth { get; init; }
     public required int MaxMembers { get; init; }
     public required int ReachableMemberCount { get; init; }
     public required int MembershipCount { get; init; }
     public required bool Truncated { get; init; }
+}
+
+/// <summary>Declaration evidence for one route root, used by missing-route findings.</summary>
+public sealed class ContractCallRouteRootReceipt
+{
+    public required string SymbolId { get; init; }
+    public required OperationSourceSpan Source { get; init; }
 }
 
 /// <summary>
@@ -473,6 +554,24 @@ public static class ContractCallRoutePlacement
 {
     public const string Direct = "Direct";
     public const string Transitive = "Transitive";
+}
+
+public sealed class ContractRouteFactReceipt
+{
+    public required string ContractId { get; init; }
+    public required string Policy { get; init; }
+    public required int SelectedFactCount { get; init; }
+    public required int SignatureCount { get; init; }
+    public required bool Incomplete { get; init; }
+    public ContractRouteFactRouteReceipt[] Routes { get; init; } = Array.Empty<ContractRouteFactRouteReceipt>();
+}
+
+public sealed class ContractRouteFactRouteReceipt
+{
+    public required string RouteId { get; init; }
+    public required int FactCount { get; init; }
+    public required int SignatureCount { get; init; }
+    public required bool RequirementSatisfied { get; init; }
 }
 
 /// <summary>Bounded request-local projection of graph member declarations.</summary>
@@ -532,6 +631,7 @@ public sealed class ContractEvidence
 
 public static class ContractRuleId
 {
+    public const string RouteFact = "route-fact";
     public const string OperationGuard = "operation-guard";
     public const string ExternalApiCost = "external-api-cost";
     public const string StateAccess = "state-access";
@@ -541,6 +641,9 @@ public static class ContractRuleId
 
 public static class ContractFindingKind
 {
+    public const string MissingRequiredRouteFact = "MissingRequiredRouteFact";
+    public const string RouteFactParityMismatch = "RouteFactParityMismatch";
+    public const string RouteFactOutsideOwner = "RouteFactOutsideOwner";
     public const string MissingOperationGuard = "MissingOperationGuard";
     public const string ExternalApiCostExposure = "ExternalApiCostExposure";
     public const string StateAccessRisk = "StateAccessRisk";

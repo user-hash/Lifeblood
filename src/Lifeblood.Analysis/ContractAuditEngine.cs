@@ -19,6 +19,7 @@ public sealed class ContractAuditEngine
     private const int MaximumRouteMatchesPerFinding = 32;
 
     private readonly ContractManifest _manifest;
+    private readonly RouteFactContract[] _routeFactContracts;
     private readonly OperationGuardContract[] _guardContracts;
     private readonly ExternalApiCostContract[] _costContracts;
     private readonly StateAccessContract[] _stateContracts;
@@ -41,6 +42,9 @@ public sealed class ContractAuditEngine
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<OperationShapeUniqueObservation>> _shapeUniqueObservations =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<RouteFactObservation>> _routeFactObservations =
+        new(StringComparer.Ordinal);
+    private ContractRouteFactReceipt[] _routeFactReceipts = Array.Empty<ContractRouteFactReceipt>();
     private readonly int _findingLimit;
     private readonly int _evidenceLimit;
     private bool _completed;
@@ -53,9 +57,10 @@ public sealed class ContractAuditEngine
         _manifest = request.Manifest ?? throw new ArgumentException("A contract manifest is required.", nameof(request));
         ContractManifestValidator.Validate(_manifest);
 
-        (_guardContracts, _costContracts, _stateContracts, _domainContracts, _shapeContracts) =
+        (_routeFactContracts, _guardContracts, _costContracts, _stateContracts, _domainContracts, _shapeContracts) =
             SelectContracts(_manifest, request.IncludeRuleIds);
-        if (_guardContracts.Length == 0
+        if (_routeFactContracts.Length == 0
+            && _guardContracts.Length == 0
             && _costContracts.Length == 0
             && _stateContracts.Length == 0
             && _domainContracts.Length == 0
@@ -64,7 +69,8 @@ public sealed class ContractAuditEngine
         _suppressions = _manifest.Suppressions ?? Array.Empty<ContractSuppression>();
         (_callRouteReceipts, _callRouteMatches) = SelectCallRoutePlan(
             request.CallRoutePlan,
-            _costContracts.SelectMany(contract => contract.CallRouteIds)
+            _routeFactContracts.SelectMany(contract => contract.CallRouteIds)
+                .Concat(_costContracts.SelectMany(contract => contract.CallRouteIds))
                 .Concat(_stateContracts.SelectMany(contract => contract.CallRouteIds)));
         _callRouteMatchesByContaining = _callRouteMatches
             .GroupBy(match => match.ContainingSymbolId, StringComparer.Ordinal)
@@ -90,13 +96,15 @@ public sealed class ContractAuditEngine
             : Clamp(request.MaxEvidencePerFinding, 1, MaximumEvidencePerFinding);
 
         var targets = _guardContracts.SelectMany(contract => contract.TargetSymbolIds)
+            .Concat(_routeFactContracts.SelectMany(contract => contract.TargetSymbolIds))
             .Concat(_costContracts.SelectMany(contract => contract.TargetSymbolIds))
             .Concat(_domainContracts.SelectMany(contract => contract.TargetSymbolIds))
             .Concat(_shapeContracts.SelectMany(contract => contract.TargetSymbolIds))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
-        var kinds = (_guardContracts.Length > 0
+        var kinds = _routeFactContracts.SelectMany(contract => contract.OperationKinds)
+            .Concat(_guardContracts.Length > 0
                 ? new[] { OperationFactKind.Call, OperationFactKind.ObjectCreation }
                 : Array.Empty<string>())
             .Concat(_costContracts.SelectMany(contract => contract.OperationKinds))
@@ -109,6 +117,7 @@ public sealed class ContractAuditEngine
             .Concat(_domainContracts.SelectMany(contract => contract.OperationKinds))
             .Concat(_shapeContracts.SelectMany(contract => contract.OperationKinds));
         var everyContractHasBoundTargets = _stateContracts.Length == 0
+            && _routeFactContracts.All(contract => !contract.MatchAnyTarget)
             && _costContracts.All(contract => !contract.MatchAnyTarget)
             && _shapeContracts.All(contract => contract.TargetSymbolIds.Length > 0);
 
@@ -139,6 +148,7 @@ public sealed class ContractAuditEngine
             throw new InvalidOperationException("A completed contract audit cannot consume more facts.");
 
         EvaluateGuards(fact);
+        EvaluateRouteFacts(fact);
         EvaluateExternalCosts(fact);
         EvaluateStateAccess(fact);
         EvaluateValueDomains(fact);
@@ -152,11 +162,13 @@ public sealed class ContractAuditEngine
         if (_completed)
             throw new InvalidOperationException("A contract audit can be completed only once.");
         _completed = true;
+        EvaluateRouteFactResults(receipt.Truncated);
         EvaluateStateAccessResults(receipt.Truncated);
         EvaluateNearEqualConstants();
         EvaluateOperationShapeUniqueness();
 
-        var selectedRules = _guardContracts.Select(_ => ContractRuleId.OperationGuard)
+        var selectedRules = _routeFactContracts.Select(_ => ContractRuleId.RouteFact)
+            .Concat(_guardContracts.Select(_ => ContractRuleId.OperationGuard))
             .Concat(_costContracts.Select(_ => ContractRuleId.ExternalApiCost))
             .Concat(_stateContracts.Select(_ => ContractRuleId.StateAccess))
             .Concat(_domainContracts.Select(_ => ContractRuleId.ValueDomain))
@@ -164,7 +176,8 @@ public sealed class ContractAuditEngine
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
-        var selectedContracts = _guardContracts.Select(contract => contract.Id)
+        var selectedContracts = _routeFactContracts.Select(contract => contract.Id)
+            .Concat(_guardContracts.Select(contract => contract.Id))
             .Concat(_costContracts.Select(contract => contract.Id))
             .Concat(_stateContracts.Select(contract => contract.Id))
             .Concat(_domainContracts.Select(contract => contract.Id))
@@ -186,6 +199,7 @@ public sealed class ContractAuditEngine
             SuppressedFindingCount = _suppressedCount,
             Truncated = receipt.Truncated
                 || _findingCount > _findings.Count
+                || _callRouteReceipts.Any(route => route.Truncated)
                 || _statePlanReceipts.Any(state => state.Truncated),
             RuleBreakdown = selectedRules.Select(ruleId =>
             {
@@ -210,10 +224,285 @@ public sealed class ContractAuditEngine
                 };
             }).ToArray(),
             CallRoutes = _callRouteReceipts,
+            RouteFacts = _routeFactReceipts,
             StateAccesses = _stateAccessReceipts,
             Findings = _findings.ToArray(),
             Limitations = BuildLimitations(receipt),
         };
+    }
+
+    private void EvaluateRouteFacts(OperationFact fact)
+    {
+        foreach (var contract in _routeFactContracts)
+        {
+            if (!RouteFactContractRule.Selects(contract, fact)) continue;
+            var routeMatches = CallRouteMatches(contract.CallRouteIds, fact.ContainingSymbolId);
+            if (!string.Equals(contract.Policy, RouteFactPolicy.AllowedRoutesOnly, StringComparison.Ordinal)
+                && routeMatches.Length == 0)
+                continue;
+
+            if (!_routeFactObservations.TryGetValue(contract.Id, out var observations))
+            {
+                observations = new List<RouteFactObservation>();
+                _routeFactObservations.Add(contract.Id, observations);
+            }
+            observations.Add(new RouteFactObservation(
+                fact,
+                routeMatches,
+                string.Equals(contract.Policy, RouteFactPolicy.EquivalentAcrossRoutes, StringComparison.Ordinal)
+                    ? RouteFactContractRule.Signature(contract, fact)
+                    : null));
+        }
+    }
+
+    private void EvaluateRouteFactResults(bool scanTruncated)
+    {
+        var receipts = new List<ContractRouteFactReceipt>(_routeFactContracts.Length);
+        foreach (var contract in _routeFactContracts.OrderBy(candidate => candidate.Id, StringComparer.Ordinal))
+        {
+            var observations = (_routeFactObservations.TryGetValue(contract.Id, out var retained)
+                    ? retained
+                    : new List<RouteFactObservation>())
+                .OrderBy(observation => NormalizePath(observation.Fact.Source.FilePath), StringComparer.Ordinal)
+                .ThenBy(observation => observation.Fact.Source.Line)
+                .ThenBy(observation => observation.Fact.Source.Column)
+                .ThenBy(observation => observation.Fact.Id, StringComparer.Ordinal)
+                .ToArray();
+            var routeReceipts = contract.CallRouteIds
+                .Select(RouteReceipt)
+                .ToArray();
+            var incomplete = scanTruncated || routeReceipts.Any(route => route.Truncated);
+            var signatures = observations
+                .Where(observation => observation.Signature != null)
+                .GroupBy(observation => observation.Signature!.Key, StringComparer.Ordinal)
+                .OrderBy(group => group.Key, StringComparer.Ordinal)
+                .ToArray();
+
+            if (string.Equals(contract.Policy, RouteFactPolicy.RequiredOnEveryRoute, StringComparison.Ordinal))
+                EvaluateRequiredRouteFacts(contract, observations, incomplete);
+            else if (string.Equals(contract.Policy, RouteFactPolicy.EquivalentAcrossRoutes, StringComparison.Ordinal))
+                EvaluateEquivalentRouteFacts(contract, signatures, incomplete);
+            else
+                EvaluateAllowedRouteFacts(contract, observations, incomplete);
+
+            var outsideCount = observations.Count(observation => observation.RouteMatches.Length == 0);
+            receipts.Add(new ContractRouteFactReceipt
+            {
+                ContractId = contract.Id,
+                Policy = contract.Policy,
+                SelectedFactCount = observations.Length,
+                SignatureCount = signatures.Length,
+                Incomplete = incomplete,
+                Routes = contract.CallRouteIds.Select(routeId =>
+                {
+                    var routeObservations = observations
+                        .Where(observation => HasRoute(observation, routeId))
+                        .ToArray();
+                    var routeSignatureCount = routeObservations
+                        .Where(observation => observation.Signature != null)
+                        .Select(observation => observation.Signature!.Key)
+                        .Distinct(StringComparer.Ordinal)
+                        .Count();
+                    var satisfied = contract.Policy switch
+                    {
+                        RouteFactPolicy.RequiredOnEveryRoute => routeObservations.Length > 0,
+                        RouteFactPolicy.EquivalentAcrossRoutes => signatures.Length > 0
+                            && routeSignatureCount == signatures.Length,
+                        RouteFactPolicy.AllowedRoutesOnly => outsideCount == 0,
+                        _ => false,
+                    };
+                    return new ContractRouteFactRouteReceipt
+                    {
+                        RouteId = routeId,
+                        FactCount = routeObservations.Length,
+                        SignatureCount = routeSignatureCount,
+                        RequirementSatisfied = satisfied,
+                    };
+                }).ToArray(),
+            });
+        }
+        _routeFactReceipts = receipts.ToArray();
+    }
+
+    private void EvaluateRequiredRouteFacts(
+        RouteFactContract contract,
+        RouteFactObservation[] observations,
+        bool incomplete)
+    {
+        foreach (var routeId in contract.CallRouteIds.OrderBy(id => id, StringComparer.Ordinal))
+        {
+            var present = observations.Any(observation => HasRoute(observation, routeId));
+            RecordEvaluation(contract.Id, present);
+            if (present) continue;
+
+            var root = RouteRoot(routeId);
+            var routeMatches = CallRouteMatches(new[] { routeId }, root.SymbolId);
+            AddFinding(new ContractFinding
+            {
+                Id = FindingId(ContractRuleId.RouteFact, contract.Id, $"route:{routeId}:missing"),
+                Kind = ContractFindingKind.MissingRequiredRouteFact,
+                RuleId = ContractRuleId.RouteFact,
+                ContractId = contract.Id,
+                Severity = contract.Severity,
+                Confidence = incomplete ? ConfidenceBand.Advisory : ConfidenceBand.Proven,
+                Categories = RouteFactCategories(contract, "Missing"),
+                Message = contract.Message
+                    ?? $"Route '{routeId}' has no operation matching required route-fact contract '{contract.Id}'.",
+                Guidance = contract.Guidance,
+                FactId = $"route:{routeId}:missing",
+                ContainingSymbolId = root.SymbolId,
+                TargetSymbolId = contract.TargetSymbolIds.Length == 1 ? contract.TargetSymbolIds[0] : null,
+                Source = root.Source,
+                CallRouteMatchCount = routeMatches.Length,
+                CallRouteMatchesTruncated = routeMatches.Length > MaximumRouteMatchesPerFinding,
+                CallRouteMatches = BoundRouteMatches(routeMatches),
+                Evidence = BoundEvidence(new[]
+                {
+                    new ContractEvidence
+                    {
+                        Kind = "RouteFactRequirement",
+                        Summary = $"policy={contract.Policy}; kinds=[{string.Join(", ", contract.OperationKinds)}]; " +
+                                  $"targets=[{string.Join(", ", contract.TargetSymbolIds)}]",
+                    },
+                    new ContractEvidence
+                    {
+                        Kind = "CallRouteRoot",
+                        Summary = routeId,
+                        SymbolIds = new[] { root.SymbolId },
+                        Source = root.Source,
+                    },
+                }),
+            });
+        }
+    }
+
+    private void EvaluateEquivalentRouteFacts(
+        RouteFactContract contract,
+        IGrouping<string, RouteFactObservation>[] signatures,
+        bool incomplete)
+    {
+        foreach (var signatureGroup in signatures)
+        {
+            var signatureObservations = signatureGroup.ToArray();
+            var signature = signatureObservations[0].Signature!;
+            foreach (var routeId in contract.CallRouteIds.OrderBy(id => id, StringComparer.Ordinal))
+            {
+                var present = signatureObservations.Any(observation => HasRoute(observation, routeId));
+                RecordEvaluation(contract.Id, present);
+                if (present) continue;
+
+                var root = RouteRoot(routeId);
+                var observedRoutes = contract.CallRouteIds
+                    .Where(candidate => signatureObservations.Any(observation => HasRoute(observation, candidate)))
+                    .OrderBy(candidate => candidate, StringComparer.Ordinal)
+                    .ToArray();
+                var routeMatches = CallRouteMatches(new[] { routeId }, root.SymbolId);
+                var anchor = signatureObservations[0].Fact;
+                var evidence = new List<ContractEvidence>
+                {
+                    new()
+                    {
+                        Kind = "RouteFactSignature",
+                        Summary = signature.Summary,
+                    },
+                    new()
+                    {
+                        Kind = "MissingRoute",
+                        Summary = routeId,
+                        SymbolIds = new[] { root.SymbolId },
+                        Source = root.Source,
+                    },
+                    new()
+                    {
+                        Kind = "ObservedRoutes",
+                        Summary = string.Join(", ", observedRoutes),
+                        SymbolIds = signatureObservations
+                            .Select(observation => observation.Fact.ContainingSymbolId)
+                            .Distinct(StringComparer.Ordinal)
+                            .OrderBy(id => id, StringComparer.Ordinal)
+                            .ToArray(),
+                    },
+                };
+                evidence.AddRange(signatureObservations.Select(observation => new ContractEvidence
+                {
+                    Kind = "ObservedRouteFact",
+                    Summary = observation.Fact.Kind,
+                    SymbolIds = observation.Fact.TargetSymbolId == null
+                        ? new[] { observation.Fact.ContainingSymbolId }
+                        : new[] { observation.Fact.ContainingSymbolId, observation.Fact.TargetSymbolId },
+                    Source = observation.Fact.Source,
+                }));
+                AddFinding(new ContractFinding
+                {
+                    Id = FindingId(
+                        ContractRuleId.RouteFact,
+                        contract.Id,
+                        anchor.Id,
+                        routeId + ":" + signature.Key),
+                    Kind = ContractFindingKind.RouteFactParityMismatch,
+                    RuleId = ContractRuleId.RouteFact,
+                    ContractId = contract.Id,
+                    Severity = contract.Severity,
+                    Confidence = incomplete ? ConfidenceBand.Advisory : ConfidenceBand.Proven,
+                    Categories = RouteFactCategories(contract, "Parity"),
+                    Message = contract.Message
+                        ?? $"Route '{routeId}' is missing one operation signature required for parity contract '{contract.Id}'.",
+                    Guidance = contract.Guidance,
+                    FactId = $"route:{routeId}:signature:{SignatureId(signature.Key)}",
+                    ContainingSymbolId = root.SymbolId,
+                    TargetSymbolId = anchor.TargetSymbolId,
+                    Source = root.Source,
+                    CallRouteMatchCount = routeMatches.Length,
+                    CallRouteMatchesTruncated = routeMatches.Length > MaximumRouteMatchesPerFinding,
+                    CallRouteMatches = BoundRouteMatches(routeMatches),
+                    Evidence = BoundEvidence(evidence),
+                });
+            }
+        }
+    }
+
+    private void EvaluateAllowedRouteFacts(
+        RouteFactContract contract,
+        RouteFactObservation[] observations,
+        bool incomplete)
+    {
+        foreach (var observation in observations)
+        {
+            var allowed = observation.RouteMatches.Length > 0;
+            RecordEvaluation(contract.Id, allowed);
+            if (allowed) continue;
+
+            var fact = observation.Fact;
+            AddFinding(new ContractFinding
+            {
+                Id = FindingId(ContractRuleId.RouteFact, contract.Id, fact.Id),
+                Kind = ContractFindingKind.RouteFactOutsideOwner,
+                RuleId = ContractRuleId.RouteFact,
+                ContractId = contract.Id,
+                Severity = contract.Severity,
+                Confidence = incomplete ? ConfidenceBand.Advisory : ConfidenceBand.Proven,
+                Categories = RouteFactCategories(contract, "Ownership"),
+                Message = contract.Message
+                    ?? $"Operation '{fact.TargetSymbolId ?? fact.Kind}' occurs outside every allowed owner route for contract '{contract.Id}'.",
+                Guidance = contract.Guidance,
+                FactId = fact.Id,
+                ContainingSymbolId = fact.ContainingSymbolId,
+                TargetSymbolId = fact.TargetSymbolId,
+                Source = fact.Source,
+                Evidence = BoundEvidence(new[]
+                {
+                    new ContractEvidence
+                    {
+                        Kind = "OutsideOwnerRoute",
+                        Summary = $"allowedRoutes=[{string.Join(", ", contract.CallRouteIds)}]",
+                        SymbolIds = fact.TargetSymbolId == null
+                            ? new[] { fact.ContainingSymbolId }
+                            : new[] { fact.ContainingSymbolId, fact.TargetSymbolId },
+                        Source = fact.Source,
+                    },
+                }),
+            });
+        }
     }
 
     private void EvaluateOperationShapes(OperationFact fact)
@@ -1142,6 +1431,12 @@ public sealed class ContractAuditEngine
                     "At least one call route reached its member bound; findings cover only retained route membership.");
             }
         }
+        if (_routeFactContracts.Length > 0)
+        {
+            limitations.Add(
+                "Route-fact policies compare consumer-selected operation-fact dimensions within manifest-declared call routes. " +
+                "They do not infer behavioral equivalence beyond those selected dimensions or outside the bounded call graph.");
+        }
         if (_stateContracts.Length > 0)
         {
             limitations.Add(
@@ -1172,6 +1467,7 @@ public sealed class ContractAuditEngine
     }
 
     private static (
+        RouteFactContract[] RouteFacts,
         OperationGuardContract[] Guards,
         ExternalApiCostContract[] Costs,
         StateAccessContract[] StateAccesses,
@@ -1183,17 +1479,20 @@ public sealed class ContractAuditEngine
         var requested = NormalizeOptional(includeRuleIds);
         if (requested is not { Length: > 0 })
             return (
+                manifest.RouteFacts,
                 manifest.OperationGuards,
                 manifest.ExternalApiCosts,
                 manifest.StateAccesses,
                 manifest.ValueDomains,
                 manifest.OperationShapes);
 
-        var known = manifest.OperationGuards.Select(contract => contract.Id)
+        var known = manifest.RouteFacts.Select(contract => contract.Id)
+            .Concat(manifest.OperationGuards.Select(contract => contract.Id))
             .Concat(manifest.ExternalApiCosts.Select(contract => contract.Id))
             .Concat(manifest.StateAccesses.Select(contract => contract.Id))
             .Concat(manifest.ValueDomains.Select(contract => contract.Id))
             .Concat(manifest.OperationShapes.Select(contract => contract.Id))
+            .Append(ContractRuleId.RouteFact)
             .Append(ContractRuleId.OperationGuard)
             .Append(ContractRuleId.ExternalApiCost)
             .Append(ContractRuleId.StateAccess)
@@ -1205,6 +1504,9 @@ public sealed class ContractAuditEngine
             throw new ArgumentException("Unknown contract audit selectors: " + string.Join(", ", unknown));
 
         return (
+            manifest.RouteFacts.Where(contract =>
+                requested.Contains(ContractRuleId.RouteFact, StringComparer.Ordinal)
+                || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
             manifest.OperationGuards.Where(contract =>
                 requested.Contains(ContractRuleId.OperationGuard, StringComparer.Ordinal)
                 || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
@@ -1223,11 +1525,25 @@ public sealed class ContractAuditEngine
     }
 
     private OperationFactSelector[] BuildFactSelectors()
-        => _guardContracts.Select(contract => new OperationFactSelector
+        => _routeFactContracts.Select(contract => new OperationFactSelector
+        {
+            IncludeKinds = contract.OperationKinds,
+            TargetSymbolIds = contract.MatchAnyTarget
+                ? Array.Empty<string>()
+                : contract.TargetSymbolIds,
+            ContainingSymbolIds = string.Equals(
+                contract.Policy,
+                RouteFactPolicy.AllowedRoutesOnly,
+                StringComparison.Ordinal)
+                    ? Array.Empty<string>()
+                    : RouteContainingSymbolIds(contract.CallRouteIds),
+            Operators = contract.Operators,
+        })
+            .Concat(_guardContracts.Select(contract => new OperationFactSelector
         {
             IncludeKinds = new[] { OperationFactKind.Call, OperationFactKind.ObjectCreation },
             TargetSymbolIds = contract.TargetSymbolIds,
-        })
+        }))
             .Concat(_costContracts.Select(contract => new OperationFactSelector
             {
                 IncludeKinds = contract.OperationKinds,
@@ -1331,6 +1647,24 @@ public sealed class ContractAuditEngine
         if (missing.Length > 0)
             throw new ArgumentException("Call-route plan is missing routes: " + string.Join(", ", missing));
 
+        foreach (var receipt in receipts)
+        {
+            var rootIds = receipt.RootSymbolIds
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+            var evidenceIds = receipt.Roots
+                .Select(root => root.SymbolId)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+            if (!rootIds.SequenceEqual(evidenceIds, StringComparer.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"Call-route plan receipt '{receipt.RouteId}' must carry declaration evidence for every root symbol.");
+            }
+        }
+
         var matches = plan.Matches
             .Where(match => required.Contains(match.RouteId, StringComparer.Ordinal))
             .OrderBy(match => match.RouteId, StringComparer.Ordinal)
@@ -1412,6 +1746,7 @@ public sealed class ContractAuditEngine
     private IEnumerable<string> SelectedContractIds(string ruleId)
         => (ruleId switch
             {
+                ContractRuleId.RouteFact => _routeFactContracts.Select(contract => contract.Id),
                 ContractRuleId.OperationGuard => _guardContracts.Select(contract => contract.Id),
                 ContractRuleId.ExternalApiCost => _costContracts.Select(contract => contract.Id),
                 ContractRuleId.StateAccess => _stateContracts.Select(contract => contract.Id),
@@ -1420,6 +1755,32 @@ public sealed class ContractAuditEngine
                 _ => Array.Empty<string>(),
             })
             .OrderBy(contractId => contractId, StringComparer.Ordinal);
+
+    private ContractCallRouteReceipt RouteReceipt(string routeId)
+        => _callRouteReceipts.Single(receipt =>
+            string.Equals(receipt.RouteId, routeId, StringComparison.Ordinal));
+
+    private ContractCallRouteRootReceipt RouteRoot(string routeId)
+        => RouteReceipt(routeId).Roots
+            .OrderBy(root => root.SymbolId, StringComparer.Ordinal)
+            .First();
+
+    private static bool HasRoute(RouteFactObservation observation, string routeId)
+        => observation.RouteMatches.Any(match =>
+            string.Equals(match.RouteId, routeId, StringComparison.Ordinal));
+
+    private static string[] RouteFactCategories(RouteFactContract contract, string category)
+        => contract.Categories
+            .Append("RouteFact" + category)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(value => value, StringComparer.Ordinal)
+            .ToArray();
+
+    private static string SignatureId(string signature)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(signature));
+        return Convert.ToHexString(bytes).ToLowerInvariant()[..24];
+    }
 
     private static string FindingId(
         string ruleId,
@@ -1513,6 +1874,11 @@ public sealed class ContractAuditEngine
         int FindingFreeOccurrences,
         int Findings,
         int Suppressed);
+
+    private sealed record RouteFactObservation(
+        OperationFact Fact,
+        ContractCallRouteMatch[] RouteMatches,
+        RouteFactSignature? Signature);
 
     private sealed class StateObservation
     {

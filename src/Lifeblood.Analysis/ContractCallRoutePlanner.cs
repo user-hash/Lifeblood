@@ -48,6 +48,7 @@ public static class ContractCallRoutePlanner
         var roots = route.RootSymbolIds
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
+        var rootSymbols = new List<Symbol>(roots.Length);
         foreach (var rootId in roots)
         {
             var root = graph.GetSymbol(rootId);
@@ -58,6 +59,7 @@ public static class ContractCallRoutePlanner
                 throw new ArgumentException(
                     $"Call route '{route.Id}' root '{rootId}' is {root.Kind}; call-route roots must be methods.");
             }
+            rootSymbols.Add(root);
         }
 
         var queue = new Queue<RouteState>();
@@ -99,6 +101,18 @@ public static class ContractCallRoutePlanner
         {
             RouteId = route.Id,
             RootSymbolIds = roots,
+            Roots = rootSymbols.Select(root => new ContractCallRouteRootReceipt
+            {
+                SymbolId = root.Id,
+                Source = new OperationSourceSpan
+                {
+                    FilePath = root.FilePath,
+                    Line = Math.Max(1, root.Line),
+                    Column = 1,
+                    EndLine = Math.Max(1, root.Line),
+                    EndColumn = 1,
+                },
+            }).ToArray(),
             MaxDepth = route.MaxDepth,
             MaxMembers = route.MaxMembers,
             ReachableMemberCount = routeMatches
