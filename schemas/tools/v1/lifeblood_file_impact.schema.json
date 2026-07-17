@@ -18,7 +18,7 @@
     },
     "includeUnsupportedRelationships": {
       "type": "boolean",
-      "description": "Optional. When true, adds an advisory `unsupportedRelationships` receipt separate from semantic impact edges. Currently scans source-file IO literals such as `File.ReadAllText(\"Target.cs\")` and documents unsupported families such as reflection strings, Resources.Load paths, and Unity serialized asset references. Defaults to false."
+      "description": "Optional. When true, adds an advisory `unsupportedRelationships` receipt separate from semantic impact edges. Currently scans source-file IO literals such as `File.ReadAllText(\"Target.cs\")` plus graph-resolved reflection type strings such as `Type.GetType(\"Namespace.Target\")`, and documents unsupported families such as Resources.Load paths and Unity serialized asset references. Defaults to false."
     },
     "snapshotId": {
       "type": "string",

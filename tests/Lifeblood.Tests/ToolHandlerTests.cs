@@ -2302,17 +2302,25 @@ public class ToolHandlerTests : IDisposable
         var unsupported = root.GetProperty("unsupportedRelationships");
         Assert.Equal("advisory", unsupported.GetProperty("mode").GetString());
         Assert.False(unsupported.GetProperty("semanticGraphEdgesChanged").GetBoolean());
-        Assert.Equal(1, unsupported.GetProperty("totalHitCount").GetInt32());
-        Assert.Equal(1, unsupported.GetProperty("returnedHitCount").GetInt32());
+        Assert.Equal(2, unsupported.GetProperty("totalHitCount").GetInt32());
+        Assert.Equal(2, unsupported.GetProperty("returnedHitCount").GetInt32());
         Assert.False(unsupported.GetProperty("truncated").GetBoolean());
 
-        var hit = Assert.Single(unsupported.GetProperty("hits").EnumerateArray());
-        Assert.Equal("sourceFileIoLiteral", hit.GetProperty("family").GetString());
-        Assert.Equal("Ratchet.cs", hit.GetProperty("sourceFilePath").GetString());
-        Assert.Equal("Target.cs", hit.GetProperty("targetFilePath").GetString());
-        Assert.Equal("File.ReadAllText", hit.GetProperty("api").GetString());
-        Assert.Equal("BestEffort", hit.GetProperty("confidence").GetString());
-        Assert.Contains("Target.cs", hit.GetProperty("evidence").GetString());
+        var hits = unsupported.GetProperty("hits").EnumerateArray().ToArray();
+        Assert.Contains(hits, hit =>
+            hit.GetProperty("family").GetString() == "sourceFileIoLiteral"
+            && hit.GetProperty("sourceFilePath").GetString() == "Ratchet.cs"
+            && hit.GetProperty("targetFilePath").GetString() == "Target.cs"
+            && hit.GetProperty("api").GetString() == "File.ReadAllText"
+            && hit.GetProperty("confidence").GetString() == "BestEffort"
+            && hit.GetProperty("evidence").GetString()!.Contains("Target.cs", StringComparison.Ordinal));
+        Assert.Contains(hits, hit =>
+            hit.GetProperty("family").GetString() == "reflectionString"
+            && hit.GetProperty("sourceFilePath").GetString() == "Reflector.cs"
+            && hit.GetProperty("targetFilePath").GetString() == "Target.cs"
+            && hit.GetProperty("api").GetString() == "Type.GetType"
+            && hit.GetProperty("confidence").GetString() == "ResolvedTargetString"
+            && hit.GetProperty("evidence").GetString()!.Contains("Ratchet.Target", StringComparison.Ordinal));
 
         var families = unsupported.GetProperty("families").EnumerateArray().ToArray();
         Assert.Contains(families, family =>
@@ -2320,7 +2328,7 @@ public class ToolHandlerTests : IDisposable
             && family.GetProperty("status").GetString() == "scanned");
         Assert.Contains(families, family =>
             family.GetProperty("name").GetString() == "reflectionString"
-            && family.GetProperty("status").GetString() == "documentedLimitation");
+            && family.GetProperty("status").GetString() == "scanned");
     }
 
     private string BuildSourceFileIoRatchetProject()
@@ -2342,6 +2350,14 @@ public class ToolHandlerTests : IDisposable
             public sealed class SourceTextRatchet
             {
                 public string Read() => File.ReadAllText("Target.cs");
+            }
+            """);
+        File.WriteAllText(Path.Combine(_tempDir, "Reflector.cs"), """
+            using System;
+            namespace Ratchet;
+            public sealed class ReflectionRatchet
+            {
+                public Type? Resolve() => Type.GetType("Ratchet.Target");
             }
             """);
         return _tempDir;

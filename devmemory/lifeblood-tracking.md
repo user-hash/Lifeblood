@@ -244,13 +244,15 @@ Resolution evidence:
   capped advisory receipt is separate and reports
   `semanticGraphEdgesChanged:false`.
 - The first shipped scanner detects source-file IO literal relationships such
-  as `File.ReadAllText("Target.cs")`, capped to 25 hits. Reflection strings,
-  `Resources.Load` paths, and Unity serialized asset references are explicitly
-  documented as unsupported families in the receipt rather than silently
-  modeled as graph edges.
+  as `File.ReadAllText("Target.cs")`, capped to 25 hits. A follow-up scanner
+  detects graph-resolved reflection type strings such as
+  `Type.GetType("Namespace.Target")` only when the queried file declares the
+  target type. `Resources.Load` paths and Unity serialized asset references are
+  explicitly documented as unsupported families in the receipt rather than
+  silently modeled as graph edges.
 - Focused verification:
   `dotnet test tests\Lifeblood.Tests\Lifeblood.Tests.csproj -c Release --filter FullyQualifiedName~ToolHandlerTests.Handle_FileImpact_UnsupportedRelationships_SourceFileIoLiteral_IsAdvisory`
   passed 1/1.
 
 Remaining open work:
-- Add separate opt-in, confidence-tagged adapters for reflection strings, Unity Resources paths, and serialized asset references only when their target identity can be resolved without weakening semantic graph edges; keep source-file IO scanning advisory and bounded.
+- Add separate opt-in, confidence-tagged adapters for Unity Resources paths and serialized asset references only when their target identity can be resolved without weakening semantic graph edges; keep source-file IO and reflection-string scanning advisory and bounded.

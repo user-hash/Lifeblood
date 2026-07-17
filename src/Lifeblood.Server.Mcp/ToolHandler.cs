@@ -1850,7 +1850,7 @@ public sealed class ToolHandler
         var limitations = new[]
         {
             "This receipt is advisory and separate from semantic graph edges.",
-            "Only source-file IO literal matches are scanned here; reflection strings, Resources.Load paths, and serialized asset references remain documented limitations unless a future opt-in scanner supports them.",
+            "Source-file IO literals and graph-resolved reflection type strings are scanned here; Resources.Load paths and serialized asset references remain documented limitations unless a future opt-in scanner supports them.",
         };
         var projectRoot = _session.ProjectRoot;
         if (string.IsNullOrWhiteSpace(projectRoot))
@@ -1867,7 +1867,7 @@ public sealed class ToolHandler
             };
         }
 
-        var allHits = ScanSourceFileIoLiteralRelationships(projectRoot, targetFilePath);
+        var allHits = ScanUnsupportedRelationships(projectRoot, targetFilePath);
         return new UnsupportedRelationshipReport
         {
             Families = families,
@@ -1889,8 +1889,8 @@ public sealed class ToolHandler
             new UnsupportedRelationshipFamilyReceipt
             {
                 Name = UnsupportedRelationshipFamily.ReflectionString,
-                Status = UnsupportedRelationshipStatus.DocumentedLimitation,
-                Description = "Type/member relationships reachable only through runtime reflection strings are not semantic graph edges.",
+                Status = UnsupportedRelationshipStatus.Scanned,
+                Description = "String-literal reflection type lookups are scanned when the queried file declares a graph-resolved target type.",
             },
             new UnsupportedRelationshipFamilyReceipt
             {
@@ -1905,6 +1905,20 @@ public sealed class ToolHandler
                 Description = "Unity serialized asset/YAML references are not general semantic graph edges.",
             },
         };
+
+    private UnsupportedRelationshipHit[] ScanUnsupportedRelationships(
+        string projectRoot,
+        string targetFilePath)
+    {
+        var hits = new List<UnsupportedRelationshipHit>();
+        hits.AddRange(ScanSourceFileIoLiteralRelationships(projectRoot, targetFilePath));
+        hits.AddRange(ScanReflectionStringRelationships(projectRoot, targetFilePath));
+        return hits
+            .OrderBy(hit => hit.SourceFilePath, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Line)
+            .ThenBy(hit => hit.Family, StringComparer.Ordinal)
+            .ToArray();
+    }
 
     private UnsupportedRelationshipHit[] ScanSourceFileIoLiteralRelationships(
         string projectRoot,
@@ -1954,6 +1968,60 @@ public sealed class ToolHandler
             .ToArray();
     }
 
+    private UnsupportedRelationshipHit[] ScanReflectionStringRelationships(
+        string projectRoot,
+        string targetFilePath)
+    {
+        var targetIdentifiers = BuildTargetReflectionIdentifiers(targetFilePath);
+        if (targetIdentifiers.Length == 0)
+            return Array.Empty<UnsupportedRelationshipHit>();
+
+        var hits = new List<UnsupportedRelationshipHit>();
+        foreach (var symbol in _session.Graph!.Symbols)
+        {
+            if (symbol.Kind != SymbolKind.File || string.IsNullOrWhiteSpace(symbol.FilePath))
+                continue;
+
+            var sourcePath = symbol.FilePath.Replace('\\', '/');
+            var absolutePath = Path.IsPathRooted(symbol.FilePath)
+                ? symbol.FilePath
+                : Path.Combine(projectRoot, symbol.FilePath);
+            var text = ReadFileSafe(absolutePath);
+            if (string.IsNullOrEmpty(text))
+                continue;
+
+            var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var api = DetectReflectionStringApi(line);
+                if (api == null)
+                    continue;
+
+                var matchedIdentifier = targetIdentifiers.FirstOrDefault(identifier =>
+                    ContainsStringLiteralFragment(line, identifier));
+                if (matchedIdentifier == null)
+                    continue;
+
+                hits.Add(new UnsupportedRelationshipHit
+                {
+                    Family = UnsupportedRelationshipFamily.ReflectionString,
+                    SourceFilePath = sourcePath,
+                    TargetFilePath = targetFilePath.Replace('\\', '/'),
+                    Api = api,
+                    Line = i + 1,
+                    Confidence = "ResolvedTargetString",
+                    Evidence = line.Trim(),
+                });
+            }
+        }
+
+        return hits
+            .OrderBy(hit => hit.SourceFilePath, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Line)
+            .ToArray();
+    }
+
     private static string[] BuildTargetFilePathVariants(string targetFilePath)
     {
         var normalized = targetFilePath.Replace('\\', '/');
@@ -1963,6 +2031,34 @@ public sealed class ToolHandler
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    private string[] BuildTargetReflectionIdentifiers(string targetFilePath)
+    {
+        var normalizedTarget = targetFilePath.Replace('\\', '/');
+        return _session.Graph!.Symbols
+            .Where(symbol => symbol.Kind == SymbolKind.Type)
+            .Where(symbol => string.Equals(
+                symbol.FilePath.Replace('\\', '/'),
+                normalizedTarget,
+                StringComparison.OrdinalIgnoreCase))
+            .SelectMany(symbol => new[] { symbol.QualifiedName, symbol.Name, StripSymbolPrefix(symbol.Id) })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(value => value.Length)
+            .ToArray();
+    }
+
+    private static string StripSymbolPrefix(string symbolId)
+    {
+        var colon = symbolId.IndexOf(':');
+        return colon >= 0 && colon + 1 < symbolId.Length
+            ? symbolId[(colon + 1)..]
+            : symbolId;
+    }
+
+    private static bool ContainsStringLiteralFragment(string line, string fragment)
+        => line.Contains($"\"{fragment}\"", StringComparison.Ordinal)
+           || line.Contains($"@\"{fragment}\"", StringComparison.Ordinal);
 
     private static string? DetectSourceFileIoApi(string line)
     {
@@ -1974,6 +2070,18 @@ public sealed class ToolHandler
             "System.IO.File.ReadAllText",
             "System.IO.File.ReadAllBytes",
             "System.IO.File.ReadAllLines",
+        };
+        return apis.FirstOrDefault(api => line.Contains(api, StringComparison.Ordinal));
+    }
+
+    private static string? DetectReflectionStringApi(string line)
+    {
+        var apis = new[]
+        {
+            "Type.GetType",
+            "System.Type.GetType",
+            "Assembly.GetType",
+            "GetType",
         };
         return apis.FirstOrDefault(api => line.Contains(api, StringComparison.Ordinal));
     }
