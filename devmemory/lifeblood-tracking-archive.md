@@ -4245,3 +4245,104 @@ Verification:
 Impact:
 - Dogfood feedback keeps its provenance and validation while Lifeblood avoids a
   repo-specific mutation surface, duplicate schema authority, and unused LOC.
+
+## LB-INTAKE-20260629-004 - Source-comment drift audit for retired authority prose
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 5
+Type: Shipped
+Source: DAWG Burst migration dogfood, 2026-06-27 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `94b6527` and `1bc2e84`; full 1,700-case Release suite;
+installed alpha.96 DAWG contract-evidence receipt
+
+Resolution:
+- `lifeblood_contract_audit` now accepts caller-authored
+  `sourceTextPolicies[]` over comments and XML documentation. Each exact term
+  occurrence carries its source span, containing graph symbol when available,
+  invariant/category context, and caller-selected `Delete`, `UpdateAuthority`,
+  or `Keep` guidance.
+- Every match is `Advisory` with `authority:"CallerPolicy"`. Lifeblood proves
+  the lexical occurrence but does not infer that prose is obsolete.
+- One request-local `ISourceEvidenceProvider` pass streams retained Roslyn
+  syntax-tree facts. It creates no comment index, graph edge, cache, second
+  compilation, or retained semantic base.
+
+Verification:
+- Provider, projector, manifest, engine, registry, and public MCP fixtures pin
+  exact matching, suppression, bounds, nearby-symbol identity, and the
+  no-operation-scan path.
+- Installed alpha.96 analyzed current DAWG Editor+Player inputs, then found four
+  exact `managed mirror` occurrences across the same 4,373 retained source
+  trees. Every returned match remained Advisory/CallerPolicy and the scan
+  reported `additionalSemanticBaseCount:0`.
+
+Impact:
+- Agents can find retired authority prose without a second source database or
+  an unreviewable claim that a comment is wrong.
+
+## LB-INTAKE-20260629-016 - Named contract evidence for critical paths
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 5
+Type: Shipped
+Source: DAWG DSP/Burst dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `94b6527` and `1bc2e84`; full 1,700-case Release suite;
+installed alpha.96 DAWG contract-evidence receipt
+
+Resolution:
+- `invariantEvidence[]` composes the existing invariant provider, semantic
+  graph, shared test classifier, bounded incoming test reachability, operation
+  contract breakdowns, and explicitly caller-declared external receipt
+  references inside the existing versioned contract manifest.
+- Results expose named category status/count/evidence, concrete gaps, and
+  non-exclusive coverage states. There is deliberately no global quality or
+  correctness score.
+- `invariantEvidencePolicies[]` reports selected and returned invariant counts
+  even when an exact/prefix selector resolves to zero declarations, preventing
+  silent empty coverage.
+
+Verification:
+- Exact, missing, failing, caller-declared, empty-prefix, source-only,
+  test-only, prose-only, stale-reference, orphan, and bounded/truncated cases
+  are pinned by focused tests and the public MCP fixture.
+- The DAWG receipt selected one invariant and satisfied every required named
+  category from one declaration, 16 production references, and five test
+  references. Operation extraction was truthfully `NotRequested`.
+
+Impact:
+- Critical paths can be triaged from concrete evidence and gaps without
+  Lifeblood inventing a misleading aggregate score or another fact authority.
+
+## LB-INTAKE-20260629-027 - Invariant-to-test coverage mapper
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 5
+Type: Shipped
+Source: DAWG invariant/test dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `94b6527` and `1bc2e84`; full 1,700-case Release suite;
+installed alpha.96 DAWG contract-evidence receipt
+
+Resolution:
+- Exact invariant ids or bounded prefixes join their one parsed declaration
+  authority to exact source/test lexical references, graph-addressable symbol
+  names, optional route-scoped reachable tests, operation-contract outcomes,
+  and caller-owned external receipt categories.
+- Each invariant reports `Covered`, `ProseOnly`, `SourceOnly`, `TestOnly`,
+  `StaleReference`, and/or `Orphan` with source/evidence spans and concrete
+  missing-category reasons. States are intentionally non-exclusive.
+- Test detection is centralized in `TestSymbolClassifier`, shared with
+  `TestImpactAnalyzer`; the mapper adds no test index, invariant ledger, or
+  duplicate reachability graph.
+
+Verification:
+- The full suite passed 1,689 tests with 11 explicit native-Clang environment
+  skips. Skill validation, documentation/source-count anchors, architecture
+  ratchets, and diff checks passed.
+- Installed alpha.96 mapped DAWG `INV-WRITEBACK-EQ-DIFF-001` to its declaration,
+  16 production references, and five test references as `Covered`, with zero
+  additional semantic bases. The bounded evidence preview correctly marked the
+  overall report truncated because eight of 16 source rows were returned.
+
+Impact:
+- Invariant claims now have an evidence-centered review surface that exposes
+  both executable coverage and precise gaps without one-off repository scans.

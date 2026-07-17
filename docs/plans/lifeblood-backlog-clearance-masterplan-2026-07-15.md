@@ -636,6 +636,33 @@ Covers `004`, `005`, `013`, `016`, `027`, `030`, `032`, `033`.
 Exit: evidence payloads stay bounded and non-duplicated; memory receipts explain
 growth; governance requests close without turning Lifeblood into a repo editor.
 
+`LB-INTAKE-20260629-004`, `016`, and `027` are closed by commits `94b6527`
+and `1bc2e84`. One `ISourceEvidenceProvider` streams caller-selected comment,
+XML-documentation, and string facts from retained Roslyn syntax trees; the
+existing invariant provider, semantic graph, operation breakdown, and shared
+test classifier remain the only fact authorities. `sourceTextPolicies[]` stays
+Advisory/CallerPolicy. `invariantEvidence[]` returns explicit selector receipts,
+named category evidence/gaps, and non-exclusive states without a global score.
+Evidence-only manifests report operation execution as `NotRequested`; no new
+tool, edge, graph, cache, invariant ledger, test index, compilation, or retained
+semantic base was added.
+
+The full Release suite passed 1,689 tests with 11 explicit native-Clang
+environment skips (1,700 total); the skill, documentation anchors,
+architecture/ledger ratchets, and MCP discovery contract passed. Installed
+`0.7.13-alpha.0.96+1bc2e84` first completed a DAWG Editor+Player candidate but
+correctly rejected publication after the inputs moved from analysis key
+`analysis_6fe108f046ebccb87bffe488dbc25bd25092f4857deea280a48dc126926ffd0c`
+to `analysis_3e91b83c4a58f5234b2718289a73e2fa04f90f2200ff337ff0abab6d7a20254a`.
+The immediate fresh attempt then published 89,428 symbols / 347,801 edges /
+102 modules / 4,373 files in 55.686 seconds of server work. Its same-process
+contract audit scanned those 4,373 retained trees, emitted 25 selected facts,
+found four Advisory `managed mirror` matches, and mapped
+`INV-WRITEBACK-EQ-DIFF-001` to one declaration, 16 production references, and
+five test references as `Covered`. Every required category was satisfied,
+`additionalSemanticBaseCount` was zero, and the report's true truncation flag
+recorded the eight-row preview cap over 16 source-reference rows.
+
 `LB-INTAKE-20260714-030` implementation is repository-verified: the Analysis
 evaluator owns baseline parsing, tolerance, safety flags, and the shared
 per-profile edge projection; the MCP handler owns bounded path/file policy and
@@ -778,6 +805,9 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-025` | sibling parity is a count-framed multiset of consumer-selected fact dimensions across declared routes | exact/missing/asymmetric/truncated fixtures; live DAWG lane/composite parity evidence | `dd55932` |
 | `LB-INTAKE-20260629-026` | handoff ownership uses exact-target `AllowedRoutesOnly` plus required route handoffs without guessing framework lanes | outside-owner/route-root evidence fixtures; live DAWG owner-only audit returned bounded bypass findings | `dd55932` |
 | `LB-INTAKE-20260629-005` | explicitly declined as a product mutation surface; the repository-owned template and ledger tests remain the sole feedback-capture workflow | focused intake/tracking ledger suite; lifecycle exclusivity after archive move | `docs(governance): keep feedback capture repo owned` atom |
+| `LB-INTAKE-20260629-004` | caller-authored `sourceTextPolicies[]` stream exact comment/XML facts from retained syntax trees and keep every suggested action Advisory/CallerPolicy | provider/projector/public MCP fixtures; 1,700-case suite; installed alpha.96 DAWG scan found four bounded matches with zero additional semantic bases | `94b6527`, `1bc2e84` |
+| `LB-INTAKE-20260629-016` | named invariant evidence categories and concrete gaps replace the requested global score; empty selectors remain explicit receipts | exact/missing/failing/empty-prefix/caller-declared fixtures; DAWG declaration/source/test categories all satisfied | `94b6527`, `1bc2e84` |
+| `LB-INTAKE-20260629-027` | one projection joins the existing invariant authority, graph, shared test classifier, bounded test reachability, operation breakdown, and caller receipts | state/gap/bounds fixtures; DAWG `INV-WRITEBACK-EQ-DIFF-001` mapped to 1 declaration, 16 production references, and 5 test references | `94b6527`, `1bc2e84` |
 
 ### 2026-07-16 reliability continuation receipts
 

@@ -19,7 +19,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   graph, operation breakdown, and shared test classifier remain their sole
   fact authorities. No comment index, second invariant ledger, new MCP tool,
   or global quality score was added. (`INV-SOURCE-EVIDENCE-001`,
-  `INV-CONTRACT-EVIDENCE-001`.)
+  `INV-CONTRACT-EVIDENCE-001`; closes `LB-INTAKE-20260629-004`, `016`, and
+  `027`.)
 
 - **Contract-derived DSP/math probe workflow.** The C# playbook and Lifeblood
   skill now route generated numerical probes through one consumer-owned range

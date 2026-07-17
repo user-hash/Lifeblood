@@ -18,23 +18,24 @@
 > (`INV-MCP-SHARED-MATURITY-001`).
 
 The current installed local tools are
-`0.7.13-alpha.0.91+c8df9f79eaebb07cdc1139008858feacb8ea3122`. The exact local
+`0.7.13-alpha.0.96+1bc2e8464bfba073f735f91cf520b4e67a7cf408`. The exact local
 package lane packed both dotnet tools, installed private smoke copies, passed
 CLI help and closed-stdin MCP startup/shutdown, then updated the global
 `lifeblood` and `lifeblood-mcp` shims from that package source. A fresh MCP
-initialize reported the same build and exited cleanly. Private-build DAWG
-alpha.90 dogfood first rejected one cold candidate as
+initialize reported the same build and exited cleanly. Installed alpha.96 DAWG
+dogfood first rejected a cold Editor+Player candidate as
 `analysis-input-changed` after the workspace moved during construction; no
-mixed graph was published. The next
-stable Editor candidate completed in 83.1 seconds without transport loss. A
-real `routeFacts[]` audit over canonical `LfoMonitorSampler.WriteLane`,
-`WriteComposite`, and `SignalTraceStyle.Lerp` symbols scanned 102 modules,
-4,370 files, and 3,004,820 operations from the retained compilation, emitted
-63 selected facts, exercised all three route policies, and reported
-`additionalSemanticBaseCount:0`. The deliberately restrictive parity/owner
-manifest returned 61 bounded review findings; they are policy evidence, not
-configured graph violations. These are local prerelease/dirty-workspace
-development receipts, not a published-stable release claim.
+mixed graph was published. The immediate fresh attempt then completed without
+transport loss: 89,428 symbols, 347,801 edges, 102 modules, and 4,373 files in
+55.686 seconds of server work. A same-process `lifeblood_contract_audit`
+retained no extra semantic base, returned four Advisory/CallerPolicy
+`managed mirror` matches, and mapped `INV-WRITEBACK-EQ-DIFF-001` to one
+declaration, 16 production references, and five test references as `Covered`.
+The operation scan was correctly `NotRequested`; the lexical pass reused the
+4,373 retained syntax trees. Earlier alpha.90 `routeFacts[]` dogfood over the
+canonical LFO lane/composite/Lerp routes remains the live receipt for the three
+route policies. These are local prerelease/dirty-workspace development
+receipts, not a published-stable release claim.
 
 The earlier `0.7.13-alpha.0.63+962cf9bb8145c779e1f4ff89e5dc9f38a6ece71b`
 DAWG bridge gate used the canonical global `lifeblood-mcp --shared` tool. A fresh
