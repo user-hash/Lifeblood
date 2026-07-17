@@ -373,19 +373,35 @@ change owner, and profile queries do not multiply retained Roslyn heaps.
 
 Covers `001`, `036` and establishes the only engine used by Waves 4-5.
 
-- Define a language-neutral operation fact vocabulary: symbol/span/profile,
+- [x] Define a language-neutral operation fact vocabulary: symbol/span/profile,
   calls/arguments, value origin, assignments/reads, branches/loops, constants,
   conversions, allocations, state access, and caller-authored annotations.
-- Roslyn extracts facts behind one port. A stateless Analysis service evaluates
+- [x] Roslyn extracts facts behind one port. A stateless Analysis service evaluates
   versioned contract manifests. The MCP connector only binds and projects.
-- Ship one bounded `lifeblood_contract_audit` surface with `summarize`, caps,
+- [x] Ship one bounded `lifeblood_contract_audit` surface with `summarize`, caps,
   profile scope, contract identity, confidence, and limitations.
-- External API costs are manifest data keyed by canonical external symbol ID;
+- [x] External API costs are manifest data keyed by canonical external symbol ID;
   Unity/Burst names never enter Domain/Application/Analysis code.
 
 Exit: operation guard and external-cost fixtures prove the fact/rule boundary;
 DAWG dogfood finds a known guarded path and a known risk without hardcoded DAWG
 tokens.
+
+Wave 3 is closed by commits `fb035ff`, `8865ccd`, `40c94ca`, `44f507e`, and
+`2d78b9a`. One target-filtered neutral fact stream feeds stateless guard and
+consumer-authored external-cost evaluators; secondary profiles execute only
+the selected module ephemerally, and neither path creates a graph edge, fact
+cache, extra MCP registration, or retained semantic base. Synthetic exact,
+negative, suppression, bounds, profile, and handler fixtures remain green in
+the 1,669-case suite. Shared DAWG Editor+Player generation 9 /
+`snap_cd714f595ad9427aaab935e3965261ce` supplied the motivating proof with
+zero changed files at execution: the pitch call emitted one fact, accepted its
+explicit literal base, and returned one advisory missing-guard finding for the
+binary exponent; the Burst cache owner emitted 21 proven external-cost
+occurrences, all inside its declared bootstrap `Initialize` owner. Both scans
+verified input identity and reported `additionalSemanticBaseCount:0`. The cost
+receipt proves consumer-declared occurrence and placement, not measured runtime
+expense or a current render-path defect.
 
 ### Wave 4 - Contract Rule Families
 
@@ -602,6 +618,8 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-006` | one consumer-authored `value-domain` rule proves exact domain bindings/conversions and owns non-finite policy without inferred product vocabulary | exact/advisory/non-finite/profile/MCP fixtures; zero-warning Release build; 1,669-case full suite; pinned DAWG pitch conversion accepted with zero additional bases | `fc04a95`, `c3e8ce0` |
 | `LB-INTAKE-20260629-010` | exact lexical cadence alternatives reuse the value-domain stream and distinguish proven mismatch from missing evidence | direct/offset/missing/compound fixtures; 1,669-case full suite; pinned DAWG `< voiceCount` positive plus inclusive negative control | `ef3a126` |
 | `LB-INTAKE-20260629-022` | literal/named/default/folded provenance and consumer-toleranced near-equal grouping reuse the same value record | provenance/tolerance/validation fixtures; 1,669-case full suite; pinned DAWG raw `69`/`12` evidence on the accepted pitch conversion | `c3e8ce0`, `ef3a126` |
+| `LB-INTAKE-20260629-001` | one target-filtered operation-fact authority plus stateless `operation-guard` policy replaces bespoke control-math walkers | exact/negative/suppression/profile/MCP fixtures; 1,669-case suite; pinned DAWG `Mathf.Pow` literal-base pass and binary-exponent advisory finding with zero additional bases | `fb035ff`, `8865ccd`, `40c94ca`, `44f507e`, `2d78b9a` |
+| `LB-INTAKE-20260714-036` | consumer-authored external symbol costs join the same fact stream by canonical ID and selected lexical/owner context | cost/context/bounds/MCP fixtures; 1,669-case suite; pinned DAWG bootstrap cache receipt with 21 proven `FunctionPointer.Invoke` occurrences and zero additional bases | `fb035ff`, `8865ccd`, `40c94ca`, `44f507e` |
 
 ### 2026-07-16 reliability continuation receipts
 

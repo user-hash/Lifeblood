@@ -3771,3 +3771,94 @@ Impact:
 - Raw and policy-owned constants are now distinguishable through one reusable
   contract stream, with near-equal tolerance owned by the consumer rather than
   guessed from source names.
+
+## LB-INTAKE-20260629-001 - Semantic contract-pattern query for unchecked control math
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 3
+Type: Shipped
+Source: DAWG Burst DSP dogfood, 2026-06-27 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `fb035ff`, `8865ccd`, `40c94ca`, `44f507e`, and
+`2d78b9a`; full 1,669-case release suite; pinned DAWG operation-guard receipt
+
+Resolution:
+- The one neutral `IOperationFactProvider` authority binds calls, arguments,
+  value origins, source symbols, lexical branch/loop predicates, operators,
+  constants, spans, containing symbols, and profile identity. The stateless
+  `operation-guard` rule evaluates consumer-authored accepted signals over that
+  stream; no product math vocabulary is inferred.
+- `lifeblood_contract_audit` supplies bounded file/module/owner/rule selectors,
+  explicit summary and evidence caps, exact snapshot/generation preconditions,
+  confidence, and profile limitations. Another operation-pattern MCP tool,
+  execute recipe, fact DTO, graph edge, or retained cache was therefore neither
+  necessary nor added.
+- The adapter filters operation kind, target, and containing owner before fact
+  construction. The memoized symbol projection remains request-local, so a
+  narrow guard query does not materialize or retain workspace-wide facts.
+
+Verification:
+- Engine/provider/profile/handler fixtures prove allowed source/value/control
+  signals, exact missing-guard evidence, suppressions, deterministic bounds,
+  retained and ephemeral profile execution, and zero additional semantic bases.
+- Release build completed with zero warnings/errors. The full current suite
+  passed 1,658 tests with 11 native-clang executable precondition skips (1,669
+  total).
+- Shared DAWG Editor+Player generation 9 /
+  `snap_cd714f595ad9427aaab935e3965261ce` contained 89,790 symbols, 350,503
+  edges, 101 modules, 5,668 types, 4,408 files, 146 cycles, and zero configured
+  graph violations. A pinned one-file audit of
+  `ArcadeSynthBridge.GenerateClipForPitch` scanned 230 operations and emitted
+  the single bound `Mathf.Pow` fact. The explicit literal-base contract passed;
+  the intentionally stricter exponent contract returned one advisory
+  `MissingOperationGuard` with the exact binary expression, canonical
+  `midiPitch` source, and callsite span. The receipt verified input identity,
+  zero changed files, no ephemeral compilation, and zero additional semantic
+  bases.
+
+Impact:
+- Call-argument guard questions now have one generic, reviewable semantic path
+  shared with later contract families instead of bespoke DSP/math walkers.
+
+## LB-INTAKE-20260714-036 - External API cost annotation for hot-path audits
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 3
+Type: Shipped
+Source: DAWG Burst host-cost dogfood, 2026-07-14 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `fb035ff`, `8865ccd`, `40c94ca`, and `44f507e`; full
+1,669-case release suite; pinned DAWG external-cost receipt
+
+Resolution:
+- The `external-api-cost` rule joins the same bound operation facts to a
+  versioned consumer manifest keyed by canonical external symbol ID. The
+  consumer owns categories, annotation source/version, severity, guidance, and
+  the selected loop/branch/containing-owner context; Lifeblood proves only the
+  occurrence and lexical context.
+- Calls, object creation, member reads, and member writes share one neutral
+  operation-kind vocabulary. Consumer categories such as allocation, interop,
+  IO, main-thread, GPU-sync, or cache-required remain open strings and no Unity
+  or Burst token entered Domain, Application, or Analysis code.
+- This rule is another stateless evaluator inside `lifeblood_contract_audit`,
+  not a hot-path database, runtime-cost measurement, new MCP surface, graph
+  relationship, or second retained semantic authority.
+
+Verification:
+- Synthetic fixtures prove external symbol binding, consumer-authored category
+  and documentation evidence, loop and owner selection, repeated-occurrence
+  policy, suppressions, bounds, and exact public MCP projection.
+- On the same pinned DAWG generation 9 publication, an Editor audit selected
+  `property:Unity.Burst.FunctionPointer.Invoke` inside
+  `BurstFunctionPointerCache.Initialize`. It scanned one file and 271
+  operations, emitted 21 member-read facts, and returned 21 proven
+  `ExternalApiCostExposure` records on lines 244-264, all categorized
+  `CacheRequired`/`Interop` with the consumer-provided Unity Burst contract and
+  cache guidance. The current DAWG owner already performs these reads once
+  while caching typed delegates during bootstrap; the receipt classifies and
+  proves placement rather than claiming a render-path defect. Input identity
+  was verified, zero files had changed, no module was compiled ephemerally, and
+  zero additional semantic bases were retained.
+
+Impact:
+- Projects can attach reviewable external-cost knowledge to exact semantic
+  occurrences without Lifeblood baking vendor policy into code or maintaining
+  another cost-fact store.

@@ -23,42 +23,6 @@ multi-file verification, and source-comment drift.
 
 ---
 
-## LB-INTAKE-20260629-001 - Semantic contract-pattern query for unchecked control math
-
-Type: Feature request
-Priority: High
-Source: DAWG Burst DSP dogfood, 2026-06-27 to 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- DAWG's Burst bug hunts repeatedly needed the same question: "which consumers
-  feed a bounded control value into trig, gain, pan, filter, or direct DSP math
-  without a local clamp or domain conversion?"
-- Lifeblood could prove symbols, edges, compile state, and graph structure, but
-  this value-domain search still fell back to manual source reads plus `rg`
-  sweeps over `DspMath.Sin`, `DspMath.Cos`, pan formulas, and gain consumers.
-
-Why it matters:
-- The production failures were not broad architecture failures; they were small
-  contract breaks at math seams. A semantic operation-pattern query would catch
-  siblings of that bug class faster and with less hotpatch risk.
-- This matters for any real-time DSP, game physics, animation, serialization, or
-  UI-control system where caller values must be clamped, normalized, converted,
-  or otherwise proven before reaching sensitive math.
-
-Fix shape:
-- Add a first-class operation-pattern tool, or extend `lifeblood_execute` with a
-  documented recipe, that can search IOperation trees by callee, argument source,
-  field/parameter flow, and required guard shapes.
-- Minimum useful predicates: called method name/id, containing module/bucket,
-  argument originates from field/parameter/property, argument passes through
-  `math.clamp` or a named clamp helper, argument is compared against constants,
-  and result feeds assignment/multiply/trig/filter calls.
-- Response should group by declaring type/file and include compact evidence:
-  callsite span, callee, argument expression, detected guard or missing guard,
-  and profile scope.
-
 ## LB-INTAKE-20260629-004 - Source-comment drift audit for retired authority prose
 
 Type: Feature request
@@ -736,42 +700,3 @@ Fix shape:
   workers, allocations, batches, SetPass, and memory.
 - Let callers attach domain counters such as active tabs, active notes, synth
   voices, worker count, and shader tier so runtime captures explain themselves.
-
-## LB-INTAKE-20260714-036 - External API cost annotation for hot-path audits
-
-Type: Improvement
-Priority: High
-Source: DAWG Burst host-cost dogfood, 2026-07-14; Lifeblood local `v0.7.12+dbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- DAWG found a credible hot-path risk in Unity Burst `FunctionPointer<T>.Invoke`:
-  the source package implements the property by resolving a delegate from the
-  raw function pointer, while Unity's own package docs recommend caching the
-  delegate for regular C# calls. Lifeblood could show callsites, but it had no
-  way to know this property carries a documented host-side cost.
-- The existing hot-path allocation/forbidden-API idea covers generic operations,
-  but this case needs project- or package-supplied API cost knowledge for calls
-  whose expense is not obvious from the caller's operation tree.
-
-Why it matters:
-- Real hot-path regressions often hide inside external APIs, properties, or
-  package helpers that look cheap at the callsite. Static analysis needs a way
-  to import "this member is expensive unless cached" knowledge without
-  hardcoding Unity or Burst into Lifeblood.
-- This helps any project that depends on engine, framework, SDK, crypto,
-  graphics, ML, database, or interop APIs with documented hot-path caveats.
-
-Fix shape:
-- Add an API cost manifest or annotation file that maps external symbol ids or
-  documentation anchors to cost categories such as allocation, reflection,
-  marshal, lock, IO, main-thread-only, GPU sync, or cache-required.
-- Let hot-path audits join semantic callsites against those annotations and
-  report repeated calls inside loops, callbacks, jobs, render paths, or
-  caller-marked realtime routes.
-- Include evidence: matched external symbol, annotation source, callsite,
-  surrounding loop/callback context, and suggested contract such as "cache once
-  per kernel pointer" or "move outside render/audio callback".
-- Keep annotations consumer-authored and versioned so Lifeblood stays generic
-  and does not bake Unity-specific rules into Domain/Application.
