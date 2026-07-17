@@ -339,6 +339,181 @@ public sealed class OperationFactProviderTests
                 input => input.Role == OperationInputRole.Argument).Value.Expression));
     }
 
+    [Fact]
+    public void Scan_DisjunctiveSelectorsKeepTargetlessElementAndShiftFactsNarrow()
+    {
+        const string source = """
+            namespace Acme;
+            public sealed class Shapes
+            {
+                public ulong Run(int[] samples, int frameIndex, int maskBit)
+                {
+                    var sample = samples[frameIndex];
+                    var narrow = 1 << maskBit;
+                    var wide = 1UL << maskBit;
+                    return (ulong)(sample + narrow) | wide;
+                }
+            }
+            """;
+        using var host = HostWithSources(("Shapes.cs", source));
+        var containing = "method:Acme.Shapes.Run(int[],int,int)";
+        var (facts, receipt) = Scan(host, new OperationFactQuery
+        {
+            Selectors = new[]
+            {
+                new OperationFactSelector
+                {
+                    IncludeKinds = new[] { OperationFactKind.ElementAccess },
+                    ContainingSymbolIds = new[] { containing },
+                },
+                new OperationFactSelector
+                {
+                    IncludeKinds = new[] { OperationFactKind.Binary },
+                    ContainingSymbolIds = new[] { containing },
+                    Operators = new[] { "LeftShift" },
+                },
+            },
+        });
+
+        Assert.Equal(3, facts.Length);
+        var element = Assert.Single(facts, fact => fact.Kind == OperationFactKind.ElementAccess);
+        Assert.Null(element.TargetSymbolId);
+        Assert.Contains(element.Inputs, input =>
+            input.Role == OperationInputRole.Index
+            && input.Value.SourceSymbolIds.Contains(
+                "parameter:method:Acme.Shapes.Run(int[],int,int)#1:frameIndex"));
+        var shifts = facts.Where(fact => fact.Operator == "LeftShift").ToArray();
+        Assert.Equal(new[] { "int", "ulong" }, shifts.Select(fact => fact.ResultType));
+        Assert.Equal(3, receipt.EmittedFactCount);
+        Assert.Equal(0, receipt.AdditionalSemanticBaseCount);
+    }
+
+    [Fact]
+    public void Scan_PointerIndexingCarriesReceiverAndIndexShape()
+    {
+        const string source = """
+            namespace Acme;
+            public static unsafe class PointerBuffer
+            {
+                public static float Read(float* samples, int index) => samples[index];
+                public static float ReadFirst(float* samples) => *samples;
+            }
+            """;
+        using var host = HostWithSources(("PointerBuffer.cs", source));
+        var containing = "method:Acme.PointerBuffer.Read(float*,int)";
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            Selectors = new[]
+            {
+                new OperationFactSelector
+                {
+                    IncludeKinds = new[] { OperationFactKind.ElementAccess },
+                    ContainingSymbolIds = new[] { containing },
+                },
+            },
+        });
+
+        var element = Assert.Single(facts);
+        var receiver = Assert.Single(element.Inputs, input => input.Role == OperationInputRole.Receiver);
+        var index = Assert.Single(element.Inputs, input => input.Role == OperationInputRole.Index);
+        Assert.Equal("float*", receiver.Value.Type);
+        Assert.Contains("parameter:method:Acme.PointerBuffer.Read(float*,int)#0:samples", receiver.Value.SourceSymbolIds);
+        Assert.Contains("parameter:method:Acme.PointerBuffer.Read(float*,int)#1:index", index.Value.SourceSymbolIds);
+
+        var (directFacts, _) = Scan(host, new OperationFactQuery
+        {
+            Selectors = new[]
+            {
+                new OperationFactSelector
+                {
+                    IncludeKinds = new[] { OperationFactKind.PointerIndirection },
+                    ContainingSymbolIds = new[] { "method:Acme.PointerBuffer.ReadFirst(float*)" },
+                },
+            },
+        });
+        var direct = Assert.Single(directFacts);
+        Assert.Single(direct.Inputs, input => input.Role == OperationInputRole.Receiver);
+    }
+
+    [Fact]
+    public void Scan_EnumMaskInitializersCarryShiftWidthAndBitConstants()
+    {
+        const string source = """
+            namespace Acme;
+            public enum Bits : ulong
+            {
+                First = 1UL << 0,
+                Duplicate = 1UL << 0,
+                Last = 1UL << 63,
+            }
+            """;
+        using var host = HostWithSources(("Bits.cs", source));
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            FilePaths = new[] { "Bits.cs" },
+            Selectors = new[]
+            {
+                new OperationFactSelector
+                {
+                    IncludeKinds = new[] { OperationFactKind.Binary },
+                    Operators = new[] { "LeftShift" },
+                },
+            },
+        });
+
+        Assert.Equal(3, facts.Length);
+        Assert.All(facts, fact => Assert.Equal("ulong", fact.ResultType));
+        Assert.Equal(new[] { "0", "0", "63" }, facts.Select(fact => Assert.Single(
+            fact.Inputs,
+            input => input.Role == OperationInputRole.Right).Value.ConstantValue));
+        Assert.All(facts, fact => Assert.StartsWith("field:Acme.Bits.", fact.ContainingSymbolId, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Scan_IndexerContainersCarryReceiverAndBoundIndexShape()
+    {
+        const string source = """
+            namespace Acme;
+            public readonly struct Sidecar
+            {
+                public float this[int slot] => 0f;
+            }
+            public static class Indexers
+            {
+                public static float ReadSidecar(Sidecar values, int slot) => values[slot];
+                public static float ReadSpan(System.Span<float> values, int frame) => values[frame];
+            }
+            """;
+        using var host = HostWithSources(("Indexers.cs", source));
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            Selectors = new[]
+            {
+                new OperationFactSelector
+                {
+                    IncludeKinds = new[] { OperationFactKind.ElementAccess },
+                    ContainingSymbolIds = new[]
+                    {
+                        "method:Acme.Indexers.ReadSidecar(Acme.Sidecar,int)",
+                        "method:Acme.Indexers.ReadSpan(System.Span<float>,int)",
+                    },
+                },
+            },
+        });
+
+        Assert.Equal(2, facts.Length);
+        Assert.All(facts, fact =>
+        {
+            Assert.NotNull(fact.TargetSymbolId);
+            Assert.Single(fact.Inputs, input => input.Role == OperationInputRole.Receiver);
+            var index = Assert.Single(fact.Inputs, input => input.Role == OperationInputRole.Index);
+            Assert.Equal(0, index.Ordinal);
+            Assert.Contains(index.Value.SourceSymbolIds, id =>
+                id.EndsWith(":slot", StringComparison.Ordinal)
+                || id.EndsWith(":frame", StringComparison.Ordinal));
+        });
+    }
+
     private static (OperationFact[] Facts, OperationFactScanReceipt Receipt) Scan(
         RoslynCompilationHost host,
         OperationFactQuery query)
@@ -369,7 +544,7 @@ public sealed class OperationFactProviderTests
             "Test",
             trees,
             BclReferences(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
         return new RoslynCompilationHost(
             new Dictionary<string, CSharpCompilation>(StringComparer.Ordinal)
             {

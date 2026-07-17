@@ -1359,6 +1359,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             ContainingSymbolIds = source.ContainingSymbolIds,
             TargetSymbolIds = source.TargetSymbolIds,
             IncludeKinds = source.IncludeKinds,
+            Selectors = source.Selectors,
             IncludeImplicit = source.IncludeImplicit,
             MaxFacts = maxFacts,
         };

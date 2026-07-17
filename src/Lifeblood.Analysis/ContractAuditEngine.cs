@@ -21,10 +21,13 @@ public sealed class ContractAuditEngine
     private readonly OperationGuardContract[] _guardContracts;
     private readonly ExternalApiCostContract[] _costContracts;
     private readonly ValueDomainContract[] _domainContracts;
+    private readonly OperationShapeContract[] _shapeContracts;
     private readonly ContractSuppression[] _suppressions;
     private readonly SortedSet<ContractFinding> _findings = new(FindingComparer.Instance);
     private readonly Dictionary<string, RuleCounts> _counts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<NearEqualConstantObservation>> _nearEqualObservations =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<OperationShapeUniqueObservation>> _shapeUniqueObservations =
         new(StringComparer.Ordinal);
     private readonly int _findingLimit;
     private readonly int _evidenceLimit;
@@ -38,8 +41,12 @@ public sealed class ContractAuditEngine
         _manifest = request.Manifest ?? throw new ArgumentException("A contract manifest is required.", nameof(request));
         ContractManifestValidator.Validate(_manifest);
 
-        (_guardContracts, _costContracts, _domainContracts) = SelectContracts(_manifest, request.IncludeRuleIds);
-        if (_guardContracts.Length == 0 && _costContracts.Length == 0 && _domainContracts.Length == 0)
+        (_guardContracts, _costContracts, _domainContracts, _shapeContracts) =
+            SelectContracts(_manifest, request.IncludeRuleIds);
+        if (_guardContracts.Length == 0
+            && _costContracts.Length == 0
+            && _domainContracts.Length == 0
+            && _shapeContracts.Length == 0)
             throw new ArgumentException("The contract audit request did not select any manifest contracts.", nameof(request));
         _suppressions = _manifest.Suppressions ?? Array.Empty<ContractSuppression>();
         _findingLimit = request.Summarize
@@ -52,6 +59,7 @@ public sealed class ContractAuditEngine
         var targets = _guardContracts.SelectMany(contract => contract.TargetSymbolIds)
             .Concat(_costContracts.SelectMany(contract => contract.TargetSymbolIds))
             .Concat(_domainContracts.SelectMany(contract => contract.TargetSymbolIds))
+            .Concat(_shapeContracts.SelectMany(contract => contract.TargetSymbolIds))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
@@ -59,7 +67,9 @@ public sealed class ContractAuditEngine
                 ? new[] { OperationFactKind.Call, OperationFactKind.ObjectCreation }
                 : Array.Empty<string>())
             .Concat(_costContracts.SelectMany(contract => contract.OperationKinds))
-            .Concat(_domainContracts.SelectMany(contract => contract.OperationKinds));
+            .Concat(_domainContracts.SelectMany(contract => contract.OperationKinds))
+            .Concat(_shapeContracts.SelectMany(contract => contract.OperationKinds));
+        var everyContractHasBoundTargets = _shapeContracts.All(contract => contract.TargetSymbolIds.Length > 0);
 
         Query = new OperationFactQuery
         {
@@ -67,11 +77,12 @@ public sealed class ContractAuditEngine
             ModuleScope = NullIfWhiteSpace(request.ModuleScope),
             FilePaths = NormalizeOptional(request.FilePaths),
             ContainingSymbolIds = NormalizeOptional(request.ContainingSymbolIds),
-            TargetSymbolIds = targets,
+            TargetSymbolIds = everyContractHasBoundTargets ? targets : null,
             IncludeKinds = kinds
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(kind => kind, StringComparer.Ordinal)
                 .ToArray(),
+            Selectors = BuildFactSelectors(),
             MaxFacts = Clamp(request.MaxFacts, 1, MaximumFacts),
         };
     }
@@ -89,6 +100,7 @@ public sealed class ContractAuditEngine
         EvaluateGuards(fact);
         EvaluateExternalCosts(fact);
         EvaluateValueDomains(fact);
+        EvaluateOperationShapes(fact);
         return true;
     }
 
@@ -99,16 +111,19 @@ public sealed class ContractAuditEngine
             throw new InvalidOperationException("A contract audit can be completed only once.");
         _completed = true;
         EvaluateNearEqualConstants();
+        EvaluateOperationShapeUniqueness();
 
         var selectedRules = _guardContracts.Select(_ => ContractRuleId.OperationGuard)
             .Concat(_costContracts.Select(_ => ContractRuleId.ExternalApiCost))
             .Concat(_domainContracts.Select(_ => ContractRuleId.ValueDomain))
+            .Concat(_shapeContracts.Select(_ => ContractRuleId.OperationShape))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
         var selectedContracts = _guardContracts.Select(contract => contract.Id)
             .Concat(_costContracts.Select(contract => contract.Id))
             .Concat(_domainContracts.Select(contract => contract.Id))
+            .Concat(_shapeContracts.Select(contract => contract.Id))
             .OrderBy(id => id, StringComparer.Ordinal)
             .ToArray();
 
@@ -138,6 +153,144 @@ public sealed class ContractAuditEngine
             Findings = _findings.ToArray(),
             Limitations = BuildLimitations(receipt),
         };
+    }
+
+    private void EvaluateOperationShapes(OperationFact fact)
+    {
+        foreach (var contract in _shapeContracts)
+        {
+            var uniqueObservations = OperationShapeContractRule.CollectUniquenessObservations(contract, fact);
+            if (uniqueObservations.Length > 0)
+            {
+                if (!_shapeUniqueObservations.TryGetValue(contract.Id, out var retained))
+                {
+                    retained = new List<OperationShapeUniqueObservation>();
+                    _shapeUniqueObservations.Add(contract.Id, retained);
+                }
+                retained.AddRange(uniqueObservations);
+            }
+
+            var assessment = OperationShapeContractRule.Evaluate(contract, fact);
+            if (assessment == null) continue;
+
+            var evidence = new List<ContractEvidence>
+            {
+                new()
+                {
+                    Kind = "BoundOccurrence",
+                    Summary = $"{fact.Kind}; operator={fact.Operator ?? "<none>"}; " +
+                              $"resultType={fact.ResultType ?? "<none>"}",
+                    SymbolIds = fact.TargetSymbolId == null
+                        ? new[] { fact.ContainingSymbolId }
+                        : new[] { fact.ContainingSymbolId, fact.TargetSymbolId },
+                    Source = fact.Source,
+                },
+            };
+            evidence.AddRange(fact.Inputs.Select(input => new ContractEvidence
+            {
+                Kind = "OperationInput",
+                Summary = $"{input.Role}[{input.Ordinal?.ToString(CultureInfo.InvariantCulture) ?? "any"}]: " +
+                          $"{DescribeValue(input.Value)}; type={input.Value.Type ?? "<none>"}; " +
+                          $"operators=[{string.Join(", ", input.Value.Operators)}]",
+                SymbolIds = input.Value.SourceSymbolIds,
+                Source = fact.Source,
+            }));
+            evidence.AddRange(fact.ControlContexts.Select(context => new ContractEvidence
+            {
+                Kind = "ControlContext",
+                Summary = context.Condition == null ? context.Kind : $"{context.Kind}: {context.Condition}",
+                SymbolIds = context.ConditionValue?.SourceSymbolIds ?? Array.Empty<string>(),
+                Source = context.Source,
+            }));
+            evidence.AddRange(assessment.Failures.Select(failure => new ContractEvidence
+            {
+                Kind = "AllowedShapeMismatch",
+                Summary = $"{failure.ShapeId}: {string.Join("; ", failure.Reasons)}",
+            }));
+
+            AddFinding(new ContractFinding
+            {
+                Id = FindingId(ContractRuleId.OperationShape, contract.Id, fact.Id),
+                Kind = ContractFindingKind.OperationShapeMismatch,
+                RuleId = ContractRuleId.OperationShape,
+                ContractId = contract.Id,
+                Severity = contract.Severity,
+                Confidence = ConfidenceBand.Proven,
+                Categories = contract.Categories
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(category => category, StringComparer.Ordinal)
+                    .ToArray(),
+                Message = contract.Message
+                    ?? $"{fact.Kind} occurrence in '{fact.ContainingSymbolId}' does not match any " +
+                       $"allowed shape for contract '{contract.Id}'.",
+                Guidance = contract.Guidance,
+                FactId = fact.Id,
+                ContainingSymbolId = fact.ContainingSymbolId,
+                TargetSymbolId = fact.TargetSymbolId,
+                Source = fact.Source,
+                Evidence = BoundEvidence(evidence),
+            });
+        }
+    }
+
+    private void EvaluateOperationShapeUniqueness()
+    {
+        foreach (var contract in _shapeContracts)
+        {
+            var policy = contract.UniquenessPolicy;
+            if (policy == null
+                || !_shapeUniqueObservations.TryGetValue(contract.Id, out var observations))
+                continue;
+
+            foreach (var assessment in OperationShapeContractRule.GroupDuplicateKeys(policy, observations))
+            {
+                var anchor = assessment.Observations[0];
+                var evidence = new List<ContractEvidence>
+                {
+                    new()
+                    {
+                        Kind = "UniquenessPolicy",
+                        Summary = $"{policy.KeyKind} from {policy.InputRole}" +
+                                  (policy.InputOrdinal.HasValue ? $"[{policy.InputOrdinal}]" : string.Empty),
+                    },
+                };
+                evidence.AddRange(assessment.Observations.Select(observation => new ContractEvidence
+                {
+                    Kind = "DuplicateOperationShapeKey",
+                    Summary = $"key={assessment.Key}; {observation.Fact.Kind}",
+                    SymbolIds = observation.Input.Value.SourceSymbolIds,
+                    Source = observation.Fact.Source,
+                }));
+
+                AddFinding(new ContractFinding
+                {
+                    Id = FindingId(
+                        ContractRuleId.OperationShape,
+                        contract.Id,
+                        anchor.Fact.Id,
+                        $"duplicate:{policy.KeyKind}:{assessment.Key}"),
+                    Kind = ContractFindingKind.DuplicateOperationShapeKey,
+                    RuleId = ContractRuleId.OperationShape,
+                    ContractId = contract.Id,
+                    Severity = contract.Severity,
+                    Confidence = ConfidenceBand.Proven,
+                    Categories = contract.Categories
+                        .Append("Duplicate")
+                        .Distinct(StringComparer.Ordinal)
+                        .OrderBy(category => category, StringComparer.Ordinal)
+                        .ToArray(),
+                    Message = contract.Message
+                        ?? $"Operation-shape key '{assessment.Key}' occurs {assessment.Observations.Length} times " +
+                           $"under uniqueness contract '{contract.Id}'.",
+                    Guidance = contract.Guidance,
+                    FactId = anchor.Fact.Id,
+                    ContainingSymbolId = anchor.Fact.ContainingSymbolId,
+                    TargetSymbolId = anchor.Fact.TargetSymbolId,
+                    Source = anchor.Fact.Source,
+                    Evidence = BoundEvidence(evidence),
+                });
+            }
+        }
     }
 
     private void EvaluateGuards(OperationFact fact)
@@ -637,6 +790,12 @@ public sealed class ContractAuditEngine
                 "Value domains are consumer-authored symbol bindings. Lifeblood proves expression-local origins and " +
                 "operators; it does not infer domains through local assignments, returns, or interprocedural flow.");
         }
+        if (_shapeContracts.Length > 0)
+        {
+            limitations.Add(
+                "Operation shapes prove manifest-selected lexical inputs, result types, and control contexts. " +
+                "They do not infer aliasing, interprocedural array lengths, runtime buffer contents, or enum/table coverage.");
+        }
         limitations.Add(
             "Reflection, dynamic dispatch, and string-named invocation are outside the bound operation stream.");
         return limitations.Distinct(StringComparer.Ordinal).ToArray();
@@ -645,20 +804,27 @@ public sealed class ContractAuditEngine
     private static (
         OperationGuardContract[] Guards,
         ExternalApiCostContract[] Costs,
-        ValueDomainContract[] Domains) SelectContracts(
+        ValueDomainContract[] Domains,
+        OperationShapeContract[] Shapes) SelectContracts(
         ContractManifest manifest,
         string[]? includeRuleIds)
     {
         var requested = NormalizeOptional(includeRuleIds);
         if (requested is not { Length: > 0 })
-            return (manifest.OperationGuards, manifest.ExternalApiCosts, manifest.ValueDomains);
+            return (
+                manifest.OperationGuards,
+                manifest.ExternalApiCosts,
+                manifest.ValueDomains,
+                manifest.OperationShapes);
 
         var known = manifest.OperationGuards.Select(contract => contract.Id)
             .Concat(manifest.ExternalApiCosts.Select(contract => contract.Id))
             .Concat(manifest.ValueDomains.Select(contract => contract.Id))
+            .Concat(manifest.OperationShapes.Select(contract => contract.Id))
             .Append(ContractRuleId.OperationGuard)
             .Append(ContractRuleId.ExternalApiCost)
             .Append(ContractRuleId.ValueDomain)
+            .Append(ContractRuleId.OperationShape)
             .ToHashSet(StringComparer.Ordinal);
         var unknown = requested.Where(id => !known.Contains(id)).ToArray();
         if (unknown.Length > 0)
@@ -673,8 +839,36 @@ public sealed class ContractAuditEngine
                 || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
             manifest.ValueDomains.Where(contract =>
                 requested.Contains(ContractRuleId.ValueDomain, StringComparer.Ordinal)
+                || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray(),
+            manifest.OperationShapes.Where(contract =>
+                requested.Contains(ContractRuleId.OperationShape, StringComparer.Ordinal)
                 || requested.Contains(contract.Id, StringComparer.Ordinal)).ToArray());
     }
+
+    private OperationFactSelector[] BuildFactSelectors()
+        => _guardContracts.Select(contract => new OperationFactSelector
+        {
+            IncludeKinds = new[] { OperationFactKind.Call, OperationFactKind.ObjectCreation },
+            TargetSymbolIds = contract.TargetSymbolIds,
+        })
+            .Concat(_costContracts.Select(contract => new OperationFactSelector
+            {
+                IncludeKinds = contract.OperationKinds,
+                TargetSymbolIds = contract.TargetSymbolIds,
+            }))
+            .Concat(_domainContracts.Select(contract => new OperationFactSelector
+            {
+                IncludeKinds = contract.OperationKinds,
+                TargetSymbolIds = contract.TargetSymbolIds,
+            }))
+            .Concat(_shapeContracts.Select(contract => new OperationFactSelector
+            {
+                IncludeKinds = contract.OperationKinds,
+                TargetSymbolIds = contract.TargetSymbolIds,
+                ContainingSymbolIds = contract.ContainingSymbolIds,
+                Operators = contract.Operators,
+            }))
+            .ToArray();
 
     private static string DescribeValue(OperationValueFact value)
     {

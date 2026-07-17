@@ -67,6 +67,7 @@ internal sealed class RoslynOperationFactProvider
             query.IncludeKinds,
             value => value,
             StringComparer.Ordinal);
+        var selectors = NormalizeSelectors(query.Selectors);
         var symbolIds = new ScanSymbolIds();
         var scannedModules = 0;
         var scannedFiles = 0;
@@ -107,6 +108,7 @@ internal sealed class RoslynOperationFactProvider
                             containingFilter,
                             targetFilter,
                             kindFilter,
+                            selectors,
                             symbolIds,
                             visited,
                             consume,
@@ -162,6 +164,7 @@ internal sealed class RoslynOperationFactProvider
         HashSet<string>? containingFilter,
         HashSet<string>? targetFilter,
         HashSet<string>? kindFilter,
+        ScanSelector[]? selectors,
         ScanSymbolIds symbolIds,
         HashSet<IOperation> visited,
         Func<OperationFact, bool> consume,
@@ -182,15 +185,27 @@ internal sealed class RoslynOperationFactProvider
             && (query.IncludeImplicit || !operation.IsImplicit)
             && (kindFilter is not { Count: > 0 } || kindFilter.Contains(kind)))
         {
+            var operatorName = OperatorName(operation);
             var targetId = TargetSymbolId(operation, symbolIds);
             var targetMatches = targetFilter is not { Count: > 0 }
                 || (targetId != null && targetFilter.Contains(targetId));
-            var containingSymbolId = targetMatches
+            var selectorCandidate = SelectorCanMatchBeforeContaining(
+                selectors,
+                kind,
+                operatorName,
+                targetId);
+            var containingSymbolId = targetMatches && selectorCandidate
                 ? ContainingSymbolId(model, operation.Syntax.SpanStart, moduleName, symbolIds)
                 : null;
             var containingMatches = containingFilter is not { Count: > 0 }
                 || (containingSymbolId != null && containingFilter.Contains(containingSymbolId));
-            if (targetMatches && containingMatches)
+            var selectorMatches = SelectorMatches(
+                selectors,
+                kind,
+                operatorName,
+                targetId,
+                containingSymbolId);
+            if (targetMatches && containingMatches && selectorMatches)
             {
                 if (emittedFacts >= query.MaxFacts)
                 {
@@ -206,6 +221,7 @@ internal sealed class RoslynOperationFactProvider
                     kind,
                     targetId,
                     containingSymbolId!,
+                    operatorName,
                     symbolIds);
                 emittedFacts++;
                 if (!consume(fact))
@@ -227,6 +243,7 @@ internal sealed class RoslynOperationFactProvider
                     containingFilter,
                     targetFilter,
                     kindFilter,
+                    selectors,
                     symbolIds,
                     visited,
                     consume,
@@ -252,6 +269,7 @@ internal sealed class RoslynOperationFactProvider
         IFieldReferenceOperation field => RoslynOperationFacts.IsWriteContext(field)
             ? OperationFactKind.MemberWrite
             : OperationFactKind.MemberRead,
+        IPropertyReferenceOperation { Property.IsIndexer: true } => OperationFactKind.ElementAccess,
         IPropertyReferenceOperation property => RoslynOperationFacts.IsWriteContext(property)
             ? OperationFactKind.MemberWrite
             : OperationFactKind.MemberRead,
@@ -259,6 +277,11 @@ internal sealed class RoslynOperationFactProvider
             ? OperationFactKind.MemberWrite
             : OperationFactKind.MemberRead,
         IArrayElementReferenceOperation => OperationFactKind.ElementAccess,
+        _ when operation.Syntax.IsKind(SyntaxKind.ElementAccessExpression)
+               && TryGetPointerElementOperands(operation, out _, out _)
+            => OperationFactKind.ElementAccess,
+        _ when operation.Syntax.IsKind(SyntaxKind.PointerIndirectionExpression)
+            => OperationFactKind.PointerIndirection,
         IBinaryOperation => OperationFactKind.Binary,
         IUnaryOperation => OperationFactKind.Unary,
         IConversionOperation => OperationFactKind.Conversion,
@@ -308,6 +331,7 @@ internal sealed class RoslynOperationFactProvider
         string kind,
         string? targetId,
         string containingSymbolId,
+        string? operatorName,
         ScanSymbolIds symbolIds)
     {
         var inputs = new List<OperationInputFact>();
@@ -347,6 +371,8 @@ internal sealed class RoslynOperationFactProvider
 
             case IPropertyReferenceOperation property:
                 AddInput(inputs, OperationInputRole.Receiver, property.Instance, symbolIds);
+                if (property.Property.IsIndexer)
+                    AddIndexArguments(inputs, property.Arguments, compilation, symbolIds);
                 break;
 
             case IEventReferenceOperation eventReference:
@@ -395,6 +421,23 @@ internal sealed class RoslynOperationFactProvider
             case ILockOperation locked:
                 AddInput(inputs, OperationInputRole.LockedValue, locked.LockedValue, symbolIds);
                 break;
+
+            default:
+                if (kind == OperationFactKind.ElementAccess
+                    && TryGetPointerElementOperands(operation, out var receiver, out var indexValue))
+                {
+                    AddInput(inputs, OperationInputRole.Receiver, receiver, symbolIds);
+                    AddInput(inputs, OperationInputRole.Index, indexValue, symbolIds, 0);
+                }
+                else if (kind == OperationFactKind.PointerIndirection)
+                {
+                    AddInput(
+                        inputs,
+                        OperationInputRole.Receiver,
+                        operation.ChildOperations.FirstOrDefault(),
+                        symbolIds);
+                }
+                break;
         }
 
         var source = SourceSpan(operation.Syntax);
@@ -407,7 +450,7 @@ internal sealed class RoslynOperationFactProvider
             ContainingSymbolId = containingSymbolId,
             TargetSymbolId = targetId,
             ResultType = operation.Type == null ? null : TypeDisplay(operation.Type),
-            Operator = OperatorName(operation),
+            Operator = operatorName,
             Source = source,
             IsImplicit = operation.IsImplicit,
             Inputs = inputs.ToArray(),
@@ -444,6 +487,27 @@ internal sealed class RoslynOperationFactProvider
             inputs.Add(new OperationInputFact
             {
                 Role = OperationInputRole.Argument,
+                Ordinal = argument.Parameter?.Ordinal,
+                ParameterId = argument.Parameter == null ? null : symbolIds.Parameter(argument.Parameter),
+                ParameterName = argument.Parameter?.Name,
+                AuthorSupplied = argument.ArgumentKind != ArgumentKind.DefaultValue,
+                Value = DescribeValue(value, symbolIds),
+            });
+        }
+    }
+
+    private static void AddIndexArguments(
+        List<OperationInputFact> inputs,
+        IEnumerable<IArgumentOperation> arguments,
+        CSharpCompilation compilation,
+        ScanSymbolIds symbolIds)
+    {
+        foreach (var argument in arguments)
+        {
+            var (value, _) = RoslynArgumentBinding.Resolve(argument, compilation);
+            inputs.Add(new OperationInputFact
+            {
+                Role = OperationInputRole.Index,
                 Ordinal = argument.Parameter?.Ordinal,
                 ParameterId = argument.Parameter == null ? null : symbolIds.Parameter(argument.Parameter),
                 ParameterName = argument.Parameter?.Name,
@@ -805,6 +869,54 @@ internal sealed class RoslynOperationFactProvider
         _ => null,
     };
 
+    private static bool TryGetPointerElementOperands(
+        IOperation operation,
+        out IOperation receiver,
+        out IOperation index)
+    {
+        if (operation.Syntax.IsKind(SyntaxKind.ElementAccessExpression))
+        {
+            var children = operation.ChildOperations.ToArray();
+            var pointerChild = children.FirstOrDefault(child => child.Type is IPointerTypeSymbol);
+            var indexChild = children.FirstOrDefault(child => child.Type is not IPointerTypeSymbol);
+            if (pointerChild != null && indexChild != null)
+            {
+                receiver = pointerChild;
+                index = indexChild;
+                return true;
+            }
+        }
+
+        if (operation is IBinaryOperation binary
+            && binary.OperatorKind is BinaryOperatorKind.Add or BinaryOperatorKind.Subtract)
+        {
+            if (binary.LeftOperand.Type is IPointerTypeSymbol
+                && binary.RightOperand.Type is not IPointerTypeSymbol)
+            {
+                receiver = binary.LeftOperand;
+                index = binary.RightOperand;
+                return true;
+            }
+            if (binary.OperatorKind == BinaryOperatorKind.Add
+                && binary.RightOperand.Type is IPointerTypeSymbol
+                && binary.LeftOperand.Type is not IPointerTypeSymbol)
+            {
+                receiver = binary.RightOperand;
+                index = binary.LeftOperand;
+                return true;
+            }
+        }
+
+        foreach (var child in operation.ChildOperations)
+        {
+            if (TryGetPointerElementOperands(child, out receiver, out index)) return true;
+        }
+
+        receiver = null!;
+        index = null!;
+        return false;
+    }
+
     private static OperationSourceSpan SourceSpan(SyntaxNode syntax)
     {
         var span = syntax.GetLocation().GetLineSpan();
@@ -867,6 +979,49 @@ internal sealed class RoslynOperationFactProvider
             .ToHashSet(comparer);
     }
 
+    private static ScanSelector[]? NormalizeSelectors(
+        IReadOnlyList<OperationFactSelector>? selectors)
+    {
+        if (selectors is not { Count: > 0 }) return null;
+
+        return selectors.Select((selector, index) =>
+        {
+            if (selector == null)
+                throw new ArgumentException($"Operation fact selector at index {index} cannot be null.");
+            return new ScanSelector(
+                NormalizeSet(selector.IncludeKinds, value => value, StringComparer.Ordinal),
+                NormalizeSet(selector.TargetSymbolIds, value => value, StringComparer.Ordinal),
+                NormalizeSet(selector.ContainingSymbolIds, value => value, StringComparer.Ordinal),
+                NormalizeSet(selector.Operators, value => value, StringComparer.Ordinal));
+        }).ToArray();
+    }
+
+    private static bool SelectorCanMatchBeforeContaining(
+        ScanSelector[]? selectors,
+        string kind,
+        string? operatorName,
+        string? targetId)
+        => selectors == null || selectors.Any(selector =>
+            Matches(selector.Kinds, kind)
+            && Matches(selector.Operators, operatorName)
+            && Matches(selector.Targets, targetId));
+
+    private static bool SelectorMatches(
+        ScanSelector[]? selectors,
+        string kind,
+        string? operatorName,
+        string? targetId,
+        string? containingSymbolId)
+        => selectors == null || selectors.Any(selector =>
+            Matches(selector.Kinds, kind)
+            && Matches(selector.Operators, operatorName)
+            && Matches(selector.Targets, targetId)
+            && Matches(selector.ContainingSymbols, containingSymbolId));
+
+    private static bool Matches(HashSet<string>? values, string? candidate)
+        => values is not { Count: > 0 }
+            || (candidate != null && values.Contains(candidate));
+
     private static bool MatchesPath(HashSet<string> filter, string filePath)
         => filter.Contains(filePath)
            || filter.Any(candidate => filePath.EndsWith(
@@ -877,6 +1032,12 @@ internal sealed class RoslynOperationFactProvider
 
     private static string NormalizePath(string? path)
         => (path ?? string.Empty).Replace('\\', '/');
+
+    private sealed record ScanSelector(
+        HashSet<string>? Kinds,
+        HashSet<string>? Targets,
+        HashSet<string>? ContainingSymbols,
+        HashSet<string>? Operators);
 
     /// <summary>
     /// Request-scoped canonical-id memoization. The cache dies with the scan,

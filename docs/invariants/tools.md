@@ -1,6 +1,6 @@
 # Tool Invariants
 
-- **INV-CONTRACT-AUDIT-001. Consumer-owned semantic contracts evaluate through one neutral, target-filtered operation stream and never create another graph or retained compilation.**
+- **INV-CONTRACT-AUDIT-001. Consumer-owned semantic contracts evaluate through one neutral, selector-bounded operation stream and never create another graph or retained compilation.**
 
 Per-tool semantic contracts: dead-code reachability, invariant
 introspection, authority report, forwarder classification, execute
