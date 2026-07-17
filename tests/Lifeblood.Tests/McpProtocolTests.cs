@@ -304,6 +304,21 @@ public class McpProtocolTests
   }
 
   [Fact]
+  public void ToolRegistry_ContractAudit_AdvertisesEvidenceFamiliesAndTheirTruthBoundary()
+  {
+  var description = ToolRegistry.GetDefinitions()
+    .Single(tool => tool.Name == "lifeblood_contract_audit")
+    .Description;
+
+  Assert.Contains("sourceTextPolicies[]", description, StringComparison.Ordinal);
+  Assert.Contains("invariantEvidence[]", description, StringComparison.Ordinal);
+  Assert.Contains("explicit selector counts", description, StringComparison.Ordinal);
+  Assert.Contains("no global score", description, StringComparison.Ordinal);
+  Assert.Contains("retained semantic base", description, StringComparison.Ordinal);
+  Assert.Contains("NotRequested", description, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void ToolRegistry_ResolveShortName_IsGraphObservation()
   {
   // Pin the classification decision from FINDING-005. The previous
