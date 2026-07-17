@@ -70,7 +70,7 @@ static-tables defaults. Every anchor is ratcheted against live source by
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 4 --><!-- trackingStatusReceiptCount: 0 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 8 --><!-- trackingStatusReceiptCount: 0 --><!-- trackingStatusOpenCount: 0 -->
 
 New intake — un-started findings/feature requests awaiting prioritization (the
 ledger itself holds only Shipped + in-flight per `TrackingLedger_HasNoPlainOpenOrCandidateEntries`):
@@ -81,6 +81,10 @@ Active non-shipped implementation ledger:
 - 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
 - LB-INTAKE-20260629-013 - Generated DSP/math probe recipe
+- LB-INTAKE-20260714-029 - Diff-scoped diagnostic ownership report
+- LB-INTAKE-20260714-030 - First-class evidence baseline drift check
+- LB-INTAKE-20260714-032 - Compact invariant audit without duplicate zero-source ledgers
+- LB-INTAKE-20260714-033 - Retained-session memory telemetry start/end/peak delta
 - LB-INTAKE-20260716-044 - Static semantic blind spots need explicit unsupported-edge receipts
 <!-- trackingActiveBacklog:end -->
 
@@ -299,3 +303,115 @@ Resolution evidence:
 
 Remaining open work:
 - Add separate opt-in, confidence-tagged adapters for Unity Resources paths and serialized asset references only when their target identity can be resolved without weakening semantic graph edges; keep source-file IO and reflection-string scanning advisory and bounded.
+
+## LB-INTAKE-20260714-029 - Diff-scoped diagnostic ownership report
+
+Status: Partially shipped
+Type: Feature request
+Source: DAWG ADSR/LFO/genre dogfood, 2026-07-14 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `bceb0d5`; current 1,700-case Release suite
+
+Summary:
+- `lifeblood_diagnose(diagnosticOwnershipMode)` joins the existing retained
+  Roslyn diagnostics to bounded Git working-tree, staged, since-commit, or
+  caller-supplied touched-path evidence.
+- Results group diagnostic indexes as `introducedByDiff`,
+  `preExistingTouchedFile`, `preExistingUnrelated`, or `unknownOwnership`
+  without duplicating the diagnostic payload.
+- Truncated/failed Git evidence, external paths, explicit files without line
+  history, and stale retained diagnostics fail closed to unknown. The Git
+  adapter remains the one source-control fact authority; no baseline
+  compilation or retained semantic base was added.
+
+Impact:
+- Agents can separate current-atom diagnostics from unrelated repository debt
+  without laundering uncertain provenance into an owned finding.
+
+Remaining open work:
+- Run the installed tool on a stable DAWG publication with a controlled
+  working-tree/staged diagnostic fixture and capture all four ownership groups,
+  exact snapshot/generation preconditions, and zero source drift; then archive
+  the entry.
+
+## LB-INTAKE-20260714-030 - First-class evidence baseline drift check
+
+Status: Partially shipped
+Type: Improvement
+Source: DAWG evidence-baseline dogfood, 2026-07-14 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `ce93db7`; current 1,700-case Release suite
+
+Summary:
+- `lifeblood_evidence_drift` parses one bounded workspace-contained Markdown
+  stamp and compares it with the exact leased graph plus a live invariant
+  audit after recapturing canonical source, descriptor, and rule identity.
+- It reports exact deltas, caller-visible tolerance, fixed safety flags,
+  commit/content provenance, verdict, and separate analysis/evidence refresh
+  guidance. Stale publications and incomplete baselines fail closed.
+- The existing per-profile edge projection is shared with analyze; the tool is
+  read-only and creates no baseline compilation or retained semantic base.
+
+Impact:
+- Generated evidence can be cited or refreshed from a product-owned freshness
+  verdict instead of an unverified external count comparison.
+
+Remaining open work:
+- On one stable DAWG Editor+Player publication, exercise the default
+  `docs/code-maps/EVIDENCE.generated.md` path with exact snapshot/generation
+  preconditions and record current/stale guidance plus
+  `additionalSemanticBaseCount:0`; then archive the entry.
+
+## LB-INTAKE-20260714-032 - Compact invariant audit without duplicate zero-source ledgers
+
+Status: Partially shipped
+Type: Optimization
+Source: DAWG evidence-refresh dogfood, 2026-07-11 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `b311d7e`; current 1,700-case Release suite
+
+Summary:
+- `lifeblood_invariant_check(mode:"audit", summarize:true)` preserves totals,
+  category counts, duplicate occurrences, parse warnings, and coverage while
+  projecting only nonzero source counts.
+- The citation-safe receipt owns that compact source projection once and the
+  top level references it. The default full v1 response remains compatible.
+- A 56-source zero-heavy fixture proves duplicates and warnings remain visible
+  without serializing the same mostly-zero ledger twice.
+
+Impact:
+- Large invariant trees retain provenance and coverage warnings without a
+  multi-thousand-token duplicate source inventory dominating the response.
+
+Remaining open work:
+- Run compact and full audit against the same stable DAWG snapshot, verify the
+  compact payload remains bounded while totals/duplicates/warnings agree, and
+  archive the entry with the exact generation/snapshot receipt.
+
+## LB-INTAKE-20260714-033 - Retained-session memory telemetry start/end/peak delta
+
+Status: Partially shipped
+Type: Optimization
+Source: DAWG retained-session dogfood, 2026-07-11 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `0afc087`; current 1,700-case Release suite
+
+Summary:
+- `AnalysisUsage` remains the one per-request usage authority and now records
+  start, end, absolute peak, signed end-minus-start, and nonnegative
+  peak-above-start working-set/private-byte values.
+- Existing absolute peak fields remain backward-compatible projections. The
+  process adapter drains its sampler before the final sample and uses no fixed
+  wall-clock completion deadline.
+- A retained full/noop/one-file-edit/descriptor-fallback fixture pins semantic
+  parity and the additive CLI/MCP wire shape without another telemetry type.
+
+Impact:
+- A request can distinguish retained graph cost from transient rebuild growth
+  instead of treating a process-wide absolute peak as evidence of a leak.
+
+Remaining open work:
+- Run one stable installed DAWG process through full Editor+Player,
+  incremental-noop, controlled one-file incremental, and descriptor fallback;
+  capture start/end/delta/peak-above-start with unchanged semantic counts, then
+  archive the entry.

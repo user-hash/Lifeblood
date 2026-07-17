@@ -663,11 +663,20 @@ five test references as `Covered`. Every required category was satisfied,
 `additionalSemanticBaseCount` was zero, and the report's true truncation flag
 recorded the eight-row preview cap over 16 source-reference rows.
 
+`LB-INTAKE-20260714-029` is repository-verified by commit `bceb0d5`: the
+existing diagnose projection joins one bounded Git change receipt and groups
+diagnostic indexes by current-diff ownership without a baseline compilation or
+duplicated diagnostic payload. It now lives in the tracking ledger; closure
+still requires a stable installed DAWG fixture covering introduced,
+pre-existing-touched, unrelated, and unknown outcomes under exact publication
+preconditions.
+
 `LB-INTAKE-20260714-030` implementation is repository-verified: the Analysis
 evaluator owns baseline parsing, tolerance, safety flags, and the shared
 per-profile edge projection; the MCP handler owns bounded path/file policy and
 freshness enforcement. Focused evaluator/handler/schema/Unity/registry tests
-and the full suite are its in-tree gates. Lifecycle closure remains pending
+and the full suite are its in-tree gates. It now lives in the tracking ledger;
+closure remains pending
 until a frozen DAWG Editor+Player publication proves the default generated
 baseline path, exact snapshot/generation preconditions, refresh guidance, and
 zero additional semantic bases on the motivating workspace.
@@ -678,7 +687,8 @@ ledger; audit `summarize:true` filters its nonzero source rows at the MCP edge,
 stores that projection once in the citation-safe receipt, and returns a JSON
 reference from the top level. A 56-source zero-heavy fixture retains duplicate
 occurrences and parse warnings while staying inside the compact response
-budget. Lifecycle closure remains pending the frozen DAWG receipt.
+budget. It now lives in the tracking ledger; closure remains pending the frozen
+DAWG receipt.
 
 `LB-INTAKE-20260714-033` implementation is repository-verified without a
 second telemetry type. `AnalysisUsage` stores start/end/absolute-peak memory
@@ -687,7 +697,8 @@ process adapter drains its sampler before finalization without a wall-clock
 deadline. Unit tests pin negative deltas and peak clamping; one retained
 GraphSession fixture runs full, incremental-noop, one-file edit, and
 descriptor-triggered full fallback while preserving semantic parity and the
-additive MCP wire shape. Lifecycle closure remains pending a real DAWG
+additive MCP wire shape. It now lives in the tracking ledger; closure remains
+pending a real DAWG
 full/noop memory receipt from this build. The first private Editor+Player
 attempt on 2026-07-16 reached all 84 module compilations plus graph validation,
 then correctly rejected publication as `analysis-input-changed` because DAWG
