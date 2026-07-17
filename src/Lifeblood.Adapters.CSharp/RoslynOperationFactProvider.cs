@@ -400,6 +400,8 @@ internal sealed class RoslynOperationFactProvider
 
             case IConditionalOperation conditional:
                 AddInput(inputs, OperationInputRole.Condition, conditional.Condition, symbolIds);
+                AddInput(inputs, OperationInputRole.WhenTrue, conditional.WhenTrue, symbolIds);
+                AddInput(inputs, OperationInputRole.WhenFalse, conditional.WhenFalse, symbolIds);
                 break;
 
             case ILoopOperation loop:
@@ -739,14 +741,17 @@ internal sealed class RoslynOperationFactProvider
         ScanSymbolIds symbolIds)
     {
         var contexts = new List<OperationControlContext>();
-        for (var parent = operation.Parent; parent != null; parent = parent.Parent)
+        var child = operation;
+        for (var parent = operation.Parent; parent != null; child = parent, parent = parent.Parent)
         {
             string? kind = null;
+            string? branchArm = null;
             IOperation? conditionOperation = null;
             switch (parent)
             {
                 case IConditionalOperation conditional:
                     kind = OperationControlContextKind.Branch;
+                    branchArm = BranchArm(conditional, child);
                     conditionOperation = conditional.Condition;
                     break;
                 case ILoopOperation loop:
@@ -776,6 +781,7 @@ internal sealed class RoslynOperationFactProvider
                 contexts.Add(new OperationControlContext
                 {
                     Kind = kind,
+                    BranchArm = branchArm,
                     Condition = Clip(conditionOperation?.Syntax.ToString()),
                     ConditionValue = conditionOperation == null
                         ? null
@@ -792,6 +798,17 @@ internal sealed class RoslynOperationFactProvider
         }
         contexts.Reverse();
         return contexts.ToArray();
+    }
+
+    private static string? BranchArm(IConditionalOperation conditional, IOperation directChild)
+    {
+        if (ReferenceEquals(directChild, conditional.Condition))
+            return OperationBranchArm.Condition;
+        if (ReferenceEquals(directChild, conditional.WhenTrue))
+            return OperationBranchArm.WhenTrue;
+        if (ReferenceEquals(directChild, conditional.WhenFalse))
+            return OperationBranchArm.WhenFalse;
+        return null;
     }
 
     private static string[] CollectOperators(IOperation operation)

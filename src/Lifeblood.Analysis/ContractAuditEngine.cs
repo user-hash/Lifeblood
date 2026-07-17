@@ -25,6 +25,7 @@ public sealed class ContractAuditEngine
     private readonly ContractSuppression[] _suppressions;
     private readonly SortedSet<ContractFinding> _findings = new(FindingComparer.Instance);
     private readonly Dictionary<string, RuleCounts> _counts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ContractCounts> _contractCounts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<NearEqualConstantObservation>> _nearEqualObservations =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<OperationShapeUniqueObservation>> _shapeUniqueObservations =
@@ -148,6 +149,18 @@ public sealed class ContractAuditEngine
                     RuleId = ruleId,
                     FindingCount = count.Findings,
                     SuppressedFindingCount = count.Suppressed,
+                    Contracts = SelectedContractIds(ruleId).Select(contractId =>
+                    {
+                        _contractCounts.TryGetValue(contractId, out var contractCount);
+                        return new ContractEvaluationBreakdown
+                        {
+                            ContractId = contractId,
+                            EvaluatedOccurrenceCount = contractCount.EvaluatedOccurrences,
+                            FindingFreeOccurrenceCount = contractCount.FindingFreeOccurrences,
+                            FindingCount = contractCount.Findings,
+                            SuppressedFindingCount = contractCount.Suppressed,
+                        };
+                    }).ToArray(),
                 };
             }).ToArray(),
             Findings = _findings.ToArray(),
@@ -159,6 +172,8 @@ public sealed class ContractAuditEngine
     {
         foreach (var contract in _shapeContracts)
         {
+            if (!OperationShapeContractRule.Selects(contract, fact)) continue;
+
             var uniqueObservations = OperationShapeContractRule.CollectUniquenessObservations(contract, fact);
             if (uniqueObservations.Length > 0)
             {
@@ -171,6 +186,7 @@ public sealed class ContractAuditEngine
             }
 
             var assessment = OperationShapeContractRule.Evaluate(contract, fact);
+            RecordEvaluation(contract.Id, findingFree: assessment == null);
             if (assessment == null) continue;
 
             var evidence = new List<ContractEvidence>
@@ -198,7 +214,7 @@ public sealed class ContractAuditEngine
             evidence.AddRange(fact.ControlContexts.Select(context => new ContractEvidence
             {
                 Kind = "ControlContext",
-                Summary = context.Condition == null ? context.Kind : $"{context.Kind}: {context.Condition}",
+                Summary = DescribeControl(context),
                 SymbolIds = context.ConditionValue?.SourceSymbolIds ?? Array.Empty<string>(),
                 Source = context.Source,
             }));
@@ -305,7 +321,11 @@ public sealed class ContractAuditEngine
                 input.Role == OperationInputRole.Argument
                 && input.Ordinal == contract.ArgumentOrdinal);
             if (argument != null && IsAllowed(contract, argument, fact.ControlContexts))
+            {
+                RecordEvaluation(contract.Id, findingFree: true);
                 continue;
+            }
+            RecordEvaluation(contract.Id, findingFree: false);
 
             var evidence = new List<ContractEvidence>
             {
@@ -339,7 +359,7 @@ public sealed class ContractAuditEngine
             evidence.AddRange(fact.ControlContexts.Select(context => new ContractEvidence
             {
                 Kind = "ControlContext",
-                Summary = context.Condition == null ? context.Kind : $"{context.Kind}: {context.Condition}",
+                Summary = DescribeControl(context),
                 Source = context.Source,
             }));
 
@@ -373,6 +393,7 @@ public sealed class ContractAuditEngine
                 || !Contains(contract.OperationKinds, fact.Kind)
                 || !CostContextMatches(contract, fact))
                 continue;
+            RecordEvaluation(contract.Id, findingFree: false);
 
             var evidence = new List<ContractEvidence>
             {
@@ -394,7 +415,7 @@ public sealed class ContractAuditEngine
             evidence.AddRange(fact.ControlContexts.Select(context => new ContractEvidence
             {
                 Kind = "ControlContext",
-                Summary = context.Condition == null ? context.Kind : $"{context.Kind}: {context.Condition}",
+                Summary = DescribeControl(context),
                 Source = context.Source,
             }));
 
@@ -423,6 +444,8 @@ public sealed class ContractAuditEngine
     {
         foreach (var contract in _domainContracts)
         {
+            if (!ValueDomainContractRule.Selects(contract, fact)) continue;
+
             var observations = ValueDomainContractRule.CollectNearEqualObservations(contract, fact);
             if (observations.Length > 0)
             {
@@ -434,7 +457,9 @@ public sealed class ContractAuditEngine
                 retained.AddRange(observations);
             }
 
-            foreach (var assessment in ValueDomainContractRule.Evaluate(contract, fact))
+            var assessments = ValueDomainContractRule.Evaluate(contract, fact);
+            RecordEvaluation(contract.Id, findingFree: assessments.Length == 0);
+            foreach (var assessment in assessments)
             {
                 var evidence = BuildValueDomainEvidence(contract, fact, assessment);
                 AddFinding(new ContractFinding
@@ -720,11 +745,13 @@ public sealed class ContractAuditEngine
         {
             _suppressedCount++;
             Increment(finding.RuleId, suppressed: true);
+            IncrementContract(finding.ContractId, suppressed: true);
             return;
         }
 
         _findingCount++;
         Increment(finding.RuleId, suppressed: false);
+        IncrementContract(finding.ContractId, suppressed: false);
         _findings.Add(finding);
         if (_findings.Count > _findingLimit && _findings.Max is { } last)
             _findings.Remove(last);
@@ -764,6 +791,24 @@ public sealed class ContractAuditEngine
             : counts with { Findings = counts.Findings + 1 };
     }
 
+    private void RecordEvaluation(string contractId, bool findingFree)
+    {
+        _contractCounts.TryGetValue(contractId, out var counts);
+        _contractCounts[contractId] = counts with
+        {
+            EvaluatedOccurrences = counts.EvaluatedOccurrences + 1,
+            FindingFreeOccurrences = counts.FindingFreeOccurrences + (findingFree ? 1 : 0),
+        };
+    }
+
+    private void IncrementContract(string contractId, bool suppressed)
+    {
+        _contractCounts.TryGetValue(contractId, out var counts);
+        _contractCounts[contractId] = suppressed
+            ? counts with { Suppressed = counts.Suppressed + 1 }
+            : counts with { Findings = counts.Findings + 1 };
+    }
+
     private ContractEvidence[] BoundEvidence(IEnumerable<ContractEvidence> evidence)
         => _evidenceLimit == 0
             ? Array.Empty<ContractEvidence>()
@@ -793,7 +838,7 @@ public sealed class ContractAuditEngine
         if (_shapeContracts.Length > 0)
         {
             limitations.Add(
-                "Operation shapes prove manifest-selected lexical inputs, result types, and control contexts. " +
+                "Operation shapes prove manifest-selected lexical inputs, result types, branch arms, and control contexts. " +
                 "They do not infer aliasing, interprocedural array lengths, runtime buffer contents, or enum/table coverage.");
         }
         limitations.Add(
@@ -876,6 +921,25 @@ public sealed class ContractAuditEngine
         return $"{value.Kind}: {expression}";
     }
 
+    private static string DescribeControl(OperationControlContext context)
+    {
+        var label = context.BranchArm == null
+            ? context.Kind
+            : $"{context.Kind}[{context.BranchArm}]";
+        return context.Condition == null ? label : $"{label}: {context.Condition}";
+    }
+
+    private IEnumerable<string> SelectedContractIds(string ruleId)
+        => (ruleId switch
+            {
+                ContractRuleId.OperationGuard => _guardContracts.Select(contract => contract.Id),
+                ContractRuleId.ExternalApiCost => _costContracts.Select(contract => contract.Id),
+                ContractRuleId.ValueDomain => _domainContracts.Select(contract => contract.Id),
+                ContractRuleId.OperationShape => _shapeContracts.Select(contract => contract.Id),
+                _ => Array.Empty<string>(),
+            })
+            .OrderBy(contractId => contractId, StringComparer.Ordinal);
+
     private static string FindingId(
         string ruleId,
         string contractId,
@@ -923,6 +987,11 @@ public sealed class ContractAuditEngine
         => values.Contains(candidate, StringComparer.Ordinal);
 
     private readonly record struct RuleCounts(int Findings, int Suppressed);
+    private readonly record struct ContractCounts(
+        int EvaluatedOccurrences,
+        int FindingFreeOccurrences,
+        int Findings,
+        int Suppressed);
 
     private sealed class FindingComparer : IComparer<ContractFinding>
     {

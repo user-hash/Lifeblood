@@ -120,6 +120,9 @@ internal static class ContractManifestValidator
                 }
                 RequireText(control.Kind, $"Operation shape '{contract.Id}' shape '{shape.Id}' control kind");
                 RequireNonNull(
+                    control.AllowedBranchArms,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control allowedBranchArms");
+                RequireNonNull(
                     control.AnySourceSymbolIds,
                     $"Operation shape '{contract.Id}' shape '{shape.Id}' control anySourceSymbolIds");
                 RequireNonNull(
@@ -129,6 +132,9 @@ internal static class ContractManifestValidator
                     control.RequiredOperators,
                     $"Operation shape '{contract.Id}' shape '{shape.Id}' control requiredOperators");
                 RequireNoBlankValues(
+                    control.AllowedBranchArms,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control allowedBranchArms");
+                RequireNoBlankValues(
                     control.AnySourceSymbolIds,
                     $"Operation shape '{contract.Id}' shape '{shape.Id}' control anySourceSymbolIds");
                 RequireNoBlankValues(
@@ -137,6 +143,21 @@ internal static class ContractManifestValidator
                 RequireNoBlankValues(
                     control.RequiredOperators,
                     $"Operation shape '{contract.Id}' shape '{shape.Id}' control requiredOperators");
+                if (control.AllowedBranchArms.Length > 0
+                    && !string.Equals(control.Kind, OperationControlContextKind.Branch, StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(
+                        $"Operation shape '{contract.Id}' shape '{shape.Id}' can select branch arms only on a Branch control context.");
+                }
+                var unknownArms = control.AllowedBranchArms
+                    .Where(arm => !OperationBranchArm.All.Contains(arm, StringComparer.Ordinal))
+                    .ToArray();
+                if (unknownArms.Length > 0)
+                {
+                    throw new ArgumentException(
+                        $"Operation shape '{contract.Id}' shape '{shape.Id}' has unknown branch arms " +
+                        $"[{string.Join(", ", unknownArms)}].");
+                }
             }
         }
     }
@@ -154,6 +175,7 @@ internal static class ContractManifestValidator
         RequireNonNull(input.RequiredOperators, prefix + " requiredOperators");
         RequireNonNull(input.AllowedConstantValues, prefix + " allowedConstantValues");
         RequireNonNull(input.RequiredConstantValues, prefix + " requiredConstantValues");
+        RequireNonNull(input.ForbiddenConstantValues, prefix + " forbiddenConstantValues");
         RequireNoBlankValues(input.AllowedValueKinds, prefix + " allowedValueKinds");
         RequireNoBlankValues(input.AllowedTypes, prefix + " allowedTypes");
         RequireNoBlankValues(input.AnySourceSymbolIds, prefix + " anySourceSymbolIds");
@@ -161,6 +183,18 @@ internal static class ContractManifestValidator
         RequireNoBlankValues(input.RequiredOperators, prefix + " requiredOperators");
         RequireNoBlankValues(input.AllowedConstantValues, prefix + " allowedConstantValues");
         RequireNoBlankValues(input.RequiredConstantValues, prefix + " requiredConstantValues");
+        RequireNoBlankValues(input.ForbiddenConstantValues, prefix + " forbiddenConstantValues");
+        var contradictoryConstants = input.ForbiddenConstantValues
+            .Where(value => input.AllowedConstantValues.Contains(value, StringComparer.Ordinal)
+                || input.RequiredConstantValues.Contains(value, StringComparer.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (contradictoryConstants.Length > 0)
+        {
+            throw new ArgumentException(
+                prefix + " both accepts and forbids constants " +
+                $"[{string.Join(", ", contradictoryConstants)}].");
+        }
     }
 
     private static void ValidateGuard(OperationGuardContract contract, HashSet<string> ids)

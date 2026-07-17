@@ -471,6 +471,25 @@ mute/sidecar audit emitted two selected facts with zero findings and zero
 additional bases in 130 ms; the complete Burst `FieldMask.cs` audit emitted 55
 shift facts with zero findings and zero additional bases in 18 ms.
 
+Group 3 implementation is repository-verified at the same `operation-shape`
+boundary. The neutral C# record now names a nested occurrence's exact
+`Condition` / `WhenTrue` / `WhenFalse` arm and exposes conditional arms as
+ordinary inputs. Shape policy can select those arms and forbid exact
+consumer-declared constants; existing source-symbol and loop constraints prove
+declared smoother routes, while existing value-domain boundary policy remains
+the sole exact threshold authority. Rule breakdowns derive per-contract
+evaluated, occurrence-local finding-free, finding, and suppressed counts from
+the evaluator's own counters so zero matching facts are a visible gap. No
+temporal rule family, downstream-read ledger, MCP tool, graph edge, fact cache,
+or retained base was added. Synthetic extractor/evaluator/public-handler tests
+cover safe and mismatched lifecycle reset arms, smoothed versus direct sample-
+loop inputs, hard-zero branch returns, suppression counts, and a zero-match
+contract. Release build is warning-free; the full suite passes 1,661 with 11
+native-clang environment skips (1,672 total); self-analysis reports 7,631
+symbols, 40,232 edges, 12 modules, and 821 types. Intake closure remains
+pending pinned DAWG lifecycle/smoothing/discontinuity receipts from the
+installed build.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 

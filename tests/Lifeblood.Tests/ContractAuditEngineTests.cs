@@ -63,8 +63,17 @@ public sealed class ContractAuditEngineTests
         Assert.Equal(ContractFindingKind.ExternalApiCostExposure, retained.Kind);
         Assert.Equal(new[] { "Allocation", "CacheRequired" }, retained.Categories);
         Assert.Equal(2, report.RuleBreakdown.Length);
-        Assert.Equal(1, Assert.Single(report.RuleBreakdown, row => row.RuleId == ContractRuleId.OperationGuard).FindingCount);
-        Assert.Equal(1, Assert.Single(report.RuleBreakdown, row => row.RuleId == ContractRuleId.ExternalApiCost).FindingCount);
+        var guardRule = Assert.Single(report.RuleBreakdown, row => row.RuleId == ContractRuleId.OperationGuard);
+        Assert.Equal(1, guardRule.FindingCount);
+        var guardCoverage = Assert.Single(guardRule.Contracts);
+        Assert.Equal(2, guardCoverage.EvaluatedOccurrenceCount);
+        Assert.Equal(1, guardCoverage.FindingFreeOccurrenceCount);
+        Assert.Equal(1, guardCoverage.FindingCount);
+        var costRule = Assert.Single(report.RuleBreakdown, row => row.RuleId == ContractRuleId.ExternalApiCost);
+        Assert.Equal(1, costRule.FindingCount);
+        var costCoverage = Assert.Single(costRule.Contracts);
+        Assert.Equal(1, costCoverage.EvaluatedOccurrenceCount);
+        Assert.Equal(0, costCoverage.FindingFreeOccurrenceCount);
     }
 
     [Fact]
@@ -109,6 +118,31 @@ public sealed class ContractAuditEngineTests
         Assert.Empty(Assert.Single(report.Findings).Evidence);
         Assert.Equal(new[] { ContractRuleId.ExternalApiCost }, report.SelectedRuleIds);
         Assert.Equal(new[] { "vendor-allocation" }, report.SelectedContractIds);
+        var coverage = Assert.Single(Assert.Single(report.RuleBreakdown).Contracts);
+        Assert.Equal(2, coverage.EvaluatedOccurrenceCount);
+        Assert.Equal(0, coverage.FindingFreeOccurrenceCount);
+        Assert.Equal(1, coverage.FindingCount);
+        Assert.Equal(1, coverage.SuppressedFindingCount);
+    }
+
+    [Fact]
+    public void ContractBreakdown_ReportsZeroEvaluatedOccurrencesAsAnExplicitGap()
+    {
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = Manifest(),
+            IncludeRuleIds = new[] { ContractRuleId.OperationGuard },
+        });
+
+        var report = engine.Complete(Receipt(emitted: 0));
+
+        Assert.Equal(0, report.FindingCount);
+        var coverage = Assert.Single(Assert.Single(report.RuleBreakdown).Contracts);
+        Assert.Equal("rate-is-normalized", coverage.ContractId);
+        Assert.Equal(0, coverage.EvaluatedOccurrenceCount);
+        Assert.Equal(0, coverage.FindingFreeOccurrenceCount);
+        Assert.Equal(0, coverage.FindingCount);
+        Assert.Equal(0, coverage.SuppressedFindingCount);
     }
 
     [Fact]
@@ -792,6 +826,209 @@ public sealed class ContractAuditEngineTests
     }
 
     [Fact]
+    public void OperationShape_OneStreamChecksLifecycleSmoothingAndDiscontinuityEvidence()
+    {
+        const string render = "method:Acme.Voice.Render(float,float)";
+        const string tail = "field:Acme.Voice._tail";
+        const string level = "parameter:method:Acme.Voice.Render(float,float)#0:level";
+        const string control = "parameter:method:Acme.Voice.Render(float,float)#1:control";
+        const string smoother = "method:Acme.Smoother.Step(float)";
+        const string sink = "method:Acme.Voice.Apply(float)";
+        var manifest = new ContractManifest
+        {
+            Id = "acme-temporal-contracts",
+            Version = "2026.07.17",
+            OperationShapes = new[]
+            {
+                new OperationShapeContract
+                {
+                    Id = "tail-reset-only-on-idle-arm",
+                    OperationKinds = new[] { OperationFactKind.Assignment },
+                    TargetSymbolIds = new[] { tail },
+                    ContainingSymbolIds = new[] { render },
+                    AllowedShapes = new[]
+                    {
+                        new OperationAllowedShape
+                        {
+                            Id = "zero-on-true-idle-arm",
+                            Inputs = new[]
+                            {
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Value,
+                                    RequiredConstantValues = new[] { "0" },
+                                },
+                            },
+                            ControlContexts = new[]
+                            {
+                                new OperationControlShape
+                                {
+                                    Kind = OperationControlContextKind.Branch,
+                                    AllowedBranchArms = new[] { OperationBranchArm.WhenTrue },
+                                    RequiredSourceSymbolIds = new[] { level },
+                                    RequiredOperators = new[] { "LessThanOrEqual" },
+                                },
+                            },
+                        },
+                    },
+                    Categories = new[] { "Lifecycle", "StateReset" },
+                },
+                new OperationShapeContract
+                {
+                    Id = "control-is-smoothed-in-sample-loop",
+                    OperationKinds = new[] { OperationFactKind.Call },
+                    TargetSymbolIds = new[] { sink },
+                    ContainingSymbolIds = new[] { render },
+                    AllowedShapes = new[]
+                    {
+                        new OperationAllowedShape
+                        {
+                            Id = "declared-smoother-route",
+                            Inputs = new[]
+                            {
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Argument,
+                                    Ordinal = 0,
+                                    RequiredSourceSymbolIds = new[] { control, smoother },
+                                },
+                            },
+                            ControlContexts = new[]
+                            {
+                                new OperationControlShape { Kind = OperationControlContextKind.Loop },
+                            },
+                        },
+                    },
+                    Categories = new[] { "RateTransition", "Smoothing" },
+                },
+                new OperationShapeContract
+                {
+                    Id = "branch-return-has-no-hard-zero",
+                    OperationKinds = new[] { OperationFactKind.Return },
+                    ContainingSymbolIds = new[] { render },
+                    AllowedShapes = new[]
+                    {
+                        new OperationAllowedShape
+                        {
+                            Id = "continuous-return",
+                            Inputs = new[]
+                            {
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.ReturnedValue,
+                                    ForbiddenConstantValues = new[] { "0" },
+                                },
+                            },
+                            ControlContexts = new[]
+                            {
+                                new OperationControlShape
+                                {
+                                    Kind = OperationControlContextKind.Branch,
+                                    AllowedBranchArms = new[]
+                                    {
+                                        OperationBranchArm.WhenTrue,
+                                        OperationBranchArm.WhenFalse,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    Categories = new[] { "Discontinuity", "HardGate" },
+                    Severity = ContractSeverity.Info,
+                },
+            },
+        };
+        var engine = new ContractAuditEngine(new ContractAuditRequest { Manifest = manifest });
+
+        engine.Observe(ShapeFact(
+            "safe-reset",
+            OperationFactKind.Assignment,
+            render,
+            inputs: new[] { ConstantShapeInput(OperationInputRole.Value, "0") },
+            controls: new[] { ShapeBranch(level, "LessThanOrEqual", OperationBranchArm.WhenTrue) },
+            targetSymbolId: tail));
+        engine.Observe(ShapeFact(
+            "wrong-arm-reset",
+            OperationFactKind.Assignment,
+            render,
+            inputs: new[] { ConstantShapeInput(OperationInputRole.Value, "0") },
+            controls: new[] { ShapeBranch(level, "LessThanOrEqual", OperationBranchArm.WhenFalse) },
+            targetSymbolId: tail));
+        engine.Observe(ShapeFact(
+            "smoothed-control",
+            OperationFactKind.Call,
+            render,
+            inputs: new[]
+            {
+                ShapeInput(
+                    OperationInputRole.Argument,
+                    0,
+                    OperationValueKind.Invocation,
+                    "float",
+                    sourceIds: new[] { control, smoother }),
+            },
+            controls: new[] { ShapeLoop("local:sample") },
+            targetSymbolId: sink));
+        engine.Observe(ShapeFact(
+            "direct-control",
+            OperationFactKind.Call,
+            render,
+            inputs: new[]
+            {
+                ShapeInput(OperationInputRole.Argument, 0, OperationValueKind.Parameter, "float", control),
+            },
+            controls: new[] { ShapeLoop("local:sample") },
+            targetSymbolId: sink));
+        engine.Observe(ShapeFact(
+            "continuous-return",
+            OperationFactKind.Return,
+            render,
+            inputs: new[]
+            {
+                ShapeInput(OperationInputRole.ReturnedValue, null, OperationValueKind.Parameter, "float", control),
+            },
+            controls: new[] { ShapeBranch(level, "GreaterThan", OperationBranchArm.WhenTrue) }));
+        engine.Observe(ShapeFact(
+            "hard-zero-return",
+            OperationFactKind.Return,
+            render,
+            inputs: new[] { ConstantShapeInput(OperationInputRole.ReturnedValue, "0") },
+            controls: new[] { ShapeBranch(level, "GreaterThan", OperationBranchArm.WhenFalse) }));
+
+        var report = engine.Complete(Receipt(emitted: 6));
+
+        Assert.Equal(3, report.FindingCount);
+        Assert.Contains(report.Findings, finding =>
+            finding.FactId == "wrong-arm-reset"
+            && finding.Categories.SequenceEqual(new[] { "Lifecycle", "StateReset" })
+            && finding.Evidence.Any(evidence =>
+                evidence.Kind == "ControlContext"
+                && evidence.Summary.Contains("Branch[WhenFalse]", StringComparison.Ordinal)));
+        Assert.Contains(report.Findings, finding =>
+            finding.FactId == "direct-control"
+            && finding.Evidence.Any(evidence =>
+                evidence.Kind == "AllowedShapeMismatch"
+                && evidence.Summary.Contains(smoother, StringComparison.Ordinal)));
+        Assert.Contains(report.Findings, finding =>
+            finding.FactId == "hard-zero-return"
+            && finding.Severity == ContractSeverity.Info
+            && finding.Evidence.Any(evidence =>
+                evidence.Kind == "AllowedShapeMismatch"
+                && evidence.Summary.Contains("forbidden constants [0]", StringComparison.Ordinal)));
+
+        var rule = Assert.Single(report.RuleBreakdown);
+        Assert.Equal(3, rule.Contracts.Length);
+        Assert.All(rule.Contracts, contract =>
+        {
+            Assert.Equal(2, contract.EvaluatedOccurrenceCount);
+            Assert.Equal(1, contract.FindingFreeOccurrenceCount);
+            Assert.Equal(1, contract.FindingCount);
+            Assert.Equal(0, contract.SuppressedFindingCount);
+        });
+        Assert.Equal(0, report.ScanReceipt.AdditionalSemanticBaseCount);
+    }
+
+    [Fact]
     public void OperationShape_ValidationRejectsInertAllowedShape()
     {
         var error = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
@@ -1132,7 +1369,8 @@ public sealed class ContractAuditEngineTests
         string? operation = null,
         string? resultType = null,
         OperationInputFact[]? inputs = null,
-        OperationControlContext[]? controls = null)
+        OperationControlContext[]? controls = null,
+        string? targetSymbolId = null)
         => new()
         {
             Id = id,
@@ -1140,6 +1378,7 @@ public sealed class ContractAuditEngineTests
             ModuleName = "Acme.Runtime",
             ProfileScope = "Player",
             ContainingSymbolId = containing,
+            TargetSymbolId = targetSymbolId,
             Operator = operation,
             ResultType = resultType,
             Source = Span("Buffer.cs", 10),
@@ -1155,7 +1394,8 @@ public sealed class ContractAuditEngineTests
         string type,
         string? sourceId = null,
         bool compileTimeConstant = false,
-        OperationConstantFact[]? constants = null)
+        OperationConstantFact[]? constants = null,
+        string[]? sourceIds = null)
         => new()
         {
             Role = role,
@@ -1167,9 +1407,41 @@ public sealed class ContractAuditEngineTests
                 Type = type,
                 Expression = sourceId ?? constants?.FirstOrDefault()?.Value ?? "value",
                 IsCompileTimeConstant = compileTimeConstant,
-                SourceSymbolIds = sourceId == null ? Array.Empty<string>() : new[] { sourceId },
+                SourceSymbolIds = sourceIds ?? (sourceId == null ? Array.Empty<string>() : new[] { sourceId }),
                 Constants = constants ?? Array.Empty<OperationConstantFact>(),
             },
+        };
+
+    private static OperationInputFact ConstantShapeInput(string role, string value)
+        => ShapeInput(
+            role,
+            null,
+            OperationValueKind.Literal,
+            "float",
+            compileTimeConstant: true,
+            constants: new[]
+            {
+                Constant(OperationConstantOrigin.Literal, value, OperationNumericClassification.Finite),
+            });
+
+    private static OperationControlContext ShapeBranch(
+        string conditionSourceId,
+        string comparisonOperator,
+        string branchArm)
+        => new()
+        {
+            Kind = OperationControlContextKind.Branch,
+            BranchArm = branchArm,
+            Condition = "condition",
+            ConditionValue = new OperationValueFact
+            {
+                Kind = OperationValueKind.Binary,
+                Expression = "condition",
+                IsCompileTimeConstant = false,
+                SourceSymbolIds = new[] { conditionSourceId },
+            },
+            Operators = new[] { comparisonOperator },
+            Source = Span("Voice.cs", 9),
         };
 
     private static OperationControlContext ShapeLoop(string boundarySourceId)

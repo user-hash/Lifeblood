@@ -132,6 +132,60 @@ public sealed class OperationFactProviderTests
     }
 
     [Fact]
+    public void Scan_BranchFactsAndNestedOccurrencesPreserveExactArmPlacement()
+    {
+        const string source = """
+            namespace Acme;
+            public sealed class Voice
+            {
+                private float _tail;
+
+                public float Step(float level, float sample)
+                {
+                    if (level <= 0.001f)
+                        _tail = 0f;
+                    else
+                        _tail = sample;
+
+                    return level > 0.5f ? 0f : sample;
+                }
+            }
+            """;
+        using var host = HostWithSources(("Voice.cs", source));
+        var (facts, _) = Scan(host, new OperationFactQuery
+        {
+            IncludeKinds = new[] { OperationFactKind.Assignment, OperationFactKind.Branch },
+        });
+
+        var resets = facts
+            .Where(fact => fact.TargetSymbolId == "field:Acme.Voice._tail")
+            .OrderBy(fact => fact.Source.Line)
+            .ToArray();
+        Assert.Equal(2, resets.Length);
+        Assert.Equal(
+            OperationBranchArm.WhenTrue,
+            Assert.Single(resets[0].ControlContexts, context =>
+                context.Kind == OperationControlContextKind.Branch).BranchArm);
+        Assert.Equal(
+            OperationBranchArm.WhenFalse,
+            Assert.Single(resets[1].ControlContexts, context =>
+                context.Kind == OperationControlContextKind.Branch).BranchArm);
+
+        var conditional = Assert.Single(facts, fact =>
+            fact.Kind == OperationFactKind.Branch
+            && fact.Inputs.Any(input =>
+                input.Role == OperationInputRole.Condition
+                && input.Value.Expression == "level > 0.5f"));
+        var whenTrue = Assert.Single(conditional.Inputs, input => input.Role == OperationInputRole.WhenTrue);
+        var whenFalse = Assert.Single(conditional.Inputs, input => input.Role == OperationInputRole.WhenFalse);
+        Assert.True(whenTrue.Value.IsCompileTimeConstant);
+        Assert.Equal("0", Assert.Single(whenTrue.Value.Constants).Value);
+        Assert.Contains(
+            "parameter:method:Acme.Voice.Step(float,float)#1:sample",
+            whenFalse.Value.SourceSymbolIds);
+    }
+
+    [Fact]
     public void Scan_ValueCarriesNestedOperatorsWithoutRetainingCompilerObjects()
     {
         const string source = """

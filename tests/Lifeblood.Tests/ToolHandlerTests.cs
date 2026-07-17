@@ -1925,7 +1925,8 @@ public class ToolHandlerTests : IDisposable
             Path.Combine(projectRoot, "Shapes.cs"),
             "namespace Acme; public static class Shapes { public static ulong Run(int[] samples, int frameIndex, int maskBit) { " +
             "var valid = samples[frameIndex]; var wrong = samples[maskBit]; " +
-            "var narrow = 1 << maskBit; var wide = 1UL << maskBit; return (ulong)(valid + wrong + narrow) | wide; } }");
+            "var narrow = 1 << maskBit; var wide = 1UL << maskBit; return (ulong)(valid + wrong + narrow) | wide; } " +
+            "public static int Gate(int input) { if (input > 0) return 0; else return input; } }");
         using var session = new GraphSession(Fs);
         var handler = CreateHandler(session: session);
         Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
@@ -1933,6 +1934,7 @@ public class ToolHandlerTests : IDisposable
         const string samples = "parameter:method:Acme.Shapes.Run(int[],int,int)#0:samples";
         const string frameIndex = "parameter:method:Acme.Shapes.Run(int[],int,int)#1:frameIndex";
         const string maskBit = "parameter:method:Acme.Shapes.Run(int[],int,int)#2:maskBit";
+        const string gate = "method:Acme.Shapes.Gate(int)";
         var manifest = JsonSerializer.SerializeToElement(new
         {
             schemaVersion = "1",
@@ -2000,6 +2002,41 @@ public class ToolHandlerTests : IDisposable
                         },
                     },
                 },
+                new
+                {
+                    id = "gate-continuity",
+                    operationKinds = new[] { OperationFactKind.Return },
+                    containingSymbolIds = new[] { gate },
+                    categories = new[] { "Discontinuity", "HardGate" },
+                    severity = ContractSeverity.Info,
+                    allowedShapes = new[]
+                    {
+                        new
+                        {
+                            id = "branch-return-without-hard-zero",
+                            inputs = new[]
+                            {
+                                new
+                                {
+                                    role = OperationInputRole.ReturnedValue,
+                                    forbiddenConstantValues = new[] { "0" },
+                                },
+                            },
+                            controlContexts = new[]
+                            {
+                                new
+                                {
+                                    kind = OperationControlContextKind.Branch,
+                                    allowedBranchArms = new[]
+                                    {
+                                        OperationBranchArm.WhenTrue,
+                                        OperationBranchArm.WhenFalse,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
             },
         });
 
@@ -2013,12 +2050,21 @@ public class ToolHandlerTests : IDisposable
             .GetProperty("selectedRuleIds")
             .EnumerateArray()
             .Select(value => value.GetString()));
-        Assert.Equal(2, payload.RootElement.GetProperty("findingCount").GetInt32());
+        Assert.Equal(3, payload.RootElement.GetProperty("findingCount").GetInt32());
         Assert.All(payload.RootElement.GetProperty("findings").EnumerateArray(), finding =>
             Assert.Equal(
                 ContractFindingKind.OperationShapeMismatch,
                 finding.GetProperty("kind").GetString()));
-        Assert.Equal(4, payload.RootElement.GetProperty("scanReceipt").GetProperty("emittedFactCount").GetInt32());
+        var rule = Assert.Single(payload.RootElement.GetProperty("ruleBreakdown").EnumerateArray());
+        var contracts = rule.GetProperty("contracts").EnumerateArray().ToArray();
+        Assert.Equal(3, contracts.Length);
+        Assert.All(contracts, contract =>
+        {
+            Assert.Equal(2, contract.GetProperty("evaluatedOccurrenceCount").GetInt32());
+            Assert.Equal(1, contract.GetProperty("findingFreeOccurrenceCount").GetInt32());
+            Assert.Equal(1, contract.GetProperty("findingCount").GetInt32());
+        });
+        Assert.Equal(6, payload.RootElement.GetProperty("scanReceipt").GetProperty("emittedFactCount").GetInt32());
         Assert.Equal(
             0,
             payload.RootElement.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());

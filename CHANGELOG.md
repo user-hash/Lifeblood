@@ -9,6 +9,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Temporal contract evidence without temporal product policy.** The existing
+  neutral operation stream now preserves the exact `WhenTrue` / `WhenFalse` /
+  `Condition` arm occupied by an occurrence and exposes conditional arms as
+  ordinary input roles. `operationShapes[]` can require branch-arm placement
+  and reject caller-declared hard constants, so lifecycle reset, control-rate
+  smoothing, and discontinuity contracts reuse the same stateless evaluator.
+  Each rule breakdown now includes per-contract evaluated, finding-free,
+  finding, and suppressed counts; zero findings with zero matching occurrences
+  is therefore an explicit evidence gap. Exact threshold policy remains owned
+  by the existing value-domain boundary shape. No new MCP tool, rule family,
+  graph edge, fact cache, or retained semantic base was added.
+  (`INV-OPERATION-FACTS-001`, `INV-CONTRACT-AUDIT-001`.)
+
 - **Retained-session memory growth receipts.** `AnalysisUsage` remains the one
   per-request usage authority and now records start/end/absolute-peak working
   set and private bytes. Signed end-minus-start deltas and nonnegative
