@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Contract-derived DSP/math probe workflow.** The C# playbook and Lifeblood
+  skill now route generated numerical probes through one consumer-owned range
+  or contract authority, project-context `compile_check`, and the consumer's
+  normal test runner. The recipe covers representative defaults, neutral/
+  sentinel/domain boundaries, high-resolution neighborhoods, static-versus-
+  swept schedules, finite/continuity/noise/tail/determinism checks, and explicit
+  evidence receipts without adding a Lifeblood audio runner, generator command,
+  fact cache, or duplicate range database. (`LB-INTAKE-20260629-013`.)
+
 - **Required, equivalent, and exclusively owned facts across call routes.**
   Contract manifests can evaluate one selected operation-fact stream through
   `routeFacts[]` using `RequiredOnEveryRoute`, `EquivalentAcrossRoutes`, or
