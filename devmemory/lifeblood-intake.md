@@ -161,41 +161,6 @@ Fix shape:
 - Keep inference advisory; allow projects to promote inferred domains into a
   checked contract file.
 
-## LB-INTAKE-20260629-007 - Buffer shape, stride, and sidecar contract audit
-
-Type: Feature request
-Priority: High
-Source: DAWG DSP/Burst dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- DAWG investigations repeatedly raised buffer-shape questions: frame count vs
-  sample count, mono vs stereo, interleaved vs planar, sidecar array length,
-  oversample ratio, ring-buffer wrap, mask width, and per-slot state array
-  alignment.
-- Lifeblood has structural graph facts, but no first-class way to ask whether
-  producer and consumer agree on buffer shape.
-
-Why it matters:
-- A single length/stride/channel mismatch can create deterministic crackles,
-  delayed pops, alias-like garbage, or silent memory corruption in unsafe/Burst
-  style code.
-- This is not audio-specific. The same shape class appears in image buffers,
-  networking packets, ECS component arrays, ML tensors, and binary serializers.
-
-Fix shape:
-- Add a buffer/array contract audit that traces arrays, spans, native arrays,
-  pointer parameters, and count/stride companion arguments across calls.
-- Detect likely mismatches: `frames` used as sample length, `channels` ignored,
-  mask bit-width narrower than enum/slot count, sidecar arrays indexed by a
-  different dimension, and copy loops whose bound differs from the target
-  buffer length.
-- Let callers supply generic dimension labels such as `frames`, `samples`,
-  `channels`, `voices`, `slots`, `oversampleRatio`, and `maskBits`.
-- Return compact evidence with source/target symbols, index expression, loop
-  bound, companion parameter, and confidence.
-
 ## LB-INTAKE-20260629-008 - Temporal DSP state lifecycle audit
 
 Type: Feature request
@@ -292,35 +257,6 @@ Fix shape:
   off-by-one comparisons, buffer-start vs buffer-end scheduling, and mismatched
   sample-rate/BPM constants.
 - Return a conversion graph with formulas and source spans.
-
-## LB-INTAKE-20260629-011 - Bitmask, field-mask, and enum-width consistency audit
-
-Type: Improvement
-Priority: Medium
-Source: DAWG Burst field-mask and sidecar dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 8/10 value if shipped
-
-What:
-- DAWG Burst work uses masks and field tables to decide what state is copied,
-  initialized, sidecar-routed, or dispatched. A mask-width mismatch or stale enum
-  table can silently skip a field even when all symbols compile.
-
-Why it matters:
-- Mask/table drift is a strong source of "wired but not actually updated" bugs:
-  parameters appear in UI, DTOs, or tests, but do not reach the engine state.
-- The pattern is generic for feature flags, ECS component masks, serialization
-  dirty bits, network replication fields, and hardware register abstractions.
-
-Fix shape:
-- Extend enum/table tooling with a mask-width audit: enum max ordinal vs backing
-  integer width, shift expression width, table length, mask constants, and
-  switch/array coverage.
-- Detect `1 << ordinal` vs `1UL << ordinal` risk, signed overflow, duplicate
-  bit assignments, missing enum members in static tables, and table entries that
-  exist but are never consumed.
-- Allow projects to mark authoritative enum/table pairs through a manifest or
-  attributes instead of hardcoding names.
 
 ## LB-INTAKE-20260629-012 - Cross-layer control-law trace
 

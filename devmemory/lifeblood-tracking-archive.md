@@ -3574,3 +3574,83 @@ Impact:
   publication without a second retained Lifeblood base. The remaining
   retained-only specialized tools are explicit supported limitations, not
   silent profile misclassification.
+
+## LB-INTAKE-20260629-007 - Buffer shape, stride, and sidecar contract audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 2
+Type: Shipped
+Source: DAWG DSP/Burst dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `6539052`; full 1,669-case release suite; DAWG
+Editor+Player operation-shape receipt
+
+Resolution:
+- Added one generic `operation-shape` family to the existing
+  `lifeblood_contract_audit` kernel. A manifest selects operation kind plus
+  optional target, containing symbol, and operator, then declares exact allowed
+  alternatives over multiple input roles/ordinals, value origins, source
+  symbols, nested operators, constants, result types, and lexical control
+  contexts.
+- The C# adapter projects arrays, custom/Span-style indexers, and indexed
+  pointers into the same neutral receiver/index `ElementAccess` shape; direct
+  pointer dereference remains distinct. ORed selectors keep targeted calls and
+  targetless element/binary operations on one fact pass.
+- Product vocabulary and accepted dimensions remain consumer-owned manifest
+  data. Lifeblood does not guess aliases, interprocedural lengths, or runtime
+  buffer contents; those limits are explicit in every report. No graph edge,
+  MCP tool, compilation authority, or retained semantic base was added.
+
+Verification:
+- Synthetic engine/provider/handler fixtures cover matching and mismatched
+  dimensions, arrays, custom and `Span<T>` indexers, pointer indexing versus
+  dereference, mixed selector clauses, and secondary-profile execution with
+  `additionalSemanticBaseCount:0`.
+- Release build completed with zero warnings/errors. The full suite passed
+  1,658 tests with 11 native-clang executable precondition skips (1,669 total).
+- Fresh private DAWG Editor+Player analysis published
+  `snap_276efd47fe534ed98275c807c232a8ce` generation 1 with 89,707 symbols,
+  350,161 edges, and 4,406 files. A file-bounded mute/sidecar audit scanned one
+  file, emitted two selected facts, returned zero findings in 130 ms, and
+  reported zero additional semantic bases.
+
+Impact:
+- Buffer, stride, and sidecar questions now use one exact reusable contract
+  mechanism instead of product-specific walkers or duplicated retained data.
+
+## LB-INTAKE-20260629-011 - Bitmask, field-mask, and enum-width consistency audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 2
+Type: Shipped
+Source: DAWG Burst field-mask and sidecar dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `6539052`; full 1,669-case release suite; DAWG FieldMask
+operation-shape receipt
+
+Resolution:
+- The same `operation-shape` family checks mask representation and shift width
+  through exact result/input types, allowed constant sets, source identities,
+  and operators. An optional request-local uniqueness policy groups duplicate
+  constant or source keys without retaining another cache.
+- Enum members and mask initializer shifts retain canonical containing/source
+  identities in the neutral fact stream. Existing `lifeblood_enum_coverage`
+  and `lifeblood_static_tables` remain the separate authorities for enum
+  production/consumption and table rows; this atom did not clone their facts
+  into a broad mask DTO.
+- The manifest owns the allowed bit range and authoritative enum/table pairing.
+  Lifeblood proves the selected lexical shape and reports its limits rather than
+  inferring product-specific mask policy from names.
+
+Verification:
+- Fixtures prove `1 << bit` versus `1UL << bit`, allowed bit ranges, duplicate
+  positions, enum-field provenance, deterministic grouping, and exact negative
+  findings through the public MCP handler.
+- Release build completed with zero warnings/errors. The full suite passed
+  1,658 tests with 11 native-clang executable precondition skips (1,669 total).
+- The fresh DAWG publication above audited the complete Burst `FieldMask.cs`
+  shift set: one file, 224 observed operations, 55 emitted shifts, zero
+  findings, zero additional semantic bases, 18 ms server work, and a 3,331-byte
+  summary response.
+
+Impact:
+- Width, range, and duplicate-bit policy now share the same bounded semantic
+  contract pass as buffer shapes while enum/table authorities stay singular.

@@ -271,7 +271,7 @@ status. Intake/tracking/archive remain the only status authorities.
 | `LB-INTAKE-20260629-008` | 4 | contract rule engine: lifecycle | early reset versus final-idle fixture and DAWG lifecycle route |
 | `LB-INTAKE-20260629-009` | 4 | contract rule engine: rate transition | smoothed/direct control-path fixtures |
 | `LB-INTAKE-20260629-010` | 4 | contract rule engine: cadence | explicit/missing conversion and boundary fixtures |
-| `LB-INTAKE-20260629-011` | 4 | contract rule engine over enum/table facts | width/shift/duplicate/missing-row fixtures |
+| `LB-INTAKE-20260629-011` | 4 | operation-shape rule plus existing enum/table authorities | width/shift/duplicate fixtures plus existing enum/table coverage |
 | `LB-INTAKE-20260629-012` | 4 | contract route projection | end-to-end manifest route with per-hop conversions/ranges/defaults |
 | `LB-INTAKE-20260629-013` | 5 | documented probe golden path | generated cases from one contract manifest, compile-checked in user tests |
 | `LB-INTAKE-20260629-014` | 4 | contract rule engine: shared state | readonly/runtime-mutable/shared-scratch fixtures |
@@ -429,6 +429,23 @@ and proven mismatch in 16.416 seconds with `additionalSemanticBaseCount = 0`.
 The remaining full operation-tree traversal cost stays visible as a measured
 optimization boundary; no incomplete name/path heuristic was added.
 
+Group 2 is closed by commit `6539052` through one generic `operation-shape`
+rule in the existing contract kernel. Disjunctive fact selectors combine bound
+calls with targetless element and binary operations without materializing an
+unfiltered fact stream. Consumer manifests declare exact alternative shapes
+over multiple inputs, result types, lexical control contexts, constants, and
+request-local constant/source uniqueness. Arrays, custom/Span-style indexers,
+and indexed pointers share the neutral receiver/index element shape while
+direct pointer dereference stays distinct. Existing enum coverage and static
+table tools remain the only authorities for their respective facts; no new MCP
+tool, graph edge, retained fact cache, or semantic base was introduced.
+Synthetic exact/negative/profile/handler fixtures and the full 1,669-case suite
+are green. Fresh private DAWG Editor+Player generation 1 /
+`snap_276efd47fe534ed98275c807c232a8ce` proved the motivating paths: the
+mute/sidecar audit emitted two selected facts with zero findings and zero
+additional bases in 130 ms; the complete Burst `FieldMask.cs` audit emitted 55
+shift facts with zero findings and zero additional bases in 18 ms.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 
@@ -571,6 +588,8 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-024` | one C#-adapter package visibility receipt feeds analyze and compile-check; package sources are included/excluded/unbound from descriptors, asmdefs, compilation membership, and `excludePaths` | `PackageSourceVisibilityTests` cover included/excluded/unbound analyze shape and compile-check package resolution; 59/59 focused docs/schema/ledger/package gate; clean Release build; 1,545-case full suite; fresh-server self-dogfood; DAWG Editor+Player read-only package receipt; retained DAWG unbound-package compile-check receipt | `fix(package): surface Unity package source visibility` atom |
 | `LB-INTAKE-20260629-020` | latest reachable stable tag, changelog history/base, and tracker snapshot are one ratcheted release fact | latest-tag docs ratchet; full-history CI; 64 focused checks; clean Release build; 1,543-case suite; self-dogfood | `fix(provenance): unify source control evidence` atom |
 | `LB-INTAKE-20260629-028` | one Domain receipt, Application port, and bounded Git adapter serve analyzed-workspace, invariant, capability, and release provenance | temp-repo bounds/root fixtures; persistent-stdin MCP process regression; 64 focused checks; clean Release build; 1,543-case suite; self-dogfood; DAWG Editor+Player full receipt rooted at DAWG | `fix(provenance): unify source control evidence` atom |
+| `LB-INTAKE-20260629-007` | one selector-bounded `operation-shape` contract family covers exact buffer/index/stride/sidecar relationships across arrays, indexers, and pointers | engine/provider/profile/MCP fixtures; zero-warning Release build; 1,669-case full suite; DAWG mute/sidecar audit emitted two facts with zero findings and zero additional bases | `6539052` |
+| `LB-INTAKE-20260629-011` | the same operation-shape family covers exact mask width/range and request-local duplicate keys while existing enum/table tools retain their fact authority | width/range/duplicate/enum-provenance fixtures; zero-warning Release build; 1,669-case full suite; DAWG `FieldMask.cs` emitted 55 shifts with zero findings and zero additional bases | `6539052` |
 
 ### 2026-07-16 reliability continuation receipts
 
