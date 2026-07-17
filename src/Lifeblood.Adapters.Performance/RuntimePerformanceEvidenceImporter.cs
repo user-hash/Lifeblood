@@ -163,6 +163,10 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
         return new PerformanceWorkloadIdentity
         {
             Fingerprint = String(node, "fingerprint") ?? String(node, "workloadFingerprint") ?? "",
+            FingerprintSource = !string.IsNullOrWhiteSpace(
+                String(node, "fingerprint") ?? String(node, "workloadFingerprint"))
+                ? "CaptureDeclared"
+                : "",
             CaptureMode = String(node, "captureMode") ?? "",
             AudioSampleRate = Int(node, "audioSampleRate"),
             AudioBufferFrames = Int(node, "audioBufferFrames") ?? Int(node, "dspBufferLength"),
@@ -176,19 +180,14 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
         var counters = new Dictionary<string, double>(NumberMap(root, "workloadCounters"), StringComparer.Ordinal);
         foreach (var name in new[]
                  {
-                     "parallelTabs",
-                     "patternCommands",
-                     "stockPresetCommands",
                      "stockPresetIndex",
-                     "presetCommands",
                      "stepCount",
                      "bpm",
+                     "warmupLoops",
                      "requiredCallbacks",
                      "loopLengthTicks",
                      "melodicNoteCount",
                      "melodicNoteCountPerTab",
-                     "baselineCallbackCount",
-                     "baselineSynthVoiceCount",
                      "activeNotes",
                      "synthVoices",
                      "workerCount",
@@ -197,14 +196,23 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
         {
             if (Number(root, name) is { } value) counters[name] = value;
         }
+        var declaredFingerprint = String(root, "workloadHash")
+            ?? String(root, "audioWorkloadHash")
+            ?? String(root, "workloadFingerprint")
+            ?? String(root, "midiEventHash")
+            ?? "";
+        var derivedFingerprint = declaredFingerprint.Length == 0
+            ? DeriveUnityWorkloadFingerprint(root)
+            : "";
         return new PerformanceWorkloadIdentity
         {
-            Fingerprint = String(root, "workloadHash")
-                ?? String(root, "audioWorkloadHash")
-                ?? String(root, "workloadFingerprint")
-                ?? String(root, "midiEventHash")
-                ?? "",
-            CaptureMode = String(root, "captureMode") ?? "",
+            Fingerprint = declaredFingerprint.Length > 0 ? declaredFingerprint : derivedFingerprint,
+            FingerprintSource = declaredFingerprint.Length > 0
+                ? "CaptureDeclared"
+                : derivedFingerprint.Length > 0
+                    ? "DerivedUnityWorkloadIdentity"
+                    : "",
+            CaptureMode = ReadUnityCaptureMode(root),
             AudioSampleRate = Int(root, "audioSampleRate"),
             AudioBufferFrames = Int(root, "audioDspBufferFrames")
                 ?? Int(root, "dspBufferLength")
@@ -497,6 +505,9 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
             Workload = new PerformanceWorkloadIdentity
             {
                 Fingerprint = Csv(first, "workloadFingerprint", "fingerprint"),
+                FingerprintSource = Csv(first, "workloadFingerprint", "fingerprint") is { Length: > 0 }
+                    ? "CaptureDeclared"
+                    : "",
                 CaptureMode = Csv(first, "captureMode"),
                 AudioSampleRate = CsvInt(first, "audioSampleRate"),
                 AudioBufferFrames = CsvInt(first, "audioBufferFrames", "dspBufferLength"),
@@ -580,6 +591,81 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(source + "\n" + content));
         return "perf_" + Convert.ToHexString(bytes).ToLowerInvariant()[..24];
     }
+
+    private static string DeriveUnityWorkloadFingerprint(JsonElement root)
+    {
+        var fields = new[]
+        {
+            "workloadProfile",
+            "presetProfile",
+            "stockPresetIndex",
+            "stepCount",
+            "bpm",
+            "warmupLoops",
+            "requiredCallbacks",
+            "loopLengthTicks",
+            "melodicNoteCount",
+            "melodicNoteCountPerTab",
+            "selectedPresetIndices",
+            "parallelTabs",
+            "drumsIncluded",
+            "initialTransportWasPlaying",
+        };
+        var parts = new List<string>();
+        foreach (var field in fields)
+        {
+            if (!root.TryGetProperty(field, out var value)) continue;
+            var normalized = NormalizeIdentityValue(value);
+            if (normalized.Length > 0) parts.Add(Frame(field) + Frame(normalized));
+        }
+        if (root.TryGetProperty("stages", out var stages) && stages.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var stage in stages.EnumerateArray())
+            {
+                if (stage.ValueKind != JsonValueKind.Object) continue;
+                var name = String(stage, "name") ?? "";
+                var mode = String(stage, "captureMode") ?? "";
+                if (name.Length > 0 || mode.Length > 0)
+                    parts.Add(Frame("stage") + Frame(name) + Frame(mode));
+            }
+        }
+        if (parts.Count == 0) return "";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(parts)));
+        return "unitywork_" + Convert.ToHexString(bytes).ToLowerInvariant()[..24];
+    }
+
+    private static string ReadUnityCaptureMode(JsonElement root)
+    {
+        if (String(root, "captureMode") is { Length: > 0 } rootMode) return rootMode;
+        if (!root.TryGetProperty("stages", out var stages) || stages.ValueKind != JsonValueKind.Array)
+            return "";
+        return string.Join(
+            "+",
+            stages.EnumerateArray()
+                .Where(stage => stage.ValueKind == JsonValueKind.Object)
+                .Select(stage => String(stage, "captureMode"))
+                .Where(mode => !string.IsNullOrWhiteSpace(mode))
+                .Select(mode => mode!)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(mode => mode, StringComparer.Ordinal));
+    }
+
+    private static string NormalizeIdentityValue(JsonElement value)
+        => value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString()?.Trim() ?? "",
+            JsonValueKind.Number when value.TryGetDouble(out var number) && double.IsFinite(number) =>
+                number.ToString("R", CultureInfo.InvariantCulture),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Array => string.Join(
+                ",",
+                value.EnumerateArray().Select(NormalizeIdentityValue)),
+            _ => "",
+        };
+
+    private static string Frame(string value)
+        => value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value;
 
     private static JsonElement? Object(JsonElement source, string name)
         => source.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object ? value : null;
