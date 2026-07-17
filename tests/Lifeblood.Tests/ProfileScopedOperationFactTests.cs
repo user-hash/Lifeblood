@@ -51,6 +51,7 @@ public sealed class ProfileScopedOperationFactTests : IDisposable
             #if PLAYER_ONLY
                     Sink(42);
                     Sink(43);
+                    var mask = 1UL << 42;
             #else
                     Sink(7);
             #endif
@@ -108,6 +109,39 @@ public sealed class ProfileScopedOperationFactTests : IDisposable
         Assert.Equal(OperationFactExecutionMode.RetainedCompilation, receipt.ExecutionMode);
         Assert.Equal(0, receipt.CompiledModuleCount);
         Assert.Equal("7", ArgumentConstant(Assert.Single(facts)));
+    }
+
+    [Fact]
+    public void Scan_SecondaryProfilePreservesTargetlessDisjunctiveSelectors()
+    {
+        var analyzer = Analyze();
+        var facts = new List<OperationFact>();
+
+        var receipt = analyzer.ScanOperationFacts(
+            new OperationFactQuery
+            {
+                ProfileScope = "Player",
+                Selectors = new[]
+                {
+                    new OperationFactSelector
+                    {
+                        IncludeKinds = new[] { OperationFactKind.Binary },
+                        ContainingSymbolIds = new[] { "method:Acme.Profiled.Run()" },
+                        Operators = new[] { "LeftShift" },
+                    },
+                },
+            },
+            fact =>
+            {
+                facts.Add(fact);
+                return true;
+            });
+
+        var shift = Assert.Single(facts);
+        Assert.Equal("LeftShift", shift.Operator);
+        Assert.Equal("ulong", shift.ResultType);
+        Assert.Equal(OperationFactExecutionMode.EphemeralProfileCompilation, receipt.ExecutionMode);
+        Assert.Equal(0, receipt.AdditionalSemanticBaseCount);
     }
 
     [Fact]

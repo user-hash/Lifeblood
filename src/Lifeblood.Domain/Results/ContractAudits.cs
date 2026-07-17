@@ -16,6 +16,7 @@ public sealed class ContractManifest
     public OperationGuardContract[] OperationGuards { get; init; } = Array.Empty<OperationGuardContract>();
     public ExternalApiCostContract[] ExternalApiCosts { get; init; } = Array.Empty<ExternalApiCostContract>();
     public ValueDomainContract[] ValueDomains { get; init; } = Array.Empty<ValueDomainContract>();
+    public OperationShapeContract[] OperationShapes { get; init; } = Array.Empty<OperationShapeContract>();
     public ContractSuppression[] Suppressions { get; init; } = Array.Empty<ContractSuppression>();
 }
 
@@ -182,6 +183,83 @@ public sealed class ValueDomainConversion
 }
 
 /// <summary>
+/// Requires each selected occurrence to match one consumer-declared lexical
+/// shape. This family covers exact multi-input relationships such as buffer
+/// dimensions, sidecar indices, strides, and mask representation without
+/// inferring product vocabulary or creating architecture edges.
+/// </summary>
+public sealed class OperationShapeContract
+{
+    public required string Id { get; init; }
+    public string[] OperationKinds { get; init; } = Array.Empty<string>();
+    public string[] TargetSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] ContainingSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] Operators { get; init; } = Array.Empty<string>();
+    public OperationAllowedShape[] AllowedShapes { get; init; } = Array.Empty<OperationAllowedShape>();
+    public OperationShapeUniquenessPolicy? UniquenessPolicy { get; init; }
+    public string[] Categories { get; init; } = Array.Empty<string>();
+    public string Severity { get; init; } = ContractSeverity.Warning;
+    public string? Message { get; init; }
+    public string? Guidance { get; init; }
+}
+
+/// <summary>One exact alternative accepted by an operation-shape contract.</summary>
+public sealed class OperationAllowedShape
+{
+    public required string Id { get; init; }
+    public OperationInputShape[] Inputs { get; init; } = Array.Empty<OperationInputShape>();
+    public string[] AllowedResultTypes { get; init; } = Array.Empty<string>();
+    public OperationControlShape[] ControlContexts { get; init; } = Array.Empty<OperationControlShape>();
+}
+
+/// <summary>
+/// Exact lexical requirements for one input slot. Populated allowed dimensions
+/// accept any declared value; populated required dimensions must all occur.
+/// </summary>
+public sealed class OperationInputShape
+{
+    public required string Role { get; init; }
+    public int? Ordinal { get; init; }
+    public string[] AllowedValueKinds { get; init; } = Array.Empty<string>();
+    public string[] AllowedTypes { get; init; } = Array.Empty<string>();
+    public string[] AnySourceSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] RequiredSourceSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] RequiredOperators { get; init; } = Array.Empty<string>();
+    public string[] AllowedConstantValues { get; init; } = Array.Empty<string>();
+    public string[] RequiredConstantValues { get; init; } = Array.Empty<string>();
+    public bool? CompileTimeConstant { get; init; }
+}
+
+/// <summary>
+/// Consumer-owned duplicate policy over one selected input. Observations are
+/// retained only for the bounded request and released with the audit report.
+/// </summary>
+public sealed class OperationShapeUniquenessPolicy
+{
+    public required string InputRole { get; init; }
+    public int? InputOrdinal { get; init; }
+    public required string KeyKind { get; init; }
+    public int MinimumOccurrences { get; init; } = 2;
+}
+
+public static class OperationShapeKeyKind
+{
+    public const string ConstantValue = "ConstantValue";
+    public const string SourceSymbolId = "SourceSymbolId";
+
+    public static readonly string[] All = { ConstantValue, SourceSymbolId };
+}
+
+/// <summary>Lexical control-context requirements for an allowed shape.</summary>
+public sealed class OperationControlShape
+{
+    public required string Kind { get; init; }
+    public string[] AnySourceSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] RequiredSourceSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] RequiredOperators { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
 /// Exact, reviewable suppression selectors. Values within a selector are ORed;
 /// populated selector dimensions are ANDed. Empty suppressions are invalid.
 /// </summary>
@@ -269,6 +347,7 @@ public static class ContractRuleId
     public const string OperationGuard = "operation-guard";
     public const string ExternalApiCost = "external-api-cost";
     public const string ValueDomain = "value-domain";
+    public const string OperationShape = "operation-shape";
 }
 
 public static class ContractFindingKind
@@ -280,6 +359,8 @@ public static class ContractFindingKind
     public const string ConstantProvenanceMismatch = "ConstantProvenanceMismatch";
     public const string NearEqualConstantGroup = "NearEqualConstantGroup";
     public const string CadenceBoundaryMismatch = "CadenceBoundaryMismatch";
+    public const string OperationShapeMismatch = "OperationShapeMismatch";
+    public const string DuplicateOperationShapeKey = "DuplicateOperationShapeKey";
 }
 
 public static class NonFinitePolicyAction

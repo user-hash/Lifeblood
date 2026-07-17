@@ -1914,6 +1914,117 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_BindsTargetlessOperationShapesOnTheSharedStream()
+    {
+        var projectRoot = Path.Combine(_tempDir, "operation-shape-contract");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Shapes.cs"),
+            "namespace Acme; public static class Shapes { public static ulong Run(int[] samples, int frameIndex, int maskBit) { " +
+            "var valid = samples[frameIndex]; var wrong = samples[maskBit]; " +
+            "var narrow = 1 << maskBit; var wide = 1UL << maskBit; return (ulong)(valid + wrong + narrow) | wide; } }");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+        const string containing = "method:Acme.Shapes.Run(int[],int,int)";
+        const string samples = "parameter:method:Acme.Shapes.Run(int[],int,int)#0:samples";
+        const string frameIndex = "parameter:method:Acme.Shapes.Run(int[],int,int)#1:frameIndex";
+        const string maskBit = "parameter:method:Acme.Shapes.Run(int[],int,int)#2:maskBit";
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-operation-shapes",
+            version = "1.0.0",
+            operationShapes = new object[]
+            {
+                new
+                {
+                    id = "sample-index",
+                    operationKinds = new[] { OperationFactKind.ElementAccess },
+                    containingSymbolIds = new[] { containing },
+                    categories = new[] { "BufferShape", "Sidecar" },
+                    allowedShapes = new[]
+                    {
+                        new
+                        {
+                            id = "frame-indexed-sample",
+                            allowedResultTypes = new[] { "int" },
+                            inputs = new object[]
+                            {
+                                new
+                                {
+                                    role = OperationInputRole.Receiver,
+                                    anySourceSymbolIds = new[] { samples },
+                                },
+                                new
+                                {
+                                    role = OperationInputRole.Index,
+                                    ordinal = 0,
+                                    requiredSourceSymbolIds = new[] { frameIndex },
+                                },
+                            },
+                        },
+                    },
+                },
+                new
+                {
+                    id = "mask-width",
+                    operationKinds = new[] { OperationFactKind.Binary },
+                    containingSymbolIds = new[] { containing },
+                    operators = new[] { "LeftShift" },
+                    categories = new[] { "MaskWidth" },
+                    allowedShapes = new[]
+                    {
+                        new
+                        {
+                            id = "unsigned-64-bit-mask",
+                            allowedResultTypes = new[] { "ulong" },
+                            inputs = new object[]
+                            {
+                                new
+                                {
+                                    role = OperationInputRole.Left,
+                                    allowedTypes = new[] { "ulong" },
+                                    requiredConstantValues = new[] { "1" },
+                                    compileTimeConstant = true,
+                                },
+                                new
+                                {
+                                    role = OperationInputRole.Right,
+                                    requiredSourceSymbolIds = new[] { maskBit },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        Assert.Equal(new[] { ContractRuleId.OperationShape }, payload.RootElement
+            .GetProperty("selectedRuleIds")
+            .EnumerateArray()
+            .Select(value => value.GetString()));
+        Assert.Equal(2, payload.RootElement.GetProperty("findingCount").GetInt32());
+        Assert.All(payload.RootElement.GetProperty("findings").EnumerateArray(), finding =>
+            Assert.Equal(
+                ContractFindingKind.OperationShapeMismatch,
+                finding.GetProperty("kind").GetString()));
+        Assert.Equal(4, payload.RootElement.GetProperty("scanReceipt").GetProperty("emittedFactCount").GetInt32());
+        Assert.Equal(
+            0,
+            payload.RootElement.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+    }
+
+    [Fact]
     public void Handle_ContractAudit_RejectsGraphOnlyAndOutOfWorkspaceManifestPath()
     {
         var (_, manifest) = CreateContractAuditProject();

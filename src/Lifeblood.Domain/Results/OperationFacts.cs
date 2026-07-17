@@ -117,8 +117,23 @@ public sealed class OperationFactQuery
     public IReadOnlyList<string>? ContainingSymbolIds { get; init; }
     public IReadOnlyList<string>? TargetSymbolIds { get; init; }
     public IReadOnlyList<string>? IncludeKinds { get; init; }
+    public IReadOnlyList<OperationFactSelector>? Selectors { get; init; }
     public bool IncludeImplicit { get; init; }
     public int MaxFacts { get; init; } = 10_000;
+}
+
+/// <summary>
+/// One adapter-neutral disjunctive occurrence selector. Populated dimensions
+/// are ANDed inside a selector; selectors are ORed. This lets one fact pass
+/// stay narrow when selected rule families mix bound calls with targetless
+/// operations such as element access and built-in binary operators.
+/// </summary>
+public sealed class OperationFactSelector
+{
+    public string[] IncludeKinds { get; init; } = Array.Empty<string>();
+    public string[] TargetSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] ContainingSymbolIds { get; init; } = Array.Empty<string>();
+    public string[] Operators { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -175,6 +190,7 @@ public static class OperationFactKind
     public const string MemberRead = "MemberRead";
     public const string MemberWrite = "MemberWrite";
     public const string ElementAccess = "ElementAccess";
+    public const string PointerIndirection = "PointerIndirection";
     public const string Binary = "Binary";
     public const string Unary = "Unary";
     public const string Conversion = "Conversion";

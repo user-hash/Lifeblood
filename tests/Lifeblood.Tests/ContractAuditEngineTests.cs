@@ -1,3 +1,4 @@
+using System.Globalization;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
@@ -621,6 +622,264 @@ public sealed class ContractAuditEngineTests
     }
 
     [Fact]
+    public void OperationShape_OneStreamChecksBufferSidecarAndMaskRepresentation()
+    {
+        const string containing = "method:Acme.Buffer.Process(int[],int,int)";
+        const string samples = "parameter:method:Acme.Buffer.Process(int[],int,int)#0:samples";
+        const string frameIndex = "parameter:method:Acme.Buffer.Process(int[],int,int)#1:frameIndex";
+        const string maskBit = "parameter:method:Acme.Buffer.Process(int[],int,int)#2:maskBit";
+        const string channelIndex = "local:method:Acme.Buffer.Process(int[],int,int)@42:channelIndex";
+        var manifest = new ContractManifest
+        {
+            Id = "acme-shapes",
+            Version = "2026.07.17",
+            OperationShapes = new[]
+            {
+                new OperationShapeContract
+                {
+                    Id = "sample-index-shape",
+                    OperationKinds = new[] { OperationFactKind.ElementAccess },
+                    ContainingSymbolIds = new[] { containing },
+                    AllowedShapes = new[]
+                    {
+                        new OperationAllowedShape
+                        {
+                            Id = "frames-index-samples",
+                            AllowedResultTypes = new[] { "float" },
+                            Inputs = new[]
+                            {
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Receiver,
+                                    AnySourceSymbolIds = new[] { samples },
+                                },
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Index,
+                                    Ordinal = 0,
+                                    RequiredSourceSymbolIds = new[] { frameIndex },
+                                },
+                            },
+                            ControlContexts = new[]
+                            {
+                                new OperationControlShape
+                                {
+                                    Kind = OperationControlContextKind.Loop,
+                                    RequiredSourceSymbolIds = new[] { frameIndex },
+                                    RequiredOperators = new[] { "LessThan" },
+                                },
+                            },
+                        },
+                    },
+                    Categories = new[] { "Sidecar", "BufferShape" },
+                },
+                new OperationShapeContract
+                {
+                    Id = "mask-shift-width",
+                    OperationKinds = new[] { OperationFactKind.Binary },
+                    ContainingSymbolIds = new[] { containing },
+                    Operators = new[] { "LeftShift" },
+                    AllowedShapes = new[]
+                    {
+                        new OperationAllowedShape
+                        {
+                            Id = "unsigned-64-bit-mask",
+                            AllowedResultTypes = new[] { "ulong" },
+                            Inputs = new[]
+                            {
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Left,
+                                    AllowedTypes = new[] { "ulong" },
+                                    RequiredConstantValues = new[] { "1" },
+                                    CompileTimeConstant = true,
+                                },
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Right,
+                                    RequiredSourceSymbolIds = new[] { maskBit },
+                                },
+                            },
+                        },
+                    },
+                    Categories = new[] { "MaskWidth" },
+                },
+            },
+        };
+        var engine = new ContractAuditEngine(new ContractAuditRequest { Manifest = manifest });
+
+        Assert.Null(engine.Query.TargetSymbolIds);
+        Assert.Equal(2, engine.Query.Selectors!.Count);
+        Assert.Contains(engine.Query.Selectors, selector =>
+            selector.IncludeKinds.SequenceEqual(new[] { OperationFactKind.ElementAccess })
+            && selector.ContainingSymbolIds.SequenceEqual(new[] { containing }));
+        engine.Observe(ShapeFact(
+            "valid-sidecar",
+            OperationFactKind.ElementAccess,
+            containing,
+            resultType: "float",
+            inputs: new[]
+            {
+                ShapeInput(OperationInputRole.Receiver, null, OperationValueKind.Parameter, "float[]", samples),
+                ShapeInput(OperationInputRole.Index, 0, OperationValueKind.Parameter, "int", frameIndex),
+            },
+            controls: new[] { ShapeLoop(frameIndex) }));
+        engine.Observe(ShapeFact(
+            "wrong-sidecar-dimension",
+            OperationFactKind.ElementAccess,
+            containing,
+            resultType: "float",
+            inputs: new[]
+            {
+                ShapeInput(OperationInputRole.Receiver, null, OperationValueKind.Parameter, "float[]", samples),
+                ShapeInput(OperationInputRole.Index, 0, OperationValueKind.Local, "int", channelIndex),
+            },
+            controls: new[] { ShapeLoop(channelIndex) }));
+        engine.Observe(ShapeFact(
+            "valid-mask",
+            OperationFactKind.Binary,
+            containing,
+            operation: "LeftShift",
+            resultType: "ulong",
+            inputs: new[]
+            {
+                ShapeInput(
+                    OperationInputRole.Left,
+                    null,
+                    OperationValueKind.Literal,
+                    "ulong",
+                    compileTimeConstant: true,
+                    constants: new[] { Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite) }),
+                ShapeInput(OperationInputRole.Right, null, OperationValueKind.Parameter, "int", maskBit),
+            }));
+        engine.Observe(ShapeFact(
+            "narrow-mask",
+            OperationFactKind.Binary,
+            containing,
+            operation: "LeftShift",
+            resultType: "int",
+            inputs: new[]
+            {
+                ShapeInput(
+                    OperationInputRole.Left,
+                    null,
+                    OperationValueKind.Literal,
+                    "int",
+                    compileTimeConstant: true,
+                    constants: new[] { Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite) }),
+                ShapeInput(OperationInputRole.Right, null, OperationValueKind.Parameter, "int", maskBit),
+            }));
+
+        var report = engine.Complete(Receipt(emitted: 4));
+
+        Assert.Equal(new[] { ContractRuleId.OperationShape }, report.SelectedRuleIds);
+        Assert.Equal(2, report.FindingCount);
+        var sidecar = Assert.Single(report.Findings, finding => finding.FactId == "wrong-sidecar-dimension");
+        Assert.Equal(ContractFindingKind.OperationShapeMismatch, sidecar.Kind);
+        Assert.Equal(ConfidenceBand.Proven, sidecar.Confidence);
+        Assert.Equal(new[] { "BufferShape", "Sidecar" }, sidecar.Categories);
+        Assert.Contains(sidecar.Evidence, evidence =>
+            evidence.Kind == "AllowedShapeMismatch"
+            && evidence.Summary.Contains("frameIndex", StringComparison.Ordinal));
+        var mask = Assert.Single(report.Findings, finding => finding.FactId == "narrow-mask");
+        Assert.Equal(new[] { "MaskWidth" }, mask.Categories);
+        Assert.Contains(mask.Evidence, evidence =>
+            evidence.Kind == "AllowedShapeMismatch"
+            && evidence.Summary.Contains("result type 'int'", StringComparison.Ordinal));
+        Assert.Contains(report.Limitations, limitation =>
+            limitation.Contains("enum/table coverage", StringComparison.Ordinal));
+        Assert.Equal(0, report.ScanReceipt.AdditionalSemanticBaseCount);
+    }
+
+    [Fact]
+    public void OperationShape_ValidationRejectsInertAllowedShape()
+    {
+        var error = Assert.Throws<ArgumentException>(() => new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = new ContractManifest
+            {
+                Id = "inert-shape",
+                Version = "1",
+                OperationShapes = new[]
+                {
+                    new OperationShapeContract
+                    {
+                        Id = "inert",
+                        OperationKinds = new[] { OperationFactKind.Binary },
+                        AllowedShapes = new[] { new OperationAllowedShape { Id = "accepts-everything" } },
+                    },
+                },
+            },
+        }));
+
+        Assert.Contains("must constrain an input, result type, or control context", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OperationShape_UniquenessReportsDuplicateMaskPositionsOnce()
+    {
+        const string containing = "type:Acme.FieldMask";
+        var allowedBits = Enumerable.Range(0, 64)
+            .Select(value => value.ToString(CultureInfo.InvariantCulture))
+            .ToArray();
+        var manifest = new ContractManifest
+        {
+            Id = "field-mask-shapes",
+            Version = "1",
+            OperationShapes = new[]
+            {
+                new OperationShapeContract
+                {
+                    Id = "field-mask-bits",
+                    OperationKinds = new[] { OperationFactKind.Binary },
+                    ContainingSymbolIds = new[] { containing },
+                    Operators = new[] { "LeftShift" },
+                    AllowedShapes = new[]
+                    {
+                        new OperationAllowedShape
+                        {
+                            Id = "ulong-bit",
+                            AllowedResultTypes = new[] { "ulong" },
+                            Inputs = new[]
+                            {
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Left,
+                                    AllowedTypes = new[] { "ulong" },
+                                    RequiredConstantValues = new[] { "1" },
+                                },
+                                new OperationInputShape
+                                {
+                                    Role = OperationInputRole.Right,
+                                    AllowedConstantValues = allowedBits,
+                                },
+                            },
+                        },
+                    },
+                    UniquenessPolicy = new OperationShapeUniquenessPolicy
+                    {
+                        InputRole = OperationInputRole.Right,
+                        KeyKind = OperationShapeKeyKind.ConstantValue,
+                    },
+                    Categories = new[] { "MaskWidth" },
+                },
+            },
+        };
+        var engine = new ContractAuditEngine(new ContractAuditRequest { Manifest = manifest });
+
+        engine.Observe(MaskShift("bit-three-a", containing, "3"));
+        engine.Observe(MaskShift("bit-four", containing, "4"));
+        engine.Observe(MaskShift("bit-three-b", containing, "3"));
+
+        var finding = Assert.Single(engine.Complete(Receipt(emitted: 3)).Findings);
+
+        Assert.Equal(ContractFindingKind.DuplicateOperationShapeKey, finding.Kind);
+        Assert.Equal(new[] { "Duplicate", "MaskWidth" }, finding.Categories);
+        Assert.Contains("'3' occurs 2 times", finding.Message, StringComparison.Ordinal);
+        Assert.Equal(2, finding.Evidence.Count(evidence => evidence.Kind == "DuplicateOperationShapeKey"));
+    }
+
+    [Fact]
     public void ApplicationUseCase_DelegatesOneExactBoundedStream()
     {
         var expected = new OperationFactQuery
@@ -865,6 +1124,100 @@ public sealed class ContractAuditEngineTests
             Expression = symbolId == null ? value : symbolId,
             Source = Span("Clock.cs", 1),
         };
+
+    private static OperationFact ShapeFact(
+        string id,
+        string kind,
+        string containing,
+        string? operation = null,
+        string? resultType = null,
+        OperationInputFact[]? inputs = null,
+        OperationControlContext[]? controls = null)
+        => new()
+        {
+            Id = id,
+            Kind = kind,
+            ModuleName = "Acme.Runtime",
+            ProfileScope = "Player",
+            ContainingSymbolId = containing,
+            Operator = operation,
+            ResultType = resultType,
+            Source = Span("Buffer.cs", 10),
+            IsImplicit = false,
+            Inputs = inputs ?? Array.Empty<OperationInputFact>(),
+            ControlContexts = controls ?? Array.Empty<OperationControlContext>(),
+        };
+
+    private static OperationInputFact ShapeInput(
+        string role,
+        int? ordinal,
+        string kind,
+        string type,
+        string? sourceId = null,
+        bool compileTimeConstant = false,
+        OperationConstantFact[]? constants = null)
+        => new()
+        {
+            Role = role,
+            Ordinal = ordinal,
+            AuthorSupplied = true,
+            Value = new OperationValueFact
+            {
+                Kind = kind,
+                Type = type,
+                Expression = sourceId ?? constants?.FirstOrDefault()?.Value ?? "value",
+                IsCompileTimeConstant = compileTimeConstant,
+                SourceSymbolIds = sourceId == null ? Array.Empty<string>() : new[] { sourceId },
+                Constants = constants ?? Array.Empty<OperationConstantFact>(),
+            },
+        };
+
+    private static OperationControlContext ShapeLoop(string boundarySourceId)
+        => new()
+        {
+            Kind = OperationControlContextKind.Loop,
+            Condition = "index < boundary",
+            ConditionValue = new OperationValueFact
+            {
+                Kind = OperationValueKind.Binary,
+                Expression = "index < boundary",
+                IsCompileTimeConstant = false,
+                SourceSymbolIds = new[] { boundarySourceId },
+            },
+            Operators = new[] { "LessThan" },
+            Source = Span("Buffer.cs", 9),
+        };
+
+    private static OperationFact MaskShift(string id, string containing, string bit)
+        => ShapeFact(
+            id,
+            OperationFactKind.Binary,
+            containing,
+            operation: "LeftShift",
+            resultType: "ulong",
+            inputs: new[]
+            {
+                ShapeInput(
+                    OperationInputRole.Left,
+                    null,
+                    OperationValueKind.Literal,
+                    "ulong",
+                    compileTimeConstant: true,
+                    constants: new[]
+                    {
+                        Constant(OperationConstantOrigin.Literal, "1", OperationNumericClassification.Finite),
+                    }),
+                ShapeInput(
+                    OperationInputRole.Right,
+                    null,
+                    OperationValueKind.Literal,
+                    "int",
+                    compileTimeConstant: true,
+                    constants: new[]
+                    {
+                        Constant(OperationConstantOrigin.Literal, bit, OperationNumericClassification.Finite),
+                    }),
+            });
 
     private static OperationSourceSpan Span(string path, int line)
         => new()

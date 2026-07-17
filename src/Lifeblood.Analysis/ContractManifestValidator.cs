@@ -16,6 +16,7 @@ internal static class ContractManifestValidator
         var guards = manifest.OperationGuards ?? throw new ArgumentException("operationGuards cannot be null.");
         var costs = manifest.ExternalApiCosts ?? throw new ArgumentException("externalApiCosts cannot be null.");
         var domains = manifest.ValueDomains ?? throw new ArgumentException("valueDomains cannot be null.");
+        var shapes = manifest.OperationShapes ?? throw new ArgumentException("operationShapes cannot be null.");
         var suppressions = manifest.Suppressions ?? throw new ArgumentException("suppressions cannot be null.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
 
@@ -25,8 +26,141 @@ internal static class ContractManifestValidator
             ValidateCost(contract, ids);
         foreach (var contract in domains)
             ValidateValueDomain(contract, ids);
+        foreach (var contract in shapes)
+            ValidateOperationShape(contract, ids);
         foreach (var suppression in suppressions)
             ValidateSuppression(suppression);
+    }
+
+    private static void ValidateOperationShape(OperationShapeContract contract, HashSet<string> ids)
+    {
+        ValidateContractIdentity(contract.Id, ids);
+        RequireValues(contract.OperationKinds, $"Operation shape '{contract.Id}' operationKinds");
+        RequireNonNull(contract.TargetSymbolIds, $"Operation shape '{contract.Id}' targetSymbolIds");
+        RequireNonNull(contract.ContainingSymbolIds, $"Operation shape '{contract.Id}' containingSymbolIds");
+        RequireNonNull(contract.Operators, $"Operation shape '{contract.Id}' operators");
+        RequireNonNull(contract.Categories, $"Operation shape '{contract.Id}' categories");
+        RequireNoBlankValues(contract.TargetSymbolIds, $"Operation shape '{contract.Id}' targetSymbolIds");
+        RequireNoBlankValues(contract.ContainingSymbolIds, $"Operation shape '{contract.Id}' containingSymbolIds");
+        RequireNoBlankValues(contract.Operators, $"Operation shape '{contract.Id}' operators");
+        RequireNoBlankValues(contract.Categories, $"Operation shape '{contract.Id}' categories");
+        RequireText(contract.Severity, $"Operation shape '{contract.Id}' severity");
+        if (contract.UniquenessPolicy is { } uniqueness)
+        {
+            RequireText(uniqueness.InputRole, $"Operation shape '{contract.Id}' uniquenessPolicy inputRole");
+            if (uniqueness.InputOrdinal < 0)
+                throw new ArgumentException($"Operation shape '{contract.Id}' uniquenessPolicy inputOrdinal cannot be negative.");
+            RequireText(uniqueness.KeyKind, $"Operation shape '{contract.Id}' uniquenessPolicy keyKind");
+            if (!OperationShapeKeyKind.All.Contains(uniqueness.KeyKind, StringComparer.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"Operation shape '{contract.Id}' has unknown uniquenessPolicy keyKind '{uniqueness.KeyKind}'.");
+            }
+            if (uniqueness.MinimumOccurrences < 2)
+            {
+                throw new ArgumentException(
+                    $"Operation shape '{contract.Id}' uniquenessPolicy minimumOccurrences must be at least 2.");
+            }
+        }
+
+        var shapes = contract.AllowedShapes
+            ?? throw new ArgumentException($"Operation shape '{contract.Id}' allowedShapes cannot be null.");
+        if (shapes.Length == 0)
+            throw new ArgumentException($"Operation shape '{contract.Id}' allowedShapes must contain at least one entry.");
+
+        var shapeIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var shape in shapes)
+        {
+            if (shape == null)
+                throw new ArgumentException($"Operation shape '{contract.Id}' allowedShapes cannot contain null entries.");
+            RequireText(shape.Id, $"Operation shape '{contract.Id}' allowed shape id");
+            if (!shapeIds.Add(shape.Id))
+                throw new ArgumentException($"Operation shape '{contract.Id}' has duplicate allowed shape id '{shape.Id}'.");
+
+            var inputs = shape.Inputs
+                ?? throw new ArgumentException($"Operation shape '{contract.Id}' shape '{shape.Id}' inputs cannot be null.");
+            var controls = shape.ControlContexts
+                ?? throw new ArgumentException($"Operation shape '{contract.Id}' shape '{shape.Id}' controlContexts cannot be null.");
+            RequireNonNull(
+                shape.AllowedResultTypes,
+                $"Operation shape '{contract.Id}' shape '{shape.Id}' allowedResultTypes");
+            RequireNoBlankValues(
+                shape.AllowedResultTypes,
+                $"Operation shape '{contract.Id}' shape '{shape.Id}' allowedResultTypes");
+            if (inputs.Length == 0 && controls.Length == 0 && shape.AllowedResultTypes.Length == 0)
+            {
+                throw new ArgumentException(
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' must constrain an input, result type, or control context.");
+            }
+
+            var inputSelectors = new HashSet<(string Role, int? Ordinal)>();
+            foreach (var input in inputs)
+            {
+                if (input == null)
+                    throw new ArgumentException($"Operation shape '{contract.Id}' shape '{shape.Id}' inputs cannot contain null entries.");
+                RequireText(input.Role, $"Operation shape '{contract.Id}' shape '{shape.Id}' input role");
+                if (input.Ordinal < 0)
+                    throw new ArgumentException(
+                        $"Operation shape '{contract.Id}' shape '{shape.Id}' input ordinal cannot be negative.");
+                if (!inputSelectors.Add((input.Role, input.Ordinal)))
+                {
+                    throw new ArgumentException(
+                        $"Operation shape '{contract.Id}' shape '{shape.Id}' repeats input selector " +
+                        $"'{input.Role}' ordinal '{input.Ordinal?.ToString() ?? "any"}'.");
+                }
+                ValidateInputShape(contract.Id, shape.Id, input);
+            }
+
+            foreach (var control in controls)
+            {
+                if (control == null)
+                {
+                    throw new ArgumentException(
+                        $"Operation shape '{contract.Id}' shape '{shape.Id}' controlContexts cannot contain null entries.");
+                }
+                RequireText(control.Kind, $"Operation shape '{contract.Id}' shape '{shape.Id}' control kind");
+                RequireNonNull(
+                    control.AnySourceSymbolIds,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control anySourceSymbolIds");
+                RequireNonNull(
+                    control.RequiredSourceSymbolIds,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control requiredSourceSymbolIds");
+                RequireNonNull(
+                    control.RequiredOperators,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control requiredOperators");
+                RequireNoBlankValues(
+                    control.AnySourceSymbolIds,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control anySourceSymbolIds");
+                RequireNoBlankValues(
+                    control.RequiredSourceSymbolIds,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control requiredSourceSymbolIds");
+                RequireNoBlankValues(
+                    control.RequiredOperators,
+                    $"Operation shape '{contract.Id}' shape '{shape.Id}' control requiredOperators");
+            }
+        }
+    }
+
+    private static void ValidateInputShape(
+        string contractId,
+        string shapeId,
+        OperationInputShape input)
+    {
+        var prefix = $"Operation shape '{contractId}' shape '{shapeId}' input '{input.Role}'";
+        RequireNonNull(input.AllowedValueKinds, prefix + " allowedValueKinds");
+        RequireNonNull(input.AllowedTypes, prefix + " allowedTypes");
+        RequireNonNull(input.AnySourceSymbolIds, prefix + " anySourceSymbolIds");
+        RequireNonNull(input.RequiredSourceSymbolIds, prefix + " requiredSourceSymbolIds");
+        RequireNonNull(input.RequiredOperators, prefix + " requiredOperators");
+        RequireNonNull(input.AllowedConstantValues, prefix + " allowedConstantValues");
+        RequireNonNull(input.RequiredConstantValues, prefix + " requiredConstantValues");
+        RequireNoBlankValues(input.AllowedValueKinds, prefix + " allowedValueKinds");
+        RequireNoBlankValues(input.AllowedTypes, prefix + " allowedTypes");
+        RequireNoBlankValues(input.AnySourceSymbolIds, prefix + " anySourceSymbolIds");
+        RequireNoBlankValues(input.RequiredSourceSymbolIds, prefix + " requiredSourceSymbolIds");
+        RequireNoBlankValues(input.RequiredOperators, prefix + " requiredOperators");
+        RequireNoBlankValues(input.AllowedConstantValues, prefix + " allowedConstantValues");
+        RequireNoBlankValues(input.RequiredConstantValues, prefix + " requiredConstantValues");
     }
 
     private static void ValidateGuard(OperationGuardContract contract, HashSet<string> ids)
@@ -279,5 +413,11 @@ internal static class ContractManifestValidator
     {
         if (values == null)
             throw new ArgumentException(label + " cannot be null.");
+    }
+
+    private static void RequireNoBlankValues(string[] values, string label)
+    {
+        if (values.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException(label + " must contain only non-empty values.");
     }
 }
