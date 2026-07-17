@@ -670,6 +670,17 @@ to `analysis_638579ee73980eabc487d1717dc02ac0550b92435187a35e6ada8a4a824cccb3`
 during construction. That is a valid fail-closed drift receipt, not a memory
 measurement and not grounds to claim lifecycle closure.
 
+`LB-INTAKE-20260629-013` now has its permanent documented implementation:
+workflow 8 in the C# playbook and the Lifeblood skill derive cases from one
+consumer-owned contract/range authority, compile-check the real test files, and
+leave measured execution with the consumer runner. Live alpha.91 DAWG dogfood
+published generation 1 / snapshot
+`snap_53f23e1f959a4a4d80d33b67b3d0f55b` and compile-checked the two motivating
+fixtures with zero diagnostics. The consumer runner completed 184/184 tests in
+11.02 seconds, but its repository-wide receipt detected concurrent source drift
+and ended `infra_failed`. The entry is therefore promoted to the living tracker
+instead of being prematurely archived; one non-drifted rerun remains.
+
 ### Wave 6 - Runtime Performance Evidence
 
 Covers `034`, `035`.

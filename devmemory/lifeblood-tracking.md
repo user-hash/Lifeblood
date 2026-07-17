@@ -70,7 +70,7 @@ static-tables defaults. Every anchor is ratcheted against live source by
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 3 --><!-- trackingStatusReceiptCount: 0 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 4 --><!-- trackingStatusReceiptCount: 0 --><!-- trackingStatusOpenCount: 0 -->
 
 New intake — un-started findings/feature requests awaiting prioritization (the
 ledger itself holds only Shipped + in-flight per `TrackingLedger_HasNoPlainOpenOrCandidateEntries`):
@@ -80,6 +80,7 @@ Active non-shipped implementation ledger:
 <!-- trackingActiveBacklog:start -->
 - 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 - 2026-05-28 - Lifeblood .NET runtime/JIT benchmark lane
+- LB-INTAKE-20260629-013 - Generated DSP/math probe recipe
 - LB-INTAKE-20260716-044 - Static semantic blind spots need explicit unsupported-edge receipts
 <!-- trackingActiveBacklog:end -->
 
@@ -203,6 +204,48 @@ Fix shape:
 - Add an explicit support gate: production `net10.0` migration must be decided
   before .NET 8 EOL. If customers still need `net8.0`, keep it as a compatibility
   branch rather than leaving `main` stranded on an unsupported runtime.
+
+## LB-INTAKE-20260629-013 - Generated DSP/math probe recipe
+
+Status: Partially shipped
+Type: Docs
+Source: DAWG Burst regression-test dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: playbook/skill validation; 46 focused documentation tests; DAWG
+generation 1 / `snap_53f23e1f959a4a4d80d33b67b3d0f55b` compile check;
+Unity observatory run `513ffc3fafc14ef3920c92297d3d4bcd`
+
+Summary:
+- Workflow 8 in `docs/PLAYBOOK_CSHARP.md` now derives parameterized probes from
+  one consumer-owned contract/range authority, compile-checks their real test
+  files, and leaves measured execution with the consumer's test framework.
+- The Lifeblood skill and routing reference point agents at the same workflow.
+  No audio runner, generator command, range database, fact cache, graph edge, or
+  retained semantic base was added.
+- Installed alpha.91 analyzed live DAWG Editor+Player in 65.43 seconds and
+  published generation 1 / snapshot
+  `snap_53f23e1f959a4a4d80d33b67b3d0f55b`. A bounded compile check resolved both
+  `DspSanityTests.cs` and `TuningParamRangeProviderRatchetTests.cs` uniquely in
+  `Nebulae.Tests.Editor.Audio` with zero diagnostics.
+- DAWG's normal runner selected and completed 184/184 output/range cases with
+  zero test failures in 11.02 seconds. Its global receipt correctly ended
+  `infra_failed`, however, because unrelated DAWG files changed during the run;
+  this is supporting value evidence, not a frozen closure receipt.
+
+Impact:
+- Agents have a reusable structural-to-measured test path without Lifeblood
+  embedding synth vocabulary or pretending static evidence proves runtime
+  output.
+
+Fix shape:
+- Keep the documented recipe and skill routing as the permanent product shape.
+- Do not add a Lifeblood-owned execution engine unless a future cross-project
+  benchmark proves a genuinely shared runtime boundary.
+
+Remaining open work:
+- Repeat the same bounded compile check and 184-case DAWG target run from one
+  stable source digest; require a terminal passed, non-drifted receipt, then move
+  this entry to closed history.
 
 ## LB-INTAKE-20260716-044 - Static semantic blind spots need explicit unsupported-edge receipts
 

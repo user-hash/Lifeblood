@@ -54,45 +54,6 @@ Fix shape:
 - Keep it advisory. The tool should not claim a comment is wrong without either
   a caller-supplied retired-term list or a resolved invariant/rule conflict.
 
-## LB-INTAKE-20260629-013 - Generated DSP/math probe recipe
-
-Type: Feature request
-Priority: Medium
-Source: DAWG Burst regression-test dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 8/10 value if shipped
-
-What:
-- DAWG needed tests that render longer than a note, compare static vs swept
-  controls, detect discontinuities, and verify final output instead of only
-  checking wiring.
-- Lifeblood can compile-check and execute C# snippets, but it does not yet guide
-  agents toward a reusable generated-probe pattern for math/DSP systems.
-- 2026-07-14 tuning work showed that endpoint and resolution probes should be
-  generated from the same mapping/range table agents inspect manually. The
-  useful sweep is not "try insane extremes"; it is "sample the declared musical
-  range, active range, storage sentinel, and default/neutral values."
-
-Why it matters:
-- The best fix loop combines static analysis with measured output. A generic
-  probe recipe would help agents create meaningful tests without hardcoding a
-  specific synth, preset, or DAWG path into Lifeblood itself.
-
-Fix shape:
-- Provide a documented or tool-assisted "probe generator" pattern: caller
-  supplies setup code, run length, input schedule, changed controls, and output
-  invariant; Lifeblood helps scaffold a test body and compile-check it.
-- Suggested generic invariants: finite samples, max adjacent delta, RMS envelope
-  continuity, silence-window noise floor, static-vs-swept high-band delta,
-  no denormals/NaN/Inf, no output after declared tail, and deterministic
-  repeated-run output.
-- When a contract/range table is available, generate representative cases from
-  default, neutral, musical min/max, midpoint, active zero/sentinel, and one or
-  two high-resolution neighborhoods instead of blindly testing arbitrary global
-  extremes.
-- Keep execution in the user's test framework/project; Lifeblood should produce
-  scaffolding and structural checks, not own audio playback.
-
 ## LB-INTAKE-20260629-016 - Generic "contract coverage" score for critical paths
 
 Type: UX

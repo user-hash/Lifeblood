@@ -169,6 +169,51 @@ caller. The triage workflow:
    magic methods. Anything left in the findings list is a real
    candidate.
 
+## 8. Build a generated DSP or math probe
+
+You need measured output evidence for a numerical or DSP change, but the test
+matrix must not become a second copy of the product's ranges, defaults, or
+sentinels. Lifeblood helps verify the source contract and the resulting test
+file; the user's test framework owns execution.
+
+1. Name one case authority in the repository: a versioned contract manifest,
+   range/provider table, enum/catalog, or another production API that exposes
+   the supported domain. Do not copy that authority into a Lifeblood-specific
+   manifest merely to generate tests.
+2. Inspect the authority with the smallest semantic tool that fits. Use
+   `lifeblood_contract_audit` when a consumer manifest already declares the
+   value/shape contract, `lifeblood_static_tables` for operation-backed tables,
+   or `lifeblood_lookup` plus source reading for a provider/catalog API.
+   Treat missing or truncated evidence as a gap, not an empty domain.
+3. Make the user's fixture derive its parameterized cases from that same
+   authority. The representative set normally includes the declared default,
+   neutral value, musical minimum/maximum, midpoint, active zero or storage
+   sentinel, and one or two high-resolution neighborhoods. Arbitrary global
+   extremes belong only when the source contract declares them.
+4. Keep setup and scheduling explicit in the fixture: run length, sample rate
+   or iteration count, input schedule, controls changed, static and swept
+   scenarios, gate/tail windows, and repeat seed/order. These are consumer test
+   semantics; Lifeblood must not guess them from product names.
+5. Select output invariants that match the contract. Common independent checks
+   are finite output (including no NaN/Inf/denormals), bounded peak or adjacent
+   delta, RMS/envelope continuity, silence-window noise floor, declared-tail
+   silence, static-versus-swept response, and repeated-run determinism. A
+   finding-free static contract audit does not replace these runtime checks.
+6. Once the file belongs to the user's generated project descriptors, call
+   `lifeblood_compile_check filePath:"<test-file>"`; use bounded `filePaths[]`
+   when the scaffold and its authority-facing fixture changed together. A
+   successful compile check proves project-context structure only.
+7. Run the generated cases in the repository's normal test runner and record
+   the source revision, case authority, selected cases, and test receipt. Only
+   that runner can prove the measured output invariants. If a new test file is
+   not yet in a Unity compilation, import/regenerate descriptors and re-analyze
+   before repeating the compile check.
+
+This workflow deliberately adds no audio runner, probe generator command,
+retained fact cache, or second range database to Lifeblood. Generation stays in
+the consumer test project where its runtime, framework, and product contracts
+are available.
+
 ## Envelope cheat sheet
 
 | Field | When to act |
