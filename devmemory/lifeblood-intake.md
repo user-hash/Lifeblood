@@ -118,49 +118,6 @@ Fix shape:
 - The command should reject duplicate IDs, keep entries ASCII/Markdown-clean,
   and optionally run `IntakeLedgerTests` after writing.
 
-## LB-INTAKE-20260629-006 - Numeric domain and unit contract audit
-
-Type: Feature request
-Priority: High
-Source: DAWG DSP/Burst dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 10/10 value if shipped
-
-What:
-- Many hard audio bugs are value-miscommunication bugs: percent vs normalized,
-  milliseconds vs samples, frames vs stereo samples, Hz vs normalized cutoff,
-  cents vs semitones, dB vs linear gain, phase cycles vs radians, BPM beats vs
-  seconds.
-- Lifeblood can show call edges, but it does not yet infer or check that values
-  keep the same numeric domain across fields, parameters, DTOs, dispatchers,
-  kernels, tests, and UI controls.
-- 2026-07-14 DAWG ADSR/LFO follow-up added two sharper shapes: non-finite
-  fallback policy can be musical for one domain and dangerous for another
-  (`+Infinity` to max is reasonable for an envelope ceiling but unsafe for
-  gain/headroom), and normalized authoring depth can be silently confused with
-  destination units such as cents, octaves, percent, or drive amount.
-
-Why it matters:
-- This is the class of bug that looks like "the code is wired" while audio is
-  wrong. It is also common outside audio: physics units, animation time,
-  networking ticks, layout pixels, and serialization sizes all fail this way.
-- A generic unit/domain pass would catch whole families of DSP and sync bugs
-  without hardcoding any DAWG parameter names.
-
-Fix shape:
-- Add a `lifeblood_numeric_contract_audit` style tool that derives candidate
-  domains from names, XML docs, attributes, constants, range tables, static
-  manifests, and caller-supplied contract maps.
-- Report domain crossings where no explicit conversion helper, clamp, scale, or
-  documented adapter exists.
-- Treat non-finite handling as a domain contract, not a generic clamp rule:
-  surface NaN/Infinity callsites and classify whether the target domain's
-  fallback should be min, max, neutral/default, reject, or caller-owned.
-- Output should include source symbol, target symbol, inferred source/target
-  domain, confidence, evidence, and the conversion point if one was found.
-- Keep inference advisory; allow projects to promote inferred domains into a
-  checked contract file.
-
 ## LB-INTAKE-20260629-008 - Temporal DSP state lifecycle audit
 
 Type: Feature request
@@ -226,37 +183,6 @@ Fix shape:
   increment, wavetable index, saturation drive, and custom method IDs.
 - Return the path, detected smoother/interpolator if present, direct writes if
   absent, and whether the consumer is inside a loop identified as sample-rate.
-
-## LB-INTAKE-20260629-010 - Clock, cadence, and sync contract audit
-
-Type: Feature request
-Priority: High
-Source: DAWG step pattern / BPM / sample-position dogfood, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG
-Rating for DAWG work: 9/10 value if shipped
-
-What:
-- DAWG debugging depended on mapping pattern columns, BPM, samples, recorded
-  audio, note gates, and visual playback cursors. Lifeblood does not yet expose
-  a generic way to audit conversions across beats, bars, seconds, samples,
-  frames, ticks, buffers, and UI steps.
-
-Why it matters:
-- Sync bugs often look like audio or graphics bugs because the event is correct
-  but placed in the wrong clock domain. A 1-buffer, 1-step, or 1-frame offset can
-  be perfectly deterministic and still very hard to see in code review.
-- This also applies to multiplayer replication, animation timelines, video,
-  sequencers, schedulers, and streaming systems.
-
-Fix shape:
-- Add a clock-domain audit that identifies time/cadence variables and conversion
-  formulas, then traces them across scheduling boundaries.
-- Support caller-authored domains such as `samples`, `frames`, `seconds`,
-  `beats`, `bars`, `ticks`, `steps`, `buffers`, and `networkSeq`.
-- Flag suspicious direct assignments, integer truncation, modulo/wrap boundaries,
-  off-by-one comparisons, buffer-start vs buffer-end scheduling, and mismatched
-  sample-rate/BPM constants.
-- Return a conversion graph with formulas and source spans.
 
 ## LB-INTAKE-20260629-012 - Cross-layer control-law trace
 
@@ -453,37 +379,6 @@ Fix shape:
   logging, locks, async waits, and caller-supplied forbidden APIs.
 - Return grouped findings by hot root with callsite, operation kind, callee,
   allocation/forbidden category, and whether the path is direct or transitive.
-
-## LB-INTAKE-20260629-022 - Hot-math constant provenance audit
-
-Type: Feature request
-Priority: Medium
-Source: DAWG DSP/Burst dogfood, 2026-06-29; Lifeblood local `v0.7.12+dbfd871`
-Workspace: DAWG
-Rating for DAWG work: 8/10 value if shipped
-
-What:
-- DAWG audio work regularly depends on constants for thresholds, smoothing,
-  denormal floors, cutoff mapping, time conversion, oversampling, release gates,
-  and discontinuity boundaries.
-- Lifeblood can find symbol references, but it does not yet distinguish a
-  policy-owned constant from a magic literal embedded directly in hot math.
-
-Why it matters:
-- Small magic constants in DSP/math code can encode undocumented policy. If the
-  same threshold is duplicated with slightly different values, behavior can
-  drift while every symbol remains wired and compiling.
-- This is generic for animation, physics, camera motion, filters, schedulers,
-  networking timeouts, and numeric validation code.
-
-Fix shape:
-- Add an audit over caller-selected hot methods/modules that extracts numeric
-  literals and groups them by value, unit-like name context, and operation type.
-- Classify each literal as named-constant, static-table cell, config/manifest
-  read, local derivation, or raw magic literal.
-- Flag repeated near-equal constants, threshold pairs with no named owner,
-  literals inside branches that reset or bypass state, and constants whose
-  inferred unit/domain disagrees with neighboring values.
 
 ## LB-INTAKE-20260629-023 - Determinism and replay contract audit
 

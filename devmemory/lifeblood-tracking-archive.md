@@ -3654,3 +3654,120 @@ Verification:
 Impact:
 - Width, range, and duplicate-bit policy now share the same bounded semantic
   contract pass as buffer shapes while enum/table authorities stay singular.
+
+## LB-INTAKE-20260629-006 - Numeric domain and unit contract audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 1
+Type: Shipped
+Source: DAWG DSP/Burst dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `fc04a95`, `2d78b9a`, `c3e8ce0`, `ef3a126`; full
+1,669-case release suite; pinned DAWG value-domain receipt
+
+Resolution:
+- Added one generic `value-domain` family to the existing
+  `lifeblood_contract_audit` surface. Consumer manifests bind arbitrary domain
+  names to canonical source symbols and declare the complete source-domain,
+  source-symbol, and operator evidence accepted as a conversion.
+- The same streamed value record carries exact conversions, nested operators,
+  literal/named/default/folded constant provenance, finite/NaN/infinity
+  classification, and consumer-owned non-finite actions. Lifeblood does not
+  infer units from names or XML prose and does not add a numeric-specific MCP
+  tool; that speculative inference was rejected because it would manufacture
+  policy instead of proving it.
+- The adapter applies kind/target/containing filters before materializing value
+  and control evidence. One request-scoped symbol memo dies with the scan; no
+  graph edge, compilation authority, or retained semantic base was added.
+
+Verification:
+- Engine/provider/handler fixtures cover direct domains, exact conversions,
+  missing evidence, unclassified advisory values, every non-finite action,
+  raw versus named constants, suppressions, validation, and profile execution.
+- Release build completed with zero warnings/errors. The full current suite
+  passed 1,658 tests with 11 native-clang executable precondition skips (1,669
+  total).
+- Installed alpha.70, which contains all group-1 commits, refreshed the shared
+  DAWG Editor+Player authority after an explicit asmdef full fallback, then
+  accepted one authoritative source increment as generation 7 /
+  `snap_95be783928734a629c4ef2a0a41a530a`: 89,777 symbols, 350,458 edges,
+  101 modules, 5,668 types, 4,408 files, 146 cycles, and zero configured
+  violations. The shared catalog retained exactly one semantic base.
+- A pinned pitch-domain audit scanned only
+  `ArcadeSynthBridge.GenerateClipForPitch`, emitted the one `Mathf.Pow` fact,
+  and accepted the declared MidiPitch-to-Octaves conversion through exact
+  `Subtract` + `Divide` evidence. Its receipt reported input identity verified,
+  zero changed files, and zero additional semantic bases.
+
+Impact:
+- Projects can check their own numeric vocabulary and non-finite policy through
+  exact reviewable manifests without Lifeblood hardcoding DAWG/audio semantics.
+
+## LB-INTAKE-20260629-010 - Clock, cadence, and sync contract audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 1
+Type: Shipped
+Source: DAWG cadence/sync dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commit `ef3a126`; full 1,669-case release suite; pinned DAWG
+cadence positive/negative control
+
+Resolution:
+- Value-domain policy now accepts exact lexical cadence alternatives over
+  control-context kind, comparison operator, boundary side, value origin,
+  nested operators, constants, and canonical boundary source symbols.
+- Direct and offset boundaries such as `< count` and `<= count - 1` are
+  consumer-declared alternatives. Proven mismatches remain distinct from
+  advisory missing lexical evidence. Lifeblood does not invent a cross-system
+  clock graph or infer formula equivalence beyond those declared shapes.
+
+Verification:
+- Synthetic fixtures cover exact and offset equivalence, wrong operator/side,
+  missing boundary, compound predicates, and deterministic source evidence.
+- On generation 7 / `snap_95be783928734a629c4ef2a0a41a530a`, a pinned
+  one-file DAWG audit selected the `Transform.SetParent` call inside
+  `ArcadeSynthBridge`'s voice-pool loop. The real `i < voiceCount` contract
+  passed; an intentionally inclusive-boundary negative control produced one
+  proven `CadenceBoundaryMismatch` with the exact line-28 predicate and
+  `voiceCount` parameter ID. The scan emitted one fact with input identity
+  verified, zero changed files, and zero additional semantic bases.
+- A later unrelated DAWG edit drifted the global publication; no semantic
+  claims were made after that drift. Both pinned audit envelopes were clean at
+  execution time.
+
+Impact:
+- Cadence/off-by-one policy now shares the numeric contract stream instead of
+  creating a clock-specific walker or a second semantic authority.
+
+## LB-INTAKE-20260629-022 - Hot-math constant provenance audit
+
+Status: Shipped (in-tree, untagged) - 2026-07-17 backlog Wave 4 group 1
+Type: Shipped
+Source: DAWG DSP/Burst dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: commits `c3e8ce0`, `ef3a126`; full 1,669-case release suite;
+pinned DAWG raw-literal receipt
+
+Resolution:
+- The neutral value fact distinguishes literal, named, default, and folded
+  constants and carries exact source spans plus finite/non-finite
+  classification. Consumer policy can allow exact universal literals, report
+  other raw numerics, and group distinct raw literals only within declared
+  absolute/relative tolerances. Named constants never enter near-equal groups.
+- This is an orthogonal policy on `value-domain`, not another constant table,
+  source scan, or hot-math tool. Static-table cells retain their existing
+  authority and product-specific unit inference remains outside Lifeblood.
+
+Verification:
+- Synthetic fixtures cover provenance classes, allowed identities,
+  deterministic adjacent near-equal groups, minimum occurrence counts, invalid
+  tolerances, evidence caps, and suppressions.
+- The pinned DAWG pitch audit above emitted one proven
+  `ConstantProvenanceMismatch` for raw `69` and `12` inside
+  `(midiPitch - 69) / 12f`, with exact source spans and the canonical
+  `midiPitch` parameter. The companion numeric conversion contract passed on
+  the same single fact; no second scan or semantic base was created.
+
+Impact:
+- Raw and policy-owned constants are now distinguishable through one reusable
+  contract stream, with near-equal tolerance owned by the consumer rather than
+  guessed from source names.

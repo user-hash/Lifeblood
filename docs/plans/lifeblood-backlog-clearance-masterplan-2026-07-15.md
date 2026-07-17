@@ -403,7 +403,8 @@ Natural commit groups:
 4. hot-path allocation/forbidden/external-cost and shared state;
 5. determinism, sibling parity, ownership/handoff, and cross-layer control law.
 
-Group 1 is now in progress through one generic `value-domain` rule: consumer
+Group 1 is closed by commits `fc04a95`, `2d78b9a`, `c3e8ce0`, and `ef3a126`
+through one generic `value-domain` rule: consumer
 manifests bind arbitrary domains to canonical source symbols and declare exact
 source-domain/operator evidence for accepted conversions. The same streamed
 value record carries nested operators and typed constant occurrences, so
@@ -416,8 +417,16 @@ named constants as duplicates. Exact comparison operands/source spans support
 manifest-authored direct and offset cadence boundaries, including the
 `< count` versus `<= count - 1` equivalence class and proven mismatch versus
 missing-boundary confidence. Synthetic engine, extractor, validation, and MCP
-wire fixtures are complete with zero additional semantic bases. The motivating
-DAWG receipt remains the final closure gate for `006`, `010`, and `022`.
+wire fixtures are complete with zero additional semantic bases. Installed
+alpha.70 contains every group-1 commit. Shared DAWG Editor+Player generation 7 /
+`snap_95be783928734a629c4ef2a0a41a530a` then proved the final closure: one
+pitch fact accepted the exact MidiPitch-to-Octaves `Subtract` + `Divide`
+conversion while a companion policy returned proven raw-literal evidence for
+`69` and `12`; one voice-pool fact accepted `i < voiceCount` while an
+intentionally inclusive-boundary negative control returned one proven cadence
+mismatch. Both pinned calls verified input identity, reported zero changed
+files, and retained zero additional semantic bases. A later unrelated DAWG
+edit drifted the publication, and no later semantic claims were made.
 
 The first DAWG dogfood exposed a performance defect before closure: a target-
 filtered audit emitted one fact but still materialized value/control evidence
@@ -590,6 +599,9 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-028` | one Domain receipt, Application port, and bounded Git adapter serve analyzed-workspace, invariant, capability, and release provenance | temp-repo bounds/root fixtures; persistent-stdin MCP process regression; 64 focused checks; clean Release build; 1,543-case suite; self-dogfood; DAWG Editor+Player full receipt rooted at DAWG | `fix(provenance): unify source control evidence` atom |
 | `LB-INTAKE-20260629-007` | one selector-bounded `operation-shape` contract family covers exact buffer/index/stride/sidecar relationships across arrays, indexers, and pointers | engine/provider/profile/MCP fixtures; zero-warning Release build; 1,669-case full suite; DAWG mute/sidecar audit emitted two facts with zero findings and zero additional bases | `6539052` |
 | `LB-INTAKE-20260629-011` | the same operation-shape family covers exact mask width/range and request-local duplicate keys while existing enum/table tools retain their fact authority | width/range/duplicate/enum-provenance fixtures; zero-warning Release build; 1,669-case full suite; DAWG `FieldMask.cs` emitted 55 shifts with zero findings and zero additional bases | `6539052` |
+| `LB-INTAKE-20260629-006` | one consumer-authored `value-domain` rule proves exact domain bindings/conversions and owns non-finite policy without inferred product vocabulary | exact/advisory/non-finite/profile/MCP fixtures; zero-warning Release build; 1,669-case full suite; pinned DAWG pitch conversion accepted with zero additional bases | `fc04a95`, `c3e8ce0` |
+| `LB-INTAKE-20260629-010` | exact lexical cadence alternatives reuse the value-domain stream and distinguish proven mismatch from missing evidence | direct/offset/missing/compound fixtures; 1,669-case full suite; pinned DAWG `< voiceCount` positive plus inclusive negative control | `ef3a126` |
+| `LB-INTAKE-20260629-022` | literal/named/default/folded provenance and consumer-toleranced near-equal grouping reuse the same value record | provenance/tolerance/validation fixtures; 1,669-case full suite; pinned DAWG raw `69`/`12` evidence on the accepted pitch conversion | `c3e8ce0`, `ef3a126` |
 
 ### 2026-07-16 reliability continuation receipts
 
