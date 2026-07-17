@@ -524,6 +524,22 @@ generation/snapshot unchanged with zero files changed since analysis.
 Group 3 and intake IDs `008`, `009`, and `015` are therefore closed without a
 temporal analyzer, downstream-read copy, or retained fact authority.
 
+Group 4 now has its shared execution-scope foundation. Manifest `callRoutes[]`
+declare exact method roots plus depth/member bounds; one request-local planner
+walks only the immutable graph's profile-applicable `Calls` edges and derives
+deterministic shortest direct/transitive membership. External-cost contracts
+select those routes by id, the existing operation provider filters to the
+derived containing methods, and findings carry typed root/distance/path
+evidence plus a truncation receipt. The engine indexes that bounded plan by
+containing symbol for per-fact lookup. This adds no edge kind, graph, call
+extractor, cache, tool, or retained semantic base. Synthetic cycle/profile/
+bound/root-validation tests, direct/transitive engine tests, and a real MCP
+Roslyn-workspace transitive fixture pass; the full gate is 1,667 pass with 11
+explicit native-clang environment skips (1,678 total). Intake IDs `014` and
+`021` remain active until targetless forbidden operations, mutable/shared-state
+policy, installed DAWG dogfood, and their final tracking receipts reuse this
+route foundation.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 

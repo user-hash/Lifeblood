@@ -2,6 +2,7 @@ using System.Globalization;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Application.UseCases;
+using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Xunit;
 
@@ -143,6 +144,73 @@ public sealed class ContractAuditEngineTests
         Assert.Equal(0, coverage.FindingFreeOccurrenceCount);
         Assert.Equal(0, coverage.FindingCount);
         Assert.Equal(0, coverage.SuppressedFindingCount);
+    }
+
+    [Fact]
+    public void CallRoute_CarriesDirectAndTransitiveProvenanceWithoutAnotherGraph()
+    {
+        const string root = "method:Acme.Audio.Process()";
+        const string helper = "method:Acme.Audio.ProcessVoice()";
+        const string outside = "method:Acme.Tools.Warmup()";
+        var graph = new GraphBuilder()
+            .AddSymbols(new[] { root, helper, outside }.Select(id => new Symbol
+            {
+                Id = id,
+                Name = id,
+                Kind = SymbolKind.Method,
+            }))
+            .AddEdge(new Edge { SourceId = root, TargetId = helper, Kind = EdgeKind.Calls })
+            .Build();
+        var manifest = new ContractManifest
+        {
+            Id = "audio-policy",
+            Version = "1",
+            CallRoutes = new[]
+            {
+                new ContractCallRoute
+                {
+                    Id = "production-audio",
+                    RootSymbolIds = new[] { root },
+                    MaxDepth = 4,
+                    MaxMembers = 16,
+                },
+            },
+            ExternalApiCosts = new[]
+            {
+                new ExternalApiCostContract
+                {
+                    Id = "allocation-on-audio-route",
+                    TargetSymbolIds = new[] { CostTarget },
+                    CallRouteIds = new[] { "production-audio" },
+                    Categories = new[] { "Allocation" },
+                    AnnotationSource = "Acme realtime policy",
+                },
+            },
+        };
+        var plan = ContractCallRoutePlanner.Plan(graph, manifest.CallRoutes, "Player");
+        var engine = new ContractAuditEngine(new ContractAuditRequest
+        {
+            Manifest = manifest,
+            ProfileScope = "Player",
+            CallRoutePlan = plan,
+        });
+
+        var selector = Assert.Single(engine.Query.Selectors!);
+        Assert.Equal(new[] { root, helper }, selector.ContainingSymbolIds);
+        engine.Observe(Call("outside", CostTarget, "Tools.cs", 3, Argument(OperationValueKind.Literal), containingSymbolId: outside));
+        engine.Observe(Call("direct", CostTarget, "Audio.cs", 5, Argument(OperationValueKind.Literal), containingSymbolId: root));
+        engine.Observe(Call("transitive", CostTarget, "Voice.cs", 7, Argument(OperationValueKind.Literal), containingSymbolId: helper));
+
+        var report = engine.Complete(Receipt(emitted: 3));
+
+        Assert.Equal(2, report.FindingCount);
+        Assert.Equal(0, report.ScanReceipt.AdditionalSemanticBaseCount);
+        Assert.False(Assert.Single(report.CallRoutes).Truncated);
+        Assert.Equal(
+            new[] { ContractCallRoutePlacement.Direct, ContractCallRoutePlacement.Transitive },
+            report.Findings.Select(finding => Assert.Single(finding.CallRouteMatches).Placement));
+        Assert.Equal(new[] { root, helper }, report.Findings[1].CallRouteMatches[0].PathSymbolIds);
+        Assert.All(report.Findings, finding => Assert.Contains(finding.Evidence, evidence => evidence.Kind == "CallRoute"));
     }
 
     [Fact]
@@ -1228,14 +1296,15 @@ public sealed class ContractAuditEngineTests
         string? context = null,
         string[]? contextSourceIds = null,
         string[]? contextOperators = null,
-        OperationControlPredicate[]? contextPredicates = null)
+        OperationControlPredicate[]? contextPredicates = null,
+        string containingSymbolId = "method:Acme.Dsp.Run()")
         => new()
         {
             Id = id,
             Kind = OperationFactKind.Call,
             ModuleName = "Acme.Runtime",
             ProfileScope = "Player",
-            ContainingSymbolId = "method:Acme.Dsp.Run()",
+            ContainingSymbolId = containingSymbolId,
             TargetSymbolId = target,
             Source = Span(path, line),
             IsImplicit = false,

@@ -39,14 +39,27 @@ internal sealed class ContractAuditToolHandler
         var manifest = hasInline
             ? DeserializeManifest(request.Manifest!.Value.GetRawText(), "inline manifest")
             : DeserializeManifest(ReadManifestFile(request.ManifestPath!), request.ManifestPath!);
+        ContractManifestValidator.Validate(manifest);
+        var profileScope = string.IsNullOrWhiteSpace(request.ProfileScope)
+            ? _session.RetainedProfileName
+            : request.ProfileScope.Trim();
+        var callRoutePlan = manifest.CallRoutes.Length == 0
+            ? ContractCallRoutePlan.Empty
+            : ContractCallRoutePlanner.Plan(
+                _session.Graph
+                    ?? throw new InvalidOperationException(
+                        "Call routes require a loaded semantic graph from the selected publication."),
+                manifest.CallRoutes,
+                profileScope);
         var engine = new ContractAuditEngine(new ContractAuditRequest
         {
             Manifest = manifest,
-            ProfileScope = request.ProfileScope,
+            ProfileScope = profileScope,
             ModuleScope = request.ModuleScope,
             FilePaths = request.FilePaths,
             ContainingSymbolIds = request.ContainingSymbolIds,
             IncludeRuleIds = request.IncludeRuleIds,
+            CallRoutePlan = callRoutePlan,
             MaxFacts = request.EffectiveMaxFacts,
             MaxFindings = request.EffectiveMaxFindings,
             MaxEvidencePerFinding = request.EffectiveMaxEvidencePerFinding,

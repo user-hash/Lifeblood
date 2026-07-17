@@ -1686,6 +1686,72 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_ContractAudit_CallRouteFindsTransitiveCostOnTheLeasedGraph()
+    {
+        var projectRoot = Path.Combine(_tempDir, "contract-audit-call-route");
+        Directory.CreateDirectory(projectRoot);
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Acme.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        File.WriteAllText(
+            Path.Combine(projectRoot, "Audio.cs"),
+            "namespace Acme; public static class Audio { public static void Run() => Helper(); " +
+            "private static void Helper() => Vendor.Allocate(); } " +
+            "public static class Vendor { public static void Allocate() { } }");
+        var manifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-route-policy",
+            version = "1.0.0",
+            callRoutes = new[]
+            {
+                new
+                {
+                    id = "audio-production",
+                    rootSymbolIds = new[] { "method:Acme.Audio.Run()" },
+                    maxDepth = 4,
+                    maxMembers = 16,
+                },
+            },
+            externalApiCosts = new[]
+            {
+                new
+                {
+                    id = "no-vendor-on-audio-route",
+                    targetSymbolIds = new[] { "method:Acme.Vendor.Allocate()" },
+                    callRouteIds = new[] { "audio-production" },
+                    categories = new[] { "RealtimeForbidden" },
+                    annotationSource = "Acme realtime policy",
+                },
+            },
+        });
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle(
+            "lifeblood_analyze",
+            MakeArgs(new { projectPath = projectRoot, defineProfiles = new[] { "Editor" } })).IsError);
+
+        var result = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest, summarize = false }));
+
+        Assert.Null(result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        Assert.Equal(1, root.GetProperty("findingCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+        var route = Assert.Single(root.GetProperty("callRoutes").EnumerateArray());
+        Assert.Equal("audio-production", route.GetProperty("routeId").GetString());
+        Assert.False(route.GetProperty("truncated").GetBoolean());
+        var match = Assert.Single(root.GetProperty("findings")[0].GetProperty("callRouteMatches").EnumerateArray());
+        Assert.Equal("Transitive", match.GetProperty("placement").GetString());
+        Assert.Equal(1, match.GetProperty("distance").GetInt32());
+        Assert.Equal(
+            new[] { "method:Acme.Audio.Run()", "method:Acme.Audio.Helper()" },
+            match.GetProperty("pathSymbolIds").EnumerateArray().Select(element => element.GetString()));
+    }
+
+    [Fact]
     public void Handle_ContractAudit_WorkspaceManifestPathReturnsBoundedEvidence()
     {
         var (projectRoot, manifest) = CreateContractAuditProject();
