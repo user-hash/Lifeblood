@@ -572,25 +572,25 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(42, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
-        Assert.Equal(24, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
+        Assert.Equal(43, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(25, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
         Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var toolCapabilities = doc.RootElement.GetProperty("tools");
         Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
         Assert.Equal(4, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
         Assert.Equal(16, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
-        Assert.Equal(3, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
+        Assert.Equal(4, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("OperationFacts").GetInt32());
         Assert.Equal(18, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
-        Assert.Equal(36, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
+        Assert.Equal(37, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("RefreshWorkspace").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ManageSnapshotCatalog").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ExecuteCode").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("PreviewChanges").GetInt32());
-        Assert.Equal(39, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
+        Assert.Equal(40, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
         Assert.Equal(3, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
         var behaviorContracts = toolCapabilities.GetProperty("behaviorContracts");
-        Assert.Equal(42, behaviorContracts.GetArrayLength());
+        Assert.Equal(43, behaviorContracts.GetArrayLength());
         var analyzeContract = behaviorContracts.EnumerateArray()
             .Single(e => e.GetProperty("name").GetString() == "lifeblood_analyze");
         Assert.Equal("None", analyzeContract.GetProperty("sessionRequirement").GetString());
@@ -1477,11 +1477,11 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns42Tools()
+    public void ToolRegistry_Returns43Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(42, tools.Length);
+        Assert.Equal(43, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_snapshots");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");
@@ -2467,7 +2467,7 @@ public class ToolHandlerTests : IDisposable
 
         var tools = handler.GetTools();
 
-        Assert.Equal(42, tools.Length);
+        Assert.Equal(43, tools.Length);
         Assert.Equal(1, gate.ReadCount);
         Assert.Equal(0, gate.WriteCount);
     }

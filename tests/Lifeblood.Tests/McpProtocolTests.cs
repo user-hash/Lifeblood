@@ -207,6 +207,7 @@ public class McpProtocolTests
   ["lifeblood_batch"] = noneObserve,
   ["lifeblood_snapshots"] = snapshotCatalog,
   ["lifeblood_evidence_drift"] = workspaceRootObserve,
+  ["lifeblood_performance_evidence"] = workspaceRootObserve,
   ["lifeblood_analyze"] = refresh,
   ["lifeblood_context"] = graphObserve,
   ["lifeblood_lookup"] = graphObserve,
@@ -316,6 +317,23 @@ public class McpProtocolTests
   Assert.Contains("no global score", description, StringComparison.Ordinal);
   Assert.Contains("retained semantic base", description, StringComparison.Ordinal);
   Assert.Contains("NotRequested", description, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ToolRegistry_PerformanceEvidence_CallBehaviorRequiresSourceEvidenceOnlyForCorrelation()
+  {
+  var definition = ToolRegistry.GetDefinitions()
+    .Single(tool => tool.Name == "lifeblood_performance_evidence");
+
+  var import = definition.ResolveCallBehavior(JsonSerializer.SerializeToElement(new { action = "import", sourcePath = "capture.json" }));
+  var compare = definition.ResolveCallBehavior(JsonSerializer.SerializeToElement(new { action = "compare", sourcePath = "a.json", candidatePath = "b.json" }));
+  var correlate = definition.ResolveCallBehavior(JsonSerializer.SerializeToElement(new { action = "correlate", sourcePath = "capture.json" }));
+
+  Assert.Equal(ToolSessionRequirement.WorkspaceRoot, import.SessionRequirement);
+  Assert.Equal(ToolSessionRequirement.WorkspaceRoot, compare.SessionRequirement);
+  Assert.Equal(ToolSessionRequirement.SourceEvidence, correlate.SessionRequirement);
+  Assert.Equal(ToolEffect.Observe, correlate.Effect);
+  Assert.Equal(ToolSessionAccess.SharedRead, correlate.SessionAccess);
   }
 
   [Fact]

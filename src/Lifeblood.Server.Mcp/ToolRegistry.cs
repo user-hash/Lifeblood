@@ -46,6 +46,11 @@ public static class ToolRegistry
     ToolEffect.Observe,
     ToolSessionAccess.SharedRead);
 
+  private static readonly ToolBehavior SourceEvidenceObservation = new(
+    ToolSessionRequirement.SourceEvidence,
+    ToolEffect.Observe,
+    ToolSessionAccess.SharedRead);
+
   private static readonly ToolBehavior CompilationObservation = new(
     ToolSessionRequirement.RetainedCompilation,
     ToolEffect.Observe,
@@ -102,6 +107,17 @@ public static class ToolRegistry
     TruthTier = TruthTier.Derived,
     Confidence = ConfidenceBand.Proven,
     EvidenceSource = "Inferred",
+  };
+
+  private static readonly EnvelopeClassification RuntimeEvidenceAdvisory = new()
+  {
+    TruthTier = TruthTier.Derived,
+    Confidence = ConfidenceBand.Advisory,
+    EvidenceSource = "RuntimeExternal",
+    Limitations = new[]
+    {
+      "Runtime measurements are external evidence. Correlation joins them to the leased semantic graph but does not turn marker timing into semantic proof of causality.",
+    },
   };
 
   private static readonly EnvelopeClassification HeuristicAdvisorySearch = new()
@@ -213,7 +229,8 @@ public static class ToolRegistry
       HasAnalyzedWorkspace: true,
       HasWorkspaceRoot: true,
       HasOperationFactProvider: true,
-      HasRetainedCompilation: true));
+      HasRetainedCompilation: true,
+      HasSourceEvidenceProvider: true));
 
   /// <summary>
   /// Compatibility overload for callers that only modeled retained
@@ -225,7 +242,8 @@ public static class ToolRegistry
       HasAnalyzedWorkspace: true,
       HasWorkspaceRoot: true,
       HasOperationFactProvider: hasCompilationState,
-      HasRetainedCompilation: hasCompilationState));
+      HasRetainedCompilation: hasCompilationState,
+      HasSourceEvidenceProvider: hasCompilationState));
 
   public static McpToolInfo[] GetTools(ToolSessionState sessionState)
   {
@@ -257,6 +275,8 @@ public static class ToolRegistry
         "[Unavailable. Analyze a workspace root first] ",
       ToolSessionRequirement.OperationFacts =>
         "[Unavailable. Analyze a C# workspace with operation-fact support first] ",
+      ToolSessionRequirement.SourceEvidence =>
+        "[Unavailable. Analyze a C# workspace with source-evidence support first] ",
       ToolSessionRequirement.RetainedCompilation =>
         "[Unavailable. Load a C# project with lifeblood_analyze first] ",
       _ => "",
@@ -313,6 +333,19 @@ public static class ToolRegistry
   Behavior = WorkspaceRootObservation,
   EnvelopeClassification = DerivedProven,
   Description = "Compare a repository-owned generated evidence Markdown baseline with the exact leased Lifeblood graph and a live invariant-tree audit. The tool first recaptures canonical source/descriptor/rule identity; a drifted or unavailable publication returns verdict:'unavailable' and recommends analyze instead of claiming the baseline is current. Volume metrics use caller-visible relativeTolerancePercent (default 0.5%); increases in violations, cycles, duplicate declarations, or duplicate ids are flags, and any live invariant parse warning is a flag. Returns exact baseline/current/delta/percent rows, profile edge counts from the same projection as lifeblood_analyze, optional baseline/analyze commit provenance, and separate refreshAnalysisRecommended / refreshEvidenceRecommended signals. Read-only: it does not analyze, rewrite evidence, run a baseline compilation, or retain another graph/Roslyn base. baselinePath must remain inside the workspace and defaults to docs/code-maps/EVIDENCE.generated.md. INV-EVIDENCE-DRIFT-001.",
+  },
+  new()
+  {
+  Name = "lifeblood_performance_evidence",
+  Behavior = WorkspaceRootObservation,
+  CallBehavior = args => string.Equals(
+    ToolRequestBinder.BindPerformanceEvidence(args).EffectiveAction,
+    "correlate",
+    StringComparison.OrdinalIgnoreCase)
+      ? SourceEvidenceObservation
+      : WorkspaceRootObservation,
+  EnvelopeClassification = RuntimeEvidenceAdvisory,
+  Description = "Import, correlate, or compare request-local runtime performance evidence without creating another graph, Roslyn workspace, or capture cache. Generic JSON/CSV and structural Unity ProfilerRecorder receipts become one neutral capture model with explicit unavailable counters. action:correlate resolves caller aliases, capture symbol hints, exact symbol names, then request-local string-literal ownership; every marker returns Unique, Ambiguous, or Unmapped plus symbol/file/module, related invariant occurrences, and bounded test impact. action:compare validates scenario/product/app/build/git/dirty/profiles/features/platform/API/device/audio/frame/workload/counter identity before emitting normalized deltas; verdict is Comparable, PartiallyComparable, or RejectComparison, and rejected captures emit no numeric ranking. Runtime truth remains separate from semantic truth. Summary-first and hard-bounded. INV-PERFORMANCE-EVIDENCE-001.",
   },
   new()
   {

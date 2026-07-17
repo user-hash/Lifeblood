@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Lifeblood.Adapters.JsonGraph\Lifeblood.Adapters.JsonGraph.csproj" />
     <ProjectReference Include="..\..\src\Lifeblood.Adapters.CSharp\Lifeblood.Adapters.CSharp.csproj" />
     <ProjectReference Include="..\..\src\Lifeblood.Adapters.Git\Lifeblood.Adapters.Git.csproj" />
+    <ProjectReference Include="..\..\src\Lifeblood.Adapters.Performance\Lifeblood.Adapters.Performance.csproj" />
     <ProjectReference Include="..\..\src\Lifeblood.Server.Mcp\Lifeblood.Server.Mcp.csproj" />
     <ProjectReference Include="..\..\src\Lifeblood.CLI\Lifeblood.CLI.csproj" />
   </ItemGroup>

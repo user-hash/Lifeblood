@@ -9,6 +9,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Request-local runtime performance evidence without another fact base.**
+  `lifeblood_performance_evidence` imports bounded generic JSON/CSV and
+  structural Unity ProfilerRecorder receipts, correlates markers to the leased
+  graph plus the existing source/invariant/test authorities, and compares
+  captures only after explicit scenario/build/git/profile/platform/device/
+  audio/frame/workload/counter and stage/category/marker/thread/statistic/unit
+  identity validation. Unavailable counters remain unavailable, ambiguous
+  markers remain ambiguous, differing metric sets weaken comparability, and
+  conflicting duplicate pre-aggregates are withheld instead of selected by
+  input order. Rejected comparisons return no deltas. The stateless adapter retains no capture and every response
+  reports `additionalSemanticBaseCount:0`. (`INV-PERFORMANCE-EVIDENCE-001`;
+  closes `LB-INTAKE-20260714-034` and `LB-INTAKE-20260714-035`.)
+
 - **One source-evidence seam for comment drift and invariant coverage.**
   `lifeblood_contract_audit` manifests can add `sourceTextPolicies[]` for
   caller-owned advisory retired-term matches and `invariantEvidence[]` for

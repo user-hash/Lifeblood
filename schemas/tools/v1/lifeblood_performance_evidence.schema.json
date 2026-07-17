@@ -1,0 +1,95 @@
+{
+  "type": "object",
+  "required": [
+    "sourcePath"
+  ],
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "Runtime-evidence operation: import (default) validates and summarizes one capture; correlate joins one capture to the leased graph; compare validates two capture identities before returning normalized deltas.",
+      "enum": [
+        "import",
+        "correlate",
+        "compare"
+      ]
+    },
+    "sourcePath": {
+      "type": "string",
+      "description": "Generic JSON/CSV or structural Unity ProfilerRecorder receipt inside the analyzed workspace. Relative paths resolve from workspace root."
+    },
+    "candidatePath": {
+      "type": "string",
+      "description": "Second workspace-contained capture required by action:compare."
+    },
+    "format": {
+      "type": "string",
+      "description": "Optional source format hint. Auto-detected from content/path when omitted.",
+      "enum": [
+        "json",
+        "csv"
+      ]
+    },
+    "candidateFormat": {
+      "type": "string",
+      "description": "Optional candidate format hint for action:compare.",
+      "enum": [
+        "json",
+        "csv"
+      ]
+    },
+    "comparisonMode": {
+      "type": "string",
+      "description": "crossDevice (default) accepts reported device hardware differences while still gating scenario/build/platform/API/workload identity; strict requires identical device identity.",
+      "enum": [
+        "crossDevice",
+        "strict"
+      ]
+    },
+    "allowedDifferences": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Explicit environmental fields accepted as different (width, height, refreshRateHz, or device fields in strict mode). Core scenario/build/workload gates cannot be bypassed."
+    },
+    "markerAliases": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Caller-owned marker mappings shaped as { marker, symbolId }. Exact aliases outrank capture hints, symbol names, and string-literal ownership; conflicting aliases remain Ambiguous."
+    },
+    "maxMeasurements": {
+      "type": "integer",
+      "description": "Maximum imported measurement rows per capture. Default 10000; hard cap 100000. Complete observed count and truncation remain visible."
+    },
+    "maxMarkers": {
+      "type": "integer",
+      "description": "Maximum correlation rows. Default 25 in summary mode or 200 in detail; hard cap 1000."
+    },
+    "maxTestsPerSymbol": {
+      "type": "integer",
+      "description": "Maximum affected test classes projected per correlated symbol. Default 3 in summary mode or 10 in detail; hard cap 50."
+    },
+    "maxDeltas": {
+      "type": "integer",
+      "description": "Maximum matched numeric delta rows. Default 50 in summary mode or 500 in detail; hard cap 5000."
+    },
+    "summarize": {
+      "type": "boolean",
+      "description": "Summary-first default true. Keeps identity/census complete while bounding marker, test, measurement-preview, and delta arrays."
+    },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
+    }
+  }
+}
