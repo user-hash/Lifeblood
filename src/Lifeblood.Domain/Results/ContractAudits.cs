@@ -66,6 +66,7 @@ public sealed class ExternalApiCostContract
 {
     public required string Id { get; init; }
     public string[] TargetSymbolIds { get; init; } = Array.Empty<string>();
+    public bool MatchAnyTarget { get; init; }
     public string[] OperationKinds { get; init; } = new[]
     {
         OperationFactKind.Call,

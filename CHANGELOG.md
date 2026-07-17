@@ -16,7 +16,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   semantic `Calls` edges, filters by the requested define profile, and returns
   typed root/distance/path evidence plus a truncation receipt. The expansion is
   a request-local query plan over the one immutable graph; it adds no edge kind,
-  graph, call authority, cache, or retained semantic base.
+  graph, call authority, cache, or retained semantic base. External-cost policy
+  may explicitly set `matchAnyTarget:true` to select targetless operations such
+  as array/delegate creation, interpolation, throw, await, or lock; empty target
+  arrays never become an implicit wildcard.
   (`INV-CONTRACT-AUDIT-001`.)
 
 - **Temporal contract evidence without temporal product policy.** The existing

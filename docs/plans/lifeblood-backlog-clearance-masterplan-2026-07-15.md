@@ -540,6 +540,18 @@ explicit native-clang environment skips (1,678 total). Intake IDs `014` and
 policy, installed DAWG dogfood, and their final tracking receipts reuse this
 route foundation.
 
+The realtime rule now also has its targetless operation seam. External-cost
+policy must choose exactly one of explicit `targetSymbolIds[]` or
+`matchAnyTarget:true`; the latter selects manifest-declared operation kinds such
+as array/object/delegate creation, interpolation, throw, await, and lock. Named
+LINQ/logging/reflection/Unity/consumer APIs stay explicit target annotations.
+An empty target list never silently broadens the scan. Route-filtered engine and
+real Roslyn/MCP fixtures prove targetless array/throw/interpolation findings,
+direct/transitive provenance, outside-route exclusion, and zero additional
+semantic bases. `021` still requires the installed DAWG hot-route manifest and
+receipt before archive; `014` still requires its member-mutability/shared-state
+classification owner.
+
 Each group gets synthetic exact/advisory/negative fixtures and one read-only
 DAWG receipt before its intake IDs move to the archive.
 

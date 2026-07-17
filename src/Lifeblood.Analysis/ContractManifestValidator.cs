@@ -250,7 +250,13 @@ public static class ContractManifestValidator
         HashSet<string> routeIds)
     {
         ValidateContractIdentity(contract.Id, ids);
-        RequireValues(contract.TargetSymbolIds, $"External API cost '{contract.Id}' targetSymbolIds");
+        RequireNonNull(contract.TargetSymbolIds, $"External API cost '{contract.Id}' targetSymbolIds");
+        RequireNoBlankValues(contract.TargetSymbolIds, $"External API cost '{contract.Id}' targetSymbolIds");
+        if (contract.MatchAnyTarget == (contract.TargetSymbolIds.Length > 0))
+        {
+            throw new ArgumentException(
+                $"External API cost '{contract.Id}' must declare exactly one of matchAnyTarget:true or targetSymbolIds.");
+        }
         RequireValues(contract.OperationKinds, $"External API cost '{contract.Id}' operationKinds");
         RequireValues(contract.Categories, $"External API cost '{contract.Id}' categories");
         RequireNonNull(contract.ControlContextKinds, $"External API cost '{contract.Id}' controlContextKinds");

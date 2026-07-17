@@ -119,6 +119,35 @@ public sealed class ContractCallRoutePlannerTests
         };
         var bound = Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(dropsRoot));
         Assert.Contains("must retain all 2 declared roots", bound.Message);
+
+        ExternalApiCostContract Cost(bool matchAnyTarget, params string[] targetSymbolIds)
+            => new()
+            {
+                Id = "cost",
+                TargetSymbolIds = targetSymbolIds,
+                MatchAnyTarget = matchAnyTarget,
+                ReportEveryOccurrence = true,
+                Categories = new[] { "Allocation" },
+                AnnotationSource = "policy",
+            };
+        var bothSelectors = new ContractManifest
+        {
+            Id = "policy",
+            Version = "1",
+            ExternalApiCosts = new[] { Cost(true, "method:Acme.Vendor.Allocate()") },
+        };
+        Assert.Contains(
+            "exactly one",
+            Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(bothSelectors)).Message);
+        var noSelector = new ContractManifest
+        {
+            Id = "policy",
+            Version = "1",
+            ExternalApiCosts = new[] { Cost(false) },
+        };
+        Assert.Contains(
+            "exactly one",
+            Assert.Throws<ArgumentException>(() => ContractManifestValidator.Validate(noSelector)).Message);
     }
 
     private static ContractCallRoute Route(int maxDepth, int maxMembers)

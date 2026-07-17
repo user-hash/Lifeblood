@@ -1696,7 +1696,8 @@ public class ToolHandlerTests : IDisposable
         File.WriteAllText(
             Path.Combine(projectRoot, "Audio.cs"),
             "namespace Acme; public static class Audio { public static void Run() => Helper(); " +
-            "private static void Helper() => Vendor.Allocate(); } " +
+            "private static void Helper() { var values = new int[4]; Vendor.Allocate(); " +
+            "System.Console.WriteLine($\"{values.Length}\"); } } " +
             "public static class Vendor { public static void Allocate() { } }");
         var manifest = JsonSerializer.SerializeToElement(new
         {
@@ -1749,6 +1750,50 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal(
             new[] { "method:Acme.Audio.Run()", "method:Acme.Audio.Helper()" },
             match.GetProperty("pathSymbolIds").EnumerateArray().Select(element => element.GetString()));
+
+        var targetlessManifest = JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion = "1",
+            id = "acme-targetless-realtime-policy",
+            version = "1.0.0",
+            callRoutes = new[]
+            {
+                new
+                {
+                    id = "audio-production",
+                    rootSymbolIds = new[] { "method:Acme.Audio.Run()" },
+                    maxDepth = 4,
+                    maxMembers = 16,
+                },
+            },
+            externalApiCosts = new[]
+            {
+                new
+                {
+                    id = "targetless-realtime-operations",
+                    matchAnyTarget = true,
+                    operationKinds = new[] { "ArrayCreation", "InterpolatedString" },
+                    callRouteIds = new[] { "audio-production" },
+                    categories = new[] { "RealtimeForbidden" },
+                    annotationSource = "Acme realtime policy",
+                },
+            },
+        });
+        var targetlessResult = handler.Handle(
+            "lifeblood_contract_audit",
+            MakeArgs(new { manifest = targetlessManifest, summarize = false }));
+
+        Assert.Null(targetlessResult.IsError);
+        using var targetlessPayload = JsonDocument.Parse(targetlessResult.Content[0].Text);
+        var targetlessRoot = targetlessPayload.RootElement;
+        Assert.Equal(2, targetlessRoot.GetProperty("findingCount").GetInt32());
+        Assert.Equal(0, targetlessRoot.GetProperty("scanReceipt").GetProperty("additionalSemanticBaseCount").GetInt32());
+        Assert.All(targetlessRoot.GetProperty("findings").EnumerateArray(), finding =>
+        {
+            var routeMatch = Assert.Single(finding.GetProperty("callRouteMatches").EnumerateArray());
+            Assert.Equal("Transitive", routeMatch.GetProperty("placement").GetString());
+            Assert.Equal(1, routeMatch.GetProperty("distance").GetInt32());
+        });
     }
 
     [Fact]
