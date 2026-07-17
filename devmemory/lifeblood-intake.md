@@ -54,35 +54,6 @@ Fix shape:
 - Keep it advisory. The tool should not claim a comment is wrong without either
   a caller-supplied retired-term list or a resolved invariant/rule conflict.
 
-## LB-INTAKE-20260629-005 - Dogfood feedback capture command
-
-Type: UX
-Priority: Low
-Source: DAWG + Lifeblood maintenance session, 2026-06-29; Lifeblood local `v0.7.12-0-gdbfd871`
-Workspace: DAWG and Lifeblood self
-Rating for DAWG work: 6/10 value if shipped
-
-What:
-- Valuable tool feedback currently lands by manually editing
-  `devmemory/lifeblood-intake.md`. That keeps the repo simple, but it is easy to
-  leave behind stale shipped comments, mix DAWG debt with Lifeblood product
-  feedback, or forget a rating/source/version while moving fast.
-
-Why it matters:
-- Lifeblood is being improved through heavy dogfood loops. A small capture lane
-  would preserve provenance without turning every observation into an immediate
-  engineering task.
-- This would also keep the strict tracking ledger clean while making intake
-  maintenance less manual.
-
-Fix shape:
-- Add a CLI or script command that appends a valid intake entry from structured
-  prompts or arguments: type, priority, source, workspace, rating, what, why,
-  fix shape.
-- The command should reject duplicate IDs, keep entries ASCII/Markdown-clean,
-  and optionally run `IntakeLedgerTests` after writing.
-
-
 ## LB-INTAKE-20260629-013 - Generated DSP/math probe recipe
 
 Type: Feature request

@@ -766,6 +766,7 @@ acceptance receipt passes.
 | `LB-INTAKE-20260629-023` | caller-authored determinism policy composes exact cost/state selectors with required seed/order facts and consumer-selected route equivalence | synthetic required/parity/owner MCP fixture; complete DAWG route-fact scan; no inferred runtime replay claim | `dd55932` |
 | `LB-INTAKE-20260629-025` | sibling parity is a count-framed multiset of consumer-selected fact dimensions across declared routes | exact/missing/asymmetric/truncated fixtures; live DAWG lane/composite parity evidence | `dd55932` |
 | `LB-INTAKE-20260629-026` | handoff ownership uses exact-target `AllowedRoutesOnly` plus required route handoffs without guessing framework lanes | outside-owner/route-root evidence fixtures; live DAWG owner-only audit returned bounded bypass findings | `dd55932` |
+| `LB-INTAKE-20260629-005` | explicitly declined as a product mutation surface; the repository-owned template and ledger tests remain the sole feedback-capture workflow | focused intake/tracking ledger suite; lifecycle exclusivity after archive move | `docs(governance): keep feedback capture repo owned` atom |
 
 ### 2026-07-16 reliability continuation receipts
 

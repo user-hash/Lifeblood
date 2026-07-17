@@ -4215,3 +4215,33 @@ Verification:
 Impact:
 - Handoff bypasses become exact consumer-owned semantic findings without
   hardcoding execution frameworks or retaining another workspace model.
+
+## LB-INTAKE-20260629-005 - Dogfood feedback capture command
+
+Status: Declined as a product feature - 2026-07-17 backlog Wave 5
+Type: Governance boundary
+Source: DAWG + Lifeblood maintenance dogfood, 2026-06-29 through 2026-07-17
+Workspace: DAWG and Lifeblood self
+Verification: `IntakeLedgerTests`, `TrackingLedgerTests`, and the repository
+intake template
+
+Resolution:
+- Lifeblood does not ship a CLI, script, MCP tool, or library API that mutates
+  `devmemory/lifeblood-intake.md`. DevMemory is repository-private governance
+  state, not a product data format or right-side adapter boundary.
+- The existing intake template remains the one authoring contract. Its ledger
+  tests reject malformed headings, missing provenance/authoring sections,
+  duplicate IDs, and IDs duplicated across active, living, or closed history.
+- Capture remains a deliberate repository edit followed by the normal ledger
+  test. That keeps review and ownership visible without granting an installed
+  Lifeblood binary repo-editing authority.
+
+Verification:
+- The focused ledger suite proves the active intake still declares its routing
+  contract and every remaining entry satisfies the required shape.
+- Moving this decision to closed history proves lifecycle exclusivity: the ID
+  no longer appears in active intake or the living tracker.
+
+Impact:
+- Dogfood feedback keeps its provenance and validation while Lifeblood avoids a
+  repo-specific mutation surface, duplicate schema authority, and unused LOC.
