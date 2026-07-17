@@ -48,6 +48,7 @@ public sealed class PerformanceDeviceIdentity
 public sealed class PerformanceWorkloadIdentity
 {
     public string Fingerprint { get; init; } = "";
+    public string FingerprintSource { get; init; } = "";
     public string CaptureMode { get; init; } = "";
     public int? AudioSampleRate { get; init; }
     public int? AudioBufferFrames { get; init; }

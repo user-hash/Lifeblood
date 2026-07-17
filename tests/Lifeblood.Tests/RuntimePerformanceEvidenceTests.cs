@@ -90,12 +90,14 @@ public sealed class RuntimePerformanceEvidenceTests
           "audioSampleRate": 48000,
           "audioDspBufferFrames": 256,
           "targetFrameRate": 60,
-          "midiEventHash": "work-1",
-          "parallelTabs": 5,
+          "workloadProfile": "dense",
+          "selectedPresetIndices": [1, 4, 7],
+          "parallelTabs": true,
           "melodicNoteCount": 24,
-          "captureMode": "ProfilerRecorder",
+          "patternCommands": 4096,
           "stages": [{
             "name": "play",
+            "captureMode": "profiled",
             "averageFrameMs": 10.0,
             "p95FrameMs": 14.0,
             "maximumFrameMs": 20.0,
@@ -121,9 +123,12 @@ public sealed class RuntimePerformanceEvidenceTests
         Assert.Equal("dawg.mobile-performance-scenario@5", capture.SourceSchema);
         Assert.Equal("Handheld", capture.Device.DeviceClass);
         Assert.Equal(256, capture.Workload.AudioBufferFrames);
-        Assert.Equal("work-1", capture.Workload.Fingerprint);
-        Assert.Equal(5, capture.Workload.Counters["parallelTabs"]);
+        Assert.StartsWith("unitywork_", capture.Workload.Fingerprint);
+        Assert.Equal("DerivedUnityWorkloadIdentity", capture.Workload.FingerprintSource);
+        Assert.Equal("profiled", capture.Workload.CaptureMode);
+        Assert.DoesNotContain("parallelTabs", capture.Workload.Counters.Keys);
         Assert.Equal(24, capture.Workload.Counters["melodicNoteCount"]);
+        Assert.DoesNotContain("patternCommands", capture.Workload.Counters.Keys);
         Assert.Contains(capture.Measurements, row => row.Marker == "Frame" && row.Statistic == PerformanceStatistic.P95);
         Assert.Contains(capture.Measurements, row => row.Marker == "Audio.Callback" && row.Statistic == PerformanceStatistic.Total && row.Value == 1d);
         Assert.Equal(4, capture.Measurements.Count(row => row.Marker == "Audio.Callback"));

@@ -20,8 +20,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   conflicting duplicate pre-aggregates are withheld instead of selected by
   input order. Unity time counters normalize to milliseconds while count/byte/
   other counters retain their declared unit, so structural zero placeholder
-  fields never become fabricated measurements. Rejected comparisons return no
-  deltas. The stateless adapter retains no capture and every response
+  fields never become fabricated measurements. When a Unity receipt omits a
+  workload hash, the adapter derives a labeled fingerprint from explicit setup
+  fields and stage modes; observed output counters such as processed commands
+  never become identity gates. Rejected comparisons return no deltas. The
+  stateless adapter retains no capture and every response
   reports `additionalSemanticBaseCount:0`. (`INV-PERFORMANCE-EVIDENCE-001`;
   closes `LB-INTAKE-20260714-034` and `LB-INTAKE-20260714-035`.)
 
