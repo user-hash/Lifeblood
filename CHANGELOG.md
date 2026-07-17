@@ -18,7 +18,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   identity validation. Unavailable counters remain unavailable, ambiguous
   markers remain ambiguous, differing metric sets weaken comparability, and
   conflicting duplicate pre-aggregates are withheld instead of selected by
-  input order. Rejected comparisons return no deltas. The stateless adapter retains no capture and every response
+  input order. Unity time counters normalize to milliseconds while count/byte/
+  other counters retain their declared unit, so structural zero placeholder
+  fields never become fabricated measurements. Rejected comparisons return no
+  deltas. The stateless adapter retains no capture and every response
   reports `additionalSemanticBaseCount:0`. (`INV-PERFORMANCE-EVIDENCE-001`;
   closes `LB-INTAKE-20260714-034` and `LB-INTAKE-20260714-035`.)
 

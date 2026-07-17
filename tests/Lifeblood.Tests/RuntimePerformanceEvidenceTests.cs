@@ -84,12 +84,15 @@ public sealed class RuntimePerformanceEvidenceTests
           "appVersion": "1.2.3",
           "buildGuid": "build-1",
           "deviceModel": "SM-S911B",
+          "deviceType": "Handheld",
           "platform": "Android",
           "graphicsApi": "Vulkan",
           "audioSampleRate": 48000,
-          "dspBufferLength": 256,
+          "audioDspBufferFrames": 256,
           "targetFrameRate": 60,
-          "workloadHash": "work-1",
+          "midiEventHash": "work-1",
+          "parallelTabs": 5,
+          "melodicNoteCount": 24,
           "captureMode": "ProfilerRecorder",
           "stages": [{
             "name": "play",
@@ -97,9 +100,14 @@ public sealed class RuntimePerformanceEvidenceTests
             "p95FrameMs": 14.0,
             "maximumFrameMs": 20.0,
             "profilerMetrics": [
-              { "category": "CPU", "name": "Audio.Callback", "unit": "ns", "valid": true,
+              { "category": "CPU", "name": "Audio.Callback", "unit": "TimeNanoseconds", "valid": true,
                 "sampleCount": 4, "markerInvocationCount": 8, "averageMilliseconds": 0.25,
-                "p95Milliseconds": 0.4, "maximumMilliseconds": 0.5, "totalMilliseconds": 1.0 },
+                "p95Milliseconds": 0.4, "maximumMilliseconds": 0.5, "totalMilliseconds": 1.0,
+                "averageValue": 250000, "p95Value": 400000, "maximumValue": 500000, "valueSum": 1000000 },
+              { "category": "Render", "name": "SetPass Calls Count", "unit": "Count", "valid": true,
+                "sampleCount": 4, "markerInvocationCount": 4,
+                "averageMilliseconds": 0.0, "p95Milliseconds": 0.0, "maximumMilliseconds": 0.0, "totalMilliseconds": 0.0,
+                "averageValue": 8.0, "p95Value": 9.0, "maximumValue": 10.0, "valueSum": 32.0 },
               { "category": "GPU", "name": "Gfx.Present", "unit": "ns", "valid": false,
                 "error": "counter unavailable" }
             ]
@@ -111,8 +119,19 @@ public sealed class RuntimePerformanceEvidenceTests
 
         Assert.Equal("UnityProfilerRecorderJson", capture.SourceFormat);
         Assert.Equal("dawg.mobile-performance-scenario@5", capture.SourceSchema);
+        Assert.Equal("Handheld", capture.Device.DeviceClass);
+        Assert.Equal(256, capture.Workload.AudioBufferFrames);
+        Assert.Equal("work-1", capture.Workload.Fingerprint);
+        Assert.Equal(5, capture.Workload.Counters["parallelTabs"]);
+        Assert.Equal(24, capture.Workload.Counters["melodicNoteCount"]);
         Assert.Contains(capture.Measurements, row => row.Marker == "Frame" && row.Statistic == PerformanceStatistic.P95);
         Assert.Contains(capture.Measurements, row => row.Marker == "Audio.Callback" && row.Statistic == PerformanceStatistic.Total && row.Value == 1d);
+        Assert.Equal(4, capture.Measurements.Count(row => row.Marker == "Audio.Callback"));
+        Assert.All(capture.Measurements.Where(row => row.Marker == "Audio.Callback"), row => Assert.Equal("milliseconds", row.Unit));
+        Assert.Equal(4, capture.Measurements.Count(row => row.Marker == "SetPass Calls Count"));
+        Assert.All(capture.Measurements.Where(row => row.Marker == "SetPass Calls Count"), row => Assert.Equal("Count", row.Unit));
+        Assert.DoesNotContain(capture.Measurements, row =>
+            row.Marker == "SetPass Calls Count" && row.Unit == "milliseconds");
         var unavailable = Assert.Single(capture.Measurements, row => row.Marker == "Gfx.Present");
         Assert.False(unavailable.Available);
         Assert.Null(unavailable.Value);
