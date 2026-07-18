@@ -70,7 +70,7 @@ static-tables defaults. Every anchor is ratcheted against live source by
 Machine-checked tracking ledger summary (`TrackingLedgerTests` parses this file
 as the SSoT; do not hand-edit these counts without making the entry bodies agree):
 
-<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 8 --><!-- trackingStatusReceiptCount: 0 --><!-- trackingStatusOpenCount: 0 -->
+<!-- trackingStatusShippedCount: 0 --><!-- trackingStatusPartiallyShippedCount: 8 --><!-- trackingStatusReceiptCount: 1 --><!-- trackingStatusOpenCount: 0 -->
 
 New intake — un-started findings/feature requests awaiting prioritization (the
 ledger itself holds only Shipped + in-flight per `TrackingLedger_HasNoPlainOpenOrCandidateEntries`):
@@ -91,6 +91,75 @@ Active non-shipped implementation ledger:
 Historical close receipts (L-LIM-001..006 multi-define closure, Native-Clang
 opt-in lane, gravity-well measurements, hash-truth audit, prior primary-source
 reports) are preserved verbatim in `lifeblood-tracking-archive.md`.
+
+## 2026-07-18 - Lifeblood v0.7.13-alpha.0.102 - Private stdio DAWG full analysis exceeded bounded clients
+
+Status: Receipt
+Type: Bug
+Source: DAWG M4 verification session, 2026-07-18
+Workspace: DAWG
+Verification: installed
+`0.7.13-alpha.0.102+619fb044bbf30afa7183b997ea1fac6279f30a2d`;
+two direct JSON-RPC stdio attempts; follow-up `lifeblood_capabilities` and
+`lifeblood_snapshots action:"list"` receipts
+
+Summary:
+- A private stdio `lifeblood_analyze` requested a full DAWG Editor+Player
+  publication with `readOnly:false` and `changeReceiptMode:"summary"`. The
+  caller received no terminal tool response before its 240-second outer
+  timeout terminated the process.
+- A fresh private stdio process repeated the full Editor+Player request with
+  `readOnly:true`. It likewise returned no terminal response before a
+  600-second outer timeout terminated the process. Prior installed-build DAWG
+  receipts in this ledger/archive completed comparable full analyses in about
+  53 to 117 seconds, so the observed duration is outside the established
+  dogfood range.
+- A separate fresh private stdio process correctly rejected an incremental
+  retry with `mode:"rejected"`, `fallbackReason:"noPriorAnalysis"`, generation
+  0, and zero accepted changes. This rejection is expected and is recorded to
+  prevent it from being misclassified as a second bug; private process state is
+  not shared across fresh stdio sessions.
+- A final fresh status probe reported `sharedService.active:false`,
+  `sharedService.mode:"stdio"`, no graph, generation 0, and an empty snapshot
+  catalog. This proves the probes in this receipt were private stdio calls, not
+  a recurrence report for shared-daemon routing.
+
+Impact:
+- Full analysis produced no usable publication, so every downstream semantic
+  verification request (search, dependants, invariant audit, cycles, compile
+  check, and evidence drift) was unavailable for the review.
+- An agent has no terminal receipt explaining whether the long request is
+  compiling normally, stalled in one phase, blocked on external resources, or
+  awaiting cancellation. Repeated blind retries can multiply expensive Roslyn
+  work and turn a bounded verification task into a resource-contention loop.
+
+Fix shape:
+- Add an installed-tool black-box regression for a long-running private stdio
+  analyze that captures phase progress, accepts MCP request cancellation, and
+  proves the server exits without publishing a partial candidate when the sole
+  client disconnects.
+- Preserve the existing `lifeblood.analyze.phase` telemetry authority, but
+  project a bounded caller-visible progress/cancellation receipt containing the
+  analysis request id, latest completed phase, elapsed time, requested profiles,
+  effective read-only mode, and publication state. Do not create a second
+  analysis-state authority.
+- Extend the DAWG benchmark lane with a private-stdio Editor+Player ceiling and
+  compare it with shared mode under the same source fingerprint. A regression
+  should retain per-phase timing and memory evidence instead of only failing an
+  outer wall-clock gate.
+
+Verification limitations:
+- Both long attempts were terminated by caller-owned outer timeouts, so there
+  is no server terminal payload or retained phase trace proving the internal
+  stall location.
+- DAWG had an open Unity Editor and nine dirty entries (eight localized font
+  assets plus one asmdef) during the final status probe. These facts may affect
+  descriptor work or host contention and must be held constant in the product
+  repro before assigning a root cause.
+- `LB-INTAKE-20260716-038` already closed shared-daemon pipe loss, waiter
+  isolation, and duplicate-publication ambiguity. This receipt deliberately
+  does not duplicate or reopen that item; it concerns private stdio analysis
+  liveness and missing bounded caller evidence.
 
 ## 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 
