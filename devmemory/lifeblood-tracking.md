@@ -161,6 +161,26 @@ Verification limitations:
   does not duplicate or reopen that item; it concerns private stdio analysis
   liveness and missing bounded caller evidence.
 
+Shared-mode control receipt:
+- The same installed `0.7.13-alpha.0.102` build subsequently completed a
+  retained shared-mode DAWG Editor+Player incremental analysis for one
+  authoritative content-changed source in 8.635 seconds. It published
+  generation 5 / `snap_73b75601ff1d46929ceca8c7e6aee0f1`, reported
+  `filesChangedSinceAnalyze:0`, preserved 88,704 symbols / 343,507 edges / 102
+  modules / 5,651 types / 4,328 files, and returned zero configured violations.
+  A snapshot-pinned `lifeblood_compile_check` of that source then resolved its
+  unique module and returned zero diagnostics.
+- This control narrows the active bug to private-stdio full-analysis liveness
+  or its caller/host boundary; it is not evidence of general analyzer failure,
+  graph corruption, or shared-daemon publication loss.
+- The same audit found no new instance of already-closed shared pipe loss,
+  duplicate publication, package/profile summary bloat, cold-fallback wording,
+  or parallel compile-check transport death. Retained `find_references`
+  scalability and the ledger type-taxonomy defect remain separately recorded
+  as `LB-INTAKE-20260718-046` and `LB-INTAKE-20260718-047`. Unity Test
+  Observatory terminal-publication latency is owned outside Lifeblood and is
+  intentionally excluded from this ledger.
+
 ## 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 
 Status: Partially shipped
