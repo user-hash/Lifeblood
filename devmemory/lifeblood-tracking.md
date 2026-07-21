@@ -181,6 +181,26 @@ Shared-mode control receipt:
   Observatory terminal-publication latency is owned outside Lifeblood and is
   intentionally excluded from this ledger.
 
+2026-07-21 DAWG DSP-closure follow-up:
+- The installed `0.7.13-alpha.0.102` shared host remained healthy through a
+  later Editor+Player incremental no-op. It reused generation 15 /
+  `snap_a0aca5cf542e41db935e60983e14082f`, reported zero accepted changes and
+  `filesChangedSinceAnalyze:0`, and preserved 89,660 symbols / 348,003 edges /
+  102 modules / 5,743 types / 4,358 files with zero configured violations.
+- A pinned nine-file `lifeblood_compile_check` covering the completed DAWG
+  waveform-scope Burst atom resolved every file to one compilation and returned
+  9 successes, zero failures, and zero diagnostics without refreshing or
+  retaining another semantic base.
+- This is additional control evidence only. No private-stdio full analysis was
+  rerun during the July 21 closure, so it neither closes nor independently
+  reproduces the bounded-client failure above. The remaining product question
+  stays narrowly scoped to private-stdio full-analysis liveness, cancellation,
+  and terminal progress evidence.
+- No new stale-publication read, snapshot-precondition loss, Unity-wrapper
+  argument omission, source-identity split, package-summary expansion, or
+  shared-daemon transport loss was observed. Those already-closed incidents
+  remain archived and are not duplicated as active defects.
+
 ## 2026-05-28 - Lifeblood .NET feature adoption revised stage order
 
 Status: Partially shipped
