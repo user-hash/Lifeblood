@@ -526,7 +526,7 @@ public class ToolHandlerTests : IDisposable
 
         var duplicate = handler.Handle(
             "lifeblood_compile_check",
-            MakeArgs(new { filePaths = new[] { "Clean.cs", ".\\Clean.cs" } }));
+            MakeArgs(new { filePaths = new[] { "Clean.cs", Path.Combine(".", "Clean.cs") } }));
         var mixed = handler.Handle(
             "lifeblood_compile_check",
             MakeArgs(new { code = "class C {}", filePaths = new[] { "Clean.cs" } }));
