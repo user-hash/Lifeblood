@@ -4,8 +4,8 @@
 
 Lifeblood is a Roslyn powered semantic analyzer and MCP server for C# and Unity.
 It loads the real project, assembly, package, and define profile configuration,
-builds a persistent graph of symbols and relationships, and gives agents
-compiler verified answers instead of text search guesses.
+builds an immutable graph of symbols and relationships, and gives agents
+compiler backed answers instead of text search guesses.
 
 Agents can ask what calls a method, what depends on a type, what may break after
 a change, whether an edited file still compiles, which tests are affected, or
@@ -24,7 +24,7 @@ GameObjects, and assets.
 | **Unity awareness** | Editor and Player profiles, asmdef boundaries, package sources, MonoBehaviour messages, Unity attributes, and resolved UnityEvent targets. |
 | **Shared agent context** | One workspace keyed daemon, one latest graph, immutable snapshots, and safe concurrent requests. |
 | **Fast updates** | Full analysis builds the baseline. Incremental analysis refreshes affected modules after code or project changes. |
-| **Evidence you can judge** | Responses report confidence, source, staleness, limitations, snapshot identity, and release provenance. |
+| **Evidence you can judge** | Successful tool responses report confidence, source, staleness, limitations, snapshot identity, and release provenance. |
 
 Roslyn is the primary engine. A beta libclang adapter covers C, while TypeScript
 and Python ship as standalone JSON emitting adapters. Any language can integrate
@@ -121,7 +121,7 @@ Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface*
 | **Semantic graph** | Lookup, Dependencies, Dependants, Blast Radius, File Impact, Asmdef Check, Search, Dead Code, Authority Report, Cycles, Test Impact |
 | **Compiler-backed** | Execute, Diagnose, Compile-check, Contract Audit, Enum Coverage, Static Tables, Assignment Coverage, Find References, Find Definition, Find Implementations, Rename, Format |
 
-Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
+Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every successful read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
 [Full tool reference](docs/TOOLS.md) · [What's new](CHANGELOG.md)
 
