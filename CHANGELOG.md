@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.7.13] - 2026-08-02
 
+This release makes Lifeblood a workspace shared Roslyn analyzer and query system
+for C# and Unity agents. Multiple agents can use one current compiler backed
+semantic base, while exact snapshots, incremental refresh, contract audits,
+runtime evidence, and source provenance keep their answers synchronized and
+verifiable. The sections below list every public change since v0.7.12.
+
 ### Added
 
 - **Shared MCP workspace base for multi-agent work.** `lifeblood-mcp --shared`
