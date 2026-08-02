@@ -1,10 +1,35 @@
 # Lifeblood
 
-Compiler tools and semantic codebase knowledge for AI agents over MCP. Developed for C#, Roslyn and Unity, but with support for other languages since it uses hexagonal architecture.
+**Make C# and Unity codebases queryable by AI agents.**
 
-Lifeblood loads a C# / Unity workspace through Roslyn or a C codebase through the beta libclang adapter, builds a persistent semantic graph with stable symbol IDs, and exposes it to AI agents over MCP, so an agent can ask *"what calls this?"*, *"what breaks if I rename it?"*, *"does this edited file still compile?"*, *"which architecture invariant declares this rule?"* and get verified answers instead of grep guesses. Every read-side response carries a truth envelope (evidence tier, confidence band, staleness) so the agent knows when an answer is Proven, Advisory, or Speculative.
+Lifeblood is a Roslyn powered semantic analyzer and MCP server for C# and Unity.
+It loads the real project, assembly, package, and define profile configuration,
+builds a persistent graph of symbols and relationships, and gives agents
+compiler verified answers instead of text search guesses.
 
-Roslyn is the C# engine. libclang is the C engine (beta). TypeScript and Python ship as standalone JSON-emitting adapters. Lifeblood is the layer around them: persistent project graph, MCP tool surface, Unity-aware reachability, incremental re-analysis, CI-wireable export and verify commands. Live tool / port / invariant / self-analyze counts: [`docs/STATUS.md`](docs/STATUS.md).
+Agents can ask what calls a method, what depends on a type, what may break after
+a change, whether an edited file still compiles, which tests are affected, or
+which architecture invariant owns a rule. Shared mode gives every agent in the
+same workspace access to one current semantic and Roslyn base.
+
+Lifeblood analyzes Unity code. It does not control the Unity Editor. Use it
+alongside Unity MCP when an agent also needs to inspect or modify scenes,
+GameObjects, and assets.
+
+## Why Lifeblood
+
+| | What it provides |
+|---|---|
+| **Compiler truth** | Roslyn resolves actual symbols, calls, references, types, diagnostics, and project boundaries. |
+| **Unity awareness** | Editor and Player profiles, asmdef boundaries, package sources, MonoBehaviour messages, Unity attributes, and resolved UnityEvent targets. |
+| **Shared agent context** | One workspace keyed daemon, one latest graph, immutable snapshots, and safe concurrent requests. |
+| **Fast updates** | Full analysis builds the baseline. Incremental analysis refreshes affected modules after code or project changes. |
+| **Evidence you can judge** | Responses report confidence, source, staleness, limitations, snapshot identity, and release provenance. |
+
+Roslyn is the primary engine. A beta libclang adapter covers C, while TypeScript
+and Python ship as standalone JSON emitting adapters. Any language can integrate
+by producing the universal graph format. Live tool, port, invariant, test, and
+self analysis counts are maintained in [`docs/STATUS.md`](docs/STATUS.md).
 
 ---
 
@@ -39,7 +64,8 @@ Shared mode gives same-workspace agents one latest semantic/Roslyn base. See the
 ### Use
 
 ```
-lifeblood_analyze projectPath="/path/to/your/project"   → load semantic graph
+lifeblood_analyze projectPath="/path/to/your/project" defineProfiles=["Editor","Player"] → build the baseline
+lifeblood_analyze projectPath="/path/to/your/project" incremental=true allowFullFallback=true defineProfiles=["Editor","Player"] → refresh after changes
 lifeblood_analyze projectPath="/path" excludePaths=["Packages/*","*/Samples*/*"] → drop vendored/sample source before compilation
 lifeblood_blast_radius symbolId="type:MyApp.AuthService" → what breaks if I change this?
 lifeblood_file_impact filePath="src/AuthService.cs"      → what files are affected?
@@ -130,7 +156,7 @@ own competing dirty-state models.
 
 ---
 
-## Four Languages, One Graph
+## Roslyn First, Extensible by Design
 
 | Adapter | How it works | Confidence |
 |---------|-------------|------------|
@@ -146,7 +172,29 @@ own competing dirty-state models.
 
 ## Unity
 
-Lifeblood runs as a sidecar alongside [Unity MCP](https://github.com/CoplayDev/MCPForUnity). The Unity bridge exposes a curated in-Editor subset of the MCP tool surface via `[McpForUnityTool]` discovery; the standalone `lifeblood-mcp` server exposes the full surface. The sidecar runs as a separate process, with no assembly conflicts and no domain-reload interference. `dead_code` recognizes Unity reflection dispatch (MonoBehaviour magic methods, full Editor attribute roster, type-via-child propagation) and resolved UnityEvent persistent calls from prefab/scene/asset YAML. `compile_check filePath=...` resolves the file's owning compilation and swaps the existing tree, so module-owned files compile-check against their real reference set. `execute` auto-injects DLLs from `Library/ScriptAssemblies/`.
+Lifeblood is a Roslyn analyzer for Unity projects. It reads Unity generated
+project descriptors and asmdefs, analyzes Editor and Player profiles, resolves
+cross assembly calls, and keeps package sources visible in the analysis receipt.
+
+- `dead_code` understands MonoBehaviour messages, Unity reflection attributes,
+  type reachability, and resolved UnityEvent calls from scene, prefab, and asset
+  YAML.
+
+- `compile_check filePath=...` checks a Unity source file inside its real owning
+  assembly with the correct references and define profile.
+
+- `execute` can load Unity assemblies from `Library/ScriptAssemblies/` for
+  compiler backed inspection against project types.
+
+- The Unity bridge exposes a curated set of Lifeblood tools inside the Editor,
+  while the standalone `lifeblood-mcp` server exposes the complete tool surface.
+
+Lifeblood runs as a sidecar alongside
+[Unity MCP](https://github.com/CoplayDev/MCPForUnity), so no Roslyn assemblies
+load into Unity and domain reloads do not destroy the shared semantic base.
+Unity MCP controls scenes, GameObjects, assets, and the Editor. Lifeblood
+explains the code and its relationships. Together they give agents both control
+and compiler level understanding.
 
 [Unity setup guide](docs/UNITY.md)
 
