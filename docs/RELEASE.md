@@ -4,10 +4,12 @@ Eternal pre-tag gate. Every numbered step must be green before `git tag` runs. N
 
 ## Scope
 
-This document governs every public release tagged `vX.Y.Z` or `vX.Y.Z.W`.
-Pre-release tags (`vX.Y.Z-rc1`, `vX.Y.Z.W-preview.1`, helper tags) are out of
-scope. They must not match the stable `v[0-9]+.[0-9]+.[0-9]+(.[0-9]+)?`
-pattern that triggers the verification workflow.
+This document governs public NuGet releases tagged `vX.Y.Z`. Pre-release,
+helper, and four-component tags are out of scope for the automated publisher;
+they must not match the workflow's `v[0-9]+.[0-9]+.[0-9]+` trigger. Lifeblood's
+source-control evidence may still recognize reachable `vX.Y.Z.W` tags in
+consumer repositories, but that broader history grammar does not expand this
+repository's publishing contract.
 
 Source of truth for related ratchets:
 
@@ -32,7 +34,12 @@ Run these in order on the release commit before tagging.
    [X.Y.Z]: https://github.com/<org>/Lifeblood/compare/v<prev>...vX.Y.Z
    ```
 
-   `[Unreleased]` must point at the new tag, not the previous one. `[X.Y.Z]` must point at the comparison range from the previous tag.
+   `[Unreleased]` must point at the prepared new tag, and `[X.Y.Z]` must point
+   at the comparison range from the previous tag. Before the tag exists, the
+   latest-tag ratchet accepts this prepared shape only when `X.Y.Z` is strictly
+   newer than the latest reachable stable tag and both the dated heading and
+   previous-to-new comparison link already exist. No test-only release bypass
+   or temporary local tag is required.
 
    `DocsTests.Changelog_LatestStableTagOwnsHistoricalSectionAndUnreleasedBase`
    enforces this against the latest reachable stable Git tag. Build/test CI
@@ -92,7 +99,12 @@ Push `main` first, tag second. The tag-triggered verification workflow re-runs t
 
 ## Package publish
 
-Out of scope for this checklist. Package publish is a separate maintainer process that runs after the tag is in place. CI workflows do not publish.
+A pushed `vX.Y.Z` tag runs `.github/workflows/publish.yml`. That workflow
+restores, builds, tests, self-analyzes, verifies full/incremental parity, packs
+both dotnet tools, rejects prerelease-shaped artifacts, obtains a short-lived
+NuGet key through Trusted Publishing (OIDC), and publishes with
+`--skip-duplicate`. Manual `workflow_dispatch` runs are verification-only and
+never publish. The uploaded `.nupkg` artifacts remain available for audit.
 
 ## Recovery from a red release
 
