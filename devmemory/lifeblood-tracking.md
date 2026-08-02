@@ -177,9 +177,8 @@ Shared-mode control receipt:
   duplicate publication, package/profile summary bloat, cold-fallback wording,
   or parallel compile-check transport death. Retained `find_references`
   scalability and the ledger type-taxonomy defect remain separately recorded
-  as `LB-INTAKE-20260718-046` and `LB-INTAKE-20260718-047`. Unity Test
-  Observatory terminal-publication latency is owned outside Lifeblood and is
-  intentionally excluded from this ledger.
+  in the intake ledger. Unity Test Observatory terminal-publication latency is
+  owned outside Lifeblood and is intentionally excluded from this ledger.
 
 2026-07-21 DAWG DSP-closure follow-up:
 - The installed `0.7.13-alpha.0.102` shared host remained healthy through a
