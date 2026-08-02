@@ -283,8 +283,9 @@ public class DocsTests
 
   /// <summary>
   /// INV-CHANGELOG-LATEST-TAG-001. The latest reachable stable Git tag must be
-  /// represented by a historical heading/reference, and Unreleased must start
-  /// its comparison at that tag.
+  /// represented by a historical heading/reference. Unreleased starts at that
+  /// tag during ordinary development, or at one strictly newer prepared stable
+  /// release whose comparison link starts at the latest reachable tag.
   /// </summary>
   [Fact]
   public void Changelog_LatestStableTagOwnsHistoricalSectionAndUnreleasedBase()
@@ -303,8 +304,29 @@ public class DocsTests
     Assert.Matches(
       $@"(?m)^\[{Regex.Escape(version)}\]:\s*https?://\S+\.\.\.{Regex.Escape(tag)}\s*$",
       changelog);
+    var unreleased = Regex.Match(
+      changelog,
+      @"(?m)^\[Unreleased\]:\s*https?://\S+/compare/(v\d+\.\d+\.\d+(?:\.\d+)?)\.\.\.HEAD\s*$");
+    Assert.True(unreleased.Success,
+      "CHANGELOG.md must declare [Unreleased] as a stable-tag-to-HEAD comparison.");
+
+    var unreleasedBaseTag = unreleased.Groups[1].Value;
+    if (unreleasedBaseTag == tag)
+    {
+      return;
+    }
+
+    Assert.True(
+      Version.Parse(unreleasedBaseTag[1..]) > Version.Parse(version),
+      $"CHANGELOG.md [Unreleased] base {unreleasedBaseTag} must equal the latest reachable tag {tag} " +
+      "or be a strictly newer prepared stable release.");
+
+    var preparedVersion = unreleasedBaseTag[1..];
     Assert.Matches(
-      $@"(?m)^\[Unreleased\]:\s*https?://\S+/compare/{Regex.Escape(tag)}\.\.\.HEAD\s*$",
+      $@"(?m)^##\s*\[{Regex.Escape(preparedVersion)}\]\s*-\s*\d{{4}}-\d{{2}}-\d{{2}}\s*$",
+      changelog);
+    Assert.Matches(
+      $@"(?m)^\[{Regex.Escape(preparedVersion)}\]:\s*https?://\S+/compare/{Regex.Escape(tag)}\.\.\.{Regex.Escape(unreleasedBaseTag)}\s*$",
       changelog);
   }
 
