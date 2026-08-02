@@ -87,12 +87,13 @@ JSON graph     ──┤  │   evidence / trust)    │  └──  Context pac
   adapters
 ```
 
-Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface**: read side + write side (live counts in [`docs/STATUS.md`](docs/STATUS.md)).
+Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface**: read side + write side (live counts in [`docs/STATUS.md`](docs/STATUS.md)). Representative groups are below; [`docs/TOOLS.md`](docs/TOOLS.md) owns the complete roster.
 
 | | Tools |
 |---|---|
-| **Read** | Analyze, Capabilities, Context, Lookup, Dependencies, Dependants, Blast Radius, File Impact, Asmdef Check, Resolve Short Name, Resolve Member, Search, Dead Code, Partial View, Invariant Check, Authority Report, Authority Coverage, Port Health, Cycles, Test Impact |
-| **Write** | Execute, Diagnose, Compile-check, Enum Coverage, Static Tables, Assignment Coverage, Callsite Arguments, Wire Audit, Feature-switch Audit, Member Count, Struct Layout, Find References, Find Definition, Find Implementations, Symbol at Position, Documentation, Rename, Format |
+| **Session and evidence** | Analyze, Capabilities, Batch, Snapshots, Evidence Drift, Performance Evidence, Context, Invariant Check |
+| **Semantic graph** | Lookup, Dependencies, Dependants, Blast Radius, File Impact, Asmdef Check, Search, Dead Code, Authority Report, Cycles, Test Impact |
+| **Compiler-backed** | Execute, Diagnose, Compile-check, Contract Audit, Enum Coverage, Static Tables, Assignment Coverage, Find References, Find Definition, Find Implementations, Rename, Format |
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
@@ -181,7 +182,7 @@ Production-verified on large Unity workspaces; current dogfood counts and memory
 | [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
-| [Release checklist](docs/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet single-use-key publish flow |
+| [Release checklist](docs/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet Trusted Publishing (OIDC) flow |
 | [CHANGELOG](CHANGELOG.md) | Every release — additions, fixes, known limitations |
 
 ---

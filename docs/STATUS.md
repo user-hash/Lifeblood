@@ -1,5 +1,31 @@
 # Status
 
+## Current release candidate
+
+Target: **v0.7.13**. The 2026-08-02 release-candidate workspace has 43 MCP
+tools, 1,709 discovered tests, 221 typed invariants across 166 categories, and
+zero Lifeblood architecture-rule violations. Lifeblood's own Release analysis
+contains 8,503 symbols, 45,055 edges, 13 modules, 907 types, and 9 cycles.
+
+The current DAWG Editor+Player retained-analysis receipt covers 4,559 source
+files, 118 modules, 6,348 types, 97,037 symbols, and 383,285 semantic edges
+(260,621 Editor; 177,528 Player), with zero configured violations and 153
+cycles. A forced cold scan took 43.732 seconds inside Lifeblood and 60.133
+seconds through the Unity bridge. It used 157.562 CPU-seconds, averaging 3.60
+logical cores on a 32-thread host. Process working set grew from 1.66 GiB to a
+3.56 GiB peak; private bytes grew from 1.92 GiB to a 3.83 GiB peak. Those are
+process-wide retained-session figures, not per-agent allocations.
+
+An unchanged incremental re-scan reused the exact publication with zero changed
+files in 7.541 seconds of Lifeblood work. Its working set peaked at 3.86 GiB
+from a 3.70 GiB retained baseline and ended lower than it began. Package
+visibility accounted for all nine Unity packages: 556 package source files were
+included, none were excluded, and two optional TextAnim Pro bridge files were
+truthfully reported as unbound because Unity omitted their define-constrained
+assemblies from the generated project descriptors.
+
+## Historical development receipts
+
 2026-05-31 tracking-list hardening adds a server-edge MCP contract layer without changing Domain/Application: `ToolInputContractCatalog` is the typed MCP input-contract SSoT, `ToolDefinition.InputSchema` is generated from that catalog, `ToolArgumentBinder` validates tool arguments under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`, and `ToolRequestBinder` binds high-risk analyze/compile-check/contract-audit inputs through typed request records. `LIFEBLOOD_STRICT_JSON` is retained as the strict alias. `GraphSessionGate` serializes retained-session mutation at the MCP host boundary. `McpJsonRequestParser` now deserializes `JsonRpcRequest` through a source-generated context while preserving the dynamic response serializer for tool payloads. Operational telemetry now includes argument diagnostics and real `lifeblood.analyze.phase` events with allocation deltas; invariant-cache telemetry is emitted after releasing the cache lock. Tool packaging/distribution has a local Windows `win-x64` receipt covering pack, local install, CLI help contract, MCP closed-stdin smoke, optional invocation-form skips, and report-only publish experiments.
 
 > **Shared transport rollout:** `--shared` is the recommended configuration for
@@ -293,19 +319,20 @@ Built-in architecture rule packs:
 
 ```
 $ lifeblood analyze --project .
-Symbols: 8,194
-Edges:   43,663
-Modules: 12
-Types:   879
+Symbols: 8,503
+Edges:   45,055
+Modules: 13
+Types:   907
 
--- usage (representative; exact numbers on every lifeblood_analyze response) --
-  Wall time : ~7-15 s
-  CPU total : ~10-25 s
-  CPU utilization : ~120-180% of one core
-  Peak working set : ~430 MB (MCP retained, full analyze)
-  GC collections : low single digits
+-- usage (2026-08-02 Release CLI receipt) --
+  Wall time : 13.475 s
+  CPU total : 50.765 s
+  CPU utilization : 376.7% of one core (11.8% average per logical core)
+  Peak working set : 365 MB
+  Peak private bytes : 275 MB
+  GC collections : gen0=121, gen1=60, gen2=11
 ------------------------------------------------------------------------------
-(0 violations; 1 existing cycle in the analysis summary.)
+(0 violations; 9 cycles in the analysis summary.)
 ```
 
 Lifeblood also audits its own invariants tree via `lifeblood_invariant_check`. The provider walks `<root>/CLAUDE.md`, `<root>/AGENTS.md` (none today), and every `*.md` under `<root>/docs/invariants/`:
@@ -313,8 +340,8 @@ Lifeblood also audits its own invariants tree via `lifeblood_invariant_check`. T
 ```
 > lifeblood_invariant_check { mode: "audit" }
 
-totalCount    : 217
-categories    : 163  (live category roster authoritative in `docs/invariants/INDEX.md`; sample no longer enumerated here so the body does not drift on every new invariant)
+totalCount    : 221
+categories    : 166  (live category roster authoritative in `docs/invariants/INDEX.md`; sample no longer enumerated here so the body does not drift on every new invariant)
 duplicates    : 0
 parseWarnings : 0
 sourcePaths   : [
@@ -333,22 +360,39 @@ sourcePaths   : [
 
 ## Production Verification (Real-World Unity Workspace)
 
-Tested on a real 90-module Unity workspace (~400k+ LOC). Same workspace, two different call sites, two different memory profiles. Both are correct. Both are by design.
+Tested on DAWG, a real 118-module Unity workspace with 4,559 source files.
+The retained MCP profile below is the current release-candidate receipt.
 
 ### MCP path (compilations retained for write-side tools)
 
 ```
-> lifeblood_analyze projectPath="/path/to/your/project"
+> lifeblood_analyze projectPath="D:/Projekti/DAWG" defineProfiles=["Editor","Player"] incremental=false
 
 mode : full
 requestedMode : full
-summary.symbols : 62,134
-summary.edges   : 219,548
-summary.modules : 90
-cycles  : 123 SCCs
+summary.symbols : 97,037
+summary.edges   : 383,285
+summary.modules : 118
+summary.types   : 6,348
+summary.files   : 4,559
+cycles          : 153 SCCs
+violations      : 0
+wall time       : 43.732 s (60.133 s through the Unity bridge)
+peak working set: 3.56 GiB
+peak private    : 3.83 GiB
 ```
 
-Edge count grew +18% over the prior 180,814 baseline because enum-member references the dangling-edge filter was silently dropping (`R2-3`) now resolve as first-class graph edges (`INV-EXTRACT-ENUMMEMBER-001`).
+An unchanged incremental call reused the same snapshot in 7.541 seconds with
+zero accepted changes. Editor retained 260,621 edges and Player retained
+177,528. All 556 discovered Unity-package sources were accounted for; the two
+unbound files were named optional integration bridges absent from Unity's
+generated project descriptors, not silently dropped inputs.
+
+### Historical comparison receipt
+
+The earlier 90-module dogfood workspace reported 62,134 symbols, 219,548 edges,
+123 SCCs, and the following authority/classification findings. These figures
+remain useful for regression history but are not the current size baseline.
 
 Authority + classification + dead-code numbers from the real-world dogfood pass:
 - Methods classified by body shape (representative pre-wave snapshot): 18,985.

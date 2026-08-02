@@ -7,7 +7,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.13] - 2026-08-02
+
 ### Added
+
+- **Shared MCP workspace base for multi-agent work.** `lifeblood-mcp --shared`
+  runs each client as a thin persistent stdio proxy to one canonical-workspace-
+  keyed daemon. Same-workspace agents share one latest immutable semantic/Roslyn
+  base, while Lifeblood and other repositories remain isolated by canonical
+  workspace identity. Protocol-v2 build/workspace handshakes, persistent client
+  leases, live status, opt-in last-client idle drain, maintenance drain,
+  crash/restart recovery, and bounded diagnostics make the process lifecycle
+  explicit. Full/incremental candidates carry canonical spec/source/descriptor/
+  rule fingerprints; identical requests coalesce, input drift rejects before
+  publication, and per-waiter MCP cancellation cannot abandon a last-waiter
+  candidate into the committed state. Every publication has a globally unique
+  snapshot id; behavior-derived preconditions, serial `lifeblood_batch`, and a
+  default-three/hard-sixteen graph-only catalog provide pinned historical reads
+  without retaining another semantic base. (`INV-MCP-SHARED-BASE-001`,
+  `INV-SHARED-HOST-IDENTITY-001`, `INV-ANALYZE-COALESCE-001`,
+  `INV-MCP-REQUEST-CANCEL-001`, `INV-MCP-READ-BATCH-001`,
+  `INV-SNAPSHOT-CATALOG-BOUND-001`.)
 
 - **Request-local runtime performance evidence without another fact base.**
   `lifeblood_performance_evidence` imports bounded generic JSON/CSV and
@@ -347,26 +367,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Complete/returned/omitted counts and `truncated` remain truthful under the
   1..200 path cap, and full fallback no longer masquerades as source change.
   (`INV-ANALYZE-ACCEPTED-CHANGE-001`, `LB-INTAKE-20260629-019`.)
-
-### Added
-
-- **Shared MCP workspace base for multi-agent work.** `lifeblood-mcp --shared`
-  runs each client as a thin persistent stdio proxy to one canonical-workspace-
-  keyed daemon. Same-workspace agents share one latest immutable semantic/Roslyn
-  base, while Lifeblood and DAWG remain isolated by canonical workspace identity.
-  Protocol-v2 build/workspace handshakes, persistent client leases, live status,
-  opt-in last-client idle drain, maintenance drain, crash/restart recovery, and bounded
-  diagnostics make the process lifecycle explicit. Full/incremental candidates
-  carry canonical spec/source/descriptor/rule fingerprints; identical requests
-  coalesce, input drift rejects before publication, and per-waiter MCP
-  cancellation cannot abandon a last-waiter candidate into the committed state.
-  Every publication has a globally unique snapshot id; behavior-derived
-  preconditions, serial `lifeblood_batch`, and a default-three/hard-sixteen
-  graph-only catalog provide pinned historical reads without retaining another
-  semantic base. (`INV-MCP-SHARED-BASE-001`, `INV-SHARED-HOST-IDENTITY-001`,
-  `INV-ANALYZE-COALESCE-001`, `INV-MCP-REQUEST-CANCEL-001`,
-  `INV-MCP-READ-BATCH-001`, `INV-SNAPSHOT-CATALOG-BOUND-001`.)
-
 
 ## [0.7.12] - 2026-06-22
 
@@ -2008,7 +2008,8 @@ First public release. Framework is dogfood-verified and CI-green.
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.12...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.13...HEAD
+[0.7.13]: https://github.com/user-hash/Lifeblood/compare/v0.7.12...v0.7.13
 [0.7.12]: https://github.com/user-hash/Lifeblood/compare/v0.7.11...v0.7.12
 [0.7.11]: https://github.com/user-hash/Lifeblood/compare/v0.7.10...v0.7.11
 [0.7.10]: https://github.com/user-hash/Lifeblood/compare/v0.7.9...v0.7.10
