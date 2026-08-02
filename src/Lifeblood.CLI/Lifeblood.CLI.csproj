@@ -9,7 +9,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>lifeblood</ToolCommandName>
     <PackageId>Lifeblood</PackageId>
-    <PackageDescription>Lifeblood CLI — analyze codebases, generate AI context packs, export semantic graphs.</PackageDescription>
+    <PackageDescription>Roslyn powered C# and Unity code analysis CLI for semantic graphs, architecture checks, context generation, and CI.</PackageDescription>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Composition root. Wires left side to right side. -->
   </PropertyGroup>
