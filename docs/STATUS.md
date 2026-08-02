@@ -17,7 +17,7 @@ logical cores on a 32-thread host. Process working set grew from 1.66 GiB to a
 process-wide retained-session figures, not per-agent allocations.
 
 An unchanged incremental re-scan reused the exact publication with zero changed
-files in 7.541 seconds of Lifeblood work. Its working set peaked at 3.86 GiB
+files in 7.541 seconds of Lifeblood work. Its working set peaked at 3.77 GiB
 from a 3.70 GiB retained baseline and ended lower than it began. Package
 visibility accounted for all nine Unity packages: 556 package source files were
 included, none were excluded, and two optional TextAnim Pro bridge files were
