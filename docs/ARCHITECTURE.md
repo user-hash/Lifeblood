@@ -1,6 +1,62 @@
 # Architecture
 
-Hexagonal framework. Two sides. Pure core.
+Lifeblood is a Roslyn first semantic analysis system for C# and Unity. It keeps
+compiler and environment integrations at the edges, one pure semantic model in
+the center, and agent facing query surfaces on the other side.
+
+## At a Glance
+
+![Lifeblood architecture overview](architecture-screenshot.png)
+
+- **Roslyn is the primary analyzer.** It loads C# and Unity project descriptors,
+  asmdefs, references, packages, source generators, and Editor or Player define
+  profiles.
+
+- **Domain owns the truth model.** Symbols, relationships, evidence, confidence,
+  validation, and immutable graph identity have no Roslyn, Unity, MCP, Git, or
+  filesystem dependencies.
+
+- **Application owns orchestration.** Use cases and ports decide how analysis,
+  snapshots, queries, source provenance, and runtime evidence compose without
+  importing adapter implementation details.
+
+- **The shared MCP host owns live sessions.** Same workspace clients attach to
+  one daemon and query one published semantic and Roslyn base through exact
+  snapshot leases.
+
+- **Unity MCP and Lifeblood have different jobs.** Unity MCP controls scenes,
+  GameObjects, assets, and the Editor. Lifeblood analyzes the code and uses
+  selected Unity YAML evidence for reachability. Roslyn never loads into Unity.
+
+## Request and Publication Flow
+
+```text
+Agent or Unity bridge
+        │
+        ▼
+workspace keyed MCP proxy
+        │
+        ▼
+shared Lifeblood daemon
+        │
+        ├── full or incremental request
+        ▼
+Roslyn candidate graph and compiler state
+        │
+        ├── input identity check
+        ├── graph validation
+        └── architecture rules
+        ▼
+atomic immutable snapshot publication
+        │
+        └── leased queries from every connected agent
+```
+
+Candidate construction never mutates the current publication. Readers continue
+using the previous immutable snapshot until the new graph, compiler state,
+analysis identity, and evidence receipts are committed together.
+
+## Hexagonal Dependency Rule
 
 ```
 LEFT SIDE                     CORE                     RIGHT SIDE
@@ -53,15 +109,15 @@ Adapters and Connectors depend inward on Application ports. They never reference
 | Assembly | Role | Dependencies |
 |----------|------|-------------|
 | **Lifeblood.Domain** | Graph model, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, rules, results (incl. `EnumCoverageReport`, `DiagnosticsReport`, `TestImpactReport`, `CompileCheckResult`, `AsmdefBoundaryReport`), ResponseEnvelope + EnvelopeClassification, `PathClassification/PathBucketClassifier` (Production / Test / Editor / Generated / Vendored SSoT, `INV-PATHBUCKET-SHARED-001`), `PathClassification/PathGlobMatcher` (shared POSIX full-path glob grammar), `Graph/SymbolPropertyKeys` (writer↔consumer string-key contract, including `fieldType`, `constantValue`, and `referenceClosure`) | None |
-| **Lifeblood.Application** | Port interfaces (live count in [`STATUS.md`](STATUS.md)) including `IWorkspaceAnalyzer`, `ICompilationHost`, `IPerformanceEvidenceImporter`, `IRuntimeAssemblyResolver`, `ISymbolResolver`, `IResponseDecorator`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IUnityReachabilityProvider`, `IPartialViewBuilder`, `IAuthorityReporter`, `IInvariantProvider`, `IPortHealthAnalyzer`, `IDefineProfileResolver`, `IUsageProbe` + `IUsageCapture`, `ITelemetrySink`, and `ISourceControlSnapshotProvider`. AnalyzeWorkspaceUseCase, GenerateContextUseCase. | Domain |
+| **Lifeblood.Application** | Port interfaces (live count in [`STATUS.md`](STATUS.md)) for workspace analysis, compilation, queries, source control, source evidence, runtime evidence, telemetry, and response decoration. Owns `AnalyzeWorkspaceUseCase`, `GenerateContextUseCase`, snapshot preconditions, and the graph-only `WorkspaceSnapshotCatalog`; implementation and host policy stay outside. | Domain |
 | **Lifeblood.Adapters.CSharp** | Roslyn reference adapter. `RoslynWorkspaceAnalyzer` (analyze, incremental, asmdef-edit-aware, excludePath-scope-aware, content-hash incremental, `authoritativeChangedFiles` source-scan narrowing), `RoslynModuleDiscovery` (csproj parse -> typed `ModuleInfo` with `BclOwnership`, `ReferenceClosure`, `AllowUnsafeCode`, `ImplicitUsings`, `LangVersion`, `Nullable`, `NoWarn`, `DefineConstants`; emits module `Properties["referenceClosure"]` for graph-only consumers), `RoslynCompilationHost` (compile-check, diagnose, enum-coverage), `Internal.ModuleCompilationBuilder` (threads every csproj-driven compilation fact into `CSharpParseOptions` / `CSharpCompilationOptions` - `LangVersion` / `Nullable` warning level / `NoWarn` / `DefineConstants` via FOLLOWUP-001..003 + BUG-2, and applies analyze `excludePaths` before syntax-tree parsing), `Internal.SourceContentHasher` (mtime-prefilter confirmation), `Internal.SourceGeneratorRunner` (serialized analyzer loading + generator-driver execution), symbol/edge extraction (records `Properties["attributes"]`, `Properties["baseType"]`, `Properties["baseTypeChain"]`, `Properties["classification"]`, field `Properties["fieldType"]`, and const-field `Properties["constantValue"]`), `RoslynSemanticView` (sandbox helpers `Help` / `SymbolsOfKind(string)` / `EdgesOfKind(string)`), `CanonicalSymbolFormat` (parameter-type display SSoT), `CsprojPaths` (cross-platform csproj path normalization), `SnippetWrapper` (compile_check auto-wrap), `UnityReachabilityAdapter` (entrypoint attributes + MonoBehaviour magic methods + transitive base-chain walk + UnityEvent persistent calls from Unity YAML), `UnityAssemblyResolver` (`Library/ScriptAssemblies` + `Library/Bee/artifacts` + `Library/PackageCache` DLL probe). | Application, Roslyn |
 | **Lifeblood.Adapters.Performance** | Stateless generic JSON/CSV and structural Unity ProfilerRecorder import into neutral request-local runtime evidence. Proprietary profiler binaries, file I/O, capture retention, and comparison policy stay outside the adapter. | Application |
 | **Lifeblood.Adapters.JsonGraph** | JSON import/export with round-trip fidelity. | Application |
 | **Lifeblood.Adapters.Git** | Infrastructure adapter for `ISourceControlSnapshotProvider`. Resolves a caller-selected repository root, commit hashes, latest reachable stable tag, dirty state/count/sample, and classified bounded failures with timeout and non-interactive environment policy. | Application |
 | **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator. | Application |
-| **Lifeblood.Connectors.Mcp** | LifebloodMcpProvider (lookup, deps, dependants, blast radius, file impact), LifebloodSymbolResolver (identifier resolution + wrong-namespace short-name fallback + kind correction), LifebloodResponseDecorator (truth envelope; classification injected from registry at composition time), LifebloodAuthorityReporter, LifebloodSemanticSearchProvider (tokenized ranked-OR search over name + xmldoc), LifebloodDeadCodeAnalyzer (consults `IUnityReachabilityProvider` when injected), LifebloodPartialViewBuilder, LifebloodInvariantProvider (CLAUDE.md runtime parser + cache), ClaudeMdInvariantParser (pure text to records), InvariantParseCache (generic timestamp-invalidated cache with optional cache lookup telemetry), McpProtocolSpec (single source of truth for JSON-RPC wire constants). | Application |
-| **Lifeblood.Analysis** | CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector (Tarjan SCC + taxonomy classification per `INV-CYCLE-TAXONOMY-001`), TierClassifier (semantic test-fixture detection via `Properties["attributes"]`), TestImpactAnalyzer (`lifeblood_test_impact` BFS, `INV-TEST-IMPACT-001`), AuthorityCoverageAnalyzer (`lifeblood_authority_coverage`), AsmdefBoundaryAnalyzer (`lifeblood_asmdef_check`), EvidenceBaselineDriftEvaluator (stateless generated-baseline parsing and metric policy), PerformanceEvidenceAnalyzer (request-local semantic correlation and identity-gated capture comparison), RuleValidator. | Domain |
-| **Lifeblood.Server.Mcp** | MCP server host. Stdio JSON-RPC. MCP tool surface (25 read + 18 write live in [`STATUS.md`](STATUS.md)). Bidirectional Roslyn. McpDispatcher owns the wire protocol. ToolDefinition.EnvelopeClassification is the registry-side source of truth for the truth envelope. `ToolInputContract` / `ToolArgumentBinder` validate MCP arguments at the server edge under `LIFEBLOOD_JSON_COMPAT=legacy|warn|strict`; `GraphSessionGate` serializes retained-session mutation without pushing lock policy into Domain/Application. `DotNetDiagnosticsTelemetrySink` is opt-in via `LIFEBLOOD_TELEMETRY` and records tool result, argument diagnostics, response JSON cost, analyze fallback/phase allocation, truncation, and cache lookup events. Runtime evidence is delegated to `IPerformanceEvidenceImporter`; source-control evidence is delegated to `ISourceControlSnapshotProvider`; the host launches neither profiler nor Git processes. | Application, Adapters.CSharp, Adapters.Performance, Adapters.Git, Connectors |
+| **Lifeblood.Connectors.Mcp** | Query implementations for lookup, dependencies, impact, search, resolution, dead-code advice, partial views, authority, and response envelopes. `LifebloodInvariantProvider` walks the project `CLAUDE.md`, `AGENTS.md`, and `docs/invariants/**/*.md` tree through a timestamp-invalidated cache. `McpProtocolSpec` owns shared JSON-RPC wire constants. | Application |
+| **Lifeblood.Analysis** | Stateless derived analysis: coupling, blast radius, cycles, tiers, test impact, authority coverage, asmdef boundaries, and rules. Also owns `ContractAuditEngine`, `DiagnosticOwnershipClassifier`, `EvidenceBaselineDriftEvaluator`, and `PerformanceEvidenceAnalyzer`; all operate on selected graph, compiler, source, Git, or capture evidence without retaining another semantic base. | Domain |
+| **Lifeblood.Server.Mcp** | MCP composition root and runtime host. Stdio clients either host locally or proxy to the canonical-workspace shared daemon. `GraphSession`, `WorkspaceSnapshotCatalog`, and `AnalysisRequestCoordinator` own atomic publication, exact leases, bounded graph history, request coalescing, and cancellation isolation. The server validates tool inputs, decorates successful responses, and delegates compiler, source-control, source-evidence, and performance work through ports. It does not launch a profiler or retain runtime captures. Live tool counts remain in [`STATUS.md`](STATUS.md). | Application, Adapters.CSharp, Adapters.Performance, Adapters.Git, Connectors |
 | **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. Zero ProjectReferences (INV-SCRIPTHOST-001). | Roslyn Scripting only |
 | **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch. | Everything |
 
@@ -83,6 +139,62 @@ projects the bounded `lifeblood_analyze.packageSourceVisibility` view (summary
 is aggregate plus excluded/unbound package rows; detail returns every package), and
 `WriteToolHandler` projects `lifeblood_compile_check.packageSourceResolution`
 from the same live adapter receipt.
+
+## Shared Session and Snapshot Boundary
+
+`Lifeblood.Server.Mcp` is the runtime owner for interactive sessions. In shared
+mode, each stdio process is a thin proxy to one daemon selected by canonical
+workspace identity. The daemon owns one `GraphSession`, while client leases,
+request admission, transport recovery, and idle or maintenance policy stay at
+the server edge.
+
+`GraphSession` publishes one immutable host state containing the matching
+Application snapshot, Roslyn adapter, rules, exclusions, package visibility,
+profile applicability, and source provenance. A candidate analysis is built
+outside the current publication. Input identity, graph validation, and rule
+analysis complete before one atomic reference swap makes the new state visible.
+Readers lease an exact generation, so a later publication cannot mix graph,
+compiler, or evidence state into an in-flight query.
+
+`WorkspaceSnapshotCatalog` retains graph-only history with a default depth of
+three and a hard maximum of sixteen. Historical selection is exact by snapshot
+id and never falls through to latest. Pinning changes eviction policy, not
+semantic retention: the current Roslyn compilation base remains singular.
+`lifeblood_batch` uses one lease for the complete bounded request, while
+snapshot preconditions allow clients to reject an answer when the expected
+publication has already changed.
+
+`AnalysisRequestCoordinator` coalesces compatible requests and isolates their
+waiters. One cancelled or disconnected waiter cannot cancel work still needed
+by another waiter. A last-waiter cancellation prevents an abandoned candidate
+from publishing. Shared transport therefore reduces duplicate CPU and memory
+without weakening publication identity or caller cancellation.
+
+## Contract and Evidence Query Boundary
+
+Contract, source, and performance evidence are request-local query plans over
+the selected publication. They do not create a second retained graph, invariant
+index, test index, or runtime capture store.
+
+- `RoslynOperationFactProvider` streams bounded neutral operation facts from the
+  selected compiler profile. `ContractAuditEngine` applies caller-owned route,
+  state, value, temporal, and ownership contracts without embedding product
+  policy in Lifeblood.
+
+- `RoslynSourceEvidenceProvider` reuses retained syntax trees for bounded
+  comment, string, declaration, and invariant-coverage evidence.
+
+- `EvidenceBaselineDriftEvaluator` compares a repository-owned generated stamp
+  with the exact graph and a live invariant audit, failing closed when source or
+  evidence identity has drifted.
+
+- `DiagnosticOwnershipClassifier` joins current compiler diagnostics with
+  bounded Git line evidence. It classifies ownership without compiling a second
+  baseline.
+
+- `PerformanceEvidenceAnalyzer` correlates request-local captures to graph,
+  source, invariant, and test authorities, then compares captures only after
+  explicit identity and unit validation.
 
 ## Domain Model
 

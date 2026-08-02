@@ -3,384 +3,428 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lifeblood. Architecture</title>
+  <title>Lifeblood Architecture</title>
   <style>
-  :root {
-  --bg: oklch(0.13 0.02 260);
-  --card: oklch(0.17 0.02 260);
-  --border: oklch(0.30 0.015 260);
-  --text: oklch(0.93 0.01 260);
-  --muted: oklch(0.65 0.02 260);
-  --accent: oklch(0.72 0.12 230);
-  --accent-2: oklch(0.68 0.18 290);
-  --accent-3: oklch(0.82 0.14 160);
-  --warning: oklch(0.85 0.12 80);
-  --hex-fill: oklch(0.16 0.03 260);
-  --hex-core: oklch(0.14 0.04 260);
-  --shadow: 0 12px 30px oklch(0 0 0 / 0.3);
-  --radius: 18px;
-  --inactive: 0.35;
-  }
-  * { box-sizing: border-box; margin: 0; }
-  body {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-  background: linear-gradient(180deg, #09101e, #0b1020);
-  color: var(--text); padding: 24px;
-  }
-  .frame {
-  max-width: 1800px; margin: 0 auto;
-  border: 1px solid var(--border); border-radius: 24px;
-  background: rgba(12,18,34,0.9); overflow: hidden;
-  }
-  .header {
-  padding: 22px 28px 16px;
-  border-bottom: 1px solid var(--border);
-  }
-  .header h1 { font-size: 26px; letter-spacing: -0.03em; }
-  .header p { color: var(--muted); font-size: 14px; margin-top: 8px; line-height: 1.5; }
-  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .pill {
-  border: 1px solid var(--border); background: oklch(1 0 0 / 0.04);
-  border-radius: 999px; padding: 6px 12px; font-size: 11px; color: var(--text);
-  }
+    :root {
+      --bg: #08101d;
+      --surface: #0d1728;
+      --card: #111d31;
+      --card-strong: #14243b;
+      --border: #2b3d58;
+      --text: #f1f5fb;
+      --muted: #a9b7cb;
+      --cyan: #55c8f3;
+      --violet: #ad8cff;
+      --green: #72dfad;
+      --amber: #f4c66a;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
+    }
 
-  .columns {
-  display: grid;
-  grid-template-columns: 320px 1fr 640px;
-  gap: 0;
-  min-height: 800px;
-  }
-  .col { padding: 20px; }
-  .col:first-child { border-right: 2px dashed oklch(0.72 0.12 230 / 0.2); }
-  .col:last-child { border-left: 2px dashed oklch(0.68 0.18 290 / 0.2); }
-  .col-multi {
-  column-count: 2;
-  column-gap: 14px;
-  column-fill: balance;
-  }
-  .col-multi > .card {
-  break-inside: avoid;
-  display: inline-block;
-  width: 100%;
-  }
-  .col-label {
-  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--muted); margin-bottom: 16px; text-align: center;
-  }
+    * { box-sizing: border-box; }
 
-  .card {
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: oklch(1 0 0 / 0.03); padding: 16px; margin-bottom: 14px;
-  }
-  .card h3 { font-size: 15px; margin-bottom: 8px; letter-spacing: -0.01em; }
-  .card p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    body {
+      margin: 0;
+      padding: 24px;
+      color: var(--text);
+      background: radial-gradient(circle at 50% 0%, #122541 0, var(--bg) 48%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
 
-  .item {
-  border: 1px solid var(--border); border-radius: 12px;
-  background: oklch(1 0 0 / 0.03); padding: 10px 12px;
-  margin-top: 8px; font-size: 12px;
-  }
-  .item strong { display: block; font-size: 12px; margin-bottom: 2px; }
-  .item small { color: var(--muted); font-size: 11px; line-height: 1.35; }
-  .item span { display: block; color: var(--muted); font-size: 10px; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .frame {
+      width: min(1392px, 100%);
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: rgba(9, 17, 31, 0.96);
+      box-shadow: var(--shadow);
+    }
 
-  .planned { opacity: var(--inactive); border-style: dashed; }
-  .planned strong::after {
-  content: " (planned)"; font-weight: normal; font-size: 9px;
-  color: var(--warning); text-transform: uppercase;
-  }
+    header {
+      padding: 28px 32px 24px;
+      border-bottom: 1px solid var(--border);
+    }
 
-  .hex-area {
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: flex-start; padding-top: 10px;
-  }
-  .hex-row {
-  display: flex; align-items: center; justify-content: center; gap: 20px;
-  width: 100%;
-  }
-  .port-col {
-  display: flex; flex-direction: column; gap: 10px; flex: 0 0 155px;
-  }
-  .port-col-label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
-  text-align: center; margin-bottom: 4px;
-  }
-  .port-col-label::after {
-  content: " (stable contract)";
-  font-size: 8px; opacity: 0.6; text-transform: none; letter-spacing: 0;
-  }
-  .hex-visual {
-  position: relative; width: 440px; height: 440px; flex-shrink: 0;
-  }
-  .hex-boundary {
-  position: absolute; inset: 0;
-  clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
-  background: linear-gradient(180deg, var(--hex-fill), var(--hex-core));
-  border: 2px solid oklch(0.72 0.12 230 / 0.35);
-  display: flex; align-items: center; justify-content: center; text-align: center;
-  flex-direction: column; gap: 16px;
-  }
-  .hex-boundary .domain-core {
-  background: oklch(0.72 0.12 230 / 0.1);
-  border: 1px solid oklch(0.72 0.12 230 / 0.3);
-  border-radius: 14px; padding: 16px 24px; text-align: center;
-  }
-  .hex-boundary .app-ring {
-  background: oklch(0.68 0.18 290 / 0.08);
-  border: 1px solid oklch(0.68 0.18 290 / 0.25);
-  border-radius: 10px; padding: 10px 18px; text-align: center;
-  }
-  .hex-boundary h2 { font-size: 22px; letter-spacing: -0.03em; line-height: 1.1; margin: 0; }
-  .hex-boundary h4 { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px; }
-  .hex-boundary p { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 6px 0 0; padding: 0; }
-  .hex-boundary .app-ring h4 { color: var(--accent-2); }
-  .hex-boundary .app-ring p { font-size: 10px; margin-top: 3px; }
+    .eyebrow,
+    .section-label,
+    .card-label {
+      color: var(--cyan);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
 
-  .port {
-  border: 2px solid; border-radius: 12px;
-  padding: 8px 10px; text-align: center; font-size: 11px;
-  position: relative;
-  }
-  .port.left {
-  border-color: var(--accent); background: oklch(0.72 0.12 230 / 0.1);
-  border-left: 4px solid var(--accent);
-  }
-  .port.right {
-  border-color: var(--accent-2); background: oklch(0.68 0.18 290 / 0.1);
-  border-right: 4px solid var(--accent-2);
-  }
-  .port.infra {
-  border-color: var(--accent-3); background: oklch(0.82 0.14 160 / 0.1);
-  border-bottom: 4px solid var(--accent-3);
-  }
-  .port strong { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
-  .port span { color: var(--muted); font-size: 10px; }
-  .port.left::before {
-  content: "\2192"; position: absolute; right: -18px; top: 50%; transform: translateY(-50%);
-  color: var(--accent); font-size: 16px; font-weight: bold;
-  }
-  .port.right::before {
-  content: "\2190"; position: absolute; left: -18px; top: 50%; transform: translateY(-50%);
-  color: var(--accent-2); font-size: 16px; font-weight: bold;
-  }
+    h1 {
+      margin: 8px 0 8px;
+      font-size: 34px;
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+    }
 
-  .signal-card {
-  border: 1px solid var(--border); border-radius: 14px;
-  background: oklch(1 0 0 / 0.03); padding: 12px 16px;
-  margin-top: 12px; width: 100%;
-  }
-  .signal-card strong {
-  display: block; font-size: 10px; text-transform: uppercase;
-  letter-spacing: 0.06em; margin-bottom: 4px; color: var(--accent-3);
-  }
-  .signal-card span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+    header p {
+      max-width: 1020px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.55;
+    }
 
-  .legend {
-  padding: 20px 28px;
-  border-top: 1px solid var(--border);
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
-  }
-  .legend-item {
-  border: 1px solid var(--border); border-radius: 14px;
-  background: oklch(1 0 0 / 0.02); padding: 12px; font-size: 11px;
-  color: var(--muted); line-height: 1.5;
-  }
-  .legend-item b { display: block; color: var(--text); margin-bottom: 4px; }
-  .footer {
-  padding: 14px 28px; color: var(--muted); font-size: 11px;
-  border-top: 1px solid var(--border);
-  }
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .pill {
+      padding: 7px 11px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: #dce7f6;
+      background: rgba(255, 255, 255, 0.035);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    main { padding: 26px 28px 28px; }
+
+    .architecture-flow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1.14fr) 34px minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .lane {
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.018);
+    }
+
+    .lane h2 {
+      margin: 5px 0 5px;
+      font-size: 19px;
+      letter-spacing: -0.02em;
+    }
+
+    .lane > p {
+      min-height: 42px;
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--cyan);
+      font-size: 30px;
+      font-weight: 300;
+    }
+
+    .card {
+      margin-top: 10px;
+      padding: 13px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--card);
+    }
+
+    .card.primary {
+      border-color: rgba(85, 200, 243, 0.62);
+      background: linear-gradient(140deg, rgba(85, 200, 243, 0.11), var(--card));
+    }
+
+    .card.application {
+      border-color: rgba(173, 140, 255, 0.55);
+      background: linear-gradient(140deg, rgba(173, 140, 255, 0.1), var(--card));
+    }
+
+    .card.domain {
+      border-color: rgba(114, 223, 173, 0.65);
+      background: linear-gradient(140deg, rgba(114, 223, 173, 0.1), var(--card-strong));
+    }
+
+    .card.shared {
+      border-color: rgba(244, 198, 106, 0.58);
+      background: linear-gradient(140deg, rgba(244, 198, 106, 0.1), var(--card));
+    }
+
+    .card h3 {
+      margin: 4px 0 5px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .card-label { font-size: 9px; }
+    .card.primary .card-label { color: var(--cyan); }
+    .card.application .card-label { color: var(--violet); }
+    .card.domain .card-label { color: var(--green); }
+    .card.shared .card-label { color: var(--amber); }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 9px;
+    }
+
+    .chip {
+      padding: 4px 7px;
+      border-radius: 7px;
+      color: #cad7e8;
+      background: rgba(255, 255, 255, 0.055);
+      font-size: 9px;
+      line-height: 1.2;
+    }
+
+    .publication {
+      margin-top: 20px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.018);
+    }
+
+    .publication h2 {
+      margin: 5px 0 14px;
+      font-size: 19px;
+      letter-spacing: -0.02em;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 9px;
+    }
+
+    .step {
+      position: relative;
+      min-height: 102px;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--card);
+    }
+
+    .step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      top: 39px;
+      right: -14px;
+      z-index: 2;
+      color: var(--cyan);
+      font-size: 18px;
+    }
+
+    .step-number {
+      color: var(--cyan);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .step strong {
+      display: block;
+      margin: 6px 0 5px;
+      font-size: 12px;
+    }
+
+    .step span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .boundaries {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .boundary {
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .boundary strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 11px;
+    }
+
+    .boundary span {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 14px 28px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    footer strong { color: var(--text); }
   </style>
 </head>
 <body>
   <div class="frame">
-  <div class="header">
-  <h1>Lifeblood. Hexagonal Architecture</h1>
-  <p>
-  Architecture diagram matching the actual codebase. Solid items are implemented and dogfood-verified.
-  <span style="opacity:0.5">Faded dashed items</span> are planned but not yet built.
-  Every port interface has a concrete implementation. All hexagonal boundaries enforced by tests.
-  </p>
-  <div class="pills">
-  <div class="pill">12 assemblies + 3 standalone adapters</div>
-  <div class="pill">Self-analyze graph (live counts in STATUS.md)</div>
-  <div class="pill">Live test counts in STATUS.md</div>
-  <div class="pill">C# + C + TypeScript + Python</div>
-  <div class="pill">Cross-module: Proven</div>
-  <div class="pill">Every port wired</div>
-  <div class="pill">Incremental re-analyze (file + csproj + asmdef)</div>
-  <div class="pill">Asmdef DirectOnly boundary check</div>
-  <div class="pill">File-level edges</div>
-  <div class="pill">MCP tools — read + write side</div>
-  <div class="pill">Truth envelope</div>
-  <div class="pill">Unity reachability</div>
-  <div class="pill">Roslyn bidirectional</div>
-  <div class="pill">ISymbolResolver + IInvariantProvider</div>
-  <div class="pill">RoslynSemanticView</div>
-  <div class="pill">BCL ownership</div>
-  <div class="pill">Workspace-rooted Git provenance</div>
-  <div class="pill">Native usage + timing</div>
-  <div class="pill">Queryable invariants in tree</div>
-  <div class="pill">UTF-16 BOM-aware JSON import</div>
-  <div class="pill">UTF-8-pinned MCP stdio</div>
-  <div class="pill">Caller-owned analyze scope policy</div>
-  <div class="pill">SearchResult.MatchKind</div>
-  <div class="pill">Enum members first-class</div>
-  <div class="pill">dotnet tool</div>
-  </div>
-  </div>
+    <header>
+      <div class="eyebrow">Lifeblood architecture</div>
+      <h1>Roslyn truth in. Shared agent context out.</h1>
+      <p>
+        Lifeblood analyzes C# and Unity workspaces with Roslyn, commits one immutable semantic publication,
+        and exposes compiler backed queries to every connected agent. Hexagonal boundaries keep the core
+        independent from Roslyn, Unity, Git, runtime captures, transports, and client applications.
+      </p>
+      <div class="pills">
+        <div class="pill">Roslyn first</div>
+        <div class="pill">C# and Unity</div>
+        <div class="pill">Shared MCP daemon</div>
+        <div class="pill">Immutable snapshots</div>
+        <div class="pill">Editor and Player profiles</div>
+        <div class="pill">Compiler verified queries</div>
+        <div class="pill">Zero dependency Domain</div>
+      </div>
+    </header>
 
-  <div class="columns">
-  <!-- LEFT COLUMN -->
-  <div class="col">
-  <div class="col-label" style="color: var(--accent);">Left side. Language Adapters</div>
+    <main>
+      <section class="architecture-flow">
+        <div class="lane">
+          <div class="section-label">Inputs and adapters</div>
+          <h2>Build verified evidence</h2>
+          <p>Environment specific work stays outside the core and enters through Application ports.</p>
 
-  <div class="card">
-  <h3>Language Adapters <span style="font-size:9px; color:var(--accent); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
-  <div class="item"><strong>Roslyn / C#</strong><small>Reference adapter. Proven type/call/cross-module resolution. Topological sort + CompilationReference. Generics, typeof, attributes.</small></div>
-  <div class="item"><strong>libclang / C</strong><small>Beta (v0.7.7). Standalone native extractor under adapters/native-clang. Reads compile_commands.json. Surfaces translation units, functions, globals, fields, type shells, enum members, macros, includes, callback-table rows and cells. Partial-parse tolerant.</small></div>
-  <div class="item"><strong>TypeScript</strong><small>Standalone Node.js. ts.createProgram + TypeChecker. High-confidence. Self-analyzing.</small></div>
-  <div class="item"><strong>Python</strong><small>Standalone ast-based. Zero dependencies. Classes, functions, imports, inheritance. Self-analyzing.</small></div>
-  <div class="item"><strong>JSON Graph</strong><small>Universal protocol. Import + export with full metadata round-trip.</small></div>
-  <div class="item planned"><strong>Community</strong><small>Go, Rust. Build via JSON protocol. <a href="../docs/ADAPTERS.md" style="color:var(--warning)">Guides ready.</a></small></div>
-  </div>
+          <div class="card primary">
+            <div class="card-label">Primary analyzer</div>
+            <h3>Roslyn C# and Unity</h3>
+            <p>Projects, asmdefs, references, packages, source generators, diagnostics, and define profiles.</p>
+            <div class="chips">
+              <span class="chip">Editor</span><span class="chip">Player</span><span class="chip">Incremental</span><span class="chip">Compile check</span>
+            </div>
+          </div>
 
-  <div class="card">
-  <h3>Infrastructure Ports <span style="font-size:9px; color:var(--accent-3); font-weight:normal; text-transform:uppercase;">sealed</span></h3>
-  <div class="item"><strong>IFileSystem</strong><small>ReadAllText, ReadLines, OpenRead, FileExists, DirectoryExists, FindFiles, GetLastWriteTimeUtc. Impl: PhysicalFileSystem.</small></div>
-  <div class="item"><strong>ISourceControlSnapshotProvider</strong><small>Caller-rooted, bounded provenance receipt. Impl: Lifeblood.Adapters.Git. One authority for analyze, invariant, capability, and release consumers.</small></div>
-  <div class="item"><strong>IProgressSink</strong><small>Report(phase, current, total), Log(message). Impl: ConsoleProgressSink (stderr).</small></div>
-  <div class="item"><strong>IRuleProvider</strong><small>LoadRules(path) → ArchitectureRule[]. Impl: RulesLoader (JSON deserialization).</small></div>
-  </div>
+          <div class="card">
+            <div class="card-label">Language adapters</div>
+            <h3>C, TypeScript, Python, JSON</h3>
+            <p>External analyzers emit the universal graph format without bringing their toolchains into Domain.</p>
+          </div>
 
-  <div class="card">
-  <h3>Composition Roots</h3>
-  <div class="item"><strong>Lifeblood.CLI</strong><small>dotnet tool: <code>lifeblood</code>. analyze, context, export. CI exit codes.</small></div>
-  <div class="item"><strong>Lifeblood.Server.Mcp</strong><small>dotnet tool: <code>lifeblood-mcp</code>. Stdio JSON-RPC. MCP tool surface (read + write side; live counts in STATUS.md). Bidirectional Roslyn. RoslynSemanticView shared by reference across consumers. Truth envelope on every read-side response (INV-ENVELOPE-001).</small></div>
-  </div>
-  </div>
+          <div class="card">
+            <div class="card-label">Evidence adapters</div>
+            <h3>Git and runtime captures</h3>
+            <p>Bounded source provenance and request local performance evidence enter through neutral ports.</p>
+          </div>
+        </div>
 
-  <!-- CENTER COLUMN -->
-  <div class="col hex-area" style="border-right: 1px solid var(--border);">
-  <div class="col-label">&nbsp;</div>
+        <div class="arrow">→</div>
 
-  <div class="hex-row">
-  <!-- LEFT: Inbound ports -->
-  <div class="port-col">
-  <div class="port-col-label" style="color: var(--accent);">Inbound Ports</div>
-  <div class="port left"><strong>IWorkspaceAnalyzer</strong><span>project → SemanticGraph</span></div>
-  <div class="port left"><strong>IModuleDiscovery</strong><span>root → ModuleInfo[]</span></div>
-  <div class="port left"><strong>IGraphImporter</strong><span>stream → GraphDocument</span></div>
-  <div class="port left"><strong>IGraphExporter</strong><span>graph → stream</span></div>
-  <div class="port left"><strong>ICompilationHost</strong><span>diagnostics, compile-check, refs</span></div>
-  <div class="port left"><strong>ICodeExecutor</strong><span>code → result + output</span></div>
-  <div class="port left"><strong>IWorkspaceRefactoring</strong><span>rename → edits, format</span></div>
-  </div>
+        <div class="lane">
+          <div class="section-label" style="color: var(--violet);">Pure core and orchestration</div>
+          <h2>One semantic authority</h2>
+          <p>Ports describe capabilities. Adapters implement them. The core never depends on an outside tool.</p>
 
-  <!-- CENTER: ONE hexagon. The application boundary -->
-  <div class="hex-visual">
-  <div class="hex-boundary">
-  <div class="app-ring">
-  <h4>Application Layer</h4>
-  <p>AnalyzeWorkspaceUseCase<br/>GenerateContextUseCase<br/><span style="font-size:9px">Every port interface wired</span></p>
-  </div>
-  <div class="domain-core">
-  <h4>Domain</h4>
-  <h2>Semantic Graph</h2>
-  <p>Symbol, Edge, Evidence<br/>GraphBuilder, GraphValidator<br/>GraphDocument</p>
-  <p style="font-size:10px; margin-top:8px; color:var(--accent);">Pure. Immutable. Zero dependencies.</p>
-  </div>
-  <div class="app-ring">
-  <h4>Analysis</h4>
-  <p>Coupling, BlastRadius, Cycles<br/>Tiers, RuleValidator</p>
-  </div>
-  </div>
-  </div>
+          <div class="card application">
+            <div class="card-label">Application</div>
+            <h3>Use cases and ports</h3>
+            <p>Analysis admission, profiles, snapshots, queries, evidence composition, and caller owned policy.</p>
+            <div class="chips">
+              <span class="chip">Analyze</span><span class="chip">Compile</span><span class="chip">Resolve</span><span class="chip">Audit</span>
+            </div>
+          </div>
 
-  <!-- RIGHT: Outbound ports -->
-  <div class="port-col">
-  <div class="port-col-label" style="color: var(--accent-2);">Outbound Ports</div>
-  <div class="port right"><strong>IAgentContextGenerator</strong><span>graph → AgentContextPack</span></div>
-  <div class="port right"><strong>IMcpGraphProvider</strong><span>Lookup, Deps, BlastRadius, FileImpact</span></div>
-  <div class="port right"><strong>IInstructionFileGenerator</strong><span>graph → markdown</span></div>
-  <div class="port right"><strong>ISymbolResolver</strong><span>name / id → SymbolResolutionResult (with wrong-namespace fallback, v0.6.3)</span></div>
-  <div class="port right"><strong>ISemanticSearchProvider</strong><span>tokenized name + xmldoc ranked-OR</span></div>
-  <div class="port right"><strong>IDeadCodeAnalyzer</strong><span>experimental / advisory (INV-DEADCODE-001)</span></div>
-  <div class="port right"><strong>IPartialViewBuilder</strong><span>type → combined partial source</span></div>
-  <div class="port right"><strong>IInvariantProvider</strong><span>CLAUDE.md → queryable invariants</span></div>
-  </div>
-  </div>
+          <div class="card domain">
+            <div class="card-label">Domain</div>
+            <h3>Immutable semantic graph</h3>
+            <p>Symbols, relationships, call sites, evidence, confidence, validation, and analysis identity.</p>
+            <div class="chips">
+              <span class="chip">Pure</span><span class="chip">Deterministic</span><span class="chip">Thread safe</span><span class="chip">Zero dependencies</span>
+            </div>
+          </div>
 
-  <div class="signal-card">
-  <strong>Lifeblood.Analysis (optional addon)</strong>
-  <span>CouplingAnalyzer, BlastRadiusAnalyzer, CircularDependencyDetector, TierClassifier, AuthorityCoverageAnalyzer, AsmdefBoundaryAnalyzer, RuleValidator. All stateless. Depends only on Domain.</span>
-  </div>
+          <div class="card">
+            <div class="card-label">Analysis</div>
+            <h3>Derived answers</h3>
+            <p>Blast radius, cycles, test impact, architecture rules, contract audits, and evidence comparison.</p>
+          </div>
+        </div>
 
-  <div class="signal-card">
-  <strong>Enforced invariants (tested AND queryable via lifeblood_invariant_check)</strong>
-  <span>Domain: zero deps. Application: Domain only. No adapter-to-adapter refs. No connector-to-adapter refs. ScriptHost zero ProjectReferences (INV-SCRIPTHOST-001). Composition roots use an explicit allowlist (INV-COMPROOT-001). Graph immutable. Output deterministic. 11 frozen ADRs. Live test / tool / port / invariant / self-analyze counts in STATUS.md. CI jobs: build, TypeScript adapter, Python adapter, dogfood. Golden repos and fixtures for all 4 adapters (C# via Roslyn golden repos, C via native-clang fixtures, TypeScript golden repo, Python golden repo). Incremental re-analyze (file + csproj + asmdef, INV-UNITY-002). Caller-owned scope policy on incremental analyze: rejects on detected drift unless allowFullFallback is opted in; wire shape carries mode + requestedMode + fallbackReason + canRetryFull + suggestedRetry (INV-ANALYZE-FALLBACK-001). Multi-profile Unity analyze exposes Editor, Player, and Standalone profile provenance (INV-MULTI-DEFINE-UNITY-RESOLVER-001). Asmdef DirectOnly boundary checks report cross-module edges missing declared asmdef references (INV-ASMDEF-CHECK-001). File-level edges. Enum members are first-class graph symbols with constantValue (INV-EXTRACT-ENUMMEMBER-001). BCL ownership decided once at discovery (INV-BCL-001..005). ISymbolResolver routes every read-side handler with kind correction (INV-RESOLVER-001..006); Rule 4 short-name fallback never crosses containing types or kinds for member-kind inputs (INV-RESOLVER-007). SearchResult.MatchKind structurally reports which scoring bucket drove the rank (INV-SEARCH-MATCHKIND-001). RoslynSemanticView shared by reference (INV-VIEW-001..003). Truth envelope on every read-side response (INV-ENVELOPE-001). Unity reachability port (INV-UNITY-001) with full Editor reflection roster + resolved base-chain dispatch + type-via-child propagation. Authority report + forwarder classifier (INV-AUTHORITY-001, INV-FORWARDER-001). Native usage and timing on every analyze response (INV-USAGE-001..PROBE-002). Typed architectural invariants under docs/invariants/ tree, aggregated dynamically by IInvariantProvider (INV-INVARIANT-001). lifeblood_dead_code ships experimental / advisory with three known false-positive classes plus a dead-code-only Scaffolding downrank for intentional anchor types (INV-DEADCODE-001, INV-DEADCODE-SCAFFOLDING-001).</span>
-  </div>
-  </div>
+        <div class="arrow">→</div>
 
-  <!-- RIGHT COLUMN -->
-  <div class="col">
-  <div class="col-label" style="color: var(--accent-2);">Right side. AI Connectors</div>
+        <div class="lane">
+          <div class="section-label" style="color: var(--amber);">Agents and outputs</div>
+          <h2>Query one publication</h2>
+          <p>Every client sees the same latest graph while exact leases keep in flight answers internally consistent.</p>
 
-  <div class="col-multi">
-  <div class="card">
-  <h3>AI Connectors <span style="font-size:9px; color:var(--accent-2); font-weight:normal; text-transform:uppercase; letter-spacing:0.06em;">swappable</span></h3>
-  <p>Right-side connectors expose semantic truth to AI agents and tools.</p>
-  <div class="item"><strong>AgentContextGenerator</strong><small>High-value files, boundaries, reading order, hotspots, dependency matrix, violations.</small></div>
-  <div class="item"><strong>InstructionFileGenerator</strong><small>CLAUDE.md / AGENTS.md sections with module boundaries and architecture rules.</small></div>
-  <div class="item"><strong>LifebloodMcpProvider</strong><small>Symbol lookup, dependencies, dependants, blast radius, file impact, short-name resolution.</small></div>
-  <div class="item"><strong>LifebloodSymbolResolver</strong><small>Reference ISymbolResolver implementation. Routes every read-side handler through canonical → truncated method → bare short name → extracted short name from qualified input (wrong-namespace fallback, v0.6.3). Deterministic primary file path picker for partial types.</small></div>
-  <div class="item"><strong>LifebloodSemanticSearchProvider</strong><small>Ranked search over symbol names, qualified names, and xmldoc summaries. Tokenized ranked-OR (v0.6.3).</small></div>
-  <div class="item"><strong>LifebloodInvariantProvider</strong><small>Tree-walking runtime parser. Aggregates &lt;root&gt;/CLAUDE.md + &lt;root&gt;/AGENTS.md + every *.md under docs/invariants/. Five authoring shapes recognised (A/B/C/D/E). Exposes the live invariant tree as queryable structured data via lifeblood_invariant_check (INV-INVARIANT-001); current count is anchored in docs/STATUS.md.</small></div>
-  <div class="item"><strong>LifebloodPartialViewBuilder</strong><small>Combined source view across every partial declaration of a type.</small></div>
-  <div class="item"><strong>LifebloodAuthorityReporter</strong><small>Single graph walk produces implementedInterfaceCount, ownedPublicSurface, per-interface usage, forwarderRatio. Powers lifeblood_authority_report + lifeblood_port_health (INV-AUTHORITY-001, INV-FORWARDER-001).</small></div>
-  <div class="item"><strong>LifebloodResponseDecorator</strong><small>Builds the truth envelope on every read-side response. Per-tool classification table sourced from ToolRegistry (INV-ENVELOPE-001).</small></div>
-  <div class="item"><strong>UnityReachabilityAdapter</strong><small>MonoBehaviour magic methods via resolved base chains + full Unity Editor reflection roster + type-via-child propagation + resolved UnityEvent persistent calls from prefab/scene/asset YAML (INV-UNITY-001, INV-UNITYEVENT-REACHABILITY-001).</small></div>
-  <div class="item"><strong>UnityAssemblyResolver</strong><small>Probes Library/ScriptAssemblies, Library/Bee/artifacts, Library/PackageCache for execute-time DLL injection so scripts can touch UnityEngine types (INV-EXECUTE-001).</small></div>
-  <div class="item"><strong>LifebloodDeadCodeAnalyzer</strong><small>v0.6.4: five extractor false-positive classes fixed. v0.6.5: three more (ctor, field-initializer, accessor). v0.6.7: Unity reachability injection cuts MonoBehaviour-magic FPs 97% on real Unity workspaces; current extractor records baseTypeChain for metadata-only intermediate bases. v0.7.0+: LB-FP-003 Editor reflection roster. summarize/maxResults pagination via LB-FR-024. See INV-DEADCODE-001.</small></div>
-  <div class="item"><strong>MCP Server (stdio)</strong><small>JSON-RPC 2.0. Read + write tool surface (live counts in STATUS.md). Bidirectional Roslyn. Connect from Claude Code or any MCP client.</small></div>
-  <div class="item planned"><strong>REST / LSP Bridge</strong><small>IDE extensions and web services. Not yet started.</small></div>
-  </div>
+          <div class="card shared">
+            <div class="card-label">Shared MCP service</div>
+            <h3>One daemon per workspace</h3>
+            <p>Request coalescing, cancellation isolation, snapshots, history, batches, and atomic publication.</p>
+            <div class="chips">
+              <span class="chip">Codex</span><span class="chip">Claude</span><span class="chip">Cursor</span><span class="chip">Unity bridge</span>
+            </div>
+          </div>
 
-  <div class="card">
-  <h3>What comes out</h3>
-  <p>Verified, capability-aware context for AI systems.</p>
-  <div class="item"><strong>Context pack JSON</strong><span>structured AI-consumable output</span></div>
-  <div class="item"><strong>Instruction file markdown</strong><span>CLAUDE.md architecture sections</span></div>
-  <div class="item"><strong>MCP interactive queries</strong><span>Tools over stdio — read + write side</span></div>
-  <div class="item"><strong>Exported graph.json</strong><span>portable semantic graph + metadata</span></div>
-  <div class="item"><strong>CLI analysis report</strong><span>symbols, edges, violations, cycles</span></div>
-  <div class="item"><strong>Code execution</strong><span>CSharpScript.RunAsync via MCP</span></div>
-  <div class="item"><strong>Diagnostics + compile check</strong><span>Roslyn compiler-as-a-service</span></div>
-  <div class="item"><strong>Asmdef boundary audit</strong><span>DirectOnly module dependency violations</span></div>
-  <div class="item"><strong>Find references + rename</strong><span>workspace-aware refactoring</span></div>
-  </div>
+          <div class="card">
+            <div class="card-label">Compiler backed queries</div>
+            <h3>Understand and change code safely</h3>
+            <p>References, dependencies, diagnostics, compile checks, refactoring previews, and symbol resolution.</p>
+          </div>
 
-  <div class="card">
-  <h3>Quality gates</h3>
-  <div class="item"><strong>Golden repos</strong><small>C# (HexagonalApp, CycleRepo), TS (mini-app), Python (mini-app). Assert specific types + edges.</small></div>
-  <div class="item"><strong>Self-dogfood</strong><small>Every push: analyze own codebase, validate rules, export graph, cross-language proof.</small></div>
-  <div class="item"><strong>Architecture invariant tests</strong><small>Domain zero deps, Application→Domain only, no adapter↔adapter, no connector→adapter.</small></div>
-  </div>
-  </div>
-  </div>
-  </div>
+          <div class="card">
+            <div class="card-label">Portable outputs</div>
+            <h3>CLI, CI, context, and graph JSON</h3>
+            <p>Automation and documentation consume the same semantic model as interactive MCP clients.</p>
+          </div>
+        </div>
+      </section>
 
-  <div class="legend">
-  <div class="legend-item"><b>Adapters (left)</b>Roslyn is the C# reference with cross-module resolution. libclang is the C reference (beta, v0.7.7), reading compile_commands.json and emitting Lifeblood-shape graph JSON. TypeScript and Python are standalone adapters. JSON graph is the universal bridge. Community adapters (Go, Rust) have contribution guides.</div>
-  <div class="legend-item"><b>Core (center)</b>Pure domain + application orchestration. Port interfaces (live count in STATUS.md). Environment integrations stay behind ports; Lifeblood.Adapters.Git is the bounded source-control implementation. GraphDocument carries version, language, and adapter capabilities. All invariants enforced by tests AND queryable at runtime via lifeblood_invariant_check.</div>
-  <div class="legend-item"><b>Connectors (right)</b>Context packs, instruction files, MCP server with interactive tool surface, CLI with CI exit codes. They depend inward on Application ports, never on adapters. Packaged as dotnet tools.</div>
-  </div>
+      <section class="publication">
+        <div class="section-label" style="color: var(--green);">Request and publication flow</div>
+        <h2>Readers never observe a half built graph</h2>
+        <div class="steps">
+          <div class="step"><span class="step-number">01</span><strong>Admit request</strong><span>Canonical workspace, profiles, rules, scope, and source provenance.</span></div>
+          <div class="step"><span class="step-number">02</span><strong>Build candidate</strong><span>Full or incremental Roslyn analysis without mutating the live snapshot.</span></div>
+          <div class="step"><span class="step-number">03</span><strong>Verify inputs</strong><span>Reject drift, validate the graph, and evaluate architecture rules.</span></div>
+          <div class="step"><span class="step-number">04</span><strong>Publish atomically</strong><span>Graph, compiler state, identity, and evidence commit as one snapshot.</span></div>
+          <div class="step"><span class="step-number">05</span><strong>Lease and query</strong><span>Every agent reads one exact generation while later analysis continues.</span></div>
+        </div>
+      </section>
 
-  <div class="footer">
-  Solid = implemented and dogfood-verified. Dashed/faded = planned.
-  Self-analysis: <code>lifeblood analyze --project . --rules packs/lifeblood/rules.json</code>
-  → Self-analyze graph metrics, port count, MCP tool count, queryable invariant count, category coverage — all anchored in docs/STATUS.md, ratcheted against the live source every CI run. Incremental re-analyze (file + csproj + asmdef) with caller-owned scope policy (rejects on detected drift unless allowFullFallback opted in). Asmdef DirectOnly boundary checks. Enum members are first-class graph symbols. Search results carry MatchKind (Name / QualifiedName / XmlDoc / Multiple). File-level edges. Truth envelope on every read-side response. Native usage reporting on every analyze response.
-  </div>
+      <section class="boundaries">
+        <div class="boundary"><strong>Dependency direction</strong><span>Domain has no dependencies. Application depends only on Domain. Adapters and connectors point inward.</span></div>
+        <div class="boundary"><strong>One retained base</strong><span>Same workspace agents share one semantic graph and Roslyn state instead of multiplying compiler heaps.</span></div>
+        <div class="boundary"><strong>Honest evidence</strong><span>Successful tool responses carry confidence, source, staleness, limitations, snapshot identity, and provenance.</span></div>
+        <div class="boundary"><strong>Unity boundary</strong><span>Unity MCP controls the Editor. Lifeblood analyzes code. Roslyn remains outside the Unity process.</span></div>
+      </section>
+    </main>
+
+    <footer>
+      <span><strong>Detailed reference:</strong> assemblies, ports, invariants, adapter contracts, and runtime seams live in docs/ARCHITECTURE.md.</span>
+      <span><strong>Enforced:</strong> architecture tests, graph validation, rule packs, typed invariants, and documentation ratchets.</span>
+    </footer>
   </div>
 </body>
 </html>

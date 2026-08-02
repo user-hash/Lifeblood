@@ -52,7 +52,7 @@ verifiable. The sections below list every public change since v0.7.12.
   never become identity gates. Rejected comparisons return no deltas. The
   stateless adapter retains no capture; import and compare accept an explicit
   workspace root and run before analyze, while correlation alone requires and
-  is pinned to the current source-evidence publication. Every response
+  is pinned to the current source-evidence publication. Every successful result
   reports `additionalSemanticBaseCount:0`. (`INV-PERFORMANCE-EVIDENCE-001`;
   closes `LB-INTAKE-20260714-034` and `LB-INTAKE-20260714-035`.)
 
@@ -373,6 +373,13 @@ verifiable. The sections below list every public change since v0.7.12.
   Complete/returned/omitted counts and `truncated` remain truthful under the
   1..200 path cap, and full fallback no longer masquerades as source change.
   (`INV-ANALYZE-ACCEPTED-CHANGE-001`, `LB-INTAKE-20260629-019`.)
+- **Public documentation now leads with the Roslyn and Unity workflow.** The
+  README, NuGet descriptions, and package tags identify Lifeblood as a Roslyn
+  powered C# and Unity analyzer before describing the wider adapter model. A
+  new compact architecture overview separates inputs, the pure core, shared
+  workspace publication, agent queries, and Unity Editor control, while the
+  detailed architecture reference documents snapshot, contract, source, and
+  runtime evidence ownership.
 
 ## [0.7.12] - 2026-06-22
 
