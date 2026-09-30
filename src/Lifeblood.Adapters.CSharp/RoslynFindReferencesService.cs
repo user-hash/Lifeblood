@@ -24,46 +24,58 @@ internal sealed class RoslynFindReferencesService
         _operationFacts = operationFacts;
     }
 
-    internal DomainReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options)
+    internal ReferenceSearchReport FindReferences(FindReferencesRequest request, FindReferencesOptions options)
     {
         options.CancellationToken.ThrowIfCancellationRequested();
-        // Direct compilation scan. Reliable across cross-project boundaries
-        // where AdhocWorkspace's SymbolFinder.FindReferencesAsync may miss results.
-        //
-        // Match by CANONICAL Lifeblood symbol ID (BuildSymbolId), NOT by Roslyn's
-        // ToDisplayString. The display string can diverge subtly across the source/metadata
-        // boundary (nullability, reduced names, attribute round-trips), causing legitimate
-        // call sites to be silently dropped. The canonical builder is namespace-walking +
-        // explicit param types. It produces the same string for source and metadata symbols
-        // because both route through Internal.CanonicalSymbolFormat (GetFullName + the pinned
-        // ParamType SymbolDisplayFormat).
-        //
-        // First we resolve the requested symbol once to get its OWN canonical ID. Then for
-        // every visited node we compute the canonical ID and compare strings. This is the
-        // same builder the graph uses, so any ID format the graph emits is also matched here.
-        var resolvedTarget = _lookup.ResolveFromSource(symbolId);
-        if (resolvedTarget == null) return Array.Empty<DomainReferenceLocation>();
-        var targetCanonicalId = _lookup.BuildSymbolId(resolvedTarget);
+        if (request.SymbolIds.Count is < 1 or > FindReferencesRequest.MaximumTargets)
+            throw new ArgumentOutOfRangeException(nameof(request), $"A reference scan requires 1..{FindReferencesRequest.MaximumTargets} targets.");
 
-        var results = new List<DomainReferenceLocation>();
-
-        // Physical syntax identity precedes mapped display coordinates: distinct
-        // calls can share a line, container, or even a #line mapping.
-        var seen = new HashSet<(SyntaxTree tree, int start, int length, DomainReferenceKind kind)>();
-
-        if (resolvedTarget is IMethodSymbol { MethodKind: MethodKind.Conversion })
+        var targets = new Dictionary<string, Target>(StringComparer.Ordinal);
+        var orderedTargets = new (string requestedId, Target? target)[request.SymbolIds.Count];
+        var admissions = new Dictionary<string, Target?>(StringComparer.Ordinal);
+        var symbolIds = new Dictionary<ISymbol, string>(SymbolEqualityComparer.Default);
+        long idBuilds = 0;
+        string Id(ISymbol symbol)
         {
-            // Implicit conversions have no bound method-name syntax. Consume
-            // the existing operation authority for both explicit and implicit
-            // conversions instead of layering a second syntax scan over it.
+            if (symbolIds.TryGetValue(symbol, out var id)) return id;
+            idBuilds++;
+            return symbolIds[symbol] = _lookup.BuildSymbolId(symbol);
+        }
+        for (var i = 0; i < request.SymbolIds.Count; i++)
+        {
+            options.CancellationToken.ThrowIfCancellationRequested();
+            var requested = request.SymbolIds[i];
+            if (admissions.TryGetValue(requested, out var admitted))
+            {
+                orderedTargets[i] = (requested, admitted);
+                continue;
+            }
+            var resolved = _lookup.ResolveFromSource(requested);
+            Target? target = null;
+            if (resolved != null)
+            {
+                var id = _lookup.BuildSymbolId(resolved);
+                if (!targets.TryGetValue(id, out target))
+                    targets.Add(id, target = new Target(id, resolved));
+            }
+            admissions.Add(requested, target);
+            orderedTargets[i] = (requested, target);
+        }
+
+        var conversionIds = targets.Values.Where(target => target.IsConversion).Select(target => target.Id).ToArray();
+        if (conversionIds.Length > 0)
+        {
+            // Conversion binding belongs to the existing operation authority.
+            // All conversion targets share one traversal, including implicit uses.
             _operationFacts.Scan(new OperationFactQuery
             {
                 IncludeKinds = new[] { OperationFactKind.Conversion },
-                TargetSymbolIds = new[] { targetCanonicalId },
+                TargetSymbolIds = conversionIds,
                 IncludeImplicit = true,
                 MaxFacts = int.MaxValue,
             }, fact =>
             {
+                var target = targets[fact.TargetSymbolId!];
                 var owner = CompilationFileOwnershipResolver.Resolve(
                     _lookup.Compilations, fact.Source.FilePath, fact.ModuleName);
                 if (owner.Tree is not { } tree)
@@ -72,9 +84,9 @@ internal sealed class RoslynFindReferencesService
                 var start = text.Lines[fact.Source.Line - 1].Start + fact.Source.Column - 1;
                 var end = text.Lines[fact.Source.EndLine - 1].Start + fact.Source.EndColumn - 1;
                 var occurrence = new Microsoft.CodeAnalysis.Text.TextSpan(start, end - start);
-                if (!seen.Add((tree, start, occurrence.Length, DomainReferenceKind.Usage))) return true;
+                if (!target.Seen.Add((tree, start, occurrence.Length, DomainReferenceKind.Usage))) return true;
                 var mapped = tree.GetMappedLineSpan(occurrence, options.CancellationToken);
-                results.Add(new DomainReferenceLocation
+                target.Locations.Add(new DomainReferenceLocation
                 {
                     FilePath = mapped.Path,
                     Line = mapped.StartLinePosition.Line + 1,
@@ -86,92 +98,93 @@ internal sealed class RoslynFindReferencesService
                 return true;
             }, options.CancellationToken);
         }
-        else foreach (var compilation in _lookup.Compilations.Values)
+
+        int treeVisits = 0;
+        long nodeVisits = 0;
+        long bindings = 0;
+        if (targets.Values.Any(target => !target.IsConversion))
+        foreach (var compilation in _lookup.Compilations.Values)
         {
             foreach (var tree in compilation.SyntaxTrees)
             {
                 options.CancellationToken.ThrowIfCancellationRequested();
+                treeVisits++;
                 var model = compilation.GetSemanticModel(tree);
                 var root = tree.GetRoot(options.CancellationToken);
                 var sourceText = tree.GetText(options.CancellationToken);
-
                 foreach (var node in root.DescendantNodes())
                 {
                     options.CancellationToken.ThrowIfCancellationRequested();
-                    var symbolInfo = model.GetSymbolInfo(node, options.CancellationToken);
-                    var resolved = symbolInfo.Symbol;
+                    nodeVisits++;
+                    bindings++;
+                    var resolved = model.GetSymbolInfo(node, options.CancellationToken).Symbol;
                     if (resolved == null) continue;
-
-                    // Compare canonical IDs. Walk to OriginalDefinition for constructed
-                    // generics so List<int>.Add and List<string>.Add both match List<T>.Add.
-                    var resolvedId = _lookup.BuildSymbolId(resolved);
-                    if (resolvedId != targetCanonicalId)
-                    {
-                        var originalId = _lookup.BuildSymbolId(resolved.OriginalDefinition);
-                        if (originalId != targetCanonicalId) continue;
-                    }
-
+                    if (!targets.TryGetValue(Id(resolved), out var target)
+                        && !targets.TryGetValue(Id(resolved.OriginalDefinition), out target)) continue;
+                    if (target.IsConversion) continue;
                     var occurrence = NormalizeOccurrence(node);
-                    if (!seen.Add((tree, occurrence.SpanStart, occurrence.Span.Length, DomainReferenceKind.Usage))) continue;
+                    if (!target.Seen.Add((tree, occurrence.SpanStart, occurrence.Span.Length, DomainReferenceKind.Usage))) continue;
                     var span = occurrence.GetLocation().GetMappedLineSpan();
-                    var line = span.StartLinePosition.Line + 1;
-                    var column = span.StartLinePosition.Character + 1;
-                    var filePath = span.Path ?? "";
-
-                    // Populate containingSymbolId by walking the node's ancestors to the
-                    // first enclosing member declaration (method, property, indexer, field,
-                    // ctor) or type declaration as the coarser fallback. The canonical ID
-                    // of that member is what find_references consumers use to group usages
-                    // by caller, drive containingTypeFilter, and render call-graph UIs.
-                    // O(depth) per reference — cheap.
-                    var containingSymbolId = ComputeContainingSymbolId(model, node);
-
-                    var spanText = sourceText.GetSubText(occurrence.Span).ToString();
-                    results.Add(new DomainReferenceLocation
+                    target.Locations.Add(new DomainReferenceLocation
                     {
-                        FilePath = filePath,
-                        Line = line,
-                        Column = column,
-                        SpanText = spanText,
-                        ContainingSymbolId = containingSymbolId,
+                        FilePath = span.Path ?? "",
+                        Line = span.StartLinePosition.Line + 1,
+                        Column = span.StartLinePosition.Character + 1,
+                        SpanText = sourceText.GetSubText(occurrence.Span).ToString(),
+                        ContainingSymbolId = ComputeContainingSymbolId(model, node),
                         Kind = DomainReferenceKind.Usage,
                     });
                 }
             }
         }
 
-        // Declaration locations are an opt-in operation policy on the host,
-        // NOT a side-effect of resolver
-        // merging. Roslyn's ISymbol.Locations returns one entry per partial
-        // declaration for partial types. Exactly the data the user wants
-        // surfaced when querying "where is this type defined?"
         if (options.IncludeDeclarations)
+        foreach (var target in targets.Values)
+        foreach (var location in target.Symbol.Locations.Where(location => location.IsInSource))
         {
-            var declContainingId = targetCanonicalId; // declaration's own symbol
-            if (resolvedTarget != null)
+            options.CancellationToken.ThrowIfCancellationRequested();
+            if (!target.Seen.Add((location.SourceTree!, location.SourceSpan.Start, location.SourceSpan.Length, DomainReferenceKind.Declaration))) continue;
+            var span = location.GetMappedLineSpan();
+            target.Locations.Add(new DomainReferenceLocation
             {
-                foreach (var location in resolvedTarget.Locations.Where(l => l.IsInSource))
-                {
-                    var span = location.GetMappedLineSpan();
-                    var line = span.StartLinePosition.Line + 1;
-                    var column = span.StartLinePosition.Character + 1;
-                    var filePath = span.Path ?? "";
-                    if (!seen.Add((location.SourceTree!, location.SourceSpan.Start, location.SourceSpan.Length, DomainReferenceKind.Declaration))) continue;
-
-                    results.Add(new DomainReferenceLocation
-                    {
-                        FilePath = filePath,
-                        Line = line,
-                        Column = column,
-                        SpanText = "(declaration)",
-                        ContainingSymbolId = declContainingId,
-                        Kind = DomainReferenceKind.Declaration,
-                    });
-                }
-            }
+                FilePath = span.Path ?? "",
+                Line = span.StartLinePosition.Line + 1,
+                Column = span.StartLinePosition.Character + 1,
+                SpanText = "(declaration)",
+                ContainingSymbolId = target.Id,
+                Kind = DomainReferenceKind.Declaration,
+            });
         }
 
-        return results.ToArray();
+        options.CancellationToken.ThrowIfCancellationRequested();
+        var locations = targets.ToDictionary(pair => pair.Key, pair => pair.Value.Locations.ToArray(), StringComparer.Ordinal);
+        return new ReferenceSearchReport
+        {
+            Symbols = orderedTargets.Select(row => new ReferenceSearchGroup
+            {
+                SymbolId = row.target?.Id ?? row.requestedId,
+                Resolved = row.target != null,
+                Locations = row.target == null ? Array.Empty<DomainReferenceLocation>() : locations[row.target.Id],
+            }).ToArray(),
+            Work = new ReferenceSearchWork
+            {
+                SyntaxTreeVisits = treeVisits,
+                SyntaxNodeVisits = nodeVisits,
+                SyntaxBindingCount = bindings,
+                MatchIdBuildCount = idBuilds,
+                ConversionScanCount = conversionIds.Length > 0 ? 1 : 0,
+            },
+        };
+    }
+
+    private sealed class Target(string id, ISymbol symbol)
+    {
+        internal string Id { get; } = id;
+        internal ISymbol Symbol { get; } = symbol;
+        internal bool IsConversion { get; } = symbol is IMethodSymbol { MethodKind: MethodKind.Conversion };
+        internal List<DomainReferenceLocation> Locations { get; } = new();
+        // Dedup physical occurrence identity before mapped display coordinates.
+        internal HashSet<(SyntaxTree tree, int start, int length, DomainReferenceKind kind)> Seen { get; } = new();
     }
 
     private static SyntaxNode NormalizeOccurrence(SyntaxNode node)

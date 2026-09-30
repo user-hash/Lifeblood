@@ -428,8 +428,11 @@ namespace Lifeblood.UnityBridge
     {
         public sealed class Parameters : SnapshotReadParameters
         {
-            [ToolParameter("Symbol ID to search for")]
+            [ToolParameter("One symbol ID; mutually exclusive with symbolIds.", Required = false)]
             public string symbolId { get; set; }
+
+            [ToolParameter("Bounded target set; mutually exclusive with symbolId.", Required = false)]
+            public string[] symbolIds { get; set; }
 
             [ToolParameter("Include declaration sites in the result. Default: false.", Required = false, DefaultValue = "false")]
             public bool includeDeclarations { get; set; }

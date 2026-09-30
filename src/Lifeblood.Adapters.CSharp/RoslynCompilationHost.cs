@@ -456,7 +456,10 @@ public sealed class RoslynCompilationHost :
   => FindReferences(symbolId, FindReferencesOptions.Default);
 
   public DomainReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options)
-      => new RoslynFindReferencesService((Internal.IRoslynLookup)this, _operationFacts).FindReferences(symbolId, options);
+      => FindReferences(new FindReferencesRequest { SymbolIds = new[] { symbolId } }, options).Symbols[0].Locations;
+
+  public ReferenceSearchReport FindReferences(FindReferencesRequest request, FindReferencesOptions options)
+      => new RoslynFindReferencesService((Internal.IRoslynLookup)this, _operationFacts).FindReferences(request, options);
 
   /// <summary>
   /// Resolve a symbol ID, preferring the source-defined copy over metadata copies.

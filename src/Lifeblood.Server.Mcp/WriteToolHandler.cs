@@ -607,31 +607,68 @@ internal sealed class WriteToolHandler
     public McpToolResult HandleFindReferences(JsonElement? args, CancellationToken cancellationToken)
     {
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
-
         var raw = GetString(args, "symbolId");
-        if (string.IsNullOrEmpty(raw))
-            return ErrorResult("symbolId is required");
+        JsonElement array = default;
+        var multiple = args.HasValue && args.Value.TryGetProperty("symbolIds", out array)
+            && array.ValueKind != JsonValueKind.Null;
+        if (multiple && !string.IsNullOrEmpty(raw))
+            return ErrorResult("Supply exactly one of symbolId or symbolIds.");
+        string[] requested;
+        if (multiple)
+        {
+            if (array.ValueKind != JsonValueKind.Array
+                || array.GetArrayLength() is < 1 or > Lifeblood.Application.Ports.Left.FindReferencesRequest.MaximumTargets
+                || array.EnumerateArray().Any(value => value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString())))
+                return ErrorResult($"symbolIds requires 1..{Lifeblood.Application.Ports.Left.FindReferencesRequest.MaximumTargets} non-empty strings.");
+            requested = array.EnumerateArray().Select(value => value.GetString()!).ToArray();
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(raw)) return ErrorResult("symbolId or symbolIds is required");
+            requested = new[] { raw };
+        }
 
-        // Plan v4 Seam #1: resolver canonicalizes the input first.
-        var resolved = _resolver.Resolve(_session.Graph!, raw);
-        if (resolved.CanonicalId == null)
-            return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {raw}");
-
-        // Plan v4 §2.6 / Correction 2: declaration inclusion is operation
-        // policy, modeled as an explicit FindReferencesOptions on the host.
-        var includeDecls = GetBool(args, "includeDeclarations") ?? false;
+        // Admit the entire bounded set through the existing graph resolver before scanning.
+        var canonicalIds = new string[requested.Length];
+        for (var i = 0; i < requested.Length; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var resolved = _resolver.Resolve(_session.Graph!, requested[i]);
+            if (resolved.CanonicalId == null)
+                return ErrorResult(resolved.Diagnostic ?? $"Symbol not found: {requested[i]}");
+            canonicalIds[i] = resolved.CanonicalId;
+        }
         var options = new Lifeblood.Application.Ports.Left.FindReferencesOptions
         {
-            IncludeDeclarations = includeDecls,
+            IncludeDeclarations = GetBool(args, "includeDeclarations") ?? false,
             CancellationToken = cancellationToken,
         };
+        var host = _session.CompilationHost!;
+        if (!multiple)
+        {
+            var locations = host.FindReferences(canonicalIds[0], options);
+            return TextResult(JsonSerializer.Serialize(new
+            {
+                symbolId = canonicalIds[0],
+                count = locations.Length,
+                locations,
+                analyzedUnderProfile = _session.RetainedProfileName,
+                limitations = WriteSideRetainedProfileLimitations(),
+            }, _jsonOpts));
+        }
 
-        var locations = _session.CompilationHost!.FindReferences(resolved.CanonicalId, options);
+        var report = host.FindReferences(new Lifeblood.Application.Ports.Left.FindReferencesRequest { SymbolIds = canonicalIds }, options);
         return TextResult(JsonSerializer.Serialize(new
         {
-            symbolId = resolved.CanonicalId,
-            count = locations.Length,
-            locations,
+            symbolCount = report.Symbols.Length,
+            results = report.Symbols.Select(group => new
+            {
+                symbolId = group.SymbolId,
+                resolved = group.Resolved,
+                count = group.Locations.Length,
+                locations = group.Locations,
+            }).ToArray(),
+            work = report.Work,
             analyzedUnderProfile = _session.RetainedProfileName,
             limitations = WriteSideRetainedProfileLimitations(),
         }, _jsonOpts));

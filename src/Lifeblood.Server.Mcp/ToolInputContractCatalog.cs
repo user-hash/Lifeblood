@@ -264,7 +264,8 @@ public static class ToolInputContractCatalog
         );
 
         yield return Contract(@"lifeblood_find_references",
-            Arg(@"symbolId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Symbol ID (e.g., type:MyApp.AuthService)", enumValues: Array.Empty<string>()),
+            Arg(@"symbolId", ToolArgumentType.String, required: false, arrayItemType: null, description: @"One symbol ID; mutually exclusive with symbolIds.", enumValues: Array.Empty<string>()),
+            Arg(@"symbolIds", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Bounded target set (1..32); mutually exclusive with symbolId. Shares one request-local scan and returns ordered per-target results plus work counters.", enumValues: Array.Empty<string>()),
             Arg(@"includeDeclarations", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"When true, include the symbol's declaration sites in the result. Default false.", enumValues: Array.Empty<string>()),
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional INV-MULTI-DEFINE-WRITESIDE-001 honesty gate. When set, must equal the retained profile name; mismatched values fail loudly with switch-instructions.", enumValues: Array.Empty<string>())
         );

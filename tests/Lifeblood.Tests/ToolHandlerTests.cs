@@ -2495,6 +2495,34 @@ public class ToolHandlerTests : IDisposable
         }
     }
 
+    [Fact]
+    public void FindReferences_MultiTargetPreservesSingleShapeAndPrevalidatesTargets()
+    {
+        var (projectRoot, _) = CreateContractAuditProject("multi-references");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+        var first = "method:Acme.Guard.Set(int)";
+        var second = "method:Acme.Guard.Run(int)";
+        using var single = JsonDocument.Parse(handler.Handle("lifeblood_find_references", MakeArgs(new { symbolId = first })).Content[0].Text);
+        Assert.False(single.RootElement.TryGetProperty("results", out _));
+        Assert.False(single.RootElement.TryGetProperty("work", out _));
+        using var many = JsonDocument.Parse(handler.Handle("lifeblood_find_references", MakeArgs(new { symbolIds = new[] { first, second } })).Content[0].Text);
+        var results = many.RootElement.GetProperty("results");
+        Assert.Equal(2, many.RootElement.GetProperty("symbolCount").GetInt32());
+        Assert.Equal(first, results[0].GetProperty("symbolId").GetString());
+        Assert.Equal(second, results[1].GetProperty("symbolId").GetString());
+        Assert.Equal(JsonSerializer.Serialize(single.RootElement.GetProperty("locations")),
+            JsonSerializer.Serialize(results[0].GetProperty("locations")));
+        Assert.Equal(1, many.RootElement.GetProperty("work").GetProperty("syntaxTreeVisits").GetInt32());
+        Assert.Equal(single.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString(),
+            many.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        Assert.True(handler.Handle("lifeblood_find_references", MakeArgs(new { symbolId = first, symbolIds = new[] { second } })).IsError);
+        Assert.True(handler.Handle("lifeblood_find_references", MakeArgs(new { symbolIds = Array.Empty<string>() })).IsError);
+        Assert.True(handler.Handle("lifeblood_find_references", MakeArgs(new { symbolIds = new[] { first, "type:Missing" } })).IsError);
+        Assert.True(handler.Handle("lifeblood_find_references", MakeArgs(new { symbolIds = Enumerable.Repeat(first, 33).ToArray() })).IsError);
+    }
+
     private (string ProjectRoot, JsonElement Manifest) CreateContractAuditProject(string name = "contract-audit")
     {
         var projectRoot = Path.Combine(_tempDir, name);

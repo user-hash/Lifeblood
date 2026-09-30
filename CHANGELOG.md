@@ -9,6 +9,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Reference queries accept optional `symbolIds` for 1..32 targets. One request-local
+  syntax pass matches ordinary targets, while conversion targets share the existing
+  operation-fact pass. Ordered results and work counters are opt-in; `symbolId`
+  preserves its response shape. The schema and Unity bridge expose the same inputs.
+
 - Tool discovery descriptions remain stable across publications and describe
   registry-owned prerequisites. Live default availability is additive on
   `lifeblood_capabilities.tools.behaviorContracts[].available`; action-specific

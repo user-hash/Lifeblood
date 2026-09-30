@@ -68,6 +68,13 @@ public interface ICompilationHost
     /// </summary>
     ReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options);
 
+    /// <summary>
+    /// Resolve a bounded target set before scanning retained inputs. Implementations
+    /// supporting this lane share matching work across targets in one request.
+    /// </summary>
+    ReferenceSearchReport FindReferences(FindReferencesRequest request, FindReferencesOptions options)
+        => throw new NotSupportedException("This adapter does not support multi-target reference scans.");
+
     /// <summary>Find where a symbol is declared (definition site).</summary>
     DefinitionLocation? FindDefinition(string symbolId);
 
@@ -243,4 +250,11 @@ public sealed class FindReferencesOptions
 
     /// <summary>Cancellation for the request-local compilation scan.</summary>
     public CancellationToken CancellationToken { get; init; }
+}
+
+/// <summary>Bounded request-local target set; no additional retained index.</summary>
+public sealed class FindReferencesRequest
+{
+    public const int MaximumTargets = 32;
+    public IReadOnlyList<string> SymbolIds { get; init; } = Array.Empty<string>();
 }

@@ -174,6 +174,18 @@ driven discovery honestly rather than promise pre-import disk pickup.
 
 - **INV-UNITY-NEWFILE-DISCOVERY-HONESTY-001. The analyze tool description states descriptor-driven discovery, never raw pre-meta disk pickup, and compile_check surfaces the stale-descriptor case.**
 
+## Reference search
+
+The retained reference service owns one bounded request-local matching core.
+Single-target operations delegate to it. At most 32 targets are admitted before
+ordinary syntax is visited once; conversion targets share the existing operation
+provider's one scan. Canonical-ID memoization is released with the request.
+Physical occurrence identity and declaration kind remain per target. Work counters
+scope syntax binding separately from target admission, containing-member lookup
+and conversion traversal. `FindReferencesTests.MultiTarget_*` pins cross-module
+parity, mixed conversion coverage, stable order, duplicates and admission bounds.
+No retained reference mirror or second semantic base is allowed.
+
 ## Symbol ID Grammar (C# Adapter)
 
 Lifeblood symbol IDs are stable identifiers produced by `Lifeblood.Adapters.CSharp.Internal.SymbolIds`

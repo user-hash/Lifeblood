@@ -275,6 +275,59 @@ namespace App
             "method:Lib.Service.Run()", new FindReferencesOptions { CancellationToken = cancellation.Token }));
     }
 
+    [Fact]
+    public void MultiTarget_OneSyntaxPassAndOneConversionPassPreserveSingleTargetResults()
+    {
+        var (comps, deps) = BuildTwoModule(
+            "namespace Lib { public class A { public void Run() {} public void Other() {} public static implicit operator int(A a) => 1; } public class B { public static implicit operator int(B b) => 2; } }",
+            "class Caller { void Invoke(Lib.A a, Lib.B b) { a.Run(); a.Other(); a.Run(); int x = a; int y = b; } }");
+        Assert.DoesNotContain(comps.Values.SelectMany(c => c.GetDiagnostics()), d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        using var host = new RoslynCompilationHost(comps, deps);
+        var ids = new[] { "method:Lib.A.Run()", "method:Lib.A.Other()", "type:Lib.A", "method:Lib.A.op_Implicit(Lib.A)", "method:Lib.B.op_Implicit(Lib.B)" };
+        var options = new FindReferencesOptions { IncludeDeclarations = true };
+        var separate = ids.Select(id => host.FindReferences(new FindReferencesRequest { SymbolIds = new[] { id } }, options)).ToArray();
+        var combined = host.FindReferences(new FindReferencesRequest { SymbolIds = ids }, options);
+        Assert.Equal(ids, combined.Symbols.Select(row => row.SymbolId));
+        Assert.All(combined.Symbols, row => Assert.True(row.Resolved));
+        for (var i = 0; i < ids.Length; i++)
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(separate[i].Symbols[0].Locations),
+                System.Text.Json.JsonSerializer.Serialize(combined.Symbols[i].Locations));
+        Assert.Equal(2, combined.Work.SyntaxTreeVisits);
+        Assert.Equal(separate.Take(3).Sum(row => row.Work.SyntaxBindingCount), combined.Work.SyntaxBindingCount * 3);
+        Assert.Equal(1, combined.Work.ConversionScanCount);
+        Assert.Equal(2, separate.Sum(row => row.Work.ConversionScanCount));
+        Assert.Equal(2, combined.Symbols[0].Locations.Count(location => location.Kind == ReferenceKind.Usage));
+        Assert.Single(combined.Symbols[3].Locations, location => location.Kind == ReferenceKind.Usage);
+        Assert.Single(combined.Symbols[4].Locations, location => location.Kind == ReferenceKind.Usage);
+    }
+
+    [Fact]
+    public void MultiTarget_DuplicatesAndUnresolvedTargetsPreserveOrderWithoutAnotherScan()
+    {
+        var (comps, deps) = BuildTwoModule("namespace Lib { public class A { public void Run() {} } }", "class Caller { void Invoke() { new Lib.A().Run(); } }");
+        using var host = new RoslynCompilationHost(comps, deps);
+        var id = "method:Lib.A.Run()";
+        var single = host.FindReferences(new FindReferencesRequest { SymbolIds = new[] { id } }, FindReferencesOptions.Default);
+        var many = host.FindReferences(new FindReferencesRequest { SymbolIds = new[] { id, "type:Missing", id } }, FindReferencesOptions.Default);
+        Assert.Equal(single.Work.SyntaxBindingCount, many.Work.SyntaxBindingCount);
+        Assert.Same(many.Symbols[0].Locations, many.Symbols[2].Locations);
+        Assert.False(many.Symbols[1].Resolved);
+        Assert.Empty(many.Symbols[1].Locations);
+        var maximum = host.FindReferences(new FindReferencesRequest { SymbolIds = Enumerable.Repeat(id, 32).ToArray() }, FindReferencesOptions.Default);
+        Assert.Equal(32, maximum.Symbols.Length);
+        Assert.Equal(single.Work.SyntaxBindingCount, maximum.Work.SyntaxBindingCount);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(33)]
+    public void MultiTarget_InvalidBoundsRejectBeforeScanning(int count)
+    {
+        using var host = new RoslynCompilationHost(new Dictionary<string, CSharpCompilation>());
+        Assert.Throws<ArgumentOutOfRangeException>(() => host.FindReferences(
+            new FindReferencesRequest { SymbolIds = Enumerable.Repeat("type:Missing", count).ToArray() }, FindReferencesOptions.Default));
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // C4: SkippedFile surface
     // ─────────────────────────────────────────────────────────────────────
