@@ -20,10 +20,14 @@ human-readable rulebook).
 
 ## Versioning
 
-Lifeblood ships one stable contract version at a time. The current
-version is **v1** (the first version frozen — every release on `main`
-before this policy implicitly shipped v1-shaped responses; the
-ratchets pin the shape so it does not drift accidentally).
+MCP connections default to **v1**. The C# MCP host analyzes one shared
+publication using collision-safe v2 declaration identities. Each connection
+may select **v2** in `initialize.params` with `"mcp-protocol-version":"v2"`;
+the additive `lifebloodSchemaVersion` response field confirms its selection.
+Unknown or non-string selections return JSON-RPC `-32602` and preserve the
+connection's previous selection. This extension does not change MCP's
+`protocolVersion` or the stable tool input catalog. CLI and library defaults
+remain legacy v1; configured adapter/session callers may select v2 explicitly.
 
 When a contract must change in a breaking way, the new version is
 **v2**, and v1 stays supported for at least one full minor release
@@ -77,16 +81,35 @@ When a breaking change is needed:
 1. The new schema (`v2`) ships in the same release as v1 — both are
    served simultaneously. v1 clients keep getting v1 responses; v2
    clients opt in via `mcp-protocol-version: v2` in the initialization
-   handshake (TBD when v2 actually lands; this policy reserves the
-   mechanism).
+   handshake. Selection belongs to each connection, while clients share
+   one semantic publication.
 2. v1 stays supported for at least **one full minor release** after v2
    ships. During the window, v1 responses include a non-fatal
    `Limitations[]` entry naming the v2 successor (`"This response uses
-   schema v1. v2 is available with mcp-protocol-version: v2. v1 will be
-   removed in v0.X.Y."`).
+   schema v1. Opt in with mcp-protocol-version: v2 for collision-safe
+   declaration IDs. V1 remains supported for at least one full minor release
+   after v2 ships; its removal release has not been announced."`).
 3. Removal is announced in the **CHANGELOG** of the release that
    drops v1 support. The "Removed" section names every field / tool /
    enum value that left v1.
+
+## Canonical declaration identity migration
+
+V2 responses expose producer-owned assembly-qualified declaration IDs. V1
+projects typed declaration-address fields to producer-recorded predecessors
+from the same leased publication. Code, documentation, paths and arbitrary
+string values are opaque. Plain-text responses retain their original content
+and carry the v1 limitation in a separate text content item. Unavailable or
+ambiguous predecessor addresses produce explicit error receipts with canonical
+v2 guidance; a v1 response cannot silently choose a declaration. Inline and
+file-loaded contract manifests use the same resolver for predecessor admission.
+
+Both projections are prepared before the publication lease ends, including
+coalesced analyze results and batch children. The wire result retains projected
+text, not a graph, workspace or compilation host. Imported graph IDs remain
+producer-owned: negotiation cannot recover declarations already lost by a
+legacy producer. `McpCanonicalIdentityWireTests` and the real mixed-schema
+shared-proxy test pin the migration and exact snapshot ownership.
 
 ## Snapshot files
 

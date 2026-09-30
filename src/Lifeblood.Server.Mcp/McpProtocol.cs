@@ -229,6 +229,9 @@ public sealed class ToolDefinition
 
 public sealed class McpToolResult
 {
+  // Both wire projections are request results, prepared under one publication lease.
+  internal McpToolResult? LegacyProjection { get; set; }
+
   [JsonPropertyName("content")]
   public McpContent[] Content { get; set; } = Array.Empty<McpContent>();
 
@@ -262,6 +265,9 @@ public sealed class McpCapabilities
 
 public sealed class McpInitializeResult
 {
+  [JsonPropertyName("lifebloodSchemaVersion")]
+  public string SchemaVersion { get; set; } = Lifeblood.Connectors.Mcp.McpProtocolSpec.SchemaVersions.Legacy;
+
   [JsonPropertyName("protocolVersion")]
   public string ProtocolVersion { get; set; } = "2024-11-05";
 

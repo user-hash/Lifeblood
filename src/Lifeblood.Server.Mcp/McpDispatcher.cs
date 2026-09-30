@@ -49,6 +49,7 @@ public sealed class McpDispatcher
 
   private readonly ToolHandler _toolHandler;
   private readonly string _serverVersion;
+  private string _schemaVersion = McpProtocolSpec.SchemaVersions.Legacy;
 
   public McpDispatcher(ToolHandler toolHandler)
   {
@@ -106,6 +107,18 @@ public sealed class McpDispatcher
 
   private JsonRpcResponse HandleInitialize(JsonRpcRequest request)
   {
+  var selected = McpProtocolSpec.SchemaVersions.Legacy;
+  if (request.Params is { ValueKind: JsonValueKind.Object } parameters
+      && parameters.TryGetProperty(McpProtocolSpec.SchemaVersions.InitializeParameter, out var version))
+  {
+  if (version.ValueKind != JsonValueKind.String
+      || version.GetString() is not (McpProtocolSpec.SchemaVersions.Legacy or McpProtocolSpec.SchemaVersions.Canonical))
+  return new JsonRpcResponse { Id = request.Id, Error = new JsonRpcError {
+      Code = -32602, Message = "Unsupported Lifeblood schema version. Select v1 or v2 during initialize." } };
+  selected = version.GetString()!;
+  }
+  _schemaVersion = selected;
+
   // INV-MCP-001: protocolVersion and capabilities are required by the
   // MCP spec. They also have class-level defaults on McpInitializeResult
   // as a belt-and-braces guard, but setting them explicitly here makes
@@ -116,6 +129,7 @@ public sealed class McpDispatcher
   Result = new McpInitializeResult
   {
   ProtocolVersion = SupportedProtocolVersion,
+  SchemaVersion = _schemaVersion,
   Capabilities = new McpCapabilities(),
   ServerInfo = new McpServerInfo
   {
@@ -170,7 +184,10 @@ public sealed class McpDispatcher
   arguments = argsEl;
   }
 
-  response.Result = _toolHandler.Handle(toolName, arguments, cancellationToken);
+  var schemaVersion = _schemaVersion;
+  var result = _toolHandler.Handle(toolName, arguments, cancellationToken);
+  response.Result = schemaVersion == McpProtocolSpec.SchemaVersions.Legacy
+      ? result.LegacyProjection ?? result : result;
   return response;
   }
 

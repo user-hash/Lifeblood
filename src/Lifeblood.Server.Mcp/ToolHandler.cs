@@ -54,6 +54,7 @@ public sealed class ToolHandler
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
         WriteIndented = true,
         // INV-ENVELOPE-001: human-readable enum names in every tool
         // response so envelope.truthTier / envelope.confidence ship as
@@ -102,7 +103,7 @@ public sealed class ToolHandler
         _analysisCoordinator = analysisCoordinator ?? new AnalysisRequestCoordinator<McpToolResult>();
         _sharedDaemonStatus = sharedDaemonStatus;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
-        _contractAudit = new ContractAuditToolHandler(session, invariants, JsonOpts);
+        _contractAudit = new ContractAuditToolHandler(session, invariants, _resolver, JsonOpts);
         _evidenceDrift = new EvidenceDriftToolHandler(session, invariants);
         _performanceEvidence = new PerformanceEvidenceToolHandler(session, invariants);
     }
@@ -136,7 +137,7 @@ public sealed class ToolHandler
 
         var binding = SnapshotReadRequestBinder.Bind(arguments);
         if (!binding.Accepted)
-            return SnapshotPreconditionInvalid(toolName, binding.Error!);
+            return PrepareLegacyProjection(toolName, SnapshotPreconditionInvalid(toolName, binding.Error!));
 
         try
         {
@@ -148,15 +149,15 @@ public sealed class ToolHandler
         }
         catch (WorkspaceSnapshotPreconditionException ex)
         {
-            return SnapshotPreconditionMismatch(toolName, ex.Mismatch);
+            return PrepareLegacyProjection(toolName, SnapshotPreconditionMismatch(toolName, ex.Mismatch));
         }
         catch (GraphSession.WorkspaceSnapshotNotFoundException ex)
         {
-            return SnapshotSelectionNotFound(toolName, ex);
+            return PrepareLegacyProjection(toolName, SnapshotSelectionNotFound(toolName, ex));
         }
         catch (GraphSession.WorkspaceSnapshotSelectionConflictException ex)
         {
-            return SnapshotSelectionConflict(toolName, ex);
+            return PrepareLegacyProjection(toolName, SnapshotSelectionConflict(toolName, ex));
         }
     }
 
@@ -247,14 +248,14 @@ public sealed class ToolHandler
             if (!binding.Accepted)
             {
                 operation.SetTag("tool.result", "argument_error");
-                return ErrorResult(JsonSerializer.Serialize(new
+                return PrepareLegacyProjection(toolName, ErrorResult(JsonSerializer.Serialize(new
                 {
                     error = true,
                     tool = toolName,
                     failure = "tool-argument-contract",
                     mode = binding.Mode.ToString(),
                     diagnostics = binding.Diagnostics,
-                }, JsonOpts));
+                }, JsonOpts)));
             }
 
             var definition = ToolRegistry.FindDefinition(toolName);
@@ -265,9 +266,10 @@ public sealed class ToolHandler
                 _telemetry.RecordEvent(
                     McpTelemetryEvents.ToolErrorResult,
                     new TelemetryTag("tool.name", toolName));
-                return stateError;
+                return PrepareLegacyProjection(toolName, stateError);
             }
 
+            arguments = McpCanonicalIdCompatibility.NormalizeInputs(arguments, _session.Graph, _resolver);
             var result = toolName switch
             {
                 // Read-side
@@ -336,7 +338,14 @@ public sealed class ToolHandler
                     new TelemetryTag("tool.name", toolName));
             }
 
-            return result;
+            return PrepareLegacyProjection(toolName, result);
+        }
+        catch (McpCanonicalIdCompatibility.CanonicalAddressAmbiguityException ex)
+        {
+            return PrepareLegacyProjection(toolName, ErrorResult(JsonSerializer.Serialize(new {
+                error = true, failure = "canonical-id-ambiguity", input = ex.Input, candidates = ex.Candidates,
+                message = ex.Message,
+            }, JsonOpts)));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -349,9 +358,15 @@ public sealed class ToolHandler
                 McpTelemetryEvents.ToolException,
                 new TelemetryTag("tool.name", toolName),
                 new TelemetryTag("exception.type", ex.GetType().FullName ?? ex.GetType().Name));
-            return ErrorResult($"Error: {ex.Message}");
+            return PrepareLegacyProjection(toolName, ErrorResult($"Error: {ex.Message}"));
         }
     }
+
+    private McpToolResult PrepareLegacyProjection(string toolName, McpToolResult result)
+        => McpCanonicalIdCompatibility.PrepareLegacyResult(toolName, result, _session.Graph,
+            _session.CompilationHost is Lifeblood.Adapters.CSharp.RoslynCompilationHost host
+                ? host.GetLegacyCanonicalId : null, JsonOpts,
+            projectUnresolvedAddresses: _session.CurrentSnapshot.Identity?.Spec.DeclarationIdentityPolicy != null);
 
     private McpToolResult? SessionRequirementError(ToolBehavior behavior)
     {
@@ -499,6 +514,7 @@ public sealed class ToolHandler
 
         var snapshot = _session.CurrentSnapshot;
         var results = new object[request.Calls.Count];
+        var legacyResults = new object[request.Calls.Count];
         for (var index = 0; index < request.Calls.Count; index++)
         {
             var call = request.Calls[index];
@@ -511,21 +527,24 @@ public sealed class ToolHandler
                 isError = result.IsError == true,
                 content = result.Content,
             };
+            var legacy = result.LegacyProjection ?? result;
+            legacyResults[index] = new { index, tool = call.ToolName, isError = legacy.IsError == true, content = legacy.Content };
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        return TextResult(WithEnvelope("lifeblood_batch", new
+        McpToolResult Build(object[] rows) => TextResult(WithEnvelope("lifeblood_batch", new
         {
             execution = "serial",
-            callCount = results.Length,
+            callCount = rows.Length,
             snapshotId = snapshot.SnapshotId.ToString(),
             analysisGeneration = snapshot.AnalysisGeneration,
             workspaceRoot = snapshot.Context?.RootPath ?? "",
-            analysisIdentity = snapshot.Identity == null
-                ? null
-                : WorkspaceAnalysisDescriptor.From(snapshot.Identity),
-            results,
+            analysisIdentity = snapshot.Identity == null ? null : WorkspaceAnalysisDescriptor.From(snapshot.Identity),
+            results = rows,
         }));
+        var batch = Build(results);
+        batch.LegacyProjection = PrepareLegacyProjection("lifeblood_batch", Build(legacyResults)).LegacyProjection;
+        return batch;
     }
 
     private McpToolResult HandleSnapshots(JsonElement? args)
@@ -901,34 +920,30 @@ public sealed class ToolHandler
         }
     }
 
-    private static McpToolResult AddAnalysisCoordination(
-        AnalysisCoordinationResult<McpToolResult> coordination)
+    private static McpToolResult AddAnalysisCoordination(AnalysisCoordinationResult<McpToolResult> coordination)
     {
-        var source = coordination.Value;
-        var content = source.Content
-            .Select(item => new McpContent { Type = item.Type, Text = item.Text })
-            .ToArray();
-
-        JsonObject? payload = null;
-        if (content.Length > 0)
+        McpToolResult Add(McpToolResult source)
         {
-            try { payload = JsonNode.Parse(content[0].Text) as JsonObject; }
-            catch (JsonException) { }
+            var content = source.Content.Select(item => new McpContent { Type = item.Type, Text = item.Text }).ToArray();
+            JsonObject? payload = null;
+            if (content.Length > 0)
+            {
+                try { payload = JsonNode.Parse(content[0].Text) as JsonObject; }
+                catch (JsonException) { }
+            }
+            if (payload != null)
+            {
+                payload["analysisRequestId"] = coordination.AnalysisRequestId;
+                payload["coalesced"] = coordination.Coalesced;
+                payload["waiterCount"] = coordination.WaiterCount;
+                content[0].Text = payload.ToJsonString(JsonOpts);
+            }
+            return new McpToolResult { Content = content, IsError = source.IsError };
         }
-
-        if (payload != null)
-        {
-            payload["analysisRequestId"] = coordination.AnalysisRequestId;
-            payload["coalesced"] = coordination.Coalesced;
-            payload["waiterCount"] = coordination.WaiterCount;
-            content[0].Text = payload.ToJsonString(JsonOpts);
-        }
-
-        return new McpToolResult
-        {
-            Content = content,
-            IsError = source.IsError,
-        };
+        var result = Add(coordination.Value);
+        if (coordination.Value.LegacyProjection != null)
+            result.LegacyProjection = Add(coordination.Value.LegacyProjection);
+        return result;
     }
 
     private static string[]? ReadStringArray(JsonElement? args, string key)

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Right.Invariants;
+using Lifeblood.Application.Ports.Right;
 using Lifeblood.Application.UseCases;
 using Lifeblood.Domain.Results;
 
@@ -17,15 +18,18 @@ internal sealed class ContractAuditToolHandler
 
     private readonly GraphSession _session;
     private readonly IInvariantProvider _invariants;
+    private readonly ISymbolResolver _resolver;
     private readonly JsonSerializerOptions _jsonOptions;
 
     public ContractAuditToolHandler(
         GraphSession session,
         IInvariantProvider invariants,
+        ISymbolResolver resolver,
         JsonSerializerOptions jsonOptions)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _invariants = invariants ?? throw new ArgumentNullException(nameof(invariants));
+        _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _jsonOptions = jsonOptions ?? throw new ArgumentNullException(nameof(jsonOptions));
     }
 
@@ -236,7 +240,9 @@ internal sealed class ContractAuditToolHandler
 
         try
         {
-            return JsonSerializer.Deserialize<ContractManifest>(json, _jsonOptions)
+            var normalized = McpCanonicalIdCompatibility.NormalizeInputs(
+                JsonSerializer.Deserialize<JsonElement>(json), _session.Graph, _resolver, skipManifest: false);
+            return JsonSerializer.Deserialize<ContractManifest>(normalized!.Value.GetRawText(), _jsonOptions)
                 ?? throw new ArgumentException($"Contract manifest '{source}' deserialized to null.");
         }
         catch (JsonException ex)

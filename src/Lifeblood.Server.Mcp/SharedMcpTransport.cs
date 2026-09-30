@@ -286,7 +286,7 @@ internal static class SharedMcpTransport
                         pipe,
                         identity,
                         lifecycle,
-                        host.Dispatcher.Dispatch,
+                        host.CreateDispatcher().Dispatch,
                         () => host.InFlightAnalysisCount,
                         jsonOpts,
                         strictJson,

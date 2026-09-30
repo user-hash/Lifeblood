@@ -34,6 +34,15 @@ public static class McpProtocolSpec
     /// </summary>
     public const string SupportedVersion = "2024-11-05";
 
+    /// <summary>Lifeblood schema selection, independent of the MCP specification revision.</summary>
+    public static class SchemaVersions
+    {
+        public const string InitializeParameter = "mcp-protocol-version";
+        public const string Legacy = "v1";
+        public const string Canonical = "v2";
+    }
+
+
     /// <summary>
     /// JSON-RPC <c>method</c> names for MCP requests the server handles.
     /// </summary>

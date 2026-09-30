@@ -363,6 +363,73 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task MixedSchemaProxiesShareOneCanonicalPublicationAcrossBatchAndRefresh()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll), $"Server dll not found at {dll}.");
+        WriteCSharpWorkspace(fileCount: 250);
+        var sourcePath = Path.Combine(_tempDirectory, "Collision.cs");
+        File.WriteAllText(sourcePath, "namespace Coalesce; public class Collision { public void M(int x) {} public void M(ref int x) {} }");
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var legacy = StartProxy(dll, pipeName, _tempDirectory);
+        await using var canonical = StartProxy(dll, pipeName, _tempDirectory);
+        using var legacyInit = await legacy.InitializeAsync();
+        using var canonicalInit = await canonical.SendRequestAsync(JsonSerializer.Serialize(new {
+            jsonrpc = "2.0", id = 9001, method = "initialize",
+            @params = new Dictionary<string, object> {
+                [Lifeblood.Connectors.Mcp.McpProtocolSpec.SchemaVersions.InitializeParameter] = Lifeblood.Connectors.Mcp.McpProtocolSpec.SchemaVersions.Canonical }
+        }), TimeSpan.FromSeconds(30));
+        Assert.Equal("v1", legacyInit.RootElement.GetProperty("result").GetProperty("lifebloodSchemaVersion").GetString());
+        Assert.Equal("v2", canonicalInit.RootElement.GetProperty("result").GetProperty("lifebloodSchemaVersion").GetString());
+        var calls = await Task.WhenAll(
+            legacy.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory }, TimeSpan.FromSeconds(60)),
+            canonical.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory }, TimeSpan.FromSeconds(60)));
+        using var firstRpc = calls[0]; using var secondRpc = calls[1];
+        using var first = McpProcessTestClient.ParseToolPayload(firstRpc);
+        using var second = McpProcessTestClient.ParseToolPayload(secondRpc);
+        Assert.Equal(first.RootElement.GetProperty("analysisRequestId").GetString(), second.RootElement.GetProperty("analysisRequestId").GetString());
+        Assert.Equal(2, first.RootElement.GetProperty("waiterCount").GetInt32());
+        Assert.Contains("schema v1", first.RootElement.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("schema v1", second.RootElement.ToString(), StringComparison.Ordinal);
+        var before = await ReadSessionAsync(legacy);
+        Assert.Equal(1, before.AnalysisGeneration);
+        using var oldRpc = await legacy.CallToolAsync("lifeblood_lookup", new { symbolId = "type:Coalesce.Collision" });
+        using var old = McpProcessTestClient.ParseToolPayload(oldRpc);
+        using var currentRpc = await canonical.CallToolAsync("lifeblood_lookup", new { symbolId = "type:Coalesce.Collision" });
+        using var current = McpProcessTestClient.ParseToolPayload(currentRpc);
+        Assert.Equal("type:Coalesce.Collision", old.RootElement.GetProperty("id").GetString());
+        Assert.StartsWith("type:v2|", current.RootElement.GetProperty("id").GetString(), StringComparison.Ordinal);
+        Assert.Equal(before.SnapshotId, old.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        Assert.Equal(before.SnapshotId, current.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        using var batchRpc = await legacy.CallToolAsync("lifeblood_batch", new { calls = new object[] {
+            new { tool = "lifeblood_lookup", arguments = new { symbolId = "type:Coalesce.Collision" } },
+            new { tool = "lifeblood_lookup", arguments = new { symbolId = "method:Coalesce.Collision.M(int)" } }
+        } });
+        using var batch = McpProcessTestClient.ParseToolPayload(batchRpc);
+        var rows = batch.RootElement.GetProperty("results");
+        Assert.False(rows[0].GetProperty("isError").GetBoolean());
+        Assert.True(rows[1].GetProperty("isError").GetBoolean());
+        using var ambiguity = JsonDocument.Parse(rows[1].GetProperty("content")[0].GetProperty("text").GetString()!);
+        Assert.Equal("legacy-canonical-id-ambiguity", ambiguity.RootElement.GetProperty("failure").GetString());
+        Assert.Equal(2, ambiguity.RootElement.GetProperty("canonicalCandidates").GetArrayLength());
+        using var noopRpc = await canonical.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory, incremental = true });
+        Assert.Equal(before.SnapshotId, (await ReadSessionAsync(legacy)).SnapshotId);
+        File.AppendAllText(sourcePath, " public class Added {} ");
+        using var refreshRpc = await legacy.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory, incremental = true });
+        var after = await ReadSessionAsync(canonical);
+        Assert.Equal(2, after.AnalysisGeneration);
+        Assert.NotEqual(before.SnapshotId, after.SnapshotId);
+        using var pinnedRpc = await legacy.CallToolAsync("lifeblood_lookup", new { symbolId = "type:Coalesce.Collision", snapshotId = before.SnapshotId });
+        using var pinned = McpProcessTestClient.ParseToolPayload(pinnedRpc);
+        Assert.Equal(before.SnapshotId, pinned.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        Assert.Equal("type:Coalesce.Collision", pinned.RootElement.GetProperty("id").GetString());
+        using var rejected = await canonical.CallToolAsync("lifeblood_lookup", new { symbolId = "type:Coalesce.Collision", expectedSnapshotId = before.SnapshotId });
+        Assert.True(rejected.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
+        Assert.False(daemon.HasExited);
+    }
+
+    [SkippableFact]
     public async Task DisconnectedAnalyzeWaiter_DoesNotPoisonSurvivingSharedWaiter()
     {
         var dll = McpProcessTestClient.LocateServerDll();

@@ -26,13 +26,13 @@ internal sealed class McpServerHost : IDisposable
 
     private McpServerHost(
         GraphSession session,
-        McpDispatcher dispatcher,
+        ToolHandler toolHandler,
         IDisposable? telemetryLifetime,
         GraphSessionGate sessionGate,
         AnalysisRequestCoordinator<McpToolResult> analysisCoordinator)
     {
         Session = session;
-        Dispatcher = dispatcher;
+        _toolHandler = toolHandler;
         _telemetryLifetime = telemetryLifetime;
         _sessionGate = sessionGate;
         _analysisCoordinator = analysisCoordinator;
@@ -40,7 +40,9 @@ internal sealed class McpServerHost : IDisposable
 
     public GraphSession Session { get; }
 
-    public McpDispatcher Dispatcher { get; }
+    private readonly ToolHandler _toolHandler;
+
+    public McpDispatcher CreateDispatcher() => new(_toolHandler);
 
     public int InFlightAnalysisCount => _analysisCoordinator.InFlightCount;
 
@@ -57,7 +59,8 @@ internal sealed class McpServerHost : IDisposable
             fs,
             telemetry,
             snapshotCatalog,
-            new GitSourceControlSnapshotProvider());
+            new GitSourceControlSnapshotProvider(),
+            canonicalIdVersion: CanonicalSymbolIdVersion.AssemblyQualifiedV2);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
         IMcpGraphProvider graphProvider = new LifebloodMcpProvider(blastRadius);
         IUserInputCanonicalizer canonicalizer = new CSharpUserInputCanonicalizer();
@@ -97,11 +100,9 @@ internal sealed class McpServerHost : IDisposable
             boundWorkspaceRoot: boundWorkspaceRoot,
             analysisCoordinator: analysisCoordinator,
             sharedDaemonStatus: sharedDaemonStatus);
-        var dispatcher = new McpDispatcher(toolHandler);
-
         return new McpServerHost(
             session,
-            dispatcher,
+            toolHandler,
             telemetryLifetime,
             sessionGate,
             analysisCoordinator);

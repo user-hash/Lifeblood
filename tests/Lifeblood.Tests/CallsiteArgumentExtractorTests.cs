@@ -48,7 +48,7 @@ namespace Acme;
 public class Api { public void Do(int lengthSteps = 1) {} }
 ";
 
-    private const string TargetId = "method:Acme.Api.Do(System.Int32)";
+    private const string TargetId = "method:Acme.Api.Do(int)";
     private static CallsiteArgumentsOptions Default => new();
 
     [Fact]

@@ -79,7 +79,7 @@ class Program
         await McpServerLoop.RunAsync(
             reader,
             Console.Out,
-            host.Dispatcher.Dispatch,
+            host.CreateDispatcher().Dispatch,
             JsonOpts,
             strictJson,
             cts.Token,

@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- MCP connections independently select declaration schema v1 (default) or v2
+  through initialize, while sharing one collision-safe C# publication. Typed
+  predecessor projections preserve exact leased snapshots through coalesced
+  analysis and batches. Ambiguous/unavailable predecessor addresses fail with
+  canonical guidance. Inline and file manifests share resolver admission;
+  source and documentation strings remain opaque. The compatibility notice
+  states the support window without inventing a removal release.
+
 - Configured v2 graph resolution uses producer-recorded predecessor addresses
   through the existing graph indexes. Ambiguous legacy IDs report distinct
   canonical candidates. Member lookup follows real parent symbols, and overload

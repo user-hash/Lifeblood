@@ -57,6 +57,16 @@ testable through its normal public API.
 
 - **INV-WIRE-CONTRACT-001. Every publicly observable wire contract (response envelope, MCP tool input + output shapes, graph JSON schema, canonical id format, parity diagnostic ID set) is pinned by a snapshot ratchet and evolved through the documented deprecation policy.** Pre-policy, Lifeblood's response shapes were tightly coupled to test code that asserted "the response has field X" but had no single ratchet preventing a quiet rename or removal. The first concrete pin lives at `ResponseEnvelopeWireShapeContractTests`: reflects on `Lifeblood.Domain.Results.ResponseEnvelope`, asserts the v1 field set includes the additive `Freshness` observation alongside its existing fields with canonical names and stable type names (TruthTier / Confidence / EvidenceSource / StalenessSeconds / FilesChangedSinceAnalyze / Limitations / AnalysisGeneration / SnapshotId / AnalysisIdentity / Freshness), and additionally pins every field as `init`-only so mutation after construction is structurally blocked. MCP tool input schemas are pinned by `ToolSchemaSnapshotTests` against versioned files under `schemas/tools/v1/<tool>.schema.json`; the ratchet fails if `ToolRegistry.GetDefinitions()` drifts from the snapshots, if a registered tool has no snapshot, or if the directory keeps a stale snapshot for a removed/renamed tool. The deprecation policy (`docs/SCHEMA_DEPRECATION_POLICY.md`) names the rules: additive changes are allowed without a version bump but require updating the snapshot; renames, removals, type changes, tool removals, enum-member removals are breaking and require shipping v2 alongside v1 with at least one minor release of overlap during which v1 responses carry a `Limitations[]` deprecation notice. NEVER bypass a snapshot drift by editing the expected set without bumping the schema version first; the ratchet exists exactly to prevent that pattern.
 
+Canonical declaration migration uses connection-owned schema selection from
+`McpProtocolSpec.SchemaVersions`; `initialize` confirms it with
+`lifebloodSchemaVersion`. The host retains one v2 C# publication. Typed v1
+predecessor projections and v2 results are prepared under its lease, including
+coalesced analysis and batch children. Ambiguous or unavailable predecessors
+fail explicitly with canonical guidance; opaque source/documentation text is
+preserved. Inline and file manifests share resolver admission. Pinned by
+`McpCanonicalIdentityWireTests` and
+`SharedMcpTransportProcessTests.MixedSchemaProxiesShareOneCanonicalPublicationAcrossBatchAndRefresh`.
+
 ## Response Envelope
 
 - **INV-ANALYZE-SKIPPED-PROMINENCE-001. Staleness signals get promoted into envelope `Limitations[]` entries whenever they exceed configured thresholds.**

@@ -470,6 +470,14 @@ public sealed class RoslynCompilationHost :
   internal ISymbol? ResolveFromSource(string symbolId)
       => _manager.Value.ResolveSymbol(symbolId, useStandaloneCompilations: true);
 
+  /// <summary>Producer-owned predecessor address for exact versioned lookup.</summary>
+  public string? GetLegacyCanonicalId(string symbolId)
+  {
+  if (RoslynWorkspaceManager.ParseSymbolId(symbolId).Version2Parts == null) return null;
+  var symbol = ResolveFromSource(symbolId);
+  return symbol == null ? null : Internal.CanonicalSymbolFormat.BuildSymbolId(symbol);
+  }
+
   public DefinitionLocation? FindDefinition(string symbolId)
   {
   // Resolve with source preference. A cross-assembly symbol may resolve to its
