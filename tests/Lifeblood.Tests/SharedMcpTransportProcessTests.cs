@@ -363,6 +363,112 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task GraphOnlyClientPreservesHotPublicationAndVerifiedRecoveryReusesIt()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll), $"Server dll not found at {dll}.");
+        WriteCSharpWorkspace(fileCount: 250);
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var first = StartProxy(dll, pipeName, _tempDirectory);
+        await using var second = StartProxy(dll, pipeName, _tempDirectory);
+        using var firstInit = await first.InitializeAsync();
+        using var secondInit = await second.InitializeAsync();
+        using var analyzedRpc = await first.CallToolAsync("lifeblood_analyze",
+            new { projectPath = _tempDirectory }, TimeSpan.FromSeconds(60));
+        using var analyzed = McpProcessTestClient.ParseToolPayload(analyzedRpc);
+        var original = await ReadSessionAsync(first);
+        var originalPublisher = analyzed.RootElement.GetProperty("semanticRetention").GetProperty("publishingClientLeaseId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(originalPublisher));
+        using var readOnlyRpc = await second.CallToolAsync("lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = true }, TimeSpan.FromSeconds(60));
+        using var readOnly = McpProcessTestClient.ParseToolPayload(readOnlyRpc);
+        Assert.Equal("reusedCurrent", readOnly.RootElement.GetProperty("publication").GetProperty("action").GetString());
+        Assert.Equal("GraphOnly", readOnly.RootElement.GetProperty("requestedRetentionMode").GetString());
+        Assert.Equal(original.SnapshotId, (await ReadSessionAsync(first)).SnapshotId);
+
+        await AnalyzeGraphAsync(second, _secondGraphPath);
+        using var capabilitiesRpc = await first.CallToolAsync("lifeblood_capabilities");
+        using var capabilities = McpProcessTestClient.ParseToolPayload(capabilitiesRpc);
+        var graphOnly = capabilities.RootElement.GetProperty("session");
+        Assert.False(graphOnly.GetProperty("hasCompilationState").GetBoolean());
+        Assert.Equal(1, graphOnly.GetProperty("snapshotHistory").GetProperty("semanticBaseCount").GetInt32());
+        Assert.Equal("preserved", graphOnly.GetProperty("semanticRetention").GetProperty("action").GetString());
+        Assert.Equal(original.SnapshotId, graphOnly.GetProperty("semanticRetention").GetProperty("hotSnapshotId").GetString());
+        Assert.NotEqual(originalPublisher, graphOnly.GetProperty("semanticRetention").GetProperty("publishingClientLeaseId").GetString());
+        var graphOnlyGeneration = graphOnly.GetProperty("analysisGeneration").GetInt64();
+
+        using var recoveredRpc = await first.CallToolAsync("lifeblood_analyze",
+            new { projectPath = _tempDirectory, incremental = true }, TimeSpan.FromSeconds(60));
+        using var recovered = McpProcessTestClient.ParseToolPayload(recoveredRpc);
+        Assert.Equal("restoredHot", recovered.RootElement.GetProperty("publication").GetProperty("action").GetString());
+        Assert.Equal(JsonValueKind.Null, recovered.RootElement.GetProperty("usage").ValueKind);
+        Assert.Equal("reused", recovered.RootElement.GetProperty("semanticRetention").GetProperty("action").GetString());
+        Assert.Equal(originalPublisher, recovered.RootElement.GetProperty("semanticRetention").GetProperty("publishingClientLeaseId").GetString());
+        Assert.Equal(graphOnlyGeneration + 1, (await ReadSessionAsync(second)).AnalysisGeneration);
+        using var compileRpc = await second.CallToolAsync("lifeblood_compile_check",
+            new { filePaths = new[] { "Type000.cs" }, staleRefresh = false });
+        using var compile = McpProcessTestClient.ParseToolPayload(compileRpc);
+        Assert.True(compile.RootElement.GetProperty("success").GetBoolean());
+        using var historicalCompileRpc = await first.CallToolAsync("lifeblood_diagnose",
+            new { snapshotId = original.SnapshotId });
+        var historicalResult = historicalCompileRpc.RootElement.GetProperty("result");
+        Assert.True(historicalResult.GetProperty("isError").GetBoolean());
+        Assert.False(daemon.HasExited);
+    }
+
+    [SkippableFact]
+    public async Task IncompatibleHotRecoveryCoalescesOneExplicitRebuildForTwoClients()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Skip.IfNot(File.Exists(dll), $"Server dll not found at {dll}.");
+        WriteCSharpWorkspace(fileCount: 250);
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var first = StartProxy(dll, pipeName, _tempDirectory);
+        await using var second = StartProxy(dll, pipeName, _tempDirectory);
+        using var firstInit = await first.InitializeAsync();
+        using var secondInit = await second.InitializeAsync();
+        using var analyzedRpc = await first.CallToolAsync("lifeblood_analyze",
+            new { projectPath = _tempDirectory }, TimeSpan.FromSeconds(60));
+        using var analyzed = McpProcessTestClient.ParseToolPayload(analyzedRpc);
+        var originalPublisher = analyzed.RootElement.GetProperty("semanticRetention").GetProperty("publishingClientLeaseId").GetString();
+        var original = await ReadSessionAsync(first);
+        File.AppendAllText(Path.Combine(_tempDirectory, "Type000.cs"), " public class Changed {} ");
+        using var graphOnlyRpc = await second.CallToolAsync("lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = true }, TimeSpan.FromSeconds(60));
+        using var graphOnly = McpProcessTestClient.ParseToolPayload(graphOnlyRpc);
+        Assert.Equal("preserved", graphOnly.RootElement.GetProperty("semanticRetention").GetProperty("action").GetString());
+        var before = await ReadSessionAsync(first);
+        var responses = await Task.WhenAll(
+            first.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory, incremental = true, allowFullFallback = true }, TimeSpan.FromSeconds(60)),
+            second.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory, incremental = true, allowFullFallback = true }, TimeSpan.FromSeconds(60)));
+        using var firstRpc = responses[0]; using var secondRpc = responses[1];
+        using var firstPayload = McpProcessTestClient.ParseToolPayload(firstRpc);
+        using var secondPayload = McpProcessTestClient.ParseToolPayload(secondRpc);
+        Assert.Equal(firstPayload.RootElement.GetProperty("analysisRequestId").GetString(), secondPayload.RootElement.GetProperty("analysisRequestId").GetString());
+        foreach (var payload in new[] { firstPayload, secondPayload })
+        {
+            Assert.Equal(2, payload.RootElement.GetProperty("waiterCount").GetInt32());
+            Assert.Equal("compilationStateUnavailable", payload.RootElement.GetProperty("fallbackReason").GetString());
+            Assert.Equal(JsonValueKind.Object, payload.RootElement.GetProperty("usage").ValueKind);
+            var receipt = payload.RootElement.GetProperty("semanticRetention");
+            Assert.Equal("replaced", receipt.GetProperty("action").GetString());
+            Assert.Equal(original.SnapshotId, receipt.GetProperty("displacedHotSnapshotId").GetString());
+            Assert.Equal(originalPublisher, receipt.GetProperty("displacedClientLeaseId").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(receipt.GetProperty("publishingClientLeaseId").GetString()));
+            Assert.Equal(1, receipt.GetProperty("hotSemanticOwnerCount").GetInt32());
+            Assert.Equal("usage", receipt.GetProperty("recoveryCostReceipt").GetString());
+        }
+        Assert.Equal(before.AnalysisGeneration + 1, (await ReadSessionAsync(second)).AnalysisGeneration);
+        using var compileRpc = await first.CallToolAsync("lifeblood_compile_check",
+            new { filePaths = new[] { "Type000.cs" }, staleRefresh = false });
+        using var compile = McpProcessTestClient.ParseToolPayload(compileRpc);
+        Assert.True(compile.RootElement.GetProperty("success").GetBoolean());
+        Assert.False(daemon.HasExited);
+    }
+
+    [SkippableFact]
     public async Task MixedSchemaProxiesShareOneCanonicalPublicationAcrossBatchAndRefresh()
     {
         var dll = McpProcessTestClient.LocateServerDll();

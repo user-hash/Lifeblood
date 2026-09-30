@@ -286,7 +286,7 @@ internal static class SharedMcpTransport
                         pipe,
                         identity,
                         lifecycle,
-                        host.CreateDispatcher().Dispatch,
+                        host.CreateDispatcher,
                         () => host.InFlightAnalysisCount,
                         jsonOpts,
                         strictJson,
@@ -321,7 +321,7 @@ internal static class SharedMcpTransport
         NamedPipeServerStream pipe,
         SharedHostIdentity identity,
         SharedDaemonLifecycle lifecycle,
-        Func<JsonRpcRequest, CancellationToken, JsonRpcResponse?> dispatch,
+        Func<string?, McpDispatcher> createDispatcher,
         Func<int> inFlightAnalysisCount,
         JsonSerializerOptions jsonOpts,
         bool strictJson,
@@ -347,6 +347,7 @@ internal static class SharedMcpTransport
             {
                 return;
             }
+            var dispatcher = createDispatcher(clientLease.LeaseId);
 
             JsonRpcResponse? DispatchWithActivity(
                 JsonRpcRequest request,
@@ -372,7 +373,7 @@ internal static class SharedMcpTransport
                     };
                 }
 
-                return dispatch(request, requestCancellation);
+                return dispatcher.Dispatch(request, requestCancellation);
             }
 
             await McpServerLoop.RunAsync(

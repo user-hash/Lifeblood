@@ -164,6 +164,7 @@ public static class ServerIdentity
                 retainedProfileName = session.RetainedProfileName,
                 retainedProfileNames = session.RetainedProfileNames,
                 compilationStateRecoveryHint = session.CompilationStateRecoveryHint,
+                semanticRetention = session.SemanticRetention,
                 snapshotHistory = new
                 {
                     configuredLimit = session.SnapshotHistoryLimit,
@@ -521,7 +522,8 @@ public sealed record ServerSessionInfo(
     int PinnedSnapshotCount,
     long DroppedSnapshotRetentionCount,
     int SemanticBaseCount,
-    ServerSharedServiceInfo SharedService);
+    ServerSharedServiceInfo SharedService,
+    SemanticRetentionReceipt? SemanticRetention = null);
 
 public sealed record ServerSharedServiceInfo(
     bool Active,

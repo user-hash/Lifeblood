@@ -22,6 +22,7 @@ public static class McpTelemetryEvents
     public const string AnalyzeResult = "lifeblood.analyze.result";
     public const string AnalyzeFallback = "lifeblood.analyze.fallback";
     public const string AnalyzePhase = "lifeblood.analyze.phase";
+    public const string SemanticRetention = "lifeblood.semantic.retention";
     public const string CacheLookup = "lifeblood.cache.lookup";
 
     /// <summary>
@@ -40,5 +41,6 @@ public static class McpTelemetryEvents
         AnalyzeFallback,
         AnalyzePhase,
         CacheLookup,
+        SemanticRetention,
     };
 }

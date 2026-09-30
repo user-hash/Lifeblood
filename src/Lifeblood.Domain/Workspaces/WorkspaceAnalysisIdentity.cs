@@ -213,6 +213,11 @@ public sealed class AnalysisSpec : IEquatable<AnalysisSpec>
 
     public ContentFingerprint Fingerprint { get; }
 
+    /// <summary>Project retention preference through the same canonical spec authority.</summary>
+    public AnalysisSpec WithRetentionMode(AnalysisRetentionMode retentionMode)
+        => retentionMode == RetentionMode ? this : new AnalysisSpec(
+            DefineProfiles, ExcludePathGlobs, retentionMode, DescriptorPolicy, RuleSet, DeclarationIdentityPolicy);
+
     public bool Equals(AnalysisSpec? other)
         => other != null && Fingerprint == other.Fingerprint;
 
@@ -393,4 +398,13 @@ public sealed record WorkspaceAnalysisIdentity
     public BaseKey BaseKey { get; }
 
     public AnalysisKey AnalysisKey { get; }
+
+    /// <summary>
+    /// Exact semantic inputs independent of publication retention preference.
+    /// Source includes content and descriptors; spec retains rule, ordered
+    /// profiles, exclusions, descriptor policy and declaration identity policy.
+    /// </summary>
+    public bool HasSameSemanticInputs(WorkspaceAnalysisIdentity? other)
+        => other != null && Workspace == other.Workspace && Source.Equals(other.Source)
+            && Spec.WithRetentionMode(other.Spec.RetentionMode).Equals(other.Spec);
 }

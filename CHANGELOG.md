@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Shared sessions preserve one leased hot semantic publication independently of
+  graph-only current/history. Compatible read-only requests reuse it; ordinary
+  retained analyze restores it only after exact live input recapture. Changed
+  inputs keep the reject/full-fallback policy and simultaneous recoveries use the
+  existing coordinator. Publication receipts and telemetry attribute replacement
+  to client leases and reference existing usage costs. Private read-only streaming
+  behavior stays caller-controlled.
+
 - MCP connections independently select declaration schema v1 (default) or v2
   through initialize, while sharing one collision-safe C# publication. Typed
   predecessor projections preserve exact leased snapshots through coalesced

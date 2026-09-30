@@ -42,7 +42,7 @@ internal sealed class McpServerHost : IDisposable
 
     private readonly ToolHandler _toolHandler;
 
-    public McpDispatcher CreateDispatcher() => new(_toolHandler);
+    public McpDispatcher CreateDispatcher(string? clientLeaseId = null) => new(_toolHandler, clientLeaseId);
 
     public int InFlightAnalysisCount => _analysisCoordinator.InFlightCount;
 
@@ -60,7 +60,8 @@ internal sealed class McpServerHost : IDisposable
             telemetry,
             snapshotCatalog,
             new GitSourceControlSnapshotProvider(),
-            canonicalIdVersion: CanonicalSymbolIdVersion.AssemblyQualifiedV2);
+            canonicalIdVersion: CanonicalSymbolIdVersion.AssemblyQualifiedV2,
+            preserveSharedSemanticPublication: sharedDaemonStatus != null);
         IBlastRadiusProvider blastRadius = new BlastRadiusBridge();
         IMcpGraphProvider graphProvider = new LifebloodMcpProvider(blastRadius);
         IUserInputCanonicalizer canonicalizer = new CSharpUserInputCanonicalizer();

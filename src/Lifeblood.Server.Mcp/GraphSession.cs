@@ -28,26 +28,37 @@ public sealed class GraphSession : IDisposable
 
     private readonly IFileSystem _fs;
     private readonly CanonicalSymbolIdVersion _canonicalIdVersion;
+    private readonly bool _preserveSharedSemanticPublication;
+    private HotSemanticPublication? _hotSemanticPublication;
     private readonly ITelemetrySink _telemetry;
     private readonly ISourceControlSnapshotProvider _sourceControl;
     private readonly AnalysisRuleSetResolver _ruleSetResolver;
     private readonly WorkspaceSnapshotCatalog _snapshotCatalog;
     private readonly object _publicationSync = new();
     private readonly AsyncLocal<CommittedGraphSessionState?> _leasedState = new();
+    private readonly AsyncLocal<string?> _publishingClientLease = new();
     private CommittedGraphSessionState _current = CommittedGraphSessionState.CreateEmpty();
 
     private CommittedGraphSessionState Current =>
         _leasedState.Value ?? Volatile.Read(ref _current);
+
+    internal string? PublishingClientLeaseId
+    {
+        get => _publishingClientLease.Value;
+        set => _publishingClientLease.Value = value;
+    }
 
     public GraphSession(
         IFileSystem fs,
         ITelemetrySink? telemetry = null,
         WorkspaceSnapshotCatalog? snapshotCatalog = null,
         ISourceControlSnapshotProvider? sourceControl = null,
-        CanonicalSymbolIdVersion canonicalIdVersion = CanonicalSymbolIdVersion.LegacyV1)
+        CanonicalSymbolIdVersion canonicalIdVersion = CanonicalSymbolIdVersion.LegacyV1,
+        bool preserveSharedSemanticPublication = false)
     {
         if (!Enum.IsDefined(canonicalIdVersion)) throw new ArgumentOutOfRangeException(nameof(canonicalIdVersion));
         _canonicalIdVersion = canonicalIdVersion;
+        _preserveSharedSemanticPublication = preserveSharedSemanticPublication;
         _fs = fs;
         _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
         _sourceControl = sourceControl ?? UnavailableSourceControlSnapshotProvider.Instance;
@@ -179,6 +190,19 @@ public sealed class GraphSession : IDisposable
     /// view; tool result data continues to use <see cref="CurrentSnapshot"/>.
     /// </summary>
     public WorkspaceSnapshot LatestSnapshot => Volatile.Read(ref _current).Workspace;
+
+    /// <summary>One leased publication may keep semantic services outside graph-only current/history.</summary>
+    public SemanticRetentionReceipt? SemanticRetention => Current.SemanticRetention;
+
+    public int ResidentSemanticBaseCount
+    {
+        get { lock (_publicationSync) return _hotSemanticPublication != null || Volatile.Read(ref _current).Workspace.RetainsSemanticServices ? 1 : 0; }
+    }
+
+    public SnapshotId HotSemanticSnapshotId
+    {
+        get { lock (_publicationSync) return _hotSemanticPublication?.State.Workspace.SnapshotId ?? SnapshotId.None; }
+    }
 
     /// <summary>
     /// True only inside an exact graph-only historical lease. Consumers that
@@ -438,6 +462,19 @@ public sealed class GraphSession : IDisposable
                 throw new DirectoryNotFoundException($"Project directory not found: {projectPath}");
 
             var committed = Current;
+            var recoveringHotPublication = false;
+            if (_preserveSharedSemanticPublication && request.Incremental && !committed.Workspace.HasCompilationState)
+            {
+                lock (_publicationSync)
+                {
+                    if (_hotSemanticPublication?.State is { } hot
+                        && WorkspacePathIdentity.Equal(hot.Workspace.Context?.RootPath, projectPath))
+                    {
+                        committed = hot;
+                        recoveringHotPublication = true;
+                    }
+                }
+            }
             var sameIncrementalWorkspace = request.Incremental
                 && committed.RoslynAdapter?.HasSnapshot == true
                 && WorkspacePathIdentity.Equal(committed.Workspace.Context?.RootPath, projectPath);
@@ -469,6 +506,7 @@ public sealed class GraphSession : IDisposable
             };
             if (mode == AnalysisPreparationMode.CommittedIncrementalBase
                 && sameIncrementalWorkspace
+                && !recoveringHotPublication
                 && committed.Workspace.Identity is { } committedIdentity)
             {
                 identity = committedIdentity;
@@ -657,6 +695,22 @@ public sealed class GraphSession : IDisposable
             graphPath);
         var changeReceipt = acceptedChangeReceipt ?? AcceptedChangeReceiptRequest.Summary;
         var committed = Current;
+        if (_preserveSharedSemanticPublication && !readOnly && incremental
+            && !committed.Workspace.HasCompilationState && !string.IsNullOrEmpty(projectPath)
+            && HotSemanticSnapshotId != SnapshotId.None)
+        {
+            var recovery = PrepareAnalysis(new AnalyzeToolRequest {
+                ProjectPath = projectPath, GraphPath = graphPath, RulesPath = rulesPath,
+                Incremental = true, ReadOnly = false, AllowFullFallback = allowFullFallback,
+                DefineProfiles = defineProfiles, ExcludePaths = excludePaths,
+            });
+            EnsureExpectedAnalysisKey(expectedAnalysisKey, recovery.Identity);
+            if (TryRestoreHotSemanticPublication(recovery.Identity, sourceControlSnapshot, projectPath, cancellationToken, out var restored))
+                return BuildCurrentPublicationReuseResult(restored, null, sourceControlSnapshot, changeReceipt,
+                    packageSourceVisibilityProjection, profileApplicabilityProjection, "incremental", null, null,
+                    projectPath, graphPath, rulesPath, publicationAction: "restoredHot", sameAnalysisIdentity: false);
+        }
+
         var fullRequestedMode = "full";
         FallbackReason? fullFallbackReason = null;
         string? fullFallbackDetail = null;
@@ -691,6 +745,12 @@ public sealed class GraphSession : IDisposable
                 });
                 if (expectedAnalysisKey != null)
                     EnsureExpectedAnalysisKey(expectedAnalysisKey, livePrepared.Identity);
+                if (TryRestoreHotSemanticPublication(livePrepared.Identity, sourceControlSnapshot, projectPath, cancellationToken, out var restored))
+                    return BuildCurrentPublicationReuseResult(restored, null, sourceControlSnapshot, changeReceipt,
+                        packageSourceVisibilityProjection, profileApplicabilityProjection, "full", null, null,
+                        projectPath, graphPath, rulesPath,
+                        publicationAction: ReferenceEquals(restored.Workspace, committed.Workspace) ? "reusedCurrent" : "restoredHot",
+                        sameAnalysisIdentity: ReferenceEquals(restored.Workspace, committed.Workspace));
                 if (committed.Workspace.Identity == livePrepared.Identity)
                 {
                     return BuildCurrentPublicationReuseResult(
@@ -1067,6 +1127,40 @@ public sealed class GraphSession : IDisposable
             sameAnalysisIdentity: false);
     }
 
+    private bool TryRestoreHotSemanticPublication(
+        WorkspaceAnalysisIdentity requestedIdentity,
+        SourceControlSnapshot sourceControlSnapshot,
+        string? projectPath,
+        CancellationToken cancellationToken,
+        out CommittedGraphSessionState restored)
+    {
+        restored = null!;
+        if (!_preserveSharedSemanticPublication) return false;
+        lock (_publicationSync)
+        {
+            var hot = _hotSemanticPublication?.State;
+            if (hot?.Workspace.Identity?.HasSameSemanticInputs(requestedIdentity) != true
+                || string.IsNullOrEmpty(projectPath)
+                || !WorkspacePathIdentity.Equal(hot.Workspace.Context?.RootPath, projectPath))
+                return false;
+            cancellationToken.ThrowIfCancellationRequested();
+            var current = Volatile.Read(ref _current);
+            if (ReferenceEquals(current.Workspace, hot.Workspace))
+            {
+                restored = current;
+                return true;
+            }
+            if (requestedIdentity.Spec.RetentionMode == AnalysisRetentionMode.GraphOnly)
+                return false;
+            var workspace = hot.Workspace.DeriveAnalysis(hot.Workspace.Analysis!, hot.Workspace.Identity,
+                DateTime.UtcNow, checked(current.Workspace.AnalysisGeneration + 1), sourceControlSnapshot);
+            restored = new CommittedGraphSessionState(workspace, hot.RoslynAdapter, hot.RuleSet, hot.ExcludePaths);
+            CommitCore(restored, retainReplaced: true);
+            restored = Volatile.Read(ref _current);
+            return true;
+        }
+    }
+
     private static string BuildCurrentPublicationReuseResult(
         CommittedGraphSessionState committed,
         AnalysisUsage? usage,
@@ -1079,7 +1173,9 @@ public sealed class GraphSession : IDisposable
         string? fallbackDetail,
         string? projectPath,
         string? graphPath,
-        string? rulesPath)
+        string? rulesPath,
+        string publicationAction = "reusedCurrent",
+        bool sameAnalysisIdentity = true)
     {
         var activeProfiles = committed.RoslynAdapter?.RetainedProfileNames is { Count: > 1 } names
             ? names.ToArray()
@@ -1105,10 +1201,10 @@ public sealed class GraphSession : IDisposable
             graphPath: graphPath,
             rulesPath: rulesPath ?? committed.RuleSet.Source,
             identity: committed.Workspace.Identity,
-            publicationAction: "reusedCurrent",
+            publicationAction: publicationAction,
             publicationSnapshotId: committed.Workspace.SnapshotId,
             publicationAnalysisGeneration: committed.Workspace.AnalysisGeneration,
-            sameAnalysisIdentity: true);
+            sameAnalysisIdentity: sameAnalysisIdentity);
     }
 
     private string LoadIncremental(
@@ -1658,6 +1754,13 @@ public sealed class GraphSession : IDisposable
             return "Selected historical snapshots are graph-only and do not retain Roslyn compilation state. "
                    + "Omit snapshotId to use the latest semantic base.";
         }
+        lock (_publicationSync)
+        {
+            if (_hotSemanticPublication?.State is { } hot)
+                return $"The current publication is graph-only. Hot semantic publication '{hot.Workspace.SnapshotId}' is retained separately. "
+                    + $"Call lifeblood_analyze with projectPath:'{hot.Workspace.Context!.RootPath}', readOnly:false and the same defineProfiles/rule/exclusion scope. "
+                    + "Exact live recapture permits reuse; changed inputs require an explicit full fallback.";
+        }
         if (!committed.Workspace.IsLoaded)
             return "Write-side tools require lifeblood_analyze with projectPath and readOnly:false.";
         var retainedProfile = committed.RoslynAdapter?.RetainedProfileName;
@@ -1859,21 +1962,87 @@ public sealed class GraphSession : IDisposable
 
     private void CommitCore(CommittedGraphSessionState candidate, bool retainReplaced)
     {
+        var prior = Volatile.Read(ref _current);
+        var hot = _hotSemanticPublication;
+        var sameWorkspace = prior.Workspace.Identity?.Workspace == candidate.Workspace.Identity?.Workspace;
+        var sameBundle = candidate.Workspace.HasCompilationState
+            && ReferenceEquals(candidate.Workspace.CompilationHost, hot?.State.Workspace.CompilationHost);
+        var existingServices = sameBundle || (candidate.Workspace.HasCompilationState
+            && ReferenceEquals(candidate.Workspace.CompilationHost, prior.Workspace.CompilationHost));
+        var action = "notRetained";
+        var reason = "noSemanticPublication";
+        string? displaced = null;
+        if (_preserveSharedSemanticPublication)
+        {
+            if (candidate.Workspace.HasCompilationState)
+            {
+                action = hot == null ? "retained" : sameBundle ? "reused" : "replaced";
+                reason = sameBundle ? "sameSemanticBundle" : "newSemanticPublication";
+                if (hot != null && !sameBundle) displaced = hot.State.Workspace.SnapshotId.Value;
+                if (hot == null || !ReferenceEquals(hot.State.Workspace, candidate.Workspace))
+                {
+                    _hotSemanticPublication = new HotSemanticPublication(candidate, candidate.Workspace.AcquireLease());
+                    hot?.Lease.Dispose();
+                }
+                else _hotSemanticPublication = hot with { State = candidate };
+            }
+            else if (!candidate.Workspace.IsLoaded
+                || hot?.State.Workspace.Identity?.Workspace != candidate.Workspace.Identity?.Workspace)
+            {
+                action = hot == null ? "notRetained" : "evicted";
+                reason = !candidate.Workspace.IsLoaded ? "sessionReset" : "workspaceChanged";
+                displaced = hot?.State.Workspace.SnapshotId.Value;
+                _hotSemanticPublication = null;
+                hot?.Lease.Dispose();
+            }
+            else if (hot != null)
+            {
+                action = "preserved";
+                reason = "graphOnlyPublication";
+            }
+        }
+        else
+        {
+            action = candidate.Workspace.HasCompilationState ? "retained" : prior.Workspace.HasCompilationState ? "released" : "notRetained";
+            reason = "callerRetentionPreference";
+            if (prior.Workspace.HasCompilationState && !candidate.Workspace.HasCompilationState)
+                displaced = prior.Workspace.SnapshotId.Value;
+        }
+        var receipt = new SemanticRetentionReceipt(
+            _preserveSharedSemanticPublication ? "sharedHotPublication" : "callerControlled",
+            action, reason, candidate.Workspace.SnapshotId.Value,
+            _hotSemanticPublication?.State.Workspace.SnapshotId.Value, displaced,
+            _hotSemanticPublication == null ? 0 : 1,
+            candidate.Workspace.HasCompilationState,
+            candidate.Workspace.HasCompilationState && !existingServices ? "usage" : null,
+            PublishingClientLeaseId,
+            displaced == null ? null : hot?.State.SemanticRetention?.PublishingClientLeaseId
+                ?? prior.SemanticRetention?.PublishingClientLeaseId);
+        candidate = candidate with { SemanticRetention = receipt };
+        if (_hotSemanticPublication != null && ReferenceEquals(_hotSemanticPublication.State.Workspace, candidate.Workspace))
+            _hotSemanticPublication = _hotSemanticPublication with { State = candidate };
         var replaced = Interlocked.Exchange(ref _current, candidate);
-        if (ReferenceEquals(replaced.Workspace, candidate.Workspace))
-            return;
-
-        var sameWorkspace = replaced.Workspace.Identity?.Workspace
-            == candidate.Workspace.Identity?.Workspace;
+        _telemetry.RecordEvent(McpTelemetryEvents.SemanticRetention,
+            new TelemetryTag("retention.policy", receipt.Policy),
+            new TelemetryTag("retention.action", receipt.Action),
+            new TelemetryTag("retention.reason", receipt.Reason),
+            new TelemetryTag("publication.snapshot_id", receipt.PublicationSnapshotId),
+            new TelemetryTag("retention.hot_snapshot_id", receipt.HotSnapshotId ?? ""),
+            new TelemetryTag("retention.displaced_snapshot_id", receipt.DisplacedHotSnapshotId ?? ""),
+            new TelemetryTag("publication.client_lease_id", receipt.PublishingClientLeaseId ?? ""),
+            new TelemetryTag("retention.displaced_client_lease_id", receipt.DisplacedClientLeaseId ?? ""));
+        if (ReferenceEquals(replaced.Workspace, candidate.Workspace)) return;
         if (retainReplaced && replaced.Workspace.IsLoaded && sameWorkspace)
             _snapshotCatalog.Retain(replaced.Workspace);
         else if (!sameWorkspace)
             _snapshotCatalog.Clear();
-
         replaced.Workspace.Dispose();
     }
 
-    private sealed class CommittedGraphSessionState
+    private sealed record HotSemanticPublication(
+        CommittedGraphSessionState State, WorkspaceSnapshotLease Lease);
+
+    private sealed record CommittedGraphSessionState
     {
         public static CommittedGraphSessionState CreateEmpty(long analysisGeneration = 0)
             => new(
@@ -1906,7 +2075,7 @@ public sealed class GraphSession : IDisposable
 
         public WorkspaceSnapshot Workspace { get; }
 
-        public RoslynWorkspaceAnalyzer? RoslynAdapter { get; }
+        public RoslynWorkspaceAnalyzer? RoslynAdapter { get; init; }
 
         public AnalysisRuleSetResolver.ResolvedRuleSet RuleSet { get; }
 
@@ -1914,8 +2083,10 @@ public sealed class GraphSession : IDisposable
 
         public bool IsHistorical { get; }
 
+        public SemanticRetentionReceipt? SemanticRetention { get; init; }
+
         public CommittedGraphSessionState WithRoslynAdapter(RoslynWorkspaceAnalyzer roslynAdapter)
-            => new(Workspace, roslynAdapter, RuleSet, ExcludePaths);
+            => this with { RoslynAdapter = roslynAdapter };
     }
 
     public sealed class WorkspaceSnapshotNotFoundException : InvalidOperationException

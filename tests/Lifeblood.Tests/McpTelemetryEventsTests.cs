@@ -33,6 +33,7 @@ public class McpTelemetryEventsTests
             "lifeblood.analyze.fallback",
             "lifeblood.analyze.phase",
             "lifeblood.cache.lookup",
+            "lifeblood.semantic.retention",
         };
 
         Assert.Equal(expected, McpTelemetryEvents.All);

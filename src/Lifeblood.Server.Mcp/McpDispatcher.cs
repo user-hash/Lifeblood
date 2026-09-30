@@ -50,10 +50,12 @@ public sealed class McpDispatcher
   private readonly ToolHandler _toolHandler;
   private readonly string _serverVersion;
   private string _schemaVersion = McpProtocolSpec.SchemaVersions.Legacy;
+  private readonly string? _clientLeaseId;
 
-  public McpDispatcher(ToolHandler toolHandler)
+  public McpDispatcher(ToolHandler toolHandler, string? clientLeaseId = null)
   {
   _toolHandler = toolHandler;
+  _clientLeaseId = clientLeaseId;
   _serverVersion = ServerIdentity.ResolveServerVersion();
   }
 
@@ -185,7 +187,7 @@ public sealed class McpDispatcher
   }
 
   var schemaVersion = _schemaVersion;
-  var result = _toolHandler.Handle(toolName, arguments, cancellationToken);
+  var result = _toolHandler.Handle(toolName, arguments, cancellationToken, _clientLeaseId);
   response.Result = schemaVersion == McpProtocolSpec.SchemaVersions.Legacy
       ? result.LegacyProjection ?? result : result;
   return response;

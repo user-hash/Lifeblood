@@ -122,43 +122,50 @@ public sealed class ToolHandler
     public McpToolResult Handle(
         string toolName,
         JsonElement? arguments,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? clientLeaseId = null)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (string.Equals(toolName, "lifeblood_analyze", StringComparison.Ordinal))
-            return HandleAnalyzeCoalesced(arguments, cancellationToken);
-
-        var definition = ToolRegistry.FindDefinition(toolName);
-        var callBehavior = definition?.ResolveCallBehavior(arguments);
-        if (callBehavior?.SessionAccess == ToolSessionAccess.Exclusive)
-            return _sessionGate.Write(() => HandleCore(toolName, arguments, cancellationToken));
-        if (definition?.SupportsSnapshotRead != true)
-            return _sessionGate.Read(() => HandleCore(toolName, arguments, cancellationToken));
-
-        var binding = SnapshotReadRequestBinder.Bind(arguments);
-        if (!binding.Accepted)
-            return PrepareLegacyProjection(toolName, SnapshotPreconditionInvalid(toolName, binding.Error!));
-
+        var previousClient = _session.PublishingClientLeaseId;
+        if (clientLeaseId != null) _session.PublishingClientLeaseId = clientLeaseId;
         try
         {
-            return binding.Request == null
-                ? _sessionGate.Read(() => HandleCore(toolName, arguments, cancellationToken))
-                : _sessionGate.Read(
-                    binding.Request,
-                    () => HandleCore(toolName, arguments, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.Equals(toolName, "lifeblood_analyze", StringComparison.Ordinal))
+                return HandleAnalyzeCoalesced(arguments, cancellationToken);
+
+            var definition = ToolRegistry.FindDefinition(toolName);
+            var callBehavior = definition?.ResolveCallBehavior(arguments);
+            if (callBehavior?.SessionAccess == ToolSessionAccess.Exclusive)
+                return _sessionGate.Write(() => HandleCore(toolName, arguments, cancellationToken));
+            if (definition?.SupportsSnapshotRead != true)
+                return _sessionGate.Read(() => HandleCore(toolName, arguments, cancellationToken));
+
+            var binding = SnapshotReadRequestBinder.Bind(arguments);
+            if (!binding.Accepted)
+                return PrepareLegacyProjection(toolName, SnapshotPreconditionInvalid(toolName, binding.Error!));
+
+            try
+            {
+                return binding.Request == null
+                    ? _sessionGate.Read(() => HandleCore(toolName, arguments, cancellationToken))
+                    : _sessionGate.Read(
+                        binding.Request,
+                        () => HandleCore(toolName, arguments, cancellationToken));
+            }
+            catch (WorkspaceSnapshotPreconditionException ex)
+            {
+                return PrepareLegacyProjection(toolName, SnapshotPreconditionMismatch(toolName, ex.Mismatch));
+            }
+            catch (GraphSession.WorkspaceSnapshotNotFoundException ex)
+            {
+                return PrepareLegacyProjection(toolName, SnapshotSelectionNotFound(toolName, ex));
+            }
+            catch (GraphSession.WorkspaceSnapshotSelectionConflictException ex)
+            {
+                return PrepareLegacyProjection(toolName, SnapshotSelectionConflict(toolName, ex));
+            }
         }
-        catch (WorkspaceSnapshotPreconditionException ex)
-        {
-            return PrepareLegacyProjection(toolName, SnapshotPreconditionMismatch(toolName, ex.Mismatch));
-        }
-        catch (GraphSession.WorkspaceSnapshotNotFoundException ex)
-        {
-            return PrepareLegacyProjection(toolName, SnapshotSelectionNotFound(toolName, ex));
-        }
-        catch (GraphSession.WorkspaceSnapshotSelectionConflictException ex)
-        {
-            return PrepareLegacyProjection(toolName, SnapshotSelectionConflict(toolName, ex));
-        }
+        finally { _session.PublishingClientLeaseId = previousClient; }
     }
 
     private McpToolResult HandleAnalyzeCoalesced(
@@ -419,8 +426,9 @@ public sealed class ToolHandler
             RetainedSnapshotCount: snapshotHistory.Count,
             PinnedSnapshotCount: snapshotHistory.Count(entry => entry.IsPinned),
             DroppedSnapshotRetentionCount: _session.DroppedSnapshotRetentionCount,
-            SemanticBaseCount: _session.LatestSnapshot.RetainsSemanticServices ? 1 : 0,
-            SharedService: BuildSharedServiceInfo());
+            SemanticBaseCount: _session.ResidentSemanticBaseCount,
+            SharedService: BuildSharedServiceInfo(),
+            SemanticRetention: _session.SemanticRetention);
 
         return TextResult(WithEnvelope(
             "lifeblood_capabilities",
@@ -872,6 +880,15 @@ public sealed class ToolHandler
                 request.EffectiveProfileApplicabilityProjection,
                 expectedAnalysisKey: prepared?.ExpectedAnalysisKey,
                 cancellationToken: cancellationToken);
+            JsonObject? payload = null;
+            try { payload = JsonNode.Parse(result) as JsonObject; }
+            catch (JsonException) { }
+            if (payload != null)
+            {
+                payload["requestedRetentionMode"] = request.ReadOnly ? "GraphOnly" : "RetainedSemantic";
+                payload["semanticRetention"] = JsonSerializer.SerializeToNode(_session.SemanticRetention, JsonOpts);
+                result = payload.ToJsonString(JsonOpts);
+            }
             RecordAnalyzeTelemetry(result);
             return TextResult(MergeEnvelopeIntoJson("lifeblood_analyze", result));
         }

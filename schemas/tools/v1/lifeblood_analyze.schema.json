@@ -19,7 +19,7 @@
     },
     "readOnly": {
       "type": "boolean",
-      "description": "When true, uses streaming compilation (much lower memory. ~4GB vs ~7GB for large projects). Write-side tools (execute, find-references, rename, etc.) will be unavailable. Use for large projects when you only need read-side tools. Default: false."
+      "description": "Requests graph-only analysis. Private full analysis streams and releases compilation services. Shared mode preserves one existing hot semantic publication and may reuse a compatible current publication; readOnly does not evict shared retained state. Compilation tools require the current publication to own services. Check semanticRetention and capabilities for actual availability. Default: false."
     },
     "allowFullFallback": {
       "type": "boolean",
