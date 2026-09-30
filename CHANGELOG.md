@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Configured v2 graph resolution uses producer-recorded predecessor addresses
+  through the existing graph indexes. Ambiguous legacy IDs report distinct
+  canonical candidates. Member lookup follows real parent symbols, and overload
+  displays use the producer's legacy signature. Missing delimited IDs fail
+  closed; fuzzy lookup derives names from an existing symbol.
+
 - Roslyn declaration lookup rejects ambiguous legacy overload/type/assembly
   addresses and wrong or malformed signatures. Source and metadata replicas of
   one declaration collapse using the canonical v2 identity. Truncated method

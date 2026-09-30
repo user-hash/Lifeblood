@@ -83,9 +83,25 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
 
         // Rule 1: exact canonical match. Fast path for callers that already
         // have a fully-qualified ID (e.g., copied from a previous tool result).
-        var exact = graph.GetSymbol(canonical);
-        if (exact != null)
-            return AttachOverloads(graph, BuildResolved(graph, canonical, exact, ResolveOutcome.ExactMatch));
+        var identityCandidates = FindIdentityCandidates(graph, canonical);
+        if (identityCandidates.Length == 1)
+            return AttachOverloads(graph, BuildResolved(graph, identityCandidates[0].Id,
+                identityCandidates[0], ResolveOutcome.ExactMatch));
+        if (identityCandidates.Length > 1)
+            return new SymbolResolutionResult
+            {
+                Outcome = ResolveOutcome.AmbiguousCanonicalId,
+                Candidates = identityCandidates.Select(s => s.Id).ToArray(),
+                Overloads = identityCandidates.Where(s => s.Kind == SymbolKind.Method).Select(BuildOverloadInfo).ToArray(),
+                Diagnostic = $"Address '{canonical}' identifies {identityCandidates.Length} declarations. "
+                    + "Choose a canonical ID from Candidates; predecessor addresses cannot disambiguate them.",
+            };
+
+        // Delimited addresses are opaque. A missing exact address cannot be
+        // reinterpreted as a display name or a member of a different owner.
+        if (canonical.Contains('|'))
+            return new SymbolResolutionResult { Outcome = ResolveOutcome.NotFound,
+                Diagnostic = $"Canonical address not found: {canonical}. No fuzzy substitution was performed." };
 
         // Rule 2: truncated method form. Pattern: "method:NS.Type.Name" with
         // no parameter parens. We try to find every method on NS.Type whose
@@ -93,7 +109,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         // surface ambiguity.
         if (TryParseMethodWithoutParens(canonical, out var typeId, out var methodName))
         {
-            var overloads = FindOverloadsOnType(graph, typeId, methodName);
+            var overloads = FindMembersOnType(graph, typeId, methodName).Where(m => m.Kind == SymbolKind.Method).ToArray();
             if (overloads.Length == 1)
                 return AttachOverloads(graph, BuildResolved(graph, overloads[0].Id, overloads[0],
                     ResolveOutcome.LenientMethodOverload));
@@ -117,7 +133,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
             // is preferred over the global short-name fallback (Rule 4)
             // because the user already committed to a namespace; the more
             // specific resolution is the honest answer.
-            var nonMethodMembers = FindNonMethodMembersOnType(graph, typeId, methodName);
+            var nonMethodMembers = FindMembersOnType(graph, typeId, methodName).Where(m => m.Kind != SymbolKind.Method).ToArray();
             if (nonMethodMembers.Length == 1)
             {
                 var member = nonMethodMembers[0];
@@ -228,7 +244,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
                 var filtered = extractedMatches
                     .Where(c => c.Kind == requestedKind
                                 && string.Equals(
-                                       ShortNameOf(StripTypePrefix(c.ParentId)),
+                                       graph.GetSymbol(c.ParentId)?.Name ?? ShortNameOf(StripTypePrefix(c.ParentId)),
                                        requestedTypeShort,
                                        System.StringComparison.Ordinal))
                     .ToArray();
@@ -326,6 +342,12 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         // canonicalization for consistency so a caller who passes
         // `System.String` is silently redirected to `string`.
         var canonical = _canonicalizer.Canonicalize(shortName);
+        if (canonical.Contains('|'))
+        {
+            var names = FindIdentityCandidates(graph, canonical).Select(s => s.Name).Distinct(StringComparer.Ordinal).ToArray();
+            if (names.Length != 1) return Array.Empty<ShortNameMatch>();
+            canonical = names[0];
+        }
 
         ShortNameMatch[] matches = mode switch
         {
@@ -394,22 +416,11 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
 
         // Step 2 — walk the type's outgoing Contains edges and collect every
         // member symbol whose simple name equals memberName. This mirrors
-        // FindOverloadsOnType / FindNonMethodMembersOnType but does not
+        // the shared named-member query but does not
         // discriminate on kind, which is the whole point — the caller asked
         // "what members named X exist on this type?" and any kind is a
         // legitimate answer.
-        var matches = new List<Symbol>(2);
-        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
-        {
-            var edge = graph.Edges[idx];
-            if (edge.Kind != EdgeKind.Contains) continue;
-            var member = graph.GetSymbol(edge.TargetId);
-            if (member == null) continue;
-            if (member.Kind == SymbolKind.Type) continue;      // nested type — not a member
-            if (member.Kind == SymbolKind.Namespace) continue; // defensive
-            if (!string.Equals(member.Name, memberName, StringComparison.Ordinal)) continue;
-            matches.Add(member);
-        }
+        var matches = FindMembersOnType(graph, typeId, memberName).ToList();
 
         // Step 3 — optional param-filter for method overload disambiguation.
         // Filter only applies to methods; non-method members are not the
@@ -426,7 +437,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
             matches = matches
                 .Where(m =>
                     m.Kind != SymbolKind.Method ||
-                    string.Equals(ExtractParamDisplay(m.Id), wantedSig, StringComparison.Ordinal))
+                    string.Equals(ExtractParamDisplay(m), wantedSig, StringComparison.Ordinal))
                 .ToList();
         }
 
@@ -479,38 +490,18 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     /// </summary>
     private static MemberResolutionResult ResolveContainingType(SemanticGraph graph, string canonicalTypeInput)
     {
-        // Canonical type id fast path.
+        var prefixed = canonicalTypeInput.StartsWith("type:", StringComparison.Ordinal)
+            ? canonicalTypeInput : "type:" + canonicalTypeInput;
+        var identities = FindIdentityCandidates(graph, prefixed).Where(s => s.Kind == SymbolKind.Type).ToArray();
+        if (identities.Length == 1)
+            return new MemberResolutionResult { Outcome = ResolveMemberOutcome.Unique, ResolvedTypeId = identities[0].Id };
+        if (identities.Length > 1)
+            return new MemberResolutionResult { Outcome = ResolveMemberOutcome.AmbiguousContainingType,
+                AmbiguousTypeCandidates = identities.Select(s => s.Id).ToArray(),
+                Diagnostic = $"Type address '{canonicalTypeInput}' identifies several declarations. Choose a canonical ID." };
         if (canonicalTypeInput.StartsWith("type:", StringComparison.Ordinal))
-        {
-            if (graph.GetSymbol(canonicalTypeInput) is { Kind: SymbolKind.Type })
-            {
-                return new MemberResolutionResult
-                {
-                    Outcome = ResolveMemberOutcome.Unique,
-                    ResolvedTypeId = canonicalTypeInput,
-                };
-            }
-            return new MemberResolutionResult
-            {
-                Outcome = ResolveMemberOutcome.TypeNotFound,
-                Diagnostic = $"Type not found: {canonicalTypeInput}",
-            };
-        }
-
-        // Fully-qualified name (no kind prefix, has dots) — try prefixed.
-        if (canonicalTypeInput.Contains('.'))
-        {
-            var prefixed = "type:" + canonicalTypeInput;
-            if (graph.GetSymbol(prefixed) is { Kind: SymbolKind.Type })
-            {
-                return new MemberResolutionResult
-                {
-                    Outcome = ResolveMemberOutcome.Unique,
-                    ResolvedTypeId = prefixed,
-                };
-            }
-            // Fall through to short-name resolution against the trailing segment.
-        }
+            return new MemberResolutionResult { Outcome = ResolveMemberOutcome.TypeNotFound,
+                Diagnostic = $"Type not found: {canonicalTypeInput}" };
 
         // Short-name path. Take the last dot-separated segment when the
         // caller passed something namespace-shaped that didn't match, so
@@ -565,7 +556,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         Name = sym.Name,
         FilePath = sym.FilePath,
         Line = sym.Line,
-        ParamDisplay = sym.Kind == SymbolKind.Method ? ExtractParamDisplay(sym.Id) : "",
+        ParamDisplay = sym.Kind == SymbolKind.Method ? ExtractParamDisplay(sym) : "",
     };
 
     // ────────────────────────────────────────────────────────────────────────
@@ -614,7 +605,9 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         // Extract the trailing short-name segment. Prefixed/qualified
         // inputs rank against the segment; bare short names rank against
         // themselves (extraction is a no-op).
-        var extracted = ExtractLikelyShortName(query);
+        var identities = FindIdentityCandidates(graph, query);
+        if (query.Contains('|') && identities.Length == 0) return Array.Empty<ShortNameMatch>();
+        var extracted = identities.Length > 0 ? identities[0].Name : ExtractLikelyShortName(query);
         var fuzzyQuery = string.IsNullOrEmpty(extracted) ? query : extracted;
 
         // Merge both ranking sources in one dictionary keyed by canonical
@@ -863,7 +856,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
         if (result.Symbol.Kind != SymbolKind.Method) return result;
         if (string.IsNullOrEmpty(result.Symbol.ParentId)) return result;
 
-        var siblings = FindOverloadsOnType(graph, result.Symbol.ParentId, result.Symbol.Name);
+        var siblings = FindMembersOnType(graph, result.Symbol.ParentId, result.Symbol.Name).Where(m => m.Kind == SymbolKind.Method).ToArray();
         if (siblings.Length <= 1)
             return result; // only one overload — nothing to surface.
 
@@ -883,7 +876,7 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     private static OverloadInfo BuildOverloadInfo(Symbol sym) => new()
     {
         CanonicalId = sym.Id,
-        ParamDisplay = ExtractParamDisplay(sym.Id),
+        ParamDisplay = ExtractParamDisplay(sym),
         FilePath = sym.FilePath,
         Line = sym.Line,
     };
@@ -893,8 +886,10 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
     /// <c>method:NS.Type.Name(param1,param2)</c> → <c>param1,param2</c>.
     /// Returns empty for malformed or non-method IDs.
     /// </summary>
-    private static string ExtractParamDisplay(string canonicalMethodId)
+    private static string ExtractParamDisplay(Symbol symbol)
     {
+        var canonicalMethodId = symbol.Properties.TryGetValue(SymbolPropertyKeys.LegacyCanonicalId, out var predecessor)
+            ? predecessor : symbol.Id;
         var openParen = canonicalMethodId.IndexOf('(');
         var closeParen = canonicalMethodId.LastIndexOf(')');
         if (openParen < 0 || closeParen < 0 || closeParen <= openParen) return "";
@@ -1037,59 +1032,32 @@ public sealed class LifebloodSymbolResolver : ISymbolResolver
 
     private static readonly string[] CtorSuffixes = { "..ctor", "..cctor" };
 
-    /// <summary>
-    /// Find every method symbol whose <see cref="Symbol.ParentId"/> equals
-    /// <paramref name="typeId"/> and whose simple <see cref="Symbol.Name"/>
-    /// equals <paramref name="methodName"/>. Used by the
-    /// <see cref="ResolveOutcome.LenientMethodOverload"/> path.
-    /// </summary>
-    private static Symbol[] FindOverloadsOnType(SemanticGraph graph, string typeId, string methodName)
+    private static Symbol[] FindIdentityCandidates(SemanticGraph graph, string input)
     {
-        if (graph.GetSymbol(typeId) == null) return System.Array.Empty<Symbol>();
-
-        var overloads = new List<Symbol>(2);
-        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
-        {
-            var edge = graph.Edges[idx];
-            if (edge.Kind != EdgeKind.Contains) continue;
-            var member = graph.GetSymbol(edge.TargetId);
-            if (member == null) continue;
-            if (member.Kind != SymbolKind.Method) continue;
-            if (!string.Equals(member.Name, methodName, StringComparison.Ordinal)) continue;
-            overloads.Add(member);
-        }
-        return overloads.ToArray();
+        var exact = graph.GetSymbol(input);
+        var predecessors = graph.FindByPredecessorId(input);
+        if (predecessors.Count == 0)
+            return exact == null ? Array.Empty<Symbol>() : new[] { exact };
+        return (exact == null ? predecessors : predecessors.Append(exact))
+            .DistinctBy(s => s.Id).OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
     }
 
-    /// <summary>
-    /// Find every non-method member symbol (Property, Field, Event) whose
-    /// <see cref="Symbol.ParentId"/> equals <paramref name="typeId"/> and
-    /// whose simple <see cref="Symbol.Name"/> equals
-    /// <paramref name="memberName"/>. Used by the
-    /// <see cref="ResolveOutcome.KindCorrectedOnContainingType"/> path
-    /// (INV-RESOLVER-006): when the user supplied <c>method:NS.Type.X</c> but the
-    /// type carries a property / field / event named <c>X</c> instead, the
-    /// resolver returns the real member rather than fall through to the
-    /// global short-name fuzzy fallback.
-    /// </summary>
-    private static Symbol[] FindNonMethodMembersOnType(SemanticGraph graph, string typeId, string memberName)
+    /// <summary>Named members on every exact or predecessor-addressed owner.</summary>
+    private static Symbol[] FindMembersOnType(SemanticGraph graph, string typeId, string memberName)
     {
-        if (graph.GetSymbol(typeId) == null) return System.Array.Empty<Symbol>();
-
         var members = new List<Symbol>(2);
-        foreach (int idx in graph.GetOutgoingEdgeIndexes(typeId))
+        foreach (var owner in FindIdentityCandidates(graph, typeId).Where(s => s.Kind == SymbolKind.Type))
         {
-            var edge = graph.Edges[idx];
-            if (edge.Kind != EdgeKind.Contains) continue;
-            var member = graph.GetSymbol(edge.TargetId);
-            if (member == null) continue;
-            if (member.Kind == SymbolKind.Method) continue;
-            if (member.Kind == SymbolKind.Type) continue;       // nested type — not a "member"
-            if (member.Kind == SymbolKind.Namespace) continue;  // defensive
-            if (!string.Equals(member.Name, memberName, StringComparison.Ordinal)) continue;
-            members.Add(member);
+            foreach (int idx in graph.GetOutgoingEdgeIndexes(owner.Id))
+            {
+                var edge = graph.Edges[idx];
+                if (edge.Kind != EdgeKind.Contains) continue;
+                var member = graph.GetSymbol(edge.TargetId);
+                if (member == null || member.Kind is SymbolKind.Type or SymbolKind.Namespace) continue;
+                if (string.Equals(member.Name, memberName, StringComparison.Ordinal)) members.Add(member);
+            }
         }
-        return members.ToArray();
+        return members.DistinctBy(m => m.Id).ToArray();
     }
 
     /// <summary>

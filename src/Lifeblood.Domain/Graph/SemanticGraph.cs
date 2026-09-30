@@ -72,6 +72,18 @@ public sealed class SemanticGraph
             : (IReadOnlyList<Symbol>)Array.Empty<Symbol>();
     }
 
+    /// <summary>
+    /// Producer-recorded predecessor addresses can name several declarations.
+    /// Returns every candidate from the existing immutable graph indexes.
+    /// Canonical edge lookup remains exact through GetSymbol.
+    /// </summary>
+    public IReadOnlyList<Symbol> FindByPredecessorId(string id)
+    {
+        var indexes = GetIndexes();
+        return indexes.SymbolsByPredecessorId.TryGetValue(id, out var symbols)
+            ? symbols : (IReadOnlyList<Symbol>)Array.Empty<Symbol>();
+    }
+
     public List<Symbol> ChildrenOf(string symbolId)
     {
         var children = new List<Symbol>();
@@ -112,9 +124,18 @@ public sealed class SemanticGraph
         // a single Symbol. Built once, lazily, alongside the other indexes.
         var symbolsByShortName = new Dictionary<string, List<Symbol>>(StringComparer.OrdinalIgnoreCase);
 
+        var symbolsByPredecessorId = new Dictionary<string, List<Symbol>>(StringComparer.Ordinal);
+
         for (int i = 0; i < _symbols.Length; i++)
         {
             symbolById[_symbols[i].Id] = _symbols[i];
+            if (_symbols[i].Properties.TryGetValue(SymbolPropertyKeys.LegacyCanonicalId, out var predecessor)
+                && !string.IsNullOrEmpty(predecessor))
+            {
+                if (!symbolsByPredecessorId.TryGetValue(predecessor, out var aliases))
+                    symbolsByPredecessorId[predecessor] = aliases = new List<Symbol>(1);
+                aliases.Add(_symbols[i]);
+            }
 
             var shortName = _symbols[i].Name;
             if (!string.IsNullOrEmpty(shortName))
@@ -134,7 +155,7 @@ public sealed class SemanticGraph
             AddToIndex(incoming, _edges[i].TargetId, i);
         }
 
-        return new GraphIndexes(symbolById, outgoing, incoming, symbolsByShortName);
+        return new GraphIndexes(symbolById, outgoing, incoming, symbolsByShortName, symbolsByPredecessorId);
     }
 
     private static void AddToIndex(Dictionary<string, List<int>> idx, string key, int value)
@@ -151,11 +172,13 @@ public sealed class SemanticGraph
         Dictionary<string, Symbol> symbolById,
         Dictionary<string, List<int>> outgoing,
         Dictionary<string, List<int>> incoming,
-        Dictionary<string, List<Symbol>> symbolsByShortName)
+        Dictionary<string, List<Symbol>> symbolsByShortName,
+        Dictionary<string, List<Symbol>> symbolsByPredecessorId)
     {
         public Dictionary<string, Symbol> SymbolById { get; } = symbolById;
         public Dictionary<string, List<int>> Outgoing { get; } = outgoing;
         public Dictionary<string, List<int>> Incoming { get; } = incoming;
         public Dictionary<string, List<Symbol>> SymbolsByShortName { get; } = symbolsByShortName;
+        public Dictionary<string, List<Symbol>> SymbolsByPredecessorId { get; } = symbolsByPredecessorId;
     }
 }

@@ -368,6 +368,9 @@ public enum ResolveOutcome
     /// the member is a method, property, or field. INV-RESOLVER-006.
     /// </summary>
     KindCorrectedOnContainingType,
+
+    /// <summary>A producer-recorded predecessor address denotes multiple canonical declarations.</summary>
+    AmbiguousCanonicalId,
 }
 
 /// <summary>

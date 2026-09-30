@@ -1,6 +1,8 @@
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
+using Lifeblood.Application.Ports.Right;
+using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.Results;
 using Lifeblood.Server.Mcp;
@@ -14,6 +16,63 @@ namespace Lifeblood.Tests;
 public class VersionedCanonicalSymbolTests
 {
     private const CanonicalSymbolIdVersion V2 = CanonicalSymbolIdVersion.AssemblyQualifiedV2;
+
+    [Fact]
+    public void Version2_GraphResolverReportsLegacyAmbiguityAndUsesRealMemberOwners()
+    {
+        using var project = new ProjectFixture(CollisionSource);
+        using var session = new GraphSession(new PhysicalFileSystem(), canonicalIdVersion: V2);
+        _ = session.Load(project.Root, graphPath: null, rulesPath: null);
+        var graph = session.Graph!;
+        var resolver = new LifebloodSymbolResolver(new CSharpUserInputCanonicalizer());
+        foreach (var legacy in new[] { "type:App.Box", "method:App.C.M(int)", "method:App.C.G()", "method:App.C.op_Implicit(App.C)" })
+        {
+            var result = resolver.Resolve(graph, legacy);
+            Assert.Equal(ResolveOutcome.AmbiguousCanonicalId, result.Outcome);
+            Assert.Null(result.CanonicalId);
+            Assert.Equal(2, result.Candidates.Length);
+            Assert.All(result.Candidates, id => Assert.Equal(id, resolver.Resolve(graph, id).CanonicalId));
+        }
+        var truncated = resolver.Resolve(graph, "method:App.C.M");
+        Assert.Equal(ResolveOutcome.AmbiguousMethodOverload, truncated.Outcome);
+        Assert.Equal(2, truncated.Overloads.Length);
+        Assert.All(truncated.Overloads, o => Assert.Equal("int", o.ParamDisplay));
+        var type = graph.Symbols.Single(s => s.Kind == Lifeblood.Domain.Graph.SymbolKind.Type && s.QualifiedName == "App.C");
+        var members = resolver.ResolveMember(graph, type.Id, "M", new[] { "int" });
+        Assert.Equal(ResolveMemberOutcome.MultipleMatches, members.Outcome);
+        Assert.Equal(2, members.Members.Length);
+        Assert.All(members.Members, m => Assert.Equal("int", m.ParamDisplay));
+        Assert.Equal(type.Id, resolver.ResolveMember(graph, "App.C", "G").ResolvedTypeId);
+        Assert.Equal(ResolveMemberOutcome.AmbiguousContainingType, resolver.ResolveMember(graph, "type:App.Box", "X").Outcome);
+        var run = graph.Symbols.Single(s => s.QualifiedName == "App.Use.Run");
+        Assert.Equal(run.Id, resolver.Resolve(graph, "method:Old.Use.Run()").CanonicalId);
+        Assert.Equal(2, resolver.ResolveShortName(graph, "Box").Length);
+        Assert.Contains(resolver.ResolveShortName(graph, run.Id), m => m.CanonicalId == run.Id);
+        Assert.Contains(resolver.SuggestNearMatches(graph, type.Id), m => m.CanonicalId == type.Id);
+        Assert.Empty(resolver.ResolveShortName(graph, run.Id + "missing"));
+        var missing = resolver.Resolve(graph, run.Id + "missing");
+        Assert.Equal(ResolveOutcome.NotFound, missing.Outcome);
+        Assert.Empty(missing.Candidates);
+        Assert.Null(missing.CanonicalId);
+    }
+
+    [Fact]
+    public void Version2_PredecessorResolutionKeepsPartialDeclarationFilesAndExactNamespacePreference()
+    {
+        using var project = new ProjectFixture("namespace App; public partial class P { public void A() {} }");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(project.Root, "Other.cs"), "namespace App { public partial class P { public void B() {} } } namespace Other { public class P {} }");
+        using var session = new GraphSession(new PhysicalFileSystem(), canonicalIdVersion: V2);
+        _ = session.Load(project.Root, graphPath: null, rulesPath: null);
+        var resolver = new LifebloodSymbolResolver(new CSharpUserInputCanonicalizer());
+        Assert.DoesNotContain(session.CompilationHost!.GetDiagnostics(), d => d.Severity == Lifeblood.Domain.Results.DiagnosticSeverity.Error);
+        var result = resolver.Resolve(session.Graph!, "type:App.P");
+        Assert.Equal(ResolveOutcome.ExactMatch, result.Outcome);
+        Assert.Equal(2, result.DeclarationFilePaths.Length);
+        Assert.Equal("App.P", result.Symbol!.QualifiedName);
+        Assert.Null(session.Graph!.GetSymbol("type:App.P"));
+        Assert.Single(session.Graph.FindByPredecessorId("type:App.P"));
+        Assert.Equal(2, resolver.ResolveShortName(session.Graph, "P").Length);
+    }
 
     [Fact]
     public void LegacyLookup_RejectsTheFourLegalCollisionPairsBeforeReferencesOrRename()
