@@ -62,6 +62,9 @@ internal static class CanonicalSymbolFormat
         if (method.ReducedFrom != null) method = method.ReducedFrom;
         method = method.OriginalDefinition;
 
+        if (UseVersion2(version) && method.MethodKind is MethodKind.LocalFunction or MethodKind.AnonymousFunction)
+            return UnsupportedSymbolId(method);
+
         // Accessor methods are not graph symbols. Route them to their owning
         // property/event so accessor-body edges never dangle.
         if (method.AssociatedSymbol is IPropertySymbol property)
@@ -122,8 +125,10 @@ internal static class CanonicalSymbolFormat
     private static string BuildVersion2Id(string kind, ISymbol symbol, string signature)
     {
         var owner = (symbol as INamedTypeSymbol ?? symbol.ContainingType)?.OriginalDefinition;
-        var declaration = owner?.GetDocumentationCommentId()
-            ?? throw new ArgumentException("The symbol has no addressable declaring type.", nameof(symbol));
+        var declaration = owner?.GetDocumentationCommentId();
+        if (declaration == null || owner is { IsAnonymousType: true } or { TypeKind: TypeKind.Error }
+            || symbol.ContainingAssembly == null)
+            return UnsupportedSymbolId(symbol);
         return $"{kind}:v2|{Uri.EscapeDataString(symbol.ContainingAssembly.Identity.ToString())}"
             + $"|{Uri.EscapeDataString(declaration)}"
             + $"|{Uri.EscapeDataString(symbol is INamedTypeSymbol ? "" : symbol.MetadataName)}"
@@ -132,11 +137,25 @@ internal static class CanonicalSymbolFormat
 
     private static string Pack(string value) => $"{value.Length}:{value}";
 
+    // Compiler-created or unresolved symbols are observations, not declaration
+    // addresses. The prefix prevents exact declaration lookup from accepting them.
+    private static string UnsupportedSymbolId(ISymbol symbol)
+    {
+        var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+        return "unknown:v2|" + Uri.EscapeDataString(symbol.ToDisplayString(ParamType))
+            + "|" + Uri.EscapeDataString(symbol.ContainingAssembly?.Identity.ToString() ?? "")
+            + "|" + Uri.EscapeDataString(location?.SourceTree?.FilePath ?? "")
+            + $"|{location?.SourceSpan.Start ?? -1}";
+    }
+
     private static string ParameterIdentity(IEnumerable<IParameterSymbol> parameters)
         => string.Concat(parameters.Select(p => Pack($"{(int)p.RefKind};{TypeIdentity(p.Type)}")));
 
     private static string TypeIdentity(ITypeSymbol type)
     {
+        if (type is IErrorTypeSymbol error)
+            return "e" + Pack(error.ToDisplayString(ParamType))
+                + string.Concat(error.TypeArguments.Select(t => Pack(TypeIdentity(t))));
         if (type.TypeKind == TypeKind.Dynamic) return $"s{(int)SpecialType.System_Object}";
         if (type.SpecialType != SpecialType.None && type is not INamedTypeSymbol { Arity: > 0 })
             return $"s{(int)type.SpecialType}";

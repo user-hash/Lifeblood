@@ -40,7 +40,10 @@ public sealed class RoslynWorkspaceAnalyzer :
 {
     private readonly IFileSystem _fs;
     private readonly RoslynModuleDiscovery _discovery;
-    private readonly CompilationTreeExtractor _treeExtractor = new();
+    private readonly CompilationTreeExtractor _treeExtractor;
+    public CanonicalSymbolIdVersion CanonicalIdVersion { get; }
+    public string? DeclarationIdentityPolicy => CanonicalIdVersion == CanonicalSymbolIdVersion.LegacyV1
+        ? null : $"csharp-canonical-v{(int)CanonicalIdVersion}";
     private readonly IDefineProfileResolver _profileResolver;
     private readonly NuGetReferenceResolver _nugetResolver;
 
@@ -124,14 +127,18 @@ public sealed class RoslynWorkspaceAnalyzer :
     /// </summary>
     public ProfileApplicabilityReport? ProfileApplicability => _profileApplicability;
 
-    public RoslynWorkspaceAnalyzer(IFileSystem fs)
-        : this(fs, new DefaultDefineProfileResolver())
+    public RoslynWorkspaceAnalyzer(IFileSystem fs, CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
+        : this(fs, new DefaultDefineProfileResolver(), idVersion)
     {
     }
 
     /// <summary>INV-MULTI-DEFINE-RESOLVER-001 injection seam.</summary>
-    public RoslynWorkspaceAnalyzer(IFileSystem fs, IDefineProfileResolver profileResolver)
+    public RoslynWorkspaceAnalyzer(IFileSystem fs, IDefineProfileResolver profileResolver,
+        CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
     {
+        if (!Enum.IsDefined(idVersion)) throw new ArgumentOutOfRangeException(nameof(idVersion));
+        CanonicalIdVersion = idVersion;
+        _treeExtractor = new CompilationTreeExtractor(idVersion);
         _fs = fs;
         _discovery = new RoslynModuleDiscovery(fs);
         _profileResolver = profileResolver;
@@ -217,7 +224,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         if (_snapshot == null)
             throw new InvalidOperationException("Cannot fork before the first successful workspace analysis.");
 
-        return new RoslynWorkspaceAnalyzer(_fs, _profileResolver)
+        return new RoslynWorkspaceAnalyzer(_fs, _profileResolver, CanonicalIdVersion)
         {
             _snapshot = _snapshot.ForkForCandidate(),
             _compilations = _compilations == null
@@ -1140,7 +1147,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         if (string.Equals(profileName, RetainedProfileName, StringComparison.Ordinal)
             && _compilations is { Count: > 0 } retained)
         {
-            return new RoslynOperationFactProvider(retained, profileName, availableProfiles)
+            return new RoslynOperationFactProvider(retained, profileName, availableProfiles, CanonicalIdVersion)
                 .Scan(query, consume, cancellationToken);
         }
 
@@ -1223,7 +1230,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                             [module.Name] = compilation,
                         },
                         profileName,
-                        availableProfiles)
+                        availableProfiles, CanonicalIdVersion)
                     .Scan(
                         scopedQuery,
                         fact =>
@@ -1295,7 +1302,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                 "Source evidence requires retained C# syntax trees. Analyze with readOnly:false first.");
         var retainedProfile = RetainedProfileName
             ?? throw new InvalidOperationException("Source evidence requires an analyzed define profile.");
-        return new RoslynSourceEvidenceProvider(retained, retainedProfile, RetainedProfileNames)
+        return new RoslynSourceEvidenceProvider(retained, retainedProfile, RetainedProfileNames, CanonicalIdVersion)
             .Scan(query, consume, cancellationToken);
     }
 

@@ -12,8 +12,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Canonical identity migration has an explicitly selected v2 formatter/lookup
   backend in the existing C# authority. It distinguishes legal overloads, generic
   owners, conversion returns, assemblies and extern-alias parameter types, with
-  source/metadata parity. Production graph and MCP wire activation remain pending;
-  default v1 identifiers are preserved in this preparatory atom.
+  source/metadata parity. An immutable selection now flows through configured
+  semantic publications, incremental reuse, references, facts and refactoring.
+  Analysis identity records the selection; source edits preserve compilation
+  assembly identity and options. Default v1 and MCP wire activation stay unchanged
+  while client compatibility migration remains open. Unity reachability follows
+  recorded inheritance addresses instead of deriving them from display names.
 
 - Reference queries accept optional `symbolIds` for 1..32 targets. One request-local
   syntax pass matches ordinary targets, while conversion targets share the existing

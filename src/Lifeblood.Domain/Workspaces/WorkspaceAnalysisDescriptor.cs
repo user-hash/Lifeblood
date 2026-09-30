@@ -19,7 +19,8 @@ public sealed record WorkspaceAnalysisDescriptor(
     string RetentionMode,
     string DescriptorPolicy,
     IReadOnlyList<string> DefineProfiles,
-    IReadOnlyList<string> ExcludePathGlobs)
+    IReadOnlyList<string> ExcludePathGlobs,
+    string? DeclarationIdentityPolicy = null)
 {
     public static WorkspaceAnalysisDescriptor From(WorkspaceAnalysisIdentity identity)
     {
@@ -38,6 +39,7 @@ public sealed record WorkspaceAnalysisDescriptor(
             identity.Spec.RetentionMode.ToString(),
             identity.Spec.DescriptorPolicy.ToString(),
             identity.Spec.DefineProfiles,
-            identity.Spec.ExcludePathGlobs);
+            identity.Spec.ExcludePathGlobs,
+            identity.Spec.DeclarationIdentityPolicy);
     }
 }

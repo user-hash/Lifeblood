@@ -15,6 +15,13 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 public sealed class RoslynEdgeExtractor
 {
+    private readonly CanonicalSymbolIdVersion _idVersion;
+
+    public RoslynEdgeExtractor(CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
+    {
+        _idVersion = idVersion;
+    }
+
     private static readonly Evidence SemanticEvidence = new()
     {
         Kind = EvidenceKind.Semantic,
@@ -141,7 +148,7 @@ public sealed class RoslynEdgeExtractor
         var typeSymbol = model.GetDeclaredSymbol(typeDecl);
         if (typeSymbol == null) return;
 
-        var sourceId = CanonicalSymbolFormat.BuildTypeId(typeSymbol);
+        var sourceId = CanonicalSymbolFormat.BuildTypeId(typeSymbol, _idVersion);
 
         // Base type → Inherits (only source-defined bases)
         if (typeSymbol.BaseType != null
@@ -150,7 +157,7 @@ public sealed class RoslynEdgeExtractor
             && typeSymbol.BaseType.SpecialType != SpecialType.System_Enum
             && IsTracked(typeSymbol.BaseType))
         {
-            var targetId = CanonicalSymbolFormat.BuildTypeId(typeSymbol.BaseType);
+            var targetId = CanonicalSymbolFormat.BuildTypeId(typeSymbol.BaseType, _idVersion);
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.Inherits);
         }
 
@@ -166,7 +173,7 @@ public sealed class RoslynEdgeExtractor
         foreach (var iface in typeSymbol.Interfaces)
         {
             if (!IsTracked(iface)) continue;
-            var targetId = CanonicalSymbolFormat.BuildTypeId(iface);
+            var targetId = CanonicalSymbolFormat.BuildTypeId(iface, _idVersion);
             AddEdge(edges, seen, sourceId, targetId, ifaceEdgeKind);
         }
 
@@ -188,8 +195,8 @@ public sealed class RoslynEdgeExtractor
                 case IPropertySymbol prop when prop.OverriddenProperty != null
                     && IsTracked(prop.OverriddenProperty):
                 {
-                    var propSourceId = CanonicalSymbolFormat.BuildPropertyId(prop);
-                    var propTargetId = CanonicalSymbolFormat.BuildPropertyId(prop.OverriddenProperty);
+                    var propSourceId = CanonicalSymbolFormat.BuildPropertyId(prop, _idVersion);
+                    var propTargetId = CanonicalSymbolFormat.BuildPropertyId(prop.OverriddenProperty, _idVersion);
                     AddEdge(edges, seen, propSourceId, propTargetId, EdgeKind.Overrides);
                     break;
                 }
@@ -197,8 +204,8 @@ public sealed class RoslynEdgeExtractor
                     && IsTracked(evt.OverriddenEvent):
                 {
                     AddEdge(edges, seen,
-                        CanonicalSymbolFormat.BuildEventId(evt),
-                        CanonicalSymbolFormat.BuildEventId(evt.OverriddenEvent),
+                        CanonicalSymbolFormat.BuildEventId(evt, _idVersion),
+                        CanonicalSymbolFormat.BuildEventId(evt.OverriddenEvent, _idVersion),
                         EdgeKind.Overrides);
                     break;
                 }
@@ -229,16 +236,16 @@ public sealed class RoslynEdgeExtractor
                     }
                     case IPropertySymbol ifaceProp when impl is IPropertySymbol implProp:
                     {
-                        var implPropId = CanonicalSymbolFormat.BuildPropertyId(implProp);
-                        var ifacePropId = CanonicalSymbolFormat.BuildPropertyId(ifaceProp);
+                        var implPropId = CanonicalSymbolFormat.BuildPropertyId(implProp, _idVersion);
+                        var ifacePropId = CanonicalSymbolFormat.BuildPropertyId(ifaceProp, _idVersion);
                         AddEdge(edges, seen, implPropId, ifacePropId, EdgeKind.Implements);
                         break;
                     }
                     case IEventSymbol ifaceEvt when impl is IEventSymbol implEvt:
                     {
                         AddEdge(edges, seen,
-                            CanonicalSymbolFormat.BuildEventId(implEvt),
-                            CanonicalSymbolFormat.BuildEventId(ifaceEvt),
+                            CanonicalSymbolFormat.BuildEventId(implEvt, _idVersion),
+                            CanonicalSymbolFormat.BuildEventId(ifaceEvt, _idVersion),
                             EdgeKind.Implements);
                         break;
                     }
@@ -309,8 +316,8 @@ public sealed class RoslynEdgeExtractor
             var containingType = FindContainingType(model, invocation);
             if (containingType != null)
             {
-                var containingTypeId = CanonicalSymbolFormat.BuildTypeId(containingType);
-                var targetTypeId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType);
+                var containingTypeId = CanonicalSymbolFormat.BuildTypeId(containingType, _idVersion);
+                var targetTypeId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType, _idVersion);
                 if (containingTypeId != targetTypeId)
                 {
                     AddEdge(edges, seen, containingTypeId, targetTypeId, EdgeKind.References,
@@ -347,7 +354,7 @@ public sealed class RoslynEdgeExtractor
         var sourceId = GetMethodId(caller);
 
         // Type-level edge: caller → containing type (module-coupling signal).
-        var typeTargetId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType);
+        var typeTargetId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType, _idVersion);
         AddEdge(edges, seen, sourceId, typeTargetId, EdgeKind.References,
             originatingNode: creation, containingSymbolId: sourceId);
 
@@ -383,8 +390,8 @@ public sealed class RoslynEdgeExtractor
             if (!IsTracked(referencedType)) return;
             var containingType = FindContainingType(model, identifier);
             if (containingType == null) return;
-            var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
-            var targetId = CanonicalSymbolFormat.BuildTypeId(referencedType);
+            var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType, _idVersion);
+            var targetId = CanonicalSymbolFormat.BuildTypeId(referencedType, _idVersion);
             if (sourceId != targetId)
                 AddEdge(edges, seen, sourceId, targetId, EdgeKind.References,
                     originatingNode: identifier, containingSymbolId: sourceId);
@@ -399,7 +406,7 @@ public sealed class RoslynEdgeExtractor
             var caller = FindContainingMethodOrLocal(model, identifier);
             if (caller == null) return;
             var callerMethodId = GetMethodId(caller);
-            var fieldId = CanonicalSymbolFormat.BuildFieldId(fieldSymbol);
+            var fieldId = CanonicalSymbolFormat.BuildFieldId(fieldSymbol, _idVersion);
             AddEdge(edges, seen, callerMethodId, fieldId, EdgeKind.References,
                 originatingNode: identifier, containingSymbolId: callerMethodId);
             return;
@@ -445,8 +452,8 @@ public sealed class RoslynEdgeExtractor
         if (containingType == null) return false;
 
         // Type-level References edge (existing behavior — valuable for module coupling)
-        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
-        var targetId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType);
+        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType, _idVersion);
+        var targetId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType, _idVersion);
 
         if (sourceId != targetId)
         {
@@ -493,8 +500,8 @@ public sealed class RoslynEdgeExtractor
         var containingType = FindContainingType(model, memberBinding);
         if (containingType == null) return false;
 
-        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
-        var targetTypeId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType);
+        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType, _idVersion);
+        var targetTypeId = CanonicalSymbolFormat.BuildTypeId(target.ContainingType, _idVersion);
 
         if (sourceId != targetTypeId)
             AddEdge(edges, seen, sourceId, targetTypeId, EdgeKind.References,
@@ -529,21 +536,21 @@ public sealed class RoslynEdgeExtractor
         {
             case IPropertySymbol prop:
             {
-                var propId = CanonicalSymbolFormat.BuildPropertyId(prop);
+                var propId = CanonicalSymbolFormat.BuildPropertyId(prop, _idVersion);
                 AddEdge(edges, seen, callerMethodId, propId, EdgeKind.References,
                     originatingNode: node, containingSymbolId: callerMethodId);
                 break;
             }
             case IFieldSymbol field:
             {
-                var fieldId = CanonicalSymbolFormat.BuildFieldId(field);
+                var fieldId = CanonicalSymbolFormat.BuildFieldId(field, _idVersion);
                 AddEdge(edges, seen, callerMethodId, fieldId, EdgeKind.References,
                     originatingNode: node, containingSymbolId: callerMethodId);
                 break;
             }
             case IEventSymbol evt:
             {
-                var eventId = CanonicalSymbolFormat.BuildEventId(evt);
+                var eventId = CanonicalSymbolFormat.BuildEventId(evt, _idVersion);
                 AddEdge(edges, seen, callerMethodId, eventId, EdgeKind.References,
                     originatingNode: node, containingSymbolId: callerMethodId);
                 break;
@@ -602,7 +609,7 @@ public sealed class RoslynEdgeExtractor
         var containingType = FindContainingType(model, genericName);
         if (containingType == null) return;
 
-        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
+        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType, _idVersion);
 
         foreach (var typeArg in genericName.TypeArgumentList.Arguments)
         {
@@ -611,7 +618,7 @@ public sealed class RoslynEdgeExtractor
             if (argType == null) continue;
             if (!IsTracked(argType)) continue;
 
-            var targetId = CanonicalSymbolFormat.BuildTypeId(argType);
+            var targetId = CanonicalSymbolFormat.BuildTypeId(argType, _idVersion);
             if (sourceId != targetId)
                 AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
         }
@@ -634,8 +641,8 @@ public sealed class RoslynEdgeExtractor
         var containingType = FindContainingType(model, typeofExpr);
         if (containingType == null) return;
 
-        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
-        var targetId = CanonicalSymbolFormat.BuildTypeId(referencedType);
+        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType, _idVersion);
+        var targetId = CanonicalSymbolFormat.BuildTypeId(referencedType, _idVersion);
 
         if (sourceId != targetId)
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
@@ -658,8 +665,8 @@ public sealed class RoslynEdgeExtractor
         var containingType = FindContainingType(model, attribute);
         if (containingType == null) return;
 
-        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType);
-        var targetId = CanonicalSymbolFormat.BuildTypeId(attrCtor.ContainingType);
+        var sourceId = CanonicalSymbolFormat.BuildTypeId(containingType, _idVersion);
+        var targetId = CanonicalSymbolFormat.BuildTypeId(attrCtor.ContainingType, _idVersion);
 
         if (sourceId != targetId)
             AddEdge(edges, seen, sourceId, targetId, EdgeKind.References);
@@ -795,7 +802,7 @@ public sealed class RoslynEdgeExtractor
         return null;
     }
 
-    private static string? FindInitializerOwnerId(SemanticModel model, SyntaxNode node)
+    private string? FindInitializerOwnerId(SemanticModel model, SyntaxNode node)
     {
         foreach (var ancestor in node.Ancestors())
         {
@@ -809,7 +816,7 @@ public sealed class RoslynEdgeExtractor
                 {
                     var fieldSym = model.GetDeclaredSymbol(varDecl) as IFieldSymbol;
                     if (fieldSym?.ContainingType == null) return null;
-                    return CanonicalSymbolFormat.BuildFieldId(fieldSym);
+                    return CanonicalSymbolFormat.BuildFieldId(fieldSym, _idVersion);
                 }
                 case PropertyDeclarationSyntax propDecl
                     when propDecl.Initializer != null
@@ -817,7 +824,7 @@ public sealed class RoslynEdgeExtractor
                 {
                     var propSym = model.GetDeclaredSymbol(propDecl) as IPropertySymbol;
                     if (propSym?.ContainingType == null) return null;
-                    return CanonicalSymbolFormat.BuildPropertyId(propSym);
+                    return CanonicalSymbolFormat.BuildPropertyId(propSym, _idVersion);
                 }
             }
         }
@@ -889,8 +896,8 @@ public sealed class RoslynEdgeExtractor
         };
     }
 
-    private static string GetMethodId(IMethodSymbol method)
-        => CanonicalSymbolFormat.BuildMethodId(method);
+    private string GetMethodId(IMethodSymbol method)
+        => CanonicalSymbolFormat.BuildMethodId(method, _idVersion);
 
     /// <summary>
     /// Returns true if the symbol is tracked in the workspace graph.

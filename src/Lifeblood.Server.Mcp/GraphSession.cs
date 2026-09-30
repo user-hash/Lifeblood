@@ -27,6 +27,7 @@ public sealed class GraphSession : IDisposable
     };
 
     private readonly IFileSystem _fs;
+    private readonly CanonicalSymbolIdVersion _canonicalIdVersion;
     private readonly ITelemetrySink _telemetry;
     private readonly ISourceControlSnapshotProvider _sourceControl;
     private readonly AnalysisRuleSetResolver _ruleSetResolver;
@@ -42,8 +43,11 @@ public sealed class GraphSession : IDisposable
         IFileSystem fs,
         ITelemetrySink? telemetry = null,
         WorkspaceSnapshotCatalog? snapshotCatalog = null,
-        ISourceControlSnapshotProvider? sourceControl = null)
+        ISourceControlSnapshotProvider? sourceControl = null,
+        CanonicalSymbolIdVersion canonicalIdVersion = CanonicalSymbolIdVersion.LegacyV1)
     {
+        if (!Enum.IsDefined(canonicalIdVersion)) throw new ArgumentOutOfRangeException(nameof(canonicalIdVersion));
+        _canonicalIdVersion = canonicalIdVersion;
         _fs = fs;
         _telemetry = telemetry ?? NoOpTelemetrySink.Instance;
         _sourceControl = sourceControl ?? UnavailableSourceControlSnapshotProvider.Instance;
@@ -119,7 +123,8 @@ public sealed class GraphSession : IDisposable
                 compilations,
                 adapter.ModuleDependencies,
                 adapter.RetainedProfileName,
-                adapter.RetainedProfileNames);
+                adapter.RetainedProfileNames,
+                adapter.CanonicalIdVersion);
             var unityResolver = LooksLikeUnityWorkspace(projectRoot)
                 ? new UnityAssemblyResolver(_fs, projectRoot!)
                 : null;
@@ -310,7 +315,7 @@ public sealed class GraphSession : IDisposable
                 if (!currentByBase.TryGetValue(identity.BaseKey.Value, out var currentIdentity))
                 {
                     IWorkspaceInputFingerprintProvider fingerprintProvider =
-                        new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
+                        new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs), _canonicalIdVersion);
                     var inputs = fingerprintProvider.CaptureAnalysisInputs(
                         context.RootPath,
                         new AnalysisConfig
@@ -325,7 +330,8 @@ public sealed class GraphSession : IDisposable
                         identity.Spec.ExcludePathGlobs,
                         identity.Spec.RetentionMode,
                         identity.Spec.DescriptorPolicy,
-                        rules.Identity);
+                        rules.Identity,
+                        identity.Spec.DeclarationIdentityPolicy);
                     currentIdentity = new WorkspaceAnalysisIdentity(
                         WorkspacePathIdentity.CreateWorkspaceKey(context.RootPath),
                         spec,
@@ -470,8 +476,8 @@ public sealed class GraphSession : IDisposable
             }
             else
             {
-                IWorkspaceInputFingerprintProvider fingerprintProvider =
-                    new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
+                var fingerprintProvider =
+                    new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs), _canonicalIdVersion);
                 var inputs = fingerprintProvider.CaptureAnalysisInputs(projectPath, config);
                 var spec = new AnalysisSpec(
                     inputs.EffectiveDefineProfiles,
@@ -480,7 +486,8 @@ public sealed class GraphSession : IDisposable
                         ? AnalysisRetentionMode.RetainedSemantic
                         : AnalysisRetentionMode.GraphOnly,
                     AnalysisDescriptorPolicy.WorkspaceDiscovery,
-                    ruleSet.Identity);
+                    ruleSet.Identity,
+                    fingerprintProvider.DeclarationIdentityPolicy);
                 identity = new WorkspaceAnalysisIdentity(
                     WorkspacePathIdentity.CreateWorkspaceKey(projectPath),
                     spec,
@@ -913,7 +920,7 @@ public sealed class GraphSession : IDisposable
             // INV-MULTI-DEFINE-UNITY-RESOLVER-001. UnityDefineProfileResolver
             // auto-detects Library/ and returns 2 profiles on Unity, single
             // Editor identity on non-Unity — safe injection everywhere.
-            var adapter = new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs));
+            var adapter = new RoslynWorkspaceAnalyzer(_fs, new UnityDefineProfileResolver(_fs), _canonicalIdVersion);
             var retainCompilations = !readOnly;
             var effectiveExcludePaths = NormalizePathGlobs(excludePaths);
             var progress = new StderrProgressSink();
@@ -1775,7 +1782,8 @@ public sealed class GraphSession : IDisposable
                 ? AnalysisRetentionMode.RetainedSemantic
                 : AnalysisRetentionMode.GraphOnly,
             AnalysisDescriptorPolicy.WorkspaceDiscovery,
-            ruleSet);
+            ruleSet,
+            adapter.DeclarationIdentityPolicy);
         return new WorkspaceAnalysisIdentity(
             WorkspacePathIdentity.CreateWorkspaceKey(projectPath),
             spec,

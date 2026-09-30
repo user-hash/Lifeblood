@@ -18,13 +18,16 @@ internal sealed class RoslynSourceEvidenceProvider
 
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
     private readonly string _profileScope;
+    private readonly CanonicalSymbolIdVersion _idVersion;
     private readonly string[] _availableProfiles;
 
     internal RoslynSourceEvidenceProvider(
         IReadOnlyDictionary<string, CSharpCompilation> compilations,
         string profileScope,
-        IReadOnlyList<string> availableProfiles)
+        IReadOnlyList<string> availableProfiles,
+        CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
     {
+        _idVersion = idVersion;
         _compilations = compilations;
         _profileScope = profileScope;
         _availableProfiles = availableProfiles
@@ -238,7 +241,7 @@ internal sealed class RoslynSourceEvidenceProvider
         return null;
     }
 
-    private static string? FindContainingSymbolId(
+    private string? FindContainingSymbolId(
         SemanticModel model,
         SyntaxNode? node,
         int position,
@@ -248,7 +251,7 @@ internal sealed class RoslynSourceEvidenceProvider
         {
             var declared = model.GetDeclaredSymbol(current, cancellationToken);
             if (declared != null && IsGraphContainingSymbol(declared))
-                return CanonicalSymbolFormat.BuildSymbolId(declared.OriginalDefinition);
+                return CanonicalSymbolFormat.BuildSymbolId(declared.OriginalDefinition, _idVersion);
         }
 
         var enclosing = model.GetEnclosingSymbol(position, cancellationToken);
@@ -256,11 +259,12 @@ internal sealed class RoslynSourceEvidenceProvider
             enclosing = enclosing.ContainingSymbol;
         return enclosing == null
             ? null
-            : CanonicalSymbolFormat.BuildSymbolId(enclosing.OriginalDefinition);
+            : CanonicalSymbolFormat.BuildSymbolId(enclosing.OriginalDefinition, _idVersion);
     }
 
     private static bool IsGraphContainingSymbol(ISymbol? symbol)
-        => symbol is INamespaceSymbol
+        => symbol is not IMethodSymbol { MethodKind: MethodKind.LocalFunction or MethodKind.AnonymousFunction }
+            && symbol is INamespaceSymbol
             or INamedTypeSymbol
             or IMethodSymbol
             or IFieldSymbol

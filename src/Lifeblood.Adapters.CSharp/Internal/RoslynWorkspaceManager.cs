@@ -324,8 +324,10 @@ internal sealed class RoslynWorkspaceManager : IDisposable
             }
 
             var projectInfo = ProjectInfo.Create(
-                projectId, VersionStamp.Default, name, name, LanguageNames.CSharp,
-                metadataReferences: metadataRefs);
+                projectId, VersionStamp.Default, name, compilation.AssemblyName ?? name, LanguageNames.CSharp,
+                metadataReferences: metadataRefs,
+                parseOptions: compilation.SyntaxTrees.FirstOrDefault()?.Options,
+                compilationOptions: compilation.Options);
             _workspace.AddProject(projectInfo);
 
             foreach (var tree in compilation.SyntaxTrees)

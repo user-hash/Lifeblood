@@ -1,5 +1,9 @@
 using Lifeblood.Adapters.CSharp;
 using Lifeblood.Adapters.CSharp.Internal;
+using Lifeblood.Application.Ports.Left;
+using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
+using Lifeblood.Server.Mcp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -10,6 +14,265 @@ namespace Lifeblood.Tests;
 public class VersionedCanonicalSymbolTests
 {
     private const CanonicalSymbolIdVersion V2 = CanonicalSymbolIdVersion.AssemblyQualifiedV2;
+
+    [Fact]
+    public void Version2_UnityReachabilityFollowsCanonicalBaseEdgeAcrossDuplicateNames()
+    {
+        var compilation = Compile("UnityApp", """
+            namespace UnityEngine { public class MonoBehaviour {} }
+            namespace App {
+                public interface IMarker {}
+                public class Character : UnityEngine.MonoBehaviour {}
+                public class Enemy : Character, IMarker { private void Update() {} }
+            }
+            """);
+        var tree = compilation.SyntaxTrees.Single();
+        var model = compilation.GetSemanticModel(tree);
+        var symbols = new RoslynSymbolExtractor(V2).Extract(model, tree.GetRoot(), "App.cs", "file:App.cs");
+        foreach (var symbol in symbols)
+            ((Dictionary<string, string>)symbol.Properties).Remove(SymbolPropertyKeys.BaseTypeChain);
+        var builder = new GraphBuilder();
+        foreach (var symbol in symbols) builder.AddSymbol(symbol);
+        foreach (var edge in new RoslynEdgeExtractor(V2).Extract(model, tree.GetRoot())) builder.AddEdge(edge);
+        var other = Compile("OtherAssembly", "namespace App { public class Character {} }");
+        var otherTree = other.SyntaxTrees.Single();
+        foreach (var symbol in new RoslynSymbolExtractor(V2).Extract(other.GetSemanticModel(otherTree), otherTree.GetRoot(), "Other.cs", "file:Other.cs"))
+            builder.AddSymbol(symbol);
+        var graph = builder.Build();
+        Assert.Equal(2, graph.FindByShortName("Character").Count);
+        var update = symbols.Single(s => s.Name == "Update");
+        Assert.True(new UnityReachabilityAdapter().IsRuntimeReachable(graph, update, out _));
+    }
+
+    private const string CollisionSource = """
+        namespace App;
+        public class Box {}
+        public class Box<T> {}
+        public class C {
+            public void M(int x) {}
+            public void M(ref int x) {}
+            public void G<T>() {}
+            public void G<T,U>() {}
+            public static implicit operator int(C value) => 1;
+            public static implicit operator string(C value) => "";
+        }
+        public class Use {
+            public void Run() {
+                var c = new C(); int x = 0;
+                c.M(0); c.M(ref x); c.G<int>(); c.G<int,string>();
+                int number = c; string text = c;
+            }
+        }
+        """;
+
+    [Fact]
+    public void Version2_PublicationIdentityIncludesTheDeclarationPolicy()
+    {
+        using var project = new ProjectFixture(CollisionSource);
+        using var legacy = new GraphSession(new PhysicalFileSystem());
+        using var current = new GraphSession(new PhysicalFileSystem(), canonicalIdVersion: V2);
+        _ = legacy.Load(project.Root, graphPath: null, rulesPath: null, readOnly: true);
+        _ = current.Load(project.Root, graphPath: null, rulesPath: null, readOnly: true);
+        var oldIdentity = legacy.CurrentSnapshot.Identity!;
+        var newIdentity = current.CurrentSnapshot.Identity!;
+        Assert.Equal(oldIdentity.Workspace, newIdentity.Workspace);
+        Assert.Equal(oldIdentity.Source, newIdentity.Source);
+        Assert.Equal(oldIdentity.Spec.RetentionMode, newIdentity.Spec.RetentionMode);
+        Assert.Null(oldIdentity.Spec.DeclarationIdentityPolicy);
+        Assert.NotNull(newIdentity.Spec.DeclarationIdentityPolicy);
+        Assert.NotEqual(oldIdentity.AnalysisKey, newIdentity.AnalysisKey);
+        Assert.Equal("current", current.CheckSnapshotDrift(new[] { current.CurrentSnapshot }).Values.Single().Status);
+        Assert.Equal(newIdentity.Spec.DeclarationIdentityPolicy, Lifeblood.Domain.Workspaces.WorkspaceAnalysisDescriptor.From(newIdentity).DeclarationIdentityPolicy);
+    }
+
+    [Fact]
+    public void Version2_RefactoringWorkspacePreservesAssemblyAndParseOptions()
+    {
+        var tree = CSharpSyntaxTree.ParseText("""
+            #if KEPT
+            public class C { public void M() {} public void Run() { M(); } }
+            #else
+            public class Other {}
+            #endif
+            """, options: CSharpParseOptions.Default.WithPreprocessorSymbols("KEPT"), path: "Options.cs");
+        var compilation = CSharpCompilation.Create("ActualAssembly", new[] { tree }, BclReferenceLoader.References.Value,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        Assert.DoesNotContain(compilation.GetDiagnostics(), d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        var id = CanonicalSymbolFormat.BuildSymbolId(compilation.GetTypeByMetadataName("C")!.GetMembers("M").Single(), V2);
+        using var refactoring = new RoslynWorkspaceRefactoring(new Dictionary<string, CSharpCompilation> { ["ModuleLabel"] = compilation });
+        Assert.Equal(2, refactoring.Rename(id, "Changed").Length);
+    }
+
+    [Fact]
+    public void Version2_GraphSession_PreservesDeclarationsEdgesAndExactReferenceTargets()
+    {
+        using var project = new ProjectFixture(CollisionSource);
+        using var session = new GraphSession(new PhysicalFileSystem(), canonicalIdVersion: V2);
+        _ = session.Load(project.Root, graphPath: null, rulesPath: null);
+        var graph = session.Graph!;
+        var host = session.CompilationHost!;
+        Assert.DoesNotContain(host.GetDiagnostics(), d => d.Severity == Lifeblood.Domain.Results.DiagnosticSeverity.Error);
+        foreach (var legacy in new[] { "type:App.Box", "method:App.C.M(int)", "method:App.C.G()", "method:App.C.op_Implicit(App.C)" })
+            Assert.Equal(2, graph.Symbols.Count(s => s.Properties.TryGetValue(SymbolPropertyKeys.LegacyCanonicalId, out var id) && id == legacy));
+        Assert.All(graph.Symbols, s => Assert.DoesNotContain("v2|", s.QualifiedName));
+        var targets = graph.Symbols.Where(s => s.Kind == Lifeblood.Domain.Graph.SymbolKind.Method && s.Name is "M" or "G" or "op_Implicit").ToArray();
+        Assert.Equal(6, targets.Length);
+        var caller = graph.Symbols.Single(s => s.QualifiedName == "App.Use.Run");
+        var report = host.FindReferences(new FindReferencesRequest { SymbolIds = targets.Select(s => s.Id).ToArray() },
+            new FindReferencesOptions { IncludeDeclarations = true });
+        Assert.Equal(1, report.Work.ConversionScanCount);
+        foreach (var group in report.Symbols)
+        {
+            Assert.True(group.Resolved, group.SymbolId);
+            Assert.Single(group.Locations, l => l.Kind == ReferenceKind.Declaration);
+            var usage = Assert.Single(group.Locations, l => l.Kind == ReferenceKind.Usage);
+            Assert.Equal(caller.Id, usage.ContainingSymbolId);
+        }
+        foreach (var target in targets.Where(s => s.Name is "M" or "G"))
+            Assert.Contains(graph.Edges, e => e.SourceId == caller.Id && e.TargetId == target.Id && e.Kind == EdgeKind.Calls);
+        var method = targets.Single(s => s.Name == "M" && host.FindReferences(s.Id).Single().SpanText.Contains("M(0)", StringComparison.Ordinal));
+        var definition = host.FindDefinition(method.Id);
+        Assert.NotNull(definition);
+        Assert.Equal(method.Id, definition!.SymbolId);
+        var edits = session.Refactoring!.Rename(method.Id, "Changed");
+        Assert.Equal(2, edits.Length);
+        Assert.All(edits, e => Assert.Equal("Changed", e.NewText));
+    }
+
+    [Fact]
+    public void Version2_GraphSession_NoopAndIncrementalCandidatesKeepTheFormat()
+    {
+        using var project = new ProjectFixture(CollisionSource);
+        using var session = new GraphSession(new PhysicalFileSystem(), canonicalIdVersion: V2);
+        _ = session.Load(project.Root, graphPath: null, rulesPath: null);
+        var ids = session.Graph!.Symbols.Select(s => s.Id).OrderBy(id => id).ToArray();
+        var before = session.CurrentSnapshot;
+        _ = session.Load(project.Root, graphPath: null, rulesPath: null, incremental: true);
+        Assert.Same(before, session.CurrentSnapshot);
+        File.WriteAllText(project.SourcePath, CollisionSource.Replace("c.M(0);", "c.M(0); c.M(1);", StringComparison.Ordinal));
+        _ = session.Load(project.Root, graphPath: null, rulesPath: null, incremental: true);
+        Assert.NotSame(before, session.CurrentSnapshot);
+        Assert.Equal(ids, session.Graph!.Symbols.Select(s => s.Id).OrderBy(id => id));
+        var methods = session.Graph.Symbols.Where(s => s.Name == "M").ToArray();
+        Assert.Equal(new[] { 1, 2 }, methods.Select(m => session.CompilationHost!.FindReferences(m.Id).Length).OrderBy(n => n));
+    }
+
+    [Fact]
+    public void Version2_Host_CrossAssemblyReferencesAndRenamePreferSource()
+    {
+        var library = Compile("Library", "namespace App; public class C { public void M(int x) {} public void M(ref int x) {} }");
+        var consumer = Compile("Consumer", "namespace App; public class Use { public void Run(C c) { int x=0; c.M(0); c.M(ref x); } }", Emit(library));
+        var compilations = new Dictionary<string, CSharpCompilation> { ["Consumer"] = consumer, ["Library"] = library };
+        var dependencies = new Dictionary<string, string[]> { ["Consumer"] = new[] { "Library" }, ["Library"] = Array.Empty<string>() };
+        using var host = new RoslynCompilationHost(compilations, dependencies, idVersion: V2);
+        var type = library.GetTypeByMetadataName("App.C")!;
+        foreach (var method in type.GetMembers("M"))
+        {
+            var id = CanonicalSymbolFormat.BuildSymbolId(method, V2);
+            var reference = Assert.Single(host.FindReferences(id));
+            Assert.EndsWith("Consumer.cs", reference.FilePath);
+            var definition = host.FindDefinition(id);
+            Assert.NotNull(definition);
+            Assert.EndsWith("Library.cs", definition!.FilePath);
+        }
+        using var refactoring = new RoslynWorkspaceRefactoring(compilations, dependencies);
+        var first = type.GetMembers("M").OfType<IMethodSymbol>().Single(m => m.Parameters[0].RefKind == RefKind.None);
+        var edits = refactoring.Rename(CanonicalSymbolFormat.BuildMethodId(first, V2), "Changed");
+        Assert.Equal(2, edits.Length);
+        Assert.Contains(edits, e => e.FilePath.EndsWith("Library.cs", StringComparison.Ordinal));
+        Assert.Contains(edits, e => e.FilePath.EndsWith("Consumer.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Version2_RetainedAndEphemeralFactsUseGraphIds()
+    {
+        const string source = """
+            public class C {
+                public void M(int x) {}
+                public void M(ref int x) {}
+                public void Run() {
+                    // RECEIPT
+                    int x = 0;
+            #if SECOND
+                    M(ref x);
+            #else
+                    M(0);
+            #endif
+                    void Local() { /* RECEIPT */ M(0); }
+                    Local();
+                }
+            }
+            """;
+        using var project = new ProjectFixture(source);
+        var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem(), new FixtureProfiles(), V2);
+        var graph = analyzer.AnalyzeWorkspace(project.Root, new AnalysisConfig { RetainCompilations = true, DefineProfiles = new[] { "First", "Second" } });
+        foreach (var profile in new[] { "First", "Second" })
+        {
+            var facts = new List<OperationFact>();
+            var receipt = analyzer.ScanOperationFacts(new OperationFactQuery { ProfileScope = profile, IncludeKinds = new[] { OperationFactKind.Call } }, fact => { facts.Add(fact); return true; });
+            Assert.Equal(OperationFactScanStatus.Completed, receipt.Status);
+            Assert.Equal(0, receipt.AdditionalSemanticBaseCount);
+            Assert.Equal(profile == "First" ? OperationFactExecutionMode.RetainedCompilation : OperationFactExecutionMode.EphemeralProfileCompilation, receipt.ExecutionMode);
+            foreach (var fact in facts.Where(f => f.TargetSymbolId?.StartsWith("method:", StringComparison.Ordinal) == true))
+                Assert.NotNull(graph.GetSymbol(fact.TargetSymbolId!));
+            Assert.Contains(facts, f => f.TargetSymbolId?.StartsWith("unknown:v2|", StringComparison.Ordinal) == true);
+            Assert.All(facts, f => Assert.NotNull(graph.GetSymbol(f.ContainingSymbolId!)));
+        }
+        var evidence = new List<SourceEvidenceFact>();
+        analyzer.ScanSourceEvidence(new SourceEvidenceQuery { SearchTerms = new[] { "RECEIPT" } }, fact => { evidence.Add(fact); return true; });
+        Assert.Equal(2, evidence.Count);
+        Assert.All(evidence, f => Assert.Equal(graph.Symbols.Single(s => s.Name == "Run").Id, f.ContainingSymbolId));
+    }
+
+    [Fact]
+    public void Version2_UnresolvedAndCompilerCreatedSymbolsCannotAliasDeclarations()
+    {
+        const string source = "public class C { public void M(Missing x) {} public void Run() { var value = new { Number=1 }; _ = value.Number; } }";
+        var compilation = CSharpCompilation.Create("Errors", new[] { CSharpSyntaxTree.ParseText(source, path: "Errors.cs") },
+            BclReferenceLoader.References.Value, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        Assert.Contains(compilation.GetDiagnostics(), d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        var tree = compilation.SyntaxTrees.Single();
+        var symbols = new RoslynSymbolExtractor(V2).Extract(compilation.GetSemanticModel(tree), tree.GetRoot(), "Errors.cs", "file:Errors.cs");
+        var method = symbols.Single(s => s.Name == "M");
+        var resolvedCompilation = Compile("Errors", "public class Missing {} public class C { public void M(Missing x) {} }");
+        var resolvedMethod = resolvedCompilation.GetTypeByMetadataName("C")!.GetMembers("M").Single();
+        Assert.NotEqual(method.Id, CanonicalSymbolFormat.BuildSymbolId(resolvedMethod, V2));
+        Assert.Null(RoslynWorkspaceManager.FindInCompilation(resolvedCompilation, RoslynWorkspaceManager.ParseSymbolId(method.Id)));
+        using var host = new RoslynCompilationHost(new Dictionary<string, CSharpCompilation> { ["Errors"] = compilation }, idVersion: V2);
+        Assert.NotNull(host.FindDefinition(method.Id));
+        var facts = new List<OperationFact>();
+        host.ScanOperationFacts(new OperationFactQuery(), f => { facts.Add(f); return true; });
+        Assert.Contains(facts, f => f.TargetSymbolId?.StartsWith("unknown:v2|", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void Version2_InputCanonicalizationPreservesEncodedDeclarationAddresses()
+    {
+        var input = "type:v2|Assembly|T%3ASystem.Int32||";
+        Assert.Equal(input, new CSharpUserInputCanonicalizer().Canonicalize(input));
+    }
+
+    private sealed class FixtureProfiles : IDefineProfileResolver
+    {
+        public IReadOnlyList<DefineProfile> ResolveProfiles(string projectRoot) => new[]
+        {
+            new DefineProfile { Name = "First", AddDefines = Array.Empty<string>(), RemoveDefines = Array.Empty<string>() },
+            new DefineProfile { Name = "Second", AddDefines = new[] { "SECOND" }, RemoveDefines = Array.Empty<string>() },
+        };
+    }
+
+    private sealed class ProjectFixture : IDisposable
+    {
+        public string Root { get; } = Path.Combine(Path.GetTempPath(), "lifeblood-v2-" + Guid.NewGuid().ToString("N"));
+        public string SourcePath => Path.Combine(Root, "App.cs");
+        public ProjectFixture(string source)
+        {
+            Directory.CreateDirectory(Root);
+            File.WriteAllText(SourcePath, source);
+            File.WriteAllText(Path.Combine(Root, "App.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+        }
+        public void Dispose() => Directory.Delete(Root, recursive: true);
+    }
 
     [Theory]
     [InlineData("ref")]
@@ -235,7 +498,7 @@ public class VersionedCanonicalSymbolTests
             BclReferenceLoader.References.Value.Concat(references),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true,
                 metadataImportOptions: MetadataImportOptions.All));
-        Assert.Empty(compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
+        Assert.Empty(compilation.GetDiagnostics().Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error));
         return compilation;
     }
 

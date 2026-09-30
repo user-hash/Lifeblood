@@ -16,6 +16,9 @@ namespace Lifeblood.Domain.Graph;
 /// </summary>
 public static class SymbolPropertyKeys
 {
+    /// <summary>Producer-owned predecessor ID for a versioned declaration address.</summary>
+    public const string LegacyCanonicalId = "legacyCanonicalId";
+
     /// <summary>
     /// Semicolon-separated set of attribute simple-names declared on a
     /// symbol (e.g. <c>"Test;TestCase"</c>). Written by

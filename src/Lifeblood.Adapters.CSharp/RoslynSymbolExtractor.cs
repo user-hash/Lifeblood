@@ -12,6 +12,13 @@ namespace Lifeblood.Adapters.CSharp;
 /// </summary>
 public sealed class RoslynSymbolExtractor
 {
+    private readonly CanonicalSymbolIdVersion _idVersion;
+
+    public RoslynSymbolExtractor(CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
+    {
+        _idVersion = idVersion;
+    }
+
     public List<Symbol> Extract(SemanticModel model, SyntaxNode root, string relativeFilePath, string fileSymbolId)
     {
         var symbols = new List<Symbol>();
@@ -57,9 +64,9 @@ public sealed class RoslynSymbolExtractor
         var typeSymbol = model.GetDeclaredSymbol(typeDecl) as INamedTypeSymbol;
         if (typeSymbol == null) return;
 
-        var typeId = CanonicalSymbolFormat.BuildTypeId(typeSymbol);
+        var typeId = CanonicalSymbolFormat.BuildTypeId(typeSymbol, _idVersion);
         var containerId = typeSymbol.ContainingType != null
-            ? CanonicalSymbolFormat.BuildTypeId(typeSymbol.ContainingType)
+            ? CanonicalSymbolFormat.BuildTypeId(typeSymbol.ContainingType, _idVersion)
             : parentId;
 
         var typeProps = new Dictionary<string, string>
@@ -81,7 +88,7 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(typeSymbol.DeclaredAccessibility),
             IsAbstract = typeSymbol.IsAbstract,
             IsStatic = typeSymbol.IsStatic,
-            Properties = typeProps,
+            Properties = DeclarationProperties(typeSymbol, typeProps),
         });
 
         // Surface synthesized .cctor / parameterless .ctor when the type
@@ -166,7 +173,7 @@ public sealed class RoslynSymbolExtractor
         if (enumSymbol == null) return;
 
         var enumFqn = CanonicalSymbolFormat.GetFullName(enumSymbol);
-        var enumId = CanonicalSymbolFormat.BuildTypeId(enumSymbol);
+        var enumId = CanonicalSymbolFormat.BuildTypeId(enumSymbol, _idVersion);
 
         symbols.Add(new Symbol
         {
@@ -178,7 +185,7 @@ public sealed class RoslynSymbolExtractor
             Line = enumDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = parentId,
             Visibility = MapVisibility(enumSymbol.DeclaredAccessibility),
-            Properties = new Dictionary<string, string> { ["typeKind"] = "enum" },
+            Properties = DeclarationProperties(enumSymbol, new Dictionary<string, string> { ["typeKind"] = "enum" }),
         });
 
         // INV-EXTRACT-ENUMMEMBER-001: every enum member is a first-class graph
@@ -203,7 +210,7 @@ public sealed class RoslynSymbolExtractor
 
             symbols.Add(new Symbol
             {
-                Id = CanonicalSymbolFormat.BuildFieldId(memberSym),
+                Id = CanonicalSymbolFormat.BuildFieldId(memberSym, _idVersion),
                 Name = memberSym.Name,
                 QualifiedName = $"{enumFqn}.{memberSym.Name}",
                 Kind = DomainSymbolKind.Field,
@@ -212,7 +219,7 @@ public sealed class RoslynSymbolExtractor
                 ParentId = enumId,
                 Visibility = MapVisibility(enumSymbol.DeclaredAccessibility),
                 IsStatic = true,
-                Properties = memberProps,
+                Properties = DeclarationProperties(memberSym, memberProps),
             });
         }
     }
@@ -226,7 +233,7 @@ public sealed class RoslynSymbolExtractor
 
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildTypeId(sym),
+            Id = CanonicalSymbolFormat.BuildTypeId(sym, _idVersion),
             Name = sym.Name,
             QualifiedName = CanonicalSymbolFormat.GetFullName(sym),
             Kind = DomainSymbolKind.Type,
@@ -234,7 +241,7 @@ public sealed class RoslynSymbolExtractor
             Line = delegateDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = parentId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
-            Properties = new Dictionary<string, string> { ["typeKind"] = "delegate" },
+            Properties = DeclarationProperties(sym, new Dictionary<string, string> { ["typeKind"] = "delegate" }),
         });
     }
 
@@ -273,7 +280,7 @@ public sealed class RoslynSymbolExtractor
             if (hasStaticInitializer && hasInstanceInitializer) break;
         }
 
-        var typeName = ExtractTypeFromId(typeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(typeSymbol);
 
         if (hasStaticInitializer)
         {
@@ -311,13 +318,13 @@ public sealed class RoslynSymbolExtractor
         return false;
     }
 
-    private static Symbol BuildSynthesizedConstructorSymbol(
+    private Symbol BuildSynthesizedConstructorSymbol(
         IMethodSymbol ctor, string typeName, string typeId, string filePath, bool isStatic)
     {
         var name = isStatic ? ".cctor" : ".ctor";
         return new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(ctor),
+            Id = CanonicalSymbolFormat.BuildMethodId(ctor, _idVersion),
             Name = name,
             QualifiedName = $"{typeName}.{name}",
             Kind = DomainSymbolKind.Method,
@@ -326,11 +333,11 @@ public sealed class RoslynSymbolExtractor
             ParentId = typeId,
             Visibility = MapVisibility(ctor.DeclaredAccessibility),
             IsStatic = isStatic,
-            Properties = new Dictionary<string, string>
+            Properties = DeclarationProperties(ctor, new Dictionary<string, string>
             {
                 ["paramCount"] = "0",
                 ["synthesized"] = "true",
-            },
+            }),
         };
     }
 
@@ -341,7 +348,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(methodDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         var methodProps = new Dictionary<string, string>
         {
             ["returnType"] = sym.ReturnType.ToDisplayString(),
@@ -352,7 +359,7 @@ public sealed class RoslynSymbolExtractor
         AttachXmlDocSummary(methodProps, sym);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -362,7 +369,7 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsAbstract = sym.IsAbstract,
             IsStatic = sym.IsStatic,
-            Properties = methodProps,
+            Properties = DeclarationProperties(sym, methodProps),
         });
     }
 
@@ -373,11 +380,11 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(ctorDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         var name = sym.IsStatic ? ".cctor" : ".ctor";
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
             Name = name,
             QualifiedName = $"{typeName}.{name}",
             Kind = DomainSymbolKind.Method,
@@ -386,10 +393,10 @@ public sealed class RoslynSymbolExtractor
             ParentId = containingTypeId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsStatic = sym.IsStatic,
-            Properties = new Dictionary<string, string>
+            Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 ["paramCount"] = sym.Parameters.Length.ToString(),
-            },
+            }),
         });
     }
 
@@ -402,7 +409,7 @@ public sealed class RoslynSymbolExtractor
             var sym = model.GetDeclaredSymbol(variable) as IFieldSymbol;
             if (sym == null) continue;
 
-            var typeName = ExtractTypeFromId(containingTypeId);
+            var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
             var fieldProps = new Dictionary<string, string>
             {
                 [SymbolPropertyKeys.FieldType] = sym.Type.ToDisplayString(),
@@ -415,7 +422,7 @@ public sealed class RoslynSymbolExtractor
             AttachXmlDocSummary(fieldProps, sym);
             symbols.Add(new Symbol
             {
-                Id = CanonicalSymbolFormat.BuildFieldId(sym),
+                Id = CanonicalSymbolFormat.BuildFieldId(sym, _idVersion),
                 Name = sym.Name,
                 QualifiedName = $"{typeName}.{sym.Name}",
                 Kind = DomainSymbolKind.Field,
@@ -424,7 +431,7 @@ public sealed class RoslynSymbolExtractor
                 ParentId = containingTypeId,
                 Visibility = MapVisibility(sym.DeclaredAccessibility),
                 IsStatic = sym.IsStatic,
-                Properties = fieldProps,
+                Properties = DeclarationProperties(sym, fieldProps),
             });
         }
     }
@@ -436,7 +443,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(propDecl) as IPropertySymbol;
         if (sym == null) return;
 
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         var propProps = new Dictionary<string, string>
         {
             [SymbolPropertyKeys.PropertyType] = sym.Type.ToDisplayString(),
@@ -448,7 +455,7 @@ public sealed class RoslynSymbolExtractor
         AttachXmlDocSummary(propProps, sym);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildPropertyId(sym),
+            Id = CanonicalSymbolFormat.BuildPropertyId(sym, _idVersion),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Property,
@@ -458,7 +465,7 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsAbstract = sym.IsAbstract,
             IsStatic = sym.IsStatic,
-            Properties = propProps,
+            Properties = DeclarationProperties(sym, propProps),
         });
     }
 
@@ -469,10 +476,10 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(indexerDecl) as IPropertySymbol;
         if (sym == null) return;
 
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildPropertyId(sym),
+            Id = CanonicalSymbolFormat.BuildPropertyId(sym, _idVersion),
             Name = "this[]",
             QualifiedName = $"{typeName}.this[]",
             Kind = DomainSymbolKind.Property,
@@ -481,11 +488,11 @@ public sealed class RoslynSymbolExtractor
             ParentId = containingTypeId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsAbstract = sym.IsAbstract,
-            Properties = new Dictionary<string, string>
+            Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 [SymbolPropertyKeys.PropertyType] = sym.Type.ToDisplayString(),
                 ["isIndexer"] = "true",
-            },
+            }),
         });
     }
 
@@ -496,10 +503,10 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(operatorDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -508,11 +515,11 @@ public sealed class RoslynSymbolExtractor
             ParentId = containingTypeId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsStatic = true,
-            Properties = new Dictionary<string, string>
+            Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 ["returnType"] = sym.ReturnType.ToDisplayString(),
                 ["isOperator"] = "true",
-            },
+            }),
         });
     }
 
@@ -523,10 +530,10 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(conversionDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -535,11 +542,11 @@ public sealed class RoslynSymbolExtractor
             ParentId = containingTypeId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsStatic = true,
-            Properties = new Dictionary<string, string>
+            Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 ["returnType"] = sym.ReturnType.ToDisplayString(),
                 ["isOperator"] = "true",
-            },
+            }),
         });
     }
 
@@ -550,10 +557,10 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(destructorDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym),
+            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
             Name = "Finalize",
             QualifiedName = $"{typeName}.Finalize",
             Kind = DomainSymbolKind.Method,
@@ -561,10 +568,10 @@ public sealed class RoslynSymbolExtractor
             Line = destructorDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,
             Visibility = Visibility.Protected,
-            Properties = new Dictionary<string, string>
+            Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 ["paramCount"] = "0",
-            },
+            }),
         });
     }
 
@@ -602,10 +609,10 @@ public sealed class RoslynSymbolExtractor
         IEventSymbol sym, string containingTypeId, string filePath,
         Location location, List<Symbol> symbols)
     {
-        var typeName = ExtractTypeFromId(containingTypeId);
+        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildEventId(sym),
+            Id = CanonicalSymbolFormat.BuildEventId(sym, _idVersion),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Property,
@@ -615,11 +622,11 @@ public sealed class RoslynSymbolExtractor
             Visibility = MapVisibility(sym.DeclaredAccessibility),
             IsAbstract = sym.IsAbstract,
             IsStatic = sym.IsStatic,
-            Properties = new Dictionary<string, string>
+            Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 ["eventType"] = sym.Type.ToDisplayString(),
                 ["isEvent"] = "true",
-            },
+            }),
         });
     }
 
@@ -790,8 +797,12 @@ public sealed class RoslynSymbolExtractor
         props[SymbolPropertyKeys.Attributes] = string.Join(";", names);
     }
 
-    private static string ExtractTypeFromId(string typeId)
-        => typeId.StartsWith("type:") ? typeId.Substring(5) : typeId;
+    private IReadOnlyDictionary<string, string> DeclarationProperties(ISymbol declaration, Dictionary<string, string> properties)
+    {
+        if (_idVersion == CanonicalSymbolIdVersion.AssemblyQualifiedV2)
+            properties[SymbolPropertyKeys.LegacyCanonicalId] = CanonicalSymbolFormat.BuildSymbolId(declaration);
+        return properties;
+    }
 
     private static Visibility MapVisibility(Accessibility accessibility) => accessibility switch
     {

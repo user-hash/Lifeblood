@@ -170,7 +170,8 @@ public sealed class AnalysisSpec : IEquatable<AnalysisSpec>
         IEnumerable<string>? excludePathGlobs,
         AnalysisRetentionMode retentionMode,
         AnalysisDescriptorPolicy descriptorPolicy,
-        RuleSetIdentity ruleSet)
+        RuleSetIdentity ruleSet,
+        string? declarationIdentityPolicy = null)
     {
         var normalizedProfiles = NormalizeProfiles(defineProfiles);
         var normalizedGlobs = NormalizeGlobs(excludePathGlobs);
@@ -179,6 +180,8 @@ public sealed class AnalysisSpec : IEquatable<AnalysisSpec>
         RetentionMode = retentionMode;
         DescriptorPolicy = descriptorPolicy;
         RuleSet = ruleSet ?? throw new ArgumentNullException(nameof(ruleSet));
+        DeclarationIdentityPolicy = string.IsNullOrWhiteSpace(declarationIdentityPolicy)
+            ? null : declarationIdentityPolicy.Trim();
 
         Fingerprint = ContentFingerprint.Compute(
             "lifeblood.analysis-spec.v1",
@@ -191,7 +194,9 @@ public sealed class AnalysisSpec : IEquatable<AnalysisSpec>
             }
             .Concat(DefineProfiles)
             .Concat(new[] { ExcludePathGlobs.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) })
-            .Concat(ExcludePathGlobs.Select(value => value.ToUpperInvariant())));
+            .Concat(ExcludePathGlobs.Select(value => value.ToUpperInvariant()))
+            .Concat(DeclarationIdentityPolicy == null ? Array.Empty<string>()
+                : new[] { "declarationIdentityPolicy", DeclarationIdentityPolicy }));
     }
 
     public IReadOnlyList<string> DefineProfiles { get; }
@@ -201,6 +206,8 @@ public sealed class AnalysisSpec : IEquatable<AnalysisSpec>
     public AnalysisRetentionMode RetentionMode { get; }
 
     public AnalysisDescriptorPolicy DescriptorPolicy { get; }
+
+    public string? DeclarationIdentityPolicy { get; }
 
     public RuleSetIdentity RuleSet { get; }
 

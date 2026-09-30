@@ -15,6 +15,13 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 /// </summary>
 internal sealed class CompilationTreeExtractor
 {
+    private readonly CanonicalSymbolIdVersion _idVersion;
+
+    internal CompilationTreeExtractor(CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
+    {
+        _idVersion = idVersion;
+    }
+
     // Semantic binding is allocation-heavy. A bounded worker set avoids
     // multiplying a large compilation's live working set by the host's full
     // logical-processor count while still removing the single-core bottleneck.
@@ -62,7 +69,7 @@ internal sealed class CompilationTreeExtractor
                 var relPath = candidate.PathIdentity.GraphPath;
                 var model = compilation.GetSemanticModel(tree);
                 var root = tree.GetRoot();
-                var edgeExtractor = new RoslynEdgeExtractor
+                var edgeExtractor = new RoslynEdgeExtractor(_idVersion)
                 {
                     KnownModuleAssemblies = knownModuleAssemblies,
                 };
@@ -84,7 +91,7 @@ internal sealed class CompilationTreeExtractor
                         FilePath = relPath,
                         ParentId = SymbolIds.Module(moduleName),
                     };
-                    symbols = new RoslynSymbolExtractor().Extract(
+                    symbols = new RoslynSymbolExtractor(_idVersion).Extract(
                         model,
                         root,
                         relPath,

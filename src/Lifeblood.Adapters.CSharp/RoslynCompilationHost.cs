@@ -21,6 +21,7 @@ public sealed class RoslynCompilationHost :
 {
   private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
   private readonly Lazy<RoslynWorkspaceManager> _manager;
+  private readonly CanonicalSymbolIdVersion _idVersion;
   private readonly RoslynOperationFactProvider _operationFacts;
   private readonly RoslynSourceEvidenceProvider _sourceEvidence;
 
@@ -28,18 +29,21 @@ public sealed class RoslynCompilationHost :
   IReadOnlyDictionary<string, CSharpCompilation> compilations,
   IReadOnlyDictionary<string, string[]>? moduleDependencies = null,
   string? retainedProfileName = null,
-  IReadOnlyList<string>? availableProfiles = null)
+  IReadOnlyList<string>? availableProfiles = null,
+  CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
   {
+  if (!Enum.IsDefined(idVersion)) throw new ArgumentOutOfRangeException(nameof(idVersion));
+  _idVersion = idVersion;
   _compilations = compilations;
   var profile = string.IsNullOrWhiteSpace(retainedProfileName) ? "default" : retainedProfileName;
   _operationFacts = new RoslynOperationFactProvider(
   compilations,
   profile,
-  availableProfiles ?? new[] { profile });
+  availableProfiles ?? new[] { profile }, idVersion);
   _sourceEvidence = new RoslynSourceEvidenceProvider(
   compilations,
   profile,
-  availableProfiles ?? new[] { profile });
+  availableProfiles ?? new[] { profile }, idVersion);
   _manager = new Lazy<RoslynWorkspaceManager>(
   () => new RoslynWorkspaceManager(compilations, moduleDependencies));
   }
@@ -67,11 +71,7 @@ public sealed class RoslynCompilationHost :
   IReadOnlyDictionary<string, CSharpCompilation> Internal.IRoslynLookup.Compilations => _compilations;
 
   /// <summary>
-  /// Instance forwarder for the static <see cref="BuildSymbolId"/>
-  /// helper. Required so <see cref="Internal.IRoslynLookup"/> can
-  /// expose the canonical-id builder as a mockable instance member
-  /// without changing the static call sites scattered through the
-  /// host.
+  /// Exposes the host's declaration format through the shared lookup seam.
   /// </summary>
   string Internal.IRoslynLookup.BuildSymbolId(ISymbol symbol) => BuildSymbolId(symbol);
 
@@ -660,7 +660,7 @@ public sealed class RoslynCompilationHost :
   {
   if (BuildSymbolId(iface.OriginalDefinition) == targetId)
   {
-  results.Add(Internal.CanonicalSymbolFormat.BuildTypeId(type));
+  results.Add(BuildSymbolId(type));
   break;
   }
   }
@@ -673,7 +673,7 @@ public sealed class RoslynCompilationHost :
   {
   if (BuildSymbolId(baseType.OriginalDefinition) == targetId)
   {
-  results.Add(Internal.CanonicalSymbolFormat.BuildTypeId(type));
+  results.Add(BuildSymbolId(type));
   break;
   }
   baseType = baseType.BaseType;
@@ -784,8 +784,8 @@ public sealed class RoslynCompilationHost :
   /// Routes through <see cref="Internal.CanonicalSymbolFormat"/> so declaration
   /// extraction, edge extraction, and compilation-host lookup share one grammar.
   /// </summary>
-  internal static string BuildSymbolId(ISymbol symbol)
-      => Internal.CanonicalSymbolFormat.BuildSymbolId(symbol);
+  internal string BuildSymbolId(ISymbol symbol)
+      => Internal.CanonicalSymbolFormat.BuildSymbolId(symbol, _idVersion);
 
   /// <summary>
   /// Single seam returning both the resolved module name AND its

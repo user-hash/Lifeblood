@@ -141,9 +141,8 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
 
     /// <summary>
     /// Type names whose presence in the inheritance chain marks a type
-    /// as a "Unity message receiver". Stored as fully-qualified names
-    /// because that's how the graph's Inherits edges are keyed (after
-    /// the extractor strips namespaces it's still the QualifiedName).
+    /// as a "Unity message receiver". Framework names come from resolved
+    /// type metadata; graph addresses remain opaque.
     /// </summary>
     private static readonly HashSet<string> UnityMessageReceiverBases = new(System.StringComparer.Ordinal)
     {
@@ -245,8 +244,9 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
 
     /// <summary>
     /// True when <paramref name="typeId"/> transitively inherits from a
-    /// known Unity message-receiver base. Walks the chain via the
-    /// extractor-recorded <c>Properties["baseType"]</c> on each type —
+    /// known Unity message-receiver base. Recorded inheritance edges own
+    /// in-graph navigation. Extractor-recorded base names also resolve
+    /// external receiver ancestry —
     /// works even when the base lives in a different assembly
     /// (UnityEngine.MonoBehaviour from UnityEngine.dll) because the
     /// graph drops dangling Inherits edges to non-loaded targets but
@@ -282,31 +282,30 @@ public sealed class UnityReachabilityAdapter : IUnityReachabilityProvider
             {
                 if (UnityMessageReceiverBases.Contains(baseFqn))
                     return true;
-                // Look up the next link in the chain by FQN. If the base
-                // is in-graph the lookup finds the symbol; if external
-                // the FQN already failed the receiver match above so
-                // we're done (external base that isn't a Unity receiver
-                // is the chain-terminator).
-                currentSym = graph.GetSymbol("type:" + baseFqn);
-                continue;
             }
 
-            // Fallback: walk the first outgoing Inherits edge.
+            // Recorded edges preserve the declaring assembly and ID version.
+            // When a base FQN is present, exclude interface inheritance edges.
             string? nextId = null;
             foreach (int idx in graph.GetOutgoingEdgeIndexes(currentSym.Id))
             {
                 var edge = graph.Edges[idx];
                 if (edge.Kind != EdgeKind.Inherits) continue;
                 var rawTarget = edge.TargetId;
-                var qualifiedFromId = StripTypePrefix(rawTarget);
-                if (UnityMessageReceiverBases.Contains(qualifiedFromId))
-                    return true;
                 var targetSym = graph.GetSymbol(rawTarget);
+                var targetName = targetSym?.QualifiedName ?? StripTypePrefix(rawTarget);
+                if (baseFqn != null && targetName != baseFqn) continue;
+                if (UnityMessageReceiverBases.Contains(targetName))
+                    return true;
                 if (targetSym != null && UnityMessageReceiverBases.Contains(targetSym.QualifiedName))
                     return true;
                 nextId = rawTarget;
                 break;
             }
+            // Legacy imported graphs can carry only a base property. Their
+            // display-address lookup is compatibility for that old shape.
+            if (nextId == null && baseFqn != null)
+                nextId = graph.GetSymbol("type:" + baseFqn)?.Id;
             if (nextId == null) return false;
             currentSym = graph.GetSymbol(nextId);
         }

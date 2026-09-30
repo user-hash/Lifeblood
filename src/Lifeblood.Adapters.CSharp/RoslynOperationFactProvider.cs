@@ -18,13 +18,16 @@ internal sealed class RoslynOperationFactProvider
 
     private readonly IReadOnlyDictionary<string, CSharpCompilation> _compilations;
     private readonly string _profileScope;
+    private readonly CanonicalSymbolIdVersion _idVersion;
     private readonly string[] _availableProfiles;
 
     internal RoslynOperationFactProvider(
         IReadOnlyDictionary<string, CSharpCompilation> compilations,
         string profileScope,
-        IReadOnlyList<string> availableProfiles)
+        IReadOnlyList<string> availableProfiles,
+        CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
     {
+        _idVersion = idVersion;
         _compilations = compilations;
         _profileScope = profileScope;
         _availableProfiles = availableProfiles
@@ -68,7 +71,7 @@ internal sealed class RoslynOperationFactProvider
             value => value,
             StringComparer.Ordinal);
         var selectors = NormalizeSelectors(query.Selectors);
-        var symbolIds = new ScanSymbolIds();
+        var symbolIds = new ScanSymbolIds(_idVersion);
         var scannedModules = 0;
         var scannedFiles = 0;
         var observedOperations = 0;
@@ -1084,13 +1087,17 @@ internal sealed class RoslynOperationFactProvider
     /// </summary>
     private sealed class ScanSymbolIds
     {
+        private readonly CanonicalSymbolIdVersion _idVersion;
+
+        internal ScanSymbolIds(CanonicalSymbolIdVersion idVersion) => _idVersion = idVersion;
+
         private readonly Dictionary<ISymbol, string> _canonical = new(SymbolEqualityComparer.Default);
 
         internal string Get(ISymbol symbol)
         {
             var canonical = symbol.OriginalDefinition;
             if (_canonical.TryGetValue(canonical, out var id)) return id;
-            id = CanonicalSymbolFormat.BuildSymbolId(canonical);
+            id = CanonicalSymbolFormat.BuildSymbolId(canonical, _idVersion);
             _canonical.Add(canonical, id);
             return id;
         }

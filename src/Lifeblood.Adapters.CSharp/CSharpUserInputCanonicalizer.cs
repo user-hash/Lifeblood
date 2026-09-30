@@ -19,6 +19,9 @@ public sealed class CSharpUserInputCanonicalizer : IUserInputCanonicalizer
     public string Canonicalize(string userInput)
     {
         if (string.IsNullOrEmpty(userInput)) return userInput;
+        var prefix = userInput.IndexOf(':');
+        if (prefix >= 0 && userInput.AsSpan(prefix + 1).StartsWith("v2|", StringComparison.Ordinal))
+            return userInput;
         return PrimitiveAliasTable.Rewrite(userInput);
     }
 }
