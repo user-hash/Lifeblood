@@ -84,6 +84,8 @@ internal sealed class RoslynWorkspaceManager : IDisposable
     /// </summary>
     internal static ISymbol? FindInCompilation(Compilation compilation, ParsedSymbolId parsed)
     {
+        if (parsed.Version2Parts != null)
+            return FindVersion2InCompilation(compilation, parsed);
         if (parsed.Parts == null || parsed.Parts.Length == 0) return null;
 
         // Walk every part EXCEPT the last as namespaces or types.
@@ -192,6 +194,15 @@ internal sealed class RoslynWorkspaceManager : IDisposable
         var kind = symbolId.Substring(0, prefix);
         var qualifiedName = symbolId.Substring(prefix + 1);
 
+        if (qualifiedName.StartsWith("v2|", StringComparison.Ordinal))
+        {
+            var components = qualifiedName.Split('|');
+            if (components.Length != 5) return default;
+            var decoded = components.Skip(1).Select(Uri.UnescapeDataString).ToArray();
+            if (!decoded[1].StartsWith("T:", StringComparison.Ordinal)) return default;
+            return new ParsedSymbolId(kind, Array.Empty<string>(), null, decoded, symbolId);
+        }
+
         string? paramSignature = null;
         var parenIdx = qualifiedName.IndexOf('(');
         string nameOnly;
@@ -241,7 +252,44 @@ internal sealed class RoslynWorkspaceManager : IDisposable
         return result;
     }
 
-    internal readonly record struct ParsedSymbolId(string? Kind, string[]? Parts, string? ParamSignature);
+    internal readonly record struct ParsedSymbolId(string? Kind, string[]? Parts, string? ParamSignature,
+        string[]? Version2Parts = null, string? CompleteId = null);
+
+    private static ISymbol? FindVersion2InCompilation(Compilation compilation, ParsedSymbolId parsed)
+    {
+        var parts = parsed.Version2Parts!;
+        var assemblies = compilation.SourceModule.ReferencedAssemblySymbols.Prepend(compilation.Assembly)
+            .Where(a => a.Identity.ToString() == parts[0]);
+        var matches = new List<ISymbol>();
+        foreach (var assembly in assemblies)
+        {
+            IEnumerable<INamespaceOrTypeSymbol> containers = new[] { assembly.GlobalNamespace };
+            foreach (var segment in parts[1][2..].Split('.'))
+            {
+                var aritySeparator = segment.LastIndexOf('`');
+                var name = aritySeparator < 0 ? segment : segment[..aritySeparator];
+                var arity = 0;
+                if (aritySeparator >= 0 && !int.TryParse(segment[(aritySeparator + 1)..], out arity))
+                    return null;
+                containers = containers.SelectMany(c => c.GetMembers(name).OfType<INamespaceOrTypeSymbol>())
+                    .Where(c => c is INamespaceSymbol ? aritySeparator < 0 : ((INamedTypeSymbol)c).Arity == arity)
+                    .ToArray();
+            }
+            foreach (var owner in containers.OfType<INamedTypeSymbol>())
+            {
+                // Indexers have a source lookup name of this[] and a metadata name
+                // of Item. Match the persisted metadata locator on both surfaces.
+                IEnumerable<ISymbol> candidates = parsed.Kind == "type" ? new[] { owner }
+                    : owner.GetMembers().Where(m => m.MetadataName == parts[2]);
+                foreach (var candidate in candidates)
+                {
+                    if (CanonicalSymbolFormat.BuildSymbolId(candidate, CanonicalSymbolIdVersion.AssemblyQualifiedV2) == parsed.CompleteId)
+                        matches.Add(candidate);
+                }
+            }
+        }
+        return matches.Count == 1 ? matches[0] : null;
+    }
 
     private void EnsureWorkspace()
     {

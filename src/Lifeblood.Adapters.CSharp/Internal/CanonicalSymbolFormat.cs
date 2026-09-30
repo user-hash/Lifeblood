@@ -3,27 +3,10 @@ using Microsoft.CodeAnalysis;
 namespace Lifeblood.Adapters.CSharp.Internal;
 
 /// <summary>
-/// Single source of truth for Roslyn-symbol to Lifeblood-ID formatting.
-/// Declaration extraction, edge extraction, and compilation-host lookup all route
-/// through this helper so the same C# symbol produces the same ID regardless
-/// of whether it came from source, metadata, or a call-site-bound Roslyn symbol.
-///
-/// Why this exists: Roslyn's <c>ITypeSymbol.ToDisplayString()</c> default is
-/// <c>SymbolDisplayFormat.CSharpErrorMessageFormat</c>, which is stable enough in practice but is
-/// (1) implicitly inherited from Roslyn rather than owned by Lifeblood, and (2) carries a few
-/// context-sensitive behaviors (nullability, tuple formatting, expand-nullable) that have shifted
-/// across Roslyn releases. Pinning the format here makes Lifeblood's symbol ID grammar
-/// independent of those choices.
-///
-/// Format choices:
-///   - Omit the <c>global::</c> prefix - IDs are namespace-rooted, not assembly-rooted.
-///   - Fully qualify parameter type names (NameAndContainingTypesAndNamespaces) so two distinct
-///     parameter types with the same short name in different namespaces never collide.
-///   - Include generic type parameters in parameter signatures (List&lt;T&gt;, not List).
-///   - Use C# special-type aliases in parameter signatures (<c>int</c> not
-///     <c>System.Int32</c>) so IDs match what developers actually write in source.
-///   - Do NOT emit nullability annotations - <c>string?</c> and <c>string</c> share an ID
-///     because the underlying method symbol is the same.
+/// Owns declaration identity across source, metadata and bound call sites.
+/// Legacy v1 uses pinned display signatures. Version 2 includes assembly identity,
+/// declaring-type arity, member metadata name, passing modes, method arity and
+/// conversion return type. Constructed and reduced symbols address declarations.
 /// </summary>
 internal static class CanonicalSymbolFormat
 {
@@ -55,23 +38,26 @@ internal static class CanonicalSymbolFormat
     /// Build the canonical Lifeblood symbol ID for any Roslyn symbol shape the
     /// C# adapter persists in the graph.
     /// </summary>
-    public static string BuildSymbolId(ISymbol symbol)
-        => symbol switch
+    public static string BuildSymbolId(ISymbol symbol, CanonicalSymbolIdVersion version = CanonicalSymbolIdVersion.LegacyV1)
+    {
+        _ = UseVersion2(version);
+        return symbol switch
         {
-            IMethodSymbol method => BuildMethodId(method),
-            INamedTypeSymbol type => BuildTypeId(type),
-            IFieldSymbol field => BuildFieldId(field),
-            IPropertySymbol property => BuildPropertyId(property),
-            IEventSymbol evt => BuildEventId(evt),
+            IMethodSymbol method => BuildMethodId(method, version),
+            INamedTypeSymbol type => BuildTypeId(type, version),
+            IFieldSymbol field => BuildFieldId(field, version),
+            IPropertySymbol property => BuildPropertyId(property, version),
+            IEventSymbol evt => BuildEventId(evt, version),
             INamespaceSymbol ns => SymbolIds.Namespace(ns.ToDisplayString()),
             _ => $"unknown:{symbol.ToDisplayString()}",
         };
+    }
 
     /// <summary>
     /// Build a canonical method ID, including extension-method reduced-form
     /// and constructed-generic normalization.
     /// </summary>
-    public static string BuildMethodId(IMethodSymbol method)
+    public static string BuildMethodId(IMethodSymbol method, CanonicalSymbolIdVersion version = CanonicalSymbolIdVersion.LegacyV1)
     {
         if (method.ReducedFrom != null) method = method.ReducedFrom;
         method = method.OriginalDefinition;
@@ -79,9 +65,14 @@ internal static class CanonicalSymbolFormat
         // Accessor methods are not graph symbols. Route them to their owning
         // property/event so accessor-body edges never dangle.
         if (method.AssociatedSymbol is IPropertySymbol property)
-            return BuildPropertyId(property);
+            return BuildPropertyId(property, version);
         if (method.AssociatedSymbol is IEventSymbol evt)
-            return BuildEventId(evt);
+            return BuildEventId(evt, version);
+
+        if (UseVersion2(version))
+            return BuildVersion2Id("method", method, $"{method.Arity};{method.IsVararg};"
+                + ParameterIdentity(method.Parameters)
+                + (method.MethodKind == MethodKind.Conversion ? Pack(TypeIdentity(method.ReturnType)) : ""));
 
         return SymbolIds.Method(
             GetFullName(method.ContainingType),
@@ -89,26 +80,88 @@ internal static class CanonicalSymbolFormat
             BuildParamSignature(method));
     }
 
-    public static string BuildTypeId(INamedTypeSymbol type)
-        => SymbolIds.Type(GetFullName(type.OriginalDefinition));
+    public static string BuildTypeId(INamedTypeSymbol type, CanonicalSymbolIdVersion version = CanonicalSymbolIdVersion.LegacyV1)
+        => UseVersion2(version)
+            ? BuildVersion2Id("type", type.OriginalDefinition, "")
+            : SymbolIds.Type(GetFullName(type.OriginalDefinition));
 
-    public static string BuildFieldId(IFieldSymbol field)
-        => SymbolIds.Field(GetFullName(field.ContainingType), field.Name);
+    public static string BuildFieldId(IFieldSymbol field, CanonicalSymbolIdVersion version = CanonicalSymbolIdVersion.LegacyV1)
+        => UseVersion2(version)
+            ? BuildVersion2Id("field", field.OriginalDefinition, "")
+            : SymbolIds.Field(GetFullName(field.ContainingType), field.Name);
 
-    public static string BuildPropertyId(IPropertySymbol property)
+    public static string BuildPropertyId(IPropertySymbol property, CanonicalSymbolIdVersion version = CanonicalSymbolIdVersion.LegacyV1)
     {
         property = property.OriginalDefinition;
+        if (UseVersion2(version))
+            return BuildVersion2Id("property", property, "property;" + ParameterIdentity(property.Parameters));
         var containingType = GetFullName(property.ContainingType);
         return property.IsIndexer
             ? SymbolIds.Property(containingType, $"this[{BuildIndexerParamSignature(property)}]")
             : SymbolIds.Property(containingType, property.Name);
     }
 
-    public static string BuildEventId(IEventSymbol evt)
+    public static string BuildEventId(IEventSymbol evt, CanonicalSymbolIdVersion version = CanonicalSymbolIdVersion.LegacyV1)
     {
         evt = evt.OriginalDefinition;
+        if (UseVersion2(version))
+            return BuildVersion2Id("property", evt, "event");
         return SymbolIds.Property(GetFullName(evt.ContainingType), evt.Name);
     }
+
+    private static bool UseVersion2(CanonicalSymbolIdVersion version)
+        => version switch
+        {
+            CanonicalSymbolIdVersion.LegacyV1 => false,
+            CanonicalSymbolIdVersion.AssemblyQualifiedV2 => true,
+            _ => throw new ArgumentOutOfRangeException(nameof(version)),
+        };
+
+    // Components are escaped independently. Length prefixes inside the signature
+    // keep nested type arguments and parameter boundaries unambiguous.
+    private static string BuildVersion2Id(string kind, ISymbol symbol, string signature)
+    {
+        var owner = (symbol as INamedTypeSymbol ?? symbol.ContainingType)?.OriginalDefinition;
+        var declaration = owner?.GetDocumentationCommentId()
+            ?? throw new ArgumentException("The symbol has no addressable declaring type.", nameof(symbol));
+        return $"{kind}:v2|{Uri.EscapeDataString(symbol.ContainingAssembly.Identity.ToString())}"
+            + $"|{Uri.EscapeDataString(declaration)}"
+            + $"|{Uri.EscapeDataString(symbol is INamedTypeSymbol ? "" : symbol.MetadataName)}"
+            + $"|{Uri.EscapeDataString(signature)}";
+    }
+
+    private static string Pack(string value) => $"{value.Length}:{value}";
+
+    private static string ParameterIdentity(IEnumerable<IParameterSymbol> parameters)
+        => string.Concat(parameters.Select(p => Pack($"{(int)p.RefKind};{TypeIdentity(p.Type)}")));
+
+    private static string TypeIdentity(ITypeSymbol type)
+    {
+        if (type.TypeKind == TypeKind.Dynamic) return $"s{(int)SpecialType.System_Object}";
+        if (type.SpecialType != SpecialType.None && type is not INamedTypeSymbol { Arity: > 0 })
+            return $"s{(int)type.SpecialType}";
+        return type switch
+        {
+            IArrayTypeSymbol array => $"a{array.Rank};{Pack(TypeIdentity(array.ElementType))}",
+            IPointerTypeSymbol pointer => "p" + Pack(TypeIdentity(pointer.PointedAtType)),
+            IFunctionPointerTypeSymbol pointer => $"f{(int)pointer.Signature.CallingConvention};"
+                + string.Concat(pointer.Signature.UnmanagedCallingConventionTypes.Select(t => Pack(TypeIdentity(t))))
+                + $";{(int)pointer.Signature.RefKind};{Pack(TypeIdentity(pointer.Signature.ReturnType))}"
+                + ParameterIdentity(pointer.Signature.Parameters),
+            ITypeParameterSymbol parameter => parameter.TypeParameterKind == TypeParameterKind.Method
+                ? $"m{parameter.Ordinal}"
+                : $"t{Pack(parameter.ContainingType.OriginalDefinition.GetDocumentationCommentId()!)}{parameter.Ordinal}",
+            INamedTypeSymbol named => NamedTypeIdentity(named.TupleUnderlyingType ?? named),
+            _ => throw new ArgumentException("The parameter type has no canonical declaration identity.", nameof(type)),
+        };
+    }
+
+    private static string NamedTypeIdentity(INamedTypeSymbol type)
+        => "n" + Pack(type.ContainingAssembly.Identity.ToString())
+            + Pack(type.OriginalDefinition.GetDocumentationCommentId()
+                ?? throw new ArgumentException("The type has no declaration identity.", nameof(type)))
+            + (type.ContainingType == null ? "" : Pack(TypeIdentity(type.ContainingType)))
+            + string.Concat(type.TypeArguments.Select(t => Pack(TypeIdentity(t))));
 
     public static string GetFullName(ISymbol symbol)
     {

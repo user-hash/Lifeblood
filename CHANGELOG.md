@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Canonical identity migration has an explicitly selected v2 formatter/lookup
+  backend in the existing C# authority. It distinguishes legal overloads, generic
+  owners, conversion returns, assemblies and extern-alias parameter types, with
+  source/metadata parity. Production graph and MCP wire activation remain pending;
+  default v1 identifiers are preserved in this preparatory atom.
+
 - Reference queries accept optional `symbolIds` for 1..32 targets. One request-local
   syntax pass matches ordinary targets, while conversion targets share the existing
   operation-fact pass. Ordered results and work counters are opt-in; `symbolId`
