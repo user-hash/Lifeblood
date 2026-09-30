@@ -1529,7 +1529,7 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_WithoutCompilationState_WriteSideToolsMarkedUnavailable()
+    public void ToolRegistry_WithoutCompilationState_DescribesStablePrerequisites()
     {
         var tools = ToolRegistry.GetTools(hasCompilationState: false);
         var writeSideNames = new[] { "lifeblood_execute", "lifeblood_diagnose", "lifeblood_compile_check",
@@ -1538,19 +1538,20 @@ public class ToolHandlerTests : IDisposable
         foreach (var name in writeSideNames)
         {
             var tool = Assert.Single(tools, t => t.Name == name);
-            Assert.StartsWith("[Unavailable", tool.Description);
+            Assert.StartsWith("[Requires RetainedCompilation", tool.Description);
         }
 
-        // Read-side tools should NOT be marked unavailable
+        // Stateless tools have no prerequisite notice.
         var analyze = Assert.Single(tools, t => t.Name == "lifeblood_analyze");
         Assert.DoesNotContain("Unavailable", analyze.Description);
     }
 
     [Fact]
-    public void ToolRegistry_WithCompilationState_NoUnavailableMarkers()
+    public void ToolRegistry_CompilationStateDoesNotChangeDiscovery()
     {
         var tools = ToolRegistry.GetTools(hasCompilationState: true);
-        Assert.All(tools, t => Assert.DoesNotContain("[Unavailable", t.Description));
+        Assert.Equal(JsonSerializer.Serialize(ToolRegistry.GetTools(hasCompilationState: false)),
+            JsonSerializer.Serialize(tools));
     }
 
     [Fact]
@@ -2459,16 +2460,39 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void GetTools_ReadsLiveAvailabilityThroughSessionGate()
+    public void GetTools_IsStableAcrossPublicationsWhileCapabilitiesAndAdmissionAreLive()
     {
-        var gate = new RecordingSessionGate();
-        var handler = CreateHandler(gate);
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        var before = JsonSerializer.Serialize(handler.GetTools());
+        Assert.False(IsAvailable("lifeblood_lookup"));
+        Assert.False(IsAvailable("lifeblood_find_references"));
+        Assert.True(handler.Handle("lifeblood_lookup", MakeArgs(new { symbolId = "type:Core.Foo" })).IsError);
 
-        var tools = handler.GetTools();
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath })).IsError);
+        Assert.Equal(before, JsonSerializer.Serialize(handler.GetTools()));
+        Assert.True(IsAvailable("lifeblood_lookup"));
+        Assert.False(IsAvailable("lifeblood_find_references"));
+        Assert.Null(handler.Handle("lifeblood_lookup", MakeArgs(new { symbolId = "type:Core.Foo" })).IsError);
 
-        Assert.Equal(43, tools.Length);
-        Assert.Equal(1, gate.ReadCount);
-        Assert.Equal(0, gate.WriteCount);
+        var (projectRoot, _) = CreateContractAuditProject("discovery");
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot })).IsError);
+        Assert.Equal(before, JsonSerializer.Serialize(handler.GetTools()));
+        Assert.True(IsAvailable("lifeblood_find_references"));
+        Assert.Null(handler.Handle("lifeblood_find_references", MakeArgs(new { symbolId = "method:Acme.Guard.Set(int)" })).IsError);
+
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath })).IsError);
+        Assert.Equal(before, JsonSerializer.Serialize(handler.GetTools()));
+        Assert.True(IsAvailable("lifeblood_lookup"));
+        Assert.False(IsAvailable("lifeblood_find_references"));
+
+        bool IsAvailable(string toolName)
+        {
+            using var response = JsonDocument.Parse(handler.Handle("lifeblood_capabilities", null).Content[0].Text);
+            return response.RootElement.GetProperty("tools").GetProperty("behaviorContracts").EnumerateArray()
+                .Single(contract => contract.GetProperty("name").GetString() == toolName)
+                .GetProperty("available").GetBoolean();
+        }
     }
 
     private (string ProjectRoot, JsonElement Manifest) CreateContractAuditProject(string name = "contract-audit")

@@ -69,7 +69,8 @@ public static class ServerIdentity
 
     public static object BuildCapabilities(
         ServerSessionInfo session,
-        ISourceControlSnapshotProvider sourceControl)
+        ISourceControlSnapshotProvider sourceControl,
+        ToolSessionState sessionState)
     {
         var definitions = ToolRegistry.GetDefinitions();
         var readSide = definitions.Where(d => d.Availability == ToolAvailability.ReadSide).Select(d => d.Name).ToArray();
@@ -81,6 +82,7 @@ public static class ServerIdentity
             effect = d.Behavior.Effect.ToString(),
             sessionAccess = d.Behavior.SessionAccess.ToString(),
             supportsSnapshotRead = d.SupportsSnapshotRead,
+            available = sessionState.Satisfies(d.Behavior.SessionRequirement),
         }).ToArray();
         var sessionRequirementCounts = definitions
             .GroupBy(d => d.Behavior.SessionRequirement)

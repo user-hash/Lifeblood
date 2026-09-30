@@ -213,73 +213,29 @@ public static class ToolRegistry
   };
 
   /// <summary>
-  /// Returns the wire-format tool list for the MCP <c>tools/list</c>
-  /// response. Availability decoration is evaluated from each definition's
-  /// typed session requirement. The returned array is a pure
-  /// <see cref="McpToolInfo"/> wire DTO — behavior metadata does not leak onto
-  /// the MCP-standard tool shape.
-  ///
-  /// <para>
-  /// INV-TOOLREG-001: state, effect, and session access come from the required
-  /// <see cref="ToolDefinition.Behavior"/> contract, never tool-name prefixes.
-  /// </para>
+  /// Stable discovery catalog. Prerequisites come from registry behavior;
+  /// live availability is observed through lifeblood_capabilities and enforced
+  /// at invocation. Cached descriptions never assert transient session state.
   /// </summary>
   public static McpToolInfo[] GetTools()
-    => GetTools(new ToolSessionState(
-      HasAnalyzedWorkspace: true,
-      HasWorkspaceRoot: true,
-      HasOperationFactProvider: true,
-      HasRetainedCompilation: true,
-      HasSourceEvidenceProvider: true));
+    => Definitions.Select(def => new McpToolInfo
+    {
+      Name = def.Name,
+      Description = RequirementNotice(def.Behavior.SessionRequirement) + def.Description,
+      InputSchema = def.InputSchema,
+    }).ToArray();
 
-  /// <summary>
-  /// Compatibility overload for callers that only modeled retained
-  /// compilation state. It assumes an analyzed workspace, matching the old
-  /// method's contract.
-  /// </summary>
-  public static McpToolInfo[] GetTools(bool hasCompilationState)
-    => GetTools(new ToolSessionState(
-      HasAnalyzedWorkspace: true,
-      HasWorkspaceRoot: true,
-      HasOperationFactProvider: hasCompilationState,
-      HasRetainedCompilation: hasCompilationState,
-      HasSourceEvidenceProvider: hasCompilationState));
+  /// <summary>Compatibility overload; discovery is independent of compilation state.</summary>
+  public static McpToolInfo[] GetTools(bool hasCompilationState) => GetTools();
 
-  public static McpToolInfo[] GetTools(ToolSessionState sessionState)
-  {
-  var wire = new McpToolInfo[Definitions.Length];
-  for (var i = 0; i < Definitions.Length; i++)
-  {
-  var def = Definitions[i];
-  var description = def.Description;
-  if (!sessionState.Satisfies(def.Behavior.SessionRequirement))
-  {
-  description = UnavailablePrefix(def.Behavior.SessionRequirement) + description;
-  }
-  wire[i] = new McpToolInfo
-  {
-  Name = def.Name,
-  Description = description,
-  InputSchema = def.InputSchema,
-  };
-  }
-  return wire;
-  }
+  /// <summary>Compatibility overload; discovery is independent of session state.</summary>
+  public static McpToolInfo[] GetTools(ToolSessionState sessionState) => GetTools();
 
-  private static string UnavailablePrefix(ToolSessionRequirement requirement)
+  private static string RequirementNotice(ToolSessionRequirement requirement)
     => requirement switch
     {
-      ToolSessionRequirement.AnalyzedWorkspace =>
-        "[Unavailable. Call lifeblood_analyze first] ",
-      ToolSessionRequirement.WorkspaceRoot =>
-        "[Unavailable. Analyze a workspace root first] ",
-      ToolSessionRequirement.OperationFacts =>
-        "[Unavailable. Analyze a C# workspace with operation-fact support first] ",
-      ToolSessionRequirement.SourceEvidence =>
-        "[Unavailable. Analyze a C# workspace with source-evidence support first] ",
-      ToolSessionRequirement.RetainedCompilation =>
-        "[Unavailable. Load a C# project with lifeblood_analyze first] ",
-      _ => "",
+      ToolSessionRequirement.None => "",
+      _ => $"[Requires {requirement}; query lifeblood_capabilities for live availability] ",
     };
 
   /// <summary>

@@ -112,12 +112,11 @@ public sealed class ToolHandler
             .Select(d => d.InputContract));
 
     /// <summary>
-    /// Returns the live tool catalog while holding the same session gate used
-    /// by tool calls. This keeps <c>tools/list</c> availability coherent with
-    /// analyze/refresh transitions.
+    /// Returns stable discovery without leasing a publication. Live availability
+    /// belongs to the ordinary capabilities read and invocation admission.
     /// </summary>
     public McpToolInfo[] GetTools()
-        => _sessionGate.Read(() => ToolRegistry.GetTools(CurrentSessionState()));
+        => ToolRegistry.GetTools();
 
     public McpToolResult Handle(
         string toolName,
@@ -410,7 +409,7 @@ public sealed class ToolHandler
 
         return TextResult(WithEnvelope(
             "lifeblood_capabilities",
-            ServerIdentity.BuildCapabilities(sessionInfo, _session.SourceControl)));
+            ServerIdentity.BuildCapabilities(sessionInfo, _session.SourceControl, CurrentSessionState())));
     }
 
     private McpToolResult HandleContractAudit(

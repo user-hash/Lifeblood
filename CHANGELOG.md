@@ -9,6 +9,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Tool discovery descriptions remain stable across publications and describe
+  registry-owned prerequisites. Live default availability is additive on
+  `lifeblood_capabilities.tools.behaviorContracts[].available`; action-specific
+  invocation admission still uses the existing registry behavior authority.
+
 - Reference occurrence scans preserve separate same-line calls and normalize
   multiline, conditional and top-level syntax. User-defined implicit and explicit
   conversions reuse the existing operation-fact provider.

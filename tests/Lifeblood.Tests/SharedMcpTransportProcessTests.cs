@@ -49,6 +49,9 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
 
         using var firstInitialize = await firstProxy.InitializeAsync();
         using var secondInitialize = await secondProxy.InitializeAsync();
+        using var initialCatalog = await firstProxy.SendRequestAsync(
+            """{"jsonrpc":"2.0","id":701,"method":"tools/list"}""", TimeSpan.FromSeconds(30));
+        var cachedTools = initialCatalog.RootElement.GetProperty("result").GetProperty("tools").GetRawText();
         Assert.NotEqual(daemon.ProcessId, firstProxy.ProcessId);
         Assert.NotEqual(firstProxy.ProcessId, secondProxy.ProcessId);
         var connectedStatus = await ReadSharedStatusAsync(firstProxy);
@@ -69,6 +72,10 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         Assert.True(observedByFirst.HasGraphLoaded);
         Assert.Equal(2, observedByFirst.AnalysisGeneration);
         Assert.NotEqual(observedBySecond.SnapshotId, observedByFirst.SnapshotId);
+        using var refreshedCatalog = await secondProxy.SendRequestAsync(
+            """{"jsonrpc":"2.0","id":702,"method":"tools/list"}""", TimeSpan.FromSeconds(30));
+        Assert.Equal(cachedTools,
+            refreshedCatalog.RootElement.GetProperty("result").GetProperty("tools").GetRawText());
 
         using var lookupRpc = await firstProxy.CallToolAsync(
             "lifeblood_lookup",

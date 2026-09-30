@@ -263,10 +263,9 @@ public class McpProtocolTests
   }
 
   [Fact]
-  public void ToolRegistry_WriteSideTools_MarkedUnavailable_WhenNoCompilationState()
+  public void ToolRegistry_CompilationTools_DescribeStableRequirement()
   {
-  // Correlate by name: availability lives on the definitions, the
-  // decorated description lives on the wire payload.
+  // Prerequisite notices derive from the same registry policy as admission.
   var definitions = ToolRegistry.GetDefinitions();
   var writeSideNames = definitions
   .Where(d => d.Behavior.SessionRequirement == ToolSessionRequirement.RetainedCompilation)
@@ -277,15 +276,13 @@ public class McpProtocolTests
   var writeSideWire = wire.Where(t => writeSideNames.Contains(t.Name)).ToArray();
   Assert.NotEmpty(writeSideWire);
   Assert.All(writeSideWire, tool =>
-  Assert.StartsWith("[Unavailable", tool.Description));
+  Assert.StartsWith("[Requires RetainedCompilation", tool.Description));
   }
 
   [Fact]
-  public void ToolRegistry_ReadSideTools_NeverMarkedUnavailable()
+  public void ToolRegistry_StatefulTools_DescribeRequirementWithoutTransientAvailability()
   {
-  // Read-side tools (including lifeblood_resolve_short_name) work off
-  // the in-memory graph alone and do not need Roslyn compilation state.
-  // They must never carry the unavailable decoration.
+  // Cached discovery describes prerequisites without claiming current state.
   var definitions = ToolRegistry.GetDefinitions();
   var readSideNames = definitions
   .Where(d => d.Behavior.SessionRequirement != ToolSessionRequirement.RetainedCompilation
@@ -300,7 +297,7 @@ public class McpProtocolTests
   Assert.False(tool.Description.StartsWith("[Unavailable"),
   $"Read-side tool {tool.Name} was incorrectly marked unavailable."));
   Assert.StartsWith(
-    "[Unavailable",
+    "[Requires OperationFacts",
     wire.Single(tool => tool.Name == "lifeblood_contract_audit").Description);
   }
 
@@ -352,32 +349,20 @@ public class McpProtocolTests
   }
 
   [Fact]
-  public void ToolRegistry_EmptySession_MarksEveryStatefulToolUnavailable()
+  public void ToolRegistry_DiscoveryIsStableForEverySessionFactCombination()
   {
-  var wire = ToolRegistry.GetTools(new ToolSessionState(
-    HasAnalyzedWorkspace: false,
-    HasWorkspaceRoot: false,
-    HasOperationFactProvider: false,
-    HasRetainedCompilation: false));
-  var definitions = ToolRegistry.GetDefinitions().ToDictionary(d => d.Name, StringComparer.Ordinal);
-
-  foreach (var tool in wire)
+  var baseline = JsonSerializer.Serialize(ToolRegistry.GetTools(), JsonOpts);
+  // Exercise graph-only, inconsistent and every retained-provider combination.
+  for (var bits = 0; bits < 32; bits++)
   {
-  var requiresState = definitions[tool.Name].Behavior.SessionRequirement != ToolSessionRequirement.None;
-  Assert.Equal(requiresState, tool.Description.StartsWith("[Unavailable", StringComparison.Ordinal));
+  var state = new ToolSessionState(
+    HasAnalyzedWorkspace: (bits & 1) != 0,
+    HasWorkspaceRoot: (bits & 2) != 0,
+    HasOperationFactProvider: (bits & 4) != 0,
+    HasRetainedCompilation: (bits & 8) != 0,
+    HasSourceEvidenceProvider: (bits & 16) != 0);
+  Assert.Equal(baseline, JsonSerializer.Serialize(ToolRegistry.GetTools(state), JsonOpts));
   }
-
-  Assert.DoesNotContain("[Unavailable", wire.Single(t => t.Name == "lifeblood_capabilities").Description);
-  Assert.DoesNotContain("[Unavailable", wire.Single(t => t.Name == "lifeblood_analyze").Description);
-  Assert.StartsWith("[Unavailable", wire.Single(t => t.Name == "lifeblood_lookup").Description);
-  Assert.StartsWith("[Unavailable", wire.Single(t => t.Name == "lifeblood_compile_check").Description);
-
-  var inconsistent = ToolRegistry.GetTools(new ToolSessionState(
-    HasAnalyzedWorkspace: false,
-    HasWorkspaceRoot: true,
-    HasOperationFactProvider: true,
-    HasRetainedCompilation: true));
-  Assert.StartsWith("[Unavailable", inconsistent.Single(t => t.Name == "lifeblood_compile_check").Description);
   }
 
   [Fact]
