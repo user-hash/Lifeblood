@@ -9,6 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Roslyn declaration lookup rejects ambiguous legacy overload/type/assembly
+  addresses and wrong or malformed signatures. Source and metadata replicas of
+  one declaration collapse using the canonical v2 identity. Truncated method
+  names require a unique declaration. Observation queries use retained
+  compilations; edits use workspace-owned symbols through the same resolver.
+
 - Canonical identity migration has an explicitly selected v2 formatter/lookup
   backend in the existing C# authority. It distinguishes legal overloads, generic
   owners, conversion returns, assemblies and extern-alias parameter types, with

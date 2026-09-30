@@ -16,6 +16,56 @@ public class VersionedCanonicalSymbolTests
     private const CanonicalSymbolIdVersion V2 = CanonicalSymbolIdVersion.AssemblyQualifiedV2;
 
     [Fact]
+    public void LegacyLookup_RejectsTheFourLegalCollisionPairsBeforeReferencesOrRename()
+    {
+        var compilation = Compile("Collisions", CollisionSource);
+        var compilations = new Dictionary<string, CSharpCompilation> { ["Collisions"] = compilation };
+        using var host = new RoslynCompilationHost(compilations, idVersion: V2);
+        using var refactoring = new RoslynWorkspaceRefactoring(compilations);
+        foreach (var id in new[] { "type:App.Box", "method:App.C.M(int)", "method:App.C.G()", "method:App.C.op_Implicit(App.C)" })
+        {
+            Assert.Null(RoslynWorkspaceManager.FindInCompilation(compilation, RoslynWorkspaceManager.ParseSymbolId(id)));
+            Assert.Null(host.FindDefinition(id));
+            Assert.Empty(host.FindReferences(id));
+            Assert.Empty(refactoring.Rename(id, "Wrong"));
+        }
+    }
+
+    [Fact]
+    public void LegacyLookup_RejectsDistinctAssemblyOwnersButCollapsesMetadataReplicas()
+    {
+        var first = Compile("First", "namespace Shared; public class C { public void M() {} }");
+        var second = Compile("Second", "namespace Shared; public class C { public void M() {} }");
+        var consumer = Compile("Consumer", "", Emit(first), Emit(second));
+        using var manager = new RoslynWorkspaceManager(new Dictionary<string, CSharpCompilation> {
+            ["Consumer"] = consumer, ["First"] = first, ["Second"] = second,
+        });
+        Assert.Null(manager.ResolveSymbol("method:Shared.C.M()", useStandaloneCompilations: true));
+        Assert.Null(RoslynWorkspaceManager.FindInCompilation(consumer, RoslynWorkspaceManager.ParseSymbolId("type:Shared.C")));
+        var declaration = first.GetTypeByMetadataName("Shared.C")!.GetMembers("M").Single();
+        var exact = manager.ResolveSymbol(CanonicalSymbolFormat.BuildSymbolId(declaration, V2));
+        Assert.NotNull(exact);
+        Assert.Equal("First", exact!.ContainingAssembly.Name);
+        Assert.Contains(exact.Locations, l => l.IsInSource);
+        using var replicas = new RoslynWorkspaceManager(new Dictionary<string, CSharpCompilation> {
+            ["FirstConsumer"] = Compile("FirstConsumer", "", Emit(first)), ["First"] = first,
+        });
+        var unique = replicas.ResolveSymbol("method:Shared.C.M()");
+        Assert.NotNull(unique);
+        Assert.Contains(unique!.Locations, l => l.IsInSource);
+    }
+
+    [Fact]
+    public void LegacyLookup_RejectsWrongSingleSignatureAndMalformedInputButAcceptsUniqueTruncation()
+    {
+        var compilation = Compile("Unique", "public class C { public void M(int x) {} public int this[System.DateTime x] => 1; }");
+        foreach (var id in new[] { "method:C.M(string)", "method:C.M(", "method:C.M(int)extra", "method:C.get_Item" })
+            Assert.Null(RoslynWorkspaceManager.FindInCompilation(compilation, RoslynWorkspaceManager.ParseSymbolId(id)));
+        Assert.NotNull(RoslynWorkspaceManager.FindInCompilation(compilation, RoslynWorkspaceManager.ParseSymbolId("method:C.M")));
+        Assert.NotNull(RoslynWorkspaceManager.FindInCompilation(compilation, RoslynWorkspaceManager.ParseSymbolId("property:C.this[System.DateTime]")));
+    }
+
+    [Fact]
     public void Version2_UnityReachabilityFollowsCanonicalBaseEdgeAcrossDuplicateNames()
     {
         var compilation = Compile("UnityApp", """

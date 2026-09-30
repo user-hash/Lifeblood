@@ -468,28 +468,7 @@ public sealed class RoslynCompilationHost :
   /// source locations, and XML documentation. Metadata copies have none of these.
   /// </summary>
   internal ISymbol? ResolveFromSource(string symbolId)
-  {
-  var mgr = _manager.Value;
-  var roslynSymbol = mgr.ResolveSymbol(symbolId, fallbackToStandalone: true);
-  if (roslynSymbol != null && IsFromSource(roslynSymbol)) return roslynSymbol;
-
-  // Workspace returned metadata copy. Search standalone compilations for source
-  var parsed = RoslynWorkspaceManager.ParseSymbolId(symbolId);
-  if (parsed.Kind == null || parsed.Parts == null) return roslynSymbol;
-
-  foreach (var compilation in _compilations.Values)
-  {
-  var found = RoslynWorkspaceManager.FindInCompilation(compilation, parsed);
-  if (found != null && IsFromSource(found)) return found;
-  }
-  return roslynSymbol; // metadata fallback. Better than null
-  }
-
-  /// <summary>
-  /// Returns true if the symbol has at least one source location (not metadata-only).
-  /// </summary>
-  private static bool IsFromSource(ISymbol symbol)
-  => symbol.Locations.Any(l => l.IsInSource);
+      => _manager.Value.ResolveSymbol(symbolId, useStandaloneCompilations: true);
 
   public DefinitionLocation? FindDefinition(string symbolId)
   {

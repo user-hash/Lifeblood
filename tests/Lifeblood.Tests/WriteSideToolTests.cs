@@ -833,15 +833,15 @@ namespace TestApp
     }
 
     [Fact]
-    public void FindInCompilation_OverloadWithoutSignature_ReturnsSomething()
+    public void FindInCompilation_OverloadWithoutSignature_RejectsAmbiguity()
     {
         var compilations = BuildTestCompilations();
         var compilation = compilations["TestApp"];
 
-        // No param signature — should still resolve (returns first overload)
+        // A truncated name cannot choose among several declarations.
         var parsed = RoslynWorkspaceManager.ParseSymbolId("method:TestApp.Greeter.Add");
         var found = RoslynWorkspaceManager.FindInCompilation(compilation, parsed);
-        Assert.NotNull(found);
+        Assert.Null(found);
     }
 
     // ──────────────────────────────────────────────────────────────

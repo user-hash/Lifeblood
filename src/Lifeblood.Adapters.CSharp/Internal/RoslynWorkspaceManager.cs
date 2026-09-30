@@ -31,146 +31,92 @@ internal sealed class RoslynWorkspaceManager : IDisposable
     public Solution? Solution { get; private set; }
 
     /// <summary>
-    /// Resolve a Roslyn symbol from the workspace solution's project compilations.
-    /// Must use workspace-owned compilations — standalone compilations produce symbols
-    /// that Renamer/SymbolFinder cannot match against the Solution.
+    /// Resolve a unique declaration from retained compilations for observations,
+    /// or workspace-owned compilations for edits. Renamer requires symbols from
+    /// its Solution; read queries do not require an editable workspace.
     /// </summary>
-    public ISymbol? ResolveSymbol(string symbolId, bool fallbackToStandalone = false)
+    public ISymbol? ResolveSymbol(string symbolId, bool useStandaloneCompilations = false)
     {
         var parsed = ParseSymbolId(symbolId);
         if (parsed.Kind == null || parsed.Parts == null) return null;
 
-        EnsureWorkspace();
-
-        // Resolve from workspace projects so the symbol belongs to the Solution
-        if (Solution != null)
-        {
-            foreach (var project in Solution.Projects)
-            {
-                var compilation = project.GetCompilationAsync().GetAwaiter().GetResult();
-                if (compilation == null) continue;
-
-                var found = FindInCompilation(compilation, parsed);
-                if (found != null) return found;
-            }
-        }
-
-        // Fallback to standalone compilations (for non-workspace operations like FindReferences)
-        if (fallbackToStandalone)
+        // Compare normalized declaration identities across all owners before
+        // selecting a source copy. Metadata replicas do not add candidates.
+        var candidates = new List<ISymbol>();
+        if (useStandaloneCompilations)
         {
             foreach (var compilation in _compilations.Values)
+                candidates.AddRange(FindCandidatesInCompilation(compilation, parsed));
+        }
+        else
+        {
+            EnsureWorkspace();
+            foreach (var project in Solution!.Projects)
             {
-                var found = FindInCompilation(compilation, parsed);
-                if (found != null) return found;
+                var compilation = project.GetCompilationAsync().GetAwaiter().GetResult();
+                if (compilation != null)
+                    candidates.AddRange(FindCandidatesInCompilation(compilation, parsed));
             }
         }
-
-        return null;
+        return SelectUniqueDeclaration(candidates);
     }
 
     /// <summary>
-    /// Resolve a parsed symbol ID against a compilation by walking namespaces, then types,
-    /// then matching the final member by kind (and signature for methods).
-    ///
-    /// CRITICAL — never silently fall back to an unrelated member. Earlier versions of this
-    /// resolver returned `methods[0]` when no overload matched the requested signature, which
-    /// caused FindReferences to report call sites of completely different methods. The current
-    /// rules:
-    ///   - If a path part isn't found as a namespace/type while walking, return null.
-    ///   - If the member name isn't found on the resolved container, return null.
-    ///   - If a method has multiple overloads and the requested signature matches none, return null.
-    ///   - If a method has a single overload, return it (lenient — sig may be approximate).
-    ///   - If no parameter signature was provided, return the first overload.
+    /// Resolve only a unique declaration. Legacy addresses can denote several
+    /// legal overloads, generic owners or assemblies; those require a v2 ID.
+    /// Truncated method names are accepted only when the declaration is unique.
     /// </summary>
     internal static ISymbol? FindInCompilation(Compilation compilation, ParsedSymbolId parsed)
+        => SelectUniqueDeclaration(FindCandidatesInCompilation(compilation, parsed));
+
+    private static ISymbol? SelectUniqueDeclaration(IEnumerable<ISymbol> candidates)
+    {
+        var declarations = candidates.GroupBy(
+            s => CanonicalSymbolFormat.BuildSymbolId(s, CanonicalSymbolIdVersion.AssemblyQualifiedV2),
+            StringComparer.Ordinal).Take(2).ToArray();
+        return declarations.Length == 1
+            ? declarations[0].OrderByDescending(s => s.Locations.Any(l => l.IsInSource)).First()
+            : null;
+    }
+
+    private static IEnumerable<ISymbol> FindCandidatesInCompilation(Compilation compilation, ParsedSymbolId parsed)
     {
         if (parsed.Version2Parts != null)
-            return FindVersion2InCompilation(compilation, parsed);
-        if (parsed.Parts == null || parsed.Parts.Length == 0) return null;
+            return FindVersion2Candidates(compilation, parsed);
+        if (parsed.Parts == null || parsed.Parts.Length == 0)
+            return Array.Empty<ISymbol>();
 
-        // Walk every part EXCEPT the last as namespaces or types.
-        // The last part is the member we're actually looking up — kind-filtered below.
-        INamespaceOrTypeSymbol current = compilation.GlobalNamespace;
-        for (int i = 0; i < parsed.Parts.Length - 1; i++)
+        var matches = new List<ISymbol>();
+        foreach (var assembly in compilation.SourceModule.ReferencedAssemblySymbols.Prepend(compilation.Assembly))
         {
-            var part = parsed.Parts[i];
-            // Prefer namespaces, then types — both can be parents of further members.
-            // Filter explicitly so a stray non-namespace member with a colliding name
-            // (very rare in practice) cannot derail the walk.
-            var next = current.GetMembers(part).OfType<INamespaceOrTypeSymbol>().FirstOrDefault();
-            if (next == null) return null;
-            current = next;
+            IEnumerable<INamespaceOrTypeSymbol> containers = new[] { assembly.GlobalNamespace };
+            foreach (var part in parsed.Parts[..^1])
+                containers = containers.SelectMany(c => c.GetMembers(part).OfType<INamespaceOrTypeSymbol>()).ToArray();
+            var lastName = parsed.Parts[^1];
+            foreach (var container in containers)
+            {
+                IEnumerable<ISymbol> members = lastName.StartsWith("this[", StringComparison.Ordinal)
+                    ? container.GetMembers().OfType<IPropertySymbol>().Where(p => p.IsIndexer)
+                    : container.GetMembers(lastName);
+                foreach (var member in members)
+                {
+                    if (!(parsed.Kind switch {
+                        "type" => member is INamedTypeSymbol,
+                        "method" => member is IMethodSymbol,
+                        "field" => member is IFieldSymbol,
+                        "property" => member is IPropertySymbol or IEventSymbol,
+                        _ => false,
+                    })) continue;
+                    var id = CanonicalSymbolFormat.BuildSymbolId(member);
+                    if (!id.StartsWith(parsed.Kind + ":", StringComparison.Ordinal)) continue;
+                    var requestedId = parsed.CompleteId;
+                    if (parsed.Kind == "method" && parsed.ParamSignature == null)
+                        id = id[..id.IndexOf('(')];
+                    if (id == requestedId) matches.Add(member);
+                }
+            }
         }
-
-        var lastName = parsed.Parts[^1];
-
-        // Kind-filtered member lookup. The lookup is by EXACT name only — no broad
-        // enumeration of all members on `current`. If the name doesn't exist as the
-        // requested kind, the answer is "not found", not "pick something arbitrary".
-        switch (parsed.Kind)
-        {
-            case "type":
-                {
-                    var type = current.GetMembers(lastName).OfType<INamedTypeSymbol>().FirstOrDefault();
-                    if (type != null) return type;
-                    // Top-level type whose name was the only part — current is still global ns.
-                    return null;
-                }
-
-            case "method":
-                {
-                    // .ctor / .cctor canonical ids point at instance / static
-                    // constructors. Roslyn exposes them on the dedicated
-                    // INamedTypeSymbol.Constructors / .StaticConstructors
-                    // collections; GetMembers(".ctor") happens to work on
-                    // modern Roslyn but the explicit collections are the
-                    // documented surface. INV-CANONICAL-ID-PARITY-001.
-                    IMethodSymbol[] methods;
-                    if (lastName == ".ctor" && current is INamedTypeSymbol ctorOwner)
-                        methods = ctorOwner.Constructors.ToArray();
-                    else if (lastName == ".cctor" && current is INamedTypeSymbol cctorOwner)
-                        methods = cctorOwner.StaticConstructors.ToArray();
-                    else
-                        methods = current.GetMembers(lastName).OfType<IMethodSymbol>().ToArray();
-                    if (methods.Length == 0) return null;
-
-                    // No signature requested → return first overload (caller is intentionally fuzzy).
-                    if (parsed.ParamSignature == null)
-                        return methods[0];
-
-                    // Signature requested → must match exactly. Never silently return a wrong overload.
-                    // Use CanonicalSymbolFormat so we compare against the SAME format the graph uses
-                    // — the input symbolId came from a graph builder, so this is the only correct way
-                    // to compare signatures across the source/metadata boundary.
-                    foreach (var m in methods)
-                    {
-                        var sig = CanonicalSymbolFormat.BuildParamSignature(m);
-                        if (sig == parsed.ParamSignature) return m;
-                    }
-
-                    // Single overload + signature requested but mismatched: lenient pass-through.
-                    // The user named the method correctly; their signature might just be in a
-                    // slightly-different display format than Roslyn's default. Returning the
-                    // method is safe because there's no other "Add" they could have meant.
-                    if (methods.Length == 1) return methods[0];
-
-                    return null;
-                }
-
-            case "field":
-                return current.GetMembers(lastName).OfType<IFieldSymbol>().FirstOrDefault();
-
-            case "property":
-                {
-                    var prop = current.GetMembers(lastName).OfType<IPropertySymbol>().FirstOrDefault();
-                    if (prop != null) return prop;
-                    // Events share the property: prefix in Lifeblood's symbol ID grammar.
-                    return current.GetMembers(lastName).OfType<IEventSymbol>().FirstOrDefault();
-                }
-
-            default:
-                return null;
-        }
+        return matches;
     }
 
     /// <summary>
@@ -210,15 +156,15 @@ internal sealed class RoslynWorkspaceManager : IDisposable
         {
             nameOnly = qualifiedName.Substring(0, parenIdx);
             var closeIdx = qualifiedName.LastIndexOf(')');
-            if (closeIdx > parenIdx)
-                paramSignature = qualifiedName.Substring(parenIdx + 1, closeIdx - parenIdx - 1);
+            if (closeIdx <= parenIdx || closeIdx != qualifiedName.Length - 1) return default;
+            paramSignature = qualifiedName.Substring(parenIdx + 1, closeIdx - parenIdx - 1);
         }
         else
         {
             nameOnly = qualifiedName;
         }
 
-        return new ParsedSymbolId(kind, SplitPreservingCtorNames(nameOnly), paramSignature);
+        return new ParsedSymbolId(kind, SplitPreservingCtorNames(nameOnly), paramSignature, CompleteId: symbolId);
     }
 
     private static string[] SplitPreservingCtorNames(string nameOnly)
@@ -233,6 +179,9 @@ internal sealed class RoslynWorkspaceManager : IDisposable
             return SplitWithLiteralLast(nameOnly, CctorSuffix, ".cctor");
         if (nameOnly.EndsWith(CtorSuffix, System.StringComparison.Ordinal))
             return SplitWithLiteralLast(nameOnly, CtorSuffix, ".ctor");
+        var indexer = nameOnly.IndexOf(".this[", StringComparison.Ordinal);
+        if (indexer >= 0)
+            return nameOnly[..indexer].Split('.').Append(nameOnly[(indexer + 1)..]).ToArray();
         return nameOnly.Split('.');
     }
 
@@ -255,7 +204,7 @@ internal sealed class RoslynWorkspaceManager : IDisposable
     internal readonly record struct ParsedSymbolId(string? Kind, string[]? Parts, string? ParamSignature,
         string[]? Version2Parts = null, string? CompleteId = null);
 
-    private static ISymbol? FindVersion2InCompilation(Compilation compilation, ParsedSymbolId parsed)
+    private static IEnumerable<ISymbol> FindVersion2Candidates(Compilation compilation, ParsedSymbolId parsed)
     {
         var parts = parsed.Version2Parts!;
         var assemblies = compilation.SourceModule.ReferencedAssemblySymbols.Prepend(compilation.Assembly)
@@ -270,7 +219,7 @@ internal sealed class RoslynWorkspaceManager : IDisposable
                 var name = aritySeparator < 0 ? segment : segment[..aritySeparator];
                 var arity = 0;
                 if (aritySeparator >= 0 && !int.TryParse(segment[(aritySeparator + 1)..], out arity))
-                    return null;
+                    return Array.Empty<ISymbol>();
                 containers = containers.SelectMany(c => c.GetMembers(name).OfType<INamespaceOrTypeSymbol>())
                     .Where(c => c is INamespaceSymbol ? aritySeparator < 0 : ((INamedTypeSymbol)c).Arity == arity)
                     .ToArray();
@@ -288,7 +237,7 @@ internal sealed class RoslynWorkspaceManager : IDisposable
                 }
             }
         }
-        return matches.Count == 1 ? matches[0] : null;
+        return matches;
     }
 
     private void EnsureWorkspace()
