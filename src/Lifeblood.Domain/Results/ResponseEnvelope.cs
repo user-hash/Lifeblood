@@ -47,12 +47,14 @@ public sealed class ResponseEnvelope
     public long StalenessSeconds { get; init; }
 
     /// <summary>
-    /// Number of tracked source files whose mtime is newer than the
-    /// graph's analyze time. A non-zero value means the graph is
-    /// out-of-date with respect to disk; callers should consider
-    /// re-running <c>lifeblood_analyze</c> with <c>incremental:true</c>.
+    /// Number of newer or missing source files observed within the bounded
+    /// graph-source inventory. Zero does not establish current inputs; consult
+    /// <see cref="Freshness"/> for coverage and verification method.
     /// </summary>
     public int FilesChangedSinceAnalyze { get; init; }
+
+    /// <summary>Scope and limits of the live source observation; zero changed is not a freshness proof.</summary>
+    public SourceFreshnessObservation? Freshness { get; init; }
 
     /// <summary>
     /// Tool-specific limitations the caller should weigh against the
@@ -93,6 +95,26 @@ public sealed class ResponseEnvelope
     /// bounded descriptor emitted by analyze and snapshot inventory.
     /// </summary>
     public WorkspaceAnalysisDescriptor? AnalysisIdentity { get; init; }
+}
+
+/// <summary>
+/// Bounded observation of the publication's graph-source inventory. Content
+/// and descriptor equality remain owned by the canonical analysis identity.
+/// </summary>
+public sealed class SourceFreshnessObservation
+{
+    public string Method { get; init; } = "mtime";
+    public string Scope { get; init; } = "publicationParsedSources";
+    public string Status { get; init; } = "unavailable";
+    public System.DateTime CheckedAtUtc { get; init; }
+    public int InventoryFileCount { get; init; }
+    public int CheckedFileCount { get; init; }
+    public int UncheckedFileCount { get; init; }
+    public int UnavailableFileCount { get; init; }
+    public int MissingFileCount { get; init; }
+    public int ObservedChangedFileCount { get; init; }
+    public bool ContentCompared { get; init; }
+    public bool InputInventoryRecaptured { get; init; }
 }
 
 /// <summary>

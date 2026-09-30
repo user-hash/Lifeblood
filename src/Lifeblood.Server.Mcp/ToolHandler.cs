@@ -273,7 +273,7 @@ public sealed class ToolHandler
             {
                 // Read-side
                 "lifeblood_capabilities" => HandleCapabilities(arguments),
-                "lifeblood_batch" => HandleBatch(arguments),
+                "lifeblood_batch" => HandleBatch(arguments, cancellationToken),
                 "lifeblood_snapshots" => HandleSnapshots(arguments),
                 "lifeblood_evidence_drift" => HandleEvidenceDrift(arguments),
                 "lifeblood_performance_evidence" => HandlePerformanceEvidence(arguments, cancellationToken),
@@ -304,7 +304,7 @@ public sealed class ToolHandler
                 "lifeblood_execute" => WrapWriteSide("lifeblood_execute", _write.HandleExecute(arguments)),
                 "lifeblood_diagnose" => WrapWriteSide("lifeblood_diagnose", _write.HandleDiagnose(arguments)),
                 "lifeblood_compile_check" => WrapWriteSide("lifeblood_compile_check", _write.HandleCompileCheck(arguments)),
-                "lifeblood_find_references" => WrapWriteSide("lifeblood_find_references", _write.HandleFindReferences(arguments)),
+                "lifeblood_find_references" => WrapWriteSide("lifeblood_find_references", _write.HandleFindReferences(arguments, cancellationToken)),
                 "lifeblood_find_definition" => WrapWriteSide("lifeblood_find_definition", _write.HandleFindDefinition(arguments)),
                 "lifeblood_find_implementations" => WrapWriteSide("lifeblood_find_implementations", _write.HandleFindImplementations(arguments)),
                 "lifeblood_enum_coverage" => WrapWriteSide("lifeblood_enum_coverage", _write.HandleEnumCoverage(arguments)),
@@ -427,7 +427,7 @@ public sealed class ToolHandler
             "lifeblood_performance_evidence",
             _performanceEvidence.Execute(args, cancellationToken)));
 
-    private McpToolResult HandleBatch(JsonElement? args)
+    private McpToolResult HandleBatch(JsonElement? args, CancellationToken cancellationToken)
     {
         ToolBatchRequest request;
         try
@@ -448,6 +448,7 @@ public sealed class ToolHandler
 
         for (var index = 0; index < request.Calls.Count; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var call = request.Calls[index];
             var definition = ToolRegistry.FindDefinition(call.ToolName);
             if (definition == null)
@@ -502,7 +503,8 @@ public sealed class ToolHandler
         for (var index = 0; index < request.Calls.Count; index++)
         {
             var call = request.Calls[index];
-            var result = Handle(call.ToolName, call.Arguments);
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = Handle(call.ToolName, call.Arguments, cancellationToken);
             results[index] = new
             {
                 index,
@@ -512,6 +514,7 @@ public sealed class ToolHandler
             };
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         return TextResult(WithEnvelope("lifeblood_batch", new
         {
             execution = "serial",
@@ -2642,11 +2645,8 @@ public sealed class ToolHandler
 
     /// <summary>
     /// Build the read-side <see cref="EnvelopeContext"/> for the currently
-    /// loaded session. Capped staleness scan: 256 files at full mtime
-    /// resolution, more than enough to detect drift on any realistically-
-    /// sized workspace without making every tool call an O(N) disk scan.
-    /// Empty context when no graph is loaded — the decorator degrades
-    /// gracefully (zero staleness, zero files-changed).
+    /// loaded session. The bounded mtime observation is explicitly scoped;
+    /// exact input equality is checked through the snapshot drift operation.
     /// </summary>
     private const int EnvelopeFileScanLimit = 256;
 
@@ -2664,21 +2664,10 @@ public sealed class ToolHandler
             };
         }
 
-        // Walk the graph for File symbols. Resolve relative paths against
-        // the project root so the file-system port can stat them; absolute
-        // paths pass through unchanged.
-        var root = _session.ProjectRoot;
-        var paths = _session.Graph.Symbols
-            .Where(s => s.Kind == SymbolKind.File && !string.IsNullOrEmpty(s.FilePath))
-            .Select(s => System.IO.Path.IsPathRooted(s.FilePath) || string.IsNullOrEmpty(root)
-                ? s.FilePath
-                : System.IO.Path.GetFullPath(System.IO.Path.Combine(root, s.FilePath)))
-            .ToArray();
-
         return new EnvelopeContext
         {
             AnalyzedAtUtc = _session.AnalyzedAtUtc,
-            TrackedFilePaths = paths,
+            TrackedFilePaths = _session.CurrentSnapshot.TrackedFilePaths,
             FileSystem = _session.FileSystem,
             FileScanLimit = EnvelopeFileScanLimit,
             AnalysisGeneration = _session.AnalysisGeneration,

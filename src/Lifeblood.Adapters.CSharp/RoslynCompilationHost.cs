@@ -456,7 +456,7 @@ public sealed class RoslynCompilationHost :
   => FindReferences(symbolId, FindReferencesOptions.Default);
 
   public DomainReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options)
-      => new RoslynFindReferencesService((Internal.IRoslynLookup)this).FindReferences(symbolId, options);
+      => new RoslynFindReferencesService((Internal.IRoslynLookup)this, _operationFacts).FindReferences(symbolId, options);
 
   /// <summary>
   /// Resolve a symbol ID, preferring the source-defined copy over metadata copies.
@@ -718,25 +718,16 @@ public sealed class RoslynCompilationHost :
 
   public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column)
   {
-  // Find the syntax tree matching the file path
-  foreach (var compilation in _compilations.Values)
-  {
-  foreach (var tree in compilation.SyntaxTrees)
-  {
-  if (tree.FilePath == null) continue;
-  // Normalize both paths for comparison
-  var treePath = tree.FilePath.Replace('\\', '/');
-  var queryPath = filePath.Replace('\\', '/');
-  if (!treePath.EndsWith(queryPath, StringComparison.OrdinalIgnoreCase)
-  && !queryPath.EndsWith(treePath, StringComparison.OrdinalIgnoreCase)
-  && !treePath.Equals(queryPath, StringComparison.OrdinalIgnoreCase))
-  continue;
-
+  var owner = CompilationFileOwnershipResolver.Resolve(_compilations, filePath, moduleName: null);
+  if (owner.Tree is not { } tree || owner.Compilation is not { } compilation) return null;
   var model = compilation.GetSemanticModel(tree);
   var text = tree.GetText();
-  if (line < 1 || line > text.Lines.Count) continue;
+  if (line < 1 || line > text.Lines.Count || column < 1) return null;
+  var sourceLine = text.Lines[line - 1];
+  // Coordinates name a source character, never the newline or a later line.
+  if (column > sourceLine.Span.Length) return null;
 
-  var position = text.Lines[line - 1].Start + Math.Max(0, column - 1);
+  var position = sourceLine.Start + column - 1;
   var token = tree.GetRoot().FindToken(position);
   var node = token.Parent;
 
@@ -770,9 +761,6 @@ public sealed class RoslynCompilationHost :
   }
 
   node = node.Parent;
-  }
-  return null;
-  }
   }
   return null;
   }

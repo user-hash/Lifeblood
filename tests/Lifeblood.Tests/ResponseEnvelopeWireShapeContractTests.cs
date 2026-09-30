@@ -36,6 +36,7 @@ public class ResponseEnvelopeWireShapeContractTests
         ("EvidenceSource",           "String"),
         ("StalenessSeconds",         "Int64"),
         ("FilesChangedSinceAnalyze", "Int32"),
+        ("Freshness",                "SourceFreshnessObservation"),
         ("Limitations",              "String[]"),
         // S5 / INV-DIAGNOSE-FRESHNESS-001: monotonic generation counter
         // for cross-tool join coherence. Non-breaking addition.

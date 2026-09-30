@@ -55,7 +55,7 @@ public sealed class EnvelopeContext
     /// how many are newer than <see cref="AnalyzedAtUtc"/>. Empty when
     /// no workspace is loaded.
     /// </summary>
-    public string[] TrackedFilePaths { get; init; } = System.Array.Empty<string>();
+    public System.Collections.Generic.IReadOnlyList<string> TrackedFilePaths { get; init; } = System.Array.Empty<string>();
 
     /// <summary>
     /// File-system port the decorator uses to mtime-check tracked files.
@@ -96,20 +96,10 @@ public sealed class EnvelopeContext
     public AdapterCapability? AdapterCapability { get; init; }
 
     /// <summary>
-    /// Hard cap on how many tracked files the decorator will mtime-stat
-    /// per call. Defaults to <see cref="int.MaxValue"/> (full scan);
-    /// callers serving very large workspaces lower it to bound the
-    /// per-call cost. The decorator stops as soon as the cap is reached,
-    /// regardless of whether any drift has been detected yet, so the
-    /// cost guarantee is unconditional. The reported
-    /// <see cref="ResponseEnvelope.FilesChangedSinceAnalyze"/> reflects
-    /// the count observed within the scanned subset — callers who need
-    /// exhaustive drift detection leave the cap at the default. The
-    /// staleness limitation thresholding in
-    /// <c>StalenessPolicy.FilesChangedWarnThreshold</c> consumes the
-    /// reported count as-is, so a cap that under-reports drift is
-    /// allowed to fall under threshold; the operator owns the
-    /// cost-vs-fidelity trade.
+    /// Hard cap on attempted file observations per call; zero performs no
+    /// filesystem reads. The receipt exposes checked, unchecked and unavailable
+    /// counts regardless of warning thresholds. Even a complete mtime scan does
+    /// not compare content or recapture source/descriptor/rule inventory.
     /// </summary>
     public int FileScanLimit { get; init; } = int.MaxValue;
 }
@@ -142,11 +132,8 @@ public sealed record StalenessPolicy(
     int FilesChangedWarnThreshold)
 {
     /// <summary>
-    /// Default thresholds: emit a staleness limitation when the loaded
-    /// graph is more than one hour old (3600 s), or when at least ten
-    /// tracked files have mtimes newer than the analyze timestamp. Both
-    /// numbers are documented anchors picked to surface "workspace has
-    /// meaningfully drifted" without firing for normal edit loops.
+    /// Default thresholds: report publication age after one hour and observed
+    /// source drift after ten newer or missing files. Age does not prove drift.
     /// </summary>
     public static StalenessPolicy Default { get; } = new(
         StalenessSecondsWarnThreshold: 3600,

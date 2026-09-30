@@ -2,34 +2,31 @@ using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using DomainReferenceLocation = Lifeblood.Domain.Results.ReferenceLocation;
 using DomainReferenceKind = Lifeblood.Domain.Results.ReferenceKind;
 
 namespace Lifeblood.Adapters.CSharp;
 
 /// <summary>
-/// Extracted find-references service. Direct compilation scan that
-/// matches by canonical Lifeblood symbol id (NOT Roslyn's
-/// ToDisplayString — the display string can diverge subtly across the
-/// source/metadata boundary causing legitimate call sites to be silently
-/// dropped). Owns the per-call dedup map, the OriginalDefinition
-/// fallback, and the containing-symbol walker.
-///
-/// Stage 8b — adapter architecture thinning (INV-ADAPTER-THIN-001).
-/// Pre-S8b the two FindReferences overloads + ComputeContainingSymbolId
-/// lived inline in <see cref="RoslynCompilationHost"/> (~185 LOC of
-/// self-contained logic). Behavior preserved across the move; public
-/// <see cref="ICompilationHost.FindReferences(string, FindReferencesOptions)"/>
-/// contract unchanged.
+/// Request-local reference scan using canonical symbol IDs across source and
+/// metadata. Owns syntax occurrence normalization and containing-member lookup;
+/// user-defined conversions consume the shared operation-fact authority.
 /// </summary>
 internal sealed class RoslynFindReferencesService
 {
     private readonly IRoslynLookup _lookup;
+    private readonly RoslynOperationFactProvider _operationFacts;
 
-    internal RoslynFindReferencesService(IRoslynLookup lookup) => _lookup = lookup;
+    internal RoslynFindReferencesService(IRoslynLookup lookup, RoslynOperationFactProvider operationFacts)
+    {
+        _lookup = lookup;
+        _operationFacts = operationFacts;
+    }
 
     internal DomainReferenceLocation[] FindReferences(string symbolId, FindReferencesOptions options)
     {
+        options.CancellationToken.ThrowIfCancellationRequested();
         // Direct compilation scan. Reliable across cross-project boundaries
         // where AdhocWorkspace's SymbolFinder.FindReferencesAsync may miss results.
         //
@@ -50,26 +47,58 @@ internal sealed class RoslynFindReferencesService
 
         var results = new List<DomainReferenceLocation>();
 
-        // Logical-reference dedup: an invocation expression `x.Foo(args)` and
-        // its identifier token `Foo` are two distinct syntax nodes but ONE
-        // logical reference. Key is (filePath, line, containingSymbolId,
-        // referencedSymbolId) — since referencedSymbolId is fixed at
-        // targetCanonicalId for every hit in this method, the effective key
-        // reduces to (filePath, line, containingSymbolId) and one entry per
-        // logical call-site is emitted instead of two.
-        var seen = new HashSet<(string filePath, int line, string containingSymbolId, string referencedSymbolId)>();
+        // Physical syntax identity precedes mapped display coordinates: distinct
+        // calls can share a line, container, or even a #line mapping.
+        var seen = new HashSet<(SyntaxTree tree, int start, int length, DomainReferenceKind kind)>();
 
-        foreach (var compilation in _lookup.Compilations.Values)
+        if (resolvedTarget is IMethodSymbol { MethodKind: MethodKind.Conversion })
+        {
+            // Implicit conversions have no bound method-name syntax. Consume
+            // the existing operation authority for both explicit and implicit
+            // conversions instead of layering a second syntax scan over it.
+            _operationFacts.Scan(new OperationFactQuery
+            {
+                IncludeKinds = new[] { OperationFactKind.Conversion },
+                TargetSymbolIds = new[] { targetCanonicalId },
+                IncludeImplicit = true,
+                MaxFacts = int.MaxValue,
+            }, fact =>
+            {
+                var owner = CompilationFileOwnershipResolver.Resolve(
+                    _lookup.Compilations, fact.Source.FilePath, fact.ModuleName);
+                if (owner.Tree is not { } tree)
+                    throw new InvalidOperationException("A retained operation fact has no unique source tree.");
+                var text = tree.GetText(options.CancellationToken);
+                var start = text.Lines[fact.Source.Line - 1].Start + fact.Source.Column - 1;
+                var end = text.Lines[fact.Source.EndLine - 1].Start + fact.Source.EndColumn - 1;
+                var occurrence = new Microsoft.CodeAnalysis.Text.TextSpan(start, end - start);
+                if (!seen.Add((tree, start, occurrence.Length, DomainReferenceKind.Usage))) return true;
+                var mapped = tree.GetMappedLineSpan(occurrence, options.CancellationToken);
+                results.Add(new DomainReferenceLocation
+                {
+                    FilePath = mapped.Path,
+                    Line = mapped.StartLinePosition.Line + 1,
+                    Column = mapped.StartLinePosition.Character + 1,
+                    SpanText = text.GetSubText(occurrence).ToString(),
+                    ContainingSymbolId = fact.ContainingSymbolId,
+                    Kind = DomainReferenceKind.Usage,
+                });
+                return true;
+            }, options.CancellationToken);
+        }
+        else foreach (var compilation in _lookup.Compilations.Values)
         {
             foreach (var tree in compilation.SyntaxTrees)
             {
+                options.CancellationToken.ThrowIfCancellationRequested();
                 var model = compilation.GetSemanticModel(tree);
-                var root = tree.GetRoot();
-                var sourceText = tree.GetText();
+                var root = tree.GetRoot(options.CancellationToken);
+                var sourceText = tree.GetText(options.CancellationToken);
 
                 foreach (var node in root.DescendantNodes())
                 {
-                    var symbolInfo = model.GetSymbolInfo(node);
+                    options.CancellationToken.ThrowIfCancellationRequested();
+                    var symbolInfo = model.GetSymbolInfo(node, options.CancellationToken);
                     var resolved = symbolInfo.Symbol;
                     if (resolved == null) continue;
 
@@ -82,7 +111,9 @@ internal sealed class RoslynFindReferencesService
                         if (originalId != targetCanonicalId) continue;
                     }
 
-                    var span = node.GetLocation().GetMappedLineSpan();
+                    var occurrence = NormalizeOccurrence(node);
+                    if (!seen.Add((tree, occurrence.SpanStart, occurrence.Span.Length, DomainReferenceKind.Usage))) continue;
+                    var span = occurrence.GetLocation().GetMappedLineSpan();
                     var line = span.StartLinePosition.Line + 1;
                     var column = span.StartLinePosition.Character + 1;
                     var filePath = span.Path ?? "";
@@ -95,20 +126,7 @@ internal sealed class RoslynFindReferencesService
                     // O(depth) per reference — cheap.
                     var containingSymbolId = ComputeContainingSymbolId(model, node);
 
-                    // Dedup key. When containingSymbolId is non-empty, it distinguishes
-                    // references by their enclosing member — two unrelated calls on the
-                    // same line in different methods stay separate. When containingSymbolId
-                    // IS empty (top-level statements, file-scope lambdas, or any node
-                    // whose ancestor walk hit no member declaration), fall back to the
-                    // node's own start column so distinct call-sites on the same line
-                    // still dedup correctly. Without this fallback, `_a.Foo(); _b.Foo();`
-                    // at file scope would collapse to one entry.
-                    var dedupSlot = string.IsNullOrEmpty(containingSymbolId)
-                        ? $":col{column}"
-                        : containingSymbolId;
-                    if (!seen.Add((filePath, line, dedupSlot, targetCanonicalId))) continue;
-
-                    var spanText = sourceText.GetSubText(node.Span).ToString();
+                    var spanText = sourceText.GetSubText(occurrence.Span).ToString();
                     results.Add(new DomainReferenceLocation
                     {
                         FilePath = filePath,
@@ -130,7 +148,6 @@ internal sealed class RoslynFindReferencesService
         if (options.IncludeDeclarations)
         {
             var declContainingId = targetCanonicalId; // declaration's own symbol
-            var declSeen = new HashSet<(string, int, string, string)>(seen);
             if (resolvedTarget != null)
             {
                 foreach (var location in resolvedTarget.Locations.Where(l => l.IsInSource))
@@ -139,7 +156,7 @@ internal sealed class RoslynFindReferencesService
                     var line = span.StartLinePosition.Line + 1;
                     var column = span.StartLinePosition.Character + 1;
                     var filePath = span.Path ?? "";
-                    if (!declSeen.Add((filePath, line, declContainingId, targetCanonicalId))) continue;
+                    if (!seen.Add((location.SourceTree!, location.SourceSpan.Start, location.SourceSpan.Length, DomainReferenceKind.Declaration))) continue;
 
                     results.Add(new DomainReferenceLocation
                     {
@@ -155,6 +172,21 @@ internal sealed class RoslynFindReferencesService
         }
 
         return results.ToArray();
+    }
+
+    private static SyntaxNode NormalizeOccurrence(SyntaxNode node)
+    {
+        // Only the called expression is transparent. An argument or receiver
+        // can independently reference the same target and must stay distinct.
+        while (node.Parent is { } parent && parent switch
+        {
+            MemberAccessExpressionSyntax member => member.Name == node,
+            MemberBindingExpressionSyntax member => member.Name == node,
+            InvocationExpressionSyntax invocation => invocation.Expression == node,
+            _ => false,
+        })
+            node = parent;
+        return node;
     }
 
     /// <summary>

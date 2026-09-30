@@ -12,7 +12,7 @@ namespace Lifeblood.Tests;
 /// skipped-file surface. Pins:
 ///   - C2: ContainingSymbolId populated on every reference location
 ///   - C3: Kind tagged as Declaration or Usage
-///   - A3: Logical-reference dedup emits exactly one entry per (file, line, container)
+///   - A3: Logical-reference dedup emits exactly one entry per physical occurrence
 /// and
 ///   - C4: Skipped files surface with machine-readable reason codes
 ///
@@ -167,19 +167,18 @@ namespace App
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // A3: Logical-reference dedup — one hit per (file, line, container)
+    // A3: Logical-reference dedup — one hit per physical occurrence
     // ─────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void FindReferences_InvocationAndIdentifier_DedupToOneHitPerLine()
+    public void FindReferences_InvocationAndIdentifier_DedupToOneOccurrence()
     {
         // A single call-site `svc.Run()` produces two Roslyn syntax nodes
         // whose `GetSymbolInfo` resolves to the same target: the invocation
         // expression `svc.Run()` and the identifier token `Run`. Before the
         // A3 dedup, both were emitted as separate ReferenceLocations on
         // the same line with different columns, doubling the count. After
-        // A3, the logical-reference key (file, line, containingSymbolId,
-        // referencedSymbolId) collapses them to one.
+        // normalization of the called expression collapses them to one.
         var (comps, deps) = BuildTwoModule(
             libSource: @"
 namespace Lib
@@ -208,6 +207,72 @@ namespace App
         // ONE hit per logical call-site. Before A3 this was 2.
         Assert.Single(refs);
         Assert.Equal("method:App.Caller.Invoke()", refs[0].ContainingSymbolId);
+    }
+
+    [Theory]
+    [InlineData("_svc.Run(); _svc.Run();", 2)]
+    [InlineData("_svc.\nRun();", 1)]
+    [InlineData("_svc?.Run(); _svc?.Run();", 2)]
+    public void FindReferences_PreservesDistinctOccurrences(string calls, int count)
+    {
+        var (comps, deps) = BuildTwoModule(
+            "namespace Lib { public class Service { public void Run() { } } }",
+            $"using Lib; class Caller {{ Service _svc = new(); void Invoke() {{ {calls} }} }}");
+        using var host = new RoslynCompilationHost(comps, deps);
+        var references = host.FindReferences("method:Lib.Service.Run()");
+        Assert.Equal(count, references.Length);
+        Assert.Equal(count, references.Select(r => (r.Line, r.Column)).Distinct().Count());
+    }
+
+    [Fact]
+    public void FindReferences_TopLevelInvocation_IsOneOccurrence()
+    {
+        var (comps, deps) = BuildTwoModule(
+            "namespace Lib { public class Service { public void Run() { } } }",
+            "new Lib.Service().Run(); new Lib.Service().Run();");
+        using var host = new RoslynCompilationHost(comps, deps);
+        Assert.Equal(2, host.FindReferences("method:Lib.Service.Run()").Length);
+    }
+
+    [Fact]
+    public void FindReferences_NestedSameTargetCalls_StayDistinct()
+    {
+        var (comps, deps) = BuildTwoModule(
+            "namespace Lib { public class Service { public static int Run(int n) => n; } }",
+            "class Caller { int Invoke() => Lib.Service.Run(Lib.Service.Run(0)); }");
+        using var host = new RoslynCompilationHost(comps, deps);
+        Assert.Equal(2, host.FindReferences("method:Lib.Service.Run(int)").Length);
+    }
+
+    [Theory]
+    [InlineData("implicit", "int a = value; int b = value;")]
+    [InlineData("explicit", "int a = (int)value; int b = (int)value;")]
+    public void FindReferences_UserDefinedConversion_PreservesEveryUse(string conversion, string assignments)
+    {
+        var (comps, deps) = BuildTwoModule(
+            $"namespace Lib {{ public class Value {{ public static {conversion} operator int(Value value) => 1; }} }}",
+            $"class Caller {{ void Invoke(Lib.Value value) {{ {assignments} }} }}");
+        using var host = new RoslynCompilationHost(comps, deps);
+        var id = $"method:Lib.Value.op_{(conversion == "implicit" ? "Implicit" : "Explicit")}(Lib.Value)";
+        var references = host.FindReferences(id, new FindReferencesOptions { IncludeDeclarations = true });
+        var usages = references.Where(r => r.Kind == ReferenceKind.Usage).ToArray();
+        Assert.Equal(2, usages.Length);
+        Assert.Equal(2, usages.Select(r => (r.Line, r.Column)).Distinct().Count());
+        Assert.All(usages, r => Assert.Equal("method:Caller.Invoke(Lib.Value)", r.ContainingSymbolId));
+        Assert.Single(references, r => r.Kind == ReferenceKind.Declaration);
+    }
+
+    [Fact]
+    public void FindReferences_Cancellation_IsHonoredByRetainedScan()
+    {
+        var (comps, deps) = BuildTwoModule(
+            "namespace Lib { public class Service { public void Run() { } } }",
+            "class Caller { void Invoke() => new Lib.Service().Run(); }");
+        using var host = new RoslynCompilationHost(comps, deps);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(() => host.FindReferences(
+            "method:Lib.Service.Run()", new FindReferencesOptions { CancellationToken = cancellation.Token }));
     }
 
     // ─────────────────────────────────────────────────────────────────────

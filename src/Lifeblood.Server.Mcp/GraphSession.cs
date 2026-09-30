@@ -1022,7 +1022,8 @@ public sealed class GraphSession : IDisposable
                 newCodeExecutor,
                 newRefactoring,
                 identity: identity,
-                sourceControl: sourceControlSnapshot);
+                sourceControl: sourceControlSnapshot,
+                trackedFilePaths: candidateRoslynAdapter?.SourceFilePaths);
             Commit(new CommittedGraphSessionState(
                 publishedWorkspace,
                 candidateRoslynAdapter,
@@ -1319,7 +1320,8 @@ public sealed class GraphSession : IDisposable
                     newCodeExecutor,
                     newRefactoring,
                     identity: candidateIdentity,
-                    sourceControl: sourceControlSnapshot);
+                    sourceControl: sourceControlSnapshot,
+                    trackedFilePaths: candidateAdapter.SourceFilePaths);
                 Commit(new CommittedGraphSessionState(
                     publishedWorkspace,
                     candidateAdapter,

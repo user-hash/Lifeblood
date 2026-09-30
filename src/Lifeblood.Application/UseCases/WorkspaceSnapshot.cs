@@ -30,7 +30,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         SnapshotId snapshotId,
         WorkspaceAnalysisIdentity? identity,
         SourceControlSnapshot? sourceControl,
-        WorkspaceCompilationServices? compilationServices)
+        WorkspaceCompilationServices? compilationServices,
+        IReadOnlyList<string>? trackedFilePaths = null)
     {
         Graph = graph;
         Analysis = analysis;
@@ -44,6 +45,7 @@ public sealed class WorkspaceSnapshot : IDisposable
         Identity = identity;
         SourceControl = sourceControl;
         _compilationServices = compilationServices;
+        TrackedFilePaths = trackedFilePaths ?? Array.Empty<string>();
     }
 
     public SemanticGraph? Graph { get; }
@@ -67,6 +69,13 @@ public sealed class WorkspaceSnapshot : IDisposable
     public WorkspaceAnalysisIdentity? Identity { get; }
 
     public SourceControlSnapshot? SourceControl { get; }
+
+    /// <summary>
+    /// Immutable physical input inventory supplied by the analyzing adapter.
+    /// Graph imports without parsed-input provenance expose an empty inventory.
+    /// This projection is never another source fingerprint or drift proof.
+    /// </summary>
+    public IReadOnlyList<string> TrackedFilePaths { get; }
 
     public ICompilationHost? CompilationHost => _compilationServices?.CompilationHost;
 
@@ -101,7 +110,8 @@ public sealed class WorkspaceSnapshot : IDisposable
         WorkspaceCapability? workspaceOps = null,
         SnapshotId? snapshotId = null,
         WorkspaceAnalysisIdentity? identity = null,
-        SourceControlSnapshot? sourceControl = null)
+        SourceControlSnapshot? sourceControl = null,
+        IReadOnlyList<string>? trackedFilePaths = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(analysis);
@@ -132,7 +142,8 @@ public sealed class WorkspaceSnapshot : IDisposable
             snapshotId ?? SnapshotId.New(),
             identity,
             sourceControl,
-            compilationServices);
+            compilationServices,
+            trackedFilePaths == null ? null : Array.AsReadOnly(trackedFilePaths.ToArray()));
     }
 
     public static WorkspaceSnapshot Empty(long analysisGeneration = 0)
@@ -190,7 +201,8 @@ public sealed class WorkspaceSnapshot : IDisposable
                 SnapshotId.New(),
                 identity,
                 sourceControl ?? SourceControl,
-                sharedServices);
+                sharedServices,
+                TrackedFilePaths);
         }
         catch
         {
@@ -222,7 +234,8 @@ public sealed class WorkspaceSnapshot : IDisposable
             SnapshotId,
             Identity,
             SourceControl,
-            compilationServices: null);
+            compilationServices: null,
+            trackedFilePaths: TrackedFilePaths);
     }
 
     /// <summary>

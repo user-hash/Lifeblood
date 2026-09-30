@@ -86,6 +86,10 @@ public sealed class RoslynWorkspaceAnalyzer :
     /// <summary>True if a previous analysis produced a snapshot that can be incrementally updated.</summary>
     public bool HasSnapshot => _snapshot != null;
 
+    /// <summary>Physical paths of parsed inputs from the same snapshot that owns source content fingerprints.</summary>
+    public IReadOnlyList<string> SourceFilePaths => _snapshot?.FileContentHashes.Keys
+        .OrderBy(path => path, StringComparer.Ordinal).ToArray() ?? Array.Empty<string>();
+
     /// <summary>
     /// Content-authoritative receipt for the exact source and descriptor
     /// inputs retained by the current adapter snapshot.

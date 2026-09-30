@@ -240,4 +240,7 @@ public sealed class FindReferencesOptions
     /// false preserves the existing pure-references-only behavior.
     /// </summary>
     public bool IncludeDeclarations { get; init; }
+
+    /// <summary>Cancellation for the request-local compilation scan.</summary>
+    public CancellationToken CancellationToken { get; init; }
 }

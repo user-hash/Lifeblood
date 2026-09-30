@@ -7,6 +7,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Reference occurrence scans preserve separate same-line calls and normalize
+  multiline, conditional and top-level syntax. User-defined implicit and explicit
+  conversions reuse the existing operation-fact provider.
+- Read batches preserve caller cancellation through child dispatch; reference
+  scans honor request cancellation through their existing options.
+- Source-position binding reuses compilation-file ownership and rejects ambiguous
+  paths and coordinates outside the requested source line.
+- Additive envelope `freshness` reports observation scope, method, coverage and
+  unavailable inputs. Missing parsed sources count as observed drift; publication
+  age is not proof of source drift. Canonical input verification remains on
+  `lifeblood_snapshots` with `checkDrift:true`. Parsed-input inventories are copied
+  once into the publication from the adapter fingerprint map, including physical
+  external-package paths, and reused by responses and graph-only history.
+
 ## [0.7.13] - 2026-08-02
 
 This release makes Lifeblood a workspace shared Roslyn analyzer and query system

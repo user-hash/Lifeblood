@@ -64,7 +64,7 @@ public class StalenessPolicyEnvelopeTests
 
         Assert.True(env.Limitations.Length >= 2);
         Assert.Equal("Existing tool-specific caveat.", env.Limitations[0]);
-        Assert.Contains(env.Limitations, l => l.Contains("stale"));
+        Assert.Contains(env.Limitations, l => l.Contains("old"));
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public class StalenessPolicyEnvelopeTests
             AnalyzedAtUtc = System.DateTime.UtcNow.AddSeconds(-30),
         });
 
-        Assert.Contains(env.Limitations, l => l.Contains("stale"));
+        Assert.Contains(env.Limitations, l => l.Contains("old"));
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class StalenessPolicyEnvelopeTests
         });
 
         Assert.Contains(env.Limitations, l => l.Contains("Unregistered tool"));
-        Assert.Contains(env.Limitations, l => l.Contains("stale"));
+        Assert.Contains(env.Limitations, l => l.Contains("old"));
     }
 
     private sealed class AlwaysFreshFs : Lifeblood.Application.Ports.Infrastructure.IFileSystem
@@ -182,5 +182,33 @@ public class StalenessPolicyEnvelopeTests
         public System.IO.Stream OpenWrite(string path) => new System.IO.MemoryStream();
         public string[] FindFiles(string directory, string pattern, bool recursive = true) => System.Array.Empty<string>();
         public System.DateTime GetLastWriteTimeUtc(string path) { Calls++; return _mtime; }
+    }
+
+    [Fact]
+    public void Decorate_FailedFileStat_IsUnavailableWithinCheckedScope()
+    {
+        var response = new LifebloodResponseDecorator(Classifications).Decorate("lifeblood_lookup", new EnvelopeContext
+        {
+            AnalyzedAtUtc = System.DateTime.UtcNow,
+            TrackedFilePaths = new[] { "Source.cs" },
+            FileSystem = new DeniedFs(),
+        });
+        Assert.Equal(0, response.FilesChangedSinceAnalyze);
+        Assert.Equal("incomplete", response.Freshness!.Status);
+        Assert.Equal(1, response.Freshness.CheckedFileCount);
+        Assert.Equal(1, response.Freshness.UnavailableFileCount);
+        Assert.Contains(response.Limitations, l => l.Contains("incomplete"));
+    }
+
+    private sealed class DeniedFs : Lifeblood.Application.Ports.Infrastructure.IFileSystem
+    {
+        public bool FileExists(string path) => true;
+        public bool DirectoryExists(string path) => true;
+        public string ReadAllText(string path) => throw new System.UnauthorizedAccessException();
+        public System.Collections.Generic.IEnumerable<string> ReadLines(string path) => throw new System.UnauthorizedAccessException();
+        public System.IO.Stream OpenRead(string path) => throw new System.UnauthorizedAccessException();
+        public System.IO.Stream OpenWrite(string path) => throw new System.UnauthorizedAccessException();
+        public string[] FindFiles(string directory, string pattern, bool recursive = true) => throw new System.UnauthorizedAccessException();
+        public System.DateTime GetLastWriteTimeUtc(string path) => throw new System.UnauthorizedAccessException();
     }
 }

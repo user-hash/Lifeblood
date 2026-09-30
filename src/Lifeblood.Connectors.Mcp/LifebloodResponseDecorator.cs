@@ -62,7 +62,8 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
         // timestamp + filesystem signal is independent of per-tool
         // classification, and a caller of an unregistered tool still
         // benefits from knowing how stale the workspace is.
-        var (stalenessSeconds, filesChanged) = ComputeStaleness(context);
+        var (stalenessSeconds, freshness) = ComputeStaleness(context);
+        var filesChanged = freshness.ObservedChangedFileCount;
 
         if (!_classifications.TryGetValue(toolName, out var cls))
         {
@@ -76,7 +77,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                     $"Unregistered tool '{toolName}' — envelope downgraded to the most conservative classification. The host's tool registry has no EnvelopeClassification for this name.",
                 },
                 stalenessSeconds,
-                filesChanged);
+                filesChanged, freshness);
             return ApplyAdapterCapability(new ResponseEnvelope
             {
                 TruthTier = TruthTier.Heuristic,
@@ -84,6 +85,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                 EvidenceSource = "Unknown",
                 StalenessSeconds = stalenessSeconds,
                 FilesChangedSinceAnalyze = filesChanged,
+                Freshness = freshness,
                 Limitations = unregisteredLimits,
                 AnalysisGeneration = context.AnalysisGeneration,
                 SnapshotId = context.SnapshotId,
@@ -100,7 +102,8 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             EvidenceSource = cls.EvidenceSource,
             StalenessSeconds = stalenessSeconds,
             FilesChangedSinceAnalyze = filesChanged,
-            Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged),
+            Freshness = freshness,
+            Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged, freshness),
             AnalysisGeneration = context.AnalysisGeneration,
             SnapshotId = context.SnapshotId,
             AnalysisIdentity = context.AnalysisIdentity == null
@@ -138,6 +141,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             EvidenceSource = envelope.EvidenceSource,
             StalenessSeconds = envelope.StalenessSeconds,
             FilesChangedSinceAnalyze = envelope.FilesChangedSinceAnalyze,
+            Freshness = envelope.Freshness,
             Limitations = limitations.ToArray(),
             AnalysisGeneration = envelope.AnalysisGeneration,
             SnapshotId = envelope.SnapshotId,
@@ -184,11 +188,12 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
     /// non-stale path stay byte-stable.
     /// INV-ANALYZE-SKIPPED-PROMINENCE-001.
     /// </summary>
-    private string[] AppendStalenessLimitations(string[] baseLimitations, long stalenessSeconds, int filesChanged)
+    private string[] AppendStalenessLimitations(string[] baseLimitations, long stalenessSeconds, int filesChanged, SourceFreshnessObservation freshness)
     {
         bool stalenessAboveThreshold = stalenessSeconds >= _stalenessPolicy.StalenessSecondsWarnThreshold;
         bool filesChangedAboveThreshold = filesChanged >= _stalenessPolicy.FilesChangedWarnThreshold;
-        if (!stalenessAboveThreshold && !filesChangedAboveThreshold)
+        bool incomplete = freshness.UncheckedFileCount > 0 || freshness.UnavailableFileCount > 0;
+        if (!stalenessAboveThreshold && !filesChangedAboveThreshold && !incomplete)
             return baseLimitations;
 
         var merged = new System.Collections.Generic.List<string>(baseLimitations.Length + 2);
@@ -196,58 +201,70 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
         if (stalenessAboveThreshold)
         {
             merged.Add(
-                $"Workspace graph is {stalenessSeconds} s stale (threshold {_stalenessPolicy.StalenessSecondsWarnThreshold} s) — re-run analyze before acting on results that depend on current-source truth.");
+                $"Workspace graph is {stalenessSeconds} s old (age threshold {_stalenessPolicy.StalenessSecondsWarnThreshold} s). Age alone does not establish source drift; use lifeblood_snapshots with checkDrift:true for canonical input verification.");
         }
         if (filesChangedAboveThreshold)
         {
             merged.Add(
                 $"{filesChanged} tracked file(s) changed since analyze (threshold {_stalenessPolicy.FilesChangedWarnThreshold}) — re-run analyze for accurate edge/symbol coverage.");
         }
+        if (incomplete)
+        {
+            merged.Add($"Source observation is incomplete: {freshness.CheckedFileCount}/{freshness.InventoryFileCount} graph source files checked, {freshness.UnavailableFileCount} unavailable. Zero observed changes does not establish current inputs. Use lifeblood_snapshots with checkDrift:true for canonical input verification.");
+        }
         return merged.ToArray();
     }
 
     /// <summary>
-    /// Compute staleness from the supplied context. Returns (0, 0) when
-    /// no analyze timestamp is available — JSON-graph sessions and
-    /// pre-analyze invocations both legitimately lack timestamp state.
+    /// Observe graph-source mtimes and existence within the caller's cap.
+    /// Missing prerequisites and failed reads remain explicit unavailable data.
     /// </summary>
-    private static (long stalenessSeconds, int filesChanged) ComputeStaleness(EnvelopeContext ctx)
+    private static (long stalenessSeconds, SourceFreshnessObservation freshness) ComputeStaleness(EnvelopeContext ctx)
     {
-        if (ctx.AnalyzedAtUtc is not System.DateTime analyzedAt)
-            return (0, 0);
-
         var nowUtc = System.DateTime.UtcNow;
-        var seconds = (long)System.Math.Max(0, (nowUtc - analyzedAt).TotalSeconds);
-
-        if (ctx.FileSystem == null || ctx.TrackedFilePaths.Length == 0)
-            return (seconds, 0);
+        var seconds = ctx.AnalyzedAtUtc is { } timestamp
+            ? (long)System.Math.Max(0, (nowUtc - timestamp).TotalSeconds)
+            : 0;
+        var inventoryCount = ctx.TrackedFilePaths.Count;
+        if (ctx.AnalyzedAtUtc is not { } analyzedAt || ctx.FileSystem == null || inventoryCount == 0)
+            return (seconds, new SourceFreshnessObservation
+            {
+                CheckedAtUtc = nowUtc,
+                InventoryFileCount = inventoryCount,
+                UncheckedFileCount = inventoryCount,
+            });
 
         int changed = 0;
         int scanned = 0;
+        int unavailable = 0;
+        int missing = 0;
         foreach (var path in ctx.TrackedFilePaths)
         {
+            if (scanned >= System.Math.Max(0, ctx.FileScanLimit)) break;
             scanned++;
-            if (string.IsNullOrEmpty(path)) continue;
+            if (string.IsNullOrEmpty(path)) { unavailable++; continue; }
             try
             {
-                var mtime = ctx.FileSystem.GetLastWriteTimeUtc(path);
-                if (mtime > analyzedAt) changed++;
+                if (!ctx.FileSystem.FileExists(path)) { missing++; changed++; }
+                else if (ctx.FileSystem.GetLastWriteTimeUtc(path) > analyzedAt) changed++;
             }
-            catch
+            catch (System.Exception ex) when (ex is System.IO.IOException or System.UnauthorizedAccessException or System.NotSupportedException or System.ArgumentException)
             {
-                // File missing / inaccessible — not stale, just gone.
-                // Do not throw out of envelope decoration.
+                unavailable++;
             }
-            // Honor the scan cap unconditionally — the cap exists to
-            // bound per-call cost on large workspaces, and bounding only
-            // when drift is already found leaves the no-drift case
-            // paying the full scan cost (silently violating the port
-            // contract). When the cap is hit, the response reports the
-            // count observed within the scanned subset; callers who
-            // need exhaustive drift detection pass FileScanLimit =
-            // int.MaxValue (the default).
-            if (scanned >= ctx.FileScanLimit) break;
         }
-        return (seconds, changed);
+        return (seconds, new SourceFreshnessObservation
+        {
+            CheckedAtUtc = nowUtc,
+            InventoryFileCount = inventoryCount,
+            CheckedFileCount = scanned,
+            UncheckedFileCount = inventoryCount - scanned,
+            UnavailableFileCount = unavailable,
+            MissingFileCount = missing,
+            ObservedChangedFileCount = changed,
+            Status = changed > 0 ? "driftObserved"
+                : unavailable > 0 || scanned < inventoryCount ? "incomplete"
+                : "noDriftObserved",
+        });
     }
 }

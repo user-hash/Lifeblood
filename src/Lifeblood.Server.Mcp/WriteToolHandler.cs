@@ -604,7 +604,7 @@ internal sealed class WriteToolHandler
         return System.IO.Path.GetFullPath(System.IO.Path.Combine(root, path));
     }
 
-    public McpToolResult HandleFindReferences(JsonElement? args)
+    public McpToolResult HandleFindReferences(JsonElement? args, CancellationToken cancellationToken)
     {
         if (CheckProfileScope(args) is { } scopeError) return scopeError;
 
@@ -623,6 +623,7 @@ internal sealed class WriteToolHandler
         var options = new Lifeblood.Application.Ports.Left.FindReferencesOptions
         {
             IncludeDeclarations = includeDecls,
+            CancellationToken = cancellationToken,
         };
 
         var locations = _session.CompilationHost!.FindReferences(resolved.CanonicalId, options);
