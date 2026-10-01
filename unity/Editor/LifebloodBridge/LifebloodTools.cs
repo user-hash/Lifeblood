@@ -492,7 +492,7 @@ namespace Lifeblood.UnityBridge
     }
 
     [McpForUnityTool("lifeblood_symbol_at_position",
-        Description = "Resolve what symbol is at a specific source position. Returns symbol ID, name, kind, qualified name, and documentation.",
+        Description = "Resolve a source-position symbol with ownership and coordinate receipts. Pin moduleName for linked or ambiguous source.",
         Group = "code-intelligence", RequiresPolling = true)]
     public static class LifebloodSymbolAtPosition
     {
@@ -504,8 +504,11 @@ namespace Lifeblood.UnityBridge
             [ToolParameter("Line number (1-based)")]
             public int line { get; set; }
 
-            [ToolParameter("Column number (1-based)")]
+            [ToolParameter("Column number (1-based UTF-16 code units; tabs count as one; newline characters excluded)")]
             public int column { get; set; }
+
+            [ToolParameter("Optional compilation module pin for linked or ambiguous source.", Required = false)]
+            public string moduleName { get; set; }
         }
 
         public static object HandleCommand(JObject @params)

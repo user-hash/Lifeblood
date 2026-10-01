@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Source-position lookups expose typed ownership and coordinate receipts through
+  the existing compilation-file resolver. Optional `moduleName` selects linked
+  source; failures distinguish missing/ambiguous ownership, line/column bounds,
+  and absence of a symbol. UTF-16 columns exclude newlines. Existing success
+  fields and nullable SDK calls remain supported, with retained-profile and
+  failure snapshot provenance added at the MCP boundary.
+
 - Shared sessions preserve one leased hot semantic publication independently of
   graph-only current/history. Compatible read-only requests reuse it; ordinary
   retained analyze restores it only after exact live input recapture. Changed

@@ -16,7 +16,11 @@
     },
     "column": {
       "type": "integer",
-      "description": "Column number (1-based)"
+      "description": "Column number (1-based UTF-16 code units; tabs count as one; newline characters excluded)"
+    },
+    "moduleName": {
+      "type": "string",
+      "description": "Optional compilation module pin. Required when the file has multiple owners, including linked source."
     },
     "snapshotId": {
       "type": "string",

@@ -707,52 +707,61 @@ public sealed class RoslynCompilationHost :
   }
 
   public SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column)
-  {
-  var owner = CompilationFileOwnershipResolver.Resolve(_compilations, filePath, moduleName: null);
-  if (owner.Tree is not { } tree || owner.Compilation is not { } compilation) return null;
-  var model = compilation.GetSemanticModel(tree);
-  var text = tree.GetText();
-  if (line < 1 || line > text.Lines.Count || column < 1) return null;
-  var sourceLine = text.Lines[line - 1];
-  // Coordinates name a source character, never the newline or a later line.
-  if (column > sourceLine.Span.Length) return null;
+      => GetSymbolAtPosition(new SymbolAtPositionRequest
+      { FilePath = filePath, Line = line, Column = column }).Symbol;
 
-  var position = sourceLine.Start + column - 1;
+  public SymbolAtPositionReport GetSymbolAtPosition(SymbolAtPositionRequest request)
+  {
+  var owner = CompilationFileOwnershipResolver.Resolve(_compilations, request.FilePath, request.ModuleName);
+  int? lineCount = null;
+  int? lineLength = null;
+  SymbolAtPositionReport Report(SourcePositionOutcome outcome,
+      SourceCoordinateFailure failure = SourceCoordinateFailure.None, SymbolAtPosition? symbol = null)
+      => new()
+      {
+          Symbol = symbol,
+          PositionResolution = new SourcePositionResolution
+          {
+              Outcome = outcome, FileOwnership = owner.Ownership,
+              CoordinateFailure = failure, LineCount = lineCount, LineLength = lineLength,
+          },
+      };
+
+  if (owner.Tree is not { } tree || owner.Compilation is not { } compilation)
+      return Report(SourcePositionOutcome.FileNotResolved);
+  var text = tree.GetText();
+  lineCount = text.Lines.Count;
+  if (request.Line < 1 || request.Line > lineCount)
+      return Report(SourcePositionOutcome.InvalidCoordinate, SourceCoordinateFailure.LineOutOfRange);
+  var sourceLine = text.Lines[request.Line - 1];
+  lineLength = sourceLine.Span.Length;
+  // Columns address one-based UTF-16 code units, excluding the line terminator.
+  if (request.Column < 1 || request.Column > lineLength)
+      return Report(SourcePositionOutcome.InvalidCoordinate, SourceCoordinateFailure.ColumnOutOfRange);
+
+  var model = compilation.GetSemanticModel(tree);
+  var position = sourceLine.Start + request.Column - 1;
   var token = tree.GetRoot().FindToken(position);
   var node = token.Parent;
 
   while (node != null)
   {
-  var symbolInfo = model.GetSymbolInfo(node);
-  if (symbolInfo.Symbol != null)
+  var sym = model.GetSymbolInfo(node).Symbol ?? model.GetDeclaredSymbol(node);
+  if (sym != null)
   {
-  var sym = symbolInfo.Symbol;
-  return new SymbolAtPosition
+  return Report(SourcePositionOutcome.Resolved, symbol: new SymbolAtPosition
   {
   SymbolId = BuildSymbolId(sym),
   Name = sym.Name,
   Kind = sym.Kind.ToString(),
   QualifiedName = sym.ToDisplayString(),
   Documentation = GetXmlDocumentation(sym),
-  };
-  }
-
-  var declared = model.GetDeclaredSymbol(node);
-  if (declared != null)
-  {
-  return new SymbolAtPosition
-  {
-  SymbolId = BuildSymbolId(declared),
-  Name = declared.Name,
-  Kind = declared.Kind.ToString(),
-  QualifiedName = declared.ToDisplayString(),
-  Documentation = GetXmlDocumentation(declared),
-  };
+  });
   }
 
   node = node.Parent;
   }
-  return null;
+  return Report(SourcePositionOutcome.NoSymbol);
   }
 
   public string GetDocumentation(string symbolId)

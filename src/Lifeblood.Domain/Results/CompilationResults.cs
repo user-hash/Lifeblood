@@ -42,7 +42,7 @@ public enum CompilationFileOwnershipOutcome
 }
 
 /// <summary>
-/// Canonical file-to-compilation ownership receipt shared by diagnostics and
+/// Canonical file-to-compilation ownership receipt shared by diagnostics, positions and
 /// compile-check results. Candidate arrays are stable and complete for the
 /// loaded compilation set; an ambiguous result never selects a winner.
 /// INV-COMPILATION-FILE-OWNERSHIP-001.
@@ -294,6 +294,51 @@ public sealed class SymbolAtPosition
     public required string Kind { get; init; }
     public string QualifiedName { get; init; } = "";
     public string Documentation { get; init; } = "";
+}
+
+/// <summary>A source character lookup, optionally pinned to one compilation module.</summary>
+public sealed class SymbolAtPositionRequest
+{
+    public required string FilePath { get; init; }
+    public required int Line { get; init; }
+    public required int Column { get; init; }
+    public string? ModuleName { get; init; }
+}
+
+public enum SourcePositionOutcome
+{
+    Unsupported,
+    FileNotResolved,
+    InvalidCoordinate,
+    NoSymbol,
+    Resolved,
+}
+
+public enum SourceCoordinateFailure
+{
+    None,
+    LineOutOfRange,
+    ColumnOutOfRange,
+}
+
+/// <summary>
+/// Ownership and coordinate evidence from the compilation that was queried.
+/// Bounds are absent until file ownership is unique. Line length excludes newline characters.
+/// </summary>
+public sealed class SourcePositionResolution
+{
+    public SourcePositionOutcome Outcome { get; init; }
+    public CompilationFileOwnership FileOwnership { get; init; } = new();
+    public SourceCoordinateFailure CoordinateFailure { get; init; }
+    public int? LineCount { get; init; }
+    public int? LineLength { get; init; }
+}
+
+/// <summary>A nullable symbol together with the reason that the lookup resolved or failed.</summary>
+public sealed class SymbolAtPositionReport
+{
+    public SymbolAtPosition? Symbol { get; init; }
+    public SourcePositionResolution PositionResolution { get; init; } = new();
 }
 
 /// <summary>

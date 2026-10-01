@@ -87,6 +87,67 @@ public class McpCanonicalIdentityWireTests
     }
 
     [Fact]
+    public void PositionReceiptsPreserveNegotiatedIdsAndSnapshotOnSuccessAndFailure()
+    {
+        using var fixture = new Fixture(crossAssembly: true);
+        var legacy = fixture.Host.CreateDispatcher();
+        var canonical = fixture.Host.CreateDispatcher();
+        Initialize(legacy); Initialize(canonical, McpProtocolSpec.SchemaVersions.Canonical);
+        Tool(canonical, "lifeblood_analyze", new { projectPath = fixture.Root });
+        foreach (var dispatcher in new[] { legacy, canonical })
+        {
+            var success = Tool(dispatcher, "lifeblood_symbol_at_position",
+                new { filePath = fixture.SourcePath, line = 2, column = 14, moduleName = "App" });
+            Assert.NotEqual(true, success.Result.IsError);
+            Assert.Equal("C", success.Payload["name"]!.GetValue<string>());
+            Assert.Equal(dispatcher == legacy ? "type:App.C" : fixture.Host.Session.Graph!.Symbols.Single(s => s.Name == "C").Id,
+                success.Payload["symbolId"]!.GetValue<string>());
+            var resolution = success.Payload["positionResolution"]!;
+            Assert.Equal("Resolved", resolution["outcome"]!.GetValue<string>());
+            Assert.Equal("App", resolution["fileOwnership"]!["resolvedModule"]!.GetValue<string>());
+            var invalid = Tool(dispatcher, "lifeblood_symbol_at_position",
+                new { filePath = fixture.SourcePath, line = 1, column = int.MaxValue });
+            Assert.True(invalid.Result.IsError);
+            Assert.True(invalid.Payload["error"]!.GetValue<bool>());
+            Assert.Equal("ColumnOutOfRange", invalid.Payload["positionResolution"]!["coordinateFailure"]!.GetValue<string>());
+            Assert.Equal(success.Payload["envelope"]!["snapshotId"]!.GetValue<string>(),
+                invalid.Payload["snapshotId"]!.GetValue<string>());
+            Assert.Equal(success.Payload["analyzedUnderProfile"]!.GetValue<string>(),
+                invalid.Payload["analyzedUnderProfile"]!.GetValue<string>());
+            var pinnedMiss = Tool(dispatcher, "lifeblood_symbol_at_position",
+                new { filePath = fixture.SourcePath, line = 2, column = 14, moduleName = "Library" });
+            Assert.True(pinnedMiss.Result.IsError);
+            Assert.Equal("NotInModule", pinnedMiss.Payload["positionResolution"]!["fileOwnership"]!["outcome"]!.GetValue<string>());
+        }
+    }
+
+    [Fact]
+    public void LinkedPositionReturnsCandidatesUntilModuleIsPinned()
+    {
+        using var fixture = new Fixture(crossAssembly: true, linkedSource: true);
+        var dispatcher = fixture.Host.CreateDispatcher();
+        Initialize(dispatcher, McpProtocolSpec.SchemaVersions.Canonical);
+        Assert.NotEqual(true, Tool(dispatcher, "lifeblood_analyze", new { projectPath = fixture.Root }).Result.IsError);
+        var ambiguous = Tool(dispatcher, "lifeblood_symbol_at_position", new { filePath = fixture.SourcePath, line = 2, column = 14 });
+        Assert.True(ambiguous.Result.IsError);
+        var ownership = ambiguous.Payload["positionResolution"]!["fileOwnership"]!;
+        Assert.Equal("Ambiguous", ownership["outcome"]!.GetValue<string>());
+        Assert.Equal(new[] { "App", "Library" }, ownership["candidateModules"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Single(ownership["candidateFilePaths"]!.AsArray());
+        var addresses = new List<string>();
+        foreach (var module in new[] { "App", "Library" })
+        {
+            var pinned = Tool(dispatcher, "lifeblood_symbol_at_position",
+                new { filePath = fixture.SourcePath, line = 2, column = 14, moduleName = module });
+            Assert.NotEqual(true, pinned.Result.IsError);
+            Assert.Equal(module, pinned.Payload["positionResolution"]!["fileOwnership"]!["resolvedModule"]!.GetValue<string>());
+            Assert.Equal(ambiguous.Payload["snapshotId"]!.GetValue<string>(), pinned.Payload["envelope"]!["snapshotId"]!.GetValue<string>());
+            addresses.Add(pinned.Payload["symbolId"]!.GetValue<string>());
+        }
+        Assert.NotEqual(addresses[0], addresses[1]);
+    }
+
+    [Fact]
     public void SourceAndMetadataReplicasUseOneAddressForReferencesDefinitionAndRename()
     {
         using var fixture = new Fixture(crossAssembly: true);
@@ -186,7 +247,7 @@ public class McpCanonicalIdentityWireTests
         internal string Root { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "lifeblood-wire-" + Guid.NewGuid().ToString("N"));
         internal string SourcePath => System.IO.Path.Combine(Root, "App.cs");
         internal McpServerHost Host { get; }
-        internal Fixture(bool crossAssembly = false)
+        internal Fixture(bool crossAssembly = false, bool linkedSource = false)
         {
             System.IO.Directory.CreateDirectory(Root);
             System.IO.File.WriteAllText(System.IO.Path.Combine(Root, "App.csproj"), """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>""");
@@ -195,6 +256,8 @@ public class McpCanonicalIdentityWireTests
                 System.IO.Directory.CreateDirectory(System.IO.Path.Combine(Root, "Library"));
                 System.IO.File.WriteAllText(System.IO.Path.Combine(Root, "Library", "Library.csproj"), """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>""");
                 System.IO.File.WriteAllText(System.IO.Path.Combine(Root, "Library", "Lib.cs"), "namespace Library; public class Lib { public void Touch(int x) {} }");
+                if (linkedSource)
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(Root, "Library", "Library.csproj"), """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include="Lib.cs"/><Compile Include="../App.cs"/></ItemGroup></Project>""");
                 System.IO.File.WriteAllText(System.IO.Path.Combine(Root, "App.csproj"), """<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include="App.cs"/><Compile Include="Use.cs"/><ProjectReference Include="Library/Library.csproj"/></ItemGroup></Project>""");
                 System.IO.File.WriteAllText(System.IO.Path.Combine(Root, "Use.cs"), "namespace App; public class Use { public void Run(Library.Lib value) { value.Touch(1); } }");
             }

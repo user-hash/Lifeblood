@@ -1088,11 +1088,33 @@ internal sealed class WriteToolHandler
         if (string.IsNullOrEmpty(filePath) || line == null || column == null)
             return ErrorResult("filePath, line, and column are required");
 
-        var symbol = _session.CompilationHost!.GetSymbolAtPosition(filePath, line.Value, column.Value);
-        if (symbol == null)
-            return ErrorResult($"No symbol at {filePath}:{line}:{column}");
+        var report = _session.CompilationHost!.GetSymbolAtPosition(new SymbolAtPositionRequest
+        {
+            FilePath = filePath, Line = line.Value, Column = column.Value,
+            ModuleName = GetString(args, "moduleName"),
+        });
+        if (report.Symbol is not { } symbol)
+            return new McpToolResult
+            {
+                IsError = true,
+                Content = new[] { new McpContent { Type = "text", Text = JsonSerializer.Serialize(new
+                {
+                    error = true, message = $"No symbol at {filePath}:{line}:{column}",
+                    report.PositionResolution,
+                    snapshotId = _session.CurrentSnapshot.SnapshotId.Value,
+                    analysisGeneration = _session.CurrentSnapshot.AnalysisGeneration,
+                    analyzedUnderProfile = _session.RetainedProfileName,
+                    limitations = WriteSideRetainedProfileLimitations(),
+                }, _jsonOpts) } },
+            };
 
-        return TextResult(JsonSerializer.Serialize(symbol, _jsonOpts));
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            symbol.SymbolId, symbol.Name, symbol.Kind, symbol.QualifiedName, symbol.Documentation,
+            report.PositionResolution,
+            analyzedUnderProfile = _session.RetainedProfileName,
+            limitations = WriteSideRetainedProfileLimitations(),
+        }, _jsonOpts));
     }
 
     public McpToolResult HandleGetDocumentation(JsonElement? args)

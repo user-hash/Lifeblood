@@ -203,6 +203,13 @@ public interface ICompilationHost
     /// <summary>Resolve the symbol at a source position (file + line + column).</summary>
     SymbolAtPosition? GetSymbolAtPosition(string filePath, int line, int column);
 
+    /// <summary>
+    /// Resolve a position with ownership and coordinate evidence. Adapters that only
+    /// implement the nullable legacy lookup report Unsupported rather than inventing receipts.
+    /// </summary>
+    SymbolAtPositionReport GetSymbolAtPosition(SymbolAtPositionRequest request)
+        => new();
+
     /// <summary>Get XML documentation for a symbol.</summary>
     string GetDocumentation(string symbolId);
 }

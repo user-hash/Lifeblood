@@ -363,7 +363,8 @@ public static class ToolInputContractCatalog
         yield return Contract(@"lifeblood_symbol_at_position",
             Arg(@"filePath", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Source file path (absolute or relative)", enumValues: Array.Empty<string>()),
             Arg(@"line", ToolArgumentType.Integer, required: true, arrayItemType: null, description: @"Line number (1-based)", enumValues: Array.Empty<string>()),
-            Arg(@"column", ToolArgumentType.Integer, required: true, arrayItemType: null, description: @"Column number (1-based)", enumValues: Array.Empty<string>())
+            Arg(@"column", ToolArgumentType.Integer, required: true, arrayItemType: null, description: @"Column number (1-based UTF-16 code units; tabs count as one; newline characters excluded)", enumValues: Array.Empty<string>()),
+            Arg(@"moduleName", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional compilation module pin. Required when the file has multiple owners, including linked source.", enumValues: Array.Empty<string>())
         );
 
         yield return Contract(@"lifeblood_documentation",

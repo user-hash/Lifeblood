@@ -560,7 +560,7 @@ public static class ToolRegistry
   Name = "lifeblood_symbol_at_position",
   Behavior = CompilationObservation,
   EnvelopeClassification = SemanticProven,
-  Description = "Resolve what symbol is at a specific source position. Returns symbol ID, name, kind, qualified name, and documentation.",
+  Description = "Resolve a symbol at a source character position. Returns symbol ID, name, kind, qualified name, documentation, and a positionResolution receipt. File ownership is fail-closed with stable candidates; moduleName pins linked or ambiguous source. Coordinates are 1-based UTF-16 code units, excluding newline characters. Failures distinguish ownership, coordinate bounds, and absence of a symbol.",
   },
   new()
   {
