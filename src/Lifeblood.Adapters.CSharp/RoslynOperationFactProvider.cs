@@ -96,7 +96,7 @@ internal sealed class RoslynOperationFactProvider
 
                 scannedFiles++;
                 var model = compilation.GetSemanticModel(tree);
-                var roots = FindOperationRoots(model, tree.GetRoot(cancellationToken), cancellationToken);
+                var roots = RoslynOperationFacts.FindOperationRoots(model, tree.GetRoot(cancellationToken), cancellationToken);
                 var visited = new HashSet<IOperation>(ReferenceEqualityComparer.Instance);
                 var treeOperationOrdinal = 0;
 
@@ -483,23 +483,6 @@ internal sealed class RoslynOperationFactProvider
             Inputs = inputs.ToArray(),
             ControlContexts = BuildControlContexts(operation, symbolIds),
         };
-    }
-
-    private static IReadOnlyList<IOperation> FindOperationRoots(
-        SemanticModel model,
-        SyntaxNode syntaxRoot,
-        CancellationToken cancellationToken)
-    {
-        var roots = new List<IOperation>();
-        var seen = new HashSet<IOperation>(ReferenceEqualityComparer.Instance);
-        foreach (var node in syntaxRoot.DescendantNodesAndSelf())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var operation = model.GetOperation(node, cancellationToken);
-            if (operation?.Parent != null || operation == null || !seen.Add(operation)) continue;
-            roots.Add(operation);
-        }
-        return roots;
     }
 
     private static void AddArguments(

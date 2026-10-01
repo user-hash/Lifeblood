@@ -5,15 +5,32 @@ using Microsoft.CodeAnalysis.Operations;
 namespace Lifeblood.Adapters.CSharp.Internal;
 
 /// <summary>
-/// Operation-tree primitives shared by the dead-wire / feature-switch family of
-/// extractors (<see cref="RoslynWireAuditExtractor"/>,
-/// <see cref="RoslynFeatureSwitchExtractor"/>). Read/write classification of a
-/// field / property reference and source-type enumeration are identical across
-/// those tools, so there is exactly one implementation here. Operation-tree only;
-/// never regex.
+/// Shared Roslyn operation-root discovery, read/write classification and source
+/// type enumeration for graph extraction and occurrence-level analysis.
 /// </summary>
 internal static class RoslynOperationFacts
 {
+    /// <summary>
+    /// Independent roots in syntax order, including attributes and default
+    /// parameter values outside method-body operation trees.
+    /// </summary>
+    internal static IReadOnlyList<IOperation> FindOperationRoots(
+        SemanticModel model,
+        SyntaxNode syntaxRoot,
+        CancellationToken cancellationToken = default)
+    {
+        var roots = new List<IOperation>();
+        var seen = new HashSet<IOperation>(ReferenceEqualityComparer.Instance);
+        foreach (var node in syntaxRoot.DescendantNodesAndSelf())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var operation = model.GetOperation(node, cancellationToken);
+            if (operation?.Parent != null || operation == null || !seen.Add(operation)) continue;
+            roots.Add(operation);
+        }
+        return roots;
+    }
+
     /// <summary>
     /// True if the reference operation sits in a write position: assignment
     /// target (simple / compound / coalesce), increment/decrement target, or a

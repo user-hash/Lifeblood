@@ -514,7 +514,8 @@ public sealed class RoslynSymbolExtractor
             Line = operatorDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
-            IsStatic = true,
+            IsStatic = sym.IsStatic,
+            IsAbstract = sym.IsAbstract,
             Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 ["returnType"] = sym.ReturnType.ToDisplayString(),
@@ -541,7 +542,8 @@ public sealed class RoslynSymbolExtractor
             Line = conversionDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
             ParentId = containingTypeId,
             Visibility = MapVisibility(sym.DeclaredAccessibility),
-            IsStatic = true,
+            IsStatic = sym.IsStatic,
+            IsAbstract = sym.IsAbstract,
             Properties = DeclarationProperties(sym, new Dictionary<string, string>
             {
                 ["returnType"] = sym.ReturnType.ToDisplayString(),
