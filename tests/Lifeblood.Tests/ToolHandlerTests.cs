@@ -133,6 +133,86 @@ public class ToolHandlerTests : IDisposable
         return JsonSerializer.Deserialize<JsonElement>(json);
     }
 
+    [Theory]
+    [InlineData(CanonicalSymbolIdVersion.LegacyV1)]
+    [InlineData(CanonicalSymbolIdVersion.AssemblyQualifiedV2)]
+    public void Handle_Duplicates_ComposesSeparateAuthorityEvidenceOnOneSnapshot(CanonicalSymbolIdVersion version)
+    {
+        var project = CreateRepeatedBodyProject();
+        using var session = new GraphSession(Fs, canonicalIdVersion: version);
+        var handler = CreateHandler(session: session);
+        Assert.NotEqual(true, handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = project, readOnly = false })).IsError);
+        var snapshot = session.CurrentSnapshot;
+        var provider = session.RepeatedCodeProvider;
+        var result = handler.Handle("lifeblood_duplicates", MakeArgs(new { minTokens = 1 }));
+        Assert.NotEqual(true, result.IsError);
+        using var payload = JsonDocument.Parse(result.Content[0].Text);
+        var root = payload.RootElement;
+        var group = Assert.Single(root.GetProperty("groups").EnumerateArray());
+        Assert.Equal(2, group.GetProperty("occurrenceCount").GetInt32());
+        foreach (var member in group.GetProperty("members").EnumerateArray())
+            Assert.NotNull(snapshot.Graph!.GetSymbol(member.GetProperty("containingSymbolId").GetString()!));
+        Assert.Equal("Advisory", root.GetProperty("envelope").GetProperty("confidence").GetString());
+        Assert.Equal(0, root.GetProperty("additionalSemanticBaseCount").GetInt32());
+
+        var batch = handler.Handle("lifeblood_batch", MakeArgs(new { responseFormat = "compact", calls = new object[] {
+            new { tool = "lifeblood_duplicates", arguments = new { minTokens = 1 } },
+            new { tool = "lifeblood_authority_coverage", arguments = new { subjects = new[] { "type:Smoke.Consumer" }, requiredAuthority = new[] { "type:Smoke.Owner" } } },
+        } }));
+        Assert.NotEqual(true, batch.IsError);
+        using var batchPayload = JsonDocument.Parse(batch.Content[0].Text);
+        var rows = batchPayload.RootElement.GetProperty("results").EnumerateArray().ToArray();
+        Assert.Equal(2, rows.Length);
+        Assert.All(rows, row => Assert.False(row.GetProperty("isError").GetBoolean()));
+        Assert.Equal("lifeblood_duplicates", rows[0].GetProperty("tool").GetString());
+        Assert.Equal("lifeblood_authority_coverage", rows[1].GetProperty("tool").GetString());
+        Assert.True(rows[0].GetProperty("payload").TryGetProperty("groups", out _));
+        Assert.False(rows[1].GetProperty("payload").TryGetProperty("groups", out _));
+        Assert.Same(snapshot, session.CurrentSnapshot);
+        Assert.Same(provider, session.RepeatedCodeProvider);
+    }
+
+    [Fact]
+    public void Handle_Duplicates_RejectsGraphOnlyAndProfileMismatchWithoutMutation()
+    {
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.NotEqual(true, handler.Handle("lifeblood_analyze", MakeArgs(new { graphPath = _graphPath })).IsError);
+        Assert.True(handler.Handle("lifeblood_duplicates", null).IsError);
+        var graphOnlySnapshot = session.CurrentSnapshot;
+        var project = CreateRepeatedBodyProject();
+        Assert.NotEqual(true, handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = project, readOnly = false })).IsError);
+        var snapshot = session.CurrentSnapshot;
+        Assert.True(handler.Handle("lifeblood_duplicates", MakeArgs(new { profileScope = "Player" })).IsError);
+        Assert.True(handler.Handle("lifeblood_duplicates", MakeArgs(new { maxTokens = int.MaxValue })).IsError);
+        Assert.True(handler.Handle("lifeblood_duplicates", MakeArgs(new { snapshotId = graphOnlySnapshot.SnapshotId.ToString() })).IsError);
+        Assert.Same(snapshot, session.CurrentSnapshot);
+        Assert.NotEqual(true, handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = project, readOnly = true })).IsError);
+        Assert.False(session.HasCompilationState);
+        Assert.True(handler.Handle("lifeblood_duplicates", null).IsError);
+        Assert.True(handler.Handle("lifeblood_duplicates", MakeArgs(new { snapshotId = snapshot.SnapshotId.ToString() })).IsError);
+    }
+
+    private string CreateRepeatedBodyProject()
+    {
+        var project = Path.Combine(_tempDir, "repeated-body-project");
+        Directory.CreateDirectory(project);
+        File.WriteAllText(Path.Combine(project, "App.csproj"), """
+            <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+            <PropertyGroup><AssemblyName>App</AssemblyName><LangVersion>14</LangVersion></PropertyGroup>
+            <ItemGroup><Compile Include="Code.cs"/></ItemGroup></Project>
+            """);
+        File.WriteAllText(Path.Combine(project, "Code.cs"), """
+            namespace Smoke;
+            public static class Owner { public static int Apply(int value) => value + 1; }
+            public class Consumer {
+                public int First(int value) { return Owner.Apply(value); }
+                public int Second(int value) { /* comment */ return Owner.Apply(value); }
+            }
+            """);
+        return project;
+    }
+
     [Fact]
     public void Handle_UnknownTool_ReturnsError()
     {
@@ -572,25 +652,25 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(43, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(44, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
         Assert.Equal(25, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
-        Assert.Equal(18, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
+        Assert.Equal(19, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var toolCapabilities = doc.RootElement.GetProperty("tools");
         Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
         Assert.Equal(5, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
         Assert.Equal(16, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
         Assert.Equal(3, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("OperationFacts").GetInt32());
-        Assert.Equal(18, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
-        Assert.Equal(37, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
+        Assert.Equal(19, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
+        Assert.Equal(38, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("RefreshWorkspace").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ManageSnapshotCatalog").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ExecuteCode").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("PreviewChanges").GetInt32());
-        Assert.Equal(40, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
+        Assert.Equal(41, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
         Assert.Equal(3, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
         var behaviorContracts = toolCapabilities.GetProperty("behaviorContracts");
-        Assert.Equal(43, behaviorContracts.GetArrayLength());
+        Assert.Equal(44, behaviorContracts.GetArrayLength());
         var analyzeContract = behaviorContracts.EnumerateArray()
             .Single(e => e.GetProperty("name").GetString() == "lifeblood_analyze");
         Assert.Equal("None", analyzeContract.GetProperty("sessionRequirement").GetString());
@@ -1487,11 +1567,11 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns43Tools()
+    public void ToolRegistry_Returns44Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(43, tools.Length);
+        Assert.Equal(44, tools.Length);
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_snapshots");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");

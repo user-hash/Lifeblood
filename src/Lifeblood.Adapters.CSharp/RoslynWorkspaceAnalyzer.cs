@@ -36,7 +36,8 @@ public sealed class RoslynWorkspaceAnalyzer :
     IWorkspaceAnalyzer,
     IWorkspaceInputFingerprintProvider,
     IOperationFactProvider,
-    ISourceEvidenceProvider
+    ISourceEvidenceProvider,
+    IRepeatedCodeProvider
 {
     private readonly IFileSystem _fs;
     private readonly RoslynModuleDiscovery _discovery;
@@ -1290,6 +1291,18 @@ public sealed class RoslynWorkspaceAnalyzer :
             Truncated = truncated,
             StoppedByConsumer = stoppedByConsumer,
         };
+    }
+
+    /// <summary>
+    /// Groups bounded repeated bodies from one retained compilation set.
+    /// </summary>
+    public RepeatedCodeReport FindRepeatedCode(RepeatedCodeQuery query, CancellationToken cancellationToken = default)
+    {
+        var retained = _compilations is { Count: > 0 } compilations ? compilations
+            : throw new InvalidOperationException("Repeated code requires retained C# syntax trees. Analyze with readOnly:false first.");
+        var profile = RetainedProfileName ?? throw new InvalidOperationException("Repeated code requires an analyzed profile.");
+        return new RoslynRepeatedCodeProvider(retained, _sourcePaths!, profile, RetainedProfileNames, CanonicalIdVersion)
+            .Find(query, cancellationToken);
     }
 
     /// <summary>

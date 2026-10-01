@@ -181,6 +181,9 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     public ISourceEvidenceProvider? SourceEvidenceProvider => Current.RoslynAdapter;
 
+    /// <summary>Repeated-body evidence from this lease's retained compilation set.</summary>
+    public IRepeatedCodeProvider? RepeatedCodeProvider => Current.RoslynAdapter;
+
     public PackageSourceVisibilityFile? ResolvePackageSource(string filePath) =>
         Current.RoslynAdapter?.ResolvePackageSource(filePath);
 

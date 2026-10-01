@@ -297,6 +297,7 @@ public sealed class ToolHandler
                 "lifeblood_resolve_member" => HandleResolveMember(arguments),
                 "lifeblood_search" => HandleSearch(arguments),
                 "lifeblood_dead_code" => HandleDeadCode(arguments),
+                "lifeblood_duplicates" => HandleDuplicates(arguments, cancellationToken),
                 "lifeblood_partial_view" => HandlePartialView(arguments),
                 "lifeblood_invariant_check" => HandleInvariantCheck(arguments),
                 "lifeblood_authority_report" => HandleAuthorityReport(arguments),
@@ -2134,6 +2135,30 @@ public sealed class ToolHandler
     }
 
     // ── P5: authority / port_health / cycles ──
+
+    private McpToolResult HandleDuplicates(JsonElement? args, CancellationToken cancellationToken)
+    {
+        var provider = _session.RepeatedCodeProvider;
+        if (provider == null) return ErrorResult("Repeated bodies require retained C# syntax trees. Analyze with readOnly:false first.");
+        var defaults = new RepeatedCodeQuery();
+        var query = new RepeatedCodeQuery
+        {
+            ModuleScope = WriteToolHandler.GetString(args, "moduleScope"),
+            ProfileScope = WriteToolHandler.GetString(args, "profileScope"),
+            FilePaths = ReadStringArray(args, "filePaths"),
+            ExcludeTests = WriteToolHandler.GetBool(args, "excludeTests") ?? defaults.ExcludeTests,
+            ExcludeGenerated = WriteToolHandler.GetBool(args, "excludeGenerated") ?? defaults.ExcludeGenerated,
+            MinTokens = WriteToolHandler.GetInt(args, "minTokens") ?? defaults.MinTokens,
+            MaxBodies = WriteToolHandler.GetInt(args, "maxBodies") ?? defaults.MaxBodies,
+            MaxTokens = WriteToolHandler.GetInt(args, "maxTokens") ?? defaults.MaxTokens,
+            MaxSourceCharacters = WriteToolHandler.GetInt(args, "maxSourceCharacters") ?? defaults.MaxSourceCharacters,
+            MaxNodes = WriteToolHandler.GetInt(args, "maxNodes") ?? defaults.MaxNodes,
+            MaxFiles = WriteToolHandler.GetInt(args, "maxFiles") ?? defaults.MaxFiles,
+            MaxGroups = WriteToolHandler.GetInt(args, "maxGroups") ?? defaults.MaxGroups,
+            MaxMembersPerGroup = WriteToolHandler.GetInt(args, "maxMembersPerGroup") ?? defaults.MaxMembersPerGroup,
+        };
+        return TextResult(WithEnvelope("lifeblood_duplicates", provider.FindRepeatedCode(query, cancellationToken)));
+    }
 
     private McpToolResult HandleAuthorityReport(JsonElement? args)
     {

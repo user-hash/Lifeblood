@@ -127,6 +127,14 @@ public static class ToolRegistry
     EvidenceSource = "Heuristic",
   };
 
+  private static readonly EnvelopeClassification RepeatedCodeAdvisory = new()
+  {
+    TruthTier = TruthTier.Derived,
+    Confidence = ConfidenceBand.Advisory,
+    EvidenceSource = "Syntax",
+    Limitations = new[] { "Equal token bodies can have different bindings and behavior. Review each occurrence before consolidating; intended ownership requires explicit authority policy." },
+  };
+
   private static readonly EnvelopeClassification HeuristicAdvisoryDeadCode = new()
   {
     TruthTier = TruthTier.Heuristic,
@@ -414,6 +422,13 @@ public static class ToolRegistry
   Behavior = GraphObservation,
   EnvelopeClassification = HeuristicAdvisoryDeadCode,
   Description = "[EXPERIMENTAL — ADVISORY ONLY] Scan the loaded graph for symbols with no incoming semantic references — dead code CANDIDATES. Defaults: excludes public-visibility symbols (assumed reachable from outside) and test files. Returns canonical ids, kinds, file:line locations, and a short reason per hit. Every finding additionally carries `directDependants` (incoming non-Contains edge count; 0 for classic findings but forward-compatible signal for future relaxed criteria), `bucket` (one of `Production` / `Test` / `Editor` / `Generated` / `Vendored` path buckets, or the dead_code-only `Scaffolding` downrank for intentional conditional/const-string anchor types), and `declarationOnly` (true for abstract/interface members — deleting one is a public-contract change). Every response carries `count`, `kindBreakdown` (per-symbol-kind histogram), `bucketBreakdown` (per-bucket histogram so a caller can fold the Editor/Generated/Vendored/Scaffolding tail in one pass), and `truncated`. Use `includeKinds` to narrow (e.g. ['Method']). Use `summarize:true` for a compact response with `preview[]` instead of the full `findings[]` — useful on large workspaces (53k+ symbols → 286KB+ payload) which would otherwise overflow downstream tool-result limits. `maxResults` caps the embedded array regardless of mode (default 500, or 25 in summarize). **Closed false-positive classes (INV-DEADCODE-001):** v0.6.4 closed five extractor classes (interface dispatch, member-access granularity, null-conditional property, lambda context, method-group references) plus the implicit-global-usings compilation gap. v0.6.5 closed three more (constructor `Calls` edge, field-initializer containing method, property-accessor body context). v0.6.7 closed the MonoBehaviour magic-method class on Unity workspaces via the `IUnityReachabilityProvider` port (`INV-UNITY-001`); the current extractor records resolved `baseTypeChain` facts so metadata-only intermediate bases such as Unity UI Graphic/UIBehaviour still reach MonoBehaviour. v0.7.0 (`LB-FP-003`) closed the Editor reflection-attribute class (`[SettingsProvider]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, full NUnit fixture lifecycle) plus type-via-child propagation. Current dead_code also downranks intentional reference-free scaffolding (`INV-DEADCODE-SCAFFOLDING-001`) and marks resolved UnityEvent persistent-call targets reachable from prefab/scene/asset YAML (`INV-UNITYEVENT-REACHABILITY-001`). **Remaining advisory limitations:** runtime entry points (Program.Main); reflection-based dispatch invisible to static analysis (Type.GetType + MethodInfo.Invoke, Unity SendMessage); Unity serialized callbacks whose target type/script cannot be resolved from YAML; UI Toolkit VisualElement subclasses with magic-named methods on non-MonoBehaviour bases; private fields read via same-class access when the enclosing type has no external references. Treat every finding as a candidate to verify with `lifeblood_find_references` before acting. Triage fields per INV-DEADCODE-TRIAGE-001.",
+  },
+  new()
+  {
+  Name = "lifeblood_duplicates",
+  Behavior = CompilationObservation,
+  EnvelopeClassification = RepeatedCodeAdvisory,
+  Description = "Find bounded complete repeated executable bodies in the retained profile's analyzed syntax trees. Exact token spelling/kinds match after ignoring trivia; names and literals are preserved and full token equality confirms hash buckets. Returns grouped canonical owners/source spans plus input/output coverage limits. Defaults exclude test/generated files and bodies below 40 tokens. Equal syntax does not prove equal binding, behavior or competing authority. Use lifeblood_batch with a separate lifeblood_authority_coverage call and explicit intended owners/alternatives to report both kinds on one snapshot. Requires readOnly:false; another profile requires re-analyzing with that profile first.",
   },
   new()
   {

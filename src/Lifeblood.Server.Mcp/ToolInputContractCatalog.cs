@@ -220,6 +220,22 @@ public static class ToolInputContractCatalog
             Arg(@"maxResults", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum number of findings embedded in the response. When the finding set is larger, the array is clipped and `truncated:true` is set. Default: 500 in normal mode, 25 in summarize mode.", enumValues: Array.Empty<string>())
         );
 
+        yield return Contract("lifeblood_duplicates",
+            Arg("moduleScope", ToolArgumentType.String, false, null, "Optional exact module name.", Array.Empty<string>()),
+            Arg("profileScope", ToolArgumentType.String, false, null, "Must match the retained profile; omitted uses it.", Array.Empty<string>()),
+            Arg("filePaths", ToolArgumentType.Array, false, ToolArgumentType.String, "Exact workspace-relative or physical file paths; at most 1024.", Array.Empty<string>()),
+            Arg("excludeTests", ToolArgumentType.Boolean, false, null, "Exclude shared Test path bucket; default true.", Array.Empty<string>()),
+            Arg("excludeGenerated", ToolArgumentType.Boolean, false, null, "Exclude generated trees/shared Generated path bucket; default true.", Array.Empty<string>()),
+            Arg("minTokens", ToolArgumentType.Integer, false, null, "Minimum complete body size; default 40, range 1..10000.", Array.Empty<string>()),
+            Arg("maxBodies", ToolArgumentType.Integer, false, null, "Candidate body budget; default 20000, range 1..50000.", Array.Empty<string>()),
+            Arg("maxTokens", ToolArgumentType.Integer, false, null, "Total examined token budget; default 1000000, range 1..2000000.", Array.Empty<string>()),
+            Arg("maxSourceCharacters", ToolArgumentType.Integer, false, null, "Selected source character budget; default 20000000, range 1..100000000.", Array.Empty<string>()),
+            Arg("maxNodes", ToolArgumentType.Integer, false, null, "Examined declaration tree node budget; default 500000, range 1..2000000.", Array.Empty<string>()),
+            Arg("maxFiles", ToolArgumentType.Integer, false, null, "Selected file budget; default 10000, range 1..20000.", Array.Empty<string>()),
+            Arg("maxGroups", ToolArgumentType.Integer, false, null, "Returned group cap; default 100, range 1..1000.", Array.Empty<string>()),
+            Arg("maxMembersPerGroup", ToolArgumentType.Integer, false, null, "Returned members per group; default 20, range 2..100.", Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_partial_view",
             Arg(@"symbolId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Canonical symbol id of the type (e.g. 'type:MyApp.MyClass').", enumValues: Array.Empty<string>())
         );

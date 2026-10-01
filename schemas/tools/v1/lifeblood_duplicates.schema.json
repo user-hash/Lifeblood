@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "properties": {
+    "moduleScope": {
+      "type": "string",
+      "description": "Optional exact module name."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Must match the retained profile; omitted uses it."
+    },
+    "filePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Exact workspace-relative or physical file paths; at most 1024."
+    },
+    "excludeTests": {
+      "type": "boolean",
+      "description": "Exclude shared Test path bucket; default true."
+    },
+    "excludeGenerated": {
+      "type": "boolean",
+      "description": "Exclude generated trees/shared Generated path bucket; default true."
+    },
+    "minTokens": {
+      "type": "integer",
+      "description": "Minimum complete body size; default 40, range 1..10000."
+    },
+    "maxBodies": {
+      "type": "integer",
+      "description": "Candidate body budget; default 20000, range 1..50000."
+    },
+    "maxTokens": {
+      "type": "integer",
+      "description": "Total examined token budget; default 1000000, range 1..2000000."
+    },
+    "maxSourceCharacters": {
+      "type": "integer",
+      "description": "Selected source character budget; default 20000000, range 1..100000000."
+    },
+    "maxNodes": {
+      "type": "integer",
+      "description": "Examined declaration tree node budget; default 500000, range 1..2000000."
+    },
+    "maxFiles": {
+      "type": "integer",
+      "description": "Selected file budget; default 10000, range 1..20000."
+    },
+    "maxGroups": {
+      "type": "integer",
+      "description": "Returned group cap; default 100, range 1..1000."
+    },
+    "maxMembersPerGroup": {
+      "type": "integer",
+      "description": "Returned members per group; default 20, range 2..100."
+    },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact \u0060snap_\u003C32 lowercase hex\u003E\u0060 identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
+    }
+  }
+}

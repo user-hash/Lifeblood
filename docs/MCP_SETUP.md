@@ -306,7 +306,7 @@ Adjust the relative path for your layout. The package ships its own Editor-only 
 
 **Step 3. Remove any legacy bridge copy or junction.** Delete a copied `Packages/com.dawgtools.lifeblood-bridge` directory or `Assets/Editor/LifebloodBridge` junction before refreshing. The consumer tracks only the manifest reference; `unity/` remains the single source.
 
-**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay auto-discovers their typed nested `Parameters` properties and polling metadata. The Unity bridge surfaces a curated subset — 20 of the 43 tools, with `lifeblood_analyze_project` wrapping analyze and owning the Unity project path — alongside the built-in Unity tools. The remaining tools are reachable through a direct `lifeblood-mcp --shared` client and observe the same daemon publication.
+**Step 4. Open Unity.** The Editor compiles the bridge stubs. Coplay auto-discovers their typed nested `Parameters` properties and polling metadata. The Unity bridge surfaces a curated subset of the [MCP tools](TOOLS.md), with `lifeblood_analyze_project` wrapping analyze and owning the Unity project path, alongside the built-in Unity tools. The remaining tools are reachable through a direct `lifeblood-mcp --shared` client and observe the same daemon publication.
 
 **Step 5. Connect any MCP client to Coplay MCP for Unity** following Coplay's own setup guide. From the client's perspective, `lifeblood_analyze_project`, `lifeblood_lookup`, `lifeblood_blast_radius`, and the other bridge tools appear next to Coplay's Unity tools on one connection.
 

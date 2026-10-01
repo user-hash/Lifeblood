@@ -219,6 +219,7 @@ public class McpProtocolTests
   ["lifeblood_resolve_member"] = graphObserve,
   ["lifeblood_resolve_short_name"] = graphObserve,
   ["lifeblood_dead_code"] = graphObserve,
+  ["lifeblood_duplicates"] = compilationObserve,
   ["lifeblood_partial_view"] = workspaceRootObserve,
   ["lifeblood_invariant_check"] = workspaceRootObserve,
   ["lifeblood_authority_report"] = graphObserve,
