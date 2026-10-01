@@ -321,9 +321,10 @@ internal sealed class ModuleCompilationBuilder
         // for the csproj string form; use it instead of a homegrown lookup
         // so "latest" / "preview" / "12" / "11.0" / "7.3" all bind to the
         // same enum the official compiler reaches.
-        if (!string.IsNullOrEmpty(module.LanguageVersion)
-            && LanguageVersionFacts.TryParse(module.LanguageVersion, out var langVersion))
+        if (!string.IsNullOrEmpty(module.LanguageVersion))
         {
+            if (!LanguageVersionFacts.TryParse(module.LanguageVersion, out var langVersion))
+                throw new InvalidOperationException($"Module '{module.Name}' requires unsupported language version '{module.LanguageVersion}'.");
             parseOptions = parseOptions.WithLanguageVersion(langVersion);
         }
 

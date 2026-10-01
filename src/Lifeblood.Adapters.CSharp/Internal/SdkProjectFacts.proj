@@ -1,0 +1,64 @@
+<Project>
+  <UsingTask TaskName="ReadProjectFacts" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup><Projects ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true"/><Facts ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true"/></ParameterGroup>
+    <Task>
+      <Using Namespace="Microsoft.Build.Framework"/>
+      <Using Namespace="Microsoft.Build.Utilities"/>
+      <Using Namespace="System.Collections.Generic"/>
+      <Using Namespace="System.Linq"/>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+var output = new List<ITaskItem>();
+var collectionType = Type.GetType("Microsoft.Build.Evaluation.ProjectCollection, Microsoft.Build", true);
+var collection = Activator.CreateInstance(collectionType);
+try
+{
+ foreach(var input in Projects)
+ {
+  var projectPath = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(input.GetMetadata("PathBase64")));
+  var project = collectionType.GetMethod("LoadProject",new[]{typeof(string)}).Invoke(collection,new object[]{projectPath});
+  var projectType=project.GetType();
+  Func<string,string> read = key => (string)projectType.GetMethod("GetPropertyValue").Invoke(project,new object[]{key});
+  var framework = read("TargetFramework");
+  if(string.IsNullOrEmpty(framework))
+  {
+   framework = read("TargetFrameworks").Split(';').FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
+   if(!string.IsNullOrEmpty(framework))
+   {
+    var globals=new Dictionary<string,string>{{"TargetFramework",framework}};
+    project=collectionType.GetMethod("LoadProject",new[]{typeof(string),typeof(IDictionary<string,string>),typeof(string)}).Invoke(collection,new object[]{projectPath,globals,null});
+   }
+  }
+  var fact = new TaskItem(projectPath);
+  foreach(var key in new[]{"LangVersion","TargetFramework","NETCoreSdkVersion","MSBuildVersion"})fact.SetMetadata(key,read(key));
+  var compilerPath=Path.Combine(string.IsNullOrEmpty(read("CscToolPath")) ? Path.Combine(read("RoslynTargetsPath"),"bincore") : read("CscToolPath"),"Microsoft.CodeAnalysis.CSharp.dll");
+  var compiler=System.Reflection.Assembly.LoadFrom(compilerPath);
+  var languageFacts=compiler.GetType("Microsoft.CodeAnalysis.CSharp.LanguageVersionFacts",true);
+  var parseArgs=new object[]{read("LangVersion"),null};
+  if(!(bool)languageFacts.GetMethod("TryParse").Invoke(null,parseArgs))
+   throw new InvalidOperationException("Unsupported project LangVersion: " + read("LangVersion"));
+  var effective=languageFacts.GetMethod("MapSpecifiedToEffectiveVersion").Invoke(null,new[]{parseArgs[1]});
+  fact.SetMetadata("DeclaredLangVersion",read("LangVersion"));
+  var specifiedName=parseArgs[1].ToString();
+  if(specifiedName=="Default" || specifiedName=="Latest" || specifiedName=="LatestMajor")
+   fact.SetMetadata("LangVersion",(string)languageFacts.GetMethod("ToDisplayString").Invoke(null,new[]{effective}));
+  fact.SetMetadata("CompilerVersion",compiler.GetName().Version.ToString());
+  fact.SetMetadata("FactKind","Project");
+  output.Add(fact);
+  foreach(var import in (System.Collections.IEnumerable)projectType.GetProperty("Imports").GetValue(project))
+  {
+   var imported=import.GetType().GetProperty("ImportedProject").GetValue(import);
+   var item=new TaskItem((string)imported.GetType().GetProperty("FullPath").GetValue(imported));
+   item.SetMetadata("FactKind","Import");
+   item.SetMetadata("ProjectFile",projectPath);
+   output.Add(item);
+  }
+ }
+}
+finally { ((IDisposable)collection).Dispose(); }
+Facts=output.ToArray();
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <ItemGroup />
+  <Target Name="EvaluateProjects" Returns="@(Collected)"><ReadProjectFacts Projects="@(Input)"><Output TaskParameter="Facts" ItemName="Collected"/></ReadProjectFacts></Target>
+</Project>

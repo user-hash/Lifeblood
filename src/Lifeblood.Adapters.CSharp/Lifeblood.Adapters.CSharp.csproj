@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Lifeblood.Tests" />
+    <EmbeddedResource Include="Internal/SdkProjectFacts.proj" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />

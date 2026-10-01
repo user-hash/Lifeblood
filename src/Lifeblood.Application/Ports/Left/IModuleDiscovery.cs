@@ -198,9 +198,11 @@ public sealed class ModuleInfo
     public string[] PreprocessorSymbols { get; init; } = Array.Empty<string>();
 
     /// <summary>
-    /// Raw <c>&lt;LangVersion&gt;</c> value declared in the csproj
+    /// Effective language setting resolved by the project's build authority
     /// (e.g. <c>"latest"</c>, <c>"preview"</c>, <c>"12"</c>, <c>"11.0"</c>,
-    /// <c>"7.3"</c>). Empty string means the csproj did not declare it;
+    /// <c>"7.3"</c>). SDK projects include imported/default values;
+    /// generated and legacy descriptors preserve their explicit spelling.
+    /// Empty string means no language fact was supplied by that descriptor;
     /// the compilation builder falls back to Roslyn's default
     /// <c>LanguageVersion.Default</c> (the same value
     /// <c>CSharpParseOptions.Default</c> ships with). Parsed via

@@ -70,6 +70,8 @@ Lifeblood treats this as a discovered module fact: `Lifeblood.Application.Ports.
 
 ## Csproj-Driven Compilation Facts
 
+- **INV-SDK-LANGUAGE-FACTS-001. SDK language defaults and imports are evaluated by the selected build tool, never inferred from the host Roslyn default or a target-framework table.** Discovery evaluates one SDK project batch in an isolated MSBuild process, stores the effective language setting on `ModuleInfo.LanguageVersion`, and includes actual imported files, SDK/global.json selection and effective-property receipts in the existing descriptor fingerprint. Explicit `default`, `latest` and `latestMajor` resolve through that SDK's Roslyn language primitive; explicit numeric and `preview` spellings retain their meaning. One module still selects the first effective target framework. Generated Unity/legacy descriptors retain their own language settings without SDK evaluation. Evaluation failure and unsupported language settings fail explicitly instead of publishing guessed compiler facts. Imported-content, input-membership or selection drift forces the existing policy-controlled full fallback before reuse of retained compilations. SDK projects/assemblies are not retained in the semantic host and no second semantic base is created. Pinned by `SdkLanguageFactsTests` and `CsprojCompilationFactsTests`.
+
 Csproj is the source of truth for module-level compilation options. Each fact
 flows through one path: discover at parse time → store on `ModuleInfo` →
 consume at compilation time. The pattern is the contract. Every future

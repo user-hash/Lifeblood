@@ -25,8 +25,8 @@ namespace Lifeblood.Tests;
 ///   1. <see cref="RoslynModuleDiscovery"/> surfaces every
 ///      <c>&lt;InternalsVisibleTo Include="X" /&gt;</c> item onto
 ///      <see cref="ModuleInfo.InternalsVisibleTo"/>.
-///   2. Items union across multiple item-groups; duplicates dedupe; empty
-///      / whitespace-only Includes drop out.
+///   2. Include items union across multiple item-groups; duplicates dedupe;
+///      item operations without Include do not declare a friend assembly.
 ///   3. The compilation seam synthesizes
 ///      <c>[assembly: InternalsVisibleTo("X")]</c> attributes onto the
 ///      producer PE so a friend module compiling against the downgraded
@@ -69,7 +69,7 @@ public class InternalsVisibleToParityTests
               </ItemGroup>
               <ItemGroup>
                 <InternalsVisibleTo Include="Friend.A" />
-                <InternalsVisibleTo Include="" />
+                <InternalsVisibleTo Remove="Nonexistent.Friend" />
               </ItemGroup>
             </Project>
             """);
@@ -78,7 +78,7 @@ public class InternalsVisibleToParityTests
         var modules = discovery.DiscoverModules(tempDir.Path);
         var producer = Assert.Single(modules);
 
-        // Dedupe by ordinal; empty Include drops.
+        // Dedupe by ordinal; the removal entry declares no friend.
         Assert.Equal(new[] { "Friend.A", "Friend.B" }, producer.InternalsVisibleTo);
     }
 

@@ -1,4 +1,6 @@
 using System.Xml.Linq;
+using System.Text.Json;
+using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Graph;
@@ -9,13 +11,18 @@ namespace Lifeblood.Adapters.CSharp;
 
 /// <summary>
 /// Discovers C# modules from .sln and .csproj files.
-/// Parses project XML directly — no MSBuild dependency required.
+/// Reads descriptor-owned settings directly and evaluates SDK language facts
+/// in one isolated MSBuild batch.
 /// </summary>
 public sealed class RoslynModuleDiscovery : IModuleDiscovery
 {
     private readonly IFileSystem _fs;
     private readonly List<SkippedFile> _lastSkipped = new();
     private readonly Dictionary<string, ContentFingerprint> _lastDescriptorContentHashes
+        = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, XDocument> _projectDocuments = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyDictionary<string, SdkProjectFacts> _sdkFacts = new Dictionary<string, SdkProjectFacts>();
+    private readonly Dictionary<string, ContentFingerprint> _lastSdkInputContentHashes
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -52,32 +59,76 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
     public IReadOnlyDictionary<string, ContentFingerprint> LastDescriptorContentHashes
         => _lastDescriptorContentHashes;
 
+    internal IReadOnlyDictionary<string, ContentFingerprint> LastSdkInputContentHashes
+        => _lastSdkInputContentHashes;
+
     public ModuleInfo[] DiscoverModules(string projectRoot)
     {
         _lastSkipped.Clear();
         _lastDescriptorContentHashes.Clear();
+        _lastSdkInputContentHashes.Clear();
+        _projectDocuments.Clear();
 
-        // Try .sln first
-        var slnFiles = _fs.FindFiles(projectRoot, "*.sln", recursive: false)
-            .OrderBy(path => path, StringComparer.Ordinal)
-            .ToArray();
-        if (slnFiles.Length > 0)
+        try
         {
-            CaptureTextDescriptor(slnFiles[0], _fs.ReadAllText(slnFiles[0]));
-            return DiscoverFromSolution(slnFiles[0], projectRoot);
+            // Try .sln first
+            var slnFiles = _fs.FindFiles(projectRoot, "*.sln", recursive: false)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            string[] projectFiles;
+            if (slnFiles.Length > 0)
+            {
+                CaptureTextDescriptor(slnFiles[0], _fs.ReadAllText(slnFiles[0]));
+                projectFiles = DiscoverFromSolution(slnFiles[0]);
+            }
+            else
+            {
+                projectFiles = _fs.FindFiles(projectRoot, "*.csproj", recursive: true)
+                    .OrderBy(path => path, StringComparer.Ordinal).ToArray();
+            }
+            foreach (var path in projectFiles)
+            {
+                try
+                {
+                    var text = _fs.ReadAllText(path);
+                    CaptureTextDescriptor(path, text);
+                    _projectDocuments[path] = XDocument.Parse(text);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException) { }
+            }
+            var sdkProjects = projectFiles.Where(path => _projectDocuments.TryGetValue(path, out var document)
+                && HasSdkDeclaration(document)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            _sdkFacts = SdkProjectFactsReader.Read(projectRoot, sdkProjects);
+            foreach (var (path, facts) in _sdkFacts)
+            {
+                var globalInputs = FindGlobalJsonInputs(Path.GetDirectoryName(path)!).Concat(FindGlobalJsonInputs(projectRoot))
+                    .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value, StringComparer.Ordinal).ToArray();
+                foreach (var input in facts.Imports.Concat(globalInputs).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!_lastSdkInputContentHashes.ContainsKey(input))
+                    {
+                        if (!_lastDescriptorContentHashes.ContainsKey(input))
+                            CaptureTextDescriptor(input, _fs.ReadAllText(input));
+                        _lastSdkInputContentHashes[input] = _lastDescriptorContentHashes[input];
+                    }
+                }
+                var receiptPath = path + ".lifeblood-sdk-facts";
+                CaptureTextDescriptor(receiptPath, JsonSerializer.Serialize(new { Facts = facts, GlobalInputs = globalInputs }));
+                _lastSdkInputContentHashes[receiptPath] = _lastDescriptorContentHashes[receiptPath];
+            }
+            return projectFiles.Select(path => ParseProject(path, projectRoot)).Where(module => module != null).ToArray()!;
         }
-
-        // Fall back to .csproj files
-        var csprojFiles = _fs.FindFiles(projectRoot, "*.csproj", recursive: true)
-            .OrderBy(path => path, StringComparer.Ordinal)
-            .ToArray();
-        return csprojFiles.Select(f => ParseProject(f, projectRoot)).Where(m => m != null).ToArray()!;
+        finally
+        {
+            _projectDocuments.Clear();
+            _sdkFacts = new Dictionary<string, SdkProjectFacts>();
+        }
     }
 
-    private ModuleInfo[] DiscoverFromSolution(string slnPath, string projectRoot)
+    private string[] DiscoverFromSolution(string slnPath)
     {
         var slnDir = Path.GetDirectoryName(slnPath)!;
-        var modules = new List<ModuleInfo>();
+        var projects = new List<string>();
 
         foreach (var line in _fs.ReadLines(slnPath))
         {
@@ -98,20 +149,18 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             var fullPath = Path.GetFullPath(Path.Combine(slnDir, Internal.CsprojPaths.NormalizeSeparators(relativePath)));
             if (!_fs.FileExists(fullPath)) continue;
 
-            var module = ParseProject(fullPath, projectRoot);
-            if (module != null) modules.Add(module);
+            projects.Add(fullPath);
         }
 
-        return modules.ToArray();
+        return projects.ToArray();
     }
 
     private ModuleInfo? ParseProject(string csprojPath, string projectRoot)
     {
         try
         {
-            var xml = _fs.ReadAllText(csprojPath);
-            CaptureTextDescriptor(csprojPath, xml);
-            var doc = XDocument.Parse(xml);
+            if (!_projectDocuments.TryGetValue(csprojPath, out var doc)) return null;
+            _sdkFacts.TryGetValue(csprojPath, out var sdkFacts);
             var ns = doc.Root?.Name.Namespace ?? XNamespace.None;
             var projectDir = Path.GetDirectoryName(csprojPath)!;
 
@@ -276,14 +325,9 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
 
-            // Compilation fact: <LangVersion> (INV-COMPFACT-001..003 +
-            // LB-FOLLOWUP-001). Take the LAST <LangVersion> element's value
-            // — MSBuild semantics: later property assignments win. Stored
-            // raw; Roslyn's LanguageVersionFacts.TryParse handles the
-            // string-to-enum mapping at the compilation seam. Default
-            // empty string means "csproj did not declare it" → builder
-            // uses LanguageVersion.Default.
-            var languageVersion = doc.Descendants()
+            // SDK evaluation owns imported/default language settings. Generated
+            // and legacy descriptors retain their explicit compiler spelling.
+            var languageVersion = sdkFacts?.LanguageVersion ?? doc.Descendants()
                 .Where(el => el.Name.LocalName == "LangVersion")
                 .Select(el => el.Value?.Trim() ?? string.Empty)
                 .Where(s => !string.IsNullOrEmpty(s))
@@ -298,7 +342,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             // compilation seam to run. Multi-target projects are represented by
             // one ModuleInfo today; use the first TFM as the same conservative
             // single-compilation posture the rest of discovery already takes.
-            var targetFramework = ReadTargetFramework(doc);
+            var targetFramework = sdkFacts?.TargetFramework ?? ReadTargetFramework(doc);
             var sourceGeneratorAnalyzerPaths = DiscoverFrameworkSourceGeneratorAnalyzerPaths(targetFramework);
 
             // Compilation fact: <Nullable> (INV-COMPFACT-001..003 +
@@ -443,6 +487,9 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                 {
                     ["projectFile"] = Path.GetRelativePath(projectRoot, csprojPath).Replace('\\', '/'),
                     [SymbolPropertyKeys.ReferenceClosure] = referenceClosure.ToString(),
+                    ["languageVersionAuthority"] = sdkFacts == null ? "descriptor" : "msbuild",
+                    ["sdkVersion"] = sdkFacts?.SdkVersion ?? string.Empty,
+                    ["declaredLanguageVersion"] = sdkFacts?.DeclaredLanguageVersion ?? languageVersion,
                 },
             };
         }
@@ -535,10 +582,7 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
         if (major == null)
             return Array.Empty<string>();
 
-        var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
-        var dotnetRoot = runtimeDir == null
-            ? null
-            : Directory.GetParent(runtimeDir)?.Parent?.Parent?.FullName;
+        var dotnetRoot = DotnetRuntimeInstallation.RootPath;
         if (string.IsNullOrEmpty(dotnetRoot))
             return Array.Empty<string>();
 
@@ -665,4 +709,19 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
         => _lastDescriptorContentHashes[path] = ContentFingerprint.ComputeUtf8(
             "lifeblood.workspace-descriptor-content.v1",
             content);
+
+    private static bool HasSdkDeclaration(XDocument document)
+        => !string.IsNullOrWhiteSpace(document.Root?.Attribute("Sdk")?.Value)
+            || document.Root?.Elements().Any(element => element.Name.LocalName == "Sdk"
+                || (element.Name.LocalName == "Import" && element.Attribute("Sdk") != null)) == true;
+
+    private IEnumerable<string> FindGlobalJsonInputs(string projectDirectory)
+    {
+        for (var directory = Path.GetFullPath(projectDirectory); directory != null;
+             directory = Path.GetDirectoryName(directory))
+        {
+            var path = Path.Combine(directory, "global.json");
+            if (_fs.FileExists(path)) yield return path;
+        }
+    }
 }

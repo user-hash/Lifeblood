@@ -65,7 +65,7 @@ public class CsprojCompilationFactsTests
     }
 
     [Fact]
-    public void Discovery_NoLangVersion_ProducesEmptyString()
+    public void Discovery_NoLangVersion_UsesSdkTargetDefault()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-langver-empty-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -77,12 +77,13 @@ public class CsprojCompilationFactsTests
 <Project Sdk=""Microsoft.NET.Sdk"">
   <PropertyGroup>
     <AssemblyName>Test</AssemblyName>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
 </Project>");
 
             var modules = new RoslynModuleDiscovery(new PhysicalFileSystem()).DiscoverModules(tempDir);
             Assert.Single(modules);
-            Assert.Equal(string.Empty, modules[0].LanguageVersion);
+            Assert.Equal("12.0", modules[0].LanguageVersion);
         }
         finally { Directory.Delete(tempDir, true); }
     }

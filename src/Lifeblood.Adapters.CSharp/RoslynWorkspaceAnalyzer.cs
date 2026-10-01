@@ -582,7 +582,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                 detail: "Analysis source-exclusion set changed; full re-analyze required to add/remove files from the cached graph scope.");
         }
 
-        // Rediscover modules — cheap, just XML parsing
+        // Rediscover descriptor and SDK-owned compilation facts.
         var currentModules = _discovery.DiscoverModules(projectRoot);
         var snapshotProfiles = _snapshot.ActiveProfiles;
         var applicableCurrentModules = ApplyProfilesToModules(currentModules, snapshotProfiles);
@@ -604,6 +604,14 @@ public sealed class RoslynWorkspaceAnalyzer :
                 projectRoot,
                 FallbackReason.ModuleSetChanged,
                 detail: $"Module set drift detected: previous={prevModuleNames.Count}, current={currModuleNames.Count}.");
+        }
+
+        if (_discovery.LastSdkInputContentHashes.Any(input =>
+                !_snapshot.DescriptorContentHashes.TryGetValue(input.Key, out var previous)
+                || previous != input.Value))
+        {
+            return HandleFallback(config, projectRoot, FallbackReason.ModuleDescriptorChanged,
+                detail: "SDK selection, imported configuration or effective language facts changed (descriptorKind=sdk).");
         }
 
         // INV-ANALYZE-FALLBACK-001 site 2: descriptor (asmdef) drift.
