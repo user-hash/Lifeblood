@@ -17,18 +17,23 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 internal static class SourceGeneratorRunner
 {
     private static readonly Lock GeneratorDriverGate = new();
+    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
 
     public static CSharpCompilation Run(
         CSharpCompilation compilation,
         IReadOnlyList<string> analyzerPaths,
-        ModuleInfo module)
+        ModuleInfo module,
+        Scope? scope = null)
     {
         if (analyzerPaths.Count == 0)
             return compilation;
 
         lock (GeneratorDriverGate)
         {
-            using var loader = new SourceGeneratorAnalyzerAssemblyLoader(analyzerPaths);
+            using var ownedScope = scope is null ? new Scope() : null;
+            var loader = (scope ?? ownedScope!).GetLoader(analyzerPaths);
             var generators = new List<ISourceGenerator>();
 
             foreach (var path in analyzerPaths)
@@ -76,6 +81,43 @@ internal static class SourceGeneratorRunner
         }
     }
 
+    /// <summary>
+    /// Owns generator code for one compilation pass. Modules with the same
+    /// analyzer inventory share loaded code while each run creates fresh
+    /// generators and a driver. Different inventories retain separate type
+    /// identities; no loader survives the pass in a process-wide cache.
+    /// </summary>
+    internal sealed class Scope : IDisposable
+    {
+        private readonly List<(string[] Paths, SourceGeneratorAnalyzerAssemblyLoader Loader)> _loaders = new();
+        private bool _disposed;
+
+        internal IAnalyzerAssemblyLoader GetLoader(IReadOnlyList<string> paths)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var fullPaths = paths.Select(Path.GetFullPath).ToArray();
+            foreach (var entry in _loaders)
+                if (entry.Paths.SequenceEqual(fullPaths, PathComparer))
+                    return entry.Loader;
+
+            var loader = new SourceGeneratorAnalyzerAssemblyLoader(fullPaths);
+            _loaders.Add((fullPaths, loader));
+            return loader;
+        }
+
+        public void Dispose()
+        {
+            lock (GeneratorDriverGate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                foreach (var entry in _loaders)
+                    entry.Loader.Dispose();
+                _loaders.Clear();
+            }
+        }
+    }
+
     private static AnalyzerConfigOptionsProvider BuildOptionsProvider(ModuleInfo module)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -106,6 +148,7 @@ internal static class SourceGeneratorRunner
     private sealed class SourceGeneratorAnalyzerAssemblyLoader : AssemblyLoadContext, IAnalyzerAssemblyLoader, IDisposable
     {
         private readonly Dictionary<string, string> _dependencies = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Assembly> _loaded = new(PathComparer);
 
         public SourceGeneratorAnalyzerAssemblyLoader(IReadOnlyList<string> paths)
             : base(isCollectible: true)
@@ -122,16 +165,22 @@ internal static class SourceGeneratorRunner
 
         public Assembly LoadFromPath(string fullPath)
         {
-            using var stream = File.OpenRead(Path.GetFullPath(fullPath));
-            return LoadFromStream(stream);
+            var path = Path.GetFullPath(fullPath);
+            if (_loaded.TryGetValue(path, out var loaded))
+                return loaded;
+            using var stream = File.OpenRead(path);
+            var assembly = LoadFromStream(stream);
+            _loaded.Add(path, assembly);
+            return assembly;
         }
 
         protected override Assembly? Load(AssemblyName assemblyName)
         {
             // Roslyn types cross the generator boundary, so they must retain
             // the host's type identity. Generator assemblies and private
-            // dependencies belong to this run and cannot contaminate another
-            // framework version or remain rooted by a process-wide cache.
+            // dependencies belong to this inventory's compilation-pass scope.
+            // They cannot contaminate another framework version or remain
+            // rooted by a process-wide cache.
             foreach (var shared in new[] { typeof(Compilation).Assembly, typeof(CSharpCompilation).Assembly })
                 if (string.Equals(shared.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase))
                     return shared;
@@ -149,7 +198,12 @@ internal static class SourceGeneratorRunner
             return null;
         }
 
-        public void Dispose() => Unload();
+        public void Dispose()
+        {
+            _loaded.Clear();
+            _dependencies.Clear();
+            Unload();
+        }
     }
 
     private sealed class ModuleAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsProvider

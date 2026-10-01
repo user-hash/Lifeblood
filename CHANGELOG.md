@@ -21,6 +21,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Compilation passes reuse generator assemblies per exact analyzer inventory
+  while creating fresh generators and drivers. Disposal clears assembly roots
+  before requesting collectible-context unload; framework versions remain
+  isolated and no process-wide generator cache is retained.
+- BCL reference-pack fallback selects the latest usable numeric version of the
+  runtime major, preserving an installed exact match. Missing or malformed pack
+  directories cannot displace a usable reference pack.
+- CLI benchmark sampling waits for process exit within each sample interval,
+  avoiding wall-time rounding from sleeping after a process has already exited.
+
 - Shared-proxy batch cancellation acceptance covers both response formats. An
   observer confirms active work before cancellation and its stop within five
   seconds; subsequent reads from both clients preserve the same publication.

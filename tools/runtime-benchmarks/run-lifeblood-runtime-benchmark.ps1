@@ -168,7 +168,7 @@ function Invoke-MeasuredProcess([string]$FileName, [string[]]$Arguments, [string
             $samples++
         } catch {
         }
-        Start-Sleep -Milliseconds 250
+        [void]$process.WaitForExit(250)
     }
 
     $process.WaitForExit()

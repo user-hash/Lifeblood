@@ -94,6 +94,7 @@ internal sealed class ModuleCompilationBuilder
         WorkspaceSourcePathMap? sourcePaths = null)
     {
         sourcePaths ??= WorkspaceSourcePathMap.Create(projectRoot);
+        using var generatorScope = new SourceGeneratorRunner.Scope();
         var sorted = TopologicalSort(modules);
         var moduleLookup = (moduleUniverse ?? modules)
             .ToDictionary(m => m.Name, StringComparer.Ordinal);
@@ -159,7 +160,8 @@ internal sealed class ModuleCompilationBuilder
                 depRefs,
                 skippedCollector,
                 contentHashCollector,
-                sourcePaths);
+                sourcePaths,
+                generatorScope);
             if (compilation == null) continue;
 
             // Invoke the processor (symbol/edge extraction happens here).
@@ -239,7 +241,8 @@ internal sealed class ModuleCompilationBuilder
         MetadataReference[] dependencyRefs,
         List<SkippedFile>? skippedCollector,
         Action<string, ContentFingerprint>? contentHashCollector,
-        WorkspaceSourcePathMap sourcePaths)
+        WorkspaceSourcePathMap sourcePaths,
+        SourceGeneratorRunner.Scope generatorScope)
     {
         // Surface every file the adapter declines to process so consumers
         // can show users exactly what was dropped and why.
@@ -433,7 +436,7 @@ internal sealed class ModuleCompilationBuilder
             dedupedReferences,
             compilationOptions);
 
-        return SourceGeneratorRunner.Run(compilation, module.SourceGeneratorAnalyzerPaths, module);
+        return SourceGeneratorRunner.Run(compilation, module.SourceGeneratorAnalyzerPaths, module, generatorScope);
     }
 
     /// <summary>

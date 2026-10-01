@@ -52,24 +52,9 @@ internal static class BclReferenceLoader
 
         var runtimeVersion = Path.GetFileName(runtimeDir); // e.g. "8.0.25"
         var majorVersion = Environment.Version.Major;       // e.g. 8
-        var tfm = $"net{majorVersion}.0";                   // e.g. "net8.0"
-
-        // Try exact version match first, then scan for any version of the same major.
         var packsBase = Path.Combine(dotnetRoot, "packs", "Microsoft.NETCore.App.Ref");
-        if (!Directory.Exists(packsBase)) return null;
-
-        var refDir = Path.Combine(packsBase, runtimeVersion!, "ref", tfm);
-        if (!Directory.Exists(refDir))
-        {
-            // Exact version not found — try latest matching major version.
-            var candidates = Directory.GetDirectories(packsBase)
-                .Where(d => Path.GetFileName(d)!.StartsWith($"{majorVersion}.", StringComparison.Ordinal))
-                .OrderByDescending(d => d)
-                .FirstOrDefault();
-            if (candidates == null) return null;
-            refDir = Path.Combine(candidates, "ref", tfm);
-            if (!Directory.Exists(refDir)) return null;
-        }
+        var refDir = FindReferenceDirectory(packsBase, runtimeVersion!, majorVersion);
+        if (refDir is null) return null;
 
         return Directory.GetFiles(refDir, "*.dll")
             .Select(path =>
@@ -79,6 +64,22 @@ internal static class BclReferenceLoader
             })
             .Where(r => r != null)
             .ToArray()!;
+    }
+
+    internal static string? FindReferenceDirectory(string packsBase, string runtimeVersion, int majorVersion)
+    {
+        if (!Directory.Exists(packsBase)) return null;
+        var tfm = $"net{majorVersion}.0";
+        var exact = Path.Combine(packsBase, runtimeVersion, "ref", tfm);
+        if (Directory.Exists(exact)) return exact;
+
+        return Directory.EnumerateDirectories(packsBase)
+            .Select(path => (Path: path, Version: RoslynModuleDiscovery.TryParseVersion(
+                Path.GetFileName(path), out var version) ? version : null))
+            .Where(candidate => candidate.Version?.Major == majorVersion)
+            .OrderByDescending(candidate => candidate.Version)
+            .Select(candidate => Path.Combine(candidate.Path, "ref", tfm))
+            .FirstOrDefault(Directory.Exists);
     }
 
     private static MetadataReference[] LoadImplementationAssemblies()

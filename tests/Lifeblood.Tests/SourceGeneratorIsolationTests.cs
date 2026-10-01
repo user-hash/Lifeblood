@@ -10,10 +10,13 @@ namespace Lifeblood.Tests;
 public class SourceGeneratorIsolationTests
 {
     [Theory]
-    [InlineData("net8.0", "net10.0")]
-    [InlineData("net10.0", "net8.0")]
-    public void FrameworkVersions_GenerateIndependently_InEitherOrder(string first, string second)
+    [InlineData("net8.0", "net10.0", false)]
+    [InlineData("net10.0", "net8.0", false)]
+    [InlineData("net8.0", "net10.0", true)]
+    [InlineData("net10.0", "net8.0", true)]
+    public void FrameworkVersions_GenerateIndependently_InEitherOrder(string first, string second, bool shareScope)
     {
+        using var scope = shareScope ? new SourceGeneratorRunner.Scope() : null;
         foreach (var target in new[] { first, second, first })
         {
             var root = Path.Combine(Path.GetTempPath(), $"lifeblood-generator-version-{Guid.NewGuid():N}");
@@ -31,12 +34,81 @@ public class SourceGeneratorIsolationTests
                         public partial class Context : JsonSerializerContext { }
                         """) }, BclReferenceLoader.References.Value,
                     new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-                var generated = SourceGeneratorRunner.Run(compilation, module.SourceGeneratorAnalyzerPaths, module);
+                var generated = SourceGeneratorRunner.Run(compilation, module.SourceGeneratorAnalyzerPaths, module, scope);
                 Assert.NotEmpty(generated.GetTypeByMetadataName("Context")!.GetMembers("Default"));
                 Assert.Empty(generated.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
             }
             finally { Directory.Delete(root, true); }
         }
+    }
+
+    [Fact]
+    public void CompilationPass_ReusesCode_CreatesFreshGenerators_AndReleasesScope()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"scoped-generator-{Guid.NewGuid():N}.dll");
+        try
+        {
+            var generator = CSharpCompilation.Create(Path.GetFileNameWithoutExtension(path),
+                new[] { CSharpSyntaxTree.ParseText("""
+                    using Microsoft.CodeAnalysis;
+                    [Generator]
+                    public class ScopedGenerator : ISourceGenerator
+                    {
+                        private static int constructions;
+                        private readonly int construction = ++constructions;
+                        private int executions;
+                        public void Initialize(GeneratorInitializationContext context) { }
+                        public void Execute(GeneratorExecutionContext context)
+                            => context.AddSource("Marker.g.cs", "public class Marker { public const int Construction = "
+                                + construction + "; public const int Executions = " + ++executions + "; }");
+                    }
+                    """) },
+                BclReferenceLoader.References.Value.Append(MetadataReference.CreateFromFile(typeof(ISourceGenerator).Assembly.Location)),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var emit = generator.Emit(path);
+            Assert.True(emit.Success, string.Join("; ", emit.Diagnostics));
+            using (var scope = new SourceGeneratorRunner.Scope())
+            {
+                AssertGenerated(1, scope);
+                AssertGenerated(2, scope);
+            }
+            using (var scope = new SourceGeneratorRunner.Scope())
+            {
+                AssertGenerated(1, scope);
+                scope.Dispose();
+                Assert.Throws<ObjectDisposedException>(() => SourceGeneratorRunner.Run(
+                    CSharpCompilation.Create("Test"), new[] { path }, new ModuleInfo { Name = "Test" }, scope));
+            }
+            var releasedContext = LoadAndReleaseContext(path);
+            for (var attempt = 0; attempt < 10 && releasedContext.IsAlive; attempt++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            Assert.False(releasedContext.IsAlive);
+
+            void AssertGenerated(int construction, SourceGeneratorRunner.Scope scope)
+            {
+                var compilation = CSharpCompilation.Create("Test", references: BclReferenceLoader.References.Value,
+                    options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+                var generated = SourceGeneratorRunner.Run(compilation, new[] { path }, new ModuleInfo { Name = "Test" }, scope);
+                Assert.Empty(generated.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
+                var marker = generated.GetTypeByMetadataName("Marker")!;
+                Assert.Equal(construction, ((IFieldSymbol)marker.GetMembers("Construction").Single()).ConstantValue);
+                Assert.Equal(1, ((IFieldSymbol)marker.GetMembers("Executions").Single()).ConstantValue);
+            }
+        }
+        finally { File.Delete(path); }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference LoadAndReleaseContext(string path)
+    {
+        using var scope = new SourceGeneratorRunner.Scope();
+        var assembly = scope.GetLoader(new[] { path }).LoadFromPath(path);
+        var context = System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(assembly)!;
+        Assert.True(context.IsCollectible);
+        return new WeakReference(context);
     }
 
     [Fact]
