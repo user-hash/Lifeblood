@@ -78,7 +78,7 @@ internal static class SnapshotReadRequestBinder
 
 internal sealed record ToolBatchCall(string ToolName, JsonElement? Arguments);
 
-internal sealed record ToolBatchRequest(IReadOnlyList<ToolBatchCall> Calls);
+internal sealed record ToolBatchRequest(IReadOnlyList<ToolBatchCall> Calls, bool Compact);
 
 internal sealed class ToolBatchContractException : ArgumentException
 {
@@ -106,6 +106,14 @@ internal static class ToolBatchRequestBinder
         {
             throw new ToolBatchContractException(
                 $"calls must contain between 1 and {MaximumCallCount} items.");
+        }
+
+        var compact = false;
+        if (value.TryGetProperty("responseFormat", out var format))
+        {
+            if (format.ValueKind != JsonValueKind.String || format.GetString() is not ("content" or "compact"))
+                throw new ToolBatchContractException("responseFormat must be 'content' or 'compact'.");
+            compact = format.GetString() == "compact";
         }
 
         var calls = new List<ToolBatchCall>(callCount);
@@ -144,6 +152,6 @@ internal static class ToolBatchRequestBinder
             index++;
         }
 
-        return new ToolBatchRequest(calls);
+        return new ToolBatchRequest(calls, compact);
     }
 }

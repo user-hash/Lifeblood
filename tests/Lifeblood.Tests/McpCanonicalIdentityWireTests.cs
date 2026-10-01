@@ -56,6 +56,30 @@ public class McpCanonicalIdentityWireTests
         var first = JsonNode.Parse(rows[0]!["content"]![0]!["text"]!.GetValue<string>())!;
         Assert.Equal("type:App.C", first["id"]!.GetValue<string>());
         Assert.Equal(batch.Payload["snapshotId"]!.GetValue<string>(), first["envelope"]!["snapshotId"]!.GetValue<string>());
+        foreach (var dispatcher in new[] { legacy, canonical })
+        {
+            var compact = Tool(dispatcher, "lifeblood_batch", new { responseFormat = "compact", calls = new object[] {
+                new { tool = "lifeblood_lookup", arguments = new { symbolId = "type:App.C" } },
+                new { tool = "lifeblood_lookup", arguments = new { symbolId = "method:App.C.M(int)" } },
+                new { tool = "lifeblood_symbol_at_position", arguments = new { filePath = fixture.SourcePath, line = 1, column = int.MaxValue } },
+            } });
+            var compactRows = compact.Payload["results"]!.AsArray();
+            Assert.Equal(3, compactRows.Count);
+            Assert.Equal(new[] { 0, 1, 2 }, compactRows.Select(r => r!["index"]!.GetValue<int>()));
+            Assert.False(compactRows[0]!["isError"]!.GetValue<bool>());
+            Assert.True(compactRows[1]!["isError"]!.GetValue<bool>());
+            Assert.True(compactRows[2]!["isError"]!.GetValue<bool>());
+            var address = compactRows[0]!["payload"]!["id"]!.GetValue<string>();
+            if (dispatcher == legacy) Assert.Equal("type:App.C", address);
+            else Assert.StartsWith("type:v2|", address, StringComparison.Ordinal);
+            Assert.Null(compactRows[0]!["evidence"]!["snapshotId"]);
+            Assert.NotNull(compactRows[0]!["evidence"]!["truthTier"]);
+            Assert.Equal("ColumnOutOfRange", compactRows[2]!["payload"]!["positionResolution"]!["coordinateFailure"]!.GetValue<string>());
+            Assert.NotNull(compactRows[2]!["payload"]!["analyzedUnderProfile"]);
+            Assert.Equal(batch.Payload["snapshotId"]!.GetValue<string>(), compact.Payload["envelope"]!["snapshotId"]!.GetValue<string>());
+            Assert.Null(compact.Payload["snapshotId"]);
+            Assert.Null(compact.Payload["analysisIdentity"]);
+        }
         var ids = fixture.Host.Session.Graph!.Symbols.Where(s => s.Name == "M" && s.Kind == Lifeblood.Domain.Graph.SymbolKind.Method).Select(s => s.Id).ToArray();
         var references = Tool(canonical, "lifeblood_find_references", new { symbolIds = ids });
         Assert.NotEqual(true, references.Result.IsError);

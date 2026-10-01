@@ -9,6 +9,8 @@ namespace Lifeblood.Server.Mcp;
 /// Projects declaration-address fields while their publication is leased.
 /// Code, documentation, paths and arbitrary string values remain opaque.
 /// The producer supplies predecessor addresses; this edge owns no ID grammar.
+/// Batch result rows already carry their prepared child projection and are terminal
+/// here, including canonical candidate guidance that must not be projected twice.
 /// </summary>
 internal static class McpCanonicalIdCompatibility
 {
@@ -87,7 +89,7 @@ internal static class McpCanonicalIdCompatibility
                 if (predecessor == value) return value;
                 if (graph?.FindByPredecessorId(predecessor).Count > 1) ambiguous[value] = predecessor;
                 return predecessor;
-            });
+            }, skipBatchResults: toolName == "lifeblood_batch");
             if (ambiguous.Count > 0 || unavailable.Count > 0)
             {
                 payload = new JsonObject
@@ -122,6 +124,7 @@ internal static class McpCanonicalIdCompatibility
             && Enum.TryParse<SymbolKind>(value, out _) && (owner.ContainsKey("name") || owner.ContainsKey("qualifiedName"));
 
     private static void Visit(JsonNode? node, Func<JsonObject, string, string, string> project, bool skipBatchCalls = false, bool skipManifest = false,
+        bool skipBatchResults = false,
         JsonObject? owner = null, string field = "")
     {
         if (node is JsonObject obj)
@@ -130,10 +133,11 @@ internal static class McpCanonicalIdCompatibility
             {
                 if (property.Key.Equals("properties", StringComparison.OrdinalIgnoreCase)
                     || (skipBatchCalls && property.Key.Equals("calls", StringComparison.OrdinalIgnoreCase))
+                    || (skipBatchResults && property.Key.Equals("results", StringComparison.OrdinalIgnoreCase))
                     || (skipManifest && property.Key.Equals("manifest", StringComparison.OrdinalIgnoreCase))) continue;
                 if (property.Value is JsonValue value && value.TryGetValue<string>(out var text))
                     obj[property.Key] = project(obj, property.Key, text);
-                else Visit(property.Value, project, skipBatchCalls, skipManifest, obj, property.Key);
+                else Visit(property.Value, project, skipBatchCalls, skipManifest, skipBatchResults, obj, property.Key);
             }
         }
         else if (node is JsonArray array)
@@ -142,7 +146,7 @@ internal static class McpCanonicalIdCompatibility
             {
                 if (owner != null && array[index] is JsonValue value && value.TryGetValue<string>(out var text))
                     array[index] = project(owner, field, text);
-                else Visit(array[index], project, skipBatchCalls, skipManifest, owner, field);
+                else Visit(array[index], project, skipBatchCalls, skipManifest, skipBatchResults, owner, field);
             }
         }
     }

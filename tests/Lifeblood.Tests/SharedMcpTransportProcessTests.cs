@@ -5,6 +5,7 @@ using Lifeblood.Adapters.JsonGraph;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Lifeblood.Tests;
 
@@ -19,9 +20,11 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
     private readonly string _tempDirectory;
     private readonly string _firstGraphPath;
     private readonly string _secondGraphPath;
+    private readonly ITestOutputHelper _output;
 
-    public SharedMcpTransportProcessTests()
+    public SharedMcpTransportProcessTests(ITestOutputHelper output)
     {
+        _output = output;
         _tempDirectory = Path.Combine(
             Path.GetTempPath(),
             $"lifeblood-shared-process-{Guid.NewGuid():N}");
@@ -519,6 +522,38 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         using var ambiguity = JsonDocument.Parse(rows[1].GetProperty("content")[0].GetProperty("text").GetString()!);
         Assert.Equal("legacy-canonical-id-ambiguity", ambiguity.RootElement.GetProperty("failure").GetString());
         Assert.Equal(2, ambiguity.RootElement.GetProperty("canonicalCandidates").GetArrayLength());
+        foreach (var proxy in new[] { legacy, canonical })
+        {
+            using var compactRpc = await proxy.CallToolAsync("lifeblood_batch", new { responseFormat = "compact", calls = new object[] {
+                new { tool = "lifeblood_lookup", arguments = new { symbolId = "type:Coalesce.Collision" } },
+                new { tool = "lifeblood_lookup", arguments = new { symbolId = "method:Coalesce.Collision.M(int)" } },
+            } });
+            using var compact = McpProcessTestClient.ParseToolPayload(compactRpc);
+            Assert.Equal(before.SnapshotId, compact.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+            var compactRows = compact.RootElement.GetProperty("results");
+            Assert.False(compactRows[0].GetProperty("isError").GetBoolean());
+            Assert.True(compactRows[1].GetProperty("isError").GetBoolean());
+            var compactAddress = compactRows[0].GetProperty("payload").GetProperty("id").GetString();
+            if (proxy == legacy)
+            {
+                Assert.Equal("type:Coalesce.Collision", compactAddress);
+                Assert.Equal("legacy-canonical-id-ambiguity", compactRows[1].GetProperty("payload").GetProperty("failure").GetString());
+                Assert.Equal(2, compactRows[1].GetProperty("payload").GetProperty("canonicalCandidates").GetArrayLength());
+                Assert.Contains("schema v1", compactRows[0].GetProperty("evidence").ToString(), StringComparison.Ordinal);
+                var contentBytes = Encoding.UTF8.GetByteCount(batchRpc.RootElement.GetRawText());
+                var compactBytes = Encoding.UTF8.GetByteCount(compactRpc.RootElement.GetRawText());
+                Assert.True(compactBytes < contentBytes);
+                _output.WriteLine("COMPACT_BATCH_WIRE_MEASUREMENT=" + JsonSerializer.Serialize(new
+                {
+                    scope = "Two lookup calls through the actual shared daemon and v1 proxy, same publication",
+                    fixture = "250 generated type files plus legal overload source",
+                    calls = 2, snapshotId = before.SnapshotId, contentBytes, compactBytes,
+                }));
+            }
+            else Assert.StartsWith("type:v2|", compactAddress, StringComparison.Ordinal);
+            Assert.False(compactRows[0].GetProperty("evidence").TryGetProperty("snapshotId", out _));
+            Assert.True(compactRows[0].GetProperty("evidence").TryGetProperty("truthTier", out _));
+        }
         using var noopRpc = await canonical.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory, incremental = true });
         Assert.Equal(before.SnapshotId, (await ReadSessionAsync(legacy)).SnapshotId);
         File.AppendAllText(sourcePath, " public class Added {} ");

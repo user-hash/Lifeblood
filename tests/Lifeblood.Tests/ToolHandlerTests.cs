@@ -704,8 +704,10 @@ public class ToolHandlerTests : IDisposable
             payload.RootElement.GetProperty("actualAnalysisIdentity").GetProperty("analysisKey").GetString());
     }
 
-    [Fact]
-    public void Handle_Batch_HoldsOneSnapshotAcrossForcedRefresh()
+    [Theory]
+    [InlineData("content")]
+    [InlineData("compact")]
+    public void Handle_Batch_HoldsOneSnapshotAcrossForcedRefresh(string responseFormat)
     {
         using var session = new GraphSession(Fs);
         session.Load(projectPath: null, graphPath: _graphPath, rulesPath: null);
@@ -722,6 +724,7 @@ public class ToolHandlerTests : IDisposable
 
         var result = handler.Handle("lifeblood_batch", MakeArgs(new
         {
+            responseFormat,
             expectedSnapshotId = leasedSnapshotId,
             calls = new object[]
             {
@@ -733,10 +736,18 @@ public class ToolHandlerTests : IDisposable
         Assert.Null(result.IsError);
         Assert.NotEqual(leasedSnapshotId, session.SnapshotId.ToString());
         using var batch = JsonDocument.Parse(result.Content[0].Text);
-        Assert.Equal(leasedSnapshotId, batch.RootElement.GetProperty("snapshotId").GetString());
+        var publication = responseFormat == "compact" ? batch.RootElement.GetProperty("envelope") : batch.RootElement;
+        Assert.Equal(leasedSnapshotId, publication.GetProperty("snapshotId").GetString());
         Assert.Equal(leasedSnapshotId, batch.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
         foreach (var call in batch.RootElement.GetProperty("results").EnumerateArray())
         {
+            if (responseFormat == "compact")
+            {
+                Assert.True(call.TryGetProperty("payload", out _));
+                Assert.False(call.GetProperty("evidence").TryGetProperty("snapshotId", out _));
+                Assert.False(call.GetProperty("evidence").TryGetProperty("analysisIdentity", out _));
+                continue;
+            }
             var text = call.GetProperty("content")[0].GetProperty("text").GetString();
             using var nested = JsonDocument.Parse(text!);
             Assert.Equal(

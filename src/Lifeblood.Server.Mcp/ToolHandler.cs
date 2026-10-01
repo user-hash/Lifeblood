@@ -521,35 +521,33 @@ public sealed class ToolHandler
         }
 
         var snapshot = _session.CurrentSnapshot;
-        var results = new object[request.Calls.Count];
-        var legacyResults = new object[request.Calls.Count];
+        var identity = snapshot.Identity == null ? null : WorkspaceAnalysisDescriptor.From(snapshot.Identity);
+        var sharedIdentity = JsonSerializer.SerializeToNode(new
+        {
+            snapshotId = snapshot.SnapshotId.ToString(),
+            analysisGeneration = snapshot.AnalysisGeneration,
+            analysisIdentity = identity,
+        }, JsonOpts)!.AsObject();
+        var results = new ToolBatchResultRow[request.Calls.Count];
+        var legacyResults = new ToolBatchResultRow[request.Calls.Count];
         for (var index = 0; index < request.Calls.Count; index++)
         {
             var call = request.Calls[index];
             cancellationToken.ThrowIfCancellationRequested();
             var result = Handle(call.ToolName, call.Arguments, cancellationToken);
-            results[index] = new
-            {
-                index,
-                tool = call.ToolName,
-                isError = result.IsError == true,
-                content = result.Content,
-            };
+            results[index] = ToolBatchResultProjection.Project(index, call.ToolName, result, request.Compact, sharedIdentity);
             var legacy = result.LegacyProjection ?? result;
-            legacyResults[index] = new { index, tool = call.ToolName, isError = legacy.IsError == true, content = legacy.Content };
+            legacyResults[index] = ToolBatchResultProjection.Project(index, call.ToolName, legacy, request.Compact, sharedIdentity);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        McpToolResult Build(object[] rows) => TextResult(WithEnvelope("lifeblood_batch", new
+        McpToolResult Build(ToolBatchResultRow[] rows) => TextResult(WithEnvelope("lifeblood_batch",
+            ToolBatchResultProjection.ProjectResponse(new ToolBatchResponse(
+            "serial", rows.Length, snapshot.SnapshotId.ToString(), snapshot.AnalysisGeneration,
+            snapshot.Context?.RootPath ?? "", identity, rows)
         {
-            execution = "serial",
-            callCount = rows.Length,
-            snapshotId = snapshot.SnapshotId.ToString(),
-            analysisGeneration = snapshot.AnalysisGeneration,
-            workspaceRoot = snapshot.Context?.RootPath ?? "",
-            analysisIdentity = snapshot.Identity == null ? null : WorkspaceAnalysisDescriptor.From(snapshot.Identity),
-            results = rows,
-        }));
+            ResponseFormat = request.Compact ? "compact" : null,
+        }, sharedIdentity, JsonOpts)));
         var batch = Build(results);
         batch.LegacyProjection = PrepareLegacyProjection("lifeblood_batch", Build(legacyResults)).LegacyProjection;
         return batch;
@@ -2721,7 +2719,7 @@ public sealed class ToolHandler
     {
         var stopwatch = TelemetryEnabled ? Stopwatch.StartNew() : null;
         var envelope = _decorator.Decorate(toolName, BuildEnvelopeContext());
-        var node = System.Text.Json.JsonSerializer.SerializeToNode(payload, JsonOpts)
+        var node = payload as JsonObject ?? System.Text.Json.JsonSerializer.SerializeToNode(payload, JsonOpts)
             as System.Text.Json.Nodes.JsonObject;
         if (node == null)
         {

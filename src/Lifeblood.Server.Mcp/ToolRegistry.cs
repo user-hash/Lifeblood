@@ -270,7 +270,7 @@ public static class ToolRegistry
   Name = "lifeblood_batch",
   Behavior = CapabilityObservation,
   EnvelopeClassification = DerivedProven,
-  Description = "Execute an ordered read-only query plan under one immutable workspace snapshot lease. Each calls[] item names a registered tool and optional arguments. The complete plan is validated before execution: nested batches, exclusive tools, and every non-Observe effect are rejected without running any item. Accepted calls run serially in stable input order, retain their normal per-tool result/envelope, and the batch adds one common snapshot id, generation, and canonical analysis identity. Hard cap: 32 calls. Use snapshotId for an exact retained publication and expectedSnapshotId and/or expectedAnalysisGeneration for optimistic consistency.",
+  Description = "Execute an ordered read-only query plan under one immutable workspace snapshot lease. Each calls[] item names a registered tool and optional arguments. The complete plan is validated before execution: nested batches, exclusive tools, and every non-Observe effect are rejected without running any item. Accepted calls run serially in stable input order. Default responseFormat:content retains child MCP content. Opt-in responseFormat:compact returns JSON object children as typed payload/evidence under common publication identity, preserving per-item errors, limitations, profiles, truncation and freshness; other content stays intact. Child schema projections are prepared once under the lease. Hard cap: 32 calls. Use snapshotId for an exact retained publication and expectedSnapshotId and/or expectedAnalysisGeneration for optimistic consistency.",
   },
   new()
   {

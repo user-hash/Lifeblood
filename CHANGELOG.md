@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Read batches offer optional `responseFormat:"compact"`: typed child payloads
+  and per-tool evidence share one common publication envelope. Default child
+  MCP content remains intact. Prepared v1/v2 child projections are terminal at
+  the parent boundary, preserving individual ambiguity errors and canonical
+  guidance. Fixed wire/projection measurements record smaller payloads and the
+  extra parsing/allocation cost; no dispatch-latency improvement is claimed.
+
 - Source-position lookups expose typed ownership and coordinate receipts through
   the existing compilation-file resolver. Optional `moduleName` selects linked
   source; failures distinguish missing/ambiguous ownership, line/column bounds,

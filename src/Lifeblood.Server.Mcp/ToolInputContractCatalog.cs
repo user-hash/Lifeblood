@@ -69,7 +69,8 @@ public static class ToolInputContractCatalog
         yield return Contract(@"lifeblood_capabilities");
 
         yield return Contract(@"lifeblood_batch",
-            Arg(@"calls", ToolArgumentType.Array, required: true, arrayItemType: ToolArgumentType.Object, description: @"Ordered read-only query plan. Each item is `{ tool: string, arguments?: object }`. The entire plan holds one snapshot lease, executes serially, rejects non-observation/exclusive/nested-batch tools before any call runs, and is hard-capped at 32 calls.", enumValues: Array.Empty<string>())
+            Arg(@"calls", ToolArgumentType.Array, required: true, arrayItemType: ToolArgumentType.Object, description: @"Ordered read-only query plan. Each item is `{ tool: string, arguments?: object }`. The entire plan holds one snapshot lease, executes serially, rejects non-observation/exclusive/nested-batch tools before any call runs, and is hard-capped at 32 calls.", enumValues: Array.Empty<string>()),
+            Arg(@"responseFormat", ToolArgumentType.String, required: false, arrayItemType: null, description: @"content (default) preserves child MCP content. compact returns JSON object children as typed payload plus per-tool evidence, sharing equal snapshot/generation/analysis identity with the batch. Non-object, plain-text and multi-content children retain their original content.", enumValues: new[] { @"content", @"compact" })
         );
 
         yield return Contract(@"lifeblood_snapshots",
