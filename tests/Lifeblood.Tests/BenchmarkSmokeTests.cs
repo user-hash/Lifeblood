@@ -110,10 +110,13 @@ public class BenchmarkSmokeTests
         Assert.Contains("pipe-reader-buffered", jsonParserBenchmark);
         Assert.Contains("utf8-span", jsonParserBenchmark);
         Assert.Contains("adoptionPosture", jsonParserBenchmark);
-        Assert.Contains("source-generated JSON contexts remain gated", jsonParserBenchmark);
+        Assert.Contains("production source-generated request parser", jsonParserBenchmark);
+        Assert.DoesNotContain("internal static class McpJsonRequestParser", jsonParserBenchmark);
+        Assert.DoesNotContain("internal sealed class JsonRpcRequest", jsonParserBenchmark);
         Assert.Contains("EquivalentToCurrent", jsonParserBenchmark);
         Assert.Contains("<TargetFramework>net10.0</TargetFramework>", jsonParserProject);
         Assert.Contains("<FrameworkReference Include=\"Microsoft.AspNetCore.App\" />", jsonParserProject);
+        Assert.Contains("src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj", jsonParserProject);
 
         var diagnostics = CompileBenchmarkSource(jsonParserBenchmark)
             .Where(d => d.Severity == DiagnosticSeverity.Error)
@@ -163,6 +166,7 @@ public class BenchmarkSmokeTests
         }
 
         Assert.NotEmpty(references);
+        references.Add(MetadataReference.CreateFromFile(typeof(Lifeblood.Server.Mcp.McpJsonRequestParser).Assembly.Location));
         return references;
     }
 

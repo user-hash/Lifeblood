@@ -1,5 +1,5 @@
-using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -8,37 +8,36 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class McpJsonRequestParser
 {
-    private static readonly HashSet<string> JsonRpcEnvelopeProperties = new(StringComparer.Ordinal)
-    {
-        "jsonrpc",
-        "id",
-        "method",
-        "params",
-    };
+    private static readonly McpJsonSerializerContext StrictContext = new(
+        new JsonSerializerOptions(McpJsonSerializerContext.Default.Options)
+        {
+            AllowDuplicateProperties = false,
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        });
 
     /// <summary>
     /// Parse a JSON-RPC request. When strict mode is enabled, duplicate
-    /// property names AND unknown envelope properties are rejected before
-    /// normal System.Text.Json binding. Unknown properties inside
+    /// property names and unknown envelope properties are rejected during
+    /// System.Text.Json binding. Unknown properties inside
     /// <c>params</c> stay opaque (bound to <see cref="JsonElement"/>) and are
-    /// validated per-tool by the handler — see ToolHandler missing-required
-    /// arms.
+    /// validated per-tool by the handler.
     /// </summary>
+    /// <param name="json">One complete request frame.</param>
+    /// <param name="options">Compatibility parameter; generated request metadata owns parsing options.</param>
+    /// <param name="strictJson">Reject duplicate properties and unknown envelope members.</param>
     public static JsonRpcRequest? DeserializeRequest(
         string json,
         JsonSerializerOptions options,
         bool strictJson)
     {
-        if (!strictJson)
-        {
-            return JsonSerializer.Deserialize(json, McpJsonSerializerContext.Default.JsonRpcRequest);
-        }
-
-        var utf8 = Encoding.UTF8.GetBytes(json);
-        ThrowIfInvalidStrictEnvelope(utf8);
-
-        return JsonSerializer.Deserialize(utf8, McpJsonSerializerContext.Default.JsonRpcRequest);
+        return JsonSerializer.Deserialize(json,
+            (strictJson ? StrictContext : McpJsonSerializerContext.Default).JsonRpcRequest);
     }
+
+    /// <summary>Parse one complete UTF-8 request frame with the same envelope policy.</summary>
+    public static JsonRpcRequest? DeserializeRequest(ReadOnlySpan<byte> utf8, bool strictJson)
+        => JsonSerializer.Deserialize(utf8,
+            (strictJson ? StrictContext : McpJsonSerializerContext.Default).JsonRpcRequest);
 
     public static bool ReadStrictJsonFlag(string environmentVariableName)
     {
@@ -53,54 +52,5 @@ public static class McpJsonRequestParser
             "1" or "true" or "yes" or "on" => true,
             _ => false,
         };
-    }
-
-    private static void ThrowIfInvalidStrictEnvelope(ReadOnlySpan<byte> utf8)
-    {
-        var reader = new Utf8JsonReader(
-            utf8,
-            new JsonReaderOptions
-            {
-                AllowTrailingCommas = false,
-                CommentHandling = JsonCommentHandling.Disallow,
-            });
-
-        var scopes = new Stack<HashSet<string>>();
-
-        while (reader.Read())
-        {
-            switch (reader.TokenType)
-            {
-                case JsonTokenType.StartObject:
-                    scopes.Push(new HashSet<string>(StringComparer.Ordinal));
-                    break;
-                case JsonTokenType.EndObject:
-                    if (scopes.Count > 0)
-                    {
-                        scopes.Pop();
-                    }
-                    break;
-                case JsonTokenType.PropertyName:
-                    if (scopes.Count == 0)
-                    {
-                        break;
-                    }
-
-                    var propertyName = reader.GetString() ?? "";
-                    if (!scopes.Peek().Add(propertyName))
-                    {
-                        throw new JsonException(
-                            $"Duplicate JSON property '{propertyName}' is not allowed when strict JSON mode is enabled.");
-                    }
-
-                    if (scopes.Count == 1 && !JsonRpcEnvelopeProperties.Contains(propertyName))
-                    {
-                        throw new JsonException(
-                            $"Unknown JSON-RPC envelope property '{propertyName}' is not allowed when strict JSON mode is enabled.");
-                    }
-
-                    break;
-            }
-        }
     }
 }

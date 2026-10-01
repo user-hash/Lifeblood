@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../../../src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj" />
   </ItemGroup>
 </Project>

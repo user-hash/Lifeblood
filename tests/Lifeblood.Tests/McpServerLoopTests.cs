@@ -107,11 +107,14 @@ public class McpServerLoopTests
     }
 
     [Theory]
-    [InlineData("notifications/cancelled", "requestId")]
-    [InlineData("$/cancelRequest", "id")]
+    [InlineData("notifications/cancelled", "requestId", false)]
+    [InlineData("$/cancelRequest", "id", false)]
+    [InlineData("notifications/cancelled", "requestId", true)]
+    [InlineData("$/cancelRequest", "id", true)]
     public async Task ActiveRequest_CancellationNotificationCancelsById_AndLoopContinues(
         string cancellationMethod,
-        string cancellationIdProperty)
+        string cancellationIdProperty,
+        bool strictJson)
     {
         var cancellationParams = cancellationIdProperty == "requestId"
             ? "{\"requestId\":1}"
@@ -136,7 +139,7 @@ public class McpServerLoopTests
                 return new JsonRpcResponse { Id = request.Id, Result = new { ok = true } };
             },
             JsonOpts,
-            strictJson: false,
+            strictJson,
             CancellationToken.None);
 
         var responses = output.ToString().Split(
@@ -150,6 +153,32 @@ public class McpServerLoopTests
         using var succeeded = JsonDocument.Parse(responses[1]);
         Assert.Equal(2, succeeded.RootElement.GetProperty("id").GetInt32());
         Assert.True(succeeded.RootElement.GetProperty("result").GetProperty("ok").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("""{"id":1,"method":"bad","method":"other"}""")]
+    [InlineData("""{"id":1,"method":"bad","params":{"arguments":{"key":1,"key":2}}}""")]
+    [InlineData("""{"id":1,"method":"bad","unknown":true}""")]
+    public async Task StrictInvalidFrame_EmitsUncorrelatedParseErrorAndKeepsServing(string invalidFrame)
+    {
+        using var input = new StringReader(invalidFrame + "\n{\"id\":2,\"method\":\"ok\"}\n");
+        using var output = new StringWriter();
+        var methods = new List<string>();
+        await McpServerLoop.RunAsync(input, output, (request, _) =>
+        {
+            methods.Add(request.Method);
+            return new JsonRpcResponse { Id = request.Id, Result = new { ok = true } };
+        }, JsonOpts, strictJson: true, CancellationToken.None);
+
+        Assert.Equal(new[] { "ok" }, methods);
+        var lines = output.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(2, lines.Length);
+        using var error = JsonDocument.Parse(lines[0]);
+        Assert.False(error.RootElement.TryGetProperty("id", out var id) && id.ValueKind != JsonValueKind.Null);
+        Assert.Equal(-32700, error.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Equal("Parse error", error.RootElement.GetProperty("error").GetProperty("message").GetString());
+        using var success = JsonDocument.Parse(lines[1]);
+        Assert.Equal(2, success.RootElement.GetProperty("id").GetInt32());
     }
 
     private sealed class ThrowingTextWriter : TextWriter
