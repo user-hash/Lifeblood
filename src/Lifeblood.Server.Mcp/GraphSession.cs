@@ -119,6 +119,8 @@ public sealed class GraphSession : IDisposable
         if (adapter.Compilations is not { Count: > 0 } compilations)
             return (null, null, null);
 
+        using var phase = TelemetryPhase("compilation-services");
+
         // INV-VIEW-002: build the typed semantic view once and share it with
         // every service created for this candidate. Construction happens only
         // after graph validation and rule analysis have succeeded.
@@ -437,6 +439,8 @@ public sealed class GraphSession : IDisposable
         AnalysisPreparationMode mode = AnalysisPreparationMode.ExactInputIdentity)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        using var phase = TelemetryPhase("input-identity");
 
         WorkspaceAnalysisIdentity identity;
         AnalysisRuleSetResolver.ResolvedRuleSet ruleSet;

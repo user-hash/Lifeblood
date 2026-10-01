@@ -99,12 +99,33 @@ internal sealed class RoslynFindReferencesService
             }, options.CancellationToken);
         }
 
+        var targetNames = targets.Values.Where(target => !target.IsConversion)
+            .Select(target => target.Symbol.Name).ToHashSet(StringComparer.Ordinal);
+        var candidateSpellings = new HashSet<string>(targetNames, StringComparer.Ordinal) { "var", "field" };
+        foreach (var target in targets.Values)
+        {
+            if (target.Symbol is INamedTypeSymbol && target.Symbol.Name.EndsWith("Attribute", StringComparison.Ordinal))
+                candidateSpellings.Add(target.Symbol.Name[..^"Attribute".Length]);
+            if (target.Symbol is IMethodSymbol { ExplicitInterfaceImplementations.Length: > 0 })
+                candidateSpellings.Add(target.Symbol.Name[(target.Symbol.Name.LastIndexOf('.') + 1)..]);
+        }
         int treeVisits = 0;
         long nodeVisits = 0;
         long bindings = 0;
         if (targets.Values.Any(target => !target.IsConversion))
         foreach (var compilation in _lookup.Compilations.Values)
         {
+            // Include every alias spelling, including global aliases declared
+            // in another tree. Binding still establishes the exact target.
+            var compilationSpellings = new HashSet<string>(candidateSpellings, StringComparer.Ordinal);
+            foreach (var aliasTree in compilation.SyntaxTrees)
+            {
+                options.CancellationToken.ThrowIfCancellationRequested();
+                foreach (var directive in aliasTree.GetRoot(options.CancellationToken)
+                    .DescendantNodes(node => node is not MemberDeclarationSyntax or BaseNamespaceDeclarationSyntax)
+                    .OfType<UsingDirectiveSyntax>())
+                    if (directive.Alias is { } alias) compilationSpellings.Add(alias.Name.Identifier.ValueText);
+            }
             foreach (var tree in compilation.SyntaxTrees)
             {
                 options.CancellationToken.ThrowIfCancellationRequested();
@@ -116,9 +137,15 @@ internal sealed class RoslynFindReferencesService
                 {
                     options.CancellationToken.ThrowIfCancellationRequested();
                     nodeVisits++;
+                    if (node is SimpleNameSyntax name && !compilationSpellings.Contains(name.Identifier.ValueText)) continue;
                     bindings++;
                     var resolved = model.GetSymbolInfo(node, options.CancellationToken).Symbol;
                     if (resolved == null) continue;
+                    // Canonicalize only compiler-bound candidates with a target name.
+                    // Accessor IDs address their associated property/event owner.
+                    var matchName = resolved is IMethodSymbol { AssociatedSymbol: { } owner }
+                        ? owner.Name : resolved.Name;
+                    if (!targetNames.Contains(matchName)) continue;
                     if (!targets.TryGetValue(Id(resolved), out var target)
                         && !targets.TryGetValue(Id(resolved.OriginalDefinition), out target)) continue;
                     if (target.IsConversion) continue;

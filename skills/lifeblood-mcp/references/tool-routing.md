@@ -64,6 +64,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Inspect static dispatch/config tables | `lifeblood_static_tables` | Operation-tree extraction; use `summarize:true` for large tables. |
 | Check object-initializer wiring | `lifeblood_assignment_coverage` | Useful for bindings/delegate slots and construction completeness. |
 | Triage unused code candidates | `lifeblood_dead_code` | Advisory; verify before deleting. Fold `bucket:"Vendored"` and `bucket:"Scaffolding"` separately from ordinary Production findings. |
+| Find repeated executable bodies | `lifeblood_duplicates` | Bounded retained-profile token equality with physical spans and explicit truncation; advisory for behavior or deletion. For competing architecture owners, compose `lifeblood_authority_coverage` in one batch and keep the categories separate. |
 | Field read but never written / delegate slot never wired? | `lifeblood_wire_audit` | Dead-WIRE complement of dead_code: referenced but structurally unplugged. Advisory. |
 | Boolean feature flag gated but never flipped (dormant)? | `lifeblood_feature_switch_audit` | Verdict `AlwaysDefaultInGraph` / `TestOnlyActivation` / `RuntimeMutable`. Advisory. |
 | Do call sites actually pass the new/optional argument? | `lifeblood_callsite_arguments` | Per-site argument facts + supplied/omitted histogram; the API-adoption gap. |

@@ -22,6 +22,62 @@ namespace Lifeblood.Tests;
 /// </summary>
 public class FindReferencesTests
 {
+    [Theory]
+    [InlineData(CanonicalSymbolIdVersion.LegacyV1)]
+    [InlineData(CanonicalSymbolIdVersion.AssemblyQualifiedV2)]
+    public void FindReferences_BoundNameFilterPreservesAliasesGenericsAndOperators(CanonicalSymbolIdVersion version)
+    {
+        var (compilations, dependencies) = BuildTwoModule(
+            """
+            namespace Lib {
+                public class Service { public void Run<T>(T value) {} public void Other() {} }
+                public class MarkerAttribute : System.Attribute { public MarkerAttribute() {} }
+                public class Value { public static Value operator +(Value a, Value b) => a; }
+                public static class Extensions { public static void Extend(this Service service) {} }
+            }
+            """,
+            """
+            using Alias = Lib.Service;
+            using Lib;
+            [Marker] class Caller {
+                void Invoke(Alias service, Value value) {
+                    service.Run(0); service.Run("text"); service.Extend();
+                    service.Other(); service.Other();
+                    var result = value + value;
+                    var inferred = service;
+                    System.Console.WriteLine(typeof(OtherAlias));
+                    System.Console.WriteLine(typeof(Alias));
+                }
+            }
+            """);
+        compilations["Consumer"] = compilations["Consumer"].AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+            "global using OtherAlias = Lib.Service;", path: "Aliases.cs"));
+        Assert.DoesNotContain(compilations.Values.SelectMany(c => c.GetDiagnostics()),
+            d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        var library = compilations["Lib"];
+        var symbols = new ISymbol[] {
+            library.GetTypeByMetadataName("Lib.Service")!,
+            library.GetTypeByMetadataName("Lib.Service")!.GetMembers("Run").Single(),
+            library.GetTypeByMetadataName("Lib.Extensions")!.GetMembers("Extend").Single(),
+            library.GetTypeByMetadataName("Lib.MarkerAttribute")!.InstanceConstructors.Single(),
+            library.GetTypeByMetadataName("Lib.Value")!.GetMembers("op_Addition").Single(),
+            library.GetTypeByMetadataName("Lib.MarkerAttribute")!,
+        };
+        var ids = symbols.Select(symbol => Lifeblood.Adapters.CSharp.Internal.CanonicalSymbolFormat.BuildSymbolId(symbol, version)).ToArray();
+        using var host = new RoslynCompilationHost(compilations, dependencies, idVersion: version);
+        var report = host.FindReferences(new FindReferencesRequest { SymbolIds = ids }, FindReferencesOptions.Default);
+        Assert.All(report.Symbols, group => Assert.True(group.Resolved));
+        Assert.Equal(2, report.Symbols[1].Locations.Length);
+        Assert.Single(report.Symbols[2].Locations);
+        Assert.Single(report.Symbols[3].Locations);
+        Assert.Single(report.Symbols[4].Locations);
+        Assert.Contains(report.Symbols[0].Locations, location => location.SpanText == "Alias");
+        Assert.Contains(report.Symbols[0].Locations, location => location.SpanText == "OtherAlias");
+        Assert.Contains(report.Symbols[0].Locations, location => location.SpanText == "var");
+        Assert.Empty(report.Symbols[5].Locations);
+        Assert.True(report.Work.MatchIdBuildCount < report.Work.SyntaxBindingCount);
+    }
+
     private static MetadataReference[] BclReferences()
     {
         var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
@@ -293,7 +349,8 @@ namespace App
             Assert.Equal(System.Text.Json.JsonSerializer.Serialize(separate[i].Symbols[0].Locations),
                 System.Text.Json.JsonSerializer.Serialize(combined.Symbols[i].Locations));
         Assert.Equal(2, combined.Work.SyntaxTreeVisits);
-        Assert.Equal(separate.Take(3).Sum(row => row.Work.SyntaxBindingCount), combined.Work.SyntaxBindingCount * 3);
+        Assert.Equal(separate[0].Work.SyntaxNodeVisits, combined.Work.SyntaxNodeVisits);
+        Assert.True(combined.Work.SyntaxBindingCount <= separate.Take(3).Sum(row => row.Work.SyntaxBindingCount));
         Assert.Equal(1, combined.Work.ConversionScanCount);
         Assert.Equal(2, separate.Sum(row => row.Work.ConversionScanCount));
         Assert.Equal(2, combined.Symbols[0].Locations.Count(location => location.Kind == ReferenceKind.Usage));

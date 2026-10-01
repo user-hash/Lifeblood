@@ -100,6 +100,10 @@ public class ToolHandlerTelemetryTests
             var result = handler.Handle("lifeblood_analyze", JsonArgs(new { graphPath }));
 
             Assert.Null(result.IsError);
+            Assert.Contains(telemetry.Operations, o =>
+                o.Name == "lifeblood.analyze.phase"
+                && Equals(o.Tags["analyze.phase"], "input-identity")
+                && o.Disposed);
             Assert.Contains(telemetry.Events, e =>
                 e.Name == "lifeblood.analyze.phase"
                 && Equals(e.Tags["analyze.phase"], "json-import")

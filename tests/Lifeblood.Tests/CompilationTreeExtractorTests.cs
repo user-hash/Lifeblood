@@ -1,4 +1,5 @@
 using Lifeblood.Adapters.CSharp.Internal;
+using Lifeblood.Adapters.CSharp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
@@ -7,6 +8,30 @@ namespace Lifeblood.Tests;
 
 public sealed class CompilationTreeExtractorTests
 {
+    [Theory]
+    [InlineData(CanonicalSymbolIdVersion.LegacyV1)]
+    [InlineData(CanonicalSymbolIdVersion.AssemblyQualifiedV2)]
+    public void EdgeExtractor_ReusedAcrossCompilationsKeepsExactIdsAndFirstOccurrence(CanonicalSymbolIdVersion version)
+    {
+        var extractor = new RoslynEdgeExtractor(version);
+        foreach (var name in new[] { "First", "Second", "First" })
+        {
+            var tree = CSharpSyntaxTree.ParseText(
+                $"namespace Sample; public class {name} {{ public void Target() {{}} public void Caller() {{ Target(); Target(); }} }}",
+                path: name + ".cs");
+            var compilation = CreateCompilation(new[] { tree });
+            var type = compilation.GetTypeByMetadataName("Sample." + name)!;
+            var target = CanonicalSymbolFormat.BuildMethodId((IMethodSymbol)type.GetMembers("Target").Single(), version);
+            var caller = CanonicalSymbolFormat.BuildMethodId((IMethodSymbol)type.GetMembers("Caller").Single(), version);
+            var edges = extractor.Extract(compilation.GetSemanticModel(tree), tree.GetRoot(), name + ".cs");
+            var call = Assert.Single(edges, edge => edge.Kind == Lifeblood.Domain.Graph.EdgeKind.Calls);
+            Assert.Equal(caller, call.SourceId);
+            Assert.Equal(target, call.TargetId);
+            Assert.Equal(name + ".cs", call.CallSite!.FilePath);
+            Assert.Equal(tree.GetText().ToString().IndexOf("Target();", StringComparison.Ordinal) + 1, call.CallSite.Column);
+        }
+    }
+
     [Fact]
     public void Extract_PreservesCompilationTreeOrder_AcrossParallelWorkers()
     {
