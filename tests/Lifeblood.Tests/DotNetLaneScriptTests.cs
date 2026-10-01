@@ -16,7 +16,7 @@ public class DotNetLaneScriptTests
 
         Assert.Contains("No installed .NET SDK can build", script);
         Assert.Contains("FailWhenUnavailable", script);
-        Assert.Contains("Production project files remain pinned to net8.0", script);
+        Assert.Contains("Production project files are not modified by this lane", script);
         Assert.Contains("Copy-SourceTree", script);
         Assert.Contains("Set-CopiedProjectTargetFrameworks", script);
         Assert.Contains("retargets only the copied solution projects", script);
@@ -51,7 +51,7 @@ public class DotNetLaneScriptTests
         Assert.Contains("semantic-self-analyze", script);
         Assert.Contains("semanticComparison", script);
         Assert.Contains("matchesStatusAnchors", script);
-        Assert.Contains("docs/STATUS.md selfAnalyze* anchors from the production net8.0 lane", script);
+        Assert.Contains("docs/STATUS.md selfAnalyze* anchors from the production lane", script);
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public class DotNetLaneScriptTests
         Assert.Contains("run-lifeblood-experimental-target.ps1", script);
         Assert.Contains("CompilerFeatures =", script);
         Assert.Contains("Runtime Async is injected only into the temporary copied source tree", script);
-        Assert.Contains("Production projects remain net8.0", script);
+        Assert.Contains("Production projects do not opt into Runtime Async", script);
     }
 
     [Fact]

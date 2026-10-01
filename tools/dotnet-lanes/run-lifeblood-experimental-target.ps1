@@ -164,7 +164,7 @@ function New-SemanticComparison($StatusAnchors, $Actual) {
     )
 
     return [ordered]@{
-        baseline = "docs/STATUS.md selfAnalyze* anchors from the production net8.0 lane"
+        baseline = "docs/STATUS.md selfAnalyze* anchors from the production lane"
         checks = $checks
         matchesStatusAnchors = (-not ($checks | Where-Object { -not $_.matches }))
     }
@@ -176,7 +176,7 @@ function New-TestComparison($StatusAnchors, $Summary) {
     )
 
     return [ordered]@{
-        baseline = "docs/STATUS.md testCount anchor from the production net8.0 lane"
+        baseline = "docs/STATUS.md testCount anchor from the production lane"
         checks = $checks
         matchesStatusAnchors = (-not ($checks | Where-Object { -not $_.matches }))
     }
@@ -208,7 +208,13 @@ function Copy-SourceTree([string]$SourceRoot, [string]$DestinationRoot) {
         "TestResults"
     )
 
-    New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+    # The copied source must own its Git history even beneath another checkout.
+    # Retargeted working files remain dirty against the source commit; neither
+    # MinVer nor source-control evidence may borrow the parent repository.
+    & git clone --quiet --no-hardlinks --no-checkout $SourceRoot $DestinationRoot
+    if ($LASTEXITCODE -ne 0) { throw "Could not copy qualification Git history." }
+    & git -C $DestinationRoot reset --mixed --quiet HEAD
+    if ($LASTEXITCODE -ne 0) { throw "Could not initialize qualification Git index." }
 
     Get-ChildItem -LiteralPath $SourceRoot -Force -Recurse | ForEach-Object {
         $relative = $_.FullName.Substring($SourceRoot.Length).TrimStart(
@@ -417,7 +423,7 @@ $report = [ordered]@{
         dotnetCliHome = [Environment]::GetEnvironmentVariable("DOTNET_CLI_HOME", "Process")
     }
     notes = @(
-        "Production project files remain pinned to net8.0.",
+        "Production project files are not modified by this lane.",
         "The lane copies source to a temporary tree and retargets only the copied solution projects.",
         "Optional compiler features are injected only into the copied tree; checked-in projects remain unchanged.",
         "The temporary tree omits root global.json so the installed experimental SDK can be selected honestly.",

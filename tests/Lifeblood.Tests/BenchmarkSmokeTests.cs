@@ -112,7 +112,7 @@ public class BenchmarkSmokeTests
         Assert.Contains("adoptionPosture", jsonParserBenchmark);
         Assert.Contains("source-generated JSON contexts remain gated", jsonParserBenchmark);
         Assert.Contains("EquivalentToCurrent", jsonParserBenchmark);
-        Assert.Contains("<TargetFramework>net8.0</TargetFramework>", jsonParserProject);
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>", jsonParserProject);
         Assert.Contains("<FrameworkReference Include=\"Microsoft.AspNetCore.App\" />", jsonParserProject);
 
         var diagnostics = CompileBenchmarkSource(jsonParserBenchmark)
@@ -179,7 +179,8 @@ public class BenchmarkSmokeTests
 
         var refDir = new DirectoryInfo(packRoot)
             .EnumerateDirectories()
-            .OrderByDescending(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(d => Version.TryParse(d.Name, out var version) && version.Major == Environment.Version.Major)
+            .OrderByDescending(d => Version.Parse(d.Name))
             .SelectMany(d =>
             {
                 var refRoot = Path.Combine(d.FullName, "ref");

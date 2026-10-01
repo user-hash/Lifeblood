@@ -42,7 +42,7 @@ dotnet tool install --global Lifeblood
 dotnet tool install --global Lifeblood.Server.Mcp
 ```
 
-Requires [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+Requires [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ### Connect to Claude Code, Cursor, or any MCP client
 

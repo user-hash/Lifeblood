@@ -207,37 +207,42 @@ internal sealed class RoslynWorkspaceManager : IDisposable
     private static IEnumerable<ISymbol> FindVersion2Candidates(Compilation compilation, ParsedSymbolId parsed)
     {
         var parts = parsed.Version2Parts!;
-        var assemblies = compilation.SourceModule.ReferencedAssemblySymbols.Prepend(compilation.Assembly)
-            .Where(a => a.Identity.ToString() == parts[0]);
         var matches = new List<ISymbol>();
-        foreach (var assembly in assemblies)
+        // Resolve within the addressed assembly, including extern-alias-only
+        // references. Compiler-owned documentation IDs preserve arity and
+        // extension containers whose source Name differs from their locator.
+        var owners = compilation.SourceModule.ReferencedAssemblySymbols.Prepend(compilation.Assembly)
+            .Where(assembly => assembly.Identity.ToString() == parts[0])
+            .SelectMany(assembly => FindTypeOwners(assembly.GlobalNamespace, parts[1]));
+        foreach (var owner in owners)
         {
-            IEnumerable<INamespaceOrTypeSymbol> containers = new[] { assembly.GlobalNamespace };
-            foreach (var segment in parts[1][2..].Split('.'))
+            // Indexers have a source lookup name of this[] and a metadata name
+            // of Item. Match the persisted metadata locator on both surfaces.
+            IEnumerable<ISymbol> candidates = parsed.Kind == "type" ? new[] { owner }
+                : owner.GetMembers().Where(m => m.MetadataName == parts[2]);
+            foreach (var candidate in candidates)
             {
-                var aritySeparator = segment.LastIndexOf('`');
-                var name = aritySeparator < 0 ? segment : segment[..aritySeparator];
-                var arity = 0;
-                if (aritySeparator >= 0 && !int.TryParse(segment[(aritySeparator + 1)..], out arity))
-                    return Array.Empty<ISymbol>();
-                containers = containers.SelectMany(c => c.GetMembers(name).OfType<INamespaceOrTypeSymbol>())
-                    .Where(c => c is INamespaceSymbol ? aritySeparator < 0 : ((INamedTypeSymbol)c).Arity == arity)
-                    .ToArray();
-            }
-            foreach (var owner in containers.OfType<INamedTypeSymbol>())
-            {
-                // Indexers have a source lookup name of this[] and a metadata name
-                // of Item. Match the persisted metadata locator on both surfaces.
-                IEnumerable<ISymbol> candidates = parsed.Kind == "type" ? new[] { owner }
-                    : owner.GetMembers().Where(m => m.MetadataName == parts[2]);
-                foreach (var candidate in candidates)
-                {
-                    if (CanonicalSymbolFormat.BuildSymbolId(candidate, CanonicalSymbolIdVersion.AssemblyQualifiedV2) == parsed.CompleteId)
-                        matches.Add(candidate);
-                }
+                if (CanonicalSymbolFormat.BuildSymbolId(candidate, CanonicalSymbolIdVersion.AssemblyQualifiedV2) == parsed.CompleteId)
+                    matches.Add(candidate);
             }
         }
         return matches;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> FindTypeOwners(INamespaceOrTypeSymbol container, string declarationId)
+    {
+        foreach (var member in container.GetMembers().OfType<INamespaceOrTypeSymbol>())
+        {
+            var locator = member.GetDocumentationCommentId();
+            if (locator is null) continue;
+            if (member is INamespaceSymbol)
+                locator = "T:" + locator[2..];
+            if (member is INamedTypeSymbol type && locator == declarationId)
+                yield return type;
+            else if (declarationId.StartsWith(locator + ".", StringComparison.Ordinal))
+                foreach (var nested in FindTypeOwners(member, declarationId))
+                    yield return nested;
+        }
     }
 
     private void EnsureWorkspace()

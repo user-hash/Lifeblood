@@ -208,7 +208,7 @@ $report = [ordered]@{
     workloads = @()
     notes = @(
         "Runtime Async is injected only into the temporary copied source tree via <Features>runtime-async=on</Features>.",
-        "Production projects remain net8.0 and do not opt into Runtime Async.",
+        "Production projects do not opt into Runtime Async.",
         "The lane records an honest skip when no SDK can build the requested target framework."
     )
 }

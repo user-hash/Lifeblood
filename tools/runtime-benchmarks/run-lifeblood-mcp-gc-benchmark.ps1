@@ -19,7 +19,7 @@
   the live dist/ the editor's MCP client is connected to.
 #>
 param(
-    [string]$ServerDll = "artifacts/runtime-benchmarks/mcp-publish/net8.0/Lifeblood.Server.Mcp.dll",
+    [string]$ServerDll = "artifacts/runtime-benchmarks/mcp-publish/net10.0/Lifeblood.Server.Mcp.dll",
     [string]$Project = "",
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-mcp-gc-benchmark.json",
     [string]$BenchmarkRunId = "",
@@ -40,7 +40,7 @@ $resolvedBenchmarkRunId = if ([string]::IsNullOrWhiteSpace($BenchmarkRunId)) { [
 $projectPath = if ([string]::IsNullOrWhiteSpace($Project)) { $repoRoot } else { (Resolve-Path $Project).Path }
 $serverDllFull = if ([System.IO.Path]::IsPathRooted($ServerDll)) { $ServerDll } else { Join-Path $repoRoot $ServerDll }
 if (-not (Test-Path -LiteralPath $serverDllFull)) {
-    throw "Server dll not found: $serverDllFull. Publish first: dotnet publish src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj -c Release -f net8.0 -o artifacts/runtime-benchmarks/mcp-publish/net8.0"
+    throw "Server dll not found: $serverDllFull. Publish first: dotnet publish src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj -c Release -f net10.0 -o artifacts/runtime-benchmarks/mcp-publish/net10.0"
 }
 
 $outputFullPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath } else { Join-Path $repoRoot $OutputPath }

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.Loader;
 using Lifeblood.Application.Ports.Left;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -15,7 +16,7 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 /// </summary>
 internal static class SourceGeneratorRunner
 {
-    private static readonly object GeneratorDriverGate = new();
+    private static readonly Lock GeneratorDriverGate = new();
 
     public static CSharpCompilation Run(
         CSharpCompilation compilation,
@@ -27,26 +28,23 @@ internal static class SourceGeneratorRunner
 
         lock (GeneratorDriverGate)
         {
-            var loader = new SourceGeneratorAnalyzerAssemblyLoader();
+            using var loader = new SourceGeneratorAnalyzerAssemblyLoader(analyzerPaths);
             var generators = new List<ISourceGenerator>();
 
             foreach (var path in analyzerPaths)
             {
-                if (!File.Exists(path))
-                    continue;
-
-                loader.AddDependencyLocation(path);
                 try
                 {
                     var reference = new AnalyzerFileReference(path, loader);
+                    reference.AnalyzerLoadFailed += (_, failure) => throw new InvalidOperationException(
+                        $"Source generator load failed for module '{module.Name}' at '{path}': {failure.Message}",
+                        failure.Exception);
                     generators.AddRange(reference.GetGeneratorsForAllLanguages());
                 }
                 catch (Exception ex) when (ex is IOException or BadImageFormatException or FileLoadException)
                 {
-                    // Analyzer load failures should not make the whole workspace
-                    // unanalyzable. The compilation will surface any unresolved
-                    // generated members as diagnostics, exactly as pre-generator
-                    // Lifeblood did.
+                    throw new InvalidOperationException(
+                        $"Source generator load failed for module '{module.Name}' at '{path}'.", ex);
                 }
             }
 
@@ -57,15 +55,22 @@ internal static class SourceGeneratorRunner
                 .Select(tree => tree.Options)
                 .OfType<CSharpParseOptions>()
                 .FirstOrDefault();
-            var driver = CSharpGeneratorDriver.Create(
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 generators,
                 parseOptions: parseOptions,
                 optionsProvider: BuildOptionsProvider(module));
 
-            driver.RunGeneratorsAndUpdateCompilation(
+            driver = driver.RunGeneratorsAndUpdateCompilation(
                 compilation,
                 out var updatedCompilation,
-                out _);
+                out var diagnostics);
+
+            var failures = driver.GetRunResult().Results.Where(result => result.Exception is not null).ToArray();
+            if (failures.Length > 0 || diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error))
+                throw new InvalidOperationException(
+                    $"Source generator execution failed for module '{module.Name}': "
+                    + string.Join("; ", diagnostics.Select(diagnostic => diagnostic.ToString()))
+                    + string.Join("; ", failures.Select(result => result.Exception!.Message)));
 
             return (CSharpCompilation)updatedCompilation;
         }
@@ -98,28 +103,53 @@ internal static class SourceGeneratorRunner
         return new ModuleAnalyzerConfigOptionsProvider(values);
     }
 
-    private sealed class SourceGeneratorAnalyzerAssemblyLoader : IAnalyzerAssemblyLoader
+    private sealed class SourceGeneratorAnalyzerAssemblyLoader : AssemblyLoadContext, IAnalyzerAssemblyLoader, IDisposable
     {
-        private readonly Dictionary<string, Assembly> _loaded = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _dependencies = new(StringComparer.OrdinalIgnoreCase);
+
+        public SourceGeneratorAnalyzerAssemblyLoader(IReadOnlyList<string> paths)
+            : base(isCollectible: true)
+        {
+            foreach (var path in paths)
+                AddDependencyLocation(path);
+        }
 
         public void AddDependencyLocation(string fullPath)
         {
-            // AnalyzerFileReference calls this before LoadFromPath. The default
-            // Assembly.LoadFrom probing is enough for framework-reference
-            // generators because their dependencies are either next to the
-            // analyzer or already loaded by Lifeblood's Roslyn host.
+            var path = Path.GetFullPath(fullPath);
+            _dependencies[Path.GetFileNameWithoutExtension(path)] = path;
         }
 
         public Assembly LoadFromPath(string fullPath)
         {
-            var normalized = Path.GetFullPath(fullPath);
-            if (_loaded.TryGetValue(normalized, out var assembly))
-                return assembly;
-
-            assembly = Assembly.LoadFrom(normalized);
-            _loaded[normalized] = assembly;
-            return assembly;
+            using var stream = File.OpenRead(Path.GetFullPath(fullPath));
+            return LoadFromStream(stream);
         }
+
+        protected override Assembly? Load(AssemblyName assemblyName)
+        {
+            // Roslyn types cross the generator boundary, so they must retain
+            // the host's type identity. Generator assemblies and private
+            // dependencies belong to this run and cannot contaminate another
+            // framework version or remain rooted by a process-wide cache.
+            foreach (var shared in new[] { typeof(Compilation).Assembly, typeof(CSharpCompilation).Assembly })
+                if (string.Equals(shared.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase))
+                    return shared;
+
+            if (assemblyName.Name is not null && _dependencies.TryGetValue(assemblyName.Name, out var registered))
+                return LoadFromPath(registered);
+
+            foreach (var directory in _dependencies.Values.Select(Path.GetDirectoryName).Distinct())
+            {
+                var candidate = Path.Combine(directory!, assemblyName.Name + ".dll");
+                if (File.Exists(candidate))
+                    return LoadFromPath(candidate);
+            }
+
+            return null;
+        }
+
+        public void Dispose() => Unload();
     }
 
     private sealed class ModuleAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsProvider

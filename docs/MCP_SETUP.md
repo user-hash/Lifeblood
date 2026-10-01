@@ -4,12 +4,12 @@ Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents the full MCP tool surfa
 
 ## How it works
 
-[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 8 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes the read + write MCP tool surface in one shared session (live counts in [`STATUS.md`](STATUS.md)).
+[Model Context Protocol](https://modelcontextprotocol.io/) (MCP) is the open stdio-based protocol that lets AI agents connect to local tool servers. Lifeblood ships one MCP server, `lifeblood-mcp`. It runs as a single .NET 10 process, speaks JSON-RPC 2.0 over stdin/stdout, and exposes the read + write MCP tool surface in one shared session (live counts in [`STATUS.md`](STATUS.md)).
 
 ```
 ┌─────────────────┐   spawn (stdin/stdout)   ┌──────────────────────────┐
 │   MCP client    │ ───────────────────────► │      lifeblood-mcp       │
-│ (Claude Code,   │ ◄─────────────────────── │  (single .NET 8 process) │
+│ (Claude Code,   │ ◄─────────────────────── │  (single .NET 10 process) │
 │  Cursor, etc.)  │   JSON-RPC 2.0 messages  │                          │
 └─────────────────┘                          │  ┌────────────────────┐  │
                                              │  │  Roslyn workspace  │  │
@@ -45,7 +45,7 @@ Lifeblood's MCP server (`lifeblood-mcp`) gives AI agents the full MCP tool surfa
 dotnet tool install --global Lifeblood.Server.Mcp
 ```
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). After install, `lifeblood-mcp` is on `PATH`. Verify by running it directly. It will start, print nothing, and wait for JSON-RPC messages on stdin. Press `Ctrl+C` to exit.
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). After install, `lifeblood-mcp` is on `PATH`. Verify by running it directly. It will start, print nothing, and wait for JSON-RPC messages on stdin. Press `Ctrl+C` to exit.
 
 To upgrade later: `dotnet tool update --global Lifeblood.Server.Mcp`.
 
@@ -59,7 +59,7 @@ cd Lifeblood
 dotnet build
 ```
 
-The build output lives at `src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll`. Point `.mcp.json` at that path directly (see the dev example below). Every subsequent `dotnet build` or `dotnet test` refreshes it automatically - no publish step, no stale-binary drift class. The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form so you can copy it to `.mcp.json` locally and edit the path if you want a dev-build override. `.mcp.json` itself is gitignored, so machine-specific paths do not leak across contributors.
+The build output lives at `src/Lifeblood.Server.Mcp/bin/Debug/net10.0/Lifeblood.Server.Mcp.dll`. Point `.mcp.json` at that path directly (see the dev example below). Every subsequent `dotnet build` or `dotnet test` refreshes it automatically - no publish step, no stale-binary drift class. The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form so you can copy it to `.mcp.json` locally and edit the path if you want a dev-build override. `.mcp.json` itself is gitignored, so machine-specific paths do not leak across contributors.
 
 ### Verify the install
 
@@ -115,7 +115,7 @@ Or from source (development), pointing at the local build output. Any `dotnet bu
   "mcpServers": {
     "lifeblood": {
       "command": "dotnet",
-      "args": ["/path/to/Lifeblood/src/Lifeblood.Server.Mcp/bin/Debug/net8.0/Lifeblood.Server.Mcp.dll"]
+      "args": ["/path/to/Lifeblood/src/Lifeblood.Server.Mcp/bin/Debug/net10.0/Lifeblood.Server.Mcp.dll"]
     }
   }
 }
@@ -260,7 +260,7 @@ Lifeblood integrates with the Unity Editor as a **canonical UPM outer adapter** 
                                                           ▼
                                         ┌─────────────────────────────┐
                                         │      lifeblood-mcp          │
-                                        │   (shared .NET 8 daemon)    │
+                                        │   (shared .NET 10 daemon)    │
                                         │   - Roslyn workspace        │
                                         │   - Semantic graph          │
                                         │   - All tools share         │
@@ -276,7 +276,7 @@ Three pieces work together:
 
 Lifeblood runs **outside** Unity's `AppDomain`. Three consequences:
 
-- **No assembly conflicts.** Lifeblood pulls Roslyn 4.14 (Microsoft.CodeAnalysis). Unity ships its own (often older) Roslyn assemblies. Sidecar isolation means neither side fights for type identity.
+- **No assembly conflicts.** Lifeblood pulls Roslyn 5.9 (Microsoft.CodeAnalysis). Unity ships its own (often older) Roslyn assemblies. Sidecar isolation means neither side fights for type identity.
 
 - **No domain reload state loss.** When Unity recompiles, the bridge disposes only Unity's proxy. The semantic daemon stays alive while another workspace lease exists, and the next Unity call reconnects to the same publication.
 
@@ -358,6 +358,6 @@ The graph stays in memory for the session. Every tool shares the same loaded wor
 
 ## Notes for Unity, .NET Framework, and Mono workspaces
 
-If your modules ship their own BCL via csproj `<Reference Include="netstandard|mscorlib|System.Runtime">` or via `<HintPath>` to a vendored framework DLL, Lifeblood detects this at discovery time and switches that module to `BclOwnership=ModuleProvided`. The host .NET 8 BCL is NOT injected for those modules. This prevents the BCL double-load that would otherwise produce CS0433 and CS0518 on every System usage and silently zero out call-graph extraction. No configuration required.
+If your modules ship their own BCL via csproj `<Reference Include="netstandard|mscorlib|System.Runtime">` or via `<HintPath>` to a vendored framework DLL, Lifeblood detects this at discovery time and switches that module to `BclOwnership=ModuleProvided`. The host BCL is NOT injected for those modules. This prevents the BCL double-load that would otherwise produce CS0433 and CS0518 on every System usage and silently zero out call-graph extraction. No configuration required.
 
 If you see a flood of CS0227 false positives on a module that uses `unsafe` blocks, confirm the csproj has `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>`. Lifeblood reads this from the csproj and passes `WithAllowUnsafe(true)` into the compilation.

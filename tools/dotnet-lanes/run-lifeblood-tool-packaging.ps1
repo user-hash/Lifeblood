@@ -1,5 +1,5 @@
 param(
-    [string]$TargetFramework = "net8.0",
+    [string]$TargetFramework = "net10.0",
     [string]$Configuration = "Release",
     [string]$OutputPath = "artifacts/tool-packaging/tool-packaging-report.json",
     [int]$McpSmokeTimeoutSeconds = 10,
@@ -400,7 +400,7 @@ try {
     }
 
     $toolExecHelpText = (@($toolExecHelp) -join "`n")
-    if ($toolExecExitCode -eq 0 -and $toolExecHelpText -match '(?m)^\s+exec\s') {
+    if ($toolExecExitCode -eq 0 -and $toolExecHelpText -match '(?m)^\s+dotnet tool (?:exec|execute)\s+<') {
         Invoke-ProcessSmoke $report "smoke-dotnet-tool-exec-help" "dotnet" @(
             "tool", "exec", "Lifeblood@$($cliPackage.version)",
             "--add-source", $packagesDir,

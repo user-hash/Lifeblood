@@ -22,7 +22,7 @@
   analysis profile set.
 #>
 param(
-    [string]$ServerDll = "artifacts/runtime-benchmarks/mcp-publish/net8.0/Lifeblood.Server.Mcp.dll",
+    [string]$ServerDll = "artifacts/runtime-benchmarks/mcp-publish/net10.0/Lifeblood.Server.Mcp.dll",
     [string]$Project = "",
     [string[]]$DefineProfiles = @(),
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-shared-host-benchmark.json",
@@ -468,7 +468,7 @@ $serverDllFull = if ([System.IO.Path]::IsPathRooted($ServerDll)) {
     Join-Path $repoRoot $ServerDll
 }
 if (-not (Test-Path -LiteralPath $serverDllFull)) {
-    throw "Server dll not found: $serverDllFull. Publish first with: dotnet publish src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj -c Release -f net8.0 -o artifacts/runtime-benchmarks/mcp-publish/net8.0"
+    throw "Server dll not found: $serverDllFull. Publish first with: dotnet publish src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj -c Release -f net10.0 -o artifacts/runtime-benchmarks/mcp-publish/net10.0"
 }
 if ($Runs -lt 1) { throw "Runs must be at least 1." }
 if ($TimeoutSec -lt 10) { throw "TimeoutSec must be at least 10." }

@@ -7,6 +7,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Lifeblood targets .NET 10 LTS with Roslyn 5.9. C# 14 qualification covers
+  extension members, field-backed properties, partial constructors/events,
+  nullable assignment and implicit span conversion. Framework generator versions
+  load in collectible contexts behind the existing serialized runner; load and
+  execution failures reject incomplete analysis. V2 type lookup uses
+  assembly-scoped documentation locators, preserving extern aliases and extension
+  containers. CI retains .NET 8 reference packs for compatibility fixtures.
+- Experimental target copies own Lifeblood's Git history, preventing parent
+  checkout tags from contaminating qualification and package provenance.
+
 ### Fixed
 
 - Shared-proxy batch cancellation acceptance covers both response formats. An

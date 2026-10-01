@@ -21,7 +21,7 @@ The Lifeblood repo's `unity/` directory is the canonical UPM package. Unity proj
 
 ### Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin installed in your Unity project
 - Lifeblood repo cloned next to the Unity project
 - The matching `Lifeblood.Server.Mcp` global tool installed
