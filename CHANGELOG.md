@@ -9,6 +9,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Shared-proxy batch cancellation acceptance covers both response formats. An
+  observer confirms active work before cancellation and its stop within five
+  seconds; subsequent reads from both clients preserve the same publication.
+  The test uses the existing request-token and ordinary dispatch authorities.
+
 - Read batches offer optional `responseFormat:"compact"`: typed child payloads
   and per-tool evidence share one common publication envelope. Default child
   MCP content remains intact. Prepared v1/v2 child projections are terminal at

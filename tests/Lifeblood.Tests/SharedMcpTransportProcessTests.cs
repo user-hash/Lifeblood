@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Lifeblood.Adapters.JsonGraph;
@@ -678,6 +679,92 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         Assert.Equal(1, retryPayload.RootElement.GetProperty("envelope")
             .GetProperty("analysisGeneration").GetInt32());
         Assert.False(daemon.HasExited);
+    }
+
+    [Theory]
+    [InlineData("content")]
+    [InlineData("compact")]
+    public async Task ActiveBatchCancellation_StopsWorkAndKeepsPublicationUsable(string responseFormat)
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Assert.True(File.Exists(dll), $"Server dll not found at {dll}.");
+        WriteCSharpWorkspace(fileCount: 500);
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var caller = StartProxy(dll, pipeName, _tempDirectory);
+        await using var observer = StartProxy(dll, pipeName, _tempDirectory);
+        using var callerInitialize = await caller.InitializeAsync();
+        using var observerInitialize = await observer.InitializeAsync();
+        using var analyzed = await caller.CallToolAsync("lifeblood_analyze",
+            new { projectPath = _tempDirectory, readOnly = false }, TimeSpan.FromSeconds(60));
+        Assert.False(analyzed.RootElement.GetProperty("result").TryGetProperty("isError", out var analyzeError) && analyzeError.GetBoolean());
+        var before = await ReadSessionAsync(observer);
+        using var warmRpc = await caller.CallToolAsync("lifeblood_find_references", new { symbolId = "type:Coalesce.Type000" });
+        using var warm = McpProcessTestClient.ParseToolPayload(warmRpc);
+        var referenceCount = warm.RootElement.GetProperty("count").GetInt32();
+        Assert.True(referenceCount > 0);
+
+        const int batchId = 8201;
+        var calls = Enumerable.Range(0, 32).Select(_ => new
+        {
+            tool = "lifeblood_find_references", arguments = new { symbolId = "type:Coalesce.Type000" },
+        }).ToArray();
+        await caller.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0", id = batchId, method = "tools/call",
+            @params = new { name = "lifeblood_batch", arguments = new { responseFormat, calls } },
+        }));
+
+        var observeDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        var observedActiveRequests = 0;
+        while (DateTime.UtcNow < observeDeadline)
+        {
+            using var statusRpc = await observer.CallToolAsync("lifeblood_capabilities", timeout: TimeSpan.FromSeconds(5));
+            using var status = McpProcessTestClient.ParseToolPayload(statusRpc);
+            var shared = status.RootElement.GetProperty("sharedService");
+            Assert.Equal(2, shared.GetProperty("clientCount").GetInt32());
+            observedActiveRequests = shared.GetProperty("activeRequestCount").GetInt32();
+            // The observer owns one request; a second proves the caller's batch is active.
+            if (observedActiveRequests >= 2) break;
+            await Task.Delay(10);
+        }
+        Assert.True(observedActiveRequests >= 2, "The batch completed before active-work observation; cancellation was not exercised.");
+
+        var stopWatch = Stopwatch.StartNew();
+        await caller.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0", method = "notifications/cancelled", @params = new { requestId = batchId },
+        }));
+        using var cancelled = McpProcessTestClient.AssertValidJsonRpcLine(
+            await caller.ReadJsonLineAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(batchId, cancelled.RootElement.GetProperty("id").GetInt32());
+        Assert.Equal(-32800, cancelled.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        using var stoppedRpc = await observer.CallToolAsync("lifeblood_capabilities", timeout: TimeSpan.FromSeconds(5));
+        using var stopped = McpProcessTestClient.ParseToolPayload(stoppedRpc);
+        var stoppedActiveRequests = stopped.RootElement.GetProperty("sharedService").GetProperty("activeRequestCount").GetInt32();
+        Assert.Equal(1, stoppedActiveRequests);
+        stopWatch.Stop();
+        Assert.InRange(stopWatch.Elapsed.TotalSeconds, 0, 5);
+
+        using var lookupRpc = await caller.CallToolAsync("lifeblood_lookup", new { symbolId = "type:Coalesce.Type000" }, TimeSpan.FromSeconds(5));
+        using var lookup = McpProcessTestClient.ParseToolPayload(lookupRpc);
+        Assert.Equal("type:Coalesce.Type000", lookup.RootElement.GetProperty("id").GetString());
+        Assert.Equal(before.SnapshotId, lookup.RootElement.GetProperty("envelope").GetProperty("snapshotId").GetString());
+        using var retryRpc = await observer.CallToolAsync("lifeblood_find_references", new { symbolId = "type:Coalesce.Type000" }, TimeSpan.FromSeconds(5));
+        using var retry = McpProcessTestClient.ParseToolPayload(retryRpc);
+        Assert.Equal(referenceCount, retry.RootElement.GetProperty("count").GetInt32());
+        Assert.Equal(before, await ReadSessionAsync(observer));
+        Assert.False(daemon.HasExited);
+        _output.WriteLine("BATCH_TRANSPORT_CANCELLATION=" + JsonSerializer.Serialize(new
+        {
+            responseFormat, sourceFiles = 500, plannedCalls = calls.Length,
+            activeRequestsBeforeCancellation = observedActiveRequests,
+            activeRequestsAfterCancellation = stoppedActiveRequests,
+            observerRequestIncluded = true, cancellationCode = -32800,
+            cancellationAndStoppedObservationMs = stopWatch.Elapsed.TotalMilliseconds,
+            boundMs = 5000, snapshotId = before.SnapshotId, analysisGeneration = before.AnalysisGeneration,
+            subsequentCallerLookup = true, subsequentObserverReferences = referenceCount,
+        }));
     }
 
     [SkippableFact]
