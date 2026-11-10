@@ -20,10 +20,9 @@ public static class AnalysisPipeline
 
         var tiers = TierClassifier.Classify(graph);
 
-        var blastRadii = coupling
+        var blastRadii = BlastRadiusAnalyzer.AnalyzeMany(graph, coupling
             .Where(c => c.FanIn >= 3)
-            .Select(c => BlastRadiusAnalyzer.Analyze(graph, c.SymbolId))
-            .ToArray();
+            .Select(c => c.SymbolId));
 
         var violations = rules is { Length: > 0 }
             ? RuleValidator.Validate(graph, rules)

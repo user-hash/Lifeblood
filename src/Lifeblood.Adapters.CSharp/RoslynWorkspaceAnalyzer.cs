@@ -792,7 +792,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             return new IncrementalAnalyzeResult
             {
                 Mode = IncrementalMode.Incremental,
-                Graph = _snapshot.RebuildGraph(),
+                Graph = _snapshot.UnchangedGraph,
                 AcceptedChanges = BuildAcceptedChanges(
                     sourcePaths,
                     scanMode,

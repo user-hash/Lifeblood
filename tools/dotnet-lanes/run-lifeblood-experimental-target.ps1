@@ -1,5 +1,5 @@
 param(
-    [string]$TargetFramework = "net10.0",
+    [string]$TargetFramework = "net11.0",
     [string]$OutputPath = "artifacts/dotnet-experimental/target-report.json",
     [string]$Configuration = "Release",
     [switch]$SkipTests,

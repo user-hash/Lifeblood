@@ -14,6 +14,7 @@ public sealed class SdkLanguageFactsTests
     [InlineData("net8.0", "12.0")]
     [InlineData("net9.0", "13.0")]
     [InlineData("net10.0", "14.0")]
+    [InlineData("net11.0", "15.0")]
     public void OmittedLanguage_UsesSdkTargetDefault(string framework, string expected)
     {
         using var fixture = new Fixture();
@@ -28,9 +29,9 @@ public sealed class SdkLanguageFactsTests
     }
 
     [Theory]
-    [InlineData("default", "14.0")]
-    [InlineData("latest", "14.0")]
-    [InlineData("latestMajor", "14.0")]
+    [InlineData("default", "15.0")]
+    [InlineData("latest", "15.0")]
+    [InlineData("latestMajor", "15.0")]
     [InlineData("preview", "preview")]
     [InlineData("12", "12")]
     public void ExplicitLanguage_UsesSdkCompilerForSpecialValues(string declared, string expected)

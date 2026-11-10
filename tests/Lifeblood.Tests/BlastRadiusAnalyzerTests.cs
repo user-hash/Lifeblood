@@ -7,6 +7,26 @@ namespace Lifeblood.Tests;
 public class BlastRadiusAnalyzerTests
 {
     [Fact]
+    public void PipelineReusesTraversalStorageWithoutChangingOrMixingResults()
+    {
+        var builder = new GraphBuilder();
+        foreach (var id in new[] { "A", "B", "C", "D", "E" })
+            builder.AddSymbol(new Symbol { Id = "type:" + id, Name = id, Kind = SymbolKind.Type });
+        foreach (var caller in new[] { "C", "D", "E" })
+            foreach (var target in new[] { "A", "B" })
+                builder.AddEdge(new Edge { SourceId = "type:" + caller, TargetId = "type:" + target, Kind = EdgeKind.Calls });
+        builder.AddEdge(new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.Inherits });
+        builder.AddEdge(new Edge { SourceId = "type:B", TargetId = "type:A", Kind = EdgeKind.References });
+        var graph = builder.Build();
+
+        var results = AnalysisPipeline.Run(graph).BlastRadii;
+        Assert.Equal(2, results.Length);
+        foreach (var actual in results)
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(BlastRadiusAnalyzer.Analyze(graph, actual.TargetSymbolId)),
+                System.Text.Json.JsonSerializer.Serialize(actual));
+    }
+
+    [Fact]
     public void Analyze_NoIncoming_EmptyRadius()
     {
         var graph = new GraphBuilder()

@@ -2,7 +2,7 @@ param(
     [string]$Project = ".",
     [string]$OutputPath = "artifacts/runtime-benchmarks/lifeblood-runtime-benchmark.json",
     [string]$BenchmarkRunId = "",
-    [string[]]$TargetFrameworks = @("net10.0"),
+    [string[]]$TargetFrameworks = @("net11.0"),
     [ValidateSet("self-analyze", "analyze", "context", "self-context", "incremental-noop", "cli-help")]
     [string[]]$Workloads = @("self-analyze"),
     [string]$DotnetExe = "dotnet",

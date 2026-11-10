@@ -11,7 +11,7 @@ public sealed class Edge
     public string TargetId { get; init; } = "";
     public EdgeKind Kind { get; init; }
     public Evidence Evidence { get; init; } = Evidence.Default;
-    public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string> Properties { get; init; } = System.Collections.ObjectModel.ReadOnlyDictionary<string, string>.Empty;
 
     /// <summary>
     /// Optional source-occurrence provenance for this edge: the

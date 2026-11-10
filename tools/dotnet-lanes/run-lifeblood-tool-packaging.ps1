@@ -1,5 +1,5 @@
 param(
-    [string]$TargetFramework = "net10.0",
+    [string]$TargetFramework = "net11.0",
     [string]$Configuration = "Release",
     [string]$OutputPath = "artifacts/tool-packaging/tool-packaging-report.json",
     [int]$McpSmokeTimeoutSeconds = 10,

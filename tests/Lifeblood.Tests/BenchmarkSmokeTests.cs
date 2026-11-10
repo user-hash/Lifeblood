@@ -114,7 +114,7 @@ public class BenchmarkSmokeTests
         Assert.DoesNotContain("internal static class McpJsonRequestParser", jsonParserBenchmark);
         Assert.DoesNotContain("internal sealed class JsonRpcRequest", jsonParserBenchmark);
         Assert.Contains("EquivalentToCurrent", jsonParserBenchmark);
-        Assert.Contains("<TargetFramework>net10.0</TargetFramework>", jsonParserProject);
+        Assert.Contains("<TargetFramework>net11.0</TargetFramework>", jsonParserProject);
         Assert.Contains("<FrameworkReference Include=\"Microsoft.AspNetCore.App\" />", jsonParserProject);
         Assert.Contains("src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj", jsonParserProject);
 

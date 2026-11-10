@@ -962,7 +962,7 @@ public sealed class RoslynEdgeExtractor
             TargetId = targetId,
             Kind = kind,
             Evidence = SemanticEvidence,
-            Properties = properties ?? new Dictionary<string, string>(),
+            Properties = properties ?? System.Collections.ObjectModel.ReadOnlyDictionary<string, string>.Empty,
             CallSite = BuildCallSite(originatingNode, containingSymbolId ?? sourceId),
         });
     }

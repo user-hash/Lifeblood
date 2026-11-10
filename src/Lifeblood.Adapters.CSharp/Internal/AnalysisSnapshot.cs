@@ -15,6 +15,11 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 /// </summary>
 internal sealed class AnalysisSnapshot
 {
+    private SemanticGraph? _graph;
+    private HashSet<string>? _edgeIds;
+
+    public SemanticGraph UnchangedGraph => _graph ?? RebuildGraph();
+
     /// <summary>Project root at analysis time.</summary>
     public required string ProjectRoot { get; init; }
 
@@ -190,6 +195,7 @@ internal sealed class AnalysisSnapshot
             ExcludePatterns = ExcludePatterns.ToArray(),
             ExcludePathGlobs = ExcludePathGlobs.ToArray(),
             ActiveProfiles = ActiveProfiles.ToArray(),
+            _graph = _graph,
         };
 
         CopyDictionary(FileTimestamps, candidate.FileTimestamps);
@@ -204,10 +210,8 @@ internal sealed class AnalysisSnapshot
         CopyDictionary(CsprojTimestamps, candidate.CsprojTimestamps);
         CopyDictionary(AsmdefTimestamps, candidate.AsmdefTimestamps);
 
-        foreach (var (fileId, symbols) in SymbolsByFile)
-            candidate.SymbolsByFile[fileId] = new List<Symbol>(symbols);
-        foreach (var (fileId, edges) in EdgesByFile)
-            candidate.EdgesByFile[fileId] = new List<Edge>(edges);
+        CopyDictionary(SymbolsByFile, candidate.SymbolsByFile);
+        CopyDictionary(EdgesByFile, candidate.EdgesByFile);
 
         candidate.ModuleSymbols.AddRange(ModuleSymbols);
         candidate.ModuleEdges.AddRange(ModuleEdges);
@@ -264,7 +268,9 @@ internal sealed class AnalysisSnapshot
             builder.AddEdges(edges);
         }
 
-        return builder.Build();
+        _graph = builder.Build();
+        _edgeIds = null;
+        return _graph;
     }
 
     /// <summary>
@@ -274,8 +280,10 @@ internal sealed class AnalysisSnapshot
     {
         var allSymbols = new List<Symbol>(symbols.Count + 1) { fileSymbol };
         allSymbols.AddRange(symbols);
+        foreach (var symbol in allSymbols)
+            PoolId(symbol.Id);
         SymbolsByFile[fileId] = allSymbols;
-        EdgesByFile[fileId] = edges;
+        EdgesByFile[fileId] = edges.Select(PoolEdge).ToList();
     }
 
     /// <summary>
@@ -289,12 +297,60 @@ internal sealed class AnalysisSnapshot
     {
         if (EdgesByFile.TryGetValue(fileId, out var existing))
         {
-            existing.AddRange(edges);
+            var combined = new List<Edge>(existing.Count + edges.Count);
+            combined.AddRange(existing);
+            combined.AddRange(edges.Select(PoolEdge));
+            EdgesByFile[fileId] = combined;
         }
         else
         {
-            EdgesByFile[fileId] = edges;
+            EdgesByFile[fileId] = edges.Select(PoolEdge).ToList();
         }
+    }
+
+    // Candidate-local pooling shares repeated declaration addresses without
+    // interning deleted source identities for the lifetime of the daemon.
+    private string PoolId(string value)
+    {
+        _edgeIds ??= new HashSet<string>(
+            _graph?.Symbols.Select(symbol => symbol.Id) ?? Enumerable.Empty<string>(),
+            StringComparer.Ordinal);
+        if (_edgeIds.TryGetValue(value, out var existing))
+            return existing;
+        _edgeIds.Add(value);
+        return value;
+    }
+
+    private Edge PoolEdge(Edge edge)
+    {
+        var sourceId = PoolId(edge.SourceId);
+        var targetId = PoolId(edge.TargetId);
+        var callSite = edge.CallSite;
+        var containingId = callSite == null ? null : PoolId(callSite.ContainingSymbolId);
+        if (ReferenceEquals(sourceId, edge.SourceId)
+            && ReferenceEquals(targetId, edge.TargetId)
+            && (callSite == null || ReferenceEquals(containingId, callSite.ContainingSymbolId)))
+            return edge;
+
+        return new Edge
+        {
+            SourceId = sourceId,
+            TargetId = targetId,
+            Kind = edge.Kind,
+            Evidence = edge.Evidence,
+            Properties = edge.Properties,
+            Profiles = edge.Profiles,
+            CallSite = callSite == null || ReferenceEquals(containingId, callSite.ContainingSymbolId)
+                ? callSite : new CallSite
+                {
+                    FilePath = callSite.FilePath,
+                    Line = callSite.Line,
+                    Column = callSite.Column,
+                    EndLine = callSite.EndLine,
+                    EndColumn = callSite.EndColumn,
+                    ContainingSymbolId = containingId!,
+                },
+        };
     }
 
     /// <summary>

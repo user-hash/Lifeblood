@@ -17,7 +17,7 @@ public sealed class Symbol
     public Visibility Visibility { get; init; } = Visibility.Internal;
     public bool IsAbstract { get; init; }
     public bool IsStatic { get; init; }
-    public IReadOnlyDictionary<string, string> Properties { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string> Properties { get; init; } = System.Collections.ObjectModel.ReadOnlyDictionary<string, string>.Empty;
 }
 
 public enum SymbolKind

@@ -9,7 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Lifeblood targets .NET 10 LTS with Roslyn 5.9. C# 14 qualification covers
+- Lifeblood targets .NET 11 with Roslyn 5.9; implementation language remains
+  C# 14 until the published adapter supports C# 15. C# 14 qualification covers
   extension members, field-backed properties, partial constructors/events,
   nullable assignment and implicit span conversion. Framework generator versions
   load in collectible contexts behind the existing serialized runner; load and
@@ -20,6 +21,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checkout tags from contaminating qualification and package provenance.
 
 ### Fixed
+
+- Unchanged incremental scans reuse their immutable graph. Candidate file facts
+  use copy-on-write, repeated edge addresses share candidate-scoped strings,
+  and empty properties use immutable shared storage. Discovery reuses its parsed
+  project descriptors and multi-target blast-radius analysis reuses request-local
+  traversal buffers.
 
 - Compilation passes reuse generator assemblies per exact analyzer inventory
   while creating fresh generators and drivers. Disposal clears assembly roots

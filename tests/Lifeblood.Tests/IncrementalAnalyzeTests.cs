@@ -31,7 +31,7 @@ public class IncrementalAnalyzeTests : IDisposable
     {
         WriteSingleFileProject("public class Foo { }");
         var analyzer = new RoslynWorkspaceAnalyzer(_fs);
-        analyzer.AnalyzeWorkspace(_tempDir, _config);
+        var original = analyzer.AnalyzeWorkspace(_tempDir, _config);
 
         Assert.True(analyzer.HasSnapshot);
 
@@ -41,6 +41,7 @@ public class IncrementalAnalyzeTests : IDisposable
         Assert.Null(r.Reason);
         Assert.Equal(0, r.ChangedFileCount);
         Assert.NotNull(r.Graph);
+        Assert.Same(original, r.Graph);
         Assert.True(r.Graph!.Symbols.Count > 0);
     }
 

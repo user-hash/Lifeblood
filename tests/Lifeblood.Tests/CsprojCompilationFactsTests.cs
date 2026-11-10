@@ -413,6 +413,7 @@ public class CsprojCompilationFactsTests
   <PropertyGroup>
     <AssemblyName>Test</AssemblyName>
     <TargetFramework>" + targetFramework + @"</TargetFramework>
+    <LangVersion>14</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -497,6 +498,7 @@ public class CsprojCompilationFactsTests
   <PropertyGroup>
     <AssemblyName>Test</AssemblyName>
     <TargetFramework>" + CurrentTestTargetFramework() + @"</TargetFramework>
+    <LangVersion>14</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

@@ -20,6 +20,54 @@ namespace Lifeblood.Tests;
 /// </summary>
 public class ReferenceClosureModeDiscoveryTests
 {
+    [Fact]
+    public void SharedProjectReferencesReadEachDescriptorOncePerDiscoveryPass()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "lifeblood-discovery-cache-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Probe.cs"), "public class Probe {}");
+            var foundation = Path.Combine(root, "Base.csproj");
+            File.WriteAllText(foundation, Project("SemanticBase", ""));
+            foreach (var name in new[] { "One", "Two" })
+                File.WriteAllText(Path.Combine(root, name + ".csproj"), Project(name, "<ProjectReference Include=\"Base.csproj\" />"));
+            var files = new CountingFileSystem();
+            var discovery = new RoslynModuleDiscovery(files);
+            var first = discovery.DiscoverModules(root);
+            Assert.All(first.Where(module => module.Name != "SemanticBase"), module => Assert.Contains("SemanticBase", module.Dependencies));
+            Assert.Equal(1, files.ReadCounts[foundation]);
+
+            File.WriteAllText(foundation, Project("ChangedBase", ""));
+            var next = discovery.DiscoverModules(root);
+            Assert.All(next.Where(module => module.Name != "ChangedBase"), module => Assert.Contains("ChangedBase", module.Dependencies));
+            Assert.Equal(2, files.ReadCounts[foundation]);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+
+        static string Project(string name, string reference) =>
+            $"<Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\"><PropertyGroup><AssemblyName>{name}</AssemblyName></PropertyGroup><ItemGroup><Compile Include=\"Probe.cs\" />{reference}</ItemGroup></Project>";
+    }
+
+    private sealed class CountingFileSystem : Lifeblood.Application.Ports.Infrastructure.IFileSystem
+    {
+        private readonly PhysicalFileSystem _inner = new();
+        public Dictionary<string, int> ReadCounts { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public string ReadAllText(string path)
+        {
+            ReadCounts.TryGetValue(path, out var count);
+            ReadCounts[path] = count + 1;
+            return _inner.ReadAllText(path);
+        }
+        public IEnumerable<string> ReadLines(string path) => _inner.ReadLines(path);
+        public Stream OpenRead(string path) => _inner.OpenRead(path);
+        public Stream OpenWrite(string path) => _inner.OpenWrite(path);
+        public bool FileExists(string path) => _inner.FileExists(path);
+        public bool DirectoryExists(string path) => _inner.DirectoryExists(path);
+        public string[] FindFiles(string path, string pattern, bool recursive = true) => _inner.FindFiles(path, pattern, recursive);
+        public DateTime GetLastWriteTimeUtc(string path) => _inner.GetLastWriteTimeUtc(path);
+    }
+
     private static ModuleInfo[] DiscoverFromCsproj(string csprojBody)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"lifeblood-refclosure-{Guid.NewGuid():N}");

@@ -227,7 +227,7 @@ public class GraphSessionGateTests
         var root = Path.Combine(parent, name);
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, $"{name}.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+            $"<Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\"><PropertyGroup><AssemblyName>{name}</AssemblyName><LangVersion>12</LangVersion></PropertyGroup><ItemGroup><Compile Include=\"{name}.cs\" /></ItemGroup></Project>");
         File.WriteAllText(Path.Combine(root, $"{name}.cs"), $"namespace {name}; public class Marker {{ }}");
         return root;
     }

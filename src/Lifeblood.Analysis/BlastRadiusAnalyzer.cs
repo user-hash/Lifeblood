@@ -17,9 +17,26 @@ namespace Lifeblood.Analysis;
 public static class BlastRadiusAnalyzer
 {
     public static BlastRadiusResult Analyze(SemanticGraph graph, string targetSymbolId, int maxDepth = 10)
+        => AnalyzeCore(graph, targetSymbolId, maxDepth,
+            new HashSet<string>(StringComparer.Ordinal),
+            new Queue<(string id, int depth)>(),
+            new Dictionary<string, List<EdgeKind>>(StringComparer.Ordinal));
+
+    internal static BlastRadiusResult[] AnalyzeMany(SemanticGraph graph, IEnumerable<string> targets, int maxDepth = 10)
     {
         var affected = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<(string id, int depth)>();
+        var directEdgeKinds = new Dictionary<string, List<EdgeKind>>(StringComparer.Ordinal);
+        return targets.Select(target => AnalyzeCore(graph, target, maxDepth, affected, queue, directEdgeKinds)).ToArray();
+    }
+
+    private static BlastRadiusResult AnalyzeCore(SemanticGraph graph, string targetSymbolId, int maxDepth,
+        HashSet<string> affected, Queue<(string id, int depth)> queue,
+        Dictionary<string, List<EdgeKind>> directEdgeKinds)
+    {
+        affected.Clear();
+        queue.Clear();
+        directEdgeKinds.Clear();
         queue.Enqueue((targetSymbolId, 0));
 
         // Break classification: one entry per DIRECTLY-adjacent dependant
@@ -35,8 +52,6 @@ public static class BlastRadiusAnalyzer
         // > Behavioral > Unknown. This avoids silently collapsing a
         // signature-change into a binding-removal just because the Calls
         // edge happened to be iterated first.
-        var directEdgeKinds = new Dictionary<string, List<EdgeKind>>(StringComparer.Ordinal);
-
         while (queue.Count > 0)
         {
             var (current, depth) = queue.Dequeue();

@@ -691,9 +691,13 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
             if (!_fs.FileExists(fullPath))
                 return Internal.CsprojPaths.GetReferencedModuleName(referencePath);
 
-            var xml = _fs.ReadAllText(fullPath);
-            CaptureTextDescriptor(fullPath, xml);
-            var refDoc = XDocument.Parse(xml);
+            if (!_projectDocuments.TryGetValue(fullPath, out var refDoc))
+            {
+                var xml = _fs.ReadAllText(fullPath);
+                CaptureTextDescriptor(fullPath, xml);
+                refDoc = XDocument.Parse(xml);
+                _projectDocuments[fullPath] = refDoc;
+            }
             var asmName = refDoc.Descendants()
                 .FirstOrDefault(el => el.Name.LocalName == "AssemblyName")?.Value;
 

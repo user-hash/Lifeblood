@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <!-- Keep implementation syntax within the semantic adapter's supported language. -->
+    <LangVersion>14</LangVersion>
     <!-- Version auto-derived from git tags via MinVer.
          Tag v1.2.3 → Version=1.2.3. Commits after tag → 1.2.3-alpha.N.
          No manual bumping needed. Just tag and push. -->
