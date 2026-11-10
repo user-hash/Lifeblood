@@ -14,8 +14,8 @@ namespace Lifeblood.Adapters.CSharp.Internal;
 ///   Streaming (default): compile → extract → downgrade → next module. O(1) compilation memory.
 ///   Retained: compile → extract → keep in memory for write-side tools. O(N) compilation memory.
 ///
-/// Compilation downgrading: after extraction, Emit() to a byte[] and create a lightweight
-/// MetadataReference.CreateFromImage(). Downstream modules reference the PE image (~10-100KB)
+/// Compilation downgrading: after extraction, emit to a stream and create a lightweight
+/// MetadataReference.CreateFromStream(). Downstream modules reference the PE metadata
 /// instead of the full compilation (~200MB). The full compilation becomes eligible for GC.
 /// </summary>
 internal sealed class ModuleCompilationBuilder
@@ -212,7 +212,10 @@ internal sealed class ModuleCompilationBuilder
             using var ms = new MemoryStream();
             var emitResult = compilation.Emit(ms);
             if (emitResult.Success)
-                return MetadataReference.CreateFromImage(ms.ToArray());
+            {
+                ms.Position = 0;
+                return MetadataReference.CreateFromStream(ms);
+            }
         }
         catch (Exception ex) when (IsRecoverableEmitFailure(ex))
         {

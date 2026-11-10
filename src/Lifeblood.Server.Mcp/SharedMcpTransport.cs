@@ -444,14 +444,18 @@ internal static class SharedMcpTransport
         var psi = new ProcessStartInfo
         {
             FileName = processPath,
-            Arguments = string.Join(" ", daemonArgs.Select(QuoteArgument)),
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Hidden,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StartDetached = true,
         };
+        // Null stdio alone still allows unrelated inheritable client-pipe handles
+        // on Windows. An explicit empty allowlist keeps those handles in the proxy.
+        if (OperatingSystem.IsWindows()) psi.InheritedHandles = [];
+        foreach (var argument in daemonArgs) psi.ArgumentList.Add(argument);
 
         try
         {
-            Process.Start(psi)?.Dispose();
+            _ = Process.StartAndForget(psi);
         }
         catch (Exception ex)
         {
@@ -483,11 +487,6 @@ internal static class SharedMcpTransport
         var fileName = Path.GetFileNameWithoutExtension(processPath);
         return string.Equals(fileName, "dotnet", StringComparison.OrdinalIgnoreCase);
     }
-
-    private static string QuoteArgument(string value)
-        => value.Length == 0 || value.Any(char.IsWhiteSpace) || value.Contains('"')
-            ? "\"" + value.Replace("\"", "\\\"") + "\""
-            : value;
 
     private static JsonRpcResponse BuildProxyError(JsonElement? id, Exception ex) => new()
     {

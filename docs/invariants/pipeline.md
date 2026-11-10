@@ -6,7 +6,7 @@ the MCP server.
 
 ## Streaming Compilation Architecture (v0.3.0)
 
-- **INV-STREAM-001**: `ModuleCompilationBuilder.ProcessInOrder` compiles one module at a time in topological order. After extraction, `Emit()` → `MetadataReference.CreateFromImage()` downgrades the full compilation (~200MB) to a lightweight PE reference (~10-100KB). Peak memory: O(1 compilation), not O(N).
+- **INV-STREAM-001**: `ModuleCompilationBuilder.ProcessInOrder` compiles one module at a time in topological order. After extraction, `Emit()` → `MetadataReference.CreateFromStream()` consumes the rewound emission stream directly and downgrades the full compilation to an independently owned metadata reference. No whole-PE `ToArray()` clone is introduced, and downstream compilation remains valid after the emission stream is disposed. `ModuleCompilationDowngradeTests` pins that lifetime contract. Peak memory: O(1 compilation), not O(N).
 
 - **INV-STREAM-002**
 

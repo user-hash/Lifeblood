@@ -57,20 +57,7 @@ internal static class SdkProjectFactsReader
             start.ArgumentList.Add("-nologo");
             start.ArgumentList.Add("-verbosity:quiet");
             start.ArgumentList.Add("-getTargetResult:EvaluateProjects");
-            using var process = Process.Start(start)
-                ?? throw new InvalidOperationException("Unable to start SDK project evaluation.");
-            var output = process.StandardOutput.ReadToEndAsync();
-            var error = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(30_000))
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit();
-                throw new InvalidOperationException("SDK project evaluation exceeded 30 seconds.");
-            }
-            var text = output.GetAwaiter().GetResult();
-            var diagnostic = error.GetAwaiter().GetResult();
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException($"SDK project evaluation failed: {diagnostic}");
+            var text = RunEvaluation(start, 30_000);
 
             using var json = JsonDocument.Parse(text);
             var facts = json.RootElement.GetProperty("TargetResults")
@@ -107,6 +94,38 @@ internal static class SdkProjectFactsReader
         {
             File.Delete(projectPath);
             Directory.Delete(temporaryDirectory);
+        }
+    }
+
+    internal static string RunEvaluation(ProcessStartInfo start, int timeoutMs)
+    {
+        using var nullInput = File.OpenNullHandle();
+        start.StandardInputHandle = nullInput;
+        if (OperatingSystem.IsWindows()) start.InheritedHandles = [];
+        using var process = Process.Start(start)
+            ?? throw new InvalidOperationException("Unable to start SDK project evaluation.");
+        var clock = Stopwatch.StartNew();
+        try
+        {
+            var (output, error) = process.ReadAllText(TimeSpan.FromMilliseconds(timeoutMs));
+            var remainingMs = checked((int)Math.Max(0, timeoutMs - clock.ElapsedMilliseconds));
+            if (!process.WaitForExit(remainingMs)) throw new TimeoutException();
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"SDK project evaluation failed: {error}");
+            return output;
+        }
+        catch (TimeoutException ex)
+        {
+            throw new InvalidOperationException($"SDK project evaluation exceeded {timeoutMs / 1000.0:g} seconds.", ex);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(1000))
+                    throw new InvalidOperationException("SDK project evaluation did not exit after termination.");
+            }
         }
     }
 }

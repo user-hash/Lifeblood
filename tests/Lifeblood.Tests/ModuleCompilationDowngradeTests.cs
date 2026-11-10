@@ -3,6 +3,7 @@ using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Left;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -15,6 +16,32 @@ namespace Lifeblood.Tests;
 /// </summary>
 public sealed class ModuleCompilationDowngradeTests
 {
+    [Fact]
+    public void CompactReference_RemainsUsableAfterEmitStreamAndSourceAreGone()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"lifeblood-pe-lifetime-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var source = Path.Combine(root, "Library.cs");
+            File.WriteAllText(source, "public class Box<T> { public T Value => default!; }");
+            var carry = new Dictionary<string, MetadataReference>();
+            new ModuleCompilationBuilder(new PhysicalFileSystem()).ProcessInOrder(
+                new[] { new ModuleInfo { Name = "Library", FilePaths = new[] { source } } },
+                root, new AnalysisConfig(), (_, _) => true, carryDowngraded: carry);
+            var reference = Assert.IsAssignableFrom<PortableExecutableReference>(carry["Library"]);
+            File.Delete(source);
+            var consumer = CSharpCompilation.Create("Consumer",
+                new[] { CSharpSyntaxTree.ParseText("public class Consumer { public int Read(Box<int> box) => box.Value; }") },
+                BclReferenceLoader.References.Value.Append(reference),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            Assert.Empty(consumer.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+            using var output = new MemoryStream();
+            Assert.True(consumer.Emit(output).Success);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     [Fact]
     public void RecoverableEmitFailurePolicy_ContainsRoslynInternalFault_AndPreservesFatalSignals()
     {

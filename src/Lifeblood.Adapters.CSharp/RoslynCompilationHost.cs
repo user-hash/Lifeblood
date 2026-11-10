@@ -316,8 +316,7 @@ public sealed class RoslynCompilationHost :
 
   var testCompilation = owningCompilation.ReplaceSyntaxTree(existingTree, newTree);
 
-  using var ms = new MemoryStream();
-  var emitResult = testCompilation.Emit(ms);
+  var emitResult = testCompilation.Emit(Stream.Null);
 
   var diagnostics = emitResult.Diagnostics
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
@@ -389,8 +388,7 @@ public sealed class RoslynCompilationHost :
   var prepared = Internal.SnippetWrapper.Prepare(code, GetModuleParseOptions(targetCompilation));
   var testCompilation = targetCompilation.AddSyntaxTrees(prepared.Tree);
 
-  using var ms = new MemoryStream();
-  var emitResult = testCompilation.Emit(ms);
+  var emitResult = testCompilation.Emit(Stream.Null);
 
   var snippetDiagnostics = emitResult.Diagnostics
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)

@@ -552,6 +552,7 @@ public sealed partial class GitSourceControlSnapshotProvider : ISourceControlSna
             start.Environment["GIT_TERMINAL_PROMPT"] = "0";
             start.Environment["LC_ALL"] = "C";
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
+            if (OperatingSystem.IsWindows()) start.InheritedHandles = [];
 
             using var process = Process.Start(start);
             if (process == null)

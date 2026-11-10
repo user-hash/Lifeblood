@@ -52,6 +52,7 @@ public sealed class ProcessIsolatedCodeExecutor : ICodeExecutor
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        if (OperatingSystem.IsWindows()) psi.InheritedHandles = [];
 
         try
         {

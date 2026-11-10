@@ -34,6 +34,52 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         _secondGraphPath = WriteGraph("second.graph.json", "First", "Second");
     }
 
+    [Fact]
+    public async Task DetachedAutostart_PreservesPublicationAcrossProxyExitWithUnicodeWorkspace()
+    {
+        var dll = McpProcessTestClient.LocateServerDll();
+        Assert.True(File.Exists(dll));
+        var workspace = Path.Combine(_tempDirectory, "detached workspace č");
+        Directory.CreateDirectory(workspace);
+        var graph = Path.Combine(workspace, "input.graph.json");
+        File.Copy(_firstGraphPath, graph);
+        var pipeName = UniquePipeName();
+        var environment = new Dictionary<string, string?>
+        {
+            ["LIFEBLOOD_SHARED_DAEMON_AUTOSTART"] = "1",
+            ["LIFEBLOOD_SHARED_IDLE_SECONDS"] = "10",
+        };
+        Process? daemon = null;
+        try
+        {
+            await using var first = McpProcessTestClient.Start(dll, environment,
+                "--shared", "--shared-pipe", pipeName, "--shared-key", workspace);
+            using var initialized = await first.InitializeAsync();
+            using (var response = await first.CallToolAsync("lifeblood_capabilities"))
+            using (var payload = McpProcessTestClient.ParseToolPayload(response))
+                daemon = Process.GetProcessById(payload.RootElement.GetProperty("sharedService").GetProperty("processId").GetInt32());
+            await AnalyzeGraphAsync(first, graph);
+            var committed = await ReadSessionAsync(first);
+            var shutdownClock = Stopwatch.StartNew();
+            await first.CloseInputAndDrainStdoutAsync(TimeSpan.FromSeconds(5)).WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.False(daemon.HasExited,
+                $"Detached daemon exited; proxy EOF took {shutdownClock.ElapsedMilliseconds} ms.");
+            await using var second = McpProcessTestClient.Start(dll, environment,
+                "--shared", "--shared-pipe", pipeName, "--shared-key", workspace);
+            using var reinitialized = await second.InitializeAsync();
+            Assert.Equal(committed, await ReadSessionAsync(second));
+        }
+        finally
+        {
+            if (daemon != null)
+            {
+                if (!daemon.HasExited) daemon.Kill(entireProcessTree: true);
+                Assert.True(daemon.WaitForExit(5000));
+                daemon.Dispose();
+            }
+        }
+    }
+
     [SkippableFact]
     public async Task SamePipe_TwoProxiesShareAndPublishLatestGeneration()
     {
