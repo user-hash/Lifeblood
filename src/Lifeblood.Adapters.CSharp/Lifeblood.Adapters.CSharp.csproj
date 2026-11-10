@@ -14,8 +14,8 @@
     <ProjectReference Include="..\Lifeblood.Application\Lifeblood.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(LifebloodRoslynVersion)" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="$(LifebloodRoslynVersion)" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="$(LifebloodRoslynVersion)" />
   </ItemGroup>
 </Project>

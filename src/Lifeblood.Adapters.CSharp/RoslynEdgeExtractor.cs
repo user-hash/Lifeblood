@@ -107,6 +107,14 @@ public sealed class RoslynEdgeExtractor
                         }
                         break;
 
+                    case ElementAccessExpressionSyntax or ElementBindingExpressionSyntax:
+                        if (model.GetSymbolInfo(node).Symbol is IPropertySymbol indexer
+                            && IsTracked(indexer.ContainingType))
+                        {
+                            EmitSymbolLevelEdge(model, node, indexer, edges, seen);
+                        }
+                        break;
+
                     case GenericNameSyntax genericName:
                         ExtractGenericTypeArgEdges(model, genericName, edges, seen);
                         break;

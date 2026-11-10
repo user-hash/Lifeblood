@@ -1,7 +1,9 @@
 <Project>
   <PropertyGroup>
     <!-- Keep implementation syntax within the semantic adapter's supported language. -->
-    <LangVersion>14</LangVersion>
+    <LangVersion>15</LangVersion>
+    <!-- Match the compiler shipped in SDK 11.0.100, including Workspaces and scripting. -->
+    <LifebloodRoslynVersion>[5.12.0-1.26529.118]</LifebloodRoslynVersion>
     <!-- Version auto-derived from git tags via MinVer.
          Tag v1.2.3 → Version=1.2.3. Commits after tag → 1.2.3-alpha.N.
          No manual bumping needed. Just tag and push. -->
