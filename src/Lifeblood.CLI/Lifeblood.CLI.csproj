@@ -11,6 +11,7 @@
     <!-- Windows commands carry their runtime; other platforms retain the portable fallback. -->
     <RuntimeIdentifiers>win-x64;any</RuntimeIdentifiers>
     <ToolPackageRuntimeIdentifiers>win-x64;any</ToolPackageRuntimeIdentifiers>
+    <PublishSelfContained>true</PublishSelfContained>
     <PackageId>Lifeblood</PackageId>
     <PackageDescription>Roslyn powered C# and Unity code analysis CLI for semantic graphs, architecture checks, context generation, and CI.</PackageDescription>
     <PackageReadmeFile>README.md</PackageReadmeFile>
