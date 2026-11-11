@@ -22,8 +22,19 @@ public class BlastRadiusAnalyzerTests
         var results = AnalysisPipeline.Run(graph).BlastRadii;
         Assert.Equal(2, results.Length);
         foreach (var actual in results)
+        {
             Assert.Equal(System.Text.Json.JsonSerializer.Serialize(BlastRadiusAnalyzer.Analyze(graph, actual.TargetSymbolId)),
                 System.Text.Json.JsonSerializer.Serialize(actual));
+            var callers = actual.Breaks.Where(entry => entry.SymbolId is "type:C" or "type:D" or "type:E").ToArray();
+            Assert.Equal(3, callers.Length);
+            Assert.All(callers, entry =>
+            {
+                Assert.Equal($"edges [Calls] → {actual.TargetSymbolId}", entry.Reason);
+                Assert.Same(callers[0].Reason, entry.Reason);
+            });
+        }
+        Assert.NotSame(results[0].Breaks.Single(entry => entry.SymbolId == "type:C").Reason,
+            results[1].Breaks.Single(entry => entry.SymbolId == "type:C").Reason);
     }
 
     [Fact]

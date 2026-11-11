@@ -79,6 +79,7 @@ public static class BlastRadiusAnalyzer
             }
         }
 
+        var reasons = new Dictionary<string, string>(StringComparer.Ordinal);
         var breaks = directEdgeKinds
             .Select(kvp =>
             {
@@ -86,11 +87,14 @@ public static class BlastRadiusAnalyzer
                     .Select(ClassifyBreak)
                     .OrderByDescending(BreakSeverityRank)
                     .First();
+                var edgeKinds = string.Join(", ", kvp.Value);
+                if (!reasons.TryGetValue(edgeKinds, out var reason))
+                    reasons[edgeKinds] = reason = $"edges [{edgeKinds}] → {targetSymbolId}";
                 return new BreakInfo
                 {
                     SymbolId = kvp.Key,
                     Kind = dominantKind,
-                    Reason = $"edges [{string.Join(", ", kvp.Value)}] → {targetSymbolId}",
+                    Reason = reason,
                 };
             })
             .OrderBy(b => b.SymbolId, StringComparer.Ordinal)
