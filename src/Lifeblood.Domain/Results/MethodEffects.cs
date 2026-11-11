@@ -4,6 +4,7 @@ public sealed class MethodEffectRequest
 {
     public string[] RootSymbolIds { get; init; } = Array.Empty<string>();
     public string? ProfileScope { get; init; }
+    public string? RuntimeEvidencePath { get; init; }
     public int MaxDepth { get; init; } = 4;
     public int MaxMethods { get; init; } = 128;
     public int MaxFacts { get; init; } = 10_000;
@@ -17,6 +18,7 @@ public sealed class MethodEffectReport
     public required OperationFactScanReceipt ScanReceipt { get; init; }
     public required ContractCallRouteReceipt[] CandidateScopes { get; init; }
     public required MethodEffectSummary[] Methods { get; init; }
+    public NativeSourceJoinReport? NativeSourceEvidence { get; init; }
     public string[] Limitations { get; init; } = Array.Empty<string>();
 }
 

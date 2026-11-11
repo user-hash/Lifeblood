@@ -15,6 +15,7 @@ public sealed class PerformanceCapture
     public required PerformanceDeviceIdentity Device { get; init; }
     public required PerformanceWorkloadIdentity Workload { get; init; }
     public required PerformanceMeasurement[] Measurements { get; init; }
+    public NativeArtifactEvidence[] NativeArtifacts { get; init; } = Array.Empty<NativeArtifactEvidence>();
     public required PerformanceImportReceipt ImportReceipt { get; init; }
 }
 

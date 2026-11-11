@@ -69,6 +69,7 @@ public static class ToolInputContractCatalog
         yield return Contract(@"lifeblood_capabilities");
 
         yield return Contract(@"lifeblood_method_effects",
+            Arg(@"runtimeEvidencePath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional workspace-contained runtime capture using the existing importer. nativeArtifacts[].documents carry caller-reported build/debug/module/profile and DebugDocument checksums for comparison with this same retained-source scan. A match does not authenticate an artifact/PDB or prove runtime behavior.", enumValues: Array.Empty<string>()),
             Arg(@"symbolIds", ToolArgumentType.Array, required: true, arrayItemType: ToolArgumentType.String, description: @"1..16 distinct exact method addresses from the selected publication. Reports observed operations and supported bound call paths, never purity or actual runtime dispatch.", enumValues: Array.Empty<string>()),
             Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Committed profile; defaults to the retained profile. Another committed profile uses the existing verified ephemeral operation-fact lane, not an additional retained base.", enumValues: Array.Empty<string>()),
             Arg(@"maxDepth", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum supported direct/local call depth, 0..8; default 4. Unexpanded calls remain explicit unknowns.", enumValues: Array.Empty<string>()),

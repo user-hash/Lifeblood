@@ -165,6 +165,36 @@ public sealed class MethodEffectToolHandlerTests : IDisposable
             => BlastRadiusAnalyzer.Analyze(graph, targetSymbolId, maxDepth);
     }
 
+    [Fact]
+    public void NativeCaptureJoinsTheSameRetainedSourceAndDoesNotHashLaterDiskChangesOrStartAnotherPublication()
+    {
+        using var session = new GraphSession(_fs);
+        session.Load(_root, graphPath: null, rulesPath: null, readOnly: false);
+        var snapshot = session.CurrentSnapshot;
+        var root = session.Graph!.Symbols.Single(symbol => symbol.Name == "Run").Id;
+        var handler = new MethodEffectToolHandler(session);
+        var baseline = handler.Execute(Args(new { symbolIds = new[] { root } }), default);
+        var declaration = Assert.Single(Assert.Single(baseline.Methods).CallableDeclarations);
+        var json = JsonSerializer.Serialize(new
+        {
+            identity = new { buildId = "fixture-build", defineProfiles = new[] { "Editor" } }, measurements = Array.Empty<object>(),
+            nativeArtifacts = new[] { new { artifactId = "fixture-module", buildId = "fixture-build", debugId = "caller-debug-id", debugFormat = "PortablePdb",
+                documents = new[] { new { workspaceFilePath = "Effects.cs", moduleName = declaration.ModuleName, profileScope = "Editor", checksumKind = "DebugDocument",
+                    checksumAlgorithm = "SHA256", checksum = declaration.Declaration.SourceChecksums["Sha256"] } } } },
+        });
+        File.WriteAllText(Path.Combine(_root, "native.json"), json);
+        File.AppendAllText(Path.Combine(_root, "Effects.cs"), "\n// changed after publication\n");
+        var report = handler.Execute(Args(new { symbolIds = new[] { root }, runtimeEvidencePath = "native.json" }), default);
+        Assert.Equal(NativeSourceJoinOutcome.MatchedSourceChecksum, Assert.Single(report.NativeSourceEvidence!.Documents).Outcome);
+        Assert.False(report.NativeSourceEvidence.NativeArtifactVerified);
+        Assert.Equal(0, report.ScanReceipt.AdditionalSemanticBaseCount);
+        Assert.Equal(0, report.ScanReceipt.CompiledModuleCount);
+        Assert.Same(snapshot, session.CurrentSnapshot);
+        Assert.Throws<ArgumentException>(() => handler.Execute(Args(new { symbolIds = new[] { root }, runtimeEvidencePath = "../outside.json" }), default));
+        File.WriteAllText(Path.Combine(_root, "native.json"), json.Replace("Effects.cs", "../outside.cs", StringComparison.Ordinal));
+        Assert.Throws<ArgumentException>(() => handler.Execute(Args(new { symbolIds = new[] { root }, runtimeEvidencePath = "native.json" }), default));
+    }
+
     private static JsonElement Args(object value) => JsonSerializer.SerializeToElement(value);
 
     public void Dispose()

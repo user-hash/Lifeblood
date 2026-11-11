@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Lifeblood.Adapters.Performance;
 using Lifeblood.Analysis;
@@ -16,13 +15,11 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 internal sealed class PerformanceEvidenceToolHandler
 {
-    internal const int MaximumInputBytes = 32 * 1024 * 1024;
+    internal const int MaximumInputBytes = RuntimeEvidenceFileReader.MaximumInputBytes;
     internal const int MaximumMarkerAliases = 256;
     internal const int MaximumMarkers = 1_000;
     internal const int MaximumTestsPerSymbol = 50;
     internal const int MaximumDeltas = 5_000;
-
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     private readonly GraphSession _session;
     private readonly IInvariantProvider _invariants;
@@ -94,13 +91,8 @@ internal sealed class PerformanceEvidenceToolHandler
         int maximumMeasurements,
         string workspaceRoot)
     {
-        var path = ResolveContainedPath(rawPath, workspaceRoot);
-        var content = ReadBoundedUtf8(path.FullPath);
-        return _import.Execute(new PerformanceEvidenceDocument(
-            path.RelativePath,
-            content,
-            formatHint,
-            maximumMeasurements));
+        return _import.Execute(RuntimeEvidenceFileReader.Read(
+            _session.FileSystem, workspaceRoot, rawPath, formatHint, maximumMeasurements));
     }
 
     private object BuildImportResult(
@@ -252,6 +244,8 @@ internal sealed class PerformanceEvidenceToolHandler
             capture.Identity,
             capture.Device,
             capture.Workload,
+            nativeArtifactCount = capture.NativeArtifacts.Length,
+            nativeSourceDocumentCount = capture.NativeArtifacts.Sum(artifact => artifact.Documents.Length),
             measurementCount = capture.Measurements.Length,
             availableMeasurementCount = available,
             unavailableMeasurementCount = unavailable,
@@ -341,44 +335,7 @@ internal sealed class PerformanceEvidenceToolHandler
         return root;
     }
 
-    private (string FullPath, string RelativePath) ResolveContainedPath(
-        string rawPath,
-        string workspaceRoot)
-    {
-        if (string.IsNullOrWhiteSpace(rawPath))
-            throw new ArgumentException("Runtime-evidence path cannot be empty.", nameof(rawPath));
-        var root = Path.GetFullPath(workspaceRoot);
-        var path = WorkspacePathIdentity.ResolveFromWorkspace(root, rawPath);
-        if (!WorkspacePathIdentity.Contains(root, path))
-            throw new ArgumentException($"Runtime-evidence path must stay inside workspace root '{root}'.");
-        if (!_session.FileSystem.FileExists(path))
-            throw new FileNotFoundException("Runtime-evidence capture was not found.", path);
-        return (path, Path.GetRelativePath(root, path).Replace('\\', '/'));
-    }
-
     private int RetainedSemanticBaseCount =>
         _session.IsLoaded && _session.CurrentSnapshot.RetainsSemanticServices ? 1 : 0;
 
-    private string ReadBoundedUtf8(string path)
-    {
-        using var source = _session.FileSystem.OpenRead(path);
-        using var buffer = new MemoryStream();
-        var chunk = new byte[8192];
-        while (true)
-        {
-            var read = source.Read(chunk, 0, chunk.Length);
-            if (read == 0) break;
-            if (buffer.Length + read > MaximumInputBytes)
-                throw new ArgumentException($"Runtime-evidence capture exceeds the {MaximumInputBytes}-byte limit.");
-            buffer.Write(chunk, 0, read);
-        }
-        try
-        {
-            return StrictUtf8.GetString(buffer.GetBuffer(), 0, checked((int)buffer.Length));
-        }
-        catch (DecoderFallbackException ex)
-        {
-            throw new ArgumentException("Runtime-evidence capture must be valid UTF-8.", ex);
-        }
-    }
 }

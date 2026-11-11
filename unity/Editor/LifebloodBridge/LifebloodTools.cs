@@ -311,6 +311,9 @@ namespace Lifeblood.UnityBridge
     {
         public sealed class Parameters : SnapshotReadParameters
         {
+            [ToolParameter("Optional workspace-contained runtime capture with caller-reported native artifact/debug/document identities.", Required = false)]
+            public string runtimeEvidencePath { get; set; }
+
             [ToolParameter("1..16 distinct exact method addresses from the selected publication.", Required = true)]
             public string[] symbolIds { get; set; }
 

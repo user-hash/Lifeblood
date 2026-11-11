@@ -2,6 +2,7 @@ using Lifeblood.Domain.Results;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Lifeblood.Adapters.CSharp;
 
@@ -26,6 +27,7 @@ internal sealed partial class RoslynOperationFactProvider
         const string kind = OperationFactKind.CallableDeclaration;
         if (!Matches(kindFilter, kind)) return true;
         string? checksum = null;
+        IReadOnlyDictionary<string, string>? checksums = null;
         foreach (var syntax in syntaxRoot.DescendantNodesAndSelf())
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -48,6 +50,17 @@ internal sealed partial class RoslynOperationFactProvider
 
             var text = syntaxRoot.SyntaxTree.GetText(cancellationToken);
             checksum ??= Convert.ToHexString(text.GetChecksum().AsSpan()).ToLowerInvariant();
+            checksums ??= new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Sha1"] = TextChecksum(SourceHashAlgorithm.Sha1),
+                ["Sha256"] = TextChecksum(SourceHashAlgorithm.Sha256),
+            };
+            string TextChecksum(SourceHashAlgorithm algorithm)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Convert.ToHexString((text.ChecksumAlgorithm == algorithm ? text
+                    : SourceText.From(text.ToString(), text.Encoding, algorithm)).GetChecksum().AsSpan()).ToLowerInvariant();
+            }
             var deferred = method.MethodKind is MethodKind.AnonymousFunction or MethodKind.LocalFunction;
             var fact = new OperationFact
             {
@@ -71,6 +84,7 @@ internal sealed partial class RoslynOperationFactProvider
                         ? symbolIds.Callable(parent) : null,
                     SourceChecksumAlgorithm = text.ChecksumAlgorithm.ToString(),
                     SourceChecksum = checksum,
+                    SourceChecksums = checksums,
                     SourceEncoding = text.Encoding?.WebName,
                 },
             };

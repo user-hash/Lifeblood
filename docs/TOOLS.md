@@ -29,6 +29,19 @@ explicit limits for indirect/native dispatch, aliases, implicit effects and
 lowering. They establish neither purity nor a native/PDB match or runtime timing.
 See the [design and acceptance plan](plans/bounded-method-effects-2026-11-11.md).
 
+Optional `runtimeEvidencePath` reuses the runtime-capture importer for native
+source joins. Generic JSON keeps its `identity.buildId`, `defineProfiles` and
+`measurements` array (which may be empty), with a bounded `nativeArtifacts[]`
+extension. Artifacts carry `artifactId`, matching `buildId`, `debugId`,
+`debugFormat`, and documents with `workspaceFilePath`, `sourcePath`, `moduleName`,
+`profileScope`, `checksumKind:"DebugDocument"`, `checksumAlgorithm` and `checksum`.
+Workspace paths are explicit relative POSIX mappings. SHA-1/SHA-256 compare with
+retained compiler text from the same selected scan. `MatchedSourceChecksum`
+describes a digest comparison; `evidenceOrigin:CallerReported` and
+`nativeArtifactVerified:false` remain explicit. It verifies neither a native/PDB
+file nor current raw source, build defines, machine-code behavior or timing.
+See [native/source qualification](investigations/lifeblood-native-source-2026-11-11.md).
+
 ## Write-side (compiler-as-a-service)
 
 ### Contract Audit Route Facts

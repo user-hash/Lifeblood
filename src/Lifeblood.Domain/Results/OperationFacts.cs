@@ -236,6 +236,8 @@ public sealed class OperationCallableDeclaration
     public string? ParentCallableId { get; init; }
     public required string SourceChecksumAlgorithm { get; init; }
     public required string SourceChecksum { get; init; }
+    public IReadOnlyDictionary<string, string> SourceChecksums { get; init; }
+        = new Dictionary<string, string>(StringComparer.Ordinal);
     public string? SourceEncoding { get; init; }
 }
 

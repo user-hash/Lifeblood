@@ -30,6 +30,9 @@ public static class ToolRequestBinder
         {
             RootSymbolIds = ids,
             ProfileScope = ReadString(root, ArgumentName(tool, "profileScope")),
+            RuntimeEvidencePath = root.TryGetProperty(ArgumentName(tool, "runtimeEvidencePath"), out var evidence)
+                ? evidence.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(evidence.GetString())
+                    ? evidence.GetString() : throw new ArgumentException("runtimeEvidencePath must be a nonempty string.") : null,
             MaxDepth = Limit("maxDepth", 4),
             MaxMethods = Limit("maxMethods", 128),
             MaxFacts = Limit("maxFacts", 10_000),

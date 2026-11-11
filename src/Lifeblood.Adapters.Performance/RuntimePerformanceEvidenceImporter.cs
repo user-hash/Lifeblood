@@ -12,7 +12,7 @@ namespace Lifeblood.Adapters.Performance;
 /// the structural Unity ProfilerRecorder receipt shape used by ExampleApp. It does
 /// not parse proprietary Unity .data files and never retains imported rows.
 /// </summary>
-public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImporter
+public sealed partial class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImporter
 {
     public PerformanceCapture Import(PerformanceEvidenceDocument document)
     {
@@ -70,6 +70,7 @@ public sealed class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImp
             Device = device,
             Workload = workload,
             Measurements = measurements.ToArray(),
+            NativeArtifacts = ReadNativeArtifacts(root),
             ImportReceipt = new PerformanceImportReceipt
             {
                 SourceName = document.SourceName,

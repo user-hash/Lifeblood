@@ -4,6 +4,10 @@
     "symbolIds"
   ],
   "properties": {
+    "runtimeEvidencePath": {
+      "type": "string",
+      "description": "Optional workspace-contained runtime capture using the existing importer. nativeArtifacts[].documents carry caller-reported build/debug/module/profile and DebugDocument checksums for comparison with this same retained-source scan. A match does not authenticate an artifact/PDB or prove runtime behavior."
+    },
     "symbolIds": {
       "type": "array",
       "items": {

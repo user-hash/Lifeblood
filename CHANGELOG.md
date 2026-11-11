@@ -9,6 +9,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Source-stage method-effect reports can join caller-reported native build/debug
+  document identities from `runtimeEvidencePath` to SHA-1/SHA-256 of the same
+  retained-source scan. The runtime-capture importer and bounded file reader are
+  shared; missing, conflicting, mismatched and incomplete evidence remains
+  explicit. No native artifact authentication, runtime/timing proof, second scan
+  or retained base is implied. See
+  [native/source qualification](docs/investigations/lifeblood-native-source-2026-11-11.md).
+
 - Source-stage compile checks now report the executing host compiler and index
   diagnostic location/phase attribution. Locationless owning-module emitter
   failures remain errors and are not attributed to an arbitrary requested file.

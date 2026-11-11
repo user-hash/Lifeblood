@@ -81,6 +81,15 @@ external, unavailable, binding-error and scope-exhaustion case stays explicit;
 unentered deferred bodies never become execution by their enclosing method.
 No absence of observed operations is a purity or runtime-effect proof.
 
+Declaration facts may additionally project SHA-1/SHA-256 over the same retained
+text. Their two-algorithm map is materialized once per selected tree, reused only
+within that scan and never replaces the original checksum/encoding provenance.
+An alternate algorithm may require re-encoding decoded text; lost raw encoding
+or BOM information must remain a mismatch/limitation, not an inferred match.
+Optional native source comparison reuses the existing capture importer and the
+same operation stream. Artifact/build/debug identities remain caller-reported;
+matching a digest never authenticates a binary/PDB or proves native execution.
+
 ## Compile Check Validation
 
 Compile checks identify their executing compiler through the same factory used
