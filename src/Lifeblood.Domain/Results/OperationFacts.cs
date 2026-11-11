@@ -15,7 +15,14 @@ public sealed class OperationFact
     public required string ModuleName { get; init; }
     public required string ProfileScope { get; init; }
     public required string ContainingSymbolId { get; init; }
+    /// <summary>Opaque lexical callable identity, independent of declaration-schema projection; null for non-callable initializers.</summary>
+    public string? ContainingCallableId { get; init; }
     public string? TargetSymbolId { get; init; }
+    /// <summary>Bound declaration's opaque callable identity; delegate, dynamic and pointer invocation do not invent an implementation target.</summary>
+    public string? TargetCallableId { get; init; }
+    public string? InvocationKind { get; init; }
+    /// <summary>External implementation on the bound declaration; false does not establish body availability or workspace membership. Null when no method is bound.</summary>
+    public bool? TargetIsExternal { get; init; }
     public string? ResultType { get; init; }
     public string? Operator { get; init; }
     public required OperationSourceSpan Source { get; init; }
@@ -46,6 +53,8 @@ public sealed class OperationValueFact
 {
     public required string Kind { get; init; }
     public string? SymbolId { get; init; }
+    /// <summary>Opaque identity of a bound method group or deferred lambda, not a graph declaration address.</summary>
+    public string? CallableId { get; init; }
     public string? Type { get; init; }
     public string? ConstantValue { get; init; }
     public string? Expression { get; init; }
@@ -203,6 +212,18 @@ public static class OperationFactKind
     public const string Await = "Await";
     public const string Lock = "Lock";
     public const string InterpolatedString = "InterpolatedString";
+}
+
+/// <summary>Binding/dispatch observed at a call occurrence, without resolving runtime receiver or delegate targets.</summary>
+public static class OperationInvocationKind
+{
+    public const string Direct = "Direct";
+    public const string Virtual = "Virtual";
+    public const string Interface = "Interface";
+    public const string Delegate = "Delegate";
+    public const string LocalFunction = "LocalFunction";
+    public const string Dynamic = "Dynamic";
+    public const string FunctionPointer = "FunctionPointer";
 }
 
 /// <summary>Neutral read/write placement for member and element references.</summary>

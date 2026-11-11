@@ -197,9 +197,10 @@ internal sealed class RoslynOperationFactProvider
                 kind,
                 operatorName,
                 targetId);
-            var containingSymbolId = targetMatches && selectorCandidate
-                ? ContainingSymbolId(model, operation.Syntax.SpanStart, moduleName, symbolIds)
-                : null;
+            var scope = targetMatches && selectorCandidate
+                ? ContainingScope(model, operation.Syntax.SpanStart, moduleName, symbolIds)
+                : default;
+            var containingSymbolId = scope.OwnerId;
             var containingMatches = containingFilter is not { Count: > 0 }
                 || (containingSymbolId != null && containingFilter.Contains(containingSymbolId));
             var selectorMatches = SelectorMatches(
@@ -224,6 +225,7 @@ internal sealed class RoslynOperationFactProvider
                     kind,
                     targetId,
                     containingSymbolId!,
+                    scope.CallableSymbol == null ? null : symbolIds.Callable(scope.CallableSymbol),
                     operatorName,
                     symbolIds);
                 emittedFacts++;
@@ -264,11 +266,12 @@ internal sealed class RoslynOperationFactProvider
 
     private static string? OperationKind(IOperation operation) => operation switch
     {
-        IInvocationOperation => OperationFactKind.Call,
+        IInvocationOperation or IDynamicInvocationOperation or IFunctionPointerInvocationOperation => OperationFactKind.Call,
         IObjectCreationOperation => OperationFactKind.ObjectCreation,
         IArrayCreationOperation => OperationFactKind.ArrayCreation,
         IDelegateCreationOperation => OperationFactKind.DelegateCreation,
         IAssignmentOperation or IIncrementOrDecrementOperation => OperationFactKind.Assignment,
+        IVariableDeclaratorOperation { Initializer: not null } or IEventAssignmentOperation => OperationFactKind.Assignment,
         IFieldReferenceOperation field => RoslynOperationFacts.IsWriteContext(field)
             ? OperationFactKind.MemberWrite
             : OperationFactKind.MemberRead,
@@ -303,6 +306,8 @@ internal sealed class RoslynOperationFactProvider
         IInvocationOperation invocation => symbolIds.Get(invocation.TargetMethod),
         IObjectCreationOperation { Constructor: { } constructor } => symbolIds.Get(constructor),
         IAssignmentOperation assignment => ReferencedSymbolId(assignment.Target, symbolIds),
+        IVariableDeclaratorOperation { Initializer: not null } declaration => symbolIds.Local(declaration.Symbol),
+        IEventAssignmentOperation eventAssignment => ReferencedSymbolId(eventAssignment.EventReference, symbolIds),
         IIncrementOrDecrementOperation increment => ReferencedSymbolId(increment.Target, symbolIds),
         IFieldReferenceOperation field => symbolIds.Get(field.Field),
         IPropertyReferenceOperation property => symbolIds.Get(property.Property),
@@ -318,6 +323,8 @@ internal sealed class RoslynOperationFactProvider
         ICompoundAssignmentOperation compound => compound.OperatorKind.ToString(),
         ICoalesceAssignmentOperation => "Coalesce",
         IAssignmentOperation => "Simple",
+        IVariableDeclaratorOperation => "Initialize",
+        IEventAssignmentOperation eventAssignment => eventAssignment.Adds ? "Add" : "Remove",
         IIncrementOrDecrementOperation increment => increment.Kind.ToString(),
         IBinaryOperation binary => binary.OperatorKind.ToString(),
         IUnaryOperation unary => unary.OperatorKind.ToString(),
@@ -351,6 +358,7 @@ internal sealed class RoslynOperationFactProvider
         string kind,
         string? targetId,
         string containingSymbolId,
+        string? containingCallableId,
         string? operatorName,
         ScanSymbolIds symbolIds)
     {
@@ -361,6 +369,17 @@ internal sealed class RoslynOperationFactProvider
             case IInvocationOperation invocation:
                 AddInput(inputs, OperationInputRole.Receiver, invocation.Instance, symbolIds);
                 AddArguments(inputs, invocation.Arguments, compilation, symbolIds);
+                break;
+
+            case IDynamicInvocationOperation dynamicInvocation:
+                AddInput(inputs, OperationInputRole.Receiver, dynamicInvocation.Operation, symbolIds);
+                for (var index = 0; index < dynamicInvocation.Arguments.Length; index++)
+                    AddInput(inputs, OperationInputRole.Argument, dynamicInvocation.Arguments[index], symbolIds, index);
+                break;
+
+            case IFunctionPointerInvocationOperation pointerInvocation:
+                AddInput(inputs, OperationInputRole.Receiver, pointerInvocation.Target, symbolIds);
+                AddArguments(inputs, pointerInvocation.Arguments, compilation, symbolIds, includeParameterIds: false);
                 break;
 
             case IObjectCreationOperation creation:
@@ -379,6 +398,29 @@ internal sealed class RoslynOperationFactProvider
             case IAssignmentOperation assignment:
                 AddInput(inputs, OperationInputRole.Target, assignment.Target, symbolIds);
                 AddInput(inputs, OperationInputRole.Value, assignment.Value, symbolIds);
+                break;
+
+            case IVariableDeclaratorOperation { Initializer: not null } declaration:
+                inputs.Add(new OperationInputFact
+                {
+                    Role = OperationInputRole.Target,
+                    AuthorSupplied = true,
+                    Value = new OperationValueFact
+                    {
+                        Kind = OperationValueKind.Local,
+                        SymbolId = symbolIds.Local(declaration.Symbol),
+                        Type = TypeDisplay(declaration.Symbol.Type),
+                        Expression = declaration.Symbol.Name,
+                        IsCompileTimeConstant = false,
+                        SourceSymbolIds = new[] { symbolIds.Local(declaration.Symbol) },
+                    },
+                });
+                AddInput(inputs, OperationInputRole.Value, declaration.Initializer.Value, symbolIds);
+                break;
+
+            case IEventAssignmentOperation eventAssignment:
+                AddInput(inputs, OperationInputRole.Target, eventAssignment.EventReference, symbolIds);
+                AddInput(inputs, OperationInputRole.Value, eventAssignment.HandlerValue, symbolIds);
                 break;
 
             case IIncrementOrDecrementOperation increment:
@@ -475,7 +517,12 @@ internal sealed class RoslynOperationFactProvider
             ModuleName = moduleName,
             ProfileScope = _profileScope,
             ContainingSymbolId = containingSymbolId,
+            ContainingCallableId = containingCallableId,
             TargetSymbolId = targetId,
+            TargetCallableId = operation is IInvocationOperation call && call.TargetMethod.MethodKind != MethodKind.DelegateInvoke
+                ? symbolIds.Callable(call.TargetMethod) : null,
+            InvocationKind = InvocationKind(operation),
+            TargetIsExternal = operation is IInvocationOperation bound ? bound.TargetMethod.IsExtern : null,
             ResultType = operation.Type == null ? null : TypeDisplay(operation.Type),
             Operator = operatorName,
             Source = source,
@@ -489,7 +536,8 @@ internal sealed class RoslynOperationFactProvider
         List<OperationInputFact> inputs,
         IEnumerable<IArgumentOperation> arguments,
         CSharpCompilation compilation,
-        ScanSymbolIds symbolIds)
+        ScanSymbolIds symbolIds,
+        bool includeParameterIds = true)
     {
         foreach (var argument in arguments)
         {
@@ -498,7 +546,7 @@ internal sealed class RoslynOperationFactProvider
             {
                 Role = OperationInputRole.Argument,
                 Ordinal = argument.Parameter?.Ordinal,
-                ParameterId = argument.Parameter == null ? null : symbolIds.Parameter(argument.Parameter),
+                ParameterId = !includeParameterIds || argument.Parameter == null ? null : symbolIds.Parameter(argument.Parameter),
                 ParameterName = argument.Parameter?.Name,
                 AuthorSupplied = argument.ArgumentKind != ArgumentKind.DefaultValue,
                 Value = DescribeValue(value, symbolIds),
@@ -554,6 +602,13 @@ internal sealed class RoslynOperationFactProvider
         int? ordinal = null)
     {
         if (value == null) return;
+        if (value is IConditionalAccessInstanceOperation)
+            for (var parent = value.Parent; parent != null; parent = parent.Parent)
+                if (parent is IConditionalAccessOperation conditional)
+                {
+                    value = conditional.Operation;
+                    break;
+                }
         inputs.Add(new OperationInputFact
         {
             Role = role,
@@ -579,6 +634,9 @@ internal sealed class RoslynOperationFactProvider
                 case IParenthesizedOperation parenthesized:
                     unwrapped = parenthesized.Operand;
                     continue;
+                case IDelegateCreationOperation creation:
+                    unwrapped = creation.Target;
+                    continue;
                 default:
                     break;
             }
@@ -593,6 +651,12 @@ internal sealed class RoslynOperationFactProvider
         {
             Kind = ValueKind(unwrapped),
             SymbolId = ReferencedSymbolId(unwrapped, symbolIds),
+            CallableId = unwrapped switch
+            {
+                IAnonymousFunctionOperation anonymous => symbolIds.Callable(anonymous.Symbol),
+                IMethodReferenceOperation method => symbolIds.Callable(method.Method),
+                _ => null,
+            },
             Type = operation.Type == null ? null : TypeDisplay(operation.Type),
             ConstantValue = ConstantText(unwrapped.ConstantValue),
             Expression = Clip(operation.Syntax.ToString()),
@@ -731,18 +795,32 @@ internal sealed class RoslynOperationFactProvider
         _ => null,
     };
 
-    private static string ContainingSymbolId(
+    private static (string OwnerId, IMethodSymbol? CallableSymbol) ContainingScope(
         SemanticModel model,
         int position,
         string moduleName,
         ScanSymbolIds symbolIds)
     {
         ISymbol? symbol = model.GetEnclosingSymbol(position);
+        var callable = symbol as IMethodSymbol;
         while (symbol is IMethodSymbol method
                && method.MethodKind is MethodKind.AnonymousFunction or MethodKind.LocalFunction)
             symbol = symbol.ContainingSymbol;
-        return symbol == null ? $"mod:{moduleName}" : symbolIds.Get(symbol);
+        return (symbol == null ? $"mod:{moduleName}" : symbolIds.Get(symbol), callable);
     }
+
+    private static string? InvocationKind(IOperation operation) => operation switch
+    {
+        IDynamicInvocationOperation => OperationInvocationKind.Dynamic,
+        IFunctionPointerInvocationOperation => OperationInvocationKind.FunctionPointer,
+        IInvocationOperation { TargetMethod.MethodKind: MethodKind.DelegateInvoke } => OperationInvocationKind.Delegate,
+        IInvocationOperation { TargetMethod.MethodKind: MethodKind.LocalFunction } => OperationInvocationKind.LocalFunction,
+        IInvocationOperation call when call.TargetMethod.ContainingType.TypeKind == TypeKind.Interface
+            && (call.IsVirtual || call.TargetMethod.IsAbstract) => OperationInvocationKind.Interface,
+        IInvocationOperation { IsVirtual: true } => OperationInvocationKind.Virtual,
+        IInvocationOperation => OperationInvocationKind.Direct,
+        _ => null,
+    };
 
     private static OperationControlContext[] BuildControlContexts(
         IOperation operation,
@@ -1075,6 +1153,24 @@ internal sealed class RoslynOperationFactProvider
         internal ScanSymbolIds(CanonicalSymbolIdVersion idVersion) => _idVersion = idVersion;
 
         private readonly Dictionary<ISymbol, string> _canonical = new(SymbolEqualityComparer.Default);
+        private readonly Dictionary<ISymbol, string> _callables = new(SymbolEqualityComparer.Default);
+
+        internal string Callable(IMethodSymbol method)
+        {
+            var definition = method.OriginalDefinition;
+            if (_callables.TryGetValue(definition, out var id)) return id;
+            if (definition.MethodKind is MethodKind.AnonymousFunction or MethodKind.LocalFunction)
+            {
+                var owner = definition.ContainingSymbol is IMethodSymbol parent
+                    ? Callable(parent)
+                    : "callable-owner:" + CanonicalSymbolFormat.BuildSymbolId(definition.ContainingSymbol, CanonicalSymbolIdVersion.AssemblyQualifiedV2);
+                var start = definition.DeclaringSyntaxReferences.FirstOrDefault()?.Span.Start ?? -1;
+                id = $"{owner}@{start}:{definition.Name}";
+            }
+            else id = "callable:" + CanonicalSymbolFormat.BuildSymbolId(definition, CanonicalSymbolIdVersion.AssemblyQualifiedV2);
+            _callables.Add(definition, id);
+            return id;
+        }
 
         internal string Get(ISymbol symbol)
         {
@@ -1087,17 +1183,19 @@ internal sealed class RoslynOperationFactProvider
 
         internal string Parameter(IParameterSymbol parameter)
         {
-            var owner = parameter.ContainingSymbol == null
-                ? "(unknown)"
-                : Get(parameter.ContainingSymbol);
+            var owner = ValueOwner(parameter.ContainingSymbol);
             return $"parameter:{owner}#{parameter.Ordinal}:{parameter.Name}";
         }
 
         internal string Local(ILocalSymbol local)
         {
-            var owner = local.ContainingSymbol == null ? "(unknown)" : Get(local.ContainingSymbol);
+            var owner = ValueOwner(local.ContainingSymbol);
             var declarationStart = local.DeclaringSyntaxReferences.FirstOrDefault()?.Span.Start ?? -1;
             return $"local:{owner}@{declarationStart}:{local.Name}";
         }
+
+        private string ValueOwner(ISymbol? owner)
+            => owner is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction or MethodKind.LocalFunction } nested
+                ? Callable(nested) : owner == null ? "(unknown)" : Get(owner);
     }
 }

@@ -54,6 +54,18 @@ threading raw fields through individual constructors.
 
 - **INV-OPERATION-FACTS-001. Occurrence-level contract evidence streams through one language-neutral port and never changes the semantic graph.**
 
+Calls retain their observed dispatch kind without promoting a declared interface,
+virtual slot, delegate signature or unknown dynamic/function-pointer target into
+a concrete runtime implementation. Dynamic and pointer invocations remain call
+occurrences with null declaration targets. Local initialization and event add/remove
+preserve source binding inputs; conditional receivers name their original value.
+Opaque callable keys identify lexical nested bodies independently of graph owner
+filters and declaration-schema projection. Nested parameter/local provenance uses
+that owner scope. These keys are not graph lookup addresses. Deferred bodies keep
+their anonymous/local-function control contexts; their lexical presence does not
+establish execution by the enclosing method. All callable memoization remains
+request-local under the existing operation-fact boundary.
+
 ## BCL Ownership
 
 Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't. They rely on the host runtime BCL.

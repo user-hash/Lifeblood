@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Source-qualified operation facts now preserve dynamic/pointer call occurrences,
+  callback local/event binding, conditional receivers and explicit dispatch kind.
+  Opaque callable keys distinguish deferred/nested bodies across declaration
+  schemas without changing graph addresses or retaining another semantic base.
+  Consumer-view integration and deployment remain pending; see
+  [callback assessment and source qualification](docs/investigations/lifeblood-callback-evidence-2026-11-11.md).
+
 - The attach-only inspection helper now joins CLI/runtime/Roslyn, SDK probe,
   live daemon/publication and server-catalog receipts. Caller-provided client and
   Unity bridge observations remain separate from live server facts. Identity
