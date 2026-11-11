@@ -378,6 +378,18 @@ The bridge injects the current Unity project root, starts the installed shared p
 
 Overrides name one executable, not a command line. The bridge owns `--shared --shared-key <UnityProjectRoot>` so every admission and status call targets the same workspace identity.
 
+For a portable x64 .NET runtime, set `EditorPrefs` key
+`Lifeblood_DotnetRootX64` or environment variable `LIFEBLOOD_DOTNET_ROOT_X64`.
+The preference wins when present. The bridge passes that value as
+`DOTNET_ROOT_X64` only to its child proxy; otherwise normal inherited runtime
+resolution applies. Pair this with `Lifeblood_McpCommand` pointing to the same
+installed MCP build used by direct clients. Changing the machine-wide SDK is
+unnecessary. A failed or malformed initialize handshake disposes the attempted
+proxy and returns an error; it never marks the bridge connected. A terminal MCP
+`isError:true` result becomes Coplay `ErrorResponse` with the original MCP result
+preserved as data. A valid compile result containing compilation diagnostics
+remains a successful transport response.
+
 ### Lifecycle
 
 - **Domain reload.** The bridge disposes Unity's proxy before recompilation. The daemon keeps its base while another client lease exists; the next Unity call reconnects.

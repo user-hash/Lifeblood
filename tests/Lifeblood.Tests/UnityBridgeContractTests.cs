@@ -163,12 +163,12 @@ public sealed class UnityBridgeContractTests
         var root = Parse(ClientPath);
         var bridge = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
             .Single(type => type.Identifier.ValueText == "LifebloodBridgeClient");
-        var ensureStarted = bridge.Members.OfType<MethodDeclarationSyntax>()
-            .Single(method => method.Identifier.ValueText == "EnsureStarted");
+        var startProxy = bridge.Members.OfType<MethodDeclarationSyntax>()
+            .Single(method => method.Identifier.ValueText == "StartProxy");
 
-        Assert.Contains("FileName = ServerCommand", ensureStarted.ToString());
-        Assert.Contains("--shared --shared-key", ensureStarted.ToString());
-        Assert.Contains("WorkingDirectory = unityRoot", ensureStarted.ToString());
+        Assert.Contains("FileName = ServerCommand", startProxy.ToString());
+        Assert.Contains("--shared --shared-key", startProxy.ToString());
+        Assert.Contains("WorkingDirectory = unityRoot", startProxy.ToString());
         Assert.Contains("LIFEBLOOD_MCP_COMMAND", source);
         Assert.DoesNotContain("LIFEBLOOD_SERVER_DLL", source);
         Assert.DoesNotContain("Lifeblood.Server.Mcp.dll", source);

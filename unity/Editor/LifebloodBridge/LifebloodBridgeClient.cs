@@ -107,13 +107,7 @@ namespace Lifeblood.UnityBridge
                         return ErrorResult("Lifeblood server closed without a response");
                     }
 
-                    var response = JObject.Parse(line);
-
-                    // Check for JSON-RPC error
-                    if (response["error"] != null)
-                        return ErrorResult(response["error"]["message"]?.ToString() ?? "Unknown error");
-
-                    return response["result"] as JObject ?? new JObject();
+                    return ParseRpcResult(line, id);
                 }
                 catch (Exception ex)
                 {
@@ -179,7 +173,7 @@ namespace Lifeblood.UnityBridge
 
             try
             {
-                return pending.GetAwaiter().GetResult();
+                return ProjectToolResult(toolName, pending.GetAwaiter().GetResult());
             }
             catch (Exception ex)
             {
@@ -191,6 +185,43 @@ namespace Lifeblood.UnityBridge
             => new PendingResponse(
                 $"Lifeblood call '{toolName}' is in progress.",
                 pollIntervalSeconds: 0.25);
+
+        internal static object ProjectToolResult(string toolName, JObject result)
+        {
+            if ((bool?)result["isError"] != true)
+                return result;
+
+            var content = result["content"] as JArray;
+            var messages = new System.Collections.Generic.List<string>();
+            if (content != null)
+                foreach (var item in content)
+                    if ((string)item["type"] == "text" && item["text"]?.Type == JTokenType.String)
+                        messages.Add((string)item["text"]);
+            var message = messages.Count == 0 ? "No error text supplied." : string.Join("\n", messages);
+            return new ErrorResponse($"Lifeblood call '{toolName}' failed: {message}", result);
+        }
+
+        internal static JObject ParseRpcResult(string line, int expectedId)
+        {
+            var response = JObject.Parse(line);
+            if ((string)response["jsonrpc"] != McpProtocolConstants.JsonRpcVersion
+                || response["id"]?.Type != JTokenType.Integer
+                || (long)response["id"] != expectedId)
+                throw new InvalidOperationException("Lifeblood returned an invalid or mismatched JSON-RPC response.");
+            if (response["error"] != null)
+                throw new InvalidOperationException(response["error"]["message"]?.ToString() ?? "Unknown Lifeblood JSON-RPC error.");
+            return response["result"] as JObject
+                ?? throw new InvalidOperationException("Lifeblood returned no JSON-RPC result object.");
+        }
+
+        internal static void ValidateInitializeResponse(string line, int expectedId)
+        {
+            var result = ParseRpcResult(line, expectedId);
+            if ((string)result["protocolVersion"] != McpProtocolConstants.SupportedVersion
+                || result["capabilities"] is not JObject
+                || result["serverInfo"] is not JObject)
+                throw new InvalidOperationException("Lifeblood returned an unsupported or incomplete MCP initialize result.");
+        }
 
         /// <summary>
         /// Polling form used by the Unity custom-tool surface. The bridge owns
@@ -216,6 +247,12 @@ namespace Lifeblood.UnityBridge
 
             Kill(); // Clean up any dead process
 
+            try { StartProxy(); }
+            catch { Kill(); throw; }
+        }
+
+        private void StartProxy()
+        {
             var unityRoot = Path.GetDirectoryName(Application.dataPath);
             if (string.IsNullOrEmpty(unityRoot))
                 throw new InvalidOperationException("Unity project root could not be resolved.");
@@ -235,6 +272,12 @@ namespace Lifeblood.UnityBridge
                 }
             };
 
+            var runtimeRoot = EditorPrefs.GetString("Lifeblood_DotnetRootX64", "");
+            if (string.IsNullOrWhiteSpace(runtimeRoot))
+                runtimeRoot = Environment.GetEnvironmentVariable("LIFEBLOOD_DOTNET_ROOT_X64");
+            if (!string.IsNullOrWhiteSpace(runtimeRoot))
+                _process.StartInfo.EnvironmentVariables["DOTNET_ROOT_X64"] = runtimeRoot;
+
             _process.Start();
             _stdin = _process.StandardInput;
             _stdout = new StreamReader(_process.StandardOutput.BaseStream);
@@ -251,10 +294,11 @@ namespace Lifeblood.UnityBridge
             // capabilities, and clientInfo per MCP spec 2024-11-05.
             // INV-MCP-003: every wire constant comes from McpProtocolConstants,
             // mirrored from Lifeblood.Connectors.Mcp.McpProtocolSpec.
+            var initializeId = _nextId++;
             var initRequest = new JObject
             {
                 ["jsonrpc"] = McpProtocolConstants.JsonRpcVersion,
-                ["id"] = _nextId++,
+                ["id"] = initializeId,
                 ["method"] = McpProtocolConstants.MethodInitialize,
                 ["params"] = new JObject
                 {
@@ -274,6 +318,8 @@ namespace Lifeblood.UnityBridge
             var initResponse = ReadLineWithTimeout(_stdout, InitTimeoutMs);
             if (initResponse == null)
                 throw new InvalidOperationException("Lifeblood server failed to respond to initialize (timed out after 15s)");
+
+            ValidateInitializeResponse(initResponse, initializeId);
 
             // Send canonical initialized notification (no id = notification).
             // The notification method name is sourced from
