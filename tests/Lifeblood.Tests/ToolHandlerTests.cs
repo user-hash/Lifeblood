@@ -102,7 +102,8 @@ public class ToolHandlerTests : IDisposable
 
     private static ToolHandler CreateHandler(
         ISessionGate? sessionGate = null,
-        GraphSession? session = null)
+        GraphSession? session = null,
+        StalenessPolicy? stalenessPolicy = null)
     {
         IMcpGraphProvider provider = new LifebloodMcpProvider(new TestBlastRadiusProvider());
         ISymbolResolver resolver = new LifebloodSymbolResolver();
@@ -114,7 +115,7 @@ public class ToolHandlerTests : IDisposable
         var classifications = ToolRegistry.GetDefinitions()
             .Where(d => d.EnvelopeClassification != null)
             .ToDictionary(d => d.Name, d => d.EnvelopeClassification!, System.StringComparer.Ordinal);
-        IResponseDecorator decorator = new LifebloodResponseDecorator(classifications);
+        IResponseDecorator decorator = new LifebloodResponseDecorator(classifications, stalenessPolicy);
         return new ToolHandler(
             session ?? new GraphSession(Fs),
             provider,
@@ -575,6 +576,11 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal("sharedAutoRefresh", refresh.GetProperty("mode").GetString());
         Assert.True(refresh.GetProperty("autoRefreshed").GetBoolean());
         Assert.Equal(2, refresh.GetProperty("changedFileCount").GetInt32());
+        var receipt = refresh.GetProperty("receipt");
+        Assert.Equal("refreshed", receipt.GetProperty("status").GetString());
+        Assert.Equal("incremental", receipt.GetProperty("mode").GetString());
+        Assert.NotEqual(receipt.GetProperty("snapshotBefore").GetString(), receipt.GetProperty("snapshotAfter").GetString());
+        Assert.Equal(2, receipt.GetProperty("acceptedChanges").GetProperty("counts").GetProperty("contentChangedSourceFiles").GetInt32());
         var broken = root.GetProperty("results").EnumerateArray()
             .Single(row => row.GetProperty("filePath").GetString() == "Broken.cs");
         Assert.False(broken.GetProperty("success").GetBoolean());
@@ -591,6 +597,11 @@ public class ToolHandlerTests : IDisposable
         using var singlePayload = JsonDocument.Parse(single.Content[0].Text);
         Assert.False(singlePayload.RootElement.GetProperty("success").GetBoolean());
         Assert.Contains("CS0246", singlePayload.RootElement.GetProperty("diagnostics").GetRawText());
+        var unchanged = handler.Handle("lifeblood_compile_check", MakeArgs(new { filePath = "Broken.cs" }));
+        using var unchangedPayload = JsonDocument.Parse(unchanged.Content[0].Text);
+        var unchangedReceipt = unchangedPayload.RootElement.GetProperty("refresh");
+        Assert.Equal("unchanged", unchangedReceipt.GetProperty("status").GetString());
+        Assert.Equal(unchangedReceipt.GetProperty("snapshotBefore").GetString(), unchangedReceipt.GetProperty("snapshotAfter").GetString());
     }
 
     [Fact]
@@ -983,7 +994,7 @@ public class ToolHandlerTests : IDisposable
         var sourcePath = Path.Combine(projectRoot, "Tracked.cs");
         File.WriteAllText(sourcePath, "namespace DriftProject; public class Tracked { }");
         using var session = new GraphSession(Fs);
-        var handler = CreateHandler(session: session);
+        var handler = CreateHandler(session: session, stalenessPolicy: new StalenessPolicy(0, int.MaxValue));
         handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = projectRoot }));
 
         var current = handler.Handle("lifeblood_snapshots", MakeArgs(new
@@ -997,6 +1008,8 @@ public class ToolHandlerTests : IDisposable
             Assert.Equal(
                 "current",
                 payload.RootElement.GetProperty("entries")[0].GetProperty("drift").GetProperty("status").GetString());
+            Assert.DoesNotContain(payload.RootElement.GetProperty("envelope").GetProperty("limitations").EnumerateArray(),
+                limitation => limitation.GetString()!.Contains("checkDrift:true", StringComparison.Ordinal));
         }
 
         File.WriteAllText(sourcePath, "namespace DriftProject; public class Changed { }");
@@ -1010,6 +1023,12 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal(
             "drifted",
             driftPayload.RootElement.GetProperty("entries")[0].GetProperty("drift").GetProperty("status").GetString());
+        Assert.DoesNotContain(driftPayload.RootElement.GetProperty("envelope").GetProperty("limitations").EnumerateArray(),
+            limitation => limitation.GetString()!.Contains("checkDrift:true", StringComparison.Ordinal));
+        var uncheckedResult = handler.Handle("lifeblood_snapshots", MakeArgs(new { checkDrift = false }));
+        using var uncheckedPayload = JsonDocument.Parse(uncheckedResult.Content[0].Text);
+        Assert.Contains(uncheckedPayload.RootElement.GetProperty("envelope").GetProperty("limitations").EnumerateArray(),
+            limitation => limitation.GetString()!.Contains("checkDrift:true", StringComparison.Ordinal));
     }
 
     [Fact]

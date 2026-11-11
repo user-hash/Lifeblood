@@ -102,6 +102,9 @@ public sealed class EnvelopeContext
     /// not compare content or recapture source/descriptor/rule inventory.
     /// </summary>
     public int FileScanLimit { get; init; } = int.MaxValue;
+
+    /// <summary>Only this response carries canonical input-drift results; never cached across requests.</summary>
+    public bool CanonicalDriftResultIncluded { get; init; }
 }
 
 /// <summary>

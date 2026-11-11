@@ -583,7 +583,8 @@ public sealed class ToolHandler
         }
 
         if (request.Action == SnapshotCatalogAction.List)
-            return TextResult(WithEnvelope("lifeblood_snapshots", BuildSnapshotCatalogPayload(request.CheckDrift)));
+            return TextResult(WithEnvelope("lifeblood_snapshots", BuildSnapshotCatalogPayload(request.CheckDrift),
+                canonicalDriftResultIncluded: request.CheckDrift));
 
         WorkspaceSnapshotCatalogMutation mutation;
         try
@@ -2714,7 +2715,7 @@ public sealed class ToolHandler
     /// </summary>
     private const int EnvelopeFileScanLimit = 256;
 
-    private EnvelopeContext BuildEnvelopeContext()
+    private EnvelopeContext BuildEnvelopeContext(bool canonicalDriftResultIncluded = false)
     {
         if (!_session.IsLoaded || _session.Graph == null)
         {
@@ -2730,6 +2731,7 @@ public sealed class ToolHandler
 
         return new EnvelopeContext
         {
+            CanonicalDriftResultIncluded = canonicalDriftResultIncluded,
             AnalyzedAtUtc = _session.AnalyzedAtUtc,
             TrackedFilePaths = _session.CurrentSnapshot.TrackedFilePaths,
             FileSystem = _session.FileSystem,
@@ -2750,10 +2752,10 @@ public sealed class ToolHandler
     /// directly — envelopes are for successful results, not for
     /// "no graph loaded" or input-validation errors.
     /// </summary>
-    private string WithEnvelope(string toolName, object payload)
+    private string WithEnvelope(string toolName, object payload, bool canonicalDriftResultIncluded = false)
     {
         var stopwatch = TelemetryEnabled ? Stopwatch.StartNew() : null;
-        var envelope = _decorator.Decorate(toolName, BuildEnvelopeContext());
+        var envelope = _decorator.Decorate(toolName, BuildEnvelopeContext(canonicalDriftResultIncluded));
         var node = payload as JsonObject ?? System.Text.Json.JsonSerializer.SerializeToNode(payload, JsonOpts)
             as System.Text.Json.Nodes.JsonObject;
         if (node == null)

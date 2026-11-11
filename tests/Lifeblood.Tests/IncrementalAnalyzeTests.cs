@@ -315,6 +315,9 @@ public class IncrementalAnalyzeTests : IDisposable
         // Verify by re-running discovery directly (the analyzer's internal state
         // also has it but we don't expose snapshot publicly).
         Assert.Equal(new[] { "Program.cs" }, r.AcceptedChanges.DescriptorForcedSourceFiles);
+        Assert.Equal("projectDescriptor", r.RefreshTrigger!.Kind);
+        Assert.Equal("TestProject.csproj", r.RefreshTrigger.Input);
+        Assert.Equal("changed", r.RefreshTrigger.Change);
         Assert.Empty(r.AcceptedChanges.ContentChangedSourceFiles);
 
         var modules = new RoslynModuleDiscovery(_fs).DiscoverModules(_tempDir);
@@ -405,6 +408,38 @@ public class IncrementalAnalyzeTests : IDisposable
         // After widening, only ModuleA's symbols remain (B was deleted).
         Assert.Contains(r.Graph!.Symbols, s => s.Name == "ATypeA");
         Assert.DoesNotContain(r.Graph.Symbols, s => s.Name == "BTypeB");
+    }
+
+    [Theory]
+    [InlineData("added")]
+    [InlineData("changed")]
+    [InlineData("removed")]
+    public void AsmdefFallback_IdentifiesFirstObservedInputWithoutRecompilingOnRejection(string change)
+    {
+        WriteSingleFileProject("public class Foo { }");
+        var path = Path.Combine(_tempDir, "Probe.asmdef");
+        if (change != "added") File.WriteAllText(path, """{"name":"Probe"}""");
+        var analyzer = new RoslynWorkspaceAnalyzer(_fs);
+        var original = analyzer.AnalyzeWorkspace(_tempDir, _config);
+        if (change == "removed") File.Delete(path);
+        else
+        {
+            var stamp = change == "changed" ? File.GetLastWriteTimeUtc(path) : (DateTime?)null;
+            File.WriteAllText(path, """{"name":"ChangedProbe"}""");
+            if (stamp.HasValue) File.SetLastWriteTimeUtc(path, stamp.Value);
+        }
+        var result = analyzer.IncrementalAnalyze(_config);
+        Assert.Equal(IncrementalMode.Rejected, result.Mode);
+        Assert.Equal(FallbackReason.ModuleDescriptorChanged, result.Reason);
+        Assert.Equal("asmdef", result.RefreshTrigger!.Kind);
+        Assert.Equal("Probe.asmdef", result.RefreshTrigger.Input);
+        Assert.Equal(change, result.RefreshTrigger.Change);
+        Assert.Null(result.Graph);
+        Assert.Equal(0, result.ChangedFileCount);
+        var accepted = analyzer.IncrementalAnalyze(new AnalysisConfig { RetainCompilations = true, AllowFullFallback = true });
+        Assert.Equal(IncrementalMode.FullFallback, accepted.Mode);
+        Assert.Equal(result.RefreshTrigger, accepted.RefreshTrigger);
+        Assert.Equal(original.Symbols.Count, accepted.Graph!.Symbols.Count);
     }
 
     // ── Cross-module edge integrity (INV-INCREMENTAL-XREF-001 / closes LB-BUG-020) ──

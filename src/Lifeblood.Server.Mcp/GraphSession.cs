@@ -582,13 +582,32 @@ public sealed class GraphSession : IDisposable
     /// </summary>
     public int? MaybeRefreshIfStale()
     {
+        var receipt = RefreshIfStale();
+        return receipt.Status == "refreshed" ? receipt.ChangedFileCount : null;
+    }
+
+    /// <summary>Refresh once and return the request-local outcome, including best-effort failure evidence.</summary>
+    public AutoRefreshReceipt RefreshIfStale(CancellationToken cancellationToken = default)
+    {
         var committed = Current;
         var adapter = committed.RoslynAdapter;
         var projectPath = committed.Workspace.Context?.RootPath;
+        IncrementalAnalyzeResult? incremental = null;
+        AutoRefreshReceipt Receipt(string status, string? failure = null) => new(
+            status,
+            incremental == null ? "notStarted" : incremental.Mode == IncrementalMode.FullFallback ? "full"
+                : incremental.Mode == IncrementalMode.Rejected ? "rejected" : "incremental",
+            committed.Workspace.SnapshotId.Value, Current.Workspace.SnapshotId.Value,
+            incremental?.ChangedFileCount,
+            incremental?.Reason is { } reason ? WireReasonName(reason) : null,
+            incremental?.Detail, incremental?.RefreshTrigger,
+            incremental == null ? null : AcceptedChangeReceipt.Build(incremental.AcceptedChanges, AcceptedChangeReceiptRequest.Summary),
+            failure);
         if (adapter == null || !adapter.HasSnapshot || string.IsNullOrEmpty(projectPath))
-            return null;
+            return Receipt("notApplicable");
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // Auto-refresh contract: "make state fresh." This is an internal
             // best-effort caller — if the adapter cannot honor incremental
             // cleanly, the right move is to widen to a full re-analyze
@@ -602,16 +621,14 @@ public sealed class GraphSession : IDisposable
                 ExcludePathGlobs = committed.ExcludePaths,
             };
             var candidateAdapter = adapter.ForkForIncrementalCandidate();
-            IncrementalAnalyzeResult incremental;
             using (TelemetryPhase("auto-refresh.incremental"))
             {
                 incremental = candidateAdapter.IncrementalAnalyze(config);
             }
-            // Mode==Rejected only happens here when the snapshot disappeared
-            // mid-run (CanIncremental gated above) — degrade silently per
-            // the best-effort contract.
+            // Rejection preserves the baseline and remains visible to the caller.
             if (incremental.Mode == IncrementalMode.Rejected || incremental.Graph == null)
-                return null;
+                return Receipt("rejected");
+            cancellationToken.ThrowIfCancellationRequested();
             var graph = incremental.Graph;
             var changedFileCount = incremental.ChangedFileCount;
             var ruleSet = RefreshCommittedRuleSet(committed, projectPath);
@@ -625,7 +642,7 @@ public sealed class GraphSession : IDisposable
                 && committed.Workspace.Identity?.AnalysisKey == identity.AnalysisKey)
             {
                 Commit(committed.WithRoslynAdapter(candidateAdapter));
-                return null;
+                return Receipt("unchanged");
             }
 
             // Source changed — rebuild the session view. This mirrors the
@@ -638,8 +655,10 @@ public sealed class GraphSession : IDisposable
 
             using (TelemetryPhase("auto-refresh.commit"))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 WorkspaceSnapshot workspace;
-                if (changedFileCount == 0)
+                if (incremental.Mode == IncrementalMode.Incremental && changedFileCount == 0
+                    && ReferenceEquals(graph, committed.Workspace.Graph))
                 {
                     workspace = committed.Workspace.DeriveAnalysis(
                         analysis,
@@ -674,14 +693,16 @@ public sealed class GraphSession : IDisposable
                     committed.ExcludePaths));
             }
 
-            return changedFileCount;
+            return Receipt("refreshed");
         }
-        catch
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
         {
             // Auto-refresh is best-effort. A failure here should not break
-            // the tool call the user actually asked for — return null and
-            // let compile_check run against whatever state we have.
-            return null;
+            // the tool call the user actually asked for. Keep the baseline
+            // available and make the unsuccessful refresh explicit.
+            var detail = $"{ex.GetType().Name}: {ex.Message}";
+            return Receipt("failed", detail.Length <= 2048 ? detail : detail[..2048]);
         }
     }
 
@@ -1288,6 +1309,7 @@ public sealed class GraphSession : IDisposable
                     requestedMode: "incremental",
                     fallbackReason: incremental.Reason,
                     fallbackDetail: incremental.Detail,
+                    refreshTrigger: incremental.RefreshTrigger,
                     canRetryFull: true,
                     activeProfiles: incrActiveProfiles,
                     projectPath: projectPath,
@@ -1349,6 +1371,7 @@ public sealed class GraphSession : IDisposable
                         packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                         profileApplicabilityProjection: profileApplicabilityProjection,
                         requestedMode: "incremental",
+                        refreshTrigger: incremental.RefreshTrigger,
                         activeProfiles: incrActiveProfiles,
                         projectPath: projectPath,
                         rulesPath: effectiveRuleSet.Source,
@@ -1382,6 +1405,7 @@ public sealed class GraphSession : IDisposable
                     packageSourceVisibilityProjection: packageSourceVisibilityProjection,
                     profileApplicabilityProjection: profileApplicabilityProjection,
                     requestedMode: "incremental",
+                    refreshTrigger: incremental.RefreshTrigger,
                     activeProfiles: incrActiveProfiles,
                     projectPath: projectPath,
                     rulesPath: effectiveRuleSet.Source,
@@ -1464,6 +1488,7 @@ public sealed class GraphSession : IDisposable
                 requestedMode: "incremental",
                 fallbackReason: incremental.Reason,
                 fallbackDetail: incremental.Detail,
+                refreshTrigger: incremental.RefreshTrigger,
                 activeProfiles: incrActiveProfiles,
                 projectPath: projectPath,
                 rulesPath: effectiveRuleSet.Source,
@@ -1513,7 +1538,8 @@ public sealed class GraphSession : IDisposable
         string? publicationAction = null,
         SnapshotId? publicationSnapshotId = null,
         long? publicationAnalysisGeneration = null,
-        bool sameAnalysisIdentity = false)
+        bool sameAnalysisIdentity = false,
+        AnalysisRefreshTrigger? refreshTrigger = null)
     {
         var changedFileCount = acceptedChanges?.ChangedFileCount;
         var mtimeTouchedFileCount = acceptedChanges?.MtimeTouchedFileCount;
@@ -1583,6 +1609,7 @@ public sealed class GraphSession : IDisposable
             },
             fallbackReason = fallbackReason.HasValue ? WireReasonName(fallbackReason.Value) : null,
             fallbackDetail,
+            refreshTrigger,
             canRetryFull,
             suggestedRetry,
             publication = graph == null ? null : new

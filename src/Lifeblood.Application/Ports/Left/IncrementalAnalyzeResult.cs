@@ -67,7 +67,13 @@ public sealed record IncrementalAnalyzeResult
     /// the descriptor file kind (asmdef / csproj / pyproject) that
     /// triggered the fallback. Free-form, never structurally parsed.</summary>
     public string? Detail { get; init; }
+
+    /// <summary>First observed input trigger, not an exhaustive filesystem diff.</summary>
+    public AnalysisRefreshTrigger? RefreshTrigger { get; init; }
 }
+
+/// <summary>Adapter-neutral trigger identity; Kind distinguishes paths, effective facts and module names.</summary>
+public sealed record AnalysisRefreshTrigger(string Kind, string Input, string Change);
 
 /// <summary>
 /// What the adapter actually did when asked for an incremental re-analyze.

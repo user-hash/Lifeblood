@@ -493,7 +493,8 @@ internal sealed class WriteToolHandler
         // file then runs compile_check. Opt-out via `staleRefresh:false`
         // for callers that explicitly want the pinned-workspace check.
         var staleRefresh = toolRequest.EffectiveStaleRefresh;
-        var refreshed = staleRefresh ? _session.MaybeRefreshIfStale() : null;
+        var refresh = staleRefresh ? _session.RefreshIfStale(cancellationToken) : null;
+        var refreshed = refresh?.Status == "refreshed" ? refresh.ChangedFileCount : null;
 
         var request = new CompileCheckRequest
         {
@@ -539,6 +540,7 @@ internal sealed class WriteToolHandler
             fileResolution = result.FileResolution.ToString(),
             staleDescriptorHint,
             packageSourceResolution = BuildPackageSourceResolution(packageSource),
+            refresh,
         };
 
         if (refreshed is int changedFileCount)
@@ -557,6 +559,7 @@ internal sealed class WriteToolHandler
                 commonShape.fileResolution,
                 commonShape.staleDescriptorHint,
                 commonShape.packageSourceResolution,
+                commonShape.refresh,
                 autoRefreshed = true,
                 changedFileCount,
             }, _jsonOpts));
@@ -613,7 +616,8 @@ internal sealed class WriteToolHandler
         }
 
         var staleRefreshEnabled = toolRequest.EffectiveStaleRefresh;
-        var refreshed = staleRefreshEnabled ? _session.MaybeRefreshIfStale() : null;
+        var refresh = staleRefreshEnabled ? _session.RefreshIfStale(cancellationToken) : null;
+        var refreshed = refresh?.Status == "refreshed" ? refresh.ChangedFileCount : null;
         var staleRefreshMode = staleRefreshEnabled ? "sharedAutoRefresh" : "pinnedSession";
         var compact = IsCompactVerbosity(toolRequest.Verbosity);
         var analyzedUnderProfile = _session.RetainedProfileName;
@@ -665,6 +669,7 @@ internal sealed class WriteToolHandler
                 mode = staleRefreshMode,
                 autoRefreshed = refreshed.HasValue,
                 changedFileCount = refreshed ?? 0,
+                receipt = refresh,
             },
             results,
             limitations = WriteSideRetainedProfileLimitations(),

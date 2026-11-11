@@ -580,7 +580,8 @@ public sealed class RoslynWorkspaceAnalyzer :
                 config,
                 projectRoot,
                 FallbackReason.AnalysisScopeChanged,
-                detail: "Analysis source-exclusion set changed; full re-analyze required to add/remove files from the cached graph scope.");
+                detail: "Analysis source-exclusion set changed; full re-analyze required to add/remove files from the cached graph scope.",
+                trigger: new AnalysisRefreshTrigger("analysisScope", "sourceExclusions", "changed"));
         }
 
         // Rediscover descriptor and SDK-owned compilation facts.
@@ -604,15 +605,23 @@ public sealed class RoslynWorkspaceAnalyzer :
                 config,
                 projectRoot,
                 FallbackReason.ModuleSetChanged,
-                detail: $"Module set drift detected: previous={prevModuleNames.Count}, current={currModuleNames.Count}.");
+                detail: $"Module set drift detected: previous={prevModuleNames.Count}, current={currModuleNames.Count}.",
+                trigger: currModuleNames.Except(prevModuleNames).OrderBy(name => name, StringComparer.Ordinal).FirstOrDefault() is { } added
+                    ? new AnalysisRefreshTrigger("module", added, "added")
+                    : new AnalysisRefreshTrigger("module", prevModuleNames.Except(currModuleNames).OrderBy(name => name, StringComparer.Ordinal).First(), "removed"));
         }
 
-        if (_discovery.LastSdkInputContentHashes.Any(input =>
+        var sdkChange = _discovery.LastSdkInputContentHashes.FirstOrDefault(input =>
                 !_snapshot.DescriptorContentHashes.TryGetValue(input.Key, out var previous)
-                || previous != input.Value))
+                || previous != input.Value);
+        if (sdkChange.Key != null)
         {
+            const string factsSuffix = ".lifeblood-sdk-facts";
+            var isFacts = sdkChange.Key.EndsWith(factsSuffix, StringComparison.Ordinal);
             return HandleFallback(config, projectRoot, FallbackReason.ModuleDescriptorChanged,
-                detail: "SDK selection, imported configuration or effective language facts changed (descriptorKind=sdk).");
+                detail: "SDK selection, imported configuration or effective language facts changed (descriptorKind=sdk).",
+                trigger: InputTrigger(isFacts ? "effectiveCompilationFacts" : "sdkInput",
+                    isFacts ? sdkChange.Key[..^factsSuffix.Length] : sdkChange.Key, "changed"));
         }
 
         // INV-ANALYZE-FALLBACK-001 site 2: descriptor (asmdef) drift.
@@ -625,22 +634,24 @@ public sealed class RoslynWorkspaceAnalyzer :
         // trigger the full path. INV-UNITY-002. Reported as the
         // adapter-agnostic ModuleDescriptorChanged with Detail naming the
         // descriptor kind for human consumption.
-        if (HasAsmdefDrift(projectRoot))
+        if (HasAsmdefDrift(projectRoot, out var asmdefTrigger))
         {
             return HandleFallback(
                 config,
                 projectRoot,
                 FallbackReason.ModuleDescriptorChanged,
-                detail: "Unity asmdef edit/add/remove detected (descriptorKind=asmdef).");
+                detail: "Unity asmdef edit/add/remove detected (descriptorKind=asmdef).",
+                trigger: asmdefTrigger);
         }
 
-        if (HasReferenceInputDrift(applicableCurrentModules, projectRoot))
+        if (HasReferenceInputDrift(applicableCurrentModules, projectRoot, out var referenceTrigger))
         {
             return HandleFallback(
                 config,
                 projectRoot,
                 FallbackReason.ModuleDescriptorChanged,
-                detail: "Referenced binary or source-generator input changed (descriptorKind=reference).");
+                detail: "Referenced binary or source-generator input changed (descriptorKind=reference).",
+                trigger: referenceTrigger);
         }
 
         var packageWorkspace = UnityPackageSourceVisibilityBuilder.Discover(_fs, projectRoot);
@@ -672,6 +683,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         // .cs-file loop add any source-only changes on top.
         // See .claude/plans/bcl-ownership-fix.md §8 for the failure mode this prevents.
         var csprojChangedModules = new HashSet<string>(StringComparer.Ordinal);
+        AnalysisRefreshTrigger? descriptorTrigger = null;
         foreach (var module in currentModules)
         {
             if (!module.Properties.TryGetValue("projectFile", out var relCsproj)) continue;
@@ -690,6 +702,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                 continue;
 
             csprojChangedModules.Add(module.Name);
+            descriptorTrigger ??= InputTrigger("projectDescriptor", csprojAbs, "changed");
         }
 
 
@@ -793,6 +806,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             {
                 Mode = IncrementalMode.Incremental,
                 Graph = _snapshot.UnchangedGraph,
+                RefreshTrigger = descriptorTrigger,
                 AcceptedChanges = BuildAcceptedChanges(
                     sourcePaths,
                     scanMode,
@@ -1024,6 +1038,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         {
             Mode = IncrementalMode.Incremental,
             Graph = _snapshot.RebuildGraph(),
+            RefreshTrigger = descriptorTrigger,
             AcceptedChanges = BuildAcceptedChanges(
                 sourcePaths,
                 scanMode,
@@ -1045,7 +1060,8 @@ public sealed class RoslynWorkspaceAnalyzer :
         AnalysisConfig config,
         string projectRoot,
         FallbackReason reason,
-        string detail)
+        string detail,
+        AnalysisRefreshTrigger? trigger = null)
     {
         if (config.AllowFullFallback)
         {
@@ -1057,6 +1073,7 @@ public sealed class RoslynWorkspaceAnalyzer :
                 AcceptedChanges = CaptureFullFallbackAcceptedChanges(),
                 Reason = reason,
                 Detail = detail,
+                RefreshTrigger = trigger,
             };
         }
 
@@ -1067,6 +1084,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             AcceptedChanges = AcceptedChangeSet.Create(ResolveChangeScanMode(config)),
             Reason = reason,
             Detail = detail,
+            RefreshTrigger = trigger,
         };
     }
 
@@ -1741,13 +1759,19 @@ public sealed class RoslynWorkspaceAnalyzer :
         return index;
     }
 
-    /// <summary>
-    /// True when any *.asmdef under <paramref name="projectRoot"/> has a
-    /// different mtime than the snapshot, has been added since the
-    /// snapshot, or has been removed. INV-UNITY-002.
-    /// </summary>
-    private bool HasAsmdefDrift(string projectRoot)
+    private AnalysisRefreshTrigger InputTrigger(string kind, string path, string change)
     {
+        var root = _snapshot!.ProjectRoot;
+        var logical = (_sourcePaths ?? WorkspaceSourcePathMap.Create(root)).ToWorkspacePath(path);
+        if (logical == ".." || logical.StartsWith("../", StringComparison.Ordinal) || Path.IsPathRooted(logical))
+            logical = Path.GetFullPath(path);
+        return new AnalysisRefreshTrigger(kind, logical, change);
+    }
+
+    /// <summary>Detect content, membership or read-availability changes; return the first observed trigger.</summary>
+    private bool HasAsmdefDrift(string projectRoot, out AnalysisRefreshTrigger? trigger)
+    {
+        trigger = null;
         if (_snapshot == null) return false;
 
         var current = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1757,15 +1781,17 @@ public sealed class RoslynWorkspaceAnalyzer :
             current.Add(asmdefAbs);
             DateTime currentTs;
             try { currentTs = _fs.GetLastWriteTimeUtc(asmdefAbs); }
-            catch { continue; }
+            catch { trigger = InputTrigger("asmdef", asmdefAbs, "unavailable"); return true; }
 
             ContentFingerprint currentHash;
             try { currentHash = HashTextDescriptor(asmdefAbs); }
-            catch { return true; }
+            catch { trigger = InputTrigger("asmdef", asmdefAbs, "unavailable"); return true; }
             currentHashes[asmdefAbs] = currentHash;
 
-            if (!_snapshot.AsmdefContentHashes.TryGetValue(asmdefAbs, out var previousHash)) return true;
-            if (previousHash != currentHash) return true;
+            if (!_snapshot.AsmdefContentHashes.TryGetValue(asmdefAbs, out var previousHash))
+            { trigger = InputTrigger("asmdef", asmdefAbs, "added"); return true; }
+            if (previousHash != currentHash)
+            { trigger = InputTrigger("asmdef", asmdefAbs, "changed"); return true; }
 
             // Timestamp-only churn is harmless once content equality is
             // proven, but retain the fresh prefilter for the next pass.
@@ -1775,7 +1801,8 @@ public sealed class RoslynWorkspaceAnalyzer :
         // Removed file? Snapshot tracked it, current scan missed it.
         foreach (var prev in _snapshot.AsmdefTimestamps.Keys)
         {
-            if (!current.Contains(prev)) return true;
+            if (!current.Contains(prev))
+            { trigger = InputTrigger("asmdef", prev, "removed"); return true; }
         }
 
 
@@ -1784,14 +1811,20 @@ public sealed class RoslynWorkspaceAnalyzer :
         return false;
     }
 
-    private bool HasReferenceInputDrift(ModuleInfo[] modules, string projectRoot)
+    private bool HasReferenceInputDrift(ModuleInfo[] modules, string projectRoot, out AnalysisRefreshTrigger? trigger)
     {
+        trigger = null;
         if (_snapshot == null) return false;
 
         var currentPaths = GetReferenceInputPaths(modules, projectRoot);
         if (!_snapshot.ReferenceContentHashes.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase)
             .SetEquals(currentPaths))
         {
+            var added = currentPaths.Except(_snapshot.ReferenceContentHashes.Keys, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.Ordinal).FirstOrDefault();
+            trigger = added != null ? InputTrigger("reference", added, "added")
+                : InputTrigger("reference", _snapshot.ReferenceContentHashes.Keys.Except(currentPaths, StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(path => path, StringComparer.Ordinal).First(), "removed");
             return true;
         }
 
@@ -1799,7 +1832,7 @@ public sealed class RoslynWorkspaceAnalyzer :
         {
             DateTime timestamp;
             try { timestamp = _fs.GetLastWriteTimeUtc(path); }
-            catch { return true; }
+            catch { trigger = InputTrigger("reference", path, "unavailable"); return true; }
 
             if (_snapshot.ReferenceTimestamps.TryGetValue(path, out var previousTimestamp)
                 && previousTimestamp == timestamp)
@@ -1809,11 +1842,12 @@ public sealed class RoslynWorkspaceAnalyzer :
 
             ContentFingerprint currentHash;
             try { currentHash = HashBinaryDescriptor(path); }
-            catch { return true; }
+            catch { trigger = InputTrigger("reference", path, "unavailable"); return true; }
 
             if (!_snapshot.ReferenceContentHashes.TryGetValue(path, out var previousHash)
                 || previousHash != currentHash)
             {
+                trigger = InputTrigger("reference", path, "changed");
                 return true;
             }
 

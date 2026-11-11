@@ -157,6 +157,37 @@ public class StalenessPolicyEnvelopeTests
         Assert.Contains(env.Limitations, l => l.Contains("old"));
     }
 
+    [Theory]
+    [InlineData("lifeblood_lookup", true)]
+    [InlineData("not_a_real_tool", true)]
+    [InlineData("lifeblood_lookup", false)]
+    public void Decorate_CanonicalDriftGuidanceIsRequestLocalAndKeepsPartialCoverage(string tool, bool included)
+    {
+        var decorator = new LifebloodResponseDecorator(Classifications, new StalenessPolicy(0, 1));
+        var context = new EnvelopeContext
+        {
+            AnalyzedAtUtc = System.DateTime.UtcNow.AddMinutes(-1),
+            TrackedFilePaths = new[] { "A.cs", "B.cs" },
+            FileScanLimit = 1,
+            FileSystem = new CountingFs(System.DateTime.UtcNow),
+            CanonicalDriftResultIncluded = included,
+        };
+        var envelope = decorator.Decorate(tool, context);
+        Assert.Equal(1, envelope.Freshness!.CheckedFileCount);
+        Assert.Equal(1, envelope.Freshness.UncheckedFileCount);
+        Assert.False(envelope.Freshness.ContentCompared);
+        Assert.False(envelope.Freshness.InputInventoryRecaptured);
+        Assert.Contains(envelope.Limitations, limitation => limitation.Contains("incomplete"));
+        Assert.Equal(!included, envelope.Limitations.Any(limitation => limitation.Contains("checkDrift:true")));
+        if (included)
+        {
+            Assert.Contains(envelope.Limitations, limitation => limitation.Contains("canonical drift results in this response"));
+            Assert.DoesNotContain(envelope.Limitations, limitation => limitation.Contains("re-run analyze"));
+        }
+        var later = decorator.Decorate(tool, new EnvelopeContext { AnalyzedAtUtc = System.DateTime.UtcNow.AddMinutes(-1) });
+        Assert.Contains(later.Limitations, limitation => limitation.Contains("checkDrift:true"));
+    }
+
     private sealed class AlwaysFreshFs : Lifeblood.Application.Ports.Infrastructure.IFileSystem
     {
         public bool FileExists(string path) => true;

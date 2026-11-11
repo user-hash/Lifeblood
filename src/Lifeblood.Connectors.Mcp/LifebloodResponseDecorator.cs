@@ -77,7 +77,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                     $"Unregistered tool '{toolName}' — envelope downgraded to the most conservative classification. The host's tool registry has no EnvelopeClassification for this name.",
                 },
                 stalenessSeconds,
-                filesChanged, freshness);
+                filesChanged, freshness, context.CanonicalDriftResultIncluded);
             return ApplyAdapterCapability(new ResponseEnvelope
             {
                 TruthTier = TruthTier.Heuristic,
@@ -103,7 +103,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
             StalenessSeconds = stalenessSeconds,
             FilesChangedSinceAnalyze = filesChanged,
             Freshness = freshness,
-            Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged, freshness),
+            Limitations = AppendStalenessLimitations(cls.Limitations, stalenessSeconds, filesChanged, freshness, context.CanonicalDriftResultIncluded),
             AnalysisGeneration = context.AnalysisGeneration,
             SnapshotId = context.SnapshotId,
             AnalysisIdentity = context.AnalysisIdentity == null
@@ -188,7 +188,7 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
     /// non-stale path stay byte-stable.
     /// INV-ANALYZE-SKIPPED-PROMINENCE-001.
     /// </summary>
-    private string[] AppendStalenessLimitations(string[] baseLimitations, long stalenessSeconds, int filesChanged, SourceFreshnessObservation freshness)
+    private string[] AppendStalenessLimitations(string[] baseLimitations, long stalenessSeconds, int filesChanged, SourceFreshnessObservation freshness, bool canonicalDriftResultIncluded)
     {
         bool stalenessAboveThreshold = stalenessSeconds >= _stalenessPolicy.StalenessSecondsWarnThreshold;
         bool filesChangedAboveThreshold = filesChanged >= _stalenessPolicy.FilesChangedWarnThreshold;
@@ -198,19 +198,24 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
 
         var merged = new System.Collections.Generic.List<string>(baseLimitations.Length + 2);
         merged.AddRange(baseLimitations);
+        var guidance = canonicalDriftResultIncluded
+            ? "See the per-snapshot canonical drift results in this response for current-input verification."
+            : "Use lifeblood_snapshots with checkDrift:true for canonical input verification.";
         if (stalenessAboveThreshold)
         {
             merged.Add(
-                $"Workspace graph is {stalenessSeconds} s old (age threshold {_stalenessPolicy.StalenessSecondsWarnThreshold} s). Age alone does not establish source drift; use lifeblood_snapshots with checkDrift:true for canonical input verification.");
+                $"Workspace graph is {stalenessSeconds} s old (age threshold {_stalenessPolicy.StalenessSecondsWarnThreshold} s). Age alone does not establish source drift. {guidance}");
         }
         if (filesChangedAboveThreshold)
         {
             merged.Add(
-                $"{filesChanged} tracked file(s) changed since analyze (threshold {_stalenessPolicy.FilesChangedWarnThreshold}) — re-run analyze for accurate edge/symbol coverage.");
+                canonicalDriftResultIncluded
+                    ? $"{filesChanged} tracked file(s) have newer mtimes or are missing (threshold {_stalenessPolicy.FilesChangedWarnThreshold}). Mtime alone does not establish content drift. {guidance}"
+                    : $"{filesChanged} tracked file(s) changed since analyze (threshold {_stalenessPolicy.FilesChangedWarnThreshold}) — re-run analyze for accurate edge/symbol coverage.");
         }
         if (incomplete)
         {
-            merged.Add($"Source observation is incomplete: {freshness.CheckedFileCount}/{freshness.InventoryFileCount} graph source files checked, {freshness.UnavailableFileCount} unavailable. Zero observed changes does not establish current inputs. Use lifeblood_snapshots with checkDrift:true for canonical input verification.");
+            merged.Add($"Source observation is incomplete: {freshness.CheckedFileCount}/{freshness.InventoryFileCount} graph source files checked, {freshness.UnavailableFileCount} unavailable. Zero observed changes does not establish current inputs. {guidance}");
         }
         return merged.ToArray();
     }

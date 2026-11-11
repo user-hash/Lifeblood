@@ -108,6 +108,9 @@ public sealed class SdkLanguageFactsTests
         Assert.Equal(IncrementalMode.FullFallback, result.Mode);
         Assert.Equal(FallbackReason.ModuleDescriptorChanged, result.Reason);
         Assert.Contains("descriptorKind=sdk", result.Detail);
+        Assert.NotNull(result.RefreshTrigger);
+        Assert.Contains(result.RefreshTrigger.Kind, new[] { "sdkInput", "effectiveCompilationFacts" });
+        Assert.DoesNotContain(".lifeblood-sdk-facts", result.RefreshTrigger.Input);
         Assert.NotEqual(original, analyzer.CurrentSourceFingerprint);
         Assert.All(analyzer.Compilations!["Test"].SyntaxTrees, tree =>
             Assert.Equal(LanguageVersion.CSharp13, ((CSharpParseOptions)tree.Options).LanguageVersion));
