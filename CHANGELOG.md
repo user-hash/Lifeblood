@@ -9,8 +9,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Lifeblood targets .NET 11 with Roslyn 5.9; implementation language remains
-  C# 14 until the published adapter supports C# 15. C# 14 qualification covers
+- Lifeblood targets .NET 11 with Roslyn 5.12.0-1.26529.118 and C# 15 in the
+  locally qualified builds; Unity's compiler remains independent. C# 14 qualification covers
   extension members, field-backed properties, partial constructors/events,
   nullable assignment and implicit span conversion. Framework generator versions
   load in collectible contexts behind the existing serialized runner; load and
@@ -21,6 +21,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checkout tags from contaminating qualification and package provenance.
 
 ### Fixed
+
+- Automatic compile refresh exposes outcome, mode, publication IDs, first
+  observed input trigger and source-work summary. Full fallback publishes its
+  new graph even when source work is zero. Canonically checked snapshot replies
+  point to their included drift results without requesting the same check again.
+- Standalone project analysis supports a JSON identity/input/rules/usage receipt.
+  Windows CLI packages include the .NET runtime, preserving the .exe entry point
+  under incorrect inherited runtime roots. Installed .48 native/Unity acceptance
+  and all discovered test cases are qualified in the
+  [remaining-repair report](docs/investigations/lifeblood-remaining-repairs-2026-11-11.md).
 
 - Unchanged incremental scans reuse their immutable graph. Candidate file facts
   use copy-on-write, repeated edge addresses share candidate-scoped strings,
