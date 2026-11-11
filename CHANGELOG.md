@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The attach-only inspection helper now joins CLI/runtime/Roslyn, SDK probe,
+  live daemon/publication and server-catalog receipts. Caller-provided client and
+  Unity bridge observations remain separate from live server facts. Identity
+  subprocesses have bounded output/deadlines and owned cleanup; no analysis,
+  daemon start or global runtime/PATH change is used. See
+  [doctor qualification](docs/investigations/lifeblood-doctor-2026-11-11.md).
+
 - MCP connections may negotiate structured tool results independently of v1/v2
   declaration IDs. Modern dual output preserves existing text consumers;
   explicit structured-only output avoids the redundant text copy. Projection

@@ -80,12 +80,47 @@ If `lifeblood-mcp` is not found, check that `~/.dotnet/tools` (or the platform e
 
 Use the repository's PowerShell 7 helper when direct MCP tools are unavailable:
 
+Replace these example paths with your installation. `-Command` names the installed
+MCP executable; `-RuntimeRoot` is optional when the executable already resolves its
+runtime. The helper sets `LIFEBLOOD_SHARED_DAEMON_AUTOSTART=0` only in its child,
+initializes one shared proxy, reads capabilities and the server catalog, and closes
+that proxy in `finally`. An optional `EnvironmentFile` observes that exact retained
+scope without diagnostics/compilation/refresh; older or compilation-free services
+report it unavailable, without a fallback scan. The default overall deadline is
+30 seconds (maximum 60), plus bounded owned-process cleanup. RPC frames are bounded
+to 4,194,304 UTF-16 characters. An absent or incompatible daemon returns unavailable
+JSON with exit code 1; no private session, daemon start, drain or analysis follows.
+
+The original top-level fields remain. The additive `doctor` object joins resolved
+PATH candidates, handshake/endpoint identity, live daemon/publication/base counts,
+the selected CLI's `--version --json`, and a separate workspace SDK `--version`
+probe. Each identity subprocess has a ten-second limit, 32,768-character bounds
+per output stream and owned tree cleanup. A CLI/SDK failure does not erase a healthy
+daemon receipt. Known version skew is distinct from alternate paths. SDK probe
+selection does not establish which SDK an earlier analysis used. No machine-wide
+PATH/runtime setting is changed. Other clients can publish during inspection, so
+this is a point observation, not a workspace lock or content-drift check.
+
 For direct clients, `lifeblood_capabilities` is the same cheap first check. A working
 transport does not establish which tools a particular client has exposed. Verify
 the tools in that client's current catalog separately. A successful direct client
 also does not qualify an already-running Unity bridge: check its resolved
 `LIFEBLOOD_MCP_COMMAND`/PATH executable and handshake independently. Do not start a
-scan to diagnose a missing tool catalog.
+scan to diagnose a missing tool catalog. Supply `-ClientToolNames` from the affected
+client and `-ClientCatalogSource` to compare that observation with the server
+catalog; omission remains `unobserved`, rather than inferred healthy.
+
+For an optional read-only Unity bridge observation, run the repository reader
+through a ready Editor's Pipeline CLI at an ordinary operation boundary:
+
+Use paths for your checkout and output root. Pass the saved response as
+`-BridgeObservationPath` to the doctor. The reader observes the loaded bridge
+assembly, configured command and existing proxy without starting/reconnecting it,
+calling an MCP tool or changing preferences. A busy or uninitialized bridge stays
+explicit. The doctor labels the receipt as caller-provided and preserves its age;
+it does not independently recapture another client's state. The bridge's cached
+initialized flag does not prove present daemon liveness, and its handshake server
+identity is not retained. See [qualification and remaining limits](investigations/lifeblood-doctor-2026-11-11.md).
 
 ### Consume structured tool results
 
@@ -131,8 +166,9 @@ evaluation still launches a separately installed SDK host: `DOTNET_HOST_PATH`
 selects an existing explicit host first, otherwise the host beside the running
 framework installation is preferred, then `dotnet` on PATH. Keep that selection
 separate from the CLI's reported runtime. The .52 package acceptance used the
-intended D: .NET11 SDK on its child PATH; the C: SDK10 route hit its evaluation
-deadline under deliberately invalid runtime roots. See the
+intended D: .NET11 SDK on its child PATH. One C: SDK10 route hit its evaluation
+deadline, but explicit-host and original PATH-route repetitions passed with
+invalid runtime roots. That timeout is unreproduced, not a proven SDK10 incompatibility. See the
 [qualified scope and remaining diagnostic gap](investigations/lifeblood-output-bundle-2026-11-11.md).
 For example, Codex supports an explicit command and per-server environment in
 project `.codex/config.toml` ([official MCP configuration](https://developers.openai.com/codex/mcp)):
