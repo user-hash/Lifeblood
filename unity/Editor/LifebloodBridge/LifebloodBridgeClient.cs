@@ -196,6 +196,8 @@ namespace Lifeblood.UnityBridge
                 foreach (var item in content)
                     if ((string)item["type"] == "text" && item["text"]?.Type == JTokenType.String)
                         messages.Add((string)item["text"]);
+            if (messages.Count == 0 && result["structuredContent"] is JObject structured)
+                messages.Add(structured.ToString(Formatting.None));
             var message = messages.Count == 0 ? "No error text supplied." : string.Join("\n", messages);
             return new ErrorResponse($"Lifeblood call '{toolName}' failed: {message}", result);
         }
@@ -216,7 +218,8 @@ namespace Lifeblood.UnityBridge
         internal static void ValidateInitializeResponse(string line, int expectedId)
         {
             var result = ParseRpcResult(line, expectedId);
-            if ((string)result["protocolVersion"] != McpProtocolConstants.SupportedVersion
+            if (((string)result["protocolVersion"] != McpProtocolConstants.SupportedVersion
+                    && (string)result["protocolVersion"] != McpProtocolConstants.PreferredVersion)
                 || result["capabilities"] is not JObject
                 || result["serverInfo"] is not JObject)
                 throw new InvalidOperationException("Lifeblood returned an unsupported or incomplete MCP initialize result.");
@@ -290,7 +293,7 @@ namespace Lifeblood.UnityBridge
             _process.BeginErrorReadLine();
 
             // MCP handshake: initialize. Params carry protocolVersion,
-            // capabilities, and clientInfo per MCP spec 2024-11-05.
+            // capabilities, and clientInfo; legacy servers may negotiate the older revision.
             // INV-MCP-003: every wire constant comes from McpProtocolConstants,
             // mirrored from Lifeblood.Connectors.Mcp.McpProtocolSpec.
             var initializeId = _nextId++;
@@ -301,7 +304,7 @@ namespace Lifeblood.UnityBridge
                 ["method"] = McpProtocolConstants.MethodInitialize,
                 ["params"] = new JObject
                 {
-                    ["protocolVersion"] = McpProtocolConstants.SupportedVersion,
+                    ["protocolVersion"] = McpProtocolConstants.PreferredVersion,
                     ["capabilities"] = new JObject(),
                     ["clientInfo"] = new JObject
                     {

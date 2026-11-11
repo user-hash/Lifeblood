@@ -240,6 +240,68 @@ public class McpCanonicalIdentityWireTests
 
     }
 
+    [Theory]
+    [InlineData(McpProtocolSpec.ResultFormats.Dual)]
+    [InlineData(McpProtocolSpec.ResultFormats.StructuredOnly)]
+    public void StructuredResults_UseFinalSchemaAndPreserveCompactFileScopedEvidence(string format)
+    {
+        using var fixture = new Fixture();
+        var legacy = fixture.Host.CreateDispatcher();
+        var canonical = fixture.Host.CreateDispatcher();
+        Configure(legacy, McpProtocolSpec.SchemaVersions.Legacy);
+        Configure(canonical, McpProtocolSpec.SchemaVersions.Canonical);
+        Observe(canonical, "lifeblood_analyze", new { projectPath = fixture.Root });
+        var before = fixture.Host.Session.CurrentSnapshot;
+        var old = Observe(legacy, "lifeblood_lookup", new { symbolId = "type:App.C" });
+        var current = Observe(canonical, "lifeblood_lookup", new { symbolId = "type:App.C" });
+        Assert.Equal("type:App.C", old.Payload.GetProperty("id").GetString());
+        Assert.StartsWith("type:v2|", current.Payload.GetProperty("id").GetString(), StringComparison.Ordinal);
+        var ambiguous = Observe(legacy, "lifeblood_lookup", new { symbolId = "method:App.C.M(int)" });
+        Assert.True(ambiguous.Result.IsError);
+        Assert.Equal("legacy-canonical-id-ambiguity", ambiguous.Payload.GetProperty("failure").GetString());
+        Assert.Equal(2, ambiguous.Payload.GetProperty("canonicalCandidates").GetArrayLength());
+
+        var batch = Observe(legacy, "lifeblood_batch", new { responseFormat = "compact", calls = new object[] {
+            new { tool = "lifeblood_lookup", arguments = (object)new { symbolId = "type:App.C" } },
+            new { tool = "lifeblood_lookup", arguments = (object)new { symbolId = "method:App.C.M(int)" } },
+            new { tool = "lifeblood_file_impact", arguments = (object)new { filePath = "App.cs", summarize = true } },
+            new { tool = "lifeblood_diagnose", arguments = (object)new { mode = "environment", filePath = "App.cs", verbosity = "compact", referenceLimit = 2 } },
+        } });
+        var rows = batch.Payload.GetProperty("results");
+        Assert.Equal(4, rows.GetArrayLength());
+        Assert.Equal("type:App.C", rows[0].GetProperty("payload").GetProperty("id").GetString());
+        Assert.True(rows[1].GetProperty("isError").GetBoolean());
+        Assert.Equal("legacy-canonical-id-ambiguity", rows[1].GetProperty("payload").GetProperty("failure").GetString());
+        Assert.Equal("App.cs", rows[2].GetProperty("payload").GetProperty("filePath").GetString());
+        Assert.Equal(25, rows[2].GetProperty("payload").GetProperty("maxResults").GetInt32());
+        var environment = rows[3].GetProperty("payload");
+        Assert.Equal("retainedCompilationObservation", environment.GetProperty("executionMode").GetString());
+        Assert.Equal("App", environment.GetProperty("environment").GetProperty("moduleName").GetString());
+        Assert.False(environment.GetProperty("compilationStarted").GetBoolean());
+        Assert.All(rows.EnumerateArray(), row => Assert.False(row.TryGetProperty("content", out _)));
+        Assert.Same(before, fixture.Host.Session.CurrentSnapshot);
+        Assert.Equal(1, fixture.Host.Session.ResidentSemanticBaseCount);
+
+        void Configure(McpDispatcher dispatcher, string schema)
+        {
+            var initialized = dispatcher.Dispatch(Request(McpProtocolSpec.Methods.Initialize, new Dictionary<string, object> {
+                ["protocolVersion"] = McpProtocolSpec.StructuredContentVersion,
+                [McpProtocolSpec.SchemaVersions.InitializeParameter] = schema,
+                ["capabilities"] = new { experimental = new Dictionary<string, string> { [McpProtocolSpec.ResultFormats.Capability] = format } },
+            }));
+            Assert.Null(initialized!.Error);
+        }
+        (McpToolResult Result, JsonElement Payload) Observe(McpDispatcher dispatcher, string tool, object arguments)
+        {
+            var result = Assert.IsType<McpToolResult>(dispatcher.Dispatch(Request(McpProtocolSpec.Methods.ToolsCall, new { name = tool, arguments }))!.Result);
+            Assert.True(result.StructuredContent.HasValue);
+            if (format == McpProtocolSpec.ResultFormats.Dual)
+                Assert.Equal(result.Content[0].Text, result.StructuredContent.Value.GetRawText());
+            else Assert.Empty(result.Content);
+            return (result, result.StructuredContent.Value);
+        }
+    }
+
     private static McpInitializeResult Initialize(McpDispatcher dispatcher, string? version = null)
         => Assert.IsType<McpInitializeResult>(dispatcher.Dispatch(Request(McpProtocolSpec.Methods.Initialize,
             version == null ? new Dictionary<string, object>() : new Dictionary<string, object> { [McpProtocolSpec.SchemaVersions.InitializeParameter] = version }))!.Result);

@@ -28,11 +28,21 @@ namespace Lifeblood.Connectors.Mcp;
 public static class McpProtocolSpec
 {
     /// <summary>
-    /// The MCP specification version this Lifeblood release implements.
-    /// Bumping this is the only edit required when we migrate to a newer
-    /// MCP spec revision. Single site, no duplicates.
+    /// Legacy MCP revision retained for older clients and initialization without a revision.
     /// </summary>
     public const string SupportedVersion = "2024-11-05";
+
+    /// <summary>Negotiated revision supporting structured tool results; legacy clients keep their original revision.</summary>
+    public const string StructuredContentVersion = "2025-06-18";
+
+    /// <summary>Client/server experimental capability selecting the result projection independently of declaration schema.</summary>
+    public static class ResultFormats
+    {
+        public const string Capability = "lifebloodResultFormat";
+        public const string Text = "text";
+        public const string Dual = "dual";
+        public const string StructuredOnly = "structuredOnly";
+    }
 
     /// <summary>Lifeblood schema selection, independent of the MCP specification revision.</summary>
     public static class SchemaVersions

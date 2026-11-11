@@ -30,6 +30,7 @@ namespace Lifeblood.UnityBridge
     {
         // === Protocol version ===
         public const string SupportedVersion = "2024-11-05";
+        public const string PreferredVersion = "2025-06-18";
         public const string SchemaInitializeParameter = "mcp-protocol-version";
         public const string SchemaLegacy = "v1";
         public const string SchemaCanonical = "v2";

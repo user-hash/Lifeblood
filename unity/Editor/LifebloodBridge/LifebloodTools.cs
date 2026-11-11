@@ -364,6 +364,15 @@ namespace Lifeblood.UnityBridge
     {
         public sealed class Parameters : SnapshotReadParameters
         {
+            [ToolParameter("diagnostics (default), or environment for retained compiler options without compilation.", Required = false)]
+            public string mode { get; set; }
+
+            [ToolParameter("Environment mode only: requested retained profile.", Required = false)]
+            public string profileScope { get; set; }
+
+            [ToolParameter("Environment mode only: reference preview limit, 0..128 (default 16).", Required = false)]
+            public int? referenceLimit { get; set; }
+
             [ToolParameter("Source file path to diagnose (optional)", Required = false)]
             public string filePath { get; set; }
 

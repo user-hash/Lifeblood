@@ -87,6 +87,34 @@ also does not qualify an already-running Unity bridge: check its resolved
 `LIFEBLOOD_MCP_COMMAND`/PATH executable and handshake independently. Do not start a
 scan to diagnose a missing tool catalog.
 
+### Consume structured tool results
+
+The server supports the legacy MCP revision and the structured-content revision
+`2025-06-18`. Explicit legacy or omitted revision preserves text results. A modern
+revision request negotiates the structured-capable revision and defaults to both
+the existing `content[]` text and an equivalent `structuredContent` object.
+Lifeblood declaration schema selection (`mcp-protocol-version: v1|v2`) is separate.
+
+Clients that can consume objects without the redundant text copy may initialize
+with `capabilities.experimental.lifebloodResultFormat:"structuredOnly"`; `"dual"`
+and `"text"` are also supported. The initialize response acknowledges the selected
+format and its projection limit under the same experimental capability. A legacy
+revision cannot request structured output. Failed negotiation does not change the
+connection's previous schema/format selection.
+
+Prefer `result.structuredContent` when present, otherwise parse the existing text
+payload. For Unity's typed wrapper, inspect `data.structuredContent`, preserving
+the outer success/error and inner MCP `isError` bits. The bridge requests the modern
+revision with compatible dual output and accepts older servers' legacy fallback.
+Opaque/non-object/multi-content results remain content blocks. Above the stated
+character limit the full original text survives and `_meta` reports the projection
+fallback; use an existing scoped/compact tool query rather than losing data.
+
+Structured output reduces client parsing work. Dual output increases wire bytes;
+structured-only saves the redundant text copy but still costs server parsing and
+serialization. See [qualification and measurements](investigations/lifeblood-structured-results-2026-11-11.md)
+and the [MCP tool-result contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content).
+
 ### Identify the CLI independently of the service
 
 `lifeblood --version` prints one build version. `--version --json` also reports the

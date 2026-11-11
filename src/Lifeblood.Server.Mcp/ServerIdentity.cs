@@ -130,6 +130,8 @@ public static class ServerIdentity
                 writeSideProfileScope = true,
                 evidenceReceipts = true,
                 acceptedChangeReceipts = true,
+                compilationEnvironmentObservation = true,
+                structuredContentNegotiation = true,
                 snapshotReadPreconditions = true,
                 snapshotReadBatch = true,
                 snapshotHistoryCatalog = true,
@@ -149,6 +151,11 @@ public static class ServerIdentity
             },
             contract = new
             {
+                supportedMcpRevisions = new[]
+                {
+                    Lifeblood.Connectors.Mcp.McpProtocolSpec.SupportedVersion,
+                    Lifeblood.Connectors.Mcp.McpProtocolSpec.StructuredContentVersion,
+                },
                 toolSchemaVersion = "v1",
                 schemaSnapshotPath = BuildRepoPath(repoRoot, "schemas", "tools", "v1"),
                 statusDocAnchorPath = BuildRepoPath(repoRoot, "docs", "STATUS.md"),

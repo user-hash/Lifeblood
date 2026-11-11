@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Lifeblood.Adapters.JsonGraph;
+using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
 using Xunit;
@@ -32,6 +33,59 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         Directory.CreateDirectory(_tempDirectory);
         _firstGraphPath = WriteGraph("first.graph.json", "First");
         _secondGraphPath = WriteGraph("second.graph.json", "First", "Second");
+    }
+
+    [Fact]
+    public async Task ThreeResultFormats_ShareOneRetainedDaemonAndPreserveWireErrors()
+    {
+        WriteCSharpWorkspace(fileCount: 2);
+        var dll = McpProcessTestClient.LocateServerDll();
+        var pipeName = UniquePipeName();
+        await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
+        await using var legacy = StartProxy(dll, pipeName, _tempDirectory);
+        await using var dual = StartProxy(dll, pipeName, _tempDirectory);
+        await using var only = StartProxy(dll, pipeName, _tempDirectory);
+        using var legacyInitialize = await legacy.InitializeAsync();
+        using var dualInitialize = await InitializeFormat(dual, McpProtocolSpec.ResultFormats.Dual);
+        using var onlyInitialize = await InitializeFormat(only, McpProtocolSpec.ResultFormats.StructuredOnly);
+        using var analyzed = await legacy.CallToolAsync("lifeblood_analyze", new { projectPath = _tempDirectory }, TimeSpan.FromSeconds(60));
+        using var analyzePayload = McpProcessTestClient.ParseToolPayload(analyzed);
+        var before = await ReadSessionAsync(legacy);
+
+        foreach (var (client, format) in new[] { (dual, McpProtocolSpec.ResultFormats.Dual), (only, McpProtocolSpec.ResultFormats.StructuredOnly) })
+        {
+            using var response = await client.CallToolAsync("lifeblood_capabilities");
+            var result = response.RootElement.GetProperty("result");
+            var structured = result.GetProperty("structuredContent");
+            Assert.Equal(before.SnapshotId, structured.GetProperty("session").GetProperty("snapshotId").GetString());
+            Assert.Equal(1, structured.GetProperty("session").GetProperty("snapshotHistory").GetProperty("semanticBaseCount").GetInt32());
+            Assert.Equal(daemon.ProcessId, structured.GetProperty("sharedService").GetProperty("processId").GetInt32());
+            if (format == McpProtocolSpec.ResultFormats.Dual)
+            {
+                using var text = JsonDocument.Parse(result.GetProperty("content")[0].GetProperty("text").GetString()!);
+                Assert.Equal(JsonSerializer.Serialize(structured), JsonSerializer.Serialize(text.RootElement));
+            }
+            else Assert.Equal(0, result.GetProperty("content").GetArrayLength());
+
+            using var rejected = await client.CallToolAsync("lifeblood_compile_check", new { filePath = "Type000.cs", expectedSnapshotId = before.SnapshotId, expectedAnalysisGeneration = before.AnalysisGeneration + 1 });
+            var error = rejected.RootElement.GetProperty("result");
+            Assert.True(error.GetProperty("isError").GetBoolean());
+            Assert.Equal("snapshot-precondition", error.GetProperty("structuredContent").GetProperty("failure").GetString());
+        }
+        Assert.Equal(before, await ReadSessionAsync(legacy));
+        Assert.False(daemon.HasExited);
+
+        static Task<JsonDocument> InitializeFormat(McpProcessTestClient client, string format)
+            => client.SendRequestAsync(JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 9001, method = McpProtocolSpec.Methods.Initialize,
+                @params = new
+                {
+                    protocolVersion = McpProtocolSpec.StructuredContentVersion,
+                    capabilities = new { experimental = new Dictionary<string, string> { [McpProtocolSpec.ResultFormats.Capability] = format } },
+                    clientInfo = new { name = "structured-process-test", version = "1" },
+                },
+            }), TimeSpan.FromSeconds(30));
     }
 
     [Fact]
@@ -728,9 +782,11 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
     }
 
     [Theory]
-    [InlineData("content")]
-    [InlineData("compact")]
-    public async Task ActiveBatchCancellation_StopsWorkAndKeepsPublicationUsable(string responseFormat)
+    [InlineData("content", McpProtocolSpec.ResultFormats.Text)]
+    [InlineData("compact", McpProtocolSpec.ResultFormats.Text)]
+    [InlineData("content", McpProtocolSpec.ResultFormats.Dual)]
+    [InlineData("compact", McpProtocolSpec.ResultFormats.StructuredOnly)]
+    public async Task ActiveBatchCancellation_StopsWorkAndKeepsPublicationUsable(string responseFormat, string resultFormat)
     {
         var dll = McpProcessTestClient.LocateServerDll();
         Assert.True(File.Exists(dll), $"Server dll not found at {dll}.");
@@ -739,7 +795,17 @@ public sealed class SharedMcpTransportProcessTests : IDisposable
         await using var daemon = await StartDaemonAsync(dll, pipeName, _tempDirectory);
         await using var caller = StartProxy(dll, pipeName, _tempDirectory);
         await using var observer = StartProxy(dll, pipeName, _tempDirectory);
-        using var callerInitialize = await caller.InitializeAsync();
+        using var callerInitialize = resultFormat == McpProtocolSpec.ResultFormats.Text
+            ? await caller.InitializeAsync()
+            : await caller.SendRequestAsync(JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 9001, method = McpProtocolSpec.Methods.Initialize,
+                @params = new
+                {
+                    protocolVersion = McpProtocolSpec.StructuredContentVersion,
+                    capabilities = new { experimental = new Dictionary<string, string> { [McpProtocolSpec.ResultFormats.Capability] = resultFormat } },
+                },
+            }), TimeSpan.FromSeconds(30));
         using var observerInitialize = await observer.InitializeAsync();
         using var analyzed = await caller.CallToolAsync("lifeblood_analyze",
             new { projectPath = _tempDirectory, readOnly = false }, TimeSpan.FromSeconds(60));

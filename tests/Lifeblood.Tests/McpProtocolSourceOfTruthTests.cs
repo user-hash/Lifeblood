@@ -110,6 +110,7 @@ public class McpProtocolSourceOfTruthTests
     {
         var constants = ParseUnityBridgeConstants();
         Assert.Equal(McpProtocolSpec.SupportedVersion, constants["SupportedVersion"]);
+        Assert.Equal(McpProtocolSpec.StructuredContentVersion, constants["PreferredVersion"]);
         Assert.Equal(McpProtocolSpec.SchemaVersions.InitializeParameter, constants["SchemaInitializeParameter"]);
         Assert.Equal(McpProtocolSpec.SchemaVersions.Legacy, constants["SchemaLegacy"]);
         Assert.Equal(McpProtocolSpec.SchemaVersions.Canonical, constants["SchemaCanonical"]);

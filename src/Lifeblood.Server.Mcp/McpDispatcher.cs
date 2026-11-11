@@ -50,6 +50,7 @@ public sealed class McpDispatcher
   private readonly ToolHandler _toolHandler;
   private readonly string _serverVersion;
   private string _schemaVersion = McpProtocolSpec.SchemaVersions.Legacy;
+  private string _resultFormat = McpProtocolSpec.ResultFormats.Text;
   private readonly string? _clientLeaseId;
 
   public McpDispatcher(ToolHandler toolHandler, string? clientLeaseId = null)
@@ -119,7 +120,35 @@ public sealed class McpDispatcher
       Code = -32602, Message = "Unsupported Lifeblood schema version. Select v1 or v2 during initialize." } };
   selected = version.GetString()!;
   }
+  var protocol = McpProtocolSpec.SupportedVersion;
+  var format = McpProtocolSpec.ResultFormats.Text;
+  if (request.Params is { ValueKind: JsonValueKind.Object } initialize)
+  {
+      if (initialize.TryGetProperty("protocolVersion", out var requestedProtocol))
+      {
+          if (requestedProtocol.ValueKind != JsonValueKind.String)
+              return InitializeError(request, "protocolVersion must be a string.");
+          protocol = requestedProtocol.GetString() == McpProtocolSpec.SupportedVersion
+              ? McpProtocolSpec.SupportedVersion : McpProtocolSpec.StructuredContentVersion;
+      }
+      format = protocol == McpProtocolSpec.StructuredContentVersion
+          ? McpProtocolSpec.ResultFormats.Dual : McpProtocolSpec.ResultFormats.Text;
+      if (initialize.TryGetProperty("capabilities", out var capabilities)
+          && capabilities.ValueKind == JsonValueKind.Object
+          && capabilities.TryGetProperty("experimental", out var experimental)
+          && experimental.ValueKind == JsonValueKind.Object
+          && experimental.TryGetProperty(McpProtocolSpec.ResultFormats.Capability, out var requestedFormat))
+      {
+          if (requestedFormat.ValueKind != JsonValueKind.String
+              || requestedFormat.GetString() is not (McpProtocolSpec.ResultFormats.Text or McpProtocolSpec.ResultFormats.Dual or McpProtocolSpec.ResultFormats.StructuredOnly))
+              return InitializeError(request, "Unsupported Lifeblood result format. Select text, dual, or structuredOnly.");
+          format = requestedFormat.GetString()!;
+          if (protocol == McpProtocolSpec.SupportedVersion && format != McpProtocolSpec.ResultFormats.Text)
+              return InitializeError(request, "Structured results require the structured-content MCP revision.");
+      }
+  }
   _schemaVersion = selected;
+  _resultFormat = format;
 
   // INV-MCP-001: protocolVersion and capabilities are required by the
   // MCP spec. They also have class-level defaults on McpInitializeResult
@@ -130,9 +159,21 @@ public sealed class McpDispatcher
   Id = request.Id,
   Result = new McpInitializeResult
   {
-  ProtocolVersion = SupportedProtocolVersion,
+  ProtocolVersion = protocol,
   SchemaVersion = _schemaVersion,
-  Capabilities = new McpCapabilities(),
+  Capabilities = new McpCapabilities
+  {
+      Experimental = protocol == McpProtocolSpec.StructuredContentVersion
+          ? new Dictionary<string, object>
+          {
+              [McpProtocolSpec.ResultFormats.Capability] = new
+              {
+                  selected = format,
+                  supported = new[] { McpProtocolSpec.ResultFormats.Text, McpProtocolSpec.ResultFormats.Dual, McpProtocolSpec.ResultFormats.StructuredOnly },
+                  maximumProjectionCharacters = McpStructuredContentProjection.MaximumProjectionCharacters,
+              },
+          } : null,
+  },
   ServerInfo = new McpServerInfo
   {
   Name = "lifeblood",
@@ -141,6 +182,9 @@ public sealed class McpDispatcher
   },
   };
   }
+
+  private static JsonRpcResponse InitializeError(JsonRpcRequest request, string message)
+      => new() { Id = request.Id, Error = new JsonRpcError { Code = -32602, Message = message } };
 
   private JsonRpcResponse HandleToolsList(JsonRpcRequest request)
   {
@@ -187,9 +231,11 @@ public sealed class McpDispatcher
   }
 
   var schemaVersion = _schemaVersion;
+  var format = _resultFormat;
   var result = _toolHandler.Handle(toolName, arguments, cancellationToken, _clientLeaseId);
-  response.Result = schemaVersion == McpProtocolSpec.SchemaVersions.Legacy
+  var selected = schemaVersion == McpProtocolSpec.SchemaVersions.Legacy
       ? result.LegacyProjection ?? result : result;
+  response.Result = McpStructuredContentProjection.Project(selected, format);
   return response;
   }
 

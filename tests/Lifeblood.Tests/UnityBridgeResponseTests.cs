@@ -3,6 +3,7 @@ using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Newtonsoft.Json.Linq;
+using Lifeblood.Connectors.Mcp;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -26,6 +27,7 @@ public sealed class UnityBridgeResponseTests
     [Theory]
     [InlineData("""{"content":[{"type":"text","text":"ok"}]}""")]
     [InlineData("""{"isError":false,"content":[{"type":"text","text":"{\"success\":false,\"diagnostics\":[\"CS0123\"]}"}]}""")]
+    [InlineData("""{"isError":false,"content":[],"structuredContent":{"success":false,"diagnostics":["CS0123"]}}""")]
     public void ValidToolResults_PreserveTransportSuccessEvenWhenCompilationFails(string json)
     {
         var original = JObject.Parse(json);
@@ -47,10 +49,27 @@ public sealed class UnityBridgeResponseTests
         Assert.Contains(message, Assert.IsType<InvalidOperationException>(exception.InnerException).Message);
     }
 
-    [Fact]
-    public void Initialize_AcceptsCompleteMatchingNegotiation()
+    [Theory]
+    [InlineData(McpProtocolSpec.SupportedVersion)]
+    [InlineData(McpProtocolSpec.StructuredContentVersion)]
+    public void Initialize_AcceptsCompleteMatchingNegotiation(string protocolVersion)
     {
-        Assert.Equal(true, Invoke("Initialize", """{"jsonrpc":"2.0","id":7,"result":{"protocolVersion":"2024-11-05","capabilities":{},"serverInfo":{"name":"lifeblood","version":"test"}}}"""));
+        Assert.Equal(true, Invoke("Initialize", new JObject
+        {
+            ["jsonrpc"] = "2.0", ["id"] = 7,
+            ["result"] = new JObject { ["protocolVersion"] = protocolVersion, ["capabilities"] = new JObject(), ["serverInfo"] = new JObject { ["name"] = "lifeblood", ["version"] = "test" } },
+        }.ToString()));
+    }
+
+    [Fact]
+    public void StructuredInnerError_ProducesOuterFailureWithoutLosingOriginalPayload()
+    {
+        var original = JObject.Parse("""{"isError":true,"content":[],"structuredContent":{"failure":"file-scope-precondition","compilationStarted":false}}""");
+        var result = Assert.IsType<JObject>(Invoke("Poll", original));
+        Assert.False((bool)result["success"]!);
+        Assert.Contains("file-scope-precondition", (string?)result["error"]);
+        Assert.True(JToken.DeepEquals(original, result["data"]));
+        Assert.True((bool)result["consumed"]!);
     }
 
     private static object? Invoke(string name, object argument)

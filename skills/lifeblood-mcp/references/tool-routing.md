@@ -6,6 +6,12 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 
 ## Finding Symbols
 
+When available, consume the MCP result's `structuredContent` directly; Unity's
+typed wrapper places it under `data.structuredContent`. Preserve all error bits.
+Fall back to the original content for legacy, opaque or projection-limited output.
+For several explicit files, reuse `lifeblood_batch(responseFormat:"compact")`
+with file-scoped impact/diagnose calls instead of requesting a global inventory.
+
 | Need | Tool | Notes |
 |---|---|---|
 | Find canonical id from a name | `lifeblood_resolve_short_name` | Use `mode:"contains"` or `mode:"fuzzy"` when exact lookup fails. |

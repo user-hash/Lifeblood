@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- MCP connections may negotiate structured tool results independently of v1/v2
+  declaration IDs. Modern dual output preserves existing text consumers;
+  explicit structured-only output avoids the redundant text copy. Projection
+  preserves errors, evidence and compact file-scoped batch rows without changing
+  the shared publication. Opaque/oversized results keep their original content.
+  The Unity bridge accepts modern negotiation and legacy fallback. See
+  [qualification and format-cost measurements](docs/investigations/lifeblood-structured-results-2026-11-11.md);
+  installed bundle acceptance remains pending.
+
 - `lifeblood_diagnose mode:environment` observes one retained module/file's actual
   compiler options, parse scopes and bounded references without diagnostics or
   refresh. Snapshot descriptor/profile provenance distinguishes host compiler
@@ -28,6 +37,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checkout tags from contaminating qualification and package provenance.
 
 ### Fixed
+
+- File compile checks preserve the resolved tree's own parse options and accept
+  explicitly empty source without reusing retained declarations. File/snippet
+  define receipts describe the actual parse scope; module/project diagnostics
+  union all selected trees. Both valid before-fix regressions and the guarded
+  empty-capture handler path are qualified in the
+  [input-contract report](docs/investigations/lifeblood-file-input-contract-2026-11-11.md).
+  Installed bundle acceptance remains pending.
 
 - Automatic compile refresh exposes outcome, mode, publication IDs, first
   observed input trigger and source-work summary. Full fallback publishes its

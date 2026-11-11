@@ -491,6 +491,8 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                     ["sdkVersion"] = sdkFacts?.SdkVersion ?? string.Empty,
                     ["declaredLanguageVersion"] = sdkFacts?.DeclaredLanguageVersion ?? languageVersion,
                     ["targetFramework"] = targetFramework,
+                    ["declaredTargetFrameworkVersion"] = doc.Descendants()
+                        .LastOrDefault(element => element.Name.LocalName == "TargetFrameworkVersion")?.Value.Trim() ?? string.Empty,
                     ["bclOwnership"] = ownsBcl ? nameof(BclOwnershipMode.ModuleProvided) : nameof(BclOwnershipMode.HostProvided),
                 },
             };

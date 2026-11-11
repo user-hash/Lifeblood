@@ -237,6 +237,14 @@ public sealed class McpToolResult
 
   [JsonPropertyName("isError")]
   public bool? IsError { get; set; }
+
+  [JsonPropertyName("structuredContent")]
+  [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+  public JsonElement? StructuredContent { get; set; }
+
+  [JsonPropertyName("_meta")]
+  [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+  public IReadOnlyDictionary<string, object?>? Meta { get; set; }
 }
 
 public sealed class McpContent
@@ -261,6 +269,10 @@ public sealed class McpCapabilities
 {
   [JsonPropertyName("tools")]
   public object Tools { get; set; } = new { };
+
+  [JsonPropertyName("experimental")]
+  [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+  public object? Experimental { get; set; }
 }
 
 public sealed class McpInitializeResult
@@ -269,7 +281,7 @@ public sealed class McpInitializeResult
   public string SchemaVersion { get; set; } = Lifeblood.Connectors.Mcp.McpProtocolSpec.SchemaVersions.Legacy;
 
   [JsonPropertyName("protocolVersion")]
-  public string ProtocolVersion { get; set; } = "2024-11-05";
+  public string ProtocolVersion { get; set; } = Lifeblood.Connectors.Mcp.McpProtocolSpec.SupportedVersion;
 
   [JsonPropertyName("capabilities")]
   public McpCapabilities Capabilities { get; set; } = new();

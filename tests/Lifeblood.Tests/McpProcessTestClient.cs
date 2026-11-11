@@ -316,6 +316,9 @@ internal sealed class McpProcessTestClient : IAsyncDisposable
             throw new Xunit.Sdk.XunitException($"MCP tool returned isError=true: {result}");
         }
 
+        if (result.TryGetProperty("structuredContent", out var structured) && structured.ValueKind == JsonValueKind.Object)
+            return JsonDocument.Parse(structured.GetRawText());
+
         var text = result.GetProperty("content")[0].GetProperty("text").GetString();
         if (string.IsNullOrWhiteSpace(text))
         {

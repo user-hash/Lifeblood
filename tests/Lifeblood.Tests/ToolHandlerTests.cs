@@ -383,6 +383,7 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal("True", root.GetProperty("environment").GetProperty("properties").GetProperty("allowUnsafe").GetString());
         Assert.Equal("7.3", root.GetProperty("environment").GetProperty("parseEnvironments")[0].GetProperty("properties").GetProperty("languageVersion").GetString());
         Assert.Equal("descriptor", root.GetProperty("inputProvenance").GetProperty("languageVersionAuthority").GetString());
+        Assert.Equal("v4.8", root.GetProperty("inputProvenance").GetProperty("declaredTargetFrameworkVersion").GetString());
         Assert.Equal("Player", root.GetProperty("moduleProfileApplicability").GetProperty("excludedProfiles")[0].GetString());
         Assert.Equal("Editor", root.GetProperty("moduleProfileApplicability").GetProperty("includedProfiles")[0].GetString());
         Assert.False(root.TryGetProperty("diagnostics", out _));
