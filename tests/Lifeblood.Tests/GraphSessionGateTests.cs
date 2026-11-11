@@ -28,8 +28,8 @@ public class GraphSessionGateTests
             return 1;
         }
 
-        var first = Task.Run(() => gate.Read(ReadBody));
-        var second = Task.Run(() => gate.Read(ReadBody));
+        var first = RunWorker(() => gate.Read(ReadBody));
+        var second = RunWorker(() => gate.Read(ReadBody));
 
         SpinWait.SpinUntil(() => Volatile.Read(ref inside) == 2, TimeSpan.FromSeconds(5));
         release.Set();
@@ -46,7 +46,7 @@ public class GraphSessionGateTests
         using var releaseReader = new ManualResetEventSlim(false);
         var writeEntered = 0;
 
-        var read = Task.Run(() => gate.Read(() =>
+        var read = RunWorker(() => gate.Read(() =>
         {
             readerEntered.Set();
             releaseReader.Wait(TimeSpan.FromSeconds(5));
@@ -54,7 +54,7 @@ public class GraphSessionGateTests
         }));
 
         Assert.True(readerEntered.Wait(TimeSpan.FromSeconds(5)));
-        var write = Task.Run(() => gate.Write(() =>
+        var write = RunWorker(() => gate.Write(() =>
         {
             Interlocked.Exchange(ref writeEntered, 1);
             return 1;
@@ -77,7 +77,7 @@ public class GraphSessionGateTests
         using var releaseWriter = new ManualResetEventSlim(false);
         var readEntered = 0;
 
-        var write = Task.Run(() => gate.Write(() =>
+        var write = RunWorker(() => gate.Write(() =>
         {
             writerEntered.Set();
             releaseWriter.Wait(TimeSpan.FromSeconds(5));
@@ -85,7 +85,7 @@ public class GraphSessionGateTests
         }));
 
         Assert.True(writerEntered.Wait(TimeSpan.FromSeconds(5)));
-        var read = Task.Run(() => gate.Read(() =>
+        var read = RunWorker(() => gate.Read(() =>
         {
             Interlocked.Exchange(ref readEntered, 1);
             return 1;
@@ -106,6 +106,7 @@ public class GraphSessionGateTests
         using var gate = new GraphSessionGate();
         using var firstWriterEntered = new ManualResetEventSlim(false);
         using var releaseFirstWriter = new ManualResetEventSlim(false);
+        using var secondWriterAttempting = new ManualResetEventSlim(false);
         var inside = 0;
         var maxInside = 0;
 
@@ -119,10 +120,11 @@ public class GraphSessionGateTests
             return 1;
         }
 
-        var first = Task.Run(() => gate.Write(() => WriteBody(firstWriterEntered)));
+        var first = RunWorker(() => gate.Write(() => WriteBody(firstWriterEntered)));
         Assert.True(firstWriterEntered.Wait(TimeSpan.FromSeconds(5)));
 
-        var second = Task.Run(() => gate.Write(() => WriteBody()));
+        var second = RunWorker(() => { secondWriterAttempting.Set(); return gate.Write(() => WriteBody()); });
+        Assert.True(secondWriterAttempting.Wait(TimeSpan.FromSeconds(5)));
         Thread.Sleep(100);
         Assert.Equal(1, Volatile.Read(ref maxInside));
 
@@ -147,7 +149,7 @@ public class GraphSessionGateTests
             using var writerCompleted = new ManualResetEventSlim(false);
             var firstSnapshot = session.CurrentSnapshot;
 
-            var read = Task.Run(() => gate.Read(() =>
+            var read = RunWorker(() => gate.Read(() =>
             {
                 Assert.Same(firstSnapshot, session.CurrentSnapshot);
                 readerEntered.Set();
@@ -157,7 +159,7 @@ public class GraphSessionGateTests
             }));
 
             Assert.True(readerEntered.Wait(TimeSpan.FromSeconds(5)));
-            var write = Task.Run(() => gate.Write(() =>
+            var write = RunWorker(() => gate.Write(() =>
                 session.Load(secondRoot, graphPath: null, rulesPath: null)));
             await write;
             writerCompleted.Set();
@@ -207,6 +209,10 @@ public class GraphSessionGateTests
             try { Directory.Delete(temp, recursive: true); } catch { }
         }
     }
+
+    // Blocking gate participants need dedicated workers; suite scheduling is not gate behavior.
+    private static Task<T> RunWorker<T>(Func<T> work) => Task.Factory.StartNew(work,
+        CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     private static void UpdateMax(ref int target, int candidate)
     {

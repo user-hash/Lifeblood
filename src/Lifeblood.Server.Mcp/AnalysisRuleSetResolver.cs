@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Domain.Rules;
 using Lifeblood.Domain.Workspaces;
@@ -11,11 +10,6 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 internal sealed class AnalysisRuleSetResolver
 {
-    private static readonly JsonSerializerOptions CanonicalJson = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
-
     private readonly IFileSystem _fileSystem;
 
     public AnalysisRuleSetResolver(IFileSystem fileSystem)
@@ -56,22 +50,16 @@ internal sealed class AnalysisRuleSetResolver
         RuleSetSourceKind sourceKind,
         string source)
     {
-        var canonical = JsonSerializer.Serialize(rules, CanonicalJson);
-        var content = ContentFingerprint.ComputeUtf8("lifeblood.rules-content.v1", canonical);
         return new ResolvedRuleSet(
             rules,
-            new RuleSetIdentity(sourceKind, source, content));
+            Lifeblood.Analysis.RulePacks.Identify(rules, sourceKind, source));
     }
 
     internal sealed class ResolvedRuleSet
     {
-        private static readonly ContentFingerprint EmptyContent = ContentFingerprint.ComputeUtf8(
-            "lifeblood.rules-content.v1",
-            JsonSerializer.Serialize(Array.Empty<ArchitectureRule>(), CanonicalJson));
-
         public static ResolvedRuleSet None { get; } = new(
             rules: null,
-            new RuleSetIdentity(RuleSetSourceKind.None, source: null, EmptyContent));
+            Lifeblood.Analysis.RulePacks.Identify(null, RuleSetSourceKind.None, null));
 
         public ResolvedRuleSet(ArchitectureRule[]? rules, RuleSetIdentity identity)
         {

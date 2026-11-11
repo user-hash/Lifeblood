@@ -61,27 +61,12 @@ class Program
         if (args.Length > 1 || (args.Length == 1 && args[0] != "--json"))
             return Error("Usage: lifeblood --version [--json]");
 
-        var assembly = typeof(Program).Assembly;
-        var version = System.Reflection.CustomAttributeExtensions
-            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(assembly)
-            ?.InformationalVersion ?? assembly.GetName().Version?.ToString() ?? "unknown";
+        var identity = CliIdentity.Capture();
         if (args.Length == 0)
-            output.WriteLine($"Lifeblood {version}");
+            output.WriteLine($"Lifeblood {identity.Version}");
         else
-            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
-            {
-                schemaVersion = 1,
-                executionMode = "standaloneCli",
-                version,
-                cliAssemblyPath = assembly.Location,
-                processPath = Environment.ProcessPath,
-                runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
-                targetFramework = System.Reflection.CustomAttributeExtensions
-                    .GetCustomAttribute<System.Runtime.Versioning.TargetFrameworkAttribute>(assembly)?.FrameworkName,
-                roslynVersion = System.Reflection.CustomAttributeExtensions
-                    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
-                        typeof(Microsoft.CodeAnalysis.CSharp.CSharpCompilation).Assembly)?.InformationalVersion,
-            }));
+            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(identity,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
         return 0;
     }
 
@@ -108,6 +93,7 @@ class Program
 
     static int RunAnalyze(string[] args)
     {
+        if (HasFlag(args, "--json")) return AnalyzeJsonCommand.Run(args, Console.Out);
         // CLI is single-shot — there is no persistent adapter snapshot
         // across process boundaries, so incremental analyze is structurally
         // incoherent here (every first call would NoPriorAnalysis-reject
@@ -437,6 +423,7 @@ class Program
         Console.WriteLine("  lifeblood --version [--json]                              Report this CLI's build/runtime/compiler without analysis");
         Console.WriteLine("  lifeblood apply-file --project <root> --target <path> --receipt <receipt.json> --replacement <staged-file>  Conditional existing-file write (Windows)");
         Console.WriteLine("  lifeblood analyze --project <path>                         Analyze via Roslyn");
+        Console.WriteLine("  lifeblood analyze --project <path> --json [--profiles Editor,Player] [--rules <source>]  Standalone identity/usage receipt");
         Console.WriteLine("  lifeblood analyze --graph <graph.json>                     Analyze JSON graph");
         Console.WriteLine("  lifeblood analyze --project <path> --rules hexagonal        Analyze + built-in rules");
         Console.WriteLine("  lifeblood analyze --project <path> --rules <rules.json>    Analyze + custom rules");

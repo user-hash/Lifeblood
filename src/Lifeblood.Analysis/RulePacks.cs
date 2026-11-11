@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Domain.Rules;
+using Lifeblood.Domain.Workspaces;
 
 namespace Lifeblood.Analysis;
 
@@ -45,6 +46,11 @@ public static class RulePacks
     {
         return JsonSerializer.Deserialize<RulesDocument>(json, JsonOpts)?.Rules;
     }
+
+    /// <summary>Canonical semantic identity shared by composition roots after rule resolution.</summary>
+    public static RuleSetIdentity Identify(ArchitectureRule[]? rules, RuleSetSourceKind kind, string? source)
+        => new(kind, source, ContentFingerprint.ComputeUtf8("lifeblood.rules-content.v1",
+            JsonSerializer.Serialize(rules ?? Array.Empty<ArchitectureRule>(), JsonOpts)));
 
     private sealed class RulesDocument
     {

@@ -4,18 +4,6 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 
 ## Startup And State
 
-| Need | Tool | Notes |
-|---|---|---|
-| Inspect live server/tool surface | `lifeblood_capabilities` | Call first when available; catches local-doc drift and reports session state. |
-| Join several reads on one publication | `lifeblood_batch` | Pass ordered `{tool, arguments}` calls plus optional `expectedSnapshotId` / `expectedAnalysisGeneration`. Only `Observe` + `SharedRead` tools are admitted; execution is serial under one snapshot lease. |
-| Inspect or retain publication history | `lifeblood_snapshots` | List current + bounded graph-only history; pin/name an investigation lane, unpin, evict, or opt into live drift hashing. Pinned entries still consume the hard limit. |
-| Load a project | `lifeblood_analyze` | Use `projectPath` for C# / Unity, `graphPath` for JSON graph input. Use `excludePaths` to drop vendored/sample sources before compilation. |
-| Fast re-load after edits | `lifeblood_analyze incremental:true` | Source mtimes are a prefilter and content hashes decide actual re-extraction. Pass `authoritativeChangedFiles` when the editor/watcher has exact changed paths. On rejected fallback, retry with `allowFullFallback:true` only when wider scope is acceptable. Changing `excludePaths` reports `analysisScopeChanged`; read-only-to-retained recovery reports `compilationStateUnavailable`. |
-| Small context pack | `lifeblood_context summarize:true` | Good first read for unfamiliar repos or when handing off to another agent. |
-| Architecture invariant audit | `lifeblood_invariant_check mode:"audit" summarize:true` | Use compact audit first on large invariant trees; it keeps duplicates/warnings/coverage while omitting zero-only source rows and duplicate ledgers. Fetch specific ids as needed; omit summarize only for the complete source inventory. |
-| Check generated evidence freshness | `lifeblood_evidence_drift` | Compare the repo-owned generated baseline with the exact current publication and live invariant audit. Pin `expectedSnapshotId` / `expectedAnalysisGeneration`; refresh analysis on `verdict:"unavailable"`, refresh evidence when `evidenceRefreshRecommended:true`. |
-| Import/correlate/compare runtime performance evidence | `lifeblood_performance_evidence` | `import` and `compare` accept an absolute `workspaceRoot` and need no loaded graph. `correlate` alone joins marker evidence to the current source-evidence publication with explicit Unique/Ambiguous/Unmapped outcomes and rejects a mismatched root. Runtime evidence stays separate from semantic truth. |
-
 ## Finding Symbols
 
 | Need | Tool | Notes |
@@ -43,7 +31,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 
 | Need | Tool | Notes |
 |---|---|---|
-| Check one edited file | `lifeblood_compile_check filePath:"..."` | Preferred post-edit validation; auto-refreshes stale workspace by default. |
+| Check one edited file | `lifeblood_compile_check filePath:"..."` | Auto-refreshes by default; inspect `refresh` for its outcome and trigger. Pass `expectedFileScope` plus optional expected publication identity for exact captured-byte admission; guarded checks disable refresh. Batches expose `staleRefresh.receipt`. |
 | Check snippet feasibility | `lifeblood_compile_check code:"..."` | Good before adding API calls or experimenting with syntax. |
 | Build a generated DSP/math probe | Contract/source inspection -> `lifeblood_compile_check` -> consumer test runner | Follow workflow 8 in `docs/PLAYBOOK_CSHARP.md`. Derive cases from one consumer-owned range/contract authority; Lifeblood verifies structure but does not execute audio or numerical output tests. |
 | Get project/module/file diagnostics | `lifeblood_diagnose` | Use file scope first to avoid drowning in existing project warnings. |
@@ -53,6 +41,13 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Preview rename edits | `lifeblood_rename` | Returns edits only; caller applies them deliberately. |
 | Format C# | `lifeblood_format` | Roslyn formatting for generated or replaced code. |
 | Execute C# against workspace state | `lifeblood_execute` | Use for semantic inspection; CS1061 diagnostics include scripting-surface hints when possible. Do not rely on runtime instantiation of workspace types unless supported. |
+
+For conditional existing-file application on Windows, use the standalone
+`lifeblood apply-file` companion with the pre-edit file-scope receipt and staged
+raw bytes. It checks the entire scope while holding sharing locks through one
+target write and returns the post-edit receipt. Obtain project source admission
+first; separate verify-then-write does not prevent races. See
+`docs/OWNER_SCOPED_WORK.md` for bounds, failure handling and exclusions.
 
 ## Specialized Analysis
 
