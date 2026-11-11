@@ -126,6 +126,14 @@ be identified from their installed package or assembly metadata.
 
 For a portable runtime, scope `DOTNET_ROOT_X64` to the launching process or the MCP
 client's server environment. Changing the global SDK or `PATH` is unnecessary.
+The self-contained Windows CLI bundles its runtime, not an SDK. SDK-style project
+evaluation still launches a separately installed SDK host: `DOTNET_HOST_PATH`
+selects an existing explicit host first, otherwise the host beside the running
+framework installation is preferred, then `dotnet` on PATH. Keep that selection
+separate from the CLI's reported runtime. The .52 package acceptance used the
+intended D: .NET11 SDK on its child PATH; the C: SDK10 route hit its evaluation
+deadline under deliberately invalid runtime roots. See the
+[qualified scope and remaining diagnostic gap](investigations/lifeblood-output-bundle-2026-11-11.md).
 For example, Codex supports an explicit command and per-server environment in
 project `.codex/config.toml` ([official MCP configuration](https://developers.openai.com/codex/mcp)):
 

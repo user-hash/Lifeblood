@@ -16,14 +16,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the shared publication. Opaque/oversized results keep their original content.
   The Unity bridge accepts modern negotiation and legacy fallback. See
   [qualification and format-cost measurements](docs/investigations/lifeblood-structured-results-2026-11-11.md);
-  installed bundle acceptance remains pending.
+  installed `local development build` native/Unity acceptance passed in the [bundle report](docs/investigations/lifeblood-output-bundle-2026-11-11.md).
 
 - `lifeblood_diagnose mode:environment` observes one retained module/file's actual
   compiler options, parse scopes and bounded references without diagnostics or
   refresh. Snapshot descriptor/profile provenance distinguishes host compiler
   identity from target coverage and runtime compatibility. Source acceptance is
   recorded in the [environment report](docs/investigations/lifeblood-compilation-environment-2026-11-11.md);
-  installed bundle qualification remains pending.
+  installed `local development build` qualification passed in the [bundle report](docs/investigations/lifeblood-output-bundle-2026-11-11.md).
 
 - Lifeblood targets .NET 11 with Roslyn 5.12.0-1.26529.118 and C# 15 in the
   locally qualified builds; Unity's compiler remains independent. C# 14 qualification covers
@@ -44,7 +44,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   union all selected trees. Both valid before-fix regressions and the guarded
   empty-capture handler path are qualified in the
   [input-contract report](docs/investigations/lifeblood-file-input-contract-2026-11-11.md).
-  Installed bundle acceptance remains pending.
+  Installed `local development build` acceptance passed in the [bundle report](docs/investigations/lifeblood-output-bundle-2026-11-11.md).
 
 - Automatic compile refresh exposes outcome, mode, publication IDs, first
   observed input trigger and source-work summary. Full fallback publishes its
