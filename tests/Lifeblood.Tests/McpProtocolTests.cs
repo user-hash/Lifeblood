@@ -240,6 +240,7 @@ public class McpProtocolTests
   ["lifeblood_assignment_coverage"] = compilationObserve,
   ["lifeblood_callsite_arguments"] = compilationObserve,
   ["lifeblood_contract_audit"] = operationFactObserve,
+  ["lifeblood_method_effects"] = operationFactObserve,
   ["lifeblood_wire_audit"] = compilationObserve,
   ["lifeblood_feature_switch_audit"] = compilationObserve,
   ["lifeblood_member_count"] = compilationObserve,

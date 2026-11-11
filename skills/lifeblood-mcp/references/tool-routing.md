@@ -37,7 +37,7 @@ with file-scoped impact/diagnose calls instead of requesting a global inventory.
 
 | Need | Tool | Notes |
 |---|---|---|
-| Check one edited file | `lifeblood_compile_check filePath:"..."` | Auto-refreshes by default; inspect `refresh` for its outcome and trigger. Pass `expectedFileScope` plus optional expected publication identity for exact captured-byte admission; guarded checks disable refresh. Batches expose `staleRefresh.receipt`. |
+| Check one edited file | `lifeblood_compile_check filePath:"..."` | Auto-refreshes by default; inspect `refresh` for its outcome and trigger. Pass `expectedFileScope` plus optional expected publication identity for exact captured-byte admission; guarded checks disable refresh. Read `validation` for host compiler/emit and diagnostic location/phase scope; it does not validate a Unity/Player build or establish which edit introduced a module error. Batches expose `staleRefresh.receipt`. |
 | Check snippet feasibility | `lifeblood_compile_check code:"..."` | Good before adding API calls or experimenting with syntax. |
 | Build a generated DSP/math probe | Contract/source inspection -> `lifeblood_compile_check` -> consumer test runner | Follow workflow 8 in `docs/PLAYBOOK_CSHARP.md`. Derive cases from one consumer-owned range/contract authority; Lifeblood verifies structure but does not execute audio or numerical output tests. |
 | Get project/module/file diagnostics | `lifeblood_diagnose` | Use file scope first to avoid drowning in existing project warnings. |
@@ -65,6 +65,7 @@ first; separate verify-then-write does not prevent races. See
 | Compute struct offsets/sizes | `lifeblood_struct_layout` | Field offsets, size, alignment, pack, fixed buffers. Exact for known blittable Sequential/Explicit structs; Advisory with limitations for Auto/reference/non-blittable shapes. |
 | Inspect static dispatch/config tables | `lifeblood_static_tables` | Operation-tree extraction; use `summarize:true` for large tables. |
 | Check object-initializer wiring | `lifeblood_assignment_coverage` | Useful for bindings/delegate slots and construction completeness. |
+| Inspect method effects and callback bindings | `lifeblood_method_effects` | Pass 1..16 exact method IDs and a committed profile. One bounded operation scan separates supported direct/local calls from deferred bodies and indirect/native unknowns. Optional `runtimeEvidencePath` compares caller-reported debug-document checksums with retained source; it does not authenticate artifacts or prove execution, purity or timing. Inspect scan and scope limits before interpreting absent effects. |
 | Triage unused code candidates | `lifeblood_dead_code` | Advisory; verify before deleting. Fold `bucket:"Vendored"` and `bucket:"Scaffolding"` separately from ordinary Production findings. |
 | Find repeated executable bodies | `lifeblood_duplicates` | Bounded retained-profile token equality with physical spans and explicit truncation; advisory for behavior or deletion. For competing architecture owners, compose `lifeblood_authority_coverage` in one batch and keep the categories separate. |
 | Field read but never written / delegate slot never wired? | `lifeblood_wire_audit` | Dead-WIRE complement of dead_code: referenced but structurally unplugged. Advisory. |
