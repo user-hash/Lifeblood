@@ -106,6 +106,11 @@ public sealed class SourceFreshnessObservation
     public string Method { get; init; } = "mtime";
     public string Scope { get; init; } = "publicationParsedSources";
     public string Status { get; init; } = "unavailable";
+    /// <summary>Coverage and verification limits, separate from semantic confidence.</summary>
+    public string Summary => $"Source observation {Status}: {CheckedFileCount}/{InventoryFileCount} source paths checked, {UncheckedFileCount} unchecked, {UnavailableFileCount} unavailable; {ObservedChangedFileCount} changes observed. "
+        + (ContentCompared ? "Content compared. " : "Content not compared. ")
+        + (InputInventoryRecaptured ? "Input inventory recaptured. " : "Input inventory not recaptured. ")
+        + "Confidence describes publication semantics, not current inputs.";
     public System.DateTime CheckedAtUtc { get; init; }
     public int InventoryFileCount { get; init; }
     public int CheckedFileCount { get; init; }

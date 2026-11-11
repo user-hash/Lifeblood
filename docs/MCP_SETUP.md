@@ -59,7 +59,13 @@ cd Lifeblood
 dotnet build
 ```
 
-The build output lives at `src/Lifeblood.Server.Mcp/bin/Debug/net11.0/Lifeblood.Server.Mcp.dll`. Point `.mcp.json` at that path directly (see the dev example below). Every subsequent `dotnet build` or `dotnet test` refreshes it automatically - no publish step, no stale-binary drift class. The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the canonical published-tool form so you can copy it to `.mcp.json` locally and edit the path if you want a dev-build override. `.mcp.json` itself is gitignored, so machine-specific paths do not leak across contributors.
+For shared use, pack and install one exact build into a dedicated tool directory,
+then configure every client with that executable path:
+
+```bash
+dotnet pack src/Lifeblood.Server.Mcp -c Release -o /path/to/packages
+dotnet tool install Lifeblood.Server.Mcp --tool-path /path/to/tools --add-source /path/to/packages --version <exact-package-version>
+```
 
 ### Verify the install
 
@@ -69,6 +75,42 @@ lifeblood-mcp
 ```
 
 If `lifeblood-mcp` is not found, check that `~/.dotnet/tools` (or the platform equivalent) is on your `PATH`. The .NET SDK installer adds it on Windows; on macOS/Linux you may need to add it manually.
+
+### Inspect an existing shared service without starting one
+
+Use the repository's PowerShell 7 helper when direct MCP tools are unavailable:
+
+For direct clients, `lifeblood_capabilities` is the same cheap first check. A working
+transport does not establish which tools a particular client has exposed. Verify
+the tools in that client's current catalog separately. A successful direct client
+also does not qualify an already-running Unity bridge: check its resolved
+`LIFEBLOOD_MCP_COMMAND`/PATH executable and handshake independently. Do not start a
+scan to diagnose a missing tool catalog.
+
+### Identify the CLI independently of the service
+
+`lifeblood --version` prints one build version. `--version --json` also reports the
+CLI assembly path, process path, runtime, target framework and loaded Roslyn
+version, with `executionMode:"standaloneCli"`. It needs no project and performs no
+analysis or service attachment. Use capabilities to identify the MCP daemon;
+the CLI identity cannot stand in for it. Older tools without this command must
+be identified from their installed package or assembly metadata.
+
+For a portable runtime, scope `DOTNET_ROOT_X64` to the launching process or the MCP
+client's server environment. Changing the global SDK or `PATH` is unnecessary.
+For example, Codex supports an explicit command and per-server environment in
+project `.codex/config.toml` ([official MCP configuration](https://developers.openai.com/codex/mcp)):
+
+### Interpret source freshness separately from semantic confidence
+
+Each envelope's `freshness.summary` states coverage, observed changes, and whether
+content was compared or the input inventory recaptured. For example, a check of
+256 out of 6,531 paths with zero observed changes is incomplete. Even checking all
+tracked mtimes cannot detect timestamp-preserving edits, new inputs or changed
+descriptors. `confidence:"Proven"` describes the query against its publication;
+it does not certify that today's input files match that publication. Use
+`lifeblood_snapshots(checkDrift:true)` when canonical input equality is required.
+Compact batches retain the same per-tool freshness evidence.
 
 ---
 
@@ -108,7 +150,9 @@ Private stdio rollback form:
 }
 ```
 
-Or from source (development), pointing at the local build output. Any `dotnet build` or `dotnet test` refreshes it, so you always run against HEAD with no publish step:
+For isolated private development only, point at a local DLL without `--shared`.
+That process owns separate state; rebuilding the DLL does not change a process
+that already loaded it. Keep ordinary clients on the installed shared build:
 
 ```json
 {
@@ -167,7 +211,7 @@ In Cursor settings, add an MCP server:
 
 - **Command**: `lifeblood-mcp`
 
-- **Arguments**: (none)
+- **Arguments**: `--shared`
 
 - **Transport**: `stdio`
 
@@ -276,7 +320,7 @@ Three pieces work together:
 
 Lifeblood runs **outside** Unity's `AppDomain`. Three consequences:
 
-- **No assembly conflicts.** Lifeblood pulls Roslyn 5.9 (Microsoft.CodeAnalysis). Unity ships its own (often older) Roslyn assemblies. Sidecar isolation means neither side fights for type identity.
+- **No assembly conflicts.** Lifeblood uses its SDK-matched Roslyn build (current provenance in [STATUS](STATUS.md)). Unity ships its own compiler assemblies. Sidecar isolation keeps those assembly identities separate.
 
 - **No domain reload state loss.** When Unity recompiles, the bridge disposes only Unity's proxy. The semantic daemon stays alive while another workspace lease exists, and the next Unity call reconnects to the same publication.
 
@@ -346,7 +390,7 @@ Overrides name one executable, not a command line. The bridge owns `--shared --s
 
 ## First steps after connecting
 
-1. Through Unity, call `lifeblood_analyze_project`; through a direct client, call `lifeblood_analyze` with `projectPath`.
+1. Inspect `lifeblood_capabilities` through a direct client or the attach-only helper first. Reuse a suitable existing publication. When an analysis is needed, use Unity's `lifeblood_analyze_project` or direct `lifeblood_analyze` with `projectPath` and the intended profiles.
 2. Don't know the canonical id of a symbol? Call `lifeblood_resolve_short_name name="MyType"` to discover it.
 3. Use `lifeblood_lookup`, `lifeblood_dependencies`, and `lifeblood_blast_radius` to query the graph. Truncated method ids and bare short names work because every read-side tool routes through `ISymbolResolver`.
 4. For multi-tool evidence, copy `envelope.snapshotId` into `expectedSnapshotId` or use `lifeblood_batch` so a concurrent refresh cannot mix generations. Use `lifeblood_snapshots` and exact `snapshotId` selection only when a bounded graph-only investigation lane must survive a refresh.

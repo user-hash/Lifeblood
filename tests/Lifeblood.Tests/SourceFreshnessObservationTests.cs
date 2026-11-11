@@ -33,6 +33,9 @@ public sealed class SourceFreshnessObservationTests : IDisposable
         Assert.Equal("incomplete", response.Freshness!.Status);
         Assert.Equal(256, response.Freshness.CheckedFileCount);
         Assert.Equal(1, response.Freshness.UncheckedFileCount);
+        Assert.Contains("incomplete: 256/257", response.Freshness.Summary);
+        Assert.Contains("Content not compared", response.Freshness.Summary);
+        Assert.Contains("Confidence describes publication semantics, not current inputs", response.Freshness.Summary);
         Assert.Contains(response.Limitations, l => l.Contains("Zero observed changes"));
         var complete = new LifebloodResponseDecorator().Decorate("lifeblood_lookup", new EnvelopeContext
         {
@@ -68,6 +71,10 @@ public sealed class SourceFreshnessObservationTests : IDisposable
         Assert.Equal("noDriftObserved", response.Freshness!.Status);
         Assert.False(response.Freshness.ContentCompared);
         Assert.False(response.Freshness.InputInventoryRecaptured);
+        using var wire = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(response,
+            new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+        Assert.Contains("noDriftObserved: 1/1", wire.RootElement.GetProperty("freshness").GetProperty("summary").GetString());
+        Assert.Contains("Input inventory not recaptured", response.Freshness.Summary);
         Assert.Contains(response.Limitations, l => l.Contains("Age alone does not establish source drift"));
     }
 
@@ -85,6 +92,7 @@ public sealed class SourceFreshnessObservationTests : IDisposable
         Assert.Equal("unavailable", response.Freshness!.Status);
         Assert.Equal(0, response.Freshness.CheckedFileCount);
         Assert.Equal(1, response.Freshness.UncheckedFileCount);
+        Assert.Contains("unavailable: 0/1", response.Freshness.Summary);
     }
 
     [Fact]

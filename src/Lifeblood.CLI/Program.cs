@@ -31,6 +31,7 @@ class Program
             "context" => RunContext(args.Skip(1).ToArray()),
             "export" => RunExport(args.Skip(1).ToArray()),
             "verify" => RunVerify(args.Skip(1).ToArray()),
+            "--version" or "version" => RunVersion(args.Skip(1).ToArray(), Console.Out),
             // Standard help arms — any of these prints usage and exits 0.
             "--help" or "-h" or "/?" or "help"
                 => RunHelp(),
@@ -45,9 +46,38 @@ class Program
         return 0;
     }
 
+    internal static int RunVersion(string[] args, TextWriter output)
+    {
+        if (args.Length > 1 || (args.Length == 1 && args[0] != "--json"))
+            return Error("Usage: lifeblood --version [--json]");
+
+        var assembly = typeof(Program).Assembly;
+        var version = System.Reflection.CustomAttributeExtensions
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(assembly)
+            ?.InformationalVersion ?? assembly.GetName().Version?.ToString() ?? "unknown";
+        if (args.Length == 0)
+            output.WriteLine($"Lifeblood {version}");
+        else
+            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                executionMode = "standaloneCli",
+                version,
+                cliAssemblyPath = assembly.Location,
+                processPath = Environment.ProcessPath,
+                runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+                targetFramework = System.Reflection.CustomAttributeExtensions
+                    .GetCustomAttribute<System.Runtime.Versioning.TargetFrameworkAttribute>(assembly)?.FrameworkName,
+                roslynVersion = System.Reflection.CustomAttributeExtensions
+                    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+                        typeof(Microsoft.CodeAnalysis.CSharp.CSharpCompilation).Assembly)?.InformationalVersion,
+            }));
+        return 0;
+    }
+
     /// <summary>
     /// Shared preflight: build graph → validate → return.
-    /// Every command goes through this. No command runs on unvalidated input.
+    /// Graph-consuming commands validate their input before querying it.
     /// </summary>
     static (SemanticGraph? graph, GraphSource source) Preflight(string[] args)
     {
@@ -394,6 +424,7 @@ class Program
     static void PrintUsage()
     {
         Console.WriteLine("Usage:");
+        Console.WriteLine("  lifeblood --version [--json]                              Report this CLI's build/runtime/compiler without analysis");
         Console.WriteLine("  lifeblood analyze --project <path>                         Analyze via Roslyn");
         Console.WriteLine("  lifeblood analyze --graph <graph.json>                     Analyze JSON graph");
         Console.WriteLine("  lifeblood analyze --project <path> --rules hexagonal        Analyze + built-in rules");
