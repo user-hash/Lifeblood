@@ -120,7 +120,9 @@ public sealed class RoslynCompilationHost :
   Diagnostics = CollectDiagnostics(
   string.IsNullOrEmpty(resolvedModule) ? null : resolvedModule,
   requestedTree),
-  DefinesActive = CollectDefines(string.IsNullOrEmpty(resolvedModule) ? null : resolvedModule),
+  DefinesActive = requestedTree == null
+      ? CollectDefines(string.IsNullOrEmpty(resolvedModule) ? null : resolvedModule)
+      : CollectTreeDefines(requestedTree.Options as CSharpParseOptions),
   ResolvedModule = resolvedModule,
   FileOwnership = fileOwnership,
   };
@@ -170,15 +172,9 @@ public sealed class RoslynCompilationHost :
   }
 
   /// <summary>
-  /// Active preprocessor symbols for the resolved scope. Pulls
-  /// <c>CSharpParseOptions.PreprocessorSymbolNames</c> off the chosen
-  /// compilation's parse options; for project-wide scope (null
-  /// <paramref name="moduleName"/>), returns the union across every
-  /// loaded compilation. Always sorted ASCII-ordinal and deduplicated
-  /// so the wire form is stable across analyze runs. Skips
-  /// compilations whose parse options are not <c>CSharpParseOptions</c>
-  /// (defensive — every Roslyn C# compilation carries them in
-  /// practice). INV-DIAGNOSTIC-ENVELOPE-DEFINES-001.
+  /// Union of active preprocessor symbols across every syntax tree in the
+  /// selected module, or every loaded module for project-wide scope.
+  /// Sorted ordinal and deduplicated per INV-DIAGNOSTIC-ENVELOPE-DEFINES-001.
   /// </summary>
   private string[] CollectDefines(string? moduleName)
   {
@@ -197,19 +193,21 @@ public sealed class RoslynCompilationHost :
   var defines = new SortedSet<string>(StringComparer.Ordinal);
   foreach (var compilation in targets)
   {
-  // ParseOptions on a CSharpCompilation is the project-level
-  // CSharpParseOptions; each SyntaxTree may override but in
-  // practice asmdef-generated modules carry one define set across
-  // every tree. Use the compilation's options for the canonical
-  // "what defines did Lifeblood compile this module with" answer.
-  if (compilation.SyntaxTrees.Length == 0) continue;
-  var opts = compilation.SyntaxTrees[0].Options as CSharpParseOptions;
+  foreach (var tree in compilation.SyntaxTrees)
+  {
+  var opts = tree.Options as CSharpParseOptions;
   if (opts == null) continue;
   foreach (var sym in opts.PreprocessorSymbolNames)
   if (!string.IsNullOrEmpty(sym)) defines.Add(sym);
   }
+  }
   return defines.ToArray();
   }
+
+  private static string[] CollectTreeDefines(CSharpParseOptions? options)
+      => options?.PreprocessorSymbolNames.Where(symbol => !string.IsNullOrEmpty(symbol))
+          .Distinct(StringComparer.Ordinal).OrderBy(symbol => symbol, StringComparer.Ordinal).ToArray()
+          ?? Array.Empty<string>();
 
   public CompileCheckResult CompileCheck(string code, string? moduleName = null)
   => CompileCheck(new CompileCheckRequest { Code = code, ModuleName = moduleName });
@@ -288,9 +286,9 @@ public sealed class RoslynCompilationHost :
   // do NOT read off disk here — the handler already routed through
   // IFileSystem and may have applied a stale-refresh.
   string newSource;
-  if (!string.IsNullOrEmpty(overrideCode))
+  if (overrideCode != null)
   {
-  newSource = overrideCode!;
+  newSource = overrideCode;
   }
   else
   {
@@ -298,14 +296,14 @@ public sealed class RoslynCompilationHost :
   }
 
   // Build the replacement tree at the SAME path so diagnostics keep
-  // pointing at the user's file, not a synthetic snippet path. Thread
-  // the owning module's CSharpParseOptions (LangVersion, Nullable,
+  // pointing at the user's file, not a synthetic snippet path. Preserve
+  // the resolved tree's CSharpParseOptions (LangVersion,
   // PreprocessorSymbols — set per INV-COMPFACT-001..003 in
   // ModuleCompilationBuilder) so AddSyntaxTrees / ReplaceSyntaxTree
   // does not throw "Inconsistent language versions" when the module
   // declares a non-default LangVersion.
   var preservedPath = existingTree.FilePath;
-  var moduleParseOptions = GetModuleParseOptions(owningCompilation);
+  var moduleParseOptions = (CSharpParseOptions)existingTree.Options;
   var newTree = CSharpSyntaxTree.ParseText(newSource, moduleParseOptions, path: preservedPath);
 
   // Pre-existing diagnostics computed against the unswapped
@@ -354,7 +352,7 @@ public sealed class RoslynCompilationHost :
   Diagnostics = diagnostics,
   ResolvedModule = resolvedModule,
   ExistingTreeReplaced = true,
-  DefinesActive = CollectDefines(resolvedModule),
+  DefinesActive = CollectTreeDefines(moduleParseOptions),
   FileOwnership = fileOwnership,
   };
   }
@@ -419,28 +417,20 @@ public sealed class RoslynCompilationHost :
   Success = !hasNewErrors,
   Diagnostics = snippetDiagnostics,
   ResolvedModule = resolvedModuleName ?? "",
-  DefinesActive = CollectDefines(resolvedModuleName),
+  DefinesActive = CollectTreeDefines(prepared.Tree.Options as CSharpParseOptions),
   };
   }
 
   /// <summary>
-  /// Return the <see cref="CSharpParseOptions"/> the owning compilation
-  /// parses its source trees under. compile_check must parse replacement
-  /// + snippet trees with these same options so `AddSyntaxTrees` /
-  /// `ReplaceSyntaxTree` does not throw "Inconsistent language versions"
-  /// when the module declares non-default `LangVersion` / `Nullable`
-  /// / `DefineConstants` (set per INV-COMPFACT-001..003 in
-  /// `ModuleCompilationBuilder`). Returns null when the compilation is
-  /// empty or carries only synthetic trees (paths starting with `&lt;`),
-  /// in which case `CSharpSyntaxTree.ParseText` falls back to defaults
-  /// — the same behavior as before INV-COMPFACT thread-through.
+  /// Select representative source parse options for a new snippet. File
+  /// replacements instead preserve the resolved tree's own options.
+  /// Empty or synthetic-only compilations use the parser defaults.
   /// </summary>
   private static CSharpParseOptions? GetModuleParseOptions(CSharpCompilation compilation)
   {
   foreach (var tree in compilation.SyntaxTrees)
   {
-  // Skip synthetic trees (e.g. `<ImplicitGlobalUsings>.cs`) — those
-  // are parsed with default options and don't represent module facts.
+  // Synthetic trees do not establish the source scope for a snippet.
   if (!string.IsNullOrEmpty(tree.FilePath) && tree.FilePath.StartsWith("<")) continue;
   return tree.Options as CSharpParseOptions;
   }

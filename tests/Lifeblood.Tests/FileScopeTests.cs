@@ -134,6 +134,32 @@ public sealed class FileScopeTests : IDisposable
     }
 
     [Fact]
+    public void GuardedCheck_EmptyCapturedFileDoesNotReuseTheRetainedDeclaration()
+    {
+        File.WriteAllText(Path.Combine(_root, "B.cs"), "public class B { public int Read() => new A().Value; }");
+        using var session = Load();
+        var handler = Handler(session);
+        var snapshot = session.CurrentSnapshot;
+        File.WriteAllText(Path.Combine(_root, "A.cs"), "");
+        var receipt = Capture(handler, "owner", "A.cs");
+        Assert.Equal(0, receipt.GetProperty("files")[0].GetProperty("byteLength").GetInt64());
+
+        var check = Call(handler, "lifeblood_compile_check", new
+        {
+            filePath = "A.cs", expectedFileScope = receipt,
+            expectedSnapshotId = session.SnapshotId.ToString(), expectedAnalysisGeneration = session.AnalysisGeneration,
+        });
+
+        Assert.NotEqual(true, check.Result.IsError);
+        Assert.False(check.Json.GetProperty("success").GetBoolean());
+        Assert.Contains(check.Json.GetProperty("diagnostics").EnumerateArray(), diagnostic =>
+            diagnostic.GetProperty("id").GetString() == "CS0246"
+            && diagnostic.GetProperty("filePath").GetString()!.EndsWith("B.cs", StringComparison.Ordinal));
+        Assert.Equal("hashVerifiedCapturedBytes", check.Json.GetProperty("preconditions").GetProperty("sourceAuthority").GetString());
+        Assert.Same(snapshot, session.CurrentSnapshot);
+    }
+
+    [Fact]
     public void GuardedBatch_UsesBOMAwareCapturedBytes_AndRejectsOneConflictAsAWhole()
     {
         File.WriteAllText(Path.Combine(_root, "A.cs"), "public class A { }", Encoding.Unicode);
