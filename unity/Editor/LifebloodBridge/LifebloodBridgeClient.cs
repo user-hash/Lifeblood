@@ -130,7 +130,6 @@ namespace Lifeblood.UnityBridge
             var forwarded = arguments == null
                 ? new JObject()
                 : (JObject)arguments.DeepClone();
-            forwarded.Remove("action");
             if (string.Equals(arguments?["action"]?.ToString(), "status", StringComparison.OrdinalIgnoreCase))
                 return PollToolCall(toolName);
 

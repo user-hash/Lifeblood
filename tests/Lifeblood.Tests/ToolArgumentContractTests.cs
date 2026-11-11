@@ -56,15 +56,17 @@ public class ToolArgumentContractTests
     }
 
     [Fact]
-    public void SnapshotReadArguments_DeriveOnlyFromObserveSharedReadBehavior()
+    public void PublicationPreconditions_DeriveFromSnapshotReadsOrGuardedCompileCheck()
     {
         foreach (var definition in ToolRegistry.GetDefinitions())
         {
             var hasSnapshotId = definition.InputContract.Arguments.ContainsKey("expectedSnapshotId");
             var hasGeneration = definition.InputContract.Arguments.ContainsKey("expectedAnalysisGeneration");
 
-            Assert.Equal(definition.SupportsSnapshotRead, hasSnapshotId);
-            Assert.Equal(definition.SupportsSnapshotRead, hasGeneration);
+            var supportsPreconditions = definition.SupportsSnapshotRead || definition.Name == "lifeblood_compile_check";
+            Assert.Equal(supportsPreconditions, hasSnapshotId);
+            Assert.Equal(supportsPreconditions, hasGeneration);
+            Assert.Equal(definition.SupportsSnapshotRead, definition.InputContract.Arguments.ContainsKey("snapshotId"));
         }
     }
 

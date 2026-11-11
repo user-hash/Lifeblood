@@ -16,7 +16,7 @@ namespace Lifeblood.UnityBridge
     }
 
     /// <summary>
-    /// All 20 Lifeblood semantic tools exposed as Unity MCP custom tools.
+    /// Lifeblood semantic tools exposed as Unity MCP custom tools.
     /// Each class is auto-discovered by Unity MCP via [McpForUnityTool].
     /// Architecture: pure outer adapters. JObject in, JObject out, with all
     /// semantic work delegated to the workspace-shared Lifeblood host. Parameters
@@ -409,7 +409,16 @@ namespace Lifeblood.UnityBridge
             public string moduleName { get; set; }
 
             [ToolParameter("Refresh stale generated project descriptors before resolving file ownership.", Required = false)]
-            public bool staleRefresh { get; set; }
+            public bool? staleRefresh { get; set; }
+
+            [ToolParameter("Optional owner-scoped file hash receipt; checks the exact captured bytes without refresh.", Required = false)]
+            public string expectedFileScopeJson { get; set; }
+
+            [ToolParameter("Optional exact current publication precondition; implies staleRefresh:false.", Required = false)]
+            public string expectedSnapshotId { get; set; }
+
+            [ToolParameter("Optional current publication generation precondition.", Required = false)]
+            public long? expectedAnalysisGeneration { get; set; }
 
             [ToolParameter("Diagnostic verbosity (optional)", Required = false)]
             public string verbosity { get; set; }
@@ -417,7 +426,49 @@ namespace Lifeblood.UnityBridge
 
         public static object HandleCommand(JObject @params)
         {
-            return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_compile_check", @params);
+            var forwarded = @params == null ? new JObject() : (JObject)@params.DeepClone();
+            if (forwarded.TryGetValue("expectedFileScopeJson", out var scopeJson))
+            {
+                if (forwarded.ContainsKey("expectedFileScope") || scopeJson.Type != JTokenType.String || string.IsNullOrWhiteSpace((string)scopeJson))
+                    throw new System.ArgumentException("expectedFileScopeJson must be a non-empty receipt JSON object and cannot accompany expectedFileScope.");
+                forwarded.Remove("expectedFileScopeJson");
+                forwarded["expectedFileScope"] = JObject.Parse((string)scopeJson);
+            }
+            return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_compile_check", forwarded);
+        }
+    }
+
+    [McpForUnityTool("lifeblood_file_scope",
+        Description = "Capture or verify explicit owner-scoped content hashes without analysis or source writes. Hashes do not certify dependency/profile freshness or lock external editors.",
+        Group = "code-intelligence", RequiresPolling = true)]
+    public static class LifebloodFileScope
+    {
+        public sealed class Parameters : SnapshotReadParameters
+        {
+            [ToolParameter("capture or verify", Required = true)]
+            public string action { get; set; }
+
+            [ToolParameter("Caller intent label; not an exclusive lock or authorization.", Required = true)]
+            public string ownerId { get; set; }
+
+            [ToolParameter("capture only: 1..32 explicit workspace-local paths.", Required = false)]
+            public string[] filePaths { get; set; }
+
+            [ToolParameter("verify only: receipt returned by capture.", Required = false)]
+            public string receiptJson { get; set; }
+        }
+
+        public static object HandleCommand(JObject @params)
+        {
+            var forwarded = @params == null ? new JObject() : (JObject)@params.DeepClone();
+            if (forwarded.TryGetValue("receiptJson", out var receiptJson))
+            {
+                if (forwarded.ContainsKey("receipt") || receiptJson.Type != JTokenType.String || string.IsNullOrWhiteSpace((string)receiptJson))
+                    throw new System.ArgumentException("receiptJson must be a non-empty receipt JSON object and cannot accompany receipt.");
+                forwarded.Remove("receiptJson");
+                forwarded["receipt"] = JObject.Parse((string)receiptJson);
+            }
+            return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_file_scope", forwarded);
         }
     }
 

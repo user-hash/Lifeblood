@@ -231,6 +231,7 @@ public class McpProtocolTests
   ["lifeblood_execute"] = execute,
   ["lifeblood_diagnose"] = compilationObserve,
   ["lifeblood_compile_check"] = compilationRefresh,
+    ["lifeblood_file_scope"] = workspaceRootObserve,
   ["lifeblood_find_references"] = compilationObserve,
   ["lifeblood_find_definition"] = compilationObserve,
   ["lifeblood_find_implementations"] = compilationObserve,

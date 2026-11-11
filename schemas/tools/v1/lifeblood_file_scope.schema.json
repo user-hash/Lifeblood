@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "required": [
+    "action",
+    "ownerId"
+  ],
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "capture observes explicit filePaths; verify compares the exact caller-owned receipt without analysis or source writes.",
+      "enum": [
+        "capture",
+        "verify"
+      ]
+    },
+    "ownerId": {
+      "type": "string",
+      "description": "Caller intent label, 1..128 characters. Must match receipt.ownerId on verify; not a lock or authorization."
+    },
+    "filePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "capture only: 1..32 workspace-local paths, maximum 8 MiB/file and 64 MiB total. Missing files have null sha256/byteLength expectations."
+    },
+    "receipt": {
+      "type": "object",
+      "description": "verify only: exact receipt returned by capture, with schemaVersion, ownerId, workspaceRoot and files[{filePath,sha256,byteLength}]. Only these content expectations are checked, independently of unrelated source/publication changes."
+    },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact `snap_<32 lowercase hex>` identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
+    }
+  }
+}

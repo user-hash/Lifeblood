@@ -1,8 +1,10 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Results;
+using Lifeblood.Application.UseCases;
 
 namespace Lifeblood.Server.Mcp;
 
@@ -360,9 +362,84 @@ internal sealed class WriteToolHandler
         return false;
     }
 
-    public McpToolResult HandleCompileCheck(JsonElement? args)
+    public McpToolResult HandleCompileCheck(JsonElement? args, CancellationToken cancellationToken = default)
     {
         var toolRequest = ToolRequestBinder.BindCompileCheck(args);
+        var binding = SnapshotReadRequestBinder.Bind(args);
+        if (!binding.Accepted || binding.Request?.SelectedSnapshotId != null)
+            return ErrorResult(JsonSerializer.Serialize(new { failure = "snapshot-precondition-invalid", message = binding.Error ?? "compile_check does not select historical snapshots." }, _jsonOpts));
+        var precondition = binding.Request?.Precondition;
+        if (precondition?.Compare(_session.CurrentSnapshot) is { } mismatch)
+            return ToolHandler.SnapshotPreconditionMismatch("lifeblood_compile_check", mismatch);
+
+        var guarded = precondition != null || toolRequest.ExpectedFileScope != null;
+        if (guarded && args is { } raw)
+        {
+            try
+            {
+                if (raw.TryGetProperty("filePaths", out var rawPaths))
+                    toolRequest = toolRequest with { FilePaths = FileScopeToolHandler.ReadPaths(rawPaths) };
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResult(JsonSerializer.Serialize(new { failure = "compile-check-precondition-invalid", message = ex.Message, compilationStarted = false }, _jsonOpts));
+            }
+        }
+        if (guarded && toolRequest.StaleRefresh == true)
+            return ErrorResult(JsonSerializer.Serialize(new { failure = "compile-check-precondition-invalid", message = "Preconditioned checks require staleRefresh:false; omit staleRefresh to select it automatically." }, _jsonOpts));
+        if (guarded) toolRequest = toolRequest with { StaleRefresh = false };
+
+        CapturedFileScope? captured = null;
+        if (toolRequest.ExpectedFileScope is { } receiptElement)
+        {
+            try
+            {
+                var receipt = FileScopeToolHandler.BindReceipt(receiptElement, _session.ProjectRoot);
+                var paths = toolRequest.FilePaths ?? (string.IsNullOrEmpty(toolRequest.FilePath) ? Array.Empty<string>() : new[] { toolRequest.FilePath });
+                if (!string.IsNullOrEmpty(toolRequest.Code) || paths.Length == 0
+                    || toolRequest.FilePaths != null && !string.IsNullOrEmpty(toolRequest.FilePath))
+                    throw new ArgumentException("expectedFileScope requires filePath or filePaths, not code.");
+                var expectedPaths = receipt.Files.Select(file => FileScopeObservation.ResolvePath(_session.ProjectRoot, file.FilePath)).ToHashSet(FileScopeObservation.PathComparer);
+                if (paths.Any(path => !expectedPaths.Contains(FileScopeObservation.ResolvePath(_session.ProjectRoot, path))))
+                    throw new ArgumentException("Every requested compile file must be covered by expectedFileScope.");
+                captured = new FileScopeObservation(_session.FileSystem).Capture(_session.ProjectRoot, receipt.OwnerId,
+                    receipt.Files.Select(file => file.FilePath).ToArray(), includeContent: true, cancellationToken);
+                var conflicts = FileScopeObservation.Compare(receipt, captured.Receipt);
+                if (conflicts.Length > 0)
+                    return ErrorResult(JsonSerializer.Serialize(new { failure = "file-scope-precondition", retryable = true, ownerId = receipt.OwnerId, conflicts, compilationStarted = false, autoRefreshed = false }, _jsonOpts));
+                if (paths.Any(path => !captured.Content.ContainsKey(FileScopeObservation.ResolvePath(_session.ProjectRoot, path))))
+                    throw new ArgumentException("A requested compile file is missing in the matched receipt.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return ErrorResult(JsonSerializer.Serialize(new { failure = "file-scope-unavailable", message = ex.Message, retryable = ex is IOException, compilationStarted = false }, _jsonOpts));
+            }
+            catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException)
+            {
+                return ErrorResult(JsonSerializer.Serialize(new { failure = "file-scope-precondition-invalid", message = ex.Message, compilationStarted = false }, _jsonOpts));
+            }
+        }
+
+        var result = HandleCompileCheckCore(toolRequest, captured, cancellationToken);
+        if (!guarded || result.IsError == true) return result;
+        var payload = JsonNode.Parse(result.Content.Single().Text)!.AsObject();
+        payload["preconditions"] = JsonSerializer.SerializeToNode(new
+        {
+            publicationChecked = precondition != null,
+            snapshotId = _session.SnapshotId.ToString(),
+            analysisGeneration = _session.AnalysisGeneration,
+            analyzedUnderProfile = _session.RetainedProfileName,
+            fileScope = captured?.Receipt,
+            checkedFileCount = captured?.Receipt.Files.Count ?? 0,
+            sourceAuthority = captured == null ? "legacySourceMode" : "hashVerifiedCapturedBytes",
+            semanticInputsVerified = false,
+            limitations = new[] { FileScopeToolHandler.Limitations, "Compilation uses the retained profile and baseline dependencies; batch files are checked individually, not installed together into a new compilation." },
+        }, _jsonOpts);
+        return TextResult(payload.ToJsonString(_jsonOpts));
+    }
+
+    private McpToolResult HandleCompileCheckCore(CompileCheckToolRequest toolRequest, CapturedFileScope? captured, CancellationToken cancellationToken)
+    {
         var code = toolRequest.Code;
         var filePath = toolRequest.FilePath;
         var filePaths = toolRequest.FilePaths;
@@ -378,7 +455,7 @@ internal sealed class WriteToolHandler
         if (suppliedModes > 1)
             return ErrorResult("'code', 'filePath', and 'filePaths' are mutually exclusive — supply exactly one.");
         if (filePaths != null)
-            return HandleCompileCheckBatch(toolRequest);
+            return HandleCompileCheckBatch(toolRequest, captured, cancellationToken);
 
         // File-mode hand-off: the host owns owning-compilation detection
         // AND tree-swapping. Reading the file off
@@ -393,14 +470,15 @@ internal sealed class WriteToolHandler
         if (!string.IsNullOrEmpty(filePath))
         {
             var resolvedPath = ResolveWorkspacePath(filePath);
-            if (!_session.FileSystem.FileExists(resolvedPath))
+            if (captured == null && !_session.FileSystem.FileExists(resolvedPath))
                 return ErrorResult($"File not found: {filePath} (resolved to '{resolvedPath}'). Pass an absolute path or one relative to the loaded project root.");
             try
             {
                 // Read the on-disk content so the host can swap it in for
                 // the existing tree. Stale-refresh below covers other
                 // edited files; this read covers THIS file's edits.
-                overrideCode = _session.FileSystem.ReadAllText(resolvedPath);
+                overrideCode = captured == null ? _session.FileSystem.ReadAllText(resolvedPath)
+                    : captured.ReadText(FileScopeObservation.ResolvePath(_session.ProjectRoot, filePath));
             }
             catch (System.IO.IOException ex)
             {
@@ -423,6 +501,7 @@ internal sealed class WriteToolHandler
             FilePath = !string.IsNullOrEmpty(filePath) ? filePath : null,
             ModuleName = moduleName,
         };
+        cancellationToken.ThrowIfCancellationRequested();
         var result = _session.CompilationHost!.CompileCheck(request);
         var packageSource = !string.IsNullOrEmpty(filePath)
             ? _session.ResolvePackageSource(filePath)
@@ -492,7 +571,7 @@ internal sealed class WriteToolHandler
     /// committed compilation host/profile. No extra graph or Roslyn base is
     /// retained. INV-COMPILE-CHECK-BATCH-001.
     /// </summary>
-    private McpToolResult HandleCompileCheckBatch(CompileCheckToolRequest toolRequest)
+    private McpToolResult HandleCompileCheckBatch(CompileCheckToolRequest toolRequest, CapturedFileScope? captured, CancellationToken cancellationToken)
     {
         var filePaths = toolRequest.FilePaths!;
         if (filePaths.Length is < 1 or > CompileCheckBatchLimit)
@@ -506,6 +585,7 @@ internal sealed class WriteToolHandler
 
         foreach (var requestedPath in filePaths)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string resolvedPath;
             try
             {
@@ -518,12 +598,13 @@ internal sealed class WriteToolHandler
 
             if (!resolvedPaths.Add(resolvedPath))
                 return ErrorResult($"'filePaths' contains duplicate resolved path '{requestedPath}' ('{resolvedPath}').");
-            if (!_session.FileSystem.FileExists(resolvedPath))
+            if (captured == null && !_session.FileSystem.FileExists(resolvedPath))
                 return ErrorResult($"File not found: {requestedPath} (resolved to '{resolvedPath}'). The batch was not executed.");
 
             try
             {
-                prepared.Add((requestedPath, _session.FileSystem.ReadAllText(resolvedPath)));
+                prepared.Add((requestedPath, captured == null ? _session.FileSystem.ReadAllText(resolvedPath)
+                    : captured.ReadText(FileScopeObservation.ResolvePath(_session.ProjectRoot, requestedPath))));
             }
             catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
             {
@@ -539,6 +620,7 @@ internal sealed class WriteToolHandler
 
         var results = prepared.Select(file =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var result = _session.CompilationHost!.CompileCheck(new CompileCheckRequest
             {
                 Code = file.Code,

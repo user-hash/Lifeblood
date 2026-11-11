@@ -27,6 +27,18 @@
     "verbosity": {
       "type": "string",
       "description": "'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list."
+    },
+    "expectedFileScope": {
+      "type": "object",
+      "description": "Optional lifeblood_file_scope receipt. All scoped hashes must match; every requested compile file must be covered. Diagnostics use those exact captured bytes under the session writer gate. Defaults staleRefresh to false and rejects explicit true. No source writes or external-editor lock; dependency/profile freshness is not certified."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional exact current publication precondition, checked under the writer gate before I/O, refresh or compilation. Defaults staleRefresh to false and rejects explicit true. Mismatch returns structured retry guidance."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional non-negative process-local generation precondition, checked atomically with compilation. Use expectedSnapshotId as well for identity across daemon lifetimes."
     }
   }
 }

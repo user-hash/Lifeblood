@@ -39,7 +39,7 @@ public static class ToolInputContractCatalog
             contract => contract.ToolName,
             contract => new ToolInputContract(
                 contract.ToolName,
-                contract.ArgumentList.Concat(SnapshotReadArguments).ToArray()),
+                contract.ArgumentList.Concat(SnapshotReadArguments.Where(argument => !contract.Arguments.ContainsKey(argument.Name))).ToArray()),
             StringComparer.Ordinal));
 
     public static IReadOnlyCollection<ToolInputContract> All => Contracts.Value.Values.ToArray();
@@ -67,6 +67,13 @@ public static class ToolInputContractCatalog
     private static IEnumerable<ToolInputContract> Create()
     {
         yield return Contract(@"lifeblood_capabilities");
+
+        yield return Contract(@"lifeblood_file_scope",
+            Arg(@"action", ToolArgumentType.String, required: true, arrayItemType: null, description: @"capture observes explicit filePaths; verify compares the exact caller-owned receipt without analysis or source writes.", enumValues: new[] { "capture", "verify" }),
+            Arg(@"ownerId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Caller intent label, 1..128 characters. Must match receipt.ownerId on verify; not a lock or authorization.", enumValues: Array.Empty<string>()),
+            Arg(@"filePaths", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"capture only: 1..32 workspace-local paths, maximum 8 MiB/file and 64 MiB total. Missing files have null sha256/byteLength expectations.", enumValues: Array.Empty<string>()),
+            Arg(@"receipt", ToolArgumentType.Object, required: false, arrayItemType: null, description: @"verify only: exact receipt returned by capture, with schemaVersion, ownerId, workspaceRoot and files[{filePath,sha256,byteLength}]. Only these content expectations are checked, independently of unrelated source/publication changes.", enumValues: Array.Empty<string>())
+        );
 
         yield return Contract(@"lifeblood_batch",
             Arg(@"calls", ToolArgumentType.Array, required: true, arrayItemType: ToolArgumentType.Object, description: @"Ordered read-only query plan. Each item is `{ tool: string, arguments?: object }`. The entire plan holds one snapshot lease, executes serially, rejects non-observation/exclusive/nested-batch tools before any call runs, and is hard-capped at 32 calls.", enumValues: Array.Empty<string>()),
@@ -197,7 +204,10 @@ public static class ToolInputContractCatalog
             Arg(@"filePaths", ToolArgumentType.Array, required: false, arrayItemType: ToolArgumentType.String, description: @"Ordered set of 1..32 .cs files to compile-check under one prevalidated request and at most one shared stale refresh. Mutually exclusive with code and filePath. Duplicate resolved paths are rejected; moduleName, when supplied, constrains every file.", enumValues: Array.Empty<string>()),
             Arg(@"moduleName", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Module context for type resolution. In filePaths mode the same explicit module constraint applies to every file; omit it to resolve each owner independently.", enumValues: Array.Empty<string>()),
             Arg(@"staleRefresh", ToolArgumentType.Boolean, required: false, arrayItemType: null, description: @"If true (default), incrementally re-analyze the workspace before compile_check when any tracked file has changed on disk since the last analyze. Set false to check against the pinned workspace state.", enumValues: Array.Empty<string>()),
-            Arg(@"verbosity", ToolArgumentType.String, required: false, arrayItemType: null, description: @"'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list.", enumValues: Array.Empty<string>())
+            Arg(@"verbosity", ToolArgumentType.String, required: false, arrayItemType: null, description: @"'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list.", enumValues: Array.Empty<string>()),
+            Arg(@"expectedFileScope", ToolArgumentType.Object, required: false, arrayItemType: null, description: @"Optional lifeblood_file_scope receipt. All scoped hashes must match; every requested compile file must be covered. Diagnostics use those exact captured bytes under the session writer gate. Defaults staleRefresh to false and rejects explicit true. No source writes or external-editor lock; dependency/profile freshness is not certified.", enumValues: Array.Empty<string>()),
+            Arg(@"expectedSnapshotId", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Optional exact current publication precondition, checked under the writer gate before I/O, refresh or compilation. Defaults staleRefresh to false and rejects explicit true. Mismatch returns structured retry guidance.", enumValues: Array.Empty<string>()),
+            Arg(@"expectedAnalysisGeneration", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Optional non-negative process-local generation precondition, checked atomically with compilation. Use expectedSnapshotId as well for identity across daemon lifetimes.", enumValues: Array.Empty<string>())
         );
 
         yield return Contract(@"lifeblood_resolve_member",

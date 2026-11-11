@@ -49,7 +49,7 @@ public sealed class UnityBridgeContractTests
             .Where(type => type.Parent is CompilationUnitSyntax or NamespaceDeclarationSyntax or FileScopedNamespaceDeclarationSyntax)
             .ToDictionary(type => type.Identifier.ValueText, StringComparer.Ordinal);
 
-        Assert.Equal(20, wrappers.Length);
+        Assert.Equal(21, wrappers.Length);
         foreach (var wrapper in wrappers)
         {
             var unityToolName = ReadMcpToolName(wrapper);
@@ -72,7 +72,7 @@ public sealed class UnityBridgeContractTests
             .Where(HasMcpToolAttribute)
             .ToArray();
 
-        Assert.Equal(20, tools.Length);
+        Assert.Equal(21, tools.Length);
         foreach (var tool in tools)
         {
             var attribute = tool.AttributeLists.SelectMany(list => list.Attributes)
@@ -208,6 +208,18 @@ public sealed class UnityBridgeContractTests
                 && argument.Name == "manifest")
             {
                 expected["manifestJson"] = "string:false";
+                continue;
+            }
+
+            if (serverToolName == "lifeblood_compile_check" && argument.Name == "expectedFileScope"
+                || serverToolName == "lifeblood_file_scope" && argument.Name == "receipt")
+            {
+                expected[argument.Name + "Json"] = "string:false";
+                continue;
+            }
+            if (serverToolName == "lifeblood_compile_check" && argument.Name == "staleRefresh")
+            {
+                expected[argument.Name] = "bool?:false";
                 continue;
             }
 

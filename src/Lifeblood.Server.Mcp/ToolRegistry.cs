@@ -102,6 +102,14 @@ public static class ToolRegistry
     EvidenceSource = "Semantic",
   };
 
+  private static readonly EnvelopeClassification ContentObservation = new()
+  {
+    TruthTier = TruthTier.Derived,
+    Confidence = ConfidenceBand.Proven,
+    EvidenceSource = "FileContent",
+    Limitations = new[] { FileScopeToolHandler.Limitations },
+  };
+
   private static readonly EnvelopeClassification DerivedInferred = new()
   {
     TruthTier = TruthTier.Derived,
@@ -272,6 +280,13 @@ public static class ToolRegistry
   Behavior = CapabilityObservation,
   EnvelopeClassification = DerivedProven,
   Description = "Report the live Lifeblood MCP server capabilities: server version and version source, optional git commit/dirty state when running from a repo checkout, MCP tool count with legacy read/write split plus typed behavior contracts (session requirement, effect, access), feature flags, schema snapshot path, STATUS.md anchor path, and current session state. Use this at session start to detect local-tool/documentation drift before relying on stale prose.",
+  },
+  new()
+  {
+  Name = "lifeblood_file_scope",
+  Behavior = WorkspaceRootObservation,
+  EnvelopeClassification = ContentObservation,
+  Description = "Capture or verify a caller-owned receipt of raw-byte SHA-256 hashes for 1..32 explicit workspace files, independently of unrelated edits or publication changes. No analysis, writes, locks, persistent receipt cache or extra semantic base. Missing files are explicit null expectations; unreadable/oversized/duplicate/outside-workspace inputs fail closed. ownerId is an intent label, not exclusive ownership. Supply the receipt as compile_check.expectedFileScope to validate and compile exact captured source bytes. This does not certify dependency/profile freshness or guard writes made by external editors.",
   },
   new()
   {

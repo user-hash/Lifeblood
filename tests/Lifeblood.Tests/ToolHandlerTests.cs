@@ -652,25 +652,25 @@ public class ToolHandlerTests : IDisposable
         var doc = JsonDocument.Parse(result.Content[0].Text);
         Assert.Equal("lifeblood", doc.RootElement.GetProperty("server").GetProperty("name").GetString());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("server").GetProperty("version").GetString()));
-        Assert.Equal(44, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
-        Assert.Equal(25, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
+        Assert.Equal(45, doc.RootElement.GetProperty("tools").GetProperty("totalCount").GetInt32());
+        Assert.Equal(26, doc.RootElement.GetProperty("tools").GetProperty("readSideCount").GetInt32());
         Assert.Equal(19, doc.RootElement.GetProperty("tools").GetProperty("writeSideCount").GetInt32());
         var toolCapabilities = doc.RootElement.GetProperty("tools");
         Assert.Contains("legacy projections", toolCapabilities.GetProperty("compatibilityNote").GetString());
         Assert.Equal(5, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("None").GetInt32());
         Assert.Equal(16, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("AnalyzedWorkspace").GetInt32());
-        Assert.Equal(3, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
+        Assert.Equal(4, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("WorkspaceRoot").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("OperationFacts").GetInt32());
         Assert.Equal(19, toolCapabilities.GetProperty("sessionRequirementCounts").GetProperty("RetainedCompilation").GetInt32());
-        Assert.Equal(38, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
+        Assert.Equal(39, toolCapabilities.GetProperty("effectCounts").GetProperty("Observe").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("RefreshWorkspace").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ManageSnapshotCatalog").GetInt32());
         Assert.Equal(1, toolCapabilities.GetProperty("effectCounts").GetProperty("ExecuteCode").GetInt32());
         Assert.Equal(2, toolCapabilities.GetProperty("effectCounts").GetProperty("PreviewChanges").GetInt32());
-        Assert.Equal(41, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
+        Assert.Equal(42, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("SharedRead").GetInt32());
         Assert.Equal(3, toolCapabilities.GetProperty("sessionAccessCounts").GetProperty("Exclusive").GetInt32());
         var behaviorContracts = toolCapabilities.GetProperty("behaviorContracts");
-        Assert.Equal(44, behaviorContracts.GetArrayLength());
+        Assert.Equal(45, behaviorContracts.GetArrayLength());
         var analyzeContract = behaviorContracts.EnumerateArray()
             .Single(e => e.GetProperty("name").GetString() == "lifeblood_analyze");
         Assert.Equal("None", analyzeContract.GetProperty("sessionRequirement").GetString());
@@ -1567,11 +1567,12 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
-    public void ToolRegistry_Returns44Tools()
+    public void ToolRegistry_Returns45Tools()
     {
         var tools = ToolRegistry.GetTools();
 
-        Assert.Equal(44, tools.Length);
+        Assert.Equal(45, tools.Length);
+        Assert.Contains(tools, t => t.Name == "lifeblood_file_scope");
         Assert.Contains(tools, t => t.Name == "lifeblood_capabilities");
         Assert.Contains(tools, t => t.Name == "lifeblood_snapshots");
         Assert.Contains(tools, t => t.Name == "lifeblood_callsite_arguments");
@@ -1654,8 +1655,11 @@ public class ToolHandlerTests : IDisposable
         foreach (var definition in ToolRegistry.GetDefinitions())
         {
             gate.Reset();
-            var result = handler.Handle(definition.Name, null);
-            var callBehavior = definition.ResolveCallBehavior(null);
+            var arguments = definition.Name == "lifeblood_file_scope"
+                ? MakeArgs(new { action = "capture", ownerId = "gate-fixture", filePaths = new[] { "A.cs" } })
+                : null;
+            var result = handler.Handle(definition.Name, arguments);
+            var callBehavior = definition.ResolveCallBehavior(arguments);
 
             if (callBehavior.SessionAccess == ToolSessionAccess.Exclusive)
             {

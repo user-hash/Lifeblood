@@ -35,6 +35,7 @@ public static class ToolRequestBinder
     private static readonly string CompileCheckModuleName = ArgumentName(CompileCheckToolName, "moduleName");
     private static readonly string CompileCheckStaleRefresh = ArgumentName(CompileCheckToolName, "staleRefresh");
     private static readonly string CompileCheckVerbosity = ArgumentName(CompileCheckToolName, "verbosity");
+    private static readonly string CompileCheckExpectedFileScope = ArgumentName(CompileCheckToolName, "expectedFileScope");
 
     private static readonly string ContractAuditManifest = ArgumentName(ContractAuditToolName, "manifest");
     private static readonly string ContractAuditManifestPath = ArgumentName(ContractAuditToolName, "manifestPath");
@@ -112,6 +113,7 @@ public static class ToolRequestBinder
             ModuleName = ReadString(root, CompileCheckModuleName),
             StaleRefresh = ReadBool(root, CompileCheckStaleRefresh),
             Verbosity = ReadString(root, CompileCheckVerbosity),
+            ExpectedFileScope = root.TryGetProperty(CompileCheckExpectedFileScope, out var scope) ? scope.Clone() : null,
         };
     }
 
@@ -301,6 +303,7 @@ public sealed record CompileCheckToolRequest
     public bool? StaleRefresh { get; init; }
     public bool EffectiveStaleRefresh => StaleRefresh ?? true;
     public string? Verbosity { get; init; }
+    public JsonElement? ExpectedFileScope { get; init; }
 }
 
 public sealed record ContractAuditToolRequest

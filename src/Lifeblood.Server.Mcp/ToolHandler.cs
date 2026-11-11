@@ -37,6 +37,7 @@ public sealed class ToolHandler
     private readonly IAuthorityReporter _authority;
     private readonly IPortHealthAnalyzer _portHealth;
     private readonly WriteToolHandler _write;
+    private readonly FileScopeToolHandler _fileScope;
     private readonly ContractAuditToolHandler _contractAudit;
     private readonly EvidenceDriftToolHandler _evidenceDrift;
     private readonly PerformanceEvidenceToolHandler _performanceEvidence;
@@ -103,6 +104,7 @@ public sealed class ToolHandler
         _analysisCoordinator = analysisCoordinator ?? new AnalysisRequestCoordinator<McpToolResult>();
         _sharedDaemonStatus = sharedDaemonStatus;
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
+        _fileScope = new FileScopeToolHandler(session, JsonOpts);
         _contractAudit = new ContractAuditToolHandler(session, invariants, _resolver, JsonOpts);
         _evidenceDrift = new EvidenceDriftToolHandler(session, invariants);
         _performanceEvidence = new PerformanceEvidenceToolHandler(session, invariants);
@@ -250,7 +252,14 @@ public sealed class ToolHandler
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var binding = _argumentBinder.Validate(toolName, arguments, _jsonCompatibilityMode);
+            var guardedCompile = toolName == "lifeblood_compile_check"
+                && arguments is { ValueKind: JsonValueKind.Object } guardedArguments
+                && (guardedArguments.TryGetProperty("expectedFileScope", out _)
+                    || guardedArguments.TryGetProperty("expectedSnapshotId", out _)
+                    || guardedArguments.TryGetProperty("expectedAnalysisGeneration", out _));
+            var validationMode = toolName == "lifeblood_file_scope" || guardedCompile
+                ? ToolJsonCompatibilityMode.Strict : _jsonCompatibilityMode;
+            var binding = _argumentBinder.Validate(toolName, arguments, validationMode);
             RecordArgumentBindingTelemetry(toolName, binding);
             if (!binding.Accepted)
             {
@@ -281,6 +290,7 @@ public sealed class ToolHandler
             {
                 // Read-side
                 "lifeblood_capabilities" => HandleCapabilities(arguments),
+                "lifeblood_file_scope" => WrapWriteSide("lifeblood_file_scope", _fileScope.Handle(arguments, cancellationToken)),
                 "lifeblood_batch" => HandleBatch(arguments, cancellationToken),
                 "lifeblood_snapshots" => HandleSnapshots(arguments),
                 "lifeblood_evidence_drift" => HandleEvidenceDrift(arguments),
@@ -312,7 +322,7 @@ public sealed class ToolHandler
                 // INV-ADVISORY-LIMITATIONS-001.
                 "lifeblood_execute" => WrapWriteSide("lifeblood_execute", _write.HandleExecute(arguments)),
                 "lifeblood_diagnose" => WrapWriteSide("lifeblood_diagnose", _write.HandleDiagnose(arguments)),
-                "lifeblood_compile_check" => WrapWriteSide("lifeblood_compile_check", _write.HandleCompileCheck(arguments)),
+                "lifeblood_compile_check" => WrapWriteSide("lifeblood_compile_check", _write.HandleCompileCheck(arguments, cancellationToken)),
                 "lifeblood_find_references" => WrapWriteSide("lifeblood_find_references", _write.HandleFindReferences(arguments, cancellationToken)),
                 "lifeblood_find_definition" => WrapWriteSide("lifeblood_find_definition", _write.HandleFindDefinition(arguments)),
                 "lifeblood_find_implementations" => WrapWriteSide("lifeblood_find_implementations", _write.HandleFindImplementations(arguments)),
@@ -778,7 +788,7 @@ public sealed class ToolHandler
             ? value
             : char.ToLowerInvariant(value[0]) + value[1..];
 
-    private static McpToolResult SnapshotPreconditionMismatch(
+    internal static McpToolResult SnapshotPreconditionMismatch(
         string toolName,
         WorkspaceSnapshotMismatch mismatch)
         => ErrorResult(JsonSerializer.Serialize(new
