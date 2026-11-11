@@ -56,15 +56,46 @@ returns the existing structured retry guidance before reading source or doing
 work. Historical selection is not available for compile-check. Snapshot IDs are
 the cross-daemon identity; generation alone is process-local.
 
+## Conditional file application
+
+On Windows, `lifeblood apply-file` consumes the same receipt and a staged raw-byte
+replacement for one existing target. Save the capture response's `receipt` object
+as `before.json`, then run the explicit D: CLI installation:
+
+The command opens every receipt file in deterministic order with
+[`FileShare.None`](https://learn.microsoft.com/en-us/dotnet/api/system.io.fileshare),
+checks hashes under those held handles, and writes through the same target handle.
+Ordinary Windows writes and atomic rename/replacement cannot intervene between
+the comparison and application. Busy files fail before writing. Hash conflicts
+return exit 2 and an observed receipt; do not retry with that receipt as permission
+to overwrite another owner's content. Success returns exit 0 and an updated
+`receipt`, which can be passed directly to guarded compile-check. Identical bytes
+return `unchanged` without writing. No analysis or service connection is opened.
+
+The target must be covered and all guard expectations must name existing files;
+creation, deletion and multi-file application are outside this command's contract.
+The same scope/replacement byte bounds apply. Arguments and JSON are strict, with
+missing, unknown, duplicate and null-required fields rejected. Exit 1 indicates
+invalid/unsupported input, exit 3 unavailable files, and exit 130 cancellation
+before commit. Cancellation is not honored halfway through the protected write.
+
+This is conditional application, not a crash-atomic transaction. On a caught I/O
+write failure, restoration runs before locks are released. Exit 4 reports
+`writeState:originalRestored` or `unknown`; inspect unknown content before further
+work. Hard process termination, power loss, preexisting writable memory mappings
+and nonstandard filesystem behavior are not covered. The command refuses other
+operating systems rather than claim equivalent mandatory sharing semantics.
+The receipt is evidence at commit, not a lasting reservation after handles close.
+
 ## Concurrent-work contract
 
 A typical diagnostic workflow captures the intended post-edit content receipt,
 then compiles with that expectation. Another agent editing unrelated files does
 not break the content guard. Changes to an overlapping file reject before
 compilation. Receipts may also be captured before editing to check whether a
-baseline has changed, but a separate verify followed by an external write is not
-an atomic transaction. The actual editor/writer must enforce its own conditional
-write if overwrite prevention is required; Lifeblood has no source-apply tool.
+baseline has changed, but a separate verify followed by an external write has a
+race. Use `apply-file` for its supported existing-file Windows contract; other
+editors/writers must enforce their own conditional write.
 Do not silently refresh a failed expectation and then overwrite the new content.
 
 Hash verification guarantees check-and-use of request-local bytes, not an atomic

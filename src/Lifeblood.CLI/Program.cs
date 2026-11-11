@@ -31,6 +31,7 @@ class Program
             "context" => RunContext(args.Skip(1).ToArray()),
             "export" => RunExport(args.Skip(1).ToArray()),
             "verify" => RunVerify(args.Skip(1).ToArray()),
+            "apply-file" => RunApplyFile(args.Skip(1).ToArray()),
             "--version" or "version" => RunVersion(args.Skip(1).ToArray(), Console.Out),
             // Standard help arms — any of these prints usage and exits 0.
             "--help" or "-h" or "/?" or "help"
@@ -44,6 +45,15 @@ class Program
         PrintBanner();
         PrintUsage();
         return 0;
+    }
+
+    static int RunApplyFile(string[] args)
+    {
+        using var cancellation = new CancellationTokenSource();
+        ConsoleCancelEventHandler cancel = (_, request) => { request.Cancel = true; cancellation.Cancel(); };
+        Console.CancelKeyPress += cancel;
+        try { return ApplyFileCommand.Run(args, Console.Out, cancellation.Token); }
+        finally { Console.CancelKeyPress -= cancel; }
     }
 
     internal static int RunVersion(string[] args, TextWriter output)
@@ -425,6 +435,7 @@ class Program
     {
         Console.WriteLine("Usage:");
         Console.WriteLine("  lifeblood --version [--json]                              Report this CLI's build/runtime/compiler without analysis");
+        Console.WriteLine("  lifeblood apply-file --project <root> --target <path> --receipt <receipt.json> --replacement <staged-file>  Conditional existing-file write (Windows)");
         Console.WriteLine("  lifeblood analyze --project <path>                         Analyze via Roslyn");
         Console.WriteLine("  lifeblood analyze --graph <graph.json>                     Analyze JSON graph");
         Console.WriteLine("  lifeblood analyze --project <path> --rules hexagonal        Analyze + built-in rules");
