@@ -9,6 +9,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Source-stage compile checks now report the executing host compiler and index
+  diagnostic location/phase attribution. Locationless owning-module emitter
+  failures remain errors and are not attributed to an arbitrary requested file.
+  The binding baseline is explicitly not an emit baseline; Unity/Player build
+  validation remains separate. Equivalent C#9 controls reproduce the reported
+  CS0012 compiler difference under both Roslyn 5.9 and 5.12 versus Unity's 4.10;
+  no project dependency or compiler fallback was added. See
+  [compiler validation](docs/investigations/lifeblood-compiler-validation-2026-11-11.md).
+
 - Source-stage `lifeblood_method_effects` exposes bounded operation/callback,
   deferred-body and supported direct/local transitive evidence with explicit
   unknowns. Opt-in callable declarations distinguish empty/unavailable bodies

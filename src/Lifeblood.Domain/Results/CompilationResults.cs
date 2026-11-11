@@ -60,6 +60,8 @@ public sealed class CompileCheckResult
 {
     public required bool Success { get; init; }
     public DiagnosticInfo[] Diagnostics { get; init; } = Array.Empty<DiagnosticInfo>();
+    /// <summary>Null when compilation did not start; otherwise indexes the selected Diagnostics without duplicating them.</summary>
+    public CompilerValidationReceipt? Validation { get; init; }
 
     /// <summary>
     /// Module that owned the file or hosted the snippet for this check.

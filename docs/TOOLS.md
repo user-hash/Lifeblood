@@ -288,7 +288,18 @@ lifeblood_compile_check filePath="Assets/Scripts/Core/MultiPartialHost.cs"
   }
 ```
 
-Pre-fix the same call emitted ~120 spurious CS0246 / CS0103 errors (UnityEngine, MonoBehaviour, sibling partials, every cross-file type) because the snippet path was selected and the file's real owning compilation was never resolved. File-mode preserves every reference and filters pre-existing diagnostics in OTHER files in the module so only changes the user introduced in THIS file surface.
+Pre-fix the same call emitted ~120 spurious CS0246 / CS0103 errors (UnityEngine, MonoBehaviour, sibling partials, every cross-file type) because the snippet path was selected and the file's real owning compilation was never resolved. File-mode preserves the owning compilation's references. It retains every diagnostic on the requested replacement tree and excludes unchanged binding diagnostics from other trees. This is not a baseline emit comparison: a locationless module-emitter error can predate the requested edit and can surface for an unrelated file in that module.
+
+The source-stage `validation` receipt identifies the host compiler and language,
+the complete module's emit outcome, and diagnostic attribution by array index.
+`RequestedSource`, `OtherSource` and `Compilation` describe location scope, not
+edit ownership. Locationless errors are compared with current binding diagnostics
+to distinguish `Binding` from `EmitOnly`; other rows remain `ReportedByEmit`.
+Use `hasSourceLocation` before interpreting legacy line/column placeholders.
+No diagnostic is removed and no additional baseline emit or retained cache is
+introduced. A host emit result does not qualify a Unity/Player build; different
+compiler versions can disagree even at the same C# language setting. See
+[the compiler/attribution investigation](investigations/lifeblood-compiler-validation-2026-11-11.md).
 
 `lifeblood_diagnose` and `lifeblood_compile_check` share one ownership resolver (`INV-COMPILATION-FILE-OWNERSHIP-001`). Exact normalized paths outrank suffix matches. If the best path matches more than one loaded compilation, neither tool selects the first module: `fileOwnership.outcome` is `Ambiguous`, `candidateModules` lists the stable choices, and the caller must pass `moduleName` or a more specific path. A pinned module miss remains `NotInModule`; an unknown module is `ModuleNotFound`; a path absent from every compilation is `NotFound` and compile-check composes the existing stale-descriptor guidance at the disk-aware handler boundary.
 

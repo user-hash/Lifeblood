@@ -306,10 +306,9 @@ public sealed class RoslynCompilationHost :
   var moduleParseOptions = (CSharpParseOptions)existingTree.Options;
   var newTree = CSharpSyntaxTree.ParseText(newSource, moduleParseOptions, path: preservedPath);
 
-  // Pre-existing diagnostics computed against the unswapped
-  // compilation so we don't surface errors that were already present
-  // in OTHER files in this module — only changes the user introduced
-  // in THIS file (or net-new errors caused by the swap) are reported.
+  // The retained binding baseline excludes unchanged diagnostics outside
+  // the requested tree. It is not an emit baseline: locationless emitter
+  // diagnostics may predate this edit and retain compilation-level scope.
   var preExistingIds = new HashSet<string>(
   owningCompilation.GetDiagnostics()
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
@@ -319,7 +318,7 @@ public sealed class RoslynCompilationHost :
 
   var emitResult = testCompilation.Emit(Stream.Null);
 
-  var diagnostics = emitResult.Diagnostics
+  var selectedDiagnostics = emitResult.Diagnostics
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
   // A stale refresh may have loaded the edited file immediately before this
   // check. Diagnostics on the replacement tree are therefore still the
@@ -328,7 +327,8 @@ public sealed class RoslynCompilationHost :
   // unchanged diagnostics from other trees in the owning compilation.
   .Where(d => ReferenceEquals(d.Location.SourceTree, newTree)
       || !preExistingIds.Contains(DiagnosticKey(d)))
-  .Select(d =>
+  .ToArray();
+  var diagnostics = selectedDiagnostics.Select(d =>
   {
   var lineSpan = d.Location.GetMappedLineSpan();
   return new DiagnosticInfo
@@ -350,6 +350,7 @@ public sealed class RoslynCompilationHost :
   {
   Success = !hasErrors,
   Diagnostics = diagnostics,
+  Validation = BuildValidationReceipt(testCompilation, newTree, selectedDiagnostics, emitResult.Success),
   ResolvedModule = resolvedModule,
   ExistingTreeReplaced = true,
   DefinesActive = CollectTreeDefines(moduleParseOptions),
@@ -391,10 +392,11 @@ public sealed class RoslynCompilationHost :
 
   var emitResult = testCompilation.Emit(Stream.Null);
 
-  var snippetDiagnostics = emitResult.Diagnostics
+  var selectedDiagnostics = emitResult.Diagnostics
   .Where(d => d.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
   .Where(d => !preExistingIds.Contains(DiagnosticKey(d)))
-  .Select(d =>
+  .ToArray();
+  var snippetDiagnostics = selectedDiagnostics.Select(d =>
   {
   var lineSpan = d.Location.GetMappedLineSpan();
   var rawLine = lineSpan.StartLinePosition.Line + 1;
@@ -416,9 +418,52 @@ public sealed class RoslynCompilationHost :
   {
   Success = !hasNewErrors,
   Diagnostics = snippetDiagnostics,
+  Validation = BuildValidationReceipt(testCompilation, prepared.Tree, selectedDiagnostics, emitResult.Success),
   ResolvedModule = resolvedModuleName ?? "",
   DefinesActive = CollectTreeDefines(prepared.Tree.Options as CSharpParseOptions),
   };
+  }
+
+  private static CompilerValidationReceipt BuildValidationReceipt(
+      CSharpCompilation compilation,
+      SyntaxTree requestedTree,
+      IReadOnlyList<Diagnostic> diagnostics,
+      bool emitSucceeded)
+  {
+      // Emit can report compilation-level errors absent from binding diagnostics.
+      // Compare exact identities only when a locationless result needs that phase
+      // distinction. This does not emit a baseline or establish edit ownership.
+      var bindingKeys = diagnostics.Any(diagnostic => !diagnostic.Location.IsInSource)
+          ? compilation.GetDiagnostics()
+              .Where(diagnostic => diagnostic.Severity >= Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+              .Select(diagnostic => (diagnostic.Id, Message: diagnostic.GetMessage(), diagnostic.Location.Kind,
+                  diagnostic.Location.SourceTree?.FilePath, diagnostic.Location.SourceSpan))
+              .ToHashSet()
+          : null;
+      return new CompilerValidationReceipt
+      {
+          Compiler = CompilationEnvironmentObserver.CompilerIdentity(),
+          LanguageVersion = ((CSharpParseOptions)requestedTree.Options).LanguageVersion.ToDisplayString(),
+          CompleteModuleEmitSucceeded = emitSucceeded,
+          LocationlessBindingComparisonPerformed = bindingKeys != null,
+          DiagnosticAttribution = diagnostics.Select((diagnostic, index) => new CompilationDiagnosticAttribution(
+              index,
+              !diagnostic.Location.IsInSource ? CompilerDiagnosticScope.Compilation
+                  : ReferenceEquals(diagnostic.Location.SourceTree, requestedTree) ? CompilerDiagnosticScope.RequestedSource
+                  : CompilerDiagnosticScope.OtherSource,
+              bindingKeys == null ? CompilerDiagnosticPhase.ReportedByEmit
+                  : bindingKeys.Contains((diagnostic.Id, diagnostic.GetMessage(), diagnostic.Location.Kind,
+                      diagnostic.Location.SourceTree?.FilePath, diagnostic.Location.SourceSpan))
+                      ? CompilerDiagnosticPhase.Binding : CompilerDiagnosticPhase.EmitOnly,
+              diagnostic.Location.IsInSource)).ToArray(),
+          Limitations = new[]
+          {
+              "This is the named analysis host compiler's emit check, not a Unity or other target-toolchain build validation.",
+              "Diagnostic location scope does not establish which edit introduced it. A locationless emit diagnostic belongs to the owning compilation and may predate the requested source change.",
+              "The baseline excludes retained binding diagnostics outside the requested source; no baseline emit is compared.",
+              "Legacy line/column values without a source location are placeholders; use diagnosticAttribution.hasSourceLocation.",
+          },
+      };
   }
 
   /// <summary>

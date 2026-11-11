@@ -44,20 +44,12 @@ internal static class CompilationEnvironmentObserver
             .GroupBy(source => (CSharpParseOptions)source.Options)
             .ToArray();
         var references = compilation.References.ToArray();
-        var compiler = typeof(CSharpCompilation).Assembly;
         return new()
         {
             Status = "Available",
             ModuleName = module,
             FileOwnership = ownership,
-            Compiler = new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["name"] = compiler.GetName().Name ?? "",
-                ["version"] = compiler.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                    ?? compiler.GetName().Version?.ToString() ?? "",
-                ["hostRuntime"] = RuntimeInformation.FrameworkDescription,
-                ["hostArchitecture"] = RuntimeInformation.ProcessArchitecture.ToString(),
-            },
+            Compiler = CompilerIdentity(),
             Properties = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["assemblyName"] = compilation.AssemblyName ?? "",
@@ -87,6 +79,19 @@ internal static class CompilationEnvironmentObserver
             DiagnosticOptionCount = options.SpecificDiagnosticOptions.Count,
             DiagnosticOptions = options.SpecificDiagnosticOptions.OrderBy(pair => pair.Key, StringComparer.Ordinal).Take(128)
                 .ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.Ordinal),
+        };
+    }
+
+    internal static IReadOnlyDictionary<string, string> CompilerIdentity()
+    {
+        var compiler = typeof(CSharpCompilation).Assembly;
+        return new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["name"] = compiler.GetName().Name ?? "",
+            ["version"] = compiler.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? compiler.GetName().Version?.ToString() ?? "",
+            ["hostRuntime"] = RuntimeInformation.FrameworkDescription,
+            ["hostArchitecture"] = RuntimeInformation.ProcessArchitecture.ToString(),
         };
     }
 

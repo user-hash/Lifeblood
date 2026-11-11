@@ -600,6 +600,14 @@ public class ToolHandlerTests : IDisposable
         Assert.Equal("pinnedSession", rows[0].GetProperty("staleRefreshMode").GetString());
         Assert.Equal(JsonValueKind.Null, rows[0].GetProperty("definesActive").ValueKind);
         Assert.Contains("CS0246", rows[1].GetProperty("diagnostics").GetRawText());
+        Assert.All(rows, row =>
+        {
+            var validation = row.GetProperty("validation");
+            Assert.Equal("HostCompilerEmit", validation.GetProperty("kind").GetString());
+            Assert.False(validation.GetProperty("targetBuildValidated").GetBoolean());
+            Assert.False(string.IsNullOrEmpty(validation.GetProperty("compiler").GetProperty("version").GetString()));
+            Assert.Equal(row.GetProperty("diagnostics").GetArrayLength(), validation.GetProperty("diagnosticAttribution").GetArrayLength());
+        });
     }
 
     [Fact]
@@ -657,6 +665,7 @@ public class ToolHandlerTests : IDisposable
         using var singlePayload = JsonDocument.Parse(single.Content[0].Text);
         Assert.False(singlePayload.RootElement.GetProperty("success").GetBoolean());
         Assert.Contains("CS0246", singlePayload.RootElement.GetProperty("diagnostics").GetRawText());
+        Assert.Equal("HostCompilerEmit", singlePayload.RootElement.GetProperty("validation").GetProperty("kind").GetString());
         var unchanged = handler.Handle("lifeblood_compile_check", MakeArgs(new { filePath = "Broken.cs" }));
         using var unchangedPayload = JsonDocument.Parse(unchanged.Content[0].Text);
         var unchangedReceipt = unchangedPayload.RootElement.GetProperty("refresh");

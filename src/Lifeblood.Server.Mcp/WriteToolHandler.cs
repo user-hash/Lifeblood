@@ -593,6 +593,7 @@ internal sealed class WriteToolHandler
         {
             result.Success,
             result.Diagnostics,
+            result.Validation,
             source = !string.IsNullOrEmpty(filePath) ? "filePath" : "code",
             filePath,
             resolvedModule = string.IsNullOrEmpty(result.ResolvedModule) ? null : result.ResolvedModule,
@@ -616,6 +617,7 @@ internal sealed class WriteToolHandler
             {
                 commonShape.Success,
                 commonShape.Diagnostics,
+                commonShape.Validation,
                 commonShape.source,
                 commonShape.filePath,
                 commonShape.resolvedModule,
@@ -709,6 +711,7 @@ internal sealed class WriteToolHandler
                 filePath = file.FilePath,
                 success = result.Success,
                 diagnostics = result.Diagnostics,
+                validation = result.Validation,
                 resolvedModule = string.IsNullOrEmpty(result.ResolvedModule) ? null : result.ResolvedModule,
                 existingTreeReplaced = result.ExistingTreeReplaced,
                 fileOwnership = result.FileOwnership,

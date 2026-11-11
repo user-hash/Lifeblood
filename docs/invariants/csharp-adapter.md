@@ -81,6 +81,19 @@ external, unavailable, binding-error and scope-exhaustion case stays explicit;
 unentered deferred bodies never become execution by their enclosing method.
 No absence of observed operations is a purity or runtime-effect proof.
 
+## Compile Check Validation
+
+Compile checks identify their executing compiler through the same factory used
+by environment observation. The optional validation receipt is absent when
+compilation did not start, preserves the selected diagnostic array and indexes
+its attribution without copying payloads. Locationless errors have compilation
+scope; an exact comparison with current binding diagnostics may identify an
+emit-only phase, never edit ownership. Source placement remains distinct from
+proof that a requested edit introduced a diagnostic. The retained binding
+baseline is not an emit baseline. No added baseline emit, retained diagnostic
+cache, target-build claim or implicit reference widening is permitted by this
+receipt. Pinned by `CompilerValidationTests` and compile-check handler projections.
+
 ## BCL Ownership
 
 Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't. They rely on the host runtime BCL.
