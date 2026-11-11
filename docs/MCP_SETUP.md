@@ -112,6 +112,12 @@ it does not certify that today's input files match that publication. Use
 `lifeblood_snapshots(checkDrift:true)` when canonical input equality is required.
 Compact batches retain the same per-tool freshness evidence.
 
+A snapshot entry's canonical drift result can be `current` while its envelope's
+mtime observation is `incomplete`: these receipts describe different checks.
+Use the entry's canonical result for input equality. The envelope's generic
+recommendation to run `checkDrift:true` need not be repeated when that same
+response already contains a successful canonical check.
+
 ---
 
 ## Configuration (environment variables)
