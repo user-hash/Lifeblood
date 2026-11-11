@@ -12,6 +12,9 @@
     <RuntimeIdentifiers>win-x64;any</RuntimeIdentifiers>
     <ToolPackageRuntimeIdentifiers>win-x64;any</ToolPackageRuntimeIdentifiers>
     <PublishSelfContained>true</PublishSelfContained>
+    <!-- Keep the managed tool shim's .exe entry point with an app-local Windows runtime. -->
+    <ToolCommandRunner>dotnet</ToolCommandRunner>
+    <ToolEntryPoint>$(AssemblyName).dll</ToolEntryPoint>
     <PackageId>Lifeblood</PackageId>
     <PackageDescription>Roslyn powered C# and Unity code analysis CLI for semantic graphs, architecture checks, context generation, and CI.</PackageDescription>
     <PackageReadmeFile>README.md</PackageReadmeFile>
