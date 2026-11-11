@@ -9,6 +9,34 @@ namespace Lifeblood.Server.Mcp;
 /// </summary>
 public static class ToolRequestBinder
 {
+    public static Lifeblood.Domain.Results.MethodEffectRequest BindMethodEffects(JsonElement? args)
+    {
+        if (!TryGetObject(args, out var root)) return new();
+        const string tool = "lifeblood_method_effects";
+        int Limit(string name, int fallback)
+        {
+            var key = ArgumentName(tool, name);
+            if (!root.TryGetProperty(key, out var value)) return fallback;
+            if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var parsed))
+                throw new ArgumentException($"{key} must be a 32-bit integer.");
+            return parsed;
+        }
+        var ids = root.TryGetProperty(ArgumentName(tool, "symbolIds"), out var symbols)
+            && symbols.ValueKind == JsonValueKind.Array
+            ? symbols.EnumerateArray().Select(value => value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? "" : throw new ArgumentException("symbolIds must contain only strings.")).ToArray()
+            : Array.Empty<string>();
+        return new()
+        {
+            RootSymbolIds = ids,
+            ProfileScope = ReadString(root, ArgumentName(tool, "profileScope")),
+            MaxDepth = Limit("maxDepth", 4),
+            MaxMethods = Limit("maxMethods", 128),
+            MaxFacts = Limit("maxFacts", 10_000),
+            MaxEvidencePerMethod = Limit("maxEvidencePerMethod", 16),
+        };
+    }
+
     private const string AnalyzeToolName = "lifeblood_analyze";
     private const string CompileCheckToolName = "lifeblood_compile_check";
     private const string ContractAuditToolName = "lifeblood_contract_audit";

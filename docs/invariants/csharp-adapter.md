@@ -66,6 +66,21 @@ their anonymous/local-function control contexts; their lexical presence does not
 establish execution by the enclosing method. All callable memoization remains
 request-local under the existing operation-fact boundary.
 
+Callable declaration occurrences are explicitly opted into the same stream,
+selectors and fact budget. They distinguish an empty source body from a
+declaration with no source body, retain deferred/parent identity and binding-error
+observations, and carry the retained compiler text's stated checksum algorithm
+and encoding. They do not claim fresh raw-file identity or native/PDB verification.
+Secondary-profile query copying preserves that opt-in. Member and element access
+placement separately records read and write, including both for compound,
+increment and ref operations; alias and accessor effects remain unresolved.
+`MethodEffectAnalyzer` uses existing graph routes only to select bounded candidate
+owners, then aggregates this one stream request-locally. Only supported bound
+direct/local call occurrences enter another callable body. Every indirect,
+external, unavailable, binding-error and scope-exhaustion case stays explicit;
+unentered deferred bodies never become execution by their enclosing method.
+No absence of observed operations is a purity or runtime-effect proof.
+
 ## BCL Ownership
 
 Some csprojs ship their own base class library via `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Plain SDK-style csprojs (`<Project Sdk="Microsoft.NET.Sdk">`) don't. They rely on the host runtime BCL.

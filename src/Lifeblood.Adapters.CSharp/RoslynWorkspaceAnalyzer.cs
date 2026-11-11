@@ -1434,6 +1434,7 @@ public sealed class RoslynWorkspaceAnalyzer :
             IncludeKinds = source.IncludeKinds,
             Selectors = source.Selectors,
             IncludeImplicit = source.IncludeImplicit,
+            IncludeCallableDeclarations = source.IncludeCallableDeclarations,
             MaxFacts = maxFacts,
         };
 

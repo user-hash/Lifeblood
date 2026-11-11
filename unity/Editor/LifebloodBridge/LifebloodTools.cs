@@ -304,6 +304,38 @@ namespace Lifeblood.UnityBridge
     // Write-side: Compilation & diagnostics (4 tools)
     // ═══════════════════════════════════════════════════════════════
 
+    [McpForUnityTool("lifeblood_method_effects",
+        Description = "Inspect bounded static method/callback effects, deferred bodies and explicit indirect/native/transitive unknowns. This is not runtime execution or purity proof.",
+        Group = "code-intelligence", RequiresPolling = true)]
+    public static class LifebloodMethodEffects
+    {
+        public sealed class Parameters : SnapshotReadParameters
+        {
+            [ToolParameter("1..16 distinct exact method addresses from the selected publication.", Required = true)]
+            public string[] symbolIds { get; set; }
+
+            [ToolParameter("Optional committed define profile; defaults to retained profile.", Required = false)]
+            public string profileScope { get; set; }
+
+            [ToolParameter("Maximum supported call depth, 0..8; default 4.", Required = false)]
+            public int? maxDepth { get; set; }
+
+            [ToolParameter("Maximum candidate memberships/reached callables, 1..256; default 128.", Required = false)]
+            public int? maxMethods { get; set; }
+
+            [ToolParameter("Shared operation/declaration fact budget, 1..100000; default 10000.", Required = false)]
+            public int? maxFacts { get; set; }
+
+            [ToolParameter("Samples per category/root, 0..64; default 16.", Required = false)]
+            public int? maxEvidencePerMethod { get; set; }
+        }
+
+        public static object HandleCommand(JObject @params)
+        {
+            return LifebloodBridgeClient.Instance.CallToolWithPolling("lifeblood_method_effects", @params);
+        }
+    }
+
     [McpForUnityTool("lifeblood_contract_audit",
         Description = "Evaluate a versioned consumer contract manifest over one bounded operation-fact scan, including call-route shared-state, exact branch-arm, and temporal-shape evidence. Supply manifestJson or a workspace-contained manifestPath. Summary-first by default.",
         Group = "code-intelligence", RequiresPolling = true)]

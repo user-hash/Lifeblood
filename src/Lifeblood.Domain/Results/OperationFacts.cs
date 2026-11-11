@@ -23,6 +23,11 @@ public sealed class OperationFact
     public string? InvocationKind { get; init; }
     /// <summary>External implementation on the bound declaration; false does not establish body availability or workspace membership. Null when no method is bound.</summary>
     public bool? TargetIsExternal { get; init; }
+    public string? TargetMemberKind { get; init; }
+    /// <summary>Observed access placement; read-modify-write and ref carry both modes. This is not alias or accessor-effect analysis.</summary>
+    public string[] AccessModes { get; init; } = Array.Empty<string>();
+    /// <summary>Present only on an explicitly requested callable declaration occurrence.</summary>
+    public OperationCallableDeclaration? CallableDeclaration { get; init; }
     public string? ResultType { get; init; }
     public string? Operator { get; init; }
     public required OperationSourceSpan Source { get; init; }
@@ -129,6 +134,8 @@ public sealed class OperationFactQuery
     public IReadOnlyList<string>? IncludeKinds { get; init; }
     public IReadOnlyList<OperationFactSelector>? Selectors { get; init; }
     public bool IncludeImplicit { get; init; }
+    /// <summary>Opt-in source callable boundaries, including empty and declaration-only bodies; these share the fact budget and selectors.</summary>
+    public bool IncludeCallableDeclarations { get; init; }
     public int MaxFacts { get; init; } = 10_000;
 }
 
@@ -193,6 +200,7 @@ public static class OperationFactExecutionMode
 /// <summary>Open operation-kind vocabulary.</summary>
 public static class OperationFactKind
 {
+    public const string CallableDeclaration = "CallableDeclaration";
     public const string Call = "Call";
     public const string ObjectCreation = "ObjectCreation";
     public const string ArrayCreation = "ArrayCreation";
@@ -212,6 +220,29 @@ public static class OperationFactKind
     public const string Await = "Await";
     public const string Lock = "Lock";
     public const string InterpolatedString = "InterpolatedString";
+}
+
+/// <summary>
+/// Retained-source declaration coverage. SourceBody describes syntax and binding,
+/// never completeness of runtime effects. The checksum is the compiler text's
+/// checksum, not a fresh raw-file hash or a verified native/PDB match.
+/// </summary>
+public sealed class OperationCallableDeclaration
+{
+    public required string BodyKind { get; init; }
+    public required bool HasBindingErrors { get; init; }
+    public required bool IsExternal { get; init; }
+    public required bool IsDeferred { get; init; }
+    public string? ParentCallableId { get; init; }
+    public required string SourceChecksumAlgorithm { get; init; }
+    public required string SourceChecksum { get; init; }
+    public string? SourceEncoding { get; init; }
+}
+
+public static class OperationCallableBodyKind
+{
+    public const string SourceBody = "SourceBody";
+    public const string NoSourceBody = "NoSourceBody";
 }
 
 /// <summary>Binding/dispatch observed at a call occurrence, without resolving runtime receiver or delegate targets.</summary>

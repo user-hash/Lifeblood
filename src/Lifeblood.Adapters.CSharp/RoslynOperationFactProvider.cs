@@ -12,7 +12,7 @@ namespace Lifeblood.Adapters.CSharp;
 /// to the caller and retains no fact graph or compiler objects. Contract policy
 /// belongs above this adapter. INV-OPERATION-FACTS-001.
 /// </summary>
-internal sealed class RoslynOperationFactProvider
+internal sealed partial class RoslynOperationFactProvider
 {
     private const int MaxExpressionLength = 240;
 
@@ -96,6 +96,15 @@ internal sealed class RoslynOperationFactProvider
 
                 scannedFiles++;
                 var model = compilation.GetSemanticModel(tree);
+                if (query.IncludeCallableDeclarations
+                    && !ScanCallableDeclarations(
+                        model, tree.GetRoot(cancellationToken), moduleName, query,
+                        containingFilter, targetFilter, kindFilter, selectors, symbolIds,
+                        consume, cancellationToken, ref emittedFacts, ref truncated, ref stoppedByConsumer))
+                {
+                    stop = true;
+                    break;
+                }
                 var roots = RoslynOperationFacts.FindOperationRoots(model, tree.GetRoot(cancellationToken), cancellationToken);
                 var visited = new HashSet<IOperation>(ReferenceEqualityComparer.Instance);
                 var treeOperationOrdinal = 0;
@@ -523,6 +532,14 @@ internal sealed class RoslynOperationFactProvider
                 ? symbolIds.Callable(call.TargetMethod) : null,
             InvocationKind = InvocationKind(operation),
             TargetIsExternal = operation is IInvocationOperation bound ? bound.TargetMethod.IsExtern : null,
+            TargetMemberKind = operation switch
+            {
+                IFieldReferenceOperation => "Field",
+                IPropertyReferenceOperation => "Property",
+                IEventReferenceOperation => "Event",
+                _ => null,
+            },
+            AccessModes = AccessModes(operation, kind),
             ResultType = operation.Type == null ? null : TypeDisplay(operation.Type),
             Operator = operatorName,
             Source = source,
@@ -530,6 +547,17 @@ internal sealed class RoslynOperationFactProvider
             Inputs = inputs.ToArray(),
             ControlContexts = BuildControlContexts(operation, symbolIds),
         };
+    }
+
+    private static string[] AccessModes(IOperation operation, string kind)
+    {
+        if (kind is not (OperationFactKind.MemberRead or OperationFactKind.MemberWrite
+            or OperationFactKind.ElementAccess or OperationFactKind.PointerIndirection))
+            return Array.Empty<string>();
+        if (!RoslynOperationFacts.IsWriteContext(operation)) return new[] { OperationAccessMode.Read };
+        var reads = operation.Parent is ICompoundAssignmentOperation or ICoalesceAssignmentOperation or IIncrementOrDecrementOperation
+            || operation.Parent is IArgumentOperation { Parameter.RefKind: RefKind.Ref };
+        return reads ? new[] { OperationAccessMode.Read, OperationAccessMode.Write } : new[] { OperationAccessMode.Write };
     }
 
     private static void AddArguments(

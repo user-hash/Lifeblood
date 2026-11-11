@@ -8,6 +8,27 @@ Every read-side tool response carries a top-level `envelope` field (`INV-ENVELOP
 
 Owner-scoped nonmutating file hashes and guarded compile-check are documented in [Owner-scoped work](OWNER_SCOPED_WORK.md). `lifeblood_file_scope` captures/verifies explicit content receipts without refreshing the graph; guarded checks use exact captured bytes and optional publication preconditions under one writer gate.
 
+### Bounded method and callback effects
+
+The source-stage `lifeblood_method_effects` tool accepts 1..16 exact method
+`symbolIds`, optional committed `profileScope`, and explicit `maxDepth` (0..8,
+default 4), `maxMethods` (root count..256, default 128), `maxFacts` (1..100000,
+default 10000), and `maxEvidencePerMethod` (0..64, default 16). Snapshot selection
+and preconditions use the normal shared-read lane. The installed `.52` bundle
+does not yet include it.
+
+Each root reports observed operations, member/element access modes, calls,
+callback bindings, unentered deferred bodies, supported direct/local transitive
+paths and typed unknown reasons. Evidence caps preserve observed counts and
+remain distinct from incomplete scans or exhausted traversal budgets. A callback
+binding is not proof that a delegate invokes it; lexical lambda bodies are not
+execution by their creator. A declaration receipt distinguishes empty source
+from unavailable bodies and exposes retained compiler text checksums qualified
+by source, module/profile and publication. These are static observations, with
+explicit limits for indirect/native dispatch, aliases, implicit effects and
+lowering. They establish neither purity nor a native/PDB match or runtime timing.
+See the [design and acceptance plan](plans/bounded-method-effects-2026-11-11.md).
+
 ## Write-side (compiler-as-a-service)
 
 ### Contract Audit Route Facts

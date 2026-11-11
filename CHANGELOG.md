@@ -9,11 +9,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Source-stage `lifeblood_method_effects` exposes bounded operation/callback,
+  deferred-body and supported direct/local transitive evidence with explicit
+  unknowns. Opt-in callable declarations distinguish empty/unavailable bodies
+  and carry retained compiler-source checksums; read-modify-write access modes
+  are explicit. The Unity wrapper and canonical/snapshot/batch lanes share the
+  same operation port. Native/PDB join qualification and deployment remain open;
+  see [method-effect source qualification](docs/investigations/lifeblood-method-effects-2026-11-11.md).
+
 - Source-qualified operation facts now preserve dynamic/pointer call occurrences,
   callback local/event binding, conditional receivers and explicit dispatch kind.
   Opaque callable keys distinguish deferred/nested bodies across declaration
   schemas without changing graph addresses or retaining another semantic base.
-  Consumer-view integration and deployment remain pending; see
+  The source-stage consumer view is recorded above; deployment remains pending. See
   [callback assessment and source qualification](docs/investigations/lifeblood-callback-evidence-2026-11-11.md).
 
 - The attach-only inspection helper now joins CLI/runtime/Roslyn, SDK probe,

@@ -68,6 +68,15 @@ public static class ToolInputContractCatalog
     {
         yield return Contract(@"lifeblood_capabilities");
 
+        yield return Contract(@"lifeblood_method_effects",
+            Arg(@"symbolIds", ToolArgumentType.Array, required: true, arrayItemType: ToolArgumentType.String, description: @"1..16 distinct exact method addresses from the selected publication. Reports observed operations and supported bound call paths, never purity or actual runtime dispatch.", enumValues: Array.Empty<string>()),
+            Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Committed profile; defaults to the retained profile. Another committed profile uses the existing verified ephemeral operation-fact lane, not an additional retained base.", enumValues: Array.Empty<string>()),
+            Arg(@"maxDepth", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum supported direct/local call depth, 0..8; default 4. Unexpanded calls remain explicit unknowns.", enumValues: Array.Empty<string>()),
+            Arg(@"maxMethods", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum candidate memberships and reached callables, 1..256 and at least the root count; default 128. Scope exhaustion remains explicit.", enumValues: Array.Empty<string>()),
+            Arg(@"maxFacts", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"One shared hard budget for operation and callable-declaration facts, 1..100000; default 10000.", enumValues: Array.Empty<string>()),
+            Arg(@"maxEvidencePerMethod", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Maximum samples per evidence category per root, 0..64; default 16. Observed counts and unknown reasons remain available when samples are capped.", enumValues: Array.Empty<string>())
+        );
+
         yield return Contract(@"lifeblood_file_scope",
             Arg(@"action", ToolArgumentType.String, required: true, arrayItemType: null, description: @"capture observes explicit filePaths; verify compares the exact caller-owned receipt without analysis or source writes.", enumValues: new[] { "capture", "verify" }),
             Arg(@"ownerId", ToolArgumentType.String, required: true, arrayItemType: null, description: @"Caller intent label, 1..128 characters. Must match receipt.ownerId on verify; not a lock or authorization.", enumValues: Array.Empty<string>()),

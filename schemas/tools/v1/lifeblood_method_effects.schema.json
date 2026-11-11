@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "required": [
+    "symbolIds"
+  ],
+  "properties": {
+    "symbolIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "1..16 distinct exact method addresses from the selected publication. Reports observed operations and supported bound call paths, never purity or actual runtime dispatch."
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Committed profile; defaults to the retained profile. Another committed profile uses the existing verified ephemeral operation-fact lane, not an additional retained base."
+    },
+    "maxDepth": {
+      "type": "integer",
+      "description": "Maximum supported direct/local call depth, 0..8; default 4. Unexpanded calls remain explicit unknowns."
+    },
+    "maxMethods": {
+      "type": "integer",
+      "description": "Maximum candidate memberships and reached callables, 1..256 and at least the root count; default 128. Scope exhaustion remains explicit."
+    },
+    "maxFacts": {
+      "type": "integer",
+      "description": "One shared hard budget for operation and callable-declaration facts, 1..100000; default 10000."
+    },
+    "maxEvidencePerMethod": {
+      "type": "integer",
+      "description": "Maximum samples per evidence category per root, 0..64; default 16. Observed counts and unknown reasons remain available when samples are capped."
+    },
+    "snapshotId": {
+      "type": "string",
+      "description": "Optional exact-publication selection. When present, the tool leases this retained current or graph-only historical snapshot instead of silently reading latest. Historical selections do not retain Roslyn services, so compilation-required tools return their normal unavailable-state result."
+    },
+    "expectedSnapshotId": {
+      "type": "string",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this exact \u0060snap_\u003C32 lowercase hex\u003E\u0060 identity; mismatch returns a structured retryable result without silently reading latest."
+    },
+    "expectedAnalysisGeneration": {
+      "type": "integer",
+      "description": "Optional optimistic-read precondition. The tool runs only when the leased publication has this process-local generation; mismatch returns expected/actual identity and retry guidance."
+    }
+  }
+}

@@ -39,6 +39,7 @@ public sealed class ToolHandler
     private readonly WriteToolHandler _write;
     private readonly FileScopeToolHandler _fileScope;
     private readonly ContractAuditToolHandler _contractAudit;
+    private readonly MethodEffectToolHandler _methodEffects;
     private readonly EvidenceDriftToolHandler _evidenceDrift;
     private readonly PerformanceEvidenceToolHandler _performanceEvidence;
     private readonly ITelemetrySink _telemetry;
@@ -106,6 +107,7 @@ public sealed class ToolHandler
         _write = new WriteToolHandler(session, JsonOpts, _resolver);
         _fileScope = new FileScopeToolHandler(session, JsonOpts);
         _contractAudit = new ContractAuditToolHandler(session, invariants, _resolver, JsonOpts);
+        _methodEffects = new MethodEffectToolHandler(session);
         _evidenceDrift = new EvidenceDriftToolHandler(session, invariants);
         _performanceEvidence = new PerformanceEvidenceToolHandler(session, invariants);
     }
@@ -316,6 +318,7 @@ public sealed class ToolHandler
                 "lifeblood_cycles" => HandleCycles(arguments),
                 "lifeblood_test_impact" => HandleTestImpact(arguments),
                 "lifeblood_contract_audit" => HandleContractAudit(arguments, cancellationToken),
+                "lifeblood_method_effects" => TextResult(WithEnvelope(toolName, _methodEffects.Execute(arguments, cancellationToken))),
                 // Write-side. Wrapped uniformly through WrapWriteSide so
                 // every write-side response carries the same envelope shape
                 // as the read-side tools. INV-ENVELOPE-001 +
