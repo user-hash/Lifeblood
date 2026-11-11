@@ -598,6 +598,7 @@ public sealed class GraphSession : IDisposable
             {
                 RetainCompilations = true,
                 AllowFullFallback = true,
+                DefineProfiles = adapter.RetainedProfileNames.ToArray(),
                 ExcludePathGlobs = committed.ExcludePaths,
             };
             var candidateAdapter = adapter.ForkForIncrementalCandidate();
@@ -663,7 +664,8 @@ public sealed class GraphSession : IDisposable
                         newCodeExecutor,
                         newRefactoring,
                         identity: identity,
-                        sourceControl: committed.Workspace.SourceControl);
+                        sourceControl: committed.Workspace.SourceControl,
+                        trackedFilePaths: candidateAdapter.SourceFilePaths);
                 }
                 Commit(new CommittedGraphSessionState(
                     workspace,
