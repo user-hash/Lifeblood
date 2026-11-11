@@ -9,6 +9,11 @@ namespace Lifeblood.Application.Ports.Left;
 public interface ICompilationHost
 {
     bool IsAvailable { get; }
+
+    /// <summary>Observe one module/file's retained options without diagnostics, refresh or compilation.</summary>
+    CompilationEnvironmentReport GetCompilationEnvironment(CompilationEnvironmentRequest request)
+        => new();
+
     DiagnosticInfo[] GetDiagnostics(string? moduleName = null);
 
     /// <summary>
@@ -230,6 +235,16 @@ public sealed class DiagnosticsRequest
 {
     public string? FilePath { get; init; }
     public string? ModuleName { get; init; }
+}
+
+/// <summary>One explicit compilation scope; output bounds do not change the observed compilation.</summary>
+public sealed class CompilationEnvironmentRequest
+{
+    public const int MaximumReferences = 128;
+    public string? FilePath { get; init; }
+    public string? ModuleName { get; init; }
+    public int ReferenceLimit { get; init; } = 16;
+    public bool IncludeDefines { get; init; } = true;
 }
 
 /// <summary>

@@ -35,6 +35,7 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 | Check snippet feasibility | `lifeblood_compile_check code:"..."` | Good before adding API calls or experimenting with syntax. |
 | Build a generated DSP/math probe | Contract/source inspection -> `lifeblood_compile_check` -> consumer test runner | Follow workflow 8 in `docs/PLAYBOOK_CSHARP.md`. Derive cases from one consumer-owned range/contract authority; Lifeblood verifies structure but does not execute audio or numerical output tests. |
 | Get project/module/file diagnostics | `lifeblood_diagnose` | Use file scope first to avoid drowning in existing project warnings. |
+| Inspect effective compiler options | `lifeblood_diagnose(mode:"environment", filePath:...)` | One explicit file/module; compact mode omits defines but preserves counts. Actual retained options, bounded references and snapshot descriptor/profile provenance; no refresh or runtime qualification. |
 | Find exact source references | `lifeblood_find_references` | Compiler-backed write-side operation; honors retained profile limitations. |
 | Find declarations | `lifeblood_find_definition` | Use before editing unfamiliar APIs. |
 | Find implementers/overrides | `lifeblood_find_implementations` | Use for interface and virtual-method changes. |

@@ -79,6 +79,8 @@ flows through one path: discover at parse time → store on `ModuleInfo` →
 consume at compilation time. The pattern is the contract. Every future
 csproj-driven option follows the same shape.
 
+- **INV-COMPFACT-ENVIRONMENT-001. Compilation-environment observation projects the exact retained compiler objects and existing descriptor/profile receipts, without diagnostics, source I/O, refresh or another compilation.** `ICompilationHost.GetCompilationEnvironment` requires one explicit file/module scope; the C# adapter uses the canonical fail-closed ownership resolver, reports actual compilation options and distinct parse-option groups, and bounds references/defines/features/diagnostic overrides with complete total and omitted counts. Compiler/runtime identity describes the observing host, never Unity's compiler or target runtime. `lifeblood_diagnose mode:environment` adds snapshot-owned module provenance and applicability, rejects other-profile requests rather than substituting retained options, and preserves the publication/envelope. Defaults keep the diagnostics lane unchanged. Reference rows describe inputs without forcing metadata binding or certifying their contents. Pinned by `CompilationEnvironmentTests` and environment-mode `ToolHandlerTests`.
+
 - **INV-COMPFACT-001. Csproj is authoritative for module-level compilation
   options.** Shipped facts: `BclOwnership` (v2), `AllowUnsafeCode` (v4),
   `ImplicitUsings` (v0.6.4 — closes the implicit-global-usings extractor

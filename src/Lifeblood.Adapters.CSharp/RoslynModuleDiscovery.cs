@@ -490,6 +490,8 @@ public sealed class RoslynModuleDiscovery : IModuleDiscovery
                     ["languageVersionAuthority"] = sdkFacts == null ? "descriptor" : "msbuild",
                     ["sdkVersion"] = sdkFacts?.SdkVersion ?? string.Empty,
                     ["declaredLanguageVersion"] = sdkFacts?.DeclaredLanguageVersion ?? languageVersion,
+                    ["targetFramework"] = targetFramework,
+                    ["bclOwnership"] = ownsBcl ? nameof(BclOwnershipMode.ModuleProvided) : nameof(BclOwnershipMode.HostProvided),
                 },
             };
         }

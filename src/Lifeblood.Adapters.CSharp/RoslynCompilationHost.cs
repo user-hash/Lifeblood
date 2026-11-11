@@ -50,6 +50,9 @@ public sealed class RoslynCompilationHost :
 
   public bool IsAvailable => _compilations.Count > 0;
 
+  public CompilationEnvironmentReport GetCompilationEnvironment(CompilationEnvironmentRequest request)
+      => CompilationEnvironmentObserver.Observe(_compilations, request);
+
   public OperationFactScanReceipt ScanOperationFacts(
   OperationFactQuery query,
   Func<OperationFact, bool> consume,

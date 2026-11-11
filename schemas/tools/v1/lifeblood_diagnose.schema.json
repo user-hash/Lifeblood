@@ -1,9 +1,25 @@
 {
   "type": "object",
   "properties": {
+    "mode": {
+      "type": "string",
+      "description": "diagnostics (default), or environment to inspect one explicit module/file's retained compiler options without diagnostics, refresh or compilation.",
+      "enum": [
+        "diagnostics",
+        "environment"
+      ]
+    },
+    "profileScope": {
+      "type": "string",
+      "description": "Environment mode only: must match the retained profile; another graph profile is not silently substituted."
+    },
+    "referenceLimit": {
+      "type": "integer",
+      "description": "Environment mode only: 0..128 reference rows (default 16), with complete total/omitted counts."
+    },
     "filePath": {
       "type": "string",
-      "description": "Source file path (relative to the project root, or absolute). When set, diagnostics are scoped to this file\u0027s syntax tree."
+      "description": "Source file path (relative to the project root, or absolute). When set, diagnostics are scoped to this file's syntax tree."
     },
     "moduleName": {
       "type": "string",

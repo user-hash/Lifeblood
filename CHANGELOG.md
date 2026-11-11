@@ -9,6 +9,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `lifeblood_diagnose mode:environment` observes one retained module/file's actual
+  compiler options, parse scopes and bounded references without diagnostics or
+  refresh. Snapshot descriptor/profile provenance distinguishes host compiler
+  identity from target coverage and runtime compatibility. Source acceptance is
+  recorded in the [environment report](docs/investigations/lifeblood-compilation-environment-2026-11-11.md);
+  installed bundle qualification remains pending.
+
 - Lifeblood targets .NET 11 with Roslyn 5.12.0-1.26529.118 and C# 15 in the
   locally qualified builds; Unity's compiler remains independent. C# 14 qualification covers
   extension members, field-backed properties, partial constructors/events,

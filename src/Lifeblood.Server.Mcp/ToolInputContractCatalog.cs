@@ -190,6 +190,9 @@ public static class ToolInputContractCatalog
         );
 
         yield return Contract(@"lifeblood_diagnose",
+            Arg(@"mode", ToolArgumentType.String, required: false, arrayItemType: null, description: @"diagnostics (default), or environment to inspect one explicit module/file's retained compiler options without diagnostics, refresh or compilation.", enumValues: new[] { @"diagnostics", @"environment" }),
+            Arg(@"profileScope", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Environment mode only: must match the retained profile; another graph profile is not silently substituted.", enumValues: Array.Empty<string>()),
+            Arg(@"referenceLimit", ToolArgumentType.Integer, required: false, arrayItemType: null, description: @"Environment mode only: 0..128 reference rows (default 16), with complete total/omitted counts.", enumValues: Array.Empty<string>()),
             Arg(@"filePath", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Source file path (relative to the project root, or absolute). When set, diagnostics are scoped to this file's syntax tree.", enumValues: Array.Empty<string>()),
             Arg(@"moduleName", ToolArgumentType.String, required: false, arrayItemType: null, description: @"Specific module to diagnose, or omit for all. When combined with filePath, picks the module that contains the file.", enumValues: Array.Empty<string>()),
             Arg(@"verbosity", ToolArgumentType.String, required: false, arrayItemType: null, description: @"'compact' drops the full definesActive[] list (definesActiveCount is retained) for repeated focused checks. Default (verbose) returns the full list.", enumValues: Array.Empty<string>()),

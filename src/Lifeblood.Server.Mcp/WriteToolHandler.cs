@@ -59,6 +59,13 @@ internal sealed class WriteToolHandler
 
     public McpToolResult HandleDiagnose(JsonElement? args)
     {
+        var mode = GetString(args, "mode");
+        if (mode == "environment")
+            return HandleCompilationEnvironment(args);
+        if (mode != null && mode != "diagnostics")
+            return ErrorResult("diagnose mode must be 'diagnostics' or 'environment'.");
+        if (GetString(args, "profileScope") != null || GetInt(args, "referenceLimit") != null)
+            return ErrorResult("profileScope and referenceLimit require diagnose mode:'environment'.");
         var moduleName = GetString(args, "moduleName");
         var filePath = GetString(args, "filePath");
         var ownershipMode = GetString(args, "diagnosticOwnershipMode");
@@ -170,6 +177,66 @@ internal sealed class WriteToolHandler
             possiblyStale,
             diagnostics = report.Diagnostics,
             diagnosticOwnership,
+        }, _jsonOpts));
+    }
+
+    private McpToolResult HandleCompilationEnvironment(JsonElement? args)
+    {
+        if (GetString(args, "diagnosticOwnershipMode") != null || GetString(args, "sinceCommit") != null
+            || args?.TryGetProperty("touchedFiles", out _) == true)
+            return ErrorResult("Diagnostic ownership arguments cannot accompany mode:'environment'.");
+        var moduleName = GetString(args, "moduleName");
+        var filePath = GetString(args, "filePath");
+        if (string.IsNullOrWhiteSpace(moduleName) && string.IsNullOrWhiteSpace(filePath))
+            return ErrorResult("mode:'environment' requires an explicit filePath or moduleName.");
+        var referenceLimit = 16;
+        if (args?.TryGetProperty("referenceLimit", out var limitElement) == true
+            && (limitElement.ValueKind != JsonValueKind.Number || !limitElement.TryGetInt32(out referenceLimit)))
+            return ErrorResult("referenceLimit must be an integer between 0 and 128.");
+        if (referenceLimit is < 0 or > Lifeblood.Application.Ports.Left.CompilationEnvironmentRequest.MaximumReferences)
+            return ErrorResult("referenceLimit must be between 0 and 128.");
+        var requestedProfile = GetString(args, "profileScope");
+        var retainedProfile = _session.RetainedProfileName;
+        if (requestedProfile != null && !string.Equals(requestedProfile, retainedProfile, StringComparison.Ordinal))
+            return ErrorResult(JsonSerializer.Serialize(new
+            {
+                failure = "profile-not-retained",
+                requestedProfile,
+                retainedProfile,
+                availableGraphProfiles = _session.RetainedProfileNames,
+                compilationStarted = false,
+                message = "Environment observation uses existing retained compilations only; no other-profile compilation or refresh was performed.",
+            }, _jsonOpts));
+
+        var environment = _session.CompilationHost!.GetCompilationEnvironment(new()
+        {
+            FilePath = string.IsNullOrWhiteSpace(filePath) ? null : filePath,
+            ModuleName = string.IsNullOrWhiteSpace(moduleName) ? null : moduleName,
+            ReferenceLimit = referenceLimit,
+            IncludeDefines = !IsCompactVerbosity(args),
+        });
+        var descriptor = _session.Graph!.SymbolsOfKind(Lifeblood.Domain.Graph.SymbolKind.Module)
+            .SingleOrDefault(symbol => symbol.Name == environment.ModuleName);
+        return TextResult(JsonSerializer.Serialize(new
+        {
+            mode = "environment",
+            environment,
+            inputProvenance = descriptor?.Properties,
+            moduleProfileApplicability = _session.ProfileApplicability?.Modules
+                .SingleOrDefault(module => module.Name == environment.ModuleName),
+            analyzedUnderProfile = retainedProfile,
+            availableGraphProfiles = _session.RetainedProfileNames,
+            executionMode = "retainedCompilationObservation",
+            compilationStarted = false,
+            autoRefreshed = false,
+            additionalSemanticBaseCount = 0,
+            limitations = new[]
+            {
+                "Options describe Lifeblood's retained compiler objects. Descriptor provenance is snapshot-owned, not a new SDK or filesystem observation.",
+                "Only the retained profile's options are observed; graph coverage in other profiles does not imply retained compilation coverage.",
+                "The host runtime and target descriptor/reference set are distinct. This does not certify Unity/Pipeline compiler options, a build, runtime reflection, native interop or Burst execution.",
+                "Reference rows identify compiler inputs without loading or resolving their assembly metadata; they are not reference-content verification. Omitted counts describe every bounded projection.",
+            },
         }, _jsonOpts));
     }
 

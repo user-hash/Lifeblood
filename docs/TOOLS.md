@@ -271,6 +271,28 @@ Pre-fix the same call emitted ~120 spurious CS0246 / CS0103 errors (UnityEngine,
 
 `lifeblood_diagnose` and `lifeblood_compile_check` share one ownership resolver (`INV-COMPILATION-FILE-OWNERSHIP-001`). Exact normalized paths outrank suffix matches. If the best path matches more than one loaded compilation, neither tool selects the first module: `fileOwnership.outcome` is `Ambiguous`, `candidateModules` lists the stable choices, and the caller must pass `moduleName` or a more specific path. A pinned module miss remains `NotInModule`; an unknown module is `ModuleNotFound`; a path absent from every compilation is `NotFound` and compile-check composes the existing stale-descriptor guidance at the disk-aware handler boundary.
 
+### Inspect the effective retained compilation environment
+
+`lifeblood_diagnose(mode:"environment", filePath:"Path/File.cs")` observes the
+existing owning compilation. `moduleName` can select one module or disambiguate
+linked source. An explicit file or module is required; this mode does not run
+diagnostics, refresh, compile source, read project files or create another base.
+
+The response separates actual compiler options, distinct parse-option groups,
+compiler/host runtime identity, and snapshot-owned descriptor/profile provenance.
+For example, a C# 15 host can report that the selected module actually uses C# 7.3
+and allows unsafe code. Module applicability shows which graph profiles include
+or exclude that module; `analyzedUnderProfile` identifies the retained compilation.
+Optional `profileScope` must match it. Another profile is rejected without work.
+
+`referenceLimit` previews 0..128 compiler inputs (default 16). Compact verbosity
+omits defines while preserving their counts. Parse groups, defines, features,
+diagnostic overrides and reference aliases also have explicit total/omitted counts.
+Reference descriptions do not load/resolve assembly metadata or verify file
+contents. These observations do not certify Unity/Pipeline options, a build,
+target runtime reflection, native interop or Burst behavior. Diagnostic ownership
+arguments belong to the default diagnostics mode and cannot accompany this mode.
+
 ### Diagnose only the warnings owned by the current change
 
 `lifeblood_diagnose` accepts `diagnosticOwnershipMode` with `workingTree`,

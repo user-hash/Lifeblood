@@ -352,6 +352,65 @@ public class ToolHandlerTests : IDisposable
     }
 
     [Fact]
+    public void Handle_DiagnoseEnvironment_ObservesSnapshotOptionsWithoutDiagnosticsOrRefresh()
+    {
+        Directory.CreateDirectory(Path.Combine(_tempDir, "Library"));
+        File.WriteAllText(Path.Combine(_tempDir, "Options.csproj"), """
+            <Project><PropertyGroup><AssemblyName>Options</AssemblyName><LangVersion>7.3</LangVersion>
+            <TargetFrameworkVersion>v4.8</TargetFrameworkVersion><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+            <UnityProjectType>Editor</UnityProjectType>
+            <DefineConstants>UNITY_EDITOR;PROBE</DefineConstants></PropertyGroup>
+            <ItemGroup><Compile Include="Options.cs" /></ItemGroup></Project>
+            """);
+        var file = Path.Combine(_tempDir, "Options.cs");
+        File.WriteAllText(file, "public unsafe class Options { public int* pointer; }");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        var analyzed = handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = _tempDir, defineProfiles = new[] { "Editor", "Player" } }));
+        Assert.Null(analyzed.IsError);
+        var before = session.CurrentSnapshot;
+        File.WriteAllText(file, "public class Broken { this is deliberately invalid }");
+
+        var result = handler.Handle("lifeblood_diagnose", MakeArgs(new { mode = "environment", filePath = "Options.cs", verbosity = "compact", referenceLimit = 1, profileScope = "Editor" }));
+
+        Assert.Null(result.IsError);
+        using var doc = JsonDocument.Parse(result.Content[0].Text);
+        var root = doc.RootElement;
+        Assert.Equal("retainedCompilationObservation", root.GetProperty("executionMode").GetString());
+        Assert.False(root.GetProperty("compilationStarted").GetBoolean());
+        Assert.False(root.GetProperty("autoRefreshed").GetBoolean());
+        Assert.Equal("Available", root.GetProperty("environment").GetProperty("status").GetString());
+        Assert.Equal("True", root.GetProperty("environment").GetProperty("properties").GetProperty("allowUnsafe").GetString());
+        Assert.Equal("7.3", root.GetProperty("environment").GetProperty("parseEnvironments")[0].GetProperty("properties").GetProperty("languageVersion").GetString());
+        Assert.Equal("descriptor", root.GetProperty("inputProvenance").GetProperty("languageVersionAuthority").GetString());
+        Assert.Equal("Player", root.GetProperty("moduleProfileApplicability").GetProperty("excludedProfiles")[0].GetString());
+        Assert.Equal("Editor", root.GetProperty("moduleProfileApplicability").GetProperty("includedProfiles")[0].GetString());
+        Assert.False(root.TryGetProperty("diagnostics", out _));
+        Assert.Same(before, session.CurrentSnapshot);
+    }
+
+    [Fact]
+    public void Handle_DiagnoseEnvironment_RejectsAnotherProfileAndMixedDiagnosticArguments()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "Options.csproj"), "<Project><PropertyGroup><AssemblyName>Options</AssemblyName></PropertyGroup><ItemGroup><Compile Include=\"Options.cs\" /></ItemGroup></Project>");
+        File.WriteAllText(Path.Combine(_tempDir, "Options.cs"), "public class Options {}");
+        using var session = new GraphSession(Fs);
+        var handler = CreateHandler(session: session);
+        Assert.Null(handler.Handle("lifeblood_analyze", MakeArgs(new { projectPath = _tempDir, defineProfiles = new[] { "Editor" } })).IsError);
+        var before = session.CurrentSnapshot;
+        var profile = handler.Handle("lifeblood_diagnose", MakeArgs(new { mode = "environment", moduleName = "Options", profileScope = "Player" }));
+        Assert.True(profile.IsError);
+        Assert.Contains("profile-not-retained", profile.Content[0].Text);
+        Assert.True(handler.Handle("lifeblood_diagnose", MakeArgs(new { mode = "environment" })).IsError);
+        Assert.True(handler.Handle("lifeblood_diagnose", MakeArgs(new { mode = "environment", moduleName = "Options", diagnosticOwnershipMode = "workingTree" })).IsError);
+        Assert.True(handler.Handle("lifeblood_diagnose", MakeArgs(new { mode = "environment", moduleName = "Options", referenceLimit = 129 })).IsError);
+        Assert.True(handler.Handle("lifeblood_diagnose", MakeArgs(new { moduleName = "Options", profileScope = "Editor" })).IsError);
+        Assert.True(handler.Handle("lifeblood_diagnose", MakeArgs(new { mode = "unknown", moduleName = "Options" })).IsError);
+        Assert.True(handler.Handle("lifeblood_diagnose", MakeArgs(new { mode = "environment", moduleName = "Options", referenceLimit = 1.5 })).IsError);
+        Assert.Same(before, session.CurrentSnapshot);
+    }
+
+    [Fact]
     public void Handle_Diagnose_WorkingTreeOwnershipGroupsWithoutDuplicatingDiagnostics()
     {
         var projectRoot = Path.Combine(_tempDir, "diagnostic-ownership-project");
