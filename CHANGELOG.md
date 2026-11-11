@@ -9,7 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Source-stage method-effect reports can join caller-reported native build/debug
+- The exact `local development build` callback/effect/native-source/compiler-validation bundle
+  is installed and qualified through real native app and Unity consumers on one
+  shared base. Backend reconnection and bounded acceptance are recorded in the
+  [deployment report](docs/investigations/lifeblood-effects-bundle-2026-11-11.md).
+
+- Method-effect reports can join caller-reported native build/debug
   document identities from `runtimeEvidencePath` to SHA-1/SHA-256 of the same
   retained-source scan. The runtime-capture importer and bounded file reader are
   shared; missing, conflicting, mismatched and incomplete evidence remains
@@ -17,7 +22,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or retained base is implied. See
   [native/source qualification](docs/investigations/lifeblood-native-source-2026-11-11.md).
 
-- Source-stage compile checks now report the executing host compiler and index
+- Compile checks now report the executing host compiler and index
   diagnostic location/phase attribution. Locationless owning-module emitter
   failures remain errors and are not attributed to an arbitrary requested file.
   The binding baseline is explicitly not an emit baseline; Unity/Player build
@@ -26,19 +31,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no project dependency or compiler fallback was added. See
   [compiler validation](docs/investigations/lifeblood-compiler-validation-2026-11-11.md).
 
-- Source-stage `lifeblood_method_effects` exposes bounded operation/callback,
+- `lifeblood_method_effects` exposes bounded operation/callback,
   deferred-body and supported direct/local transitive evidence with explicit
   unknowns. Opt-in callable declarations distinguish empty/unavailable bodies
   and carry retained compiler-source checksums; read-modify-write access modes
   are explicit. The Unity wrapper and canonical/snapshot/batch lanes share the
-  same operation port. Native/PDB join qualification and deployment remain open;
+  same operation port. Exact `local development build` package/native/Unity deployment passed;
   see [method-effect source qualification](docs/investigations/lifeblood-method-effects-2026-11-11.md).
 
 - Source-qualified operation facts now preserve dynamic/pointer call occurrences,
   callback local/event binding, conditional receivers and explicit dispatch kind.
   Opaque callable keys distinguish deferred/nested bodies across declaration
   schemas without changing graph addresses or retaining another semantic base.
-  The source-stage consumer view is recorded above; deployment remains pending. See
+  The consumer view is recorded above; `local development build` deployment passed. See
   [callback assessment and source qualification](docs/investigations/lifeblood-callback-evidence-2026-11-11.md).
 
 - The attach-only inspection helper now joins CLI/runtime/Roslyn, SDK probe,
