@@ -118,6 +118,18 @@ NuGet key through Trusted Publishing (OIDC), and publishes with
 `--skip-duplicate`. Manual `workflow_dispatch` runs are verification-only and
 never publish. The uploaded `.nupkg` artifacts remain available for audit.
 
+## Use the published version locally
+
+After NuGet publication succeeds, install the exact stable CLI and MCP version
+from the public feed and use those packages for normal local work. Do not leave
+the shared service or clients on a private alpha merely because its source was
+qualified earlier. Preserve the configured storage locations and SDK selection.
+
+Verify package version and source commit, CLI identity, shared daemon/proxy paths,
+and actual native MCP/Unity calls after the coordinated handover. Record installed
+public-package evidence separately from source and private-candidate checks.
+Keep rollback available; publication alone does not prove local deployment.
+
 ## Recovery from a red release
 
 A published tag pointing at a red commit (e.g. v0.7.6) stays in place. Force-moving a published tag is a destructive operation on shared history. Anyone who has already pulled or restored from the tag sees the rewrite.

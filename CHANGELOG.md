@@ -7,7 +7,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Complete scope: [changes since public 0.7.13](docs/investigations/lifeblood-release-scope-2026-11-12.md),
+including the full commit classification and explicitly deferred work.
+
 ### Added
+
+- `lifeblood_duplicates` reports repeated complete executable token bodies with
+  exact token comparison, canonical owners, profile/file/module scope and hard
+  scan/result bounds. Results are advisory; matching syntax does not prove
+  equivalent behavior or safe deletion. See [qualification](docs/investigations/lifeblood-duplicates-2026-10-01.md).
 
 - Owner-scoped content receipts capture or verify an explicit file set without
   refreshing the publication. Guarded compile checks admit those exact bytes
@@ -18,6 +26,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or reserve an Editor. See [the concurrent-work contract](docs/OWNER_SCOPED_WORK.md).
 
 ### Changed
+
+- The host moves from the published .NET 8 / Roslyn 4.14 toolchain to .NET 11 /
+  SDK-matched Roslyn 5.12. Consumer language settings remain independent;
+  SDK-style discovery needs an installed SDK. The Windows CLI includes its
+  runtime, while the MCP tool requires the matching runtime installation.
+- SDK-style project discovery evaluates effective language/framework defaults,
+  imported settings and SDK/compiler identity in an isolated MSBuild child.
+  Content-authoritative import/SDK drift enters the existing fallback policy.
+  Generated Unity descriptors keep their declared options. This does not add
+  complete MSBuild or multi-target-project conformance. See [SDK facts](docs/investigations/lifeblood-sdk-language-facts-2026-10-01.md).
 
 - Child SDK/ScriptHost processes have bounded pipe draining and termination;
   compile-check emission avoids an extra PE-buffer copy and private streaming
@@ -98,6 +116,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checkout tags from contaminating qualification and package provenance.
 
 ### Fixed
+
+- Clean build/release workflows let CLI packaging produce its `any` and
+  `win-x64` outputs instead of assuming a RID-neutral solution build supplied
+  them. The previous `pack --no-build` command fails on a clean checkout; see
+  [reproduction and CI qualification](docs/investigations/lifeblood-ci-packaging-2026-11-12.md).
+- User-defined operator and conversion edges follow compiler-bound operations,
+  including checked/lifted, increment/compound and implicit conversions.
+  Instance/static-abstract declaration flags and enclosing callable ownership
+  remain accurate. Built-in arithmetic does not invent a method edge. See
+  [operator qualification](docs/investigations/lifeblood-operator-correctness-2026-10-01.md).
+- Strict MCP parsing uses native duplicate-property and unknown-envelope-member
+  rejection through the production generated context. Nested opaque JSON is
+  checked, tool arguments retain binder ownership, and malformed input preserves
+  the existing JSON-RPC parse-error contract. The benchmark now exercises that
+  parser directly; PipeReader remains experimental. See [parser qualification](docs/investigations/lifeblood-native-json-2026-10-01.md).
+- Tree-local canonical-ID memoization and compiler-bound reference candidate
+  filtering remove repeated formatting/binding work without changing complete
+  graph results or reference locations. Input-identity and service-construction
+  phases use the existing telemetry authority. See [controlled comparisons](docs/investigations/lifeblood-performance-followup-2026-10-01.md).
 
 - File compile checks preserve the resolved tree's own parse options and accept
   explicitly empty source without reusing retained declarations. File/snippet
@@ -186,8 +223,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   source/metadata parity. An immutable selection now flows through configured
   semantic publications, incremental reuse, references, facts and refactoring.
   Analysis identity records the selection; source edits preserve compilation
-  assembly identity and options. Default v1 and MCP wire activation stay unchanged
-  while client compatibility migration remains open. Unity reachability follows
+  assembly identity and options. V1 remains the connection default; per-client
+  v2 negotiation is described above. Unity reachability follows
   recorded inheritance addresses instead of deriving them from display names.
 
 - Reference queries accept optional `symbolIds` for 1..32 targets. One request-local
