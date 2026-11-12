@@ -346,18 +346,20 @@ internal static class UnityPackageSourceVisibilityBuilder
 
     private static string? FindExpectedAssembly(
         string sourcePath,
-        IReadOnlyList<AssemblyRoot> assemblyByDirectory)
+        AssemblyRoot[] assemblyByDirectory)
     {
         var sourceDirectory = Path.GetDirectoryName(sourcePath);
         if (string.IsNullOrEmpty(sourceDirectory))
             return null;
 
+        string? normalizedSourceDirectory = null;
         foreach (var item in assemblyByDirectory)
         {
             var directory = item.Directory;
             if (PathComparer.Equals(sourceDirectory, directory)
-                || sourceDirectory.StartsWith(directory + Path.DirectorySeparatorChar, PathComparison)
-                || sourceDirectory.Replace('\\', '/').StartsWith(directory.Replace('\\', '/') + "/", PathComparison))
+                || sourceDirectory.StartsWith(item.DirectoryPrefix, PathComparison)
+                || (normalizedSourceDirectory ??= sourceDirectory.Replace('\\', '/'))
+                    .StartsWith(item.NormalizedDirectoryPrefix, PathComparison))
             {
                 return item.Name;
             }
@@ -482,7 +484,11 @@ internal static class UnityPackageSourceVisibilityBuilder
     private static StringComparison PathComparison { get; }
         = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    private sealed record AssemblyRoot(string Directory, string Name);
+    private sealed record AssemblyRoot(string Directory, string Name)
+    {
+        public string DirectoryPrefix { get; } = Directory + Path.DirectorySeparatorChar;
+        public string NormalizedDirectoryPrefix { get; } = Directory.Replace('\\', '/') + "/";
+    }
     private sealed record DiscoveredAssemblyDefinition(string Path, string Name);
 }
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Lifeblood.Adapters.CSharp;
+using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Analysis;
 using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Infrastructure;
@@ -34,6 +35,31 @@ public sealed class PackageSourceVisibilityTests : IDisposable
         try { Directory.Delete(_root, recursive: true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+
+    [Fact]
+    public void Build_ExpectedAssemblyUsesNearestBoundaryAndPreservesUnboundSources()
+    {
+        var packageRoot = Path.Combine(_root, "Packages", "com.acme.tools");
+        var nestedRoot = Path.Combine(packageRoot, "Runtime", "Nested");
+        var siblingRoot = Path.Combine(packageRoot, "RuntimeExtra");
+        Directory.CreateDirectory(nestedRoot);
+        Directory.CreateDirectory(siblingRoot);
+        File.WriteAllText(Path.Combine(nestedRoot, "Nested.asmdef"), "{\"name\":\"Acme.Nested\"}");
+        File.WriteAllText(Path.Combine(nestedRoot, "Nested.cs"), "class Nested { }");
+        File.WriteAllText(Path.Combine(siblingRoot, "Sibling.cs"), "class Sibling { }");
+        File.WriteAllText(Path.Combine(packageRoot, "Root.cs"), "class Root { }");
+        var workspace = UnityPackageSourceVisibilityBuilder.Discover(_fs, _root);
+
+        var report = UnityPackageSourceVisibilityBuilder.Build(
+            _fs, workspace, [], new Lifeblood.Application.Ports.Left.AnalysisConfig());
+
+        var files = Assert.Single(report!.Packages).Files.ToDictionary(file => file.Path);
+        Assert.Equal("Acme.Nested", files["Packages/com.acme.tools/Runtime/Nested/Nested.cs"].ExpectedAssembly);
+        Assert.Equal("Acme.Tools", files["Packages/com.acme.tools/Runtime/Unbound.cs"].ExpectedAssembly);
+        Assert.Null(files["Packages/com.acme.tools/RuntimeExtra/Sibling.cs"].ExpectedAssembly);
+        Assert.Null(files["Packages/com.acme.tools/Root.cs"].ExpectedAssembly);
+        Assert.All(files.Values, file => Assert.Equal(PackageSourceVisibilityStatus.Unbound, file.Status));
     }
 
     [Fact]
