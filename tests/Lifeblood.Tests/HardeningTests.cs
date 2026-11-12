@@ -721,6 +721,8 @@ public class Service
 
         var executor = new ProcessIsolatedCodeExecutor(scriptHostPath);
         var pidFile = Path.Combine(Path.GetTempPath(), $"lifeblood-script-child-{Guid.NewGuid():N}.txt");
+        System.Diagnostics.Process? child = null;
+        var childState = "";
         try
         {
             var code = $"System.IO.File.WriteAllText({System.Text.Json.JsonSerializer.Serialize(pidFile)}, System.Environment.ProcessId.ToString()); while(true) {{ }}";
@@ -730,15 +732,30 @@ public class Service
             Assert.Contains("timed out", result.Error, StringComparison.OrdinalIgnoreCase);
             Assert.True(File.Exists(pidFile), "The script must enter its body before timing out.");
             var pid = int.Parse(File.ReadAllText(pidFile));
-            System.Diagnostics.Process? child;
             try { child = System.Diagnostics.Process.GetProcessById(pid); }
             catch (ArgumentException) { child = null; }
-            using (child)
-                Assert.True(child == null || child.HasExited, $"Timed-out script child {pid} is still running.");
+            // Killing the launcher tree does not wait for every descendant.
+            var stopped = child == null || child.WaitForExit(5000);
+            var statePath = $"/proc/{pid}/status";
+            childState = !stopped && OperatingSystem.IsLinux() && File.Exists(statePath)
+                ? File.ReadAllText(statePath) : "";
+            Assert.True(stopped, $"Timed-out script child {pid} is still running. {childState}");
         }
         finally
         {
-            File.Delete(pidFile);
+            try
+            {
+                if (child is { HasExited: false })
+                {
+                    child.Kill(entireProcessTree: true);
+                    Assert.True(child.WaitForExit(5000), $"Timed-out script child cleanup did not finish. {childState}");
+                }
+            }
+            finally
+            {
+                child?.Dispose();
+                File.Delete(pidFile);
+            }
         }
     }
 
