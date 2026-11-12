@@ -4,13 +4,27 @@ Use this file as a compact decision map. For complete current semantics, prefer 
 
 ## Startup And State
 
+| Need | Tool | Notes |
+|---|---|---|
+| Inspect live server/tool surface | `lifeblood_capabilities` | Call first when available; catches local-doc drift and reports session state. |
+| Join several reads on one publication | `lifeblood_batch` | Pass ordered `{tool, arguments}` calls plus optional `expectedSnapshotId` / `expectedAnalysisGeneration`. Only `Observe` + `SharedRead` tools are admitted; execution is serial under one snapshot lease. |
+| Inspect or retain publication history | `lifeblood_snapshots` | List current + bounded graph-only history; pin/name an investigation lane, unpin, evict, or opt into live drift hashing. Pinned entries still consume the hard limit. |
+| Capture/verify an owner's explicit source bytes | `lifeblood_file_scope` | Nonmutating raw-byte hashes for 1..32 files. Pass the returned receipt to guarded compile-check; unrelated changes do not invalidate it. This is not dependency freshness, exclusive ownership or an external-writer lock. |
+| Load a project | `lifeblood_analyze` | Use `projectPath` for C# / Unity, `graphPath` for JSON graph input. Use `excludePaths` to drop vendored/sample sources before compilation. |
+| Fast re-load after edits | `lifeblood_analyze incremental:true` | Source mtimes are a prefilter and content hashes decide actual re-extraction. Pass `authoritativeChangedFiles` when the editor/watcher has exact changed paths; descriptor/scope checks still apply. On rejected fallback, retry with `allowFullFallback:true` only when wider scope is acceptable. Changing `excludePaths` reports `analysisScopeChanged`. Compatible shared hot recovery verifies canonical inputs; unavailable retained services report `compilationStateUnavailable`. |
+| Small context pack | `lifeblood_context summarize:true` | Good first read for unfamiliar repos or when handing off to another agent. |
+| Architecture invariant audit | `lifeblood_invariant_check mode:"audit" summarize:true` | Use compact audit first on large invariant trees; it keeps duplicates/warnings/coverage while omitting zero-only source rows and duplicate ledgers. Fetch specific ids as needed; omit summarize only for the complete source inventory. |
+| Check generated evidence freshness | `lifeblood_evidence_drift` | Compare the repo-owned generated baseline with the exact current publication and live invariant audit. Pin `expectedSnapshotId` / `expectedAnalysisGeneration`; refresh analysis on `verdict:"unavailable"`, refresh evidence when `evidenceRefreshRecommended:true`. |
+| Import/correlate/compare runtime performance evidence | `lifeblood_performance_evidence` | `import` and `compare` accept an absolute `workspaceRoot` and need no loaded graph. `correlate` alone joins marker evidence to the current source-evidence publication with explicit Unique/Ambiguous/Unmapped outcomes and rejects a mismatched root. Runtime evidence stays separate from semantic truth. |
+
 ## Finding Symbols
 
 When available, consume the MCP result's `structuredContent` directly; Unity's
 typed wrapper places it under `data.structuredContent`. Preserve all error bits.
 Fall back to the original content for legacy, opaque or projection-limited output.
 For several explicit files, reuse `lifeblood_batch(responseFormat:"compact")`
-with file-scoped impact/diagnose calls instead of requesting a global inventory.
+with eligible file-scoped reads such as `lifeblood_file_impact` instead of a
+global inventory. Compilation-backed diagnosis is not admitted to read batches.
 
 | Need | Tool | Notes |
 |---|---|---|
@@ -61,6 +75,8 @@ checking dependent files. `compile_check(filePaths:...)` overlays each file on
 the retained baseline independently; a new member in another unrefreshed file
 can therefore correctly appear missing. Refreshing dependencies and accepting
 the new publication is distinct from replacing a failed byte expectation.
+For cross-module API changes, request a full analyze explicitly; an incremental
+refresh does not rebuild unchanged dependent modules merely because an API changed.
 
 ## Specialized Analysis
 
@@ -106,5 +122,8 @@ All three are advisory: resolved UnityEvent persistent calls are modeled, but un
 - `truthTier:"Semantic"` and `confidence:"Proven"` are the strongest evidence.
 - `Derived` graph rollups are usually strong but one step removed from raw compiler facts.
 - `Heuristic` / `Advisory` results are triage aids, not deletion or rewrite authority.
-- Any non-empty `limitations[]`, high `stalenessSeconds`, or non-zero `filesChangedSinceAnalyze` should affect confidence and usually calls for re-analysis or direct source verification.
+- Read `freshness` coverage and `limitations[]` beside confidence. Age, newer
+  mtimes and incomplete observations do not by themselves prove content drift;
+  use canonical drift checking when current input equality matters, then refresh
+  changed inputs with the intended scope policy.
 - Historical `snapshotId` selection is graph-only. Source-reading and Roslyn-backed tools are unavailable there; omit `snapshotId` to return to the latest semantic base.

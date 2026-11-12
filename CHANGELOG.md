@@ -7,7 +7,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Owner-scoped content receipts capture or verify an explicit file set without
+  refreshing the publication. Guarded compile checks admit those exact bytes
+  with optional publication preconditions under the existing writer gate.
+  The Windows `apply-file` companion conditionally writes one existing target
+  while checking the complete receipt scope. Overlapping changes require
+  reconciliation; file receipts do not certify dependency freshness, merge edits
+  or reserve an Editor. See [the concurrent-work contract](docs/OWNER_SCOPED_WORK.md).
+
 ### Changed
+
+- Child SDK/ScriptHost processes have bounded pipe draining and termination;
+  compile-check emission avoids an extra PE-buffer copy and private streaming
+  work releases state under its existing lifecycle. Runtime Async remains
+  disabled after comparable 1/4-client measurements found regressions; upgrading
+  the host does not by itself promise a speedup. See
+  [process, emission and async qualification](docs/investigations/lifeblood-process-stream-async-2026-11-10.md).
 
 - The exact `local development build` callback/effect/native-source/compiler-validation bundle
   is installed and qualified through real native app and Unity consumers on one

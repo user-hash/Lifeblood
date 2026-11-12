@@ -13,9 +13,22 @@ Prefer Lifeblood answers over text search when correctness depends on compiler k
 
 ## Session Start
 
+1. Call `lifeblood_capabilities` if available. Use it to detect live server version, tool count, feature flags, and whether a graph is already loaded.
+2. Reuse a suitable existing workspace publication. Load with `lifeblood_analyze` when absent, incompatible or intentionally refreshing.
+   - For a normal first load, pass `projectPath`.
+   - For a prebuilt JSON graph, pass `graphPath`.
+   - For large read-only triage, consider `readOnly:true`. Private stdio/CLI releases compilations; shared mode can preserve one compatible hot semantic publication. Inspect capability/retention receipts instead of assuming Roslyn tools are available or unavailable.
+   - For Unity cross-define questions, select the needed profiles, commonly `["Editor","Player"]`; include `Standalone` when desktop guards such as `UNITY_STANDALONE && !UNITY_EDITOR` matter.
+   - For vendored/sample-heavy workspaces, use `excludePaths` (for example `["Packages/*","*/Samples*/*","*/Examples*/*"]`) when you want those sources excluded before compilation.
+3. After source edits, use `lifeblood_analyze` with `incremental:true`. If your editor or watcher supplies exact changed paths, pass them as `authoritativeChangedFiles` to narrow source scanning. Content hashes decide whether touched files actually re-extract; mtime-only touches can return `mode:"incremental-noop"` with `mtimeTouchedSourceFiles > 0` and `contentChangedSourceFiles == 0`. Descriptor/scope checks remain independent of that source hint. If the response is `mode:"rejected"` with `canRetryFull:true`, retry with the provided `suggestedRetry` or with `allowFullFallback:true` if widening is acceptable. `fallbackReason:"compilationStateUnavailable"` reports unavailable compatible retained services. Shared hot recovery recaptures canonical inputs; otherwise a retained full analyze or permitted full fallback is required.
+4. Treat read-side `envelope` metadata as part of the answer. Staleness, changed files, confidence, and limitations can change whether an answer is safe to act on.
+5. When parallel investigation lanes must revisit an older publication, use `lifeblood_snapshots` to inspect or pin the bounded graph-only catalog and pass its `snapshotId` to graph reads. Historical selections do not provide live source or Roslyn services; omit `snapshotId` for those tools.
+
 For concurrent source edits, read `docs/OWNER_SCOPED_WORK.md`. Use explicit
 owner-scoped receipts and supported conditional writes, reconcile overlaps,
-and refresh retained dependencies after coordinated API changes. File-byte
+and refresh retained dependencies after coordinated API changes. Use an explicit
+full analyze for cross-module API changes; incremental analysis does not cascade
+to unchanged dependent modules. File-byte
 guards tolerate unrelated edits but do not certify dependency freshness or
 reserve the Editor. This capability does not authorize agent delegation.
 

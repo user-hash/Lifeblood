@@ -12,12 +12,9 @@ Every workflow below names:
 
 - **What you start from** (the input — a file path, a symbol id, a stack
   trace, an error message).
-
 - **The Lifeblood tool calls** in order, with the argument shapes.
-
 - **What good output looks like**, including which envelope field tells
   you the answer is trustworthy.
-
 - **What goes wrong**, including the limitation classes the envelope
   surfaces.
 
@@ -147,6 +144,8 @@ the intended files and use guarded checks with the returned content receipt and
 accepted publication. File batches overlay each file individually on the retained
 baseline; refresh after coordinated cross-file/API edits before checking their
 dependents. Content receipts do not certify dependency or profile freshness.
+Use an explicit full analyze after cross-module API changes; incremental work
+does not cascade into unchanged dependent modules.
 
 ## 6. Recover from a merge conflict
 

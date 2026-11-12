@@ -44,7 +44,9 @@ machine-specific paths and consumer assumptions out of product defaults and
 public setup commands; label local measurements with their tested environment.
 After coordinated cross-file/API changes, refresh the shared publication before
 checking dependent files: file batches overlay each file individually on the
-retained baseline. Keep Runtime Async a measured, opt-in experiment; the current
+retained baseline. Use an explicit full analyze after a cross-module API change;
+incremental analysis does not cascade to unchanged dependent modules. Keep
+Runtime Async a measured, opt-in experiment; the current
 production decision is disabled. Do not infer runtime gains from retargeting.
 
 ## Architecture
@@ -69,7 +71,7 @@ Lifeblood.Connectors.Mcp        # RIGHT SIDE. MCP graph provider for AI agents.
 Lifeblood.Analysis              # Optional analyzers (coupling, blast radius, cycles, tiers).
 Lifeblood.Server.Mcp            # MCP server host. Stdio JSON-RPC. Interactive AI sessions.
 Lifeblood.CLI                   # Composition root. Wires adapters to connectors.
-Lifeblood.ScriptHost            # Process-isolated child for `lifeblood_execute`.
+Lifeblood.ScriptHost            # Optional caller-configured process-isolated executor host.
 ```
 
 External JSON-emitting adapters live under `adapters/` and are not .NET projects:

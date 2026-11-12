@@ -141,6 +141,12 @@ analysis complete before one atomic reference swap makes the new state visible.
 Readers lease an exact generation, so a later publication cannot mix graph,
 compiler, or evidence state into an in-flight query.
 
+Owner-scoped file receipts and guarded compile admission check an explicit set
+of source bytes against an accepted publication under the existing writer gate.
+They neither reserve files nor certify dependency freshness. Conditional writes
+remain the caller's supported filesystem operation; Editor admission belongs to
+the consuming project. See [owner-scoped work](OWNER_SCOPED_WORK.md).
+
 `WorkspaceSnapshotCatalog` retains graph-only history with a default depth of
 three and a hard maximum of sixteen. Historical selection is exact by snapshot
 id and never falls through to latest. Pinning changes eviction policy, not
@@ -181,6 +187,25 @@ index, test index, or runtime capture store.
   source, invariant, and test authorities, then compares captures only after
   explicit identity and unit validation.
 
+- `lifeblood_method_effects` composes bounded operation/callback and supported
+  direct/local transitive evidence through the existing operation-fact port.
+  Caller-reported native document checksums can be compared with retained
+  compiler text; this does not authenticate an artifact or prove runtime effects.
+
+## Host, Consumer and Execution Boundary
+
+The host runtime and SDK-matched Roslyn qualification are recorded in
+[STATUS](STATUS.md). Consumer descriptors still own language options,
+references, defines and generators. Host compile-check receipts identify the
+compiler and complete-module emit result; they do not certify a target Unity,
+Player or Burst build.
+
+Ordinary `lifeblood_execute` uses the in-process Roslyn executor over retained
+workspace state. The optional `ProcessIsolatedCodeExecutor` API requires a
+caller-supplied ScriptHost. It selects the resolved .NET host and confirms child
+exit after timeout; this API is not the default MCP execution route or a security
+sandbox. See [isolated-host qualification](investigations/lifeblood-isolated-host-2026-11-12.md).
+
 ## Domain Model
 
 The domain is pure. No Roslyn, no JSON, no System.IO.
@@ -199,7 +224,7 @@ The domain is pure. No Roslyn, no JSON, no System.IO.
 
 - **SemanticGraph.** The immutable graph with thread-safe lazy indexes.
 
-- **AnalysisSnapshot** (adapter-level). Caches per-file extraction results for incremental re-analyze. Tracks source content hashes so mtime-only touches do not replace graph slices, and tracks csproj timestamps so `<Nullable>` / `<AllowUnsafeBlocks>` / `<Reference>` edits trigger per-module re-discovery (`INV-BCL-005`).
+- **AnalysisSnapshot** (adapter-level). Caches per-file extraction results for incremental re-analyze. Source content hashes confirm mtime candidates; descriptor, asmdef and reference content hashes preserve input identity. Timestamp-only descriptor churn does not imply changed semantics (`INV-BCL-005`).
 
 Properties are `IReadOnlyDictionary` on the public surface. The graph is read-only after construction.
 
@@ -259,7 +284,7 @@ Current Roslyn adapter capabilities:
 
 ## Incremental Re-Analyze
 
-After a full analysis, subsequent calls with `incremental: true` only recompile modules whose source content changed. The `AnalysisSnapshot` caches per-file extraction results plus source content hashes. Filesystem mtimes identify touched candidates; content hashes decide whether those candidates actually re-extract. Calls may pass `authoritativeChangedFiles` when an editor/build-system supplies an exact changed-file set; the hint narrows source scanning only and never suppresses descriptor drift checks. Csproj timestamp changes trigger per-module re-discovery so compilation facts (`BclOwnership`, `AllowUnsafeCode`, etc.) never go stale.
+After a full analysis, `incremental: true` reuses cached per-file facts and recompiles changed source modules, subject to independent input/scope checks. Filesystem mtimes identify touched source candidates; content hashes decide whether they re-extract. `authoritativeChangedFiles` narrows source scanning when the caller supplies the exact changed set. Descriptor, asmdef, SDK and reference content/membership checks remain independent; timestamp-only descriptor churn is not a semantic change. Relevant project changes can force recompilation or enter the explicit fallback policy.
 
 **Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`).** The adapter does not silently widen scope when it detects drift it cannot honor cheaply (no prior cache, module set changed, project descriptor edited, analysis-scope changed, or retained compilation state missing after read-only analysis). It returns a typed `IncrementalAnalyzeResult { Mode, Graph?, ChangedFileCount, Reason?, Detail? }` and the caller chooses what to do via `AnalysisConfig.AllowFullFallback`:
 - `false` (default) → adapter returns `Mode = Rejected, Graph = null, Reason = ...`. Caller decides next step.
@@ -269,7 +294,9 @@ After a full analysis, subsequent calls with `incremental: true` only recompile 
 
 The MCP wire shape carries `mode` (what the adapter DID) + `requestedMode` (what the caller ASKED) + `fallbackReason` + `fallbackDetail`. Rejection responses additionally carry `canRetryFull: true` and a `suggestedRetry` block — the next move is self-documenting.
 
-v1 limitation: does not cascade to dependent modules when an API surface changes; full fallback (when allowed) handles that case.
+Incremental analysis does not cascade to unchanged dependent modules after an
+API change. Request a full analyze explicitly for cross-module API changes;
+allowing full fallback alone does not detect this dependency change.
 
 ## Unity Bridge
 
@@ -292,7 +319,7 @@ The invariant register lives under [`docs/invariants/`](../docs/invariants/INDEX
 
 **Seam 1. `ISymbolResolver` (Application port).** Identifier resolution is a port. Every read-side handler routes through one resolver before any graph or workspace lookup. Resolution order: exact canonical match, truncated method form, kind correction (`method:` prefix on a property/field/event name, `INV-RESOLVER-006`), bare short name, extracted short name from qualified input (`INV-RESOLVER-005`). Partial-type unification is a read model. The deterministic primary file path picker lives in `LifebloodSymbolResolver.ChoosePrimaryFilePath`. Invariants: `INV-RESOLVER-001..006`.
 
-**Seam 2. Csproj-driven compilation facts as a documented convention.** Each module-level compilation option that the host needs to honor lives as a typed field on `ModuleInfo`, parsed once during `RoslynModuleDiscovery.ParseProject`, consumed in `ModuleCompilationBuilder.CreateCompilation`. Typed fields today: `BclOwnership`, `AllowUnsafeCode`, `ImplicitUsings`, `LanguageVersion`, `NullableContext`, `NoWarnDiagnosticIds`, `PreprocessorSymbols`, and `CompilerFeatures`. Csproj-edit invalidation flows through `AnalysisSnapshot.CsprojTimestamps`. Asmdef-edit invalidation flows through `AnalysisSnapshot.AsmdefTimestamps` (`INV-UNITY-002`). Re-discovery rebuilds the entire `ModuleInfo`. Invariants: `INV-COMPFACT-001..003`, `INV-BCL-001..005`, `INV-RUNTIME-ASYNC-COMPAT-001`.
+**Seam 2. Csproj-driven compilation facts as a documented convention.** Module-level compilation options flow through typed `ModuleInfo` fields, project discovery and `ModuleCompilationBuilder`. Descriptor and asmdef content/membership checks own invalidation; timestamps remain auxiliary observations, not semantic equality. Re-discovery rebuilds the module facts. Invariants: `INV-COMPFACT-001..003`, `INV-BCL-001..005`, `INV-UNITY-002`, `INV-RUNTIME-ASYNC-COMPAT-001`.
 
 **Seam 3. `RoslynSemanticView` (typed adapter view).** Each language adapter publishes a typed read-only view of its loaded semantic state. The C# adapter's `RoslynSemanticView` exposes `Compilations`, `Graph`, `ModuleDependencies`, `Help` (sandbox cheat sheet), `SymbolsOfKind(string)`, `EdgesOfKind(string)`. Constructed once per `GraphSession.Load`, shared by reference. `RoslynCodeExecutor` consumes the view as the script-host globals object. Invariants: `INV-VIEW-001..003`, `INV-EXECUTE-001`.
 
@@ -302,7 +329,7 @@ The invariant register lives under [`docs/invariants/`](../docs/invariants/INDEX
 
 **Seam 6. Invariant introspection.** Architectural invariants live across well-known repo conventions discovered dynamically. `LifebloodInvariantProvider` walks `<root>/CLAUDE.md`, `<root>/AGENTS.md`, and any `<root>/docs/invariants/**.md` tree via `IFileSystem`, parses each through `ClaudeMdInvariantParser` (five authoring shapes — A `- **INV-X-N**: body`, B `- **INV-X-N. Title.** Body`, C `**INV-X-N: Title.** body` bare bold paragraph, D `- **INV-X-N** (vX.Y.Z): body` parenthesized version tag, E `- **INV-X-N:** body` colon-inside-bold), aggregates results, caches per-file with timestamp invalidation via `InvariantParseCache<T>` (generic, reusable), and exposes the results via `IInvariantProvider`. The `lifeblood_invariant_check` tool wraps the port with three modes (id lookup, audit, list); the full audit reports every contributing source path plus coverage warnings, while audit `summarize:true` applies an MCP-only nonzero-source projection and serializes that source ledger once inside the evidence receipt. The provider and Application result remain the sole complete authority. Invariants: `INV-INVARIANT-001`, `INV-INVARIANT-002`; parser ratchets cover every shape; closes `LB-BUG-017` + `LB-BUG-018` + `LB-FR-023`.
 
-**Seam 7. Truth envelope (registry-driven).** Every read-side MCP tool response carries a top-level `envelope` field. Per-tool classification (truth tier, confidence band, evidence source, limitations) is declared on `ToolDefinition.EnvelopeClassification` in the registry; the composition root projects that table into `LifebloodResponseDecorator` at startup. Adding a new read-side tool without a classification triggers the registry ratchet (`Registry_EveryReadSideTool_DeclaresEnvelopeClassification`). Staleness is computed from `GraphSession.AnalyzedAtUtc` plus an `IFileSystem` mtime scan over the graph's File symbols, capped at 256 files per call. Invariant: `INV-ENVELOPE-001`.
+**Seam 7. Truth envelope (registry-driven).** Every read-side MCP tool response carries a top-level `envelope` field. Per-tool classification is declared on `ToolDefinition.EnvelopeClassification`; missing classifications fail the registry ratchet. Publication age is separate from bounded mtime/existence observations over the publication's tracked parsed-source inventory. `freshness` reports checked, unchecked, unavailable, missing and changed paths; zero observed changes in an incomplete sample does not prove current content. Canonical drift checking recaptures input identity independently. Invariant: `INV-ENVELOPE-001`.
 
 **Seam 8. Runtime-dispatch reachability.** `IUnityReachabilityProvider` is the right-side port for framework-dispatch detection. The C# reference adapter (`UnityReachabilityAdapter`) handles Unity entrypoint attributes and MonoBehaviour magic methods, walking the Roslyn-resolved inheritance chain via `Properties["baseTypeChain"]` plus direct-base fallback so external Unity bases resolve. `LifebloodDeadCodeAnalyzer` consults the provider when injected. Future framework adapters (ASP.NET attribute routing, MAUI handlers, MEF) plug into the same port. Invariant: `INV-UNITY-001`.
 
@@ -345,7 +372,7 @@ Architecture rules are not just documented. They are tested AND queryable:
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
 
 - **Typed invariants under `docs/invariants/`** (8 domain files + INDEX; live count + category coverage in [`STATUS.md`](STATUS.md)), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
-- DocsTests ratchets: `portCount`, `toolCount`, `testCount`, `invariantCount`, `invariantCategoryCount`, `skippedCount` in `docs/STATUS.md` are compared to the live repository state on every CI run
+- DocsTests ratchets compare STATUS anchors with live source, discovered tests and invariant audit, including `skippableFactCount` (declared toolchain-gated tests, not a promise about runtime skips).
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)
 - Latest-tag ratchet: the newest reachable stable tag must own a dated heading,
   link reference, and the `[Unreleased]` comparison base

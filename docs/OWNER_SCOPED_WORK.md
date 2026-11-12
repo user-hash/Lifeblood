@@ -12,6 +12,19 @@ caller intent; it grants no ownership, lock, reservation or authorization.
 {"action":"capture","ownerId":"piano-calibration","filePaths":["Assets/Piano.cs","Assets/PianoTests.cs"]}
 ```
 
+The response's `receipt` contains `schemaVersion:1`, the owner label, normalized
+workspace root, and `files[{filePath,sha256,byteLength}]`. Paths are normalized
+workspace-relative names; aliases/duplicates and paths outside that logical root
+are rejected. Hashes cover raw bytes, including encoding/BOM and line endings.
+Missing files carry null hash and length, allowing new/deleted-file expectations.
+Unreadable files return unavailable evidence instead of pretending they are absent.
+Limits are 32 files, 8 MiB per file and 64 MiB total; cancellation is checked while
+streaming. Capture/verify retains no file bodies after the request.
+
+```json
+{"action":"verify","ownerId":"piano-calibration","receipt":{"schemaVersion":1,"ownerId":"piano-calibration","workspaceRoot":"/absolute/path/to/project","files":[{"filePath":"Assets/Piano.cs","sha256":"sha256_<64 lowercase hex digits>","byteLength":1234}]}}
+```
+
 Use the actual returned receipt, not the illustrative placeholder hash above.
 Verify checks every receipt path, rejects owner/workspace/schema mismatches, and
 returns `matched` or `conflict` with exact expected/actual file evidence. A conflict
@@ -123,6 +136,9 @@ For multiple agents using the same workspace:
    example, a newly added member in file A remains unavailable to file B's
    overlay until ordinary analysis incorporates A. Read the refresh receipt
    and re-evaluate new snapshot identity before retrying pinned work.
+   Cross-module API changes require an explicit full analyze: incremental
+   analysis does not cascade to unchanged dependent modules. Allowing full
+   fallback alone does not detect that semantic dependency change.
    When a descriptor change requires full fallback, schedule that heavy work
    outside consumer latency/audio timing qualification where possible. Record
    any overlap as a measurement confound; source-byte stability alone does not

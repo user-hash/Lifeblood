@@ -152,13 +152,13 @@ The difference: the AI agent doesn't guess what your code does. It **asks the co
 - Findings are advisory. Every response carries the `envelope.confidence = "Advisory"` band and a `limitations[]` entry naming the FP classes.
 - Cross-check with `lifeblood_find_references` (which has the same gap class) and direct code inspection before acting.
 
-See [CLAUDE.md, INV-DEADCODE-001 + INV-UNITY-001](../CLAUDE.md) for the full invariants.
+See [tool invariants](invariants/tools.md) for the full dead-code and Unity-reachability contracts.
 
 ---
 
 ## Symbol ID format
 
-Tools that take a `symbolId` use this format:
+Legacy v1 examples use these forms:
 - `type:Namespace.TypeName`
 - `method:Namespace.TypeName.MethodName(ParamType)`
 - `field:Namespace.TypeName.FieldName`
@@ -167,6 +167,12 @@ Tools that take a `symbolId` use this format:
 - `mod:AssemblyName`
 - `file:relative/path/to/File.cs`
 - `ns:Namespace`
+
+MCP connections may negotiate v2 declaration IDs independently while sharing
+one collision-safe publication. V2 IDs are producer-owned and assembly-qualified;
+consume the returned `symbolId` rather than constructing one from these v1
+examples. Ambiguous predecessor addresses fail explicitly. See
+[schema negotiation and compatibility](SCHEMA_DEPRECATION_POLICY.md).
 
 Lifeblood owns the parameter-type display format for method IDs via `Internal.CanonicalSymbolFormat`. Every method-ID builder in the C# adapter routes through it, so the symbol ID grammar does not silently drift with Roslyn version changes (`INV-CANONICAL-001`).
 
@@ -178,12 +184,22 @@ If you don't know the canonical id, ask `lifeblood_resolve_short_name MyType` an
 
 ## Incremental Re-Analyze
 
-After the first `lifeblood_analyze`, subsequent calls with `incremental: true` only recompile modules whose source content changed since the last analysis. Filesystem mtimes are the cheap candidate prefilter; source content hashes decide whether a touched file actually re-extracts. Responses report `mtimeTouchedSourceFiles`, `contentChangedSourceFiles`, and `changedSourceFiles` so save-without-content-change is visible as an `incremental-noop`. Csproj timestamp changes (`INV-BCL-005`) and asmdef changes (`INV-UNITY-002`) still trigger per-module re-discovery so compilation facts do not go stale.
+After the first `lifeblood_analyze`, incremental work reuses unchanged file facts.
+Filesystem mtimes select source candidates; content hashes decide whether those
+candidates re-extract. Responses report `mtimeTouchedSourceFiles`,
+`contentChangedSourceFiles`, and `changedSourceFiles`, including save-without-
+content-change no-ops. Descriptor, asmdef, SDK and reference content/membership
+checks remain independent of source hints. A timestamp-only descriptor touch is
+not a semantic change; relevant content changes can force recompilation or fallback.
 
 ```
-lifeblood_analyze projectPath="/my/project"                    -> full analysis (~14-34 s depending on workspace size)
-lifeblood_analyze projectPath="/my/project" incremental=true   -> seconds when nothing changed; dirty source modules re-analyze by content hash
+lifeblood_analyze projectPath="/my/project"                    -> full analysis
+lifeblood_analyze projectPath="/my/project" incremental=true   -> incremental work or explicit rejection/fallback receipt
 ```
+
+An API change does not automatically cascade through unchanged dependent modules.
+Use an explicit full analyze after cross-module API changes; setting
+`allowFullFallback:true` alone does not detect that dependency change.
 
 ### Caller-owned scope policy (`INV-ANALYZE-FALLBACK-001`)
 
@@ -360,5 +376,14 @@ not proof that a changed line caused an error reported somewhere else.
 ## Truth envelope on every read-side response
 
 Every read-side tool response ships a top-level `envelope` field (`INV-ENVELOPE-001`):
+
+- `truthTier`: `Semantic` (compiler-grade), `Derived` (graph rollup over semantic edges), `Heuristic` (advisory only), `Inferred` (synthesized from secondary signals like file-level edges).
+- `confidence`: `Proven` (deterministic), `Advisory` (correct most of the time, with documented FP classes), `Speculative` (ranked suggestions).
+- `stalenessSeconds`: wall-clock between the loaded graph's analyze time and now.
+- `filesChangedSinceAnalyze`: observed newer-mtime or missing paths within the bounded tracked parsed-source sample; not a complete content-drift count.
+- `freshness`: observation method, scope, timestamp and checked/unchecked/unavailable/missing/changed path counts. An incomplete sample with zero observed changes does not prove current input equality. Use `lifeblood_snapshots checkDrift:true` for canonical input recapture.
+- `limitations[]`: per-tool documented FP/FN classes (e.g. `lifeblood_dead_code` lists Unity reflection dispatch and runtime entry points).
+- `snapshotId` / `analysisGeneration`: exact publication identity and the human-friendly within-daemon generation used by this response.
+- `analysisIdentity`: bounded canonical workspace/spec/source/rule identity; use its `analysisKey` for equality/provenance and `snapshotId` for one exact publication.
 
 Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into `LifebloodResponseDecorator` at composition time. Adding a new read-side tool without a classification fails the registry ratchet test.
