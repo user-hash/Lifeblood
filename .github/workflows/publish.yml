@@ -65,7 +65,7 @@ jobs:
         run: dotnet run --project src/Lifeblood.CLI --no-build --configuration Release -- verify --incremental --project .
 
       - name: Pack CLI tool
-        run: dotnet pack src/Lifeblood.CLI/Lifeblood.CLI.csproj --no-build --configuration Release --output ./artifacts
+        run: dotnet pack src/Lifeblood.CLI/Lifeblood.CLI.csproj --configuration Release --output ./artifacts
 
       - name: Pack MCP server tool
         run: dotnet pack src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj --no-build --configuration Release --output ./artifacts
