@@ -95,7 +95,7 @@ the MCP base; standalone CLI analysis remains a separate batch workflow.
 
 Current C# 15 acceptance covers unions, closed hierarchies, extension indexers,
 conditional indexer binding, collection arguments and labeled loop jumps through
-validated graph analysis and host emit. See the [language/pipeline acceptance](docs/investigations/lifeblood-extension-pipeline-2026-11-12.md)
+validated graph analysis and host emit. See the [language/pipeline acceptance](docs/VERIFICATION.md)
 for tested shapes and limits. Runtime Async remains disabled in production after
 measurement; the runtime upgrade alone is not a performance claim.
 

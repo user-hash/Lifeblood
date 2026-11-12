@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Complete scope: [changes since public 0.7.13](docs/investigations/lifeblood-release-scope-2026-11-12.md),
+Complete scope: [changes since public 0.7.13](docs/VERIFICATION.md),
 including the full commit classification and explicitly deferred work.
 
 ### Added
@@ -15,7 +15,7 @@ including the full commit classification and explicitly deferred work.
 - `lifeblood_duplicates` reports repeated complete executable token bodies with
   exact token comparison, canonical owners, profile/file/module scope and hard
   scan/result bounds. Results are advisory; matching syntax does not prove
-  equivalent behavior or safe deletion. See [qualification](docs/investigations/lifeblood-duplicates-2026-10-01.md).
+  equivalent behavior or safe deletion. See [qualification](docs/VERIFICATION.md).
 
 - Owner-scoped content receipts capture or verify an explicit file set without
   refreshing the publication. Guarded compile checks admit those exact bytes
@@ -35,19 +35,19 @@ including the full commit classification and explicitly deferred work.
   imported settings and SDK/compiler identity in an isolated MSBuild child.
   Content-authoritative import/SDK drift enters the existing fallback policy.
   Generated Unity descriptors keep their declared options. This does not add
-  complete MSBuild or multi-target-project conformance. See [SDK facts](docs/investigations/lifeblood-sdk-language-facts-2026-10-01.md).
+  complete MSBuild or multi-target-project conformance. See [SDK facts](docs/VERIFICATION.md).
 
 - Child SDK/ScriptHost processes have bounded pipe draining and termination;
   compile-check emission avoids an extra PE-buffer copy and private streaming
   work releases state under its existing lifecycle. Runtime Async remains
   disabled after comparable 1/4-client measurements found regressions; upgrading
   the host does not by itself promise a speedup. See
-  [process, emission and async qualification](docs/investigations/lifeblood-process-stream-async-2026-11-10.md).
+  [process, emission and async qualification](docs/VERIFICATION.md).
 
 - The exact `local development build` callback/effect/native-source/compiler-validation bundle
   is installed and qualified through real native app and Unity consumers on one
   shared base. Backend reconnection and bounded acceptance are recorded in the
-  [deployment report](docs/investigations/lifeblood-effects-bundle-2026-11-11.md).
+  [deployment report](docs/VERIFICATION.md).
 
 - Method-effect reports can join caller-reported native build/debug
   document identities from `runtimeEvidencePath` to SHA-1/SHA-256 of the same
@@ -55,7 +55,7 @@ including the full commit classification and explicitly deferred work.
   shared; missing, conflicting, mismatched and incomplete evidence remains
   explicit. No native artifact authentication, runtime/timing proof, second scan
   or retained base is implied. See
-  [native/source qualification](docs/investigations/lifeblood-native-source-2026-11-11.md).
+  [native/source qualification](docs/VERIFICATION.md).
 
 - Compile checks now report the executing host compiler and index
   diagnostic location/phase attribution. Locationless owning-module emitter
@@ -64,7 +64,7 @@ including the full commit classification and explicitly deferred work.
   validation remains separate. Equivalent C#9 controls reproduce the reported
   CS0012 compiler difference under both Roslyn 5.9 and 5.12 versus Unity's 4.10;
   no project dependency or compiler fallback was added. See
-  [compiler validation](docs/investigations/lifeblood-compiler-validation-2026-11-11.md).
+  [compiler validation](docs/VERIFICATION.md).
 
 - `lifeblood_method_effects` exposes bounded operation/callback,
   deferred-body and supported direct/local transitive evidence with explicit
@@ -72,21 +72,21 @@ including the full commit classification and explicitly deferred work.
   and carry retained compiler-source checksums; read-modify-write access modes
   are explicit. The Unity wrapper and canonical/snapshot/batch lanes share the
   same operation port. Exact `local development build` package/native/Unity deployment passed;
-  see [method-effect source qualification](docs/investigations/lifeblood-method-effects-2026-11-11.md).
+  see [method-effect source qualification](docs/VERIFICATION.md).
 
 - Source-qualified operation facts now preserve dynamic/pointer call occurrences,
   callback local/event binding, conditional receivers and explicit dispatch kind.
   Opaque callable keys distinguish deferred/nested bodies across declaration
   schemas without changing graph addresses or retaining another semantic base.
   The consumer view is recorded above; `local development build` deployment passed. See
-  [callback assessment and source qualification](docs/investigations/lifeblood-callback-evidence-2026-11-11.md).
+  [callback assessment and source qualification](docs/VERIFICATION.md).
 
 - The attach-only inspection helper now joins CLI/runtime/Roslyn, SDK probe,
   live daemon/publication and server-catalog receipts. Caller-provided client and
   Unity bridge observations remain separate from live server facts. Identity
   subprocesses have bounded output/deadlines and owned cleanup; no analysis,
   daemon start or global runtime/PATH change is used. See
-  [doctor qualification](docs/investigations/lifeblood-doctor-2026-11-11.md).
+  [doctor qualification](docs/VERIFICATION.md).
 
 - MCP connections may negotiate structured tool results independently of v1/v2
   declaration IDs. Modern dual output preserves existing text consumers;
@@ -94,15 +94,15 @@ including the full commit classification and explicitly deferred work.
   preserves errors, evidence and compact file-scoped batch rows without changing
   the shared publication. Opaque/oversized results keep their original content.
   The Unity bridge accepts modern negotiation and legacy fallback. See
-  [qualification and format-cost measurements](docs/investigations/lifeblood-structured-results-2026-11-11.md);
-  installed `local development build` native/Unity acceptance passed in the [bundle report](docs/investigations/lifeblood-output-bundle-2026-11-11.md).
+  [qualification and format-cost measurements](docs/VERIFICATION.md);
+  installed `local development build` native/Unity acceptance passed in the [bundle report](docs/VERIFICATION.md).
 
 - `lifeblood_diagnose mode:environment` observes one retained module/file's actual
   compiler options, parse scopes and bounded references without diagnostics or
   refresh. Snapshot descriptor/profile provenance distinguishes host compiler
   identity from target coverage and runtime compatibility. Source acceptance is
-  recorded in the [environment report](docs/investigations/lifeblood-compilation-environment-2026-11-11.md);
-  installed `local development build` qualification passed in the [bundle report](docs/investigations/lifeblood-output-bundle-2026-11-11.md).
+  recorded in the [environment report](docs/VERIFICATION.md);
+  installed `local development build` qualification passed in the [bundle report](docs/VERIFICATION.md).
 
 - Lifeblood targets .NET 11 with Roslyn 5.12.0-1.26529.118 and C# 15 in the
   locally qualified builds; Unity's compiler remains independent. C# 14 qualification covers
@@ -120,29 +120,29 @@ including the full commit classification and explicitly deferred work.
 - Clean build/release workflows let CLI packaging produce its `any` and
   `win-x64` outputs instead of assuming a RID-neutral solution build supplied
   them. The previous `pack --no-build` command fails on a clean checkout; see
-  [reproduction and CI qualification](docs/investigations/lifeblood-ci-packaging-2026-11-12.md).
+  [reproduction and CI qualification](docs/VERIFICATION.md).
 - User-defined operator and conversion edges follow compiler-bound operations,
   including checked/lifted, increment/compound and implicit conversions.
   Instance/static-abstract declaration flags and enclosing callable ownership
   remain accurate. Built-in arithmetic does not invent a method edge. See
-  [operator qualification](docs/investigations/lifeblood-operator-correctness-2026-10-01.md).
+  [operator qualification](docs/VERIFICATION.md).
 - Strict MCP parsing uses native duplicate-property and unknown-envelope-member
   rejection through the production generated context. Nested opaque JSON is
   checked, tool arguments retain binder ownership, and malformed input preserves
   the existing JSON-RPC parse-error contract. The benchmark now exercises that
-  parser directly; PipeReader remains experimental. See [parser qualification](docs/investigations/lifeblood-native-json-2026-10-01.md).
+  parser directly; PipeReader remains experimental. See [parser qualification](docs/VERIFICATION.md).
 - Tree-local canonical-ID memoization and compiler-bound reference candidate
   filtering remove repeated formatting/binding work without changing complete
   graph results or reference locations. Input-identity and service-construction
-  phases use the existing telemetry authority. See [controlled comparisons](docs/investigations/lifeblood-performance-followup-2026-10-01.md).
+  phases use the existing telemetry authority. See [controlled comparisons](docs/VERIFICATION.md).
 
 - File compile checks preserve the resolved tree's own parse options and accept
   explicitly empty source without reusing retained declarations. File/snippet
   define receipts describe the actual parse scope; module/project diagnostics
   union all selected trees. Both valid before-fix regressions and the guarded
   empty-capture handler path are qualified in the
-  [input-contract report](docs/investigations/lifeblood-file-input-contract-2026-11-11.md).
-  Installed `local development build` acceptance passed in the [bundle report](docs/investigations/lifeblood-output-bundle-2026-11-11.md).
+  [input-contract report](docs/VERIFICATION.md).
+  Installed `local development build` acceptance passed in the [bundle report](docs/VERIFICATION.md).
 
 - Automatic compile refresh exposes outcome, mode, publication IDs, first
   observed input trigger and source-work summary. Full fallback publishes its
@@ -152,7 +152,7 @@ including the full commit classification and explicitly deferred work.
   Windows CLI packages include the .NET runtime, preserving the .exe entry point
   under incorrect inherited runtime roots. Installed .48 native/Unity acceptance
   and all discovered test cases are qualified in the
-  [remaining-repair report](docs/investigations/lifeblood-remaining-repairs-2026-11-11.md).
+  [remaining-repair report](docs/VERIFICATION.md).
 
 - Unchanged incremental scans reuse their immutable graph. Candidate file facts
   use copy-on-write, repeated edge addresses share candidate-scoped strings,

@@ -130,7 +130,7 @@ calling an MCP tool or changing preferences. A busy or uninitialized bridge stay
 explicit. The doctor labels the receipt as caller-provided and preserves its age;
 it does not independently recapture another client's state. The bridge's cached
 initialized flag does not prove present daemon liveness, and its handshake server
-identity is not retained. See [qualification and remaining limits](investigations/lifeblood-doctor-2026-11-11.md).
+identity is not retained. See [qualification and remaining limits](VERIFICATION.md).
 
 ### Consume structured tool results
 
@@ -157,7 +157,7 @@ fallback; use an existing scoped/compact tool query rather than losing data.
 
 Structured output reduces client parsing work. Dual output increases wire bytes;
 structured-only saves the redundant text copy but still costs server parsing and
-serialization. See [qualification and measurements](investigations/lifeblood-structured-results-2026-11-11.md)
+serialization. See [qualification and measurements](VERIFICATION.md)
 and the [MCP tool-result contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#structured-content).
 
 ### Identify the CLI independently of the service
@@ -184,7 +184,7 @@ separate from the CLI's reported runtime. Check all PATH matches when an older
 global installation shadows the intended build. Custom `--tool-path` or
 `DOTNET_CLI_HOME` installations may use another global-tools directory. Local
 SDK selection and the unreproduced earlier evaluation timeout are recorded in the
-[qualified scope and remaining diagnostic gap](investigations/lifeblood-output-bundle-2026-11-11.md).
+[qualified scope and remaining diagnostic gap](VERIFICATION.md).
 For example, Codex supports an explicit command and per-server environment in
 project `.codex/config.toml` ([official MCP configuration](https://developers.openai.com/codex/mcp)):
 

@@ -52,3 +52,6 @@ docs/AUDIT_HOLES.md
 docs/audit/
 docs/DOGFOOD_FINDINGS.md
 docs/IMPROVEMENT_INBOX.md
+
+# Local investigation output; maintained public docs contain the findings.
+/docs/investigations/

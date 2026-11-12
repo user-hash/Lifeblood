@@ -106,6 +106,21 @@ Adapters and Connectors depend inward on Application ports. They never reference
 
 ## Assemblies
 
+| Assembly | Role | Dependencies |
+|----------|------|-------------|
+| **Lifeblood.Domain** | Graph model, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, rules, results (incl. `EnumCoverageReport`, `DiagnosticsReport`, `TestImpactReport`, `CompileCheckResult`, `AsmdefBoundaryReport`), ResponseEnvelope + EnvelopeClassification, `PathClassification/PathBucketClassifier` (Production / Test / Editor / Generated / Vendored SSoT, `INV-PATHBUCKET-SHARED-001`), `PathClassification/PathGlobMatcher` (shared POSIX full-path glob grammar), `Graph/SymbolPropertyKeys` (writer↔consumer string-key contract, including `fieldType`, `constantValue`, and `referenceClosure`) | None |
+| **Lifeblood.Application** | Port interfaces (live count in [`STATUS.md`](STATUS.md)) for workspace analysis, compilation, queries, source control, source evidence, runtime evidence, telemetry, and response decoration. Owns `AnalyzeWorkspaceUseCase`, `GenerateContextUseCase`, snapshot preconditions, and the graph-only `WorkspaceSnapshotCatalog`; implementation and host policy stay outside. | Domain |
+| **Lifeblood.Adapters.CSharp** | Roslyn reference adapter. `RoslynWorkspaceAnalyzer` (analyze, incremental, asmdef-edit-aware, excludePath-scope-aware, content-hash incremental, `authoritativeChangedFiles` source-scan narrowing), `RoslynModuleDiscovery` (csproj parse -> typed `ModuleInfo` with `BclOwnership`, `ReferenceClosure`, `AllowUnsafeCode`, `ImplicitUsings`, `LangVersion`, `Nullable`, `NoWarn`, `DefineConstants`; emits module `Properties["referenceClosure"]` for graph-only consumers), `RoslynCompilationHost` (compile-check, diagnose, enum-coverage), `Internal.ModuleCompilationBuilder` (threads every csproj-driven compilation fact into `CSharpParseOptions` / `CSharpCompilationOptions` - `LangVersion` / `Nullable` warning level / `NoWarn` / `DefineConstants` via FOLLOWUP-001..003 + BUG-2, and applies analyze `excludePaths` before syntax-tree parsing), `Internal.SourceContentHasher` (mtime-prefilter confirmation), `Internal.SourceGeneratorRunner` (serialized analyzer loading + generator-driver execution), symbol/edge extraction (records `Properties["attributes"]`, `Properties["baseType"]`, `Properties["baseTypeChain"]`, `Properties["classification"]`, field `Properties["fieldType"]`, and const-field `Properties["constantValue"]`), `RoslynSemanticView` (sandbox helpers `Help` / `SymbolsOfKind(string)` / `EdgesOfKind(string)`), `CanonicalSymbolFormat` (parameter-type display SSoT), `CsprojPaths` (cross-platform csproj path normalization), `SnippetWrapper` (compile_check auto-wrap), `UnityReachabilityAdapter` (entrypoint attributes + MonoBehaviour magic methods + transitive base-chain walk + UnityEvent persistent calls from Unity YAML), `UnityAssemblyResolver` (`Library/ScriptAssemblies` + `Library/Bee/artifacts` + `Library/PackageCache` DLL probe). | Application, Roslyn |
+| **Lifeblood.Adapters.Performance** | Stateless generic JSON/CSV and structural Unity ProfilerRecorder import into neutral request-local runtime evidence. Proprietary profiler binaries, file I/O, capture retention, and comparison policy stay outside the adapter. | Application |
+| **Lifeblood.Adapters.JsonGraph** | JSON import/export with round-trip fidelity. | Application |
+| **Lifeblood.Adapters.Git** | Infrastructure adapter for `ISourceControlSnapshotProvider`. Resolves a caller-selected repository root, commit hashes, latest reachable stable tag, dirty state/count/sample, and classified bounded failures with timeout and non-interactive environment policy. | Application |
+| **Lifeblood.Connectors.ContextPack** | AgentContextGenerator, InstructionFileGenerator, ReadingOrderGenerator. | Application |
+| **Lifeblood.Connectors.Mcp** | Query implementations for lookup, dependencies, impact, search, resolution, dead-code advice, partial views, authority, and response envelopes. `LifebloodInvariantProvider` walks the project `CLAUDE.md`, `AGENTS.md`, and `docs/invariants/**/*.md` tree through a timestamp-invalidated cache. `McpProtocolSpec` owns shared JSON-RPC wire constants. | Application |
+| **Lifeblood.Analysis** | Stateless derived analysis: coupling, blast radius, cycles, tiers, test impact, authority coverage, asmdef boundaries, and rules. Also owns `ContractAuditEngine`, `DiagnosticOwnershipClassifier`, `EvidenceBaselineDriftEvaluator`, and `PerformanceEvidenceAnalyzer`; all operate on selected graph, compiler, source, Git, or capture evidence without retaining another semantic base. | Domain |
+| **Lifeblood.Server.Mcp** | MCP composition root and runtime host. Stdio clients either host locally or proxy to the canonical-workspace shared daemon. `GraphSession`, `WorkspaceSnapshotCatalog`, and `AnalysisRequestCoordinator` own atomic publication, exact leases, bounded graph history, request coalescing, and cancellation isolation. The server validates tool inputs, decorates successful responses, and delegates compiler, source-control, source-evidence, and performance work through ports. It does not launch a profiler or retain runtime captures. Live tool counts remain in [`STATUS.md`](STATUS.md). | Application, Adapters.CSharp, Adapters.Performance, Adapters.Git, Connectors |
+| **Lifeblood.ScriptHost** | Process-isolated code execution harness. Separate process, no shared memory. Zero ProjectReferences (INV-SCRIPTHOST-001). | Roslyn Scripting only |
+| **Lifeblood.CLI** | Composition root: AnalysisPipeline, RulesLoader, thin dispatch. | Everything |
+
 ## Unity Package Visibility Boundary
 
 Unity package source visibility is a C# adapter fact projected through existing
@@ -204,26 +219,19 @@ Ordinary `lifeblood_execute` uses the in-process Roslyn executor over retained
 workspace state. The optional `ProcessIsolatedCodeExecutor` API requires a
 caller-supplied ScriptHost. It selects the resolved .NET host and confirms child
 exit after timeout; this API is not the default MCP execution route or a security
-sandbox. See [isolated-host qualification](investigations/lifeblood-isolated-host-2026-11-12.md).
+sandbox. See [isolated-host qualification](VERIFICATION.md).
 
 ## Domain Model
 
 The domain is pure. No Roslyn, no JSON, no System.IO.
 
 - **Symbol.** A node: module, file, namespace, type, method, field, property (including events via `isEvent` and indexers via `isIndexer`), parameter.
-
 - **Edge.** A directed relationship: contains, dependsOn, implements, inherits, calls, references, overrides. Carries an optional `CallSite` (`FilePath` / `Line` / `Column` / `EndLine` / `EndColumn` / `ContainingSymbolId`) pinpointing the authoring expression for expression-derived edges; null for graph-derived edges (module DependsOn, type Inherits without a surfaced clause node).
-
 - **CallSite.** Domain value-object lifting authoring provenance into the graph so downstream tools can answer "where in source does X depend on Y?" without re-reading files.
-
 - **Evidence.** Provenance: syntax, semantic, or inferred. Plus the adapter name and a `ConfidenceLevel`.
-
 - **GraphBuilder.** Constructs graphs, synthesizes Contains edges from ParentId, deduplicates symbols, derives file-level edges from symbol-level edges (`INV-FILE-EDGE-001`), sorts output deterministically.
-
 - **GraphValidator.** Rejects malformed graphs: dangling edges, duplicates, orphaned parents, self-references.
-
 - **SemanticGraph.** The immutable graph with thread-safe lazy indexes.
-
 - **AnalysisSnapshot** (adapter-level). Caches per-file extraction results for incremental re-analyze. Source content hashes confirm mtime candidates; descriptor, asmdef and reference content hashes preserve input identity. Timestamp-only descriptor churn does not imply changed semantics (`INV-BCL-005`).
 
 Properties are `IReadOnlyDictionary` on the public surface. The graph is read-only after construction.
@@ -231,6 +239,16 @@ Properties are `IReadOnlyDictionary` on the public surface. The graph is read-on
 ## Port Interfaces
 
 ### Left Side (Language Adapters)
+- `IWorkspaceAnalyzer`. Primary entry point. Takes `projectRoot` plus config and returns a `SemanticGraph`.
+- `IModuleDiscovery`. Module and project discovery, returns `ModuleInfo[]`. Each `ModuleInfo` carries `BclOwnership`, `AllowUnsafeCode`, `ImplicitUsings`, `LangVersion`, `Nullable`, `NoWarn`, `DefineConstants`, `CompilerFeatures`, and `Dependencies` parsed from csproj (csproj-driven compilation facts, `INV-COMPFACT-001..003`).
+- `ICompilationHost`. Diagnostics, compile-checking, reference finding, enum-coverage (Roslyn-backed). `FindReferences` has an explicit `IncludeDeclarations` option. `GetDiagnosticsReport(DiagnosticsRequest)` accepts a typed scope filter (`FilePath`, `ModuleName`) and returns `DiagnosticsReport { Diagnostics, DefinesActive, ResolvedModule }` so every response surfaces the preprocessor scope it was bound under (`INV-DIAGNOSTIC-ENVELOPE-DEFINES-001`). `CompileCheck` auto-wraps bare statement snippets via `Internal.SnippetWrapper` so library modules accept them; the result carries `DefinesActive` for the same reason. `GetEnumCoverage(enumTypeId)` returns per-member `EnumCoverageReport { Members[], UnproducedCount, UnreferencedCount }` classified by parent syntax — `produced` / `consumedComparison` / `consumedSwitch` / `other` — answering "which values are checked-for but never assigned?" off one call (`INV-ENUM-COVERAGE-001`).
+- `ICodeExecutor`. Executes code snippets against the loaded workspace. Typed `Execute(CodeExecutionRequest)` overload carries a `TargetProfile` compatibility hint; `host` is the only execution profile because in-process scripts share retained Roslyn workspace state. Non-host hints run against the host scripting BCL and surface an explicit limitation on `TargetRuntimeWarnings`. The existing `Execute(string,string[],int)` overload is preserved.
+- `IRuntimeAssemblyResolver`. Returns additional DLL probe paths plus optional diagnostics. Reference adapter `UnityAssemblyResolver` scans Unity's `Library/` directory tree. `Internal.ScriptReferenceSetBuilder` is the single admission seam that combines host BCL, retained workspace compilations, runtime probe DLLs, and script-globals assemblies while filtering native PEs, runtime BCL/contract DLLs, duplicate assembly identities, and assemblies already represented by retained compilations. Closes the 'execute cannot reach UnityEngine types' class without letting Unity player BCL artifacts poison the host script compilation.
+- `IWorkspaceRefactoring`. Rename (returns edits, does NOT apply), and format.
+- `IGraphImporter`. Reads a stream into a `SemanticGraph` via the JSON protocol.
+- `IGraphExporter`. Writes a `SemanticGraph` to a stream.
+- `IPerformanceEvidenceImporter`. Parses one bounded caller-supplied generic JSON/CSV or structural Unity ProfilerRecorder document into neutral request-local capture records. It performs no file I/O and retains no runtime evidence.
+- `IDefineProfileResolver`. Resolves the set of `DefineProfile` build configurations for a project root (e.g. Editor + Player + Standalone for Unity). Drives multi-define union analyze so per-edge `Edge.Profiles[]` provenance survives the union dedup (`INV-MULTI-DEFINE-WRITESIDE-001`, multi-define union plan). Reference adapter: `UnityDefineProfileResolver`.
 
 ### Infrastructure
 - `IFileSystem`. Filesystem abstraction for testability.
@@ -370,7 +388,6 @@ Architecture rules are not just documented. They are tested AND queryable:
 - 11 frozen ADRs in `docs/ARCHITECTURE_DECISIONS.md`
 - GraphValidator runs on every graph before analysis
 - Rule packs (hexagonal, clean-architecture, lifeblood) validate boundaries
-
 - **Typed invariants under `docs/invariants/`** (8 domain files + INDEX; live count + category coverage in [`STATUS.md`](STATUS.md)), queryable at runtime via `lifeblood_invariant_check`: get the full body, title, and source line for any invariant by id; audit for duplicates; list every declared id. The walker also picks up `<root>/CLAUDE.md` and `<root>/AGENTS.md` if they declare additional invariants.
 - DocsTests ratchets compare STATUS anchors with live source, discovered tests and invariant audit, including `skippableFactCount` (declared toolchain-gated tests, not a promise about runtime skips).
 - CHANGELOG link-reference ratchet: every `## [X.Y.Z]` heading must have a matching `[X.Y.Z]: ...` link reference (`INV-CHANGELOG-001`)

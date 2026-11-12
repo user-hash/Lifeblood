@@ -40,7 +40,7 @@ retained compiler text from the same selected scan. `MatchedSourceChecksum`
 describes a digest comparison; `evidenceOrigin:CallerReported` and
 `nativeArtifactVerified:false` remain explicit. It verifies neither a native/PDB
 file nor current raw source, build defines, machine-code behavior or timing.
-See [native/source qualification](investigations/lifeblood-native-source-2026-11-11.md).
+See [native/source qualification](VERIFICATION.md).
 
 ## Write-side (compiler-as-a-service)
 
@@ -328,7 +328,7 @@ Use `hasSourceLocation` before interpreting legacy line/column placeholders.
 No diagnostic is removed and no additional baseline emit or retained cache is
 introduced. A host emit result does not qualify a Unity/Player build; different
 compiler versions can disagree even at the same C# language setting. See
-[the compiler/attribution investigation](investigations/lifeblood-compiler-validation-2026-11-11.md).
+[the compiler/attribution investigation](VERIFICATION.md).
 
 `lifeblood_diagnose` and `lifeblood_compile_check` share one ownership resolver (`INV-COMPILATION-FILE-OWNERSHIP-001`). Exact normalized paths outrank suffix matches. If the best path matches more than one loaded compilation, neither tool selects the first module: `fileOwnership.outcome` is `Ambiguous`, `candidateModules` lists the stable choices, and the caller must pass `moduleName` or a more specific path. A pinned module miss remains `NotInModule`; an unknown module is `ModuleNotFound`; a path absent from every compilation is `NotFound` and compile-check composes the existing stale-descriptor guidance at the disk-aware handler boundary.
 

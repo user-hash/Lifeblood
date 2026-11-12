@@ -20,6 +20,10 @@ build. Compare identical inputs before making performance claims, and bound
 diagnostic processes with terminal cleanup. One shared semantic base can use
 multiple processes, CPU cores and GC heaps.
 
+Keep raw captures, diagnostic output and session investigation journals outside
+the repository in the configured scratch location. Commit concise project docs,
+tests and reproduction commands; do not use GitHub as diagnostic storage.
+
 Current versions, verification and known limits belong in
 [STATUS](docs/STATUS.md) and [the tracking ledger](devmemory/lifeblood-tracking.md).
 Keep README, setup/tool guides, this instruction file, the MCP skill/routing and
