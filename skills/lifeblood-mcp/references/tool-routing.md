@@ -56,6 +56,12 @@ target write and returns the post-edit receipt. Obtain project source admission
 first; separate verify-then-write does not prevent races. See
 `docs/OWNER_SCOPED_WORK.md` for bounds, failure handling and exclusions.
 
+After coordinated cross-file/API edits, analyze the accepted changes before
+checking dependent files. `compile_check(filePaths:...)` overlays each file on
+the retained baseline independently; a new member in another unrefreshed file
+can therefore correctly appear missing. Refreshing dependencies and accepting
+the new publication is distinct from replacing a failed byte expectation.
+
 ## Specialized Analysis
 
 | Need | Tool | Notes |

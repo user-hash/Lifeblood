@@ -89,6 +89,39 @@ The receipt is evidence at commit, not a lasting reservation after handles close
 
 ## Concurrent-work contract
 
+For multiple agents using the same workspace:
+
+1. Join its shared MCP service and inspect live capabilities. Reuse a compatible
+   publication, recording its snapshot, profiles and any freshness limits. A CLI
+   analysis is a separate batch job rather than a connection to that publication.
+2. Agree on the intended source scope. Capture its pre-edit receipt before
+   preparing a replacement. On supported Windows existing-file writes, pass
+   that receipt and staged bytes to `apply-file` under the consumer's bounded
+   source admission; release that admission in `finally` before returning or
+   allowing an Editor reload. Ordinary unrelated work needs no standing hold.
+3. On an overlapping-byte conflict, read and reconcile the other change, then
+   deliberately recapture and restage. A new receipt alone never authorizes
+   overwriting content. For other writers, enforce their own conditional-write
+   contract; separate verify-then-write is insufficient.
+4. Compile using the successful writer's post-edit receipt, or capture the
+   intended post-edit bytes if another supported writer applied them. Supply
+   the publication precondition when the semantic baseline must be exact.
+   Unrelated source changes do not invalidate this content guard.
+5. Refresh the shared publication after coordinated cross-file/API edits before
+   checking dependent files. A compile batch checks individual file overlays
+   against retained dependencies; it is not a joint multi-file candidate. For
+   example, a newly added member in file A remains unavailable to file B's
+   overlay until ordinary analysis incorporates A. Read the refresh receipt
+   and re-evaluate new snapshot identity before retrying pinned work.
+
+This procedure reduces avoidable conflicts while preserving content and
+publication guards. It does not make overlapping edits automatically mergeable
+or provide dependency-scoped freshness. Select only needed define profiles;
+historical graph snapshots do not carry live Roslyn services. One semantic base
+does not imply one process, CPU core or GC heap. A tool timeout alone does not
+prove an asynchronous operation stopped: follow its existing handle/receipt
+before submitting a replacement or performing maintenance.
+
 A typical diagnostic workflow captures the intended post-edit content receipt,
 then compiles with that expectation. Another agent editing unrelated files does
 not break the content guard. Changes to an overlapping file reject before

@@ -27,6 +27,23 @@ GitHub workflows consistent when behavior changes. Follow
 [the release checklist](docs/RELEASE.md) for release preparation; local green
 checks do not establish remote CI or publication readiness.
 
+For concurrent edits, follow [owner-scoped work](docs/OWNER_SCOPED_WORK.md):
+capture the intended files, conditionally apply supported existing-file writes,
+and compile the returned bytes against an explicitly accepted publication.
+Reconcile overlapping-content conflicts before retrying. File receipts do not
+certify dependencies or reserve the workspace; unrelated work can continue.
+Follow the consumer's operation-scoped admission and release rules for Editor
+source mutations. Shared Lifeblood support does not change a repository's
+delegation policy or authorize spawning agents.
+
+The current host targets .NET 11 and SDK-matched Roslyn with C# 15 support;
+consumer language, references and defines still come from its own descriptors.
+Use environment observation and host validation receipts before choosing syntax.
+After coordinated cross-file/API changes, refresh the shared publication before
+checking dependent files: file batches overlay each file individually on the
+retained baseline. Keep Runtime Async a measured, opt-in experiment; the current
+production decision is disabled. Do not infer runtime gains from retargeting.
+
 ## Architecture
 
 ```

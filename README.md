@@ -87,6 +87,18 @@ a full fallback. Pin snapshot/generation when several reads must describe the
 same publication. [Owner-scoped work](docs/OWNER_SCOPED_WORK.md) provides exact
 file-byte receipts and guarded compile admission for concurrent edits.
 
+For several agents, follow the [concurrent-work procedure](docs/OWNER_SCOPED_WORK.md#concurrent-work-contract):
+capture an explicit scope, use conditional application, reconcile overlaps,
+and refresh the shared publication after coordinated API changes. Individual
+compile-check overlays do not jointly install a multi-file edit. Agents reuse
+the MCP base; standalone CLI analysis remains a separate batch workflow.
+
+Current C# 15 acceptance covers unions, closed hierarchies, extension indexers,
+conditional indexer binding, collection arguments and labeled loop jumps through
+validated graph analysis and host emit. See the [language/pipeline acceptance](docs/investigations/lifeblood-extension-pipeline-2026-11-12.md)
+for tested shapes and limits. Runtime Async remains disabled in production after
+measurement; the runtime upgrade alone is not a performance claim.
+
 ### CLI (for CI and scripting)
 
 ```bash

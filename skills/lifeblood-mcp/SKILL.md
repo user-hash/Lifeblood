@@ -13,6 +13,12 @@ Prefer Lifeblood answers over text search when correctness depends on compiler k
 
 ## Session Start
 
+For concurrent source edits, read `docs/OWNER_SCOPED_WORK.md`. Use explicit
+owner-scoped receipts and supported conditional writes, reconcile overlaps,
+and refresh retained dependencies after coordinated API changes. File-byte
+guards tolerate unrelated edits but do not certify dependency freshness or
+reserve the Editor. This capability does not authorize agent delegation.
+
 ## Tool Routing
 
 Read `references/tool-routing.md` when choosing among Lifeblood tools, building a workflow for a larger change, or explaining tool choice to another agent.
@@ -61,6 +67,7 @@ Use the Unity bridge tools when working inside Unity MCP, but keep the same sema
 
 - Do not cite stale docs as live truth when `lifeblood_capabilities` or schemas disagree.
 - The host compiler/language version does not upgrade the analyzed project's language or target runtime. Host emit is separate from a Unity/Player/Burst build; inspect `validation` and run the consumer's appropriate build/tests.
+- Current .NET/Roslyn/C# qualification is recorded in `docs/STATUS.md`. Observe the consumer's effective options with `diagnose(mode:"environment")`; do not raise its language version just because the host supports C# 15. Runtime Async remains disabled in production after measured qualification; re-evaluate it only with comparable workloads.
 - Shared semantic-base counts are ownership evidence, not a CPU-core, GC-heap or process-memory count. Bound diagnostic captures and distinguish allocations, rooted objects, unreachable garbage, free heap and native/runtime memory before proposing a retention fix.
 - Do not treat heuristic/advisory tools as deletion authority by themselves.
 - Do not use write-side tools after `readOnly:true` analysis unless the server reports they are available; recover with a full retained analyze when needed.
