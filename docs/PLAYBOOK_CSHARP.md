@@ -23,10 +23,11 @@ Every workflow below names:
 
 The shape of every workflow is the same — pick a starting point, route
 through the right tool, read the envelope, act. The envelope (`INV-ENVELOPE-001`,
-pinned by `INV-WIRE-CONTRACT-001`) is the single signal for "is this
-answer trustworthy enough to ship?" — `confidence: Proven` answers can
-be acted on; `Advisory` answers need a human review pass; `Speculative`
-answers need a different tool.
+pinned by `INV-WIRE-CONTRACT-001`) identifies the result's evidence and limits.
+`confidence: Proven` describes semantics for the selected publication, not
+current-disk equality, complete profile coverage, or a passing target build.
+Read `freshness` and the snapshot/profile identity before acting. Advisory and
+speculative results need further evidence appropriate to the limitation.
 
 ## 1. Triage a breakage
 
@@ -42,14 +43,17 @@ touches the failing surface.
    test / editor / generated bucket AND by module. Set `maxResults: 50`
    to bound the response.
 4. Read the envelope. `truthTier: Semantic` + `confidence: Proven` means
-   the dependency graph is compiler-grounded; act on it directly. If
-   `Limitations[]` carries a "stale" entry per `INV-ANALYZE-SKIPPED-PROMINENCE-001`,
-   run `lifeblood_analyze incremental:true` first.
+   the dependency graph is compiler-grounded for that publication. Read
+   `freshness` for observation coverage; an incomplete mtime sample does not
+   prove current content. Use `lifeblood_snapshots checkDrift:true` when exact
+   current input identity is needed, and refresh a changed publication before
+   relying on its dependencies.
 5. For each affected module, call `lifeblood_test_impact` with the same
    `symbolId` to get the `recommendedFilters[]` — paste-ready
    `FullyQualifiedName~<class>` strings for `dotnet test --filter`. Run
-   that filter; if it passes, the breakage is local. If it fails,
-   pivot to workflow §2.
+   that filter and record its covered scope. Passing selected tests does not
+   establish that all other behavior is unaffected. Investigate failures with
+   workflow §2 when module boundaries are involved.
 
 ## 2. Audit module boundaries
 
@@ -82,25 +86,27 @@ a missed reference is a silent breakage.
    you intend to rename. `includeDeclarations: true` adds every partial
    declaration to the result so you do not miss a partial-type
    declaration that lives in a different file.
-2. Read the envelope. `truthTier: Semantic` means Roslyn bound every
-   reference. If you see `confidence: Advisory` here, do not run a
-   rename — investigate the limitations first (typically a Unity
-   reflection roster the static analyzer cannot resolve).
-3. Run `lifeblood_rename` with the old + new canonical ids. The tool
-   returns the proposed text edits as a preview; review the diff in
-   your editor before applying.
+2. Read the envelope, retained profile and limitations. Semantic reference
+   binding does not discover every reflection or serialized call. Resolve
+   relevant advisory gaps before changing the public contract.
+3. Run `lifeblood_rename` with `symbolId` and `newName`. It returns proposed
+   text edits without applying them. Review the diff and source freshness
+   before applying through the consumer's source-admission procedure. Only
+   the retained profile's active sites participate; another profile's guarded
+   sites require separate qualified analysis and reconciliation.
 4. After applying, run `lifeblood_analyze incremental:true` and then
    `lifeblood_diagnose` on every module the rename touched. Zero
-   error-severity diagnostics in the canonical parity ID set is the
-   ship gate (per `INV-DIAGNOSTIC-PARITY-001`).
+   host diagnostics are one check. Run the consuming project's affected tests
+   and target compiler/build checks before shipping.
 
 ## 4. Inspect blast radius before a deletion
 
 You want to delete a class, method, or field. The reachability question
 must be answered statically before the deletion can ship.
 
-1. Call `lifeblood_dependants` on the canonical id. Empty result means
-   no source code references the symbol.
+1. Call `lifeblood_dependants` on the canonical id. An empty complete result
+   means the selected graph has no matching incoming references; reflection,
+   unresolved serialized calls and other profiles may remain outside it.
 2. Call `lifeblood_blast_radius` with `summarize: true` to fold popular
    transitive consumers. Pay attention to the `directDependants` field:
    non-zero means at least one symbol still touches it.
@@ -121,17 +127,26 @@ the file in-place against the module's actual reference set, including
 `<LangVersion>` / `<Nullable>` / `<NoWarn>` / `<DefineConstants>` /
 `InternalsVisibleTo`.
 
-1. Call `lifeblood_compile_check` with `filePath: <relative-path>` and
-   `code: <new-content>`. The tool resolves the owning module, parses
-   the replacement with the module's own `CSharpParseOptions`, swaps
-   the existing tree, and reports diagnostics that are NEW relative to
-   the unchanged baseline.
-2. Read the response. `success: true` + zero diagnostics is the ship
-   gate.
-3. If the response surfaces `CS1701` / `CS1702` / `CS0122` / similar
-   parity-class diagnostics, the gap is on Lifeblood's side (not
-   yours) — see `INV-DIAGNOSTIC-PARITY-001`. File a bug; in the
-   meantime cross-check with `dotnet build` and proceed.
+1. Use `filePath: <relative-path>` to check an existing on-disk file, or
+   `code: <snippet>` with an optional `moduleName` for an inline snippet.
+   `code`, `filePath` and `filePaths` are mutually exclusive. File mode
+   replaces the retained tree using its actual parse options. Requested-tree
+   diagnostics remain visible; unchanged binding diagnostics from other
+   trees are excluded. Locationless module-emitter errors can predate the edit.
+2. Read `success`, diagnostics, `validation`, module and profile receipts.
+   A successful host check is useful evidence, but does not qualify a Unity,
+   Player, Burst or other target build. Inspect the effective options with
+   `lifeblood_diagnose mode:"environment"` before choosing newer syntax.
+3. For suspected compiler-parity diagnostics, compare the same source and
+   references under the target compiler. A diagnostic ID alone does not prove
+   a Lifeblood bug. Record a reproducible difference before filing it, and run
+   the consuming project's affected tests/build as required.
+
+For concurrent edits, follow [owner-scoped work](OWNER_SCOPED_WORK.md): capture
+the intended files and use guarded checks with the returned content receipt and
+accepted publication. File batches overlay each file individually on the retained
+baseline; refresh after coordinated cross-file/API edits before checking their
+dependents. Content receipts do not certify dependency or profile freshness.
 
 ## 6. Recover from a merge conflict
 
@@ -157,7 +172,7 @@ much surface area each side affects before resolving by hand.
 because static analysis cannot see every reflection / Unity-dispatched
 caller. The triage workflow:
 
-1. Call `lifeblood_dead_code` with `ExcludePublic: false, ExcludeTests:
+1. Call `lifeblood_dead_code` with `excludePublic: false, excludeTests:
    false` to see the full advisory list.
 2. Filter to `bucket: Production` + `declarationOnly: false` —
    interface members and abstract methods are NOT routine deletion
@@ -169,8 +184,8 @@ caller. The triage workflow:
    (`INV-UNITY-001`, extended by `LB-FP-003`) already filters
    `[SettingsProvider]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`,
    `[MonoPInvokeCallback]`, full NUnit fixture lifecycle, and Unity
-   magic methods. Anything left in the findings list is a real
-   candidate.
+   magic methods. Remaining findings are still advisory candidates, including
+   unresolved reflection and serialized-dispatch cases.
 
 ## 8. Build a generated DSP or math probe
 
@@ -253,13 +268,13 @@ authorities.
 
 | Field | When to act |
 |-------|-------------|
-| `truthTier: Semantic` + `confidence: Proven` | Ship it. |
+| `truthTier: Semantic` + `confidence: Proven` | Use as compiler-grounded evidence for the selected publication; verify freshness, profile coverage and target checks. |
 | `truthTier: Semantic` + `confidence: Advisory` | Human review pass required. |
 | `truthTier: Derived` | The result was inferred from a different surface — name the inference in the PR description. |
 | `truthTier: Heuristic` / `Inferred` | Sanity-check with a second tool before acting. |
-| `Limitations[]` contains "stale" | Re-run `lifeblood_analyze`. |
-| `Limitations[]` contains "tracked file(s) changed" | Re-run `lifeblood_analyze`. |
-| `Limitations[]` contains "Unregistered tool" | File a Lifeblood bug — the tool registry has a gap. |
+| `freshness.status` reports incomplete observation | Inspect its coverage; use canonical drift checking when current input equality matters. |
+| `limitations[]` reports changed or stale inputs | Refresh the shared publication with the intended scope/fallback policy. |
+| Tool discovery or invocation disagrees | Check live capabilities, client schema and versions before filing a reproducible registry defect. |
 
 ## What this playbook does NOT cover
 

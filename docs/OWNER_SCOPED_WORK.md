@@ -60,7 +60,12 @@ the cross-daemon identity; generation alone is process-local.
 
 On Windows, `lifeblood apply-file` consumes the same receipt and a staged raw-byte
 replacement for one existing target. Save the capture response's `receipt` object
-as `before.json`, then run the explicit D: CLI installation:
+as `before.json`, then run the CLI installation you verified. From the project
+root, using staged files in a sibling directory:
+
+```powershell
+lifeblood apply-file --project . --target Assets/Piano.cs --receipt ../staged/before.json --replacement ../staged/Piano.cs.staged
+```
 
 The command opens every receipt file in deterministic order with
 [`FileShare.None`](https://learn.microsoft.com/en-us/dotnet/api/system.io.fileshare),
@@ -86,6 +91,11 @@ work. Hard process termination, power loss, preexisting writable memory mappings
 and nonstandard filesystem behavior are not covered. The command refuses other
 operating systems rather than claim equivalent mandatory sharing semantics.
 The receipt is evidence at commit, not a lasting reservation after handles close.
+
+Obtain any source admission required by the consuming project before invoking
+the writer. Release it through that project's existing ownership protocol. File
+receipts do not implement or replace an Editor/source operation gate or grant
+permission to edit another owner's scope.
 
 ## Concurrent-work contract
 

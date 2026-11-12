@@ -28,9 +28,9 @@ per connected client and one workspace daemon, as described below.
                                              └──────────────────────────┘
 ```
 
-**Lifecycle.** In ordinary stdio mode, the client spawns one `lifeblood-mcp` process and that process owns one initially empty session. The first call to `lifeblood_analyze` walks the project's csproj files, discovers modules, decides per-module BCL ownership from `<Reference>` elements, parses sources with Roslyn, builds the semantic graph, and caches the workspace and graph in memory. Every subsequent tool call in that process shares that loaded state by reference. There is no per-call recompile, no domain reload, no IDE round-trip.
+**Lifecycle.** In ordinary stdio mode, the client spawns one `lifeblood-mcp` process and that process owns one initially empty session. The first call to `lifeblood_analyze` walks the project's csproj files, discovers modules, decides per-module BCL ownership from `<Reference>` elements, parses sources with Roslyn, builds the semantic graph, and retains the workspace and graph. Subsequent tools share that publication. Ordinary graph reads do not recompile; compile-check, source refresh and scoped secondary-profile analysis can construct or emit compilations. Lifeblood does not require an IDE round-trip for those operations.
 
-**Memory.** Streaming compilation with downgrading compiles, extracts, then downgrades each module to a lightweight PE metadata reference (around 10 to 100 KB), so only one full Roslyn `Compilation` is held at once on the streaming path. Retained MCP sessions keep compilations in memory for write-side tools. With ordinary stdio, every MCP client has its own retained heap. With shared mode, those clients converge on one daemon-owned retained heap per workspace key. Historical catalog entries share immutable graph/analysis references and retain zero Roslyn services; pinned entries count toward the same hard bound. Use the `usage` block on every `lifeblood_analyze` response, `lifeblood_snapshots`, and the current receipts in [`STATUS.md`](STATUS.md) as the source of truth for a workspace's actual memory profile.
+**Memory.** Streaming compilation with downgrading compiles, extracts, then downgrades each module to a PE metadata reference, so only one full Roslyn `Compilation` is held at once on the streaming path. Metadata size depends on the module. Retained MCP sessions keep compilations in memory for write-side tools. With ordinary stdio, every MCP client has its own retained heap. With shared mode, those clients converge on one daemon-owned retained heap per workspace key. Historical catalog entries share immutable graph/analysis references and retain zero Roslyn services; pinned entries count toward the same hard bound. Use the `usage` block on every `lifeblood_analyze` response, `lifeblood_snapshots`, and the current receipts in [`STATUS.md`](STATUS.md) as the source of truth for a workspace's actual memory profile.
 
 **Tool availability and concurrency.** The read/write split is legacy retained-compilation compatibility metadata. The registry-owned `sessionRequirement`, `effect` and `sessionAccess` contracts drive actual availability and concurrency; snapshot reads derive from `Observe + SharedRead`. Use live `lifeblood_capabilities` for the running catalog, [`TOOLS.md`](TOOLS.md) for tool semantics and [`STATUS.md`](STATUS.md) for ratcheted counts instead of a second authored roster here.
 
@@ -85,16 +85,14 @@ If `lifeblood-mcp` is not found, check that `~/.dotnet/tools` (or the platform e
 
 Use the repository's PowerShell 7 helper when direct MCP tools are unavailable:
 
-Replace these example paths with your installation. `-Command` names the installed
-MCP executable; `-RuntimeRoot` is optional when the executable already resolves its
-runtime. The helper sets `LIFEBLOOD_SHARED_DAEMON_AUTOSTART=0` only in its child,
-initializes one shared proxy, reads capabilities and the server catalog, and closes
-that proxy in `finally`. An optional `EnvironmentFile` observes that exact retained
-scope without diagnostics/compilation/refresh; older or compilation-free services
-report it unavailable, without a fallback scan. The default overall deadline is
-30 seconds (maximum 60), plus bounded owned-process cleanup. RPC frames are bounded
-to 4,194,304 UTF-16 characters. An absent or incompatible daemon returns unavailable
-JSON with exit code 1; no private session, daemon start, drain or analysis follows.
+```powershell
+$workspace = (Resolve-Path ../MyProject).Path
+./tools/inspect-lifeblood-shared.ps1 -Workspace $workspace `
+  -Command (Get-Command lifeblood-mcp -ErrorAction Stop).Source `
+  -CliCommand (Get-Command lifeblood -ErrorAction Stop).Source `
+  -SdkCommand (Get-Command dotnet -ErrorAction Stop).Source `
+  -EnvironmentFile src/Example.cs
+```
 
 The original top-level fields remain. The additive `doctor` object joins resolved
 PATH candidates, handshake/endpoint identity, live daemon/publication/base counts,
@@ -117,6 +115,13 @@ catalog; omission remains `unobserved`, rather than inferred healthy.
 
 For an optional read-only Unity bridge observation, run the repository reader
 through a ready Editor's Pipeline CLI at an ordinary operation boundary:
+
+```powershell
+$workspace = (Resolve-Path ../MyUnityProject).Path
+$reader = (Resolve-Path ./tools/inspect-lifeblood-bridge.cs).Path
+unity command script run --project-path $workspace --file $reader `
+  --entry Lifeblood.Tooling.BridgeObservation.Read --format json > ./bridge-observation.json
+```
 
 Use paths for your checkout and output root. Pass the saved response as
 `-BridgeObservationPath` to the doctor. The reader observes the loaded bridge
@@ -157,6 +162,11 @@ and the [MCP tool-result contract](https://modelcontextprotocol.io/specification
 
 ### Identify the CLI independently of the service
 
+```powershell
+Get-Command lifeblood, lifeblood-mcp -All | Select-Object Name, Source
+lifeblood --version --json
+```
+
 `lifeblood --version` prints one build version. `--version --json` also reports the
 CLI assembly path, process path, runtime, target framework and loaded Roslyn
 version, with `executionMode:"standaloneCli"`. It needs no project and performs no
@@ -170,13 +180,28 @@ The self-contained Windows CLI bundles its runtime, not an SDK. SDK-style projec
 evaluation still launches a separately installed SDK host: `DOTNET_HOST_PATH`
 selects an existing explicit host first, otherwise the host beside the running
 framework installation is preferred, then `dotnet` on PATH. Keep that selection
-separate from the CLI's reported runtime. The .52 package acceptance used the
-intended D: .NET11 SDK on its child PATH. One C: SDK10 route hit its evaluation
-deadline, but explicit-host and original PATH-route repetitions passed with
-invalid runtime roots. That timeout is unreproduced, not a proven SDK10 incompatibility. See the
+separate from the CLI's reported runtime. Check all PATH matches when an older
+global installation shadows the intended build. Custom `--tool-path` or
+`DOTNET_CLI_HOME` installations may use another global-tools directory. Local
+SDK selection and the unreproduced earlier evaluation timeout are recorded in the
 [qualified scope and remaining diagnostic gap](investigations/lifeblood-output-bundle-2026-11-11.md).
 For example, Codex supports an explicit command and per-server environment in
 project `.codex/config.toml` ([official MCP configuration](https://developers.openai.com/codex/mcp)):
+
+```toml
+[mcp_servers.lifeblood]
+command = "lifeblood-mcp"
+args = ["--shared", "--shared-key", "/absolute/path/to/workspace"]
+
+# Only for a custom x64 runtime/SDK installation:
+# [mcp_servers.lifeblood.env]
+# DOTNET_ROOT_X64 = "/absolute/path/to/dotnet"
+# DOTNET_HOST_PATH = "/absolute/path/to/dotnet/dotnet"
+```
+
+Replace the workspace placeholder with your real absolute path. If a runtime or
+SDK override is needed, use its installed location and platform executable name
+(`dotnet.exe` on Windows). Keep matching clients on the same Lifeblood build.
 
 ### Interpret source freshness separately from semantic confidence
 

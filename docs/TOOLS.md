@@ -10,12 +10,12 @@ Owner-scoped nonmutating file hashes and guarded compile-check are documented in
 
 ### Bounded method and callback effects
 
-The source-stage `lifeblood_method_effects` tool accepts 1..16 exact method
+The `lifeblood_method_effects` tool accepts 1..16 exact method
 `symbolIds`, optional committed `profileScope`, and explicit `maxDepth` (0..8,
 default 4), `maxMethods` (root count..256, default 128), `maxFacts` (1..100000,
 default 10000), and `maxEvidencePerMethod` (0..64, default 16). Snapshot selection
-and preconditions use the normal shared-read lane. The installed `.52` bundle
-does not yet include it.
+and preconditions use the normal shared-read lane. Installed package/native/Unity
+acceptance and current deployment boundaries are recorded in [STATUS](STATUS.md).
 
 Each root reports observed operations, member/element access modes, calls,
 callback bindings, unentered deferred bodies, supported direct/local transitive

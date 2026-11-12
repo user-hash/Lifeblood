@@ -39,6 +39,9 @@ delegation policy or authorize spawning agents.
 The current host targets .NET 11 and SDK-matched Roslyn with C# 15 support;
 consumer language, references and defines still come from its own descriptors.
 Use environment observation and host validation receipts before choosing syntax.
+Consumer repositories, SDK locations and hardware are deployment inputs. Keep
+machine-specific paths and consumer assumptions out of product defaults and
+public setup commands; label local measurements with their tested environment.
 After coordinated cross-file/API changes, refresh the shared publication before
 checking dependent files: file batches overlay each file individually on the
 retained baseline. Keep Runtime Async a measured, opt-in experiment; the current

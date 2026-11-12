@@ -9,7 +9,7 @@ var config = BenchmarkConfig.Parse(args);
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(config.OutputPath))!);
 
 var payload = """
-{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"lifeblood_analyze","arguments":{"projectPath":"/path/to/workspace","incremental":true,"allowFullFallback":true,"defineProfiles":["Editor","Player"]}}}
+{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"lifeblood_analyze","arguments":{"projectPath":"/workspace/SampleProject","incremental":true,"allowFullFallback":true,"defineProfiles":["Editor","Player"]}}}
 """;
 var payloadBytes = Encoding.UTF8.GetBytes(payload);
 var baselineLegacy = CurrentString(payload, strictJson: false);
