@@ -4,6 +4,7 @@ using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Graph;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Lifeblood.Server.Mcp;
 using Xunit;
 using SymbolKind = Lifeblood.Domain.Graph.SymbolKind;
 
@@ -11,6 +12,52 @@ namespace Lifeblood.Tests;
 
 public sealed class CSharp15SemanticsTests
 {
+    [Theory]
+    [InlineData(CanonicalSymbolIdVersion.LegacyV1)]
+    [InlineData(CanonicalSymbolIdVersion.AssemblyQualifiedV2)]
+    public void ExtensionIndexer_FullPipelinePublishesNamedContainerAndBoundReferences(CanonicalSymbolIdVersion version)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"lifeblood-extension-pipeline-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Extensions.csproj"), """
+                <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>
+                  <TargetFramework>net11.0</TargetFramework><LangVersion>15</LangVersion>
+                </PropertyGroup></Project>
+                """);
+            File.WriteAllText(Path.Combine(root, "Extensions.cs"), """
+                using System.Collections.Generic;
+                using System.Linq;
+                namespace Features;
+                public static class SequenceIndexer
+                {
+                    extension(IEnumerable<int> sequence)
+                    {
+                        public int this[int index] => sequence.ElementAt(index);
+                    }
+                }
+                public class Runner { public int Read(IEnumerable<int> values) => values[2]; }
+                """);
+            using var session = new GraphSession(new PhysicalFileSystem(), canonicalIdVersion: version);
+
+            session.Load(root, graphPath: null, rulesPath: null);
+
+            var graph = session.Graph!;
+            Assert.Empty(GraphValidator.Validate(graph));
+            var extension = Assert.Single(graph.Symbols, symbol => symbol.Properties.GetValueOrDefault("typeKind") == "extension");
+            Assert.Equal("SequenceIndexer.extension(IEnumerable<int>)", extension.Name);
+            Assert.Equal("Features.SequenceIndexer.extension(System.Collections.Generic.IEnumerable<int>)", extension.QualifiedName);
+            Assert.Equal("SequenceIndexer", graph.GetSymbol(extension.ParentId!)!.Name);
+            var indexer = Assert.Single(graph.Symbols, symbol => symbol.Properties.ContainsKey("isIndexer"));
+            Assert.Equal(extension.Id, indexer.ParentId);
+            Assert.Equal(extension.QualifiedName + ".this[]", indexer.QualifiedName);
+            var read = Assert.Single(graph.Symbols, symbol => symbol.Name == "Read");
+            Assert.Contains(graph.Edges, edge => edge.SourceId == read.Id && edge.TargetId == indexer.Id && edge.Kind == EdgeKind.References);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData(CanonicalSymbolIdVersion.LegacyV1)]
     [InlineData(CanonicalSymbolIdVersion.AssemblyQualifiedV2)]
@@ -208,6 +255,7 @@ public sealed class CSharp15SemanticsTests
             File.WriteAllText(Path.Combine(root, "Test.cs"), source);
             var analyzer = new RoslynWorkspaceAnalyzer(new PhysicalFileSystem(), idVersion: version);
             var graph = analyzer.AnalyzeWorkspace(root, new AnalysisConfig { RetainCompilations = true });
+            Assert.Empty(GraphValidator.Validate(graph));
             var compilation = analyzer.Compilations!["Test"];
             Assert.All(compilation.SyntaxTrees, tree =>
                 Assert.Equal(LanguageVersion.CSharp15, ((CSharpParseOptions)tree.Options).LanguageVersion));

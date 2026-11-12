@@ -79,8 +79,10 @@ public sealed class RoslynSymbolExtractor
         symbols.Add(new Symbol
         {
             Id = typeId,
-            Name = typeSymbol.Name,
-            QualifiedName = CanonicalSymbolFormat.GetFullName(typeSymbol),
+            Name = typeSymbol.IsExtension
+                ? typeSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+                : typeSymbol.Name,
+            QualifiedName = GetTypeQualifiedName(typeSymbol),
             Kind = DomainSymbolKind.Type,
             FilePath = filePath,
             Line = typeDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
@@ -172,7 +174,7 @@ public sealed class RoslynSymbolExtractor
         var enumSymbol = model.GetDeclaredSymbol(enumDecl) as INamedTypeSymbol;
         if (enumSymbol == null) return;
 
-        var enumFqn = CanonicalSymbolFormat.GetFullName(enumSymbol);
+        var enumFqn = GetTypeQualifiedName(enumSymbol);
         var enumId = CanonicalSymbolFormat.BuildTypeId(enumSymbol, _idVersion);
 
         symbols.Add(new Symbol
@@ -235,7 +237,7 @@ public sealed class RoslynSymbolExtractor
         {
             Id = CanonicalSymbolFormat.BuildTypeId(sym, _idVersion),
             Name = sym.Name,
-            QualifiedName = CanonicalSymbolFormat.GetFullName(sym),
+            QualifiedName = GetTypeQualifiedName(sym),
             Kind = DomainSymbolKind.Type,
             FilePath = filePath,
             Line = delegateDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
@@ -280,7 +282,7 @@ public sealed class RoslynSymbolExtractor
             if (hasStaticInitializer && hasInstanceInitializer) break;
         }
 
-        var typeName = CanonicalSymbolFormat.GetFullName(typeSymbol);
+        var typeName = GetTypeQualifiedName(typeSymbol);
 
         if (hasStaticInitializer)
         {
@@ -348,7 +350,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(methodDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         var methodProps = new Dictionary<string, string>
         {
             ["returnType"] = sym.ReturnType.ToDisplayString(),
@@ -380,7 +382,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(ctorDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         var name = sym.IsStatic ? ".cctor" : ".ctor";
         symbols.Add(new Symbol
         {
@@ -409,7 +411,7 @@ public sealed class RoslynSymbolExtractor
             var sym = model.GetDeclaredSymbol(variable) as IFieldSymbol;
             if (sym == null) continue;
 
-            var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+            var typeName = GetTypeQualifiedName(sym.ContainingType);
             var fieldProps = new Dictionary<string, string>
             {
                 [SymbolPropertyKeys.FieldType] = sym.Type.ToDisplayString(),
@@ -443,7 +445,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(propDecl) as IPropertySymbol;
         if (sym == null) return;
 
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         var propProps = new Dictionary<string, string>
         {
             [SymbolPropertyKeys.PropertyType] = sym.Type.ToDisplayString(),
@@ -476,7 +478,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(indexerDecl) as IPropertySymbol;
         if (sym == null) return;
 
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
             Id = CanonicalSymbolFormat.BuildPropertyId(sym, _idVersion),
@@ -503,7 +505,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(operatorDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
             Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
@@ -531,7 +533,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(conversionDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
             Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
@@ -559,7 +561,7 @@ public sealed class RoslynSymbolExtractor
         var sym = model.GetDeclaredSymbol(destructorDecl) as IMethodSymbol;
         if (sym == null) return;
 
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
             Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
@@ -611,7 +613,7 @@ public sealed class RoslynSymbolExtractor
         IEventSymbol sym, string containingTypeId, string filePath,
         Location location, List<Symbol> symbols)
     {
-        var typeName = CanonicalSymbolFormat.GetFullName(sym.ContainingType);
+        var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
             Id = CanonicalSymbolFormat.BuildEventId(sym, _idVersion),
@@ -805,6 +807,9 @@ public sealed class RoslynSymbolExtractor
             properties[SymbolPropertyKeys.LegacyCanonicalId] = CanonicalSymbolFormat.BuildSymbolId(declaration);
         return properties;
     }
+
+    private static string GetTypeQualifiedName(INamedTypeSymbol type)
+        => type.IsExtension ? type.ToDisplayString() : CanonicalSymbolFormat.GetFullName(type);
 
     private static Visibility MapVisibility(Accessibility accessibility) => accessibility switch
     {
