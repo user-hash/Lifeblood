@@ -76,6 +76,25 @@ public sealed class EvidenceBaselineDriftTests
         Assert.Equal(2, live.Values[EvidenceMetricKeys.Edges]);
         Assert.Equal(1, live.Values[EvidenceMetricKeys.ProfileEdges("Editor")]);
         Assert.Equal(2, live.Values[EvidenceMetricKeys.ProfileEdges("Player")]);
+
+        foreach (var profiles in new IReadOnlyList<string>?[]
+        {
+            null,
+            Array.Empty<string>(),
+            new[] { "editor", "Player" },
+            new List<string> { "editor", "Player" }.AsReadOnly(),
+        })
+        {
+            var shaped = new GraphBuilder()
+                .AddSymbols(graph.Symbols)
+                .AddEdge(new Edge { SourceId = "type:A", TargetId = "type:B", Kind = EdgeKind.Calls, Profiles = profiles })
+                .Build();
+            var counts = EvidenceBaselineDriftEvaluator.CountProfileEdges(shaped, new[] { " Editor ", "PLAYER", "editor" });
+            var expected = profiles is { Count: > 0 } ? 1 : 0;
+            Assert.Equal(2, counts.Count);
+            Assert.Equal(expected, counts["Editor"]);
+            Assert.Equal(expected, counts["Player"]);
+        }
     }
 
     [Fact]

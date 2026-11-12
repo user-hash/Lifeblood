@@ -173,10 +173,12 @@ public static partial class EvidenceBaselineDriftEvaluator
             .ToDictionary(profile => profile, _ => 0, StringComparer.OrdinalIgnoreCase);
         foreach (var edge in graph.Edges)
         {
-            if (edge.Profiles == null)
+            var profiles = edge.Profiles;
+            if (profiles == null)
                 continue;
-            foreach (var profile in edge.Profiles)
+            for (var index = 0; index < profiles.Count; index++)
             {
+                var profile = profiles[index];
                 if (counts.ContainsKey(profile))
                     counts[profile]++;
             }
