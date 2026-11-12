@@ -23,6 +23,7 @@ Common fast paths:
 - Before refactoring a symbol: `lifeblood_blast_radius groupBy:"both"`, then `lifeblood_dependants` or `lifeblood_find_references` for source locations.
 - Before changing a file: `lifeblood_file_impact`, then `lifeblood_test_impact` on the file.
 - After editing C#: `lifeblood_compile_check filePath`, then `lifeblood_diagnose filePath` if the result or project state is unclear.
+- For exact method read/write and callback evidence: `lifeblood_method_effects` with bounded method IDs and an explicit committed profile. Read unsupported dispatch/deferred-body and scope limits; static absence is not execution or purity proof.
 - Before deleting code, pick by reference state — the wiring family: `lifeblood_dead_code` (never referenced), `lifeblood_wire_audit` (referenced but unplugged — field read-without-write, never-assigned slot), `lifeblood_feature_switch_audit` (boolean gates a branch but no reachable code flips it off its default). All three are advisory only; verify with references, source inspection, and tests. In `dead_code`, fold `bucket:"Vendored"` and `bucket:"Scaffolding"` separately from ordinary Production findings; Scaffolding marks intentional conditional/const-string anchor shapes, not normal deletion work.
 - For Unity/old-format asmdef compile-direction checks: `lifeblood_asmdef_check summarize:true` after a fresh analyze.
 - For architecture rules: `lifeblood_invariant_check mode:"audit"` or `id:"INV-..."`, then read the cited invariant file.
@@ -59,6 +60,8 @@ Use the Unity bridge tools when working inside Unity MCP, but keep the same sema
 ## Limits And Honesty
 
 - Do not cite stale docs as live truth when `lifeblood_capabilities` or schemas disagree.
+- The host compiler/language version does not upgrade the analyzed project's language or target runtime. Host emit is separate from a Unity/Player/Burst build; inspect `validation` and run the consumer's appropriate build/tests.
+- Shared semantic-base counts are ownership evidence, not a CPU-core, GC-heap or process-memory count. Bound diagnostic captures and distinguish allocations, rooted objects, unreachable garbage, free heap and native/runtime memory before proposing a retention fix.
 - Do not treat heuristic/advisory tools as deletion authority by themselves.
 - Do not use write-side tools after `readOnly:true` analysis unless the server reports they are available; recover with a full retained analyze when needed.
 - Do not assume `find_references`, `rename`, or other write-side Roslyn tools cover every define profile in a multi-profile snapshot. They operate on the retained profile and report limitations; use graph-side `dependants` / `dependencies` with `profileFilter` for union-graph questions.

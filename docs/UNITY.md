@@ -21,7 +21,7 @@ The Lifeblood repo's `unity/` directory is the canonical UPM package. Unity proj
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0) for the current source build
 - [MCP for Unity](https://github.com/CoplayDev/MCPForUnity) plugin installed in your Unity project
 - Lifeblood repo cloned next to the Unity project
 - The matching `Lifeblood.Server.Mcp` global tool installed
@@ -35,6 +35,10 @@ dotnet tool update --global Lifeblood.Server.Mcp
 ```
 
 The bridge intentionally launches the installed tool rather than a repository Debug DLL. Shared-host admission compares the compiled module MVID, so every proxy must use the same installed build.
+Published packages can lag local development. Verify the installed MCP identity
+through capabilities and use one exact qualified package for every client.
+The host's Roslyn/C# support does not change Unity's own compiler or the language
+version recorded by its generated project descriptors.
 
 ### Step 2: Reference the canonical UPM package
 
@@ -69,19 +73,23 @@ The command must be the executable, not a DLL plus arguments. The bridge owns `-
 After the first `lifeblood_analyze_project`, pass `incremental=true` for fast updates. The wrapper owns `projectPath`; callers can select `readOnly`, `allowFullFallback`, and `defineProfiles` directly through the typed schema:
 
 ```
-lifeblood_analyze_project                    → full analysis (~60s on large projects)
-lifeblood_analyze_project incremental=true   → seconds (only changed modules)
+lifeblood_analyze_project                    → full analysis
+lifeblood_analyze_project incremental=true   → reuse unchanged work; inspect mode/fallback
 ```
 
 ## Memory
 
-Streaming compilation with downgrading keeps memory bounded:
+Standalone CLI/private read-only analysis streams compilation and releases each
+module after extraction/downgrading. Retained interactive work keeps the Roslyn
+services needed by compiler tools. Shared mode lets clients use one daemon-owned
+semantic base instead of a separate retained workspace per agent; bounded history
+is graph-only.
 
-Two memory profiles on the same workspace are expected. The CLI path streams and releases compilations after extraction. The MCP path retains compilations in memory because the write-side tools (`lifeblood_execute`, `lifeblood_find_references`, `lifeblood_rename`, etc.) need to query the loaded workspace interactively. Pass `readOnly: true` to `lifeblood_analyze` on the MCP server to fall back to the CLI streaming profile in exchange for no write-side tools. To regain write-side tools after a read-only session, run a full retained analyze or retry a `fallbackReason:"compilationStateUnavailable"` incremental rejection with `allowFullFallback:true`.
-
-Peak memory and wall time come from the native `usage` block on every `lifeblood_analyze` response. Prefer live receipts in `STATUS.md` over copying old workstation-specific numbers into this setup guide.
-
-Each module on the streaming path is compiled, extracted, then downgraded to a lightweight PE metadata reference (~10-100KB vs ~200MB full compilation). Retained shared mode keeps the one compiler base needed by write-side tools.
+Shared `readOnly:true` can preserve one compatible hot semantic publication.
+Recovery checks canonical inputs before restoring services. Inspect retention
+receipts and capabilities; if compatible services are unavailable, ordinary
+retained full analysis or an allowed full fallback is required. Read-only input
+does not promise immediate OS-memory reclamation.
 
 ## Lifecycle
 
@@ -105,7 +113,12 @@ The chain walk uses `Symbol.Properties["baseTypeChain"]` plus the older direct-b
 
 ## Asmdef Edits (`INV-UNITY-002`)
 
-Editing an asmdef without forcing Unity to regenerate the on-disk csproj used to leave the analyzer running against stale module facts. `RoslynWorkspaceAnalyzer.IncrementalAnalyze` now scans every `*.asmdef` under the project root on every incremental call; any addition / removal / mtime change triggers a full re-analyze that round.
+Incremental analysis recaptures asmdef membership and content. Added, removed,
+changed or unavailable descriptors trigger the explicit descriptor-drift policy:
+reject cheaply, or perform full fallback when allowed. Timestamp-only churn is
+harmless when content equality is proven. Regenerate Unity's project descriptors
+when assembly facts change; a source-only changed-file hint cannot bypass these
+checks.
 
 ## Asmdef Boundary Check (`INV-ASMDEF-CHECK-001`)
 
@@ -159,4 +172,10 @@ belong in a future target-platform profile atom.
 }
 ```
 
-Pre-fix the same call surfaced ~120 spurious CS0246 / CS0103 errors against `UnityEngine`, `MonoBehaviour`, sibling partials, and every cross-file type because the snippet path picked some arbitrary first compilation that didn't carry the file's references. File-mode preserves every reference in the file's real owning module compilation and filters pre-existing diagnostics in OTHER files in the module so only changes the user introduced in THIS file surface. Pinned `moduleName` overrides auto-detection — if the file isn't in that module the request fails with `LB0002` rather than silently picking another.
+File-mode preserves the owning tree's references, language and define options;
+ownership resolution rejects missing or ambiguous files instead of guessing a
+compilation. Optional `moduleName` pins linked-source ownership. Diagnostic
+filtering retains owning-module locationless emit errors; a reported error does
+not establish which edit introduced it. Inspect the `validation` receipt for host
+compiler, emit phase and diagnostic scope. A successful host check is separate
+from a Unity/Player/Burst build and target-runtime execution.

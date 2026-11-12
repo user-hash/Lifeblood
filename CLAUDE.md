@@ -6,6 +6,27 @@ Lifeblood is a hexagonal framework that pipes compiler-level semantics into AI a
 
 We do not build Roslyn-grade adapters for every language. We build the framework and the C# reference implementation. The community builds adapters for other languages.
 
+## Agent Workflow
+
+Start interactive semantic work with live `lifeblood_capabilities` and reuse the
+workspace's shared publication. Follow [the MCP skill](skills/lifeblood-mcp/SKILL.md)
+and [tool routing](skills/lifeblood-mcp/references/tool-routing.md) for snapshot
+pins, owner-scoped edits, profile limits and compiler validation. CLI analysis
+serves standalone batch/CI work; it does not join a running MCP publication.
+
+Keep source-test results, exact-package checks, installed-client acceptance and
+runtime measurements distinct. Host compile success is not a consumer target
+build. Compare identical inputs before making performance claims, and bound
+diagnostic processes with terminal cleanup. One shared semantic base can use
+multiple processes, CPU cores and GC heaps.
+
+Current versions, verification and known limits belong in
+[STATUS](docs/STATUS.md) and [the tracking ledger](devmemory/lifeblood-tracking.md).
+Keep README, setup/tool guides, this instruction file, the MCP skill/routing and
+GitHub workflows consistent when behavior changes. Follow
+[the release checklist](docs/RELEASE.md) for release preparation; local green
+checks do not establish remote CI or publication readiness.
+
 ## Architecture
 
 ```
@@ -22,7 +43,8 @@ Lifeblood.Application           # Ports + use cases. Depends only on Domain.
 Lifeblood.Adapters.CSharp       # LEFT SIDE. Roslyn. Reference implementation.
 Lifeblood.Adapters.JsonGraph    # LEFT SIDE. Universal JSON protocol.
 Lifeblood.Adapters.Git          # INFRASTRUCTURE. Bounded Git provenance behind Application port.
-Lifeblood.Connectors.ContextPack # RIGHT SIDE. Context pack + CLAUDE.md generator.
+Lifeblood.Adapters.Performance  # RUNTIME EVIDENCE. External capture parsing behind Application ports.
+Lifeblood.Connectors.ContextPack # RIGHT SIDE. Context pack + instruction sections generator.
 Lifeblood.Connectors.Mcp        # RIGHT SIDE. MCP graph provider for AI agents.
 Lifeblood.Analysis              # Optional analyzers (coupling, blast radius, cycles, tiers).
 Lifeblood.Server.Mcp            # MCP server host. Stdio JSON-RPC. Interactive AI sessions.
@@ -46,7 +68,6 @@ External adapters emit `graph.json` conforming to `schemas/graph.schema.json`. L
 Lifeblood.CLI
   → Lifeblood.Application
   → Lifeblood.Adapters.CSharp
-  ? Lifeblood.Adapters.Git
   → Lifeblood.Adapters.JsonGraph
   → Lifeblood.Connectors.*
   → Lifeblood.Analysis
@@ -57,7 +78,10 @@ Lifeblood.Adapters.CSharp
   → Microsoft.CodeAnalysis.CSharp (Roslyn)
 
 Lifeblood.Adapters.Git
-  ? Lifeblood.Application (ports only)
+  → Lifeblood.Application (ports only)
+
+Lifeblood.Adapters.Performance
+  → Lifeblood.Application (ports only)
 
 Lifeblood.Connectors.Mcp
   → Lifeblood.Application (ports only)
@@ -72,7 +96,9 @@ Lifeblood.Application
 Lifeblood.Server.Mcp
   → Lifeblood.Application
   → Lifeblood.Adapters.CSharp
+  → Lifeblood.Adapters.Git
   → Lifeblood.Adapters.JsonGraph
+  → Lifeblood.Adapters.Performance
   → Lifeblood.Connectors.*
   → Lifeblood.Analysis
 

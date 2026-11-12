@@ -85,6 +85,18 @@ Run these in order on the release commit before tagging.
    - `docs/invariants/<domain>.md`. New INVs in the appropriate domain file.
    - `docs/invariants/INDEX.md`. New domain row if a new file was created.
 
+8. **Instructions, consumers and GitHub describe the release candidate.**
+   Reconcile `CLAUDE.md`, any local `AGENTS.md` entry point, the public
+   `skills/lifeblood-mcp/` skill/routing, README, setup/tool guides and changelog.
+   Separate host/compiler support from consumer language/build validation and
+   source checks from exact-package and installed-client acceptance. Qualify
+   affected native MCP/Unity paths against the actual packaged payload before
+   describing a shared upgrade as verified. Check `.github/workflows/` SDK and
+   fixture requirements, then inspect CI for the exact intended commit; old
+   green runs and unrelated PR failures are not its result. Record unresolved
+   limits and deferred work explicitly. Preparation/inspection does not itself
+   authorize a tag, push, package publication or shared-service replacement.
+
 ## Tag and push
 
 Once every pre-tag step is green:

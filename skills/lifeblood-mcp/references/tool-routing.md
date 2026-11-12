@@ -90,7 +90,7 @@ All three are advisory: resolved UnityEvent persistent calls are modeled, but un
 
 ## Multi-Profile And Unity
 
-- For Unity Editor/Player/Desktop differences, analyze with `defineProfiles:["Editor","Player","Standalone"]` when possible; `Standalone` covers platform-neutral `UNITY_STANDALONE && !UNITY_EDITOR` callsites.
+- For Unity Editor/Player differences, select `["Editor","Player"]`; add `Standalone` when platform-neutral `UNITY_STANDALONE && !UNITY_EDITOR` callsites matter.
 - Use graph-side `dependants` and `dependencies` with `profileFilter` for union-profile dependency questions.
 - Treat write-side Roslyn tools as retained-profile scoped. Check `analyzedUnderProfile` and `limitations`.
 - New Unity files need Unity import/project descriptor regeneration before Lifeblood can include them.

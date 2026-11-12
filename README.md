@@ -42,7 +42,12 @@ dotnet tool install --global Lifeblood
 dotnet tool install --global Lifeblood.Server.Mcp
 ```
 
-Requires [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0).
+Build from source with the [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0).
+The Windows CLI package carries its runtime; the portable CLI and MCP host use
+.NET 11. The host's Roslyn supports C# 15 while analyzed projects retain their
+own language version, references and define profiles. See
+[current build and verification details](docs/STATUS.md); the commands above
+install published packages rather than an unpublished local development build.
 
 ### Connect to Claude Code, Cursor, or any MCP client
 
@@ -69,14 +74,18 @@ lifeblood_analyze projectPath="/path/to/your/project" incremental=true allowFull
 lifeblood_analyze projectPath="/path" excludePaths=["Packages/*","*/Samples*/*"] → drop vendored/sample source before compilation
 lifeblood_blast_radius symbolId="type:MyApp.AuthService" → what breaks if I change this?
 lifeblood_file_impact filePath="src/AuthService.cs"      → what files are affected?
-lifeblood_find_references symbolId="type:MyApp.IRepo"    → every caller, every consumer
+lifeblood_find_references symbolId="type:MyApp.IRepo"    → source references in the retained profile
 lifeblood_search query="quantize timing to grid"         → ranked keyword + xmldoc search
 lifeblood_invariant_check id="INV-CANONICAL-001"         → query architectural invariants
 lifeblood_compile_check filePath="src/MyFile.cs"         → does this file still compile?
 lifeblood_execute code="typeof(MyApp.Foo).GetMethods()"  → run C# against your types
 ```
 
-After the first analysis, use `incremental: true` for fast re-analysis (seconds instead of minutes).
+After the first analysis, use `incremental: true` to reuse unchanged work.
+Inspect the returned mode and refresh receipt: descriptor changes may require
+a full fallback. Pin snapshot/generation when several reads must describe the
+same publication. [Owner-scoped work](docs/OWNER_SCOPED_WORK.md) provides exact
+file-byte receipts and guarded compile admission for concurrent edits.
 
 ### CLI (for CI and scripting)
 
@@ -117,9 +126,9 @@ Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface*
 
 | | Tools |
 |---|---|
-| **Session and evidence** | Analyze, Capabilities, Batch, Snapshots, Evidence Drift, Performance Evidence, Context, Invariant Check |
+| **Session and evidence** | Analyze, Capabilities, Batch, Snapshots, File Scope, Evidence Drift, Performance Evidence, Context, Invariant Check |
 | **Semantic graph** | Lookup, Dependencies, Dependants, Blast Radius, File Impact, Asmdef Check, Search, Dead Code, Authority Report, Cycles, Test Impact |
-| **Compiler-backed** | Execute, Diagnose, Compile-check, Contract Audit, Enum Coverage, Static Tables, Assignment Coverage, Find References, Find Definition, Find Implementations, Rename, Format |
+| **Compiler-backed** | Execute, Diagnose, Compile-check, Method Effects, Contract Audit, Enum Coverage, Static Tables, Assignment Coverage, Find References, Find Definition, Find Implementations, Rename, Format |
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every successful read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
@@ -181,7 +190,9 @@ cross assembly calls, and keeps package sources visible in the analysis receipt.
   YAML.
 
 - `compile_check filePath=...` checks a Unity source file inside its real owning
-  assembly with the correct references and define profile.
+  assembly with the retained references and define profile. Its validation
+  receipt identifies host compiler/emit scope; it does not validate a Unity,
+  Player or Burst build. Use the consumer's build/test runner for that evidence.
 
 - `execute` can load Unity assemblies from `Library/ScriptAssemblies/` for
   compiler backed inspection against project types.
@@ -202,7 +213,7 @@ and compiler level understanding.
 
 ## Dogfooding
 
-Self-analysis (symbols, edges, modules, types, violations, cycles), discovered test cases, `[SkippableFact]` opt-in count, typed-invariant audit (total + category coverage, duplicates, parse warnings) — every metric is anchored in [`docs/STATUS.md`](docs/STATUS.md) and ratcheted against the live source on every CI run (see [`tests/Lifeblood.Tests/DocsTests.cs`](tests/Lifeblood.Tests/DocsTests.cs)). Zero regressions, zero parse warnings.
+Self-analysis (symbols, edges, modules, types, violations, cycles), discovered test cases, `[SkippableFact]` opt-in count, typed-invariant audit (total + category coverage, duplicates, parse warnings) — every metric is anchored in [`docs/STATUS.md`](docs/STATUS.md) and ratcheted against the live source by [`tests/Lifeblood.Tests/DocsTests.cs`](tests/Lifeblood.Tests/DocsTests.cs). Read each receipt's tested scope and remaining limitations.
 
 ---
 
