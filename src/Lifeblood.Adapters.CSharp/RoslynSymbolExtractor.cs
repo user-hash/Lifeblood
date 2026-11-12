@@ -13,10 +13,16 @@ namespace Lifeblood.Adapters.CSharp;
 public sealed class RoslynSymbolExtractor
 {
     private readonly CanonicalSymbolIdVersion _idVersion;
+    private readonly CompilationSymbolIds? _compilationIds;
 
     public RoslynSymbolExtractor(CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
     {
         _idVersion = idVersion;
+    }
+
+    internal RoslynSymbolExtractor(CompilationSymbolIds symbolIds) : this(symbolIds.Version)
+    {
+        _compilationIds = symbolIds;
     }
 
     public List<Symbol> Extract(SemanticModel model, SyntaxNode root, string relativeFilePath, string fileSymbolId)
@@ -64,9 +70,9 @@ public sealed class RoslynSymbolExtractor
         var typeSymbol = model.GetDeclaredSymbol(typeDecl) as INamedTypeSymbol;
         if (typeSymbol == null) return;
 
-        var typeId = CanonicalSymbolFormat.BuildTypeId(typeSymbol, _idVersion);
+        var typeId = GetSymbolId(typeSymbol);
         var containerId = typeSymbol.ContainingType != null
-            ? CanonicalSymbolFormat.BuildTypeId(typeSymbol.ContainingType, _idVersion)
+            ? GetSymbolId(typeSymbol.ContainingType)
             : parentId;
 
         var typeProps = new Dictionary<string, string>
@@ -175,7 +181,7 @@ public sealed class RoslynSymbolExtractor
         if (enumSymbol == null) return;
 
         var enumFqn = GetTypeQualifiedName(enumSymbol);
-        var enumId = CanonicalSymbolFormat.BuildTypeId(enumSymbol, _idVersion);
+        var enumId = GetSymbolId(enumSymbol);
 
         symbols.Add(new Symbol
         {
@@ -212,7 +218,7 @@ public sealed class RoslynSymbolExtractor
 
             symbols.Add(new Symbol
             {
-                Id = CanonicalSymbolFormat.BuildFieldId(memberSym, _idVersion),
+                Id = GetSymbolId(memberSym),
                 Name = memberSym.Name,
                 QualifiedName = $"{enumFqn}.{memberSym.Name}",
                 Kind = DomainSymbolKind.Field,
@@ -235,7 +241,7 @@ public sealed class RoslynSymbolExtractor
 
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildTypeId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = sym.Name,
             QualifiedName = GetTypeQualifiedName(sym),
             Kind = DomainSymbolKind.Type,
@@ -326,7 +332,7 @@ public sealed class RoslynSymbolExtractor
         var name = isStatic ? ".cctor" : ".ctor";
         return new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(ctor, _idVersion),
+            Id = GetSymbolId(ctor),
             Name = name,
             QualifiedName = $"{typeName}.{name}",
             Kind = DomainSymbolKind.Method,
@@ -361,7 +367,7 @@ public sealed class RoslynSymbolExtractor
         AttachXmlDocSummary(methodProps, sym);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -386,7 +392,7 @@ public sealed class RoslynSymbolExtractor
         var name = sym.IsStatic ? ".cctor" : ".ctor";
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = name,
             QualifiedName = $"{typeName}.{name}",
             Kind = DomainSymbolKind.Method,
@@ -424,7 +430,7 @@ public sealed class RoslynSymbolExtractor
             AttachXmlDocSummary(fieldProps, sym);
             symbols.Add(new Symbol
             {
-                Id = CanonicalSymbolFormat.BuildFieldId(sym, _idVersion),
+                Id = GetSymbolId(sym),
                 Name = sym.Name,
                 QualifiedName = $"{typeName}.{sym.Name}",
                 Kind = DomainSymbolKind.Field,
@@ -457,7 +463,7 @@ public sealed class RoslynSymbolExtractor
         AttachXmlDocSummary(propProps, sym);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildPropertyId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Property,
@@ -481,7 +487,7 @@ public sealed class RoslynSymbolExtractor
         var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildPropertyId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = "this[]",
             QualifiedName = $"{typeName}.this[]",
             Kind = DomainSymbolKind.Property,
@@ -508,7 +514,7 @@ public sealed class RoslynSymbolExtractor
         var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -536,7 +542,7 @@ public sealed class RoslynSymbolExtractor
         var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Method,
@@ -564,7 +570,7 @@ public sealed class RoslynSymbolExtractor
         var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildMethodId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = "Finalize",
             QualifiedName = $"{typeName}.Finalize",
             Kind = DomainSymbolKind.Method,
@@ -616,7 +622,7 @@ public sealed class RoslynSymbolExtractor
         var typeName = GetTypeQualifiedName(sym.ContainingType);
         symbols.Add(new Symbol
         {
-            Id = CanonicalSymbolFormat.BuildEventId(sym, _idVersion),
+            Id = GetSymbolId(sym),
             Name = sym.Name,
             QualifiedName = $"{typeName}.{sym.Name}",
             Kind = DomainSymbolKind.Property,
@@ -800,6 +806,9 @@ public sealed class RoslynSymbolExtractor
         if (names.Count == 0) return;
         props[SymbolPropertyKeys.Attributes] = string.Join(";", names);
     }
+
+    private string GetSymbolId(ISymbol symbol)
+        => _compilationIds?.Get(symbol) ?? CanonicalSymbolFormat.BuildSymbolId(symbol, _idVersion);
 
     private IReadOnlyDictionary<string, string> DeclarationProperties(ISymbol declaration, Dictionary<string, string> properties)
     {

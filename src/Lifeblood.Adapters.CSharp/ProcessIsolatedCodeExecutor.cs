@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Application.Ports.Left;
 using Lifeblood.Domain.Results;
 
@@ -38,13 +39,13 @@ public sealed class ProcessIsolatedCodeExecutor : ICodeExecutor
     {
         var request = JsonSerializer.Serialize(new { code, imports }, JsonOpts);
 
-        var (command, args) = _scriptHostPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
-            ? ("dotnet", $"\"{_scriptHostPath}\"")
-            : ("dotnet", $"run --project \"{_scriptHostPath}\" --no-build");
+        var args = _scriptHostPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            ? $"\"{_scriptHostPath}\""
+            : $"run --project \"{_scriptHostPath}\" --no-build";
 
         var psi = new ProcessStartInfo
         {
-            FileName = command,
+            FileName = DotnetRuntimeInstallation.HostPath,
             Arguments = args,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -73,6 +74,8 @@ public sealed class ProcessIsolatedCodeExecutor : ICodeExecutor
             if (!process.WaitForExit(timeoutMs))
             {
                 process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(5000))
+                    throw new InvalidOperationException($"Script host process {process.Id} did not terminate after timeout.");
                 return new CodeExecutionResult { Success = false, Error = $"Execution timed out after {timeoutMs}ms (process killed)" };
             }
 

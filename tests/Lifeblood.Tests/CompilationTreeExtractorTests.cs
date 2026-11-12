@@ -2,6 +2,7 @@ using Lifeblood.Adapters.CSharp.Internal;
 using Lifeblood.Adapters.CSharp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using System.Text.Json;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -89,6 +90,49 @@ public sealed class CompilationTreeExtractorTests
         Assert.Equal(new[] { changedPath, generatedPath }, results.Select(result => result.TreePath));
         Assert.False(results[0].PathIdentity.IsGenerated);
         Assert.True(results[1].PathIdentity.IsGenerated);
+    }
+
+    [Theory]
+    [InlineData(CanonicalSymbolIdVersion.LegacyV1)]
+    [InlineData(CanonicalSymbolIdVersion.AssemblyQualifiedV2)]
+    public void Extract_SharesIdsAcrossTreesOnlyWithinPass_WithoutChangingFacts(CanonicalSymbolIdVersion version)
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "lifeblood-shared-ids"));
+        var trees = Enumerable.Range(0, 32)
+            .Select(index => CSharpSyntaxTree.ParseText(
+                $"namespace Sample; public class Caller{index} {{ public int Call(int x) => Common.Transform(x); }}",
+                path: Path.Combine(root, $"Caller{index}.cs")))
+            .Append(CSharpSyntaxTree.ParseText(
+                "namespace Sample; public static class Common { public static int Transform(int x) => x + 1; }",
+                path: Path.Combine(root, "Common.cs")))
+            .ToArray();
+        var compilation = CreateCompilation(trees);
+        var extractor = new CompilationTreeExtractor(version);
+        var modules = new HashSet<string>(StringComparer.Ordinal) { "Sample.Module" };
+        var results = extractor.Extract(compilation, root, "Sample.Module", "Editor", null, true, modules);
+        var declaration = results.SelectMany(result => result.Symbols!).Single(symbol => symbol.Name == "Transform");
+        var calls = results.SelectMany(result => result.Edges)
+            .Where(edge => edge.Kind == Lifeblood.Domain.Graph.EdgeKind.Calls).ToArray();
+
+        Assert.Equal(32, calls.Length);
+        Assert.All(calls, call => Assert.Same(declaration.Id, call.TargetId));
+        Assert.All(results, result => Assert.Same(results[0].FileSymbol!.ParentId, result.FileSymbol!.ParentId));
+        for (var index = 0; index < trees.Length; index++)
+        {
+            var tree = trees[index];
+            var result = results[index];
+            var model = compilation.GetSemanticModel(tree);
+            var symbols = new RoslynSymbolExtractor(version).Extract(model, tree.GetRoot(), Path.GetFileName(tree.FilePath), result.FileId);
+            var edges = new RoslynEdgeExtractor(version) { KnownModuleAssemblies = modules }
+                .Extract(model, tree.GetRoot(), Path.GetFileName(tree.FilePath));
+            Assert.Equal(JsonSerializer.Serialize(new { symbols, edges }),
+                JsonSerializer.Serialize(new { symbols = result.Symbols, edges = result.Edges }));
+        }
+
+        var nextResults = extractor.Extract(compilation, root, "Sample.Module", "Editor", null, true, modules);
+        var nextDeclaration = nextResults.SelectMany(result => result.Symbols!).Single(symbol => symbol.Name == "Transform");
+        Assert.Equal(declaration.Id, nextDeclaration.Id);
+        Assert.NotSame(declaration.Id, nextDeclaration.Id);
     }
 
     private static CSharpCompilation CreateCompilation(IEnumerable<SyntaxTree> trees)

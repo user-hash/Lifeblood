@@ -183,6 +183,14 @@ csproj-driven option follows the same shape.
 
 - **INV-EXTRACT-PARALLEL-001. Per-tree Roslyn semantic extraction is bounded, isolated, and deterministically published through one adapter seam.**
 
+The extraction pass may share canonical ID strings through one
+`Internal.CompilationSymbolIds` cache, using Roslyn symbol equality and the
+existing formatter for its fixed ID policy. The cache belongs only to that
+invocation, including its joined workers; neither returned file facts nor
+snapshots retain its compiler-symbol keys. Standalone edge extractors keep
+their existing tree-local memoization. Parallel order, first-occurrence
+provenance and complete symbol/edge values remain unchanged.
+
 ## Compilation File Ownership
 
 File-scoped compilation operations resolve one retained syntax tree before they

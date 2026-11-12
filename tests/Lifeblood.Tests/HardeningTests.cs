@@ -702,8 +702,8 @@ public class Service
     public void ProcessIsolatedExecutor_SimpleExpression_ReturnsResult()
     {
         var scriptHostPath = FindScriptHostProject();
-        if (scriptHostPath == null) { Console.Error.WriteLine("SKIP: ScriptHost project not found"); return; }
-        if (!TryBuildScriptHost(scriptHostPath)) { Console.Error.WriteLine("SKIP: ScriptHost failed to build"); return; }
+        Assert.NotNull(scriptHostPath);
+        BuildScriptHost(scriptHostPath);
 
         var executor = new ProcessIsolatedCodeExecutor(scriptHostPath);
         var result = executor.Execute("return 2 + 3;", timeoutMs: 15000);
@@ -716,33 +716,60 @@ public class Service
     public void ProcessIsolatedExecutor_Timeout_KillsProcess()
     {
         var scriptHostPath = FindScriptHostProject();
-        if (scriptHostPath == null) { Console.Error.WriteLine("SKIP: ScriptHost project not found"); return; }
-        if (!TryBuildScriptHost(scriptHostPath)) { Console.Error.WriteLine("SKIP: ScriptHost failed to build"); return; }
+        Assert.NotNull(scriptHostPath);
+        BuildScriptHost(scriptHostPath);
 
         var executor = new ProcessIsolatedCodeExecutor(scriptHostPath);
-        var result = executor.Execute("while(true) { }", timeoutMs: 3000);
-
-        Assert.False(result.Success);
-        Assert.Contains("timed out", result.Error, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryBuildScriptHost(string path)
-    {
+        var pidFile = Path.Combine(Path.GetTempPath(), $"lifeblood-script-child-{Guid.NewGuid():N}.txt");
         try
         {
-            var build = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"build \"{path}\" -v q",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            return build != null && build.WaitForExit(30000) && build.ExitCode == 0;
+            var code = $"System.IO.File.WriteAllText({System.Text.Json.JsonSerializer.Serialize(pidFile)}, System.Environment.ProcessId.ToString()); while(true) {{ }}";
+            var result = executor.Execute(code, timeoutMs: 5000);
+
+            Assert.False(result.Success);
+            Assert.Contains("timed out", result.Error, StringComparison.OrdinalIgnoreCase);
+            Assert.True(File.Exists(pidFile), "The script must enter its body before timing out.");
+            var pid = int.Parse(File.ReadAllText(pidFile));
+            System.Diagnostics.Process? child;
+            try { child = System.Diagnostics.Process.GetProcessById(pid); }
+            catch (ArgumentException) { child = null; }
+            using (child)
+                Assert.True(child == null || child.HasExited, $"Timed-out script child {pid} is still running.");
         }
-        catch (System.ComponentModel.Win32Exception) { return false; }
-        catch (InvalidOperationException) { return false; }
+        finally
+        {
+            File.Delete(pidFile);
+        }
+    }
+
+    private static void BuildScriptHost(string path)
+    {
+        using var build = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = DotnetRuntimeInstallation.HostPath,
+            Arguments = $"build \"{path}\" -v q",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+        Assert.NotNull(build);
+        var stdout = build.StandardOutput.ReadToEndAsync();
+        var stderr = build.StandardError.ReadToEndAsync();
+        try
+        {
+            Assert.True(Task.WhenAll(build.WaitForExitAsync(), stdout, stderr).Wait(TimeSpan.FromSeconds(30)),
+                "ScriptHost build did not finish within 30 seconds.");
+            Assert.True(build.ExitCode == 0, $"ScriptHost build failed:\n{stdout.Result}\n{stderr.Result}");
+        }
+        finally
+        {
+            if (!build.HasExited)
+            {
+                build.Kill(entireProcessTree: true);
+                Assert.True(build.WaitForExit(5000), "ScriptHost build cleanup did not finish.");
+            }
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

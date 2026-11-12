@@ -17,10 +17,16 @@ namespace Lifeblood.Adapters.CSharp;
 public sealed class RoslynEdgeExtractor
 {
     private readonly CanonicalSymbolIdVersion _idVersion;
+    private readonly CompilationSymbolIds? _compilationIds;
 
     public RoslynEdgeExtractor(CanonicalSymbolIdVersion idVersion = CanonicalSymbolIdVersion.LegacyV1)
     {
         _idVersion = idVersion;
+    }
+
+    internal RoslynEdgeExtractor(CompilationSymbolIds symbolIds) : this(symbolIds.Version)
+    {
+        _compilationIds = symbolIds;
     }
 
     private static readonly Evidence SemanticEvidence = new()
@@ -178,8 +184,8 @@ public sealed class RoslynEdgeExtractor
         }
         finally
         {
-            // Canonical IDs are memoized only for this tree extraction. The
-            // formatter remains the declaration authority across all profiles.
+            // Release standalone tree-local symbol keys. A workspace pass owns
+            // its shared IDs separately; the formatter remains the authority.
             _symbolIds.Clear();
         }
     }
@@ -914,6 +920,7 @@ public sealed class RoslynEdgeExtractor
 
     private string GetSymbolId(ISymbol symbol)
     {
+        if (_compilationIds != null) return _compilationIds.Get(symbol);
         if (_symbolIds.TryGetValue(symbol, out var id)) return id;
         return _symbolIds[symbol] = CanonicalSymbolFormat.BuildSymbolId(symbol, _idVersion);
     }

@@ -55,6 +55,8 @@ internal sealed class CompilationTreeExtractor
 
         var results = new CompilationFileExtraction?[candidates.Length];
         var failures = new Exception?[candidates.Length];
+        var symbolIds = new CompilationSymbolIds(_idVersion);
+        var moduleId = SymbolIds.Module(moduleName);
         var options = new ParallelOptions
         {
             MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, MaximumConcurrency),
@@ -69,7 +71,7 @@ internal sealed class CompilationTreeExtractor
                 var relPath = candidate.PathIdentity.GraphPath;
                 var model = compilation.GetSemanticModel(tree);
                 var root = tree.GetRoot();
-                var edgeExtractor = new RoslynEdgeExtractor(_idVersion)
+                var edgeExtractor = new RoslynEdgeExtractor(symbolIds)
                 {
                     KnownModuleAssemblies = knownModuleAssemblies,
                 };
@@ -89,9 +91,9 @@ internal sealed class CompilationTreeExtractor
                         QualifiedName = $"{moduleName}/{relPath}",
                         Kind = DomainSymbolKind.File,
                         FilePath = relPath,
-                        ParentId = SymbolIds.Module(moduleName),
+                        ParentId = moduleId,
                     };
-                    symbols = new RoslynSymbolExtractor(_idVersion).Extract(
+                    symbols = new RoslynSymbolExtractor(symbolIds).Extract(
                         model,
                         root,
                         relPath,
