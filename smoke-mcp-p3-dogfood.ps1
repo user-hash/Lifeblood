@@ -103,8 +103,8 @@ try {
         }
     }
 
-    # Inspect a known ExampleApp MonoBehaviour-magic method that previously produced a FP.
-    # Lifeblood-on-itself has no MonoBehaviour, so this section only fires for ExampleApp.
+    # Inspect a known a Unity consumer MonoBehaviour-magic method that previously produced a FP.
+    # Lifeblood-on-itself has no MonoBehaviour, so this section only fires for a Unity consumer.
     $unityShaped = $methodFindings | Where-Object { $_.filePath -match '(Assets|Editor|Runtime)' -and $_.name -in @('Awake','Update','OnEnable','Start') }
     Write-Host ('  Unity-shaped magic-name FPs (Assets|Editor|Runtime path + magic name): ' + ($unityShaped | Measure-Object).Count)
 

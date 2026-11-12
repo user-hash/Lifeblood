@@ -2030,15 +2030,8 @@ public partial class Store
             && e.TargetId == "field:App.Store._state");
     }
 
-    // F1d / INV-EXTRACT-PROPERTY-READ-001 — bare-identifier sibling-method
-    // property reads (no `this.` prefix). ExampleApp dogfood 2026-05-19 showed
-    // ~88.7% of non-public properties had zero incoming non-Contains edges
-    // because IdentifierNameSyntax handled Type/Field/Method but not
-    // IPropertySymbol. `find_references` resolved them via Roslyn semantic
-    // walk; `dependants` / `dead_code` / `blast_radius` walk the edge graph
-    // and missed them. Member-access form (`this.X`, `obj.X`) was already
-    // handled by ExtractMemberAccessEdge. Fix mirrors the field arm via
-    // EmitSymbolLevelEdge.
+    // INV-EXTRACT-PROPERTY-READ-001: bare property reads use the same symbol-level
+    // reference path as qualified member access.
     [Fact]
     public void ExtractEdges_BareIdentifierPropertyRead_EmitsReferencesEdge()
     {

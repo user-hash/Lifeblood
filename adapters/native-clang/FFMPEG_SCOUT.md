@@ -43,16 +43,24 @@ From the Lifeblood repo root:
 
 ```powershell
 powershell -ExecutionPolicy Bypass `
-  -File adapters/native-clang/tools/ffmpeg-scout/Prepare-FfmpegScout.ps1
+  -File adapters/native-clang/tools/ffmpeg-scout/Prepare-FfmpegScout.ps1 `
+  -FfmpegRoot <checkout-path> `
+  -ScoutRoot <output-path>
 ```
 
-Defaults:
+Supply checkout and output paths explicitly. Derived defaults:
+
+- build root: `<checkout-path>/build-lifeblood-clang`
+- graph output: `<output-path>/ffmpeg-scout.graph.json`
+- profile: `ffmpeg-clang-minimal-scout`
 
 Useful rerun when the checkout/configure step already exists:
 
 ```powershell
 powershell -ExecutionPolicy Bypass `
   -File adapters/native-clang/tools/ffmpeg-scout/Prepare-FfmpegScout.ps1 `
+  -FfmpegRoot <checkout-path> `
+  -ScoutRoot <output-path> `
   -SkipClone `
   -SkipConfigure
 ```
@@ -62,6 +70,8 @@ To prepare only the compile database without running extraction:
 ```powershell
 powershell -ExecutionPolicy Bypass `
   -File adapters/native-clang/tools/ffmpeg-scout/Prepare-FfmpegScout.ps1 `
+  -FfmpegRoot <checkout-path> `
+  -ScoutRoot <output-path> `
   -SkipRun
 ```
 
@@ -83,9 +93,7 @@ On 2026-05-16, the default scout produced:
 
 ## Current Limits
 
-This workflow does not yet replace a real whole-build compile database. The
-machine used for the first scout did not have WSL, Make, Bear, or compiledb
-available, so the helper creates a focused compile database for selected files.
+This workflow does not yet replace a real whole-build compile database. The helper creates a focused compile database for selected files.
 
 The next maturity step is to support one of these full-build paths:
 

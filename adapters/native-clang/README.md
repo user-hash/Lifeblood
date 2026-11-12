@@ -75,7 +75,7 @@ The native adapter uses the existing Lifeblood graph kinds:
 Native-specific details live in `properties`, usually under a `native.*` key.
 
 See the full
-[Native Clang stage plan](../../docs/plans/native-clang-adapter-masterplan-2026-05-16.md).
+[Native Clang stage plan](../../docs/NATIVE_CLANG.md).
 
 ## Stage 1 Prerequisites
 

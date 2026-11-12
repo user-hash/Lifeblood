@@ -148,6 +148,10 @@ likely real cycle in libswscale context initialization. Whole-build coverage
 requires one of WSL with bear, MSYS2 with bear, or a project-specific
 compile-database generator and is named as the next maturity step.
 
+See [`docs/NATIVE_CLANG.md`](NATIVE_CLANG.md) for the dedicated capability
+page. The [Native Clang stage plan](NATIVE_CLANG.md)
+tracks the rollout.
+
 ## Adapter Checklist
 
 Before shipping an adapter, verify:
@@ -193,9 +197,7 @@ Every edge should carry evidence. The confidence level must be honest:
 ## Testing Against Golden Repos
 
 The `tests/GoldenRepos/` directory contains fixture projects:
-
 - **HexagonalApp/** - 3-layer hexagonal architecture (Domain, Application, Infrastructure)
-
 - **CycleRepo/** - Two services with circular dependencies
 
 Run your adapter against these and verify:

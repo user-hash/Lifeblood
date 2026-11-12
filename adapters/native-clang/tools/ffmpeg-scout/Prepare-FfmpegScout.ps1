@@ -1,6 +1,6 @@
 param(
-    [string]$FfmpegRoot = '/path/to/workspace,
-    [string]$ScoutRoot = '/path/to/workspace,
+    [Parameter(Mandatory)][string]$FfmpegRoot,
+    [Parameter(Mandatory)][string]$ScoutRoot,
     [string]$FfmpegRemote = 'https://github.com/FFmpeg/FFmpeg.git',
     [string]$BuildDir = '',
     [string]$OutputGraph = '',

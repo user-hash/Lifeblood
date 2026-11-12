@@ -8,8 +8,7 @@ using Xunit;
 namespace Lifeblood.Tests;
 
 /// <summary>
-/// Regression for the "Inconsistent language versions" failure class
-/// surfaced by the 2026-05-14 pre-release audit on ExampleApp.
+/// Pins consistent parse options across retained and replacement syntax trees.
 ///
 /// When a module declares a non-default <c>&lt;LangVersion&gt;</c> /
 /// <c>&lt;Nullable&gt;</c> / <c>&lt;DefineConstants&gt;</c> (threaded

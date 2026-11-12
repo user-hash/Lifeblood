@@ -7,7 +7,7 @@ namespace Lifeblood.Tests;
 /// <summary>
 /// INV-UNITY-NEWFILE-DISCOVERY-HONESTY-001 / LB-TRACK-20260530-028.
 /// The <c>lifeblood_analyze</c> tool description is the public contract for
-/// how file discovery behaves. ExampleApp dogfood proved the old prose over-promised
+/// how descriptor-driven file discovery behaves. The following claim is false:
 /// ("a .cs file ... WILL be picked up by Lifeblood's incremental walker") —
 /// Lifeblood discovers files through generated project descriptors, so a
 /// pre-import file stays invisible until the descriptors regenerate. This is a
@@ -22,8 +22,7 @@ public class AnalyzeDescriptionHonestyTests
     [Fact]
     public void AnalyzeDescription_DoesNotOverpromisePreMetaDiscovery()
     {
-        // The exact over-promise observed under ExampleApp dogfood. Its return is a
-        // regression; assert the false claim is gone in both phrasings.
+        // Descriptor membership must not be described as automatic filesystem discovery.
         Assert.DoesNotContain("WILL be picked up", AnalyzeDescription);
         Assert.DoesNotContain("picked up by Lifeblood's incremental walker", AnalyzeDescription);
     }

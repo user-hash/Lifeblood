@@ -50,8 +50,7 @@ public class FeatureSwitchExtractorTests
     private static FeatureSwitch? Find(FeatureSwitchReport r, string name)
         => r.Switches.FirstOrDefault(s => s.MemberName == name);
 
-    // The ExampleApp motivating shape: UseGrammarGeneration defaults false, read by a
-    // live branch, flipped only inside SetGrammarMode — which nothing calls.
+    // A live branch reads the default flag, but the only mutator has no callers.
     private const string DormantFeature = @"
 namespace Acme;
 public class Engine
@@ -298,7 +297,7 @@ public class Boot { public void I(Acme.Engine e) { e.Disable(); } }";
     [Fact]
     public void FeatureSwitch_PositionalRecord_DefaultFromParameter_AndConstructorArgIsWrite()
     {
-        // The ExampleApp-shape false positive: a positional-record option's default lives
+        // A positional-record option's default lives
         // on the parameter (= true), and its writes come through CONSTRUCTOR ARGS
         // (new Options(false)), not property assignments — both were invisible.
         var source = @"

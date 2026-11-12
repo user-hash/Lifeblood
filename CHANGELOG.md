@@ -7,8 +7,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Complete scope: [changes since public 0.7.13](docs/VERIFICATION.md),
-including the full commit classification and explicitly deferred work.
+Unreleased product changes are listed below. See [verification](docs/VERIFICATION.md)
+for reproducible checks and limits.
 
 ### Added
 
@@ -27,6 +27,9 @@ including the full commit classification and explicitly deferred work.
 
 ### Changed
 
+- Removed private diagnostic journals and replaced consumer-specific examples
+  with synthetic fixtures. Public-history review is required before publication.
+
 - The host moves from the published .NET 8 / Roslyn 4.14 toolchain to .NET 11 /
   SDK-matched Roslyn 5.12. Consumer language settings remain independent;
   SDK-style discovery needs an installed SDK. The Windows CLI includes its
@@ -40,14 +43,8 @@ including the full commit classification and explicitly deferred work.
 - Child SDK/ScriptHost processes have bounded pipe draining and termination;
   compile-check emission avoids an extra PE-buffer copy and private streaming
   work releases state under its existing lifecycle. Runtime Async remains
-  disabled after comparable 1/4-client measurements found regressions; upgrading
-  the host does not by itself promise a speedup. See
+  disabled; upgrading the host does not by itself promise a speedup. See
   [process, emission and async qualification](docs/VERIFICATION.md).
-
-- The exact `local development build` callback/effect/native-source/compiler-validation bundle
-  is installed and qualified through real native app and Unity consumers on one
-  shared base. Backend reconnection and bounded acceptance are recorded in the
-  [deployment report](docs/VERIFICATION.md).
 
 - Method-effect reports can join caller-reported native build/debug
   document identities from `runtimeEvidencePath` to SHA-1/SHA-256 of the same
@@ -71,14 +68,14 @@ including the full commit classification and explicitly deferred work.
   unknowns. Opt-in callable declarations distinguish empty/unavailable bodies
   and carry retained compiler-source checksums; read-modify-write access modes
   are explicit. The Unity wrapper and canonical/snapshot/batch lanes share the
-  same operation port. Exact `local development build` package/native/Unity deployment passed;
+  same operation port;
   see [method-effect source qualification](docs/VERIFICATION.md).
 
 - Source-qualified operation facts now preserve dynamic/pointer call occurrences,
   callback local/event binding, conditional receivers and explicit dispatch kind.
   Opaque callable keys distinguish deferred/nested bodies across declaration
   schemas without changing graph addresses or retaining another semantic base.
-  The consumer view is recorded above; `local development build` deployment passed. See
+  The same bounded facts are available through the method-effect report. See
   [callback assessment and source qualification](docs/VERIFICATION.md).
 
 - The attach-only inspection helper now joins CLI/runtime/Roslyn, SDK probe,
@@ -94,15 +91,13 @@ including the full commit classification and explicitly deferred work.
   preserves errors, evidence and compact file-scoped batch rows without changing
   the shared publication. Opaque/oversized results keep their original content.
   The Unity bridge accepts modern negotiation and legacy fallback. See
-  [qualification and format-cost measurements](docs/VERIFICATION.md);
-  installed `local development build` native/Unity acceptance passed in the [bundle report](docs/VERIFICATION.md).
+  [qualification and format-cost measurements](docs/VERIFICATION.md).md).
 
 - `lifeblood_diagnose mode:environment` observes one retained module/file's actual
   compiler options, parse scopes and bounded references without diagnostics or
   refresh. Snapshot descriptor/profile provenance distinguishes host compiler
   identity from target coverage and runtime compatibility. Source acceptance is
-  recorded in the [environment report](docs/VERIFICATION.md);
-  installed `local development build` qualification passed in the [bundle report](docs/VERIFICATION.md).
+  recorded in the [environment report](docs/VERIFICATION.md).md).
 
 - Lifeblood targets .NET 11 with Roslyn 5.12.0-1.26529.118 and C# 15 in the
   locally qualified builds; Unity's compiler remains independent. C# 14 qualification covers
@@ -136,13 +131,28 @@ including the full commit classification and explicitly deferred work.
   graph results or reference locations. Input-identity and service-construction
   phases use the existing telemetry authority. See [controlled comparisons](docs/VERIFICATION.md).
 
+- Compilation passes share canonical symbol-ID strings within that pass using
+  Roslyn symbol equality, reducing duplicate formatting storage within the
+  compilation lifecycle.
+- The optional process-isolated executor uses the selected .NET host instead of
+  a bare PATH host, and confirms child exit after a timeout. Its tests now fail
+  on broken ScriptHost build prerequisites and prove actual script-body entry
+  and termination. This does not switch ordinary MCP execution to isolation.
+  See [host qualification](docs/VERIFICATION.md).
+- Extension declarations retain a valid graph name through the C#15 analysis
+  pipeline while preserving declaration IDs and edges. Exact package and real
+  native/Unity checks are recorded in [local acceptance](docs/VERIFICATION.md).
+- Measured duplicate blast-radius explanation strings, per-edge profile-count
+  enumerators and repeated package-path classification allocations now share
+  storage or traversal work within their existing request/pass boundaries.
+  The reuse stays within existing request and compilation ownership boundaries.
+
 - File compile checks preserve the resolved tree's own parse options and accept
   explicitly empty source without reusing retained declarations. File/snippet
   define receipts describe the actual parse scope; module/project diagnostics
   union all selected trees. Both valid before-fix regressions and the guarded
   empty-capture handler path are qualified in the
-  [input-contract report](docs/VERIFICATION.md).
-  Installed `local development build` acceptance passed in the [bundle report](docs/VERIFICATION.md).
+  [input-contract report](docs/VERIFICATION.md).md).
 
 - Automatic compile refresh exposes outcome, mode, publication IDs, first
   observed input trigger and source-work summary. Full fallback publishes its
@@ -150,9 +160,7 @@ including the full commit classification and explicitly deferred work.
   point to their included drift results without requesting the same check again.
 - Standalone project analysis supports a JSON identity/input/rules/usage receipt.
   Windows CLI packages include the .NET runtime, preserving the .exe entry point
-  under incorrect inherited runtime roots. Installed .48 native/Unity acceptance
-  and all discovered test cases are qualified in the
-  [remaining-repair report](docs/VERIFICATION.md).
+  under incorrect inherited runtime roots.
 
 - Unchanged incremental scans reuse their immutable graph. Candidate file facts
   use copy-on-write, repeated edge addresses share candidate-scoped strings,
@@ -371,7 +379,15 @@ verifiable. The sections below list every public change since v0.7.12.
   graph edge, fact cache, or retained semantic base was added.
   (`INV-OPERATION-FACTS-001`, `INV-CONTRACT-AUDIT-001`.)
 
-- **Retained-session memory growth receipts.**
+- **Retained-session memory growth receipts.** `AnalysisUsage` remains the one
+  per-request usage authority and now records start/end/absolute-peak working
+  set and private bytes. Signed end-minus-start deltas and nonnegative
+  peak-above-start values are derived, not stored as competing facts. The
+  process probe drains its periodic sampler before the final sample, while MCP
+  and CLI projections preserve the existing absolute-peak fields. A retained
+  full/noop/edit/fallback sequence pins the wire contract.
+  (`INV-USAGE-001..002`, `INV-USAGE-PROBE-001`,
+  `LB-INTAKE-20260714-033`.)
 
 - **Compact invariant-audit provenance.**
   `lifeblood_invariant_check(mode:"audit", summarize:true)` preserves totals,
@@ -403,7 +419,7 @@ verifiable. The sections below list every public change since v0.7.12.
   no baseline compilation or additional semantic base is created.
   (`INV-DIAGNOSTIC-OWNERSHIP-001`, `LB-INTAKE-20260714-029`.)
 
-- **Secondary-profile operation audits without secondary retention.**
+- **Secondary-profile operation audits without secondary retention.** `lifeblood_contract_audit(profileScope)` supports committed profiles. Secondary-profile scans verify snapshot inputs, compile the requested scope sequentially and release it immediately. Receipts report scope, truncation and additional semantic-base count.
 
 - **Bounded changed-set compile checks.** `lifeblood_compile_check` now accepts
   an additive `filePaths` mode for 1..32 files. It prevalidates the whole set,
@@ -427,7 +443,7 @@ verifiable. The sections below list every public change since v0.7.12.
 
 ### Changed
 
-- **Warm shared incremental admission no longer hashes every source twice.**
+- **Warm shared incremental admission avoids duplicate source hashing.** Compatible callers share one authoritative timestamp/content scan. Full preflight and input-drift rejection remain unchanged.
 
 - **External Unity package sources now have one workspace identity.** Package
   discovery mounts a physical local `file:` package at its logical
@@ -448,7 +464,7 @@ verifiable. The sections below list every public change since v0.7.12.
   values, and process tests pin exact generation/snapshot retention across a
   disconnect. (`INV-MCP-IDLE-DRAIN-001`.)
 
-- **Direct and Unity clients now converge on one installed command.**
+- **Direct and Unity clients use the installed shared command.** Both connect through `lifeblood-mcp --shared` rather than copied or repository-local binaries.
 
 - **Versioned semantic contracts now share one bounded stateless evaluator.**
   Consumer-owned manifests declare operation-argument guards, external API
@@ -484,9 +500,9 @@ verifiable. The sections below list every public change since v0.7.12.
   truncation, input drift, compiled-module count, and
   `AdditionalSemanticBaseCount`. (`INV-OPERATION-FACTS-001`.)
 
-- **Targeted contract scans avoid materializing rejected operation evidence.**
+- **Targeted contract scans avoid materializing rejected evidence.** Kind, target and containing-symbol filters run before projection, with a request-local canonical-ID cache.
 
-- **Shared ExampleApp analysis is responsive, reusable, and loss-tolerant.**
+- **Shared analysis preserves publication and cancellation boundaries.** Catalog reads use shared leases, identical completed inputs reuse the publication, and disconnecting one waiter does not cancel surviving callers. Cold extraction uses bounded workers and preserves deterministic ordering.
 
 - **Analyze defaults are summary-first and provenance-complete.** Package
   visibility returns aggregate counts plus only excluded/unbound package rows;
@@ -568,6 +584,11 @@ verifiable. The sections below list every public change since v0.7.12.
   (`INV-COMPILATION-FILE-OWNERSHIP-001`, `LB-INTAKE-20260629-018`.)
 
 - **Shared transport now reports its verified maturity.**
+  `lifeblood_capabilities.featureFlags.sharedSessionTransportMaturity` derives
+  from one server-edge constant and reports `recommended`, matching the tested
+  same-workspace rollout, canonical setup, and private-stdio rollback posture.
+  Code, wire, and documentation ratchets prevent the label from drifting again.
+  (`INV-MCP-SHARED-MATURITY-001`, `LB-INTAKE-20260715-041`.)
 
 - **Multi-profile full fallback is now pinned through the MCP boundary.**
   An Editor+Player incremental analyze forced to full by asmdef descriptor drift
@@ -718,9 +739,9 @@ verifiable. The sections below list every public change since v0.7.12.
   net10/full-suite race without changing generated-code semantics or the
   production target framework. (`LB-INTAKE-20260601-005`.)
 
-- **Unity `UNITY_STANDALONE && !UNITY_EDITOR` callsites are visible under a documented profile.**
+- **Standalone define profile.** Unity analysis supports `Standalone` alongside `Editor` and `Player`, making desktop Player guards visible without changing the consumer compiler configuration.
 
-- **Unity UI-derived magic methods no longer surface as dead-code candidates.**
+- **Unity UI inheritance reachability.** The extractor records the resolved base-type chain so derived UI lifecycle methods are not classified by a fixed subclass-name roster.
 
 - **`lifeblood_feature_switch_audit` now models positional-record properties.**
   Re-dogfooding the census against Lifeblood's own graph surfaced a third
@@ -758,7 +779,7 @@ verifiable. The sections below list every public change since v0.7.12.
   `tool-routing.md`, or if the skill references a `lifeblood_*` name that is not a
   real tool. Adding a tool now requires a routing entry in the same change.
 
-- **New tool `lifeblood_feature_switch_audit`.**
+- **Feature-switch audit.** `lifeblood_feature_switch_audit` reports boolean branch gates whose reachable writes do not change their default value. Findings remain advisory.
 
 - **New tool `lifeblood_wire_audit`.** The complement of `dead_code`: instead of
   UN-referenced symbols, it finds members that ARE referenced but structurally
@@ -803,7 +824,17 @@ verifiable. The sections below list every public change since v0.7.12.
   source of truth as `lifeblood_blast_radius` grouping. (`INV-EDGE-GROUP-001`,
   `LB-INTAKE-20260613-003`.)
 
-- **The intake backlog now has a shape ratchet.**
+- **The intake backlog now has a shape ratchet.** `devmemory/lifeblood-intake.md`
+  is the front door for un-started dogfood findings (the living tracking ledger
+  rejects parked Open entries), but until now nothing guarded its quality. New
+  `IntakeLedgerTests` (`INV-INTAKE-SHAPE-001`) pins every `LB-INTAKE-…` entry to a
+  canonical id (`LB-INTAKE-YYYYMMDD-NNN`), enforces unique ids, requires the
+  `Type:` / `Priority:` / `Source:` / `Workspace:` metadata plus the
+  `What:` / `Why it matters:` / `Fix shape:` authoring sections, flags any heading
+  that mentions `LB-INTAKE` but is not a canonical id, and forbids an id from
+  living in both intake and the tracking ledger (promotion must move, not copy).
+  The nine pre-2026-06-11 entries were backfilled with their `Source:` /
+  `Workspace:` provenance so the whole 19-entry queue conforms.
 
 ## [0.7.11] - 2026-06-01
 
@@ -863,7 +894,8 @@ test and self-analysis counts: see [`docs/STATUS.md`](docs/STATUS.md) (truth-rec
 - **Source generators run before analysis.** Lifeblood discovers and runs a project's
   source generators before extracting symbols, so generated code is part of what it sees.
 
-- **Runtime health gauges.**
+- **Runtime health gauges.** Optional telemetry for the server's own memory use (working
+  set, private bytes, managed heap) and thread count.
 
 ### Performance
 
@@ -924,11 +956,13 @@ unchanged). INVs 149 → 150 across 98 → 99 categories (one new:
 public-surface anchors aligned to live source via the existing
 `DocsTests.Anchor_MatchesLiveSource` ratchet.
 
+This release adds multi-profile analysis, assignment coverage, opt-in reflection-based test recommendations and focused response shaping. Current source counts are maintained in [STATUS](docs/STATUS.md).
+
 ### Added
 
-- **`lifeblood_assignment_coverage` MCP tool**
+- **Assignment coverage.** `lifeblood_assignment_coverage` reports per-construction-site slot coverage for a target type, with separate construction, assignment and coverage evidence.
 
-- **`lifeblood_test_impact` reflection heuristic**
+- **Reflection test recommendations.** `lifeblood_test_impact(includeReflectionHeuristic:true)` adds opt-in source-text evidence for reflection and source-inspection tests, separately from graph-proven impact.
 
 - **`INV-DOCS-005` + `INV-DOCS-006` + `INV-DOCS-007` invariant + skipped-count ratchets** (Wave 1 Atom 1.5 + reviewer pass). Closes the drift class where `docs/STATUS.md` prose ("122 typed invariants across 83 categories", "zero skipped") silently outlived the live invariant tree + test discovery. Sibling to the existing `portCount` / `toolCount` / `testCount` ratchets. New STATUS.md HTML anchors: `<!-- invariantCount: N -->`, `<!-- invariantCategoryCount: N -->`, `<!-- skippedCount: N -->`. `DocsTests` adds `StatusDoc_InvariantCount_MatchesLiveAudit` + `StatusDoc_InvariantCategoryCount_MatchesLiveAudit` + `StatusDoc_SkippedCount_MatchesLiveDiscovery` + `StatusDoc_VisibleSkippedCount_MatchesHiddenAnchor` — any future rename / addition / removal of an invariant or `[SkippableFact]` fails the ratchet unless the STATUS.md anchor moves in the same commit.
 
@@ -938,11 +972,9 @@ public-surface anchors aligned to live source via the existing
 
 ### Fixed
 
-- **Multi-profile incremental drops cross-project edges on caller-touch**
+- **Multi-profile incremental drops cross-project edges on caller-touch** (`INV-MULTI-DEFINE-INCREMENTAL-001` + `INV-INCREMENTAL-XREF-001` cross-product, external review pass 2026-05-24). Pre-fix `AnalysisSnapshot.DowngradedRefs` was a single dict keyed by module — only the first-profile (Editor) PE images were carried across calls; non-first-profile (Player) incremental passes received `carryDowngraded:null` AND only recompiled changed modules. Under that combination, a changed caller in module B with a `#if PLAYER_ONLY` reference to module A had no Player PE image for A available during recompile; the cross-project Player edge bound to a Roslyn error symbol and was silently dropped by `GraphBuilder`'s dangling-edge filter. Scratch repro: edge count 10 → 7 on caller-touch, `perProfileEdgeCounts.Player` → 0. Fix replaces `DowngradedRefs` with `DowngradedRefsByProfile` (outer dict keyed by profile name, inner by module name); both `AnalyzeWorkspace` and `IncrementalAnalyze` now retrieve / write the carry under the SAME profile they are compiling, so each profile's PE images survive across incrementals. Pinned by `MultiProfileCrossModuleIncrementalTests` (2 facts: cross-project Player edge survives caller-touch with provenance intact; per-profile edge counts stable across 3 repeated touches).
 
 - **`incremental-noop` response zeros out modules/types/files/violations/cycles** (external review pass 2026-05-24). `GraphSession.LoadIncremental` passed `analysis:null` into `BuildLoadResult` on the no-change incremental path; the summary block fell back to 0 for every analysis-derived metric because the `analysis?.X ?? 0` chains had nothing to read. Graph is unchanged on noop so the prior `_session.Analysis` is still valid — noop now reuses it and surfaces real counts. The wire-shape difference between "no changes" and "no graph loaded" stops being indistinguishable to summary-readers.
-
-- **ExampleApp L-LIM-002 / L-LIM-003 / L-LIM-004 confirmed CLOSED under v0.7.8**
 
 - **Stale self-analyze numbers across public docs** (reviewer pass 2026-05-24). `docs/STATUS.md` line 45 self-analysis block + `docs/architecture.html` line 378 footer cited 3,506 symbols / 21,113 edges — the pre-Wave-3-4 baseline. Refreshed to live 3,628 symbols / 21,663 edges / 377 types alongside the existing 0 violations / 0 cycles.
 
@@ -950,7 +982,7 @@ public-surface anchors aligned to live source via the existing
 
 ### Wave 6.E: IOperation tool multi-profile scope (2026-05-24)
 
-- **`lifeblood_enum_coverage` / `lifeblood_static_tables` / `lifeblood_assignment_coverage` carry `analyzedUnderProfile` + accept `profileScope:string?`**
+- **`lifeblood_enum_coverage` / `lifeblood_static_tables` / `lifeblood_assignment_coverage` carry `analyzedUnderProfile` + accept `profileScope:string?`** (`INV-MULTI-DEFINE-IOP-001`). Tools operate against the retained profile's compilations only (memory: peak RAM = single-profile baseline regardless of profile count, because subsequent passes force `RetainCompilations=false` and downgrade compilations after edge extraction). `RoslynWorkspaceAnalyzer.RetainedProfileName` exposes the retained profile name; default = first in caller's `defineProfiles` list. `profileScope` is honored when it matches; mismatched values fail loudly with switch-instructions (re-analyze with the requested profile FIRST in `defineProfiles`). Cross-profile IOperation comparison is v2 (would require multi-profile compilation retention, doubles RAM). The MVP solves the immediate L-LIM-001 trap by being explicit about what's covered: every response answers "which profile are these counts from?". Pinned by `MultiProfileIOpScopeTests` (4 facts). Tests 1178 → 1182. INVs 141 → 142 (95 → 96 categories).
 
 ### Wave 6.D: Edge.Profiles[] wire shape + UnityDefineProfileResolver default injection (2026-05-24)
 
@@ -958,7 +990,8 @@ public-surface anchors aligned to live source via the existing
 
 - **`lifeblood_dependants` / `lifeblood_dependencies` surface `profiles[]` per edge + accept `profileFilter:string[]?`** (`INV-MULTI-DEFINE-EDGE-PROFILES-001`). `EdgeDetail.Profiles` plumbs `Edge.Profiles` through the read-side port to wire shape. `ApplyProfileFilter` is a pure post-query narrow; null filter short-circuits to identity; edges with `Profiles=null` (single-profile back-compat) pass every filter so pre-multi-define graph.json files remain accessible.
 
-- **`UnityDefineProfileResolver` injected at composition root**
+- **`UnityDefineProfileResolver` injected at composition root**. `GraphSession.Load` constructs `RoslynWorkspaceAnalyzer` with `UnityDefineProfileResolver` by default — `Library/` auto-detection makes it safe injection everywhere (returns 2 profiles on Unity, single Editor identity on non-Unity).
+- Pinned by `MultiProfileWireShapeTests` (6 facts: dependants surfaces profiles, dependencies surfaces profiles, profileFilter narrows, unmatched filter returns empty, no filter keeps all, single-profile-null edges pass filter as back-compat). Tests 1172 → 1178. INVs 140 → 141 across 94 → 95 categories.
 
 ### Wave 6.C: UnityDefineProfileResolver 2-profile MVP (2026-05-24)
 
@@ -966,7 +999,7 @@ public-surface anchors aligned to live source via the existing
 
 ### Wave 6.B: Multi-profile compile pipeline + Edge.Profiles[] (2026-05-24)
 
-- **`AnalysisConfig.DefineProfiles` + per-profile compile orchestration**
+- **`AnalysisConfig.DefineProfiles` + per-profile compile orchestration** (`INV-MULTI-DEFINE-ANALYZE-001`). `RoslynWorkspaceAnalyzer.AnalyzeWorkspace` now runs N sequential per-profile passes when `DefineProfiles` is set. Each pass clones modules via `DefineProfileApplier.WithProfileDefines`, compiles + extracts, tags emitted edges with the active profile name via `EdgeProfileTagger.Tag`, and appends to the snapshot through `AnalysisSnapshot.AppendProfileEdges`. First pass uses `ReplaceFile` to set baseline symbols + file timestamps; subsequent passes only add profile-tagged edges. Unknown profile names throw eagerly. Single-profile back-compat (null/empty `DefineProfiles`) executes ONE pass against the resolver's first profile; edges keep `Profiles=null`; wire shape byte-stable with pre-Wave-6 behavior.
 
 - **`Edge.Profiles: IReadOnlyList<string>?` field + GraphBuilder union dedup** (`INV-MULTI-DEFINE-EDGE-PROFILES-001`). New optional provenance field on every `Edge`. Null on single-profile back-compat (preserves pre-Wave-6 wire shape). Populated under multi-profile with the sorted set of profile names that observed the edge. `EdgeProfileMerger.MergeProfiles` unions Profile sets at the GraphBuilder dedup seam (`(SourceId, TargetId, Kind)` key); first-write-wins for every other field. JSON graph round-trip via `JsonGraphExporter` + `JsonGraphImporter` preserves the field (additive — pre-existing graph.json files load with `Profiles=null`).
 
@@ -979,6 +1012,8 @@ Pinned by `MultiProfileAnalyzeTests` (11 facts: applier add/remove ordinal + ide
 - **`IDefineProfileResolver` port + `DefaultDefineProfileResolver` adapter** (`INV-MULTI-DEFINE-RESOLVER-001`). Wave 6.A of L-LIM-001 multi-define union analyze. New Left-side port at `Lifeblood.Application.Ports.Left.IDefineProfileResolver` returns the set of preprocessor-symbol profiles a project should be analyzed under. Default adapter returns a single identity Editor profile — every existing single-profile callsite keeps byte-stable wire shape. Per-profile active define set computed as `(BASE - RemoveDefines) ∪ AddDefines`; ordinal-sorted for byte-stable provenance. Pinned by `DefineProfileResolverTests` (4 facts). Port count 27 → 28. Test count 1149 → 1153. INV count 135 → 136 across 89 → 90 categories. Wave 6.B (multi-profile compile pipeline) + Wave 6.C (UnityDefineProfileResolver 2-profile MVP) follow.
 
 ### Wave 6 chain — L-LIM-001 CLOSED end-to-end (2026-05-24)
+
+Graph dependency tools can query the union of committed define profiles or narrow results with `profileFilter`. Compiler-backed tools retain their documented profile limits.
 
 - **6.A** `IDefineProfileResolver` Application-layer port + default single-Editor identity adapter (`INV-MULTI-DEFINE-RESOLVER-001`)
 
@@ -1000,21 +1035,25 @@ The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build t
 
 ### Wave 6 plan reference (2026-05-24)
 
+The Wave 6 architectural plan that drove the chain landed at `docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md` — six-phase rollout (6.A port + default resolver, 6.B multi-profile compile, 6.C Unity-aware adapter, 6.D wire shape, 6.E per-IOperation policy, 6.F live dogfood closure). The plan was tightened during 6.A–6.C: the original 5-profile vocabulary collapsed to the 2-profile MVP (Editor + Player) after empirical proof that platform-target defines are already in the Editor baseline; the Editor-discriminator axis (UNITY_EDITOR / UNITY_EDITOR_WIN / etc.) is the only load-bearing distinguisher for the L-LIM-001 trap. `Edge.Profiles[]` is omitted on single-profile back-compat (not empty-array) so the wire shape stays byte-stable for callers who don't opt into `defineProfiles`.
+
 ### Wave 5: Stage 0 dogfood follow-through (2026-05-24)
 
-- **`lifeblood_rename` per-TextChange wire shape + cross-partial coverage**
+- **Rename point edits and partial declarations.** Rename warms the complete workspace and returns bounded per-TextChange edits rather than whole-file replacements, including references across partial declarations.
 
-- **`lifeblood_file_impact` `summarize` flag + `maxResults` cap**
+- **File-impact response bounds.** `lifeblood_file_impact` accepts `summarize` and `maxResults` while preserving full dependency counts and explicit truncation flags.
 
-- **Uniform list-shape contract eternal ratchet**
+- **Uniform list-shape contract eternal ratchet** (`INV-LIST-SHAPE-UNIFORM-001`). Pinned by `UniformListShapeRatchetTests` (3 theories × 6 list-shape tools = 18 cases): asserts every read-side tool whose response is an unbounded list exposes `summarize:bool` + at least one cap argument on its input schema, AND that the tool description references `summarize` or `truncat*` so the catalog surfaces the wire-shape shortcut. Closes the silent-drift class — future list-shape tools that ship without the trio fail at build time, not at dogfood time. Per-tool cap vocabulary stays owned by the tool (rows vs results vs tables vs files vs ...) — uniformity is the wire-shape contract, not behavior identity.
 
-- **`lifeblood_static_tables` default `maxRows` 1024 → 32; new `summarize` flag**
+- **Static-table response bounds.** The default `maxRows` is 32. `summarize:true` enforces compact row/table caps; explicit full-detail requests retain the existing result shape and truncation flags.
 
 ## [0.7.8] - 2026-05-19
 
+The 2026-05-19 two-phase hardening plan (`<plan-file>`) lands its Phase-1 trust-hardening atoms (F0..F3f + S4..S8a), four native-clang adapter refactors, three execute-robustness fixes surfaced by Unity IL2CPP dogfood, and one dogfood-derived extractor fix (F1d) that corrected property-edge extraction. Twelve new typed invariants land in `docs/invariants/csharp-adapter.md` + `docs/invariants/tools.md`; the canonical-symbol-identity chain (F1a/b/c), the composite-port intelligence chain (F3a..f), the diagnose-freshness envelope (S5/S5b), the advisory-limitations envelope (S6), the planning-verdict evidence (S7), and the adapter-thinning seam (S8a) all ship together. Lifeblood self-analysis: **3,506 symbols, 21,113 edges, 11 modules, 363 types, 0 violations, 0 cycles. 1,098 tests, zero skipped. 122 typed invariants across 83 categories.**
+
 ### Fixed
 
-- **`INV-EXTRACT-PROPERTY-READ-001` — bare-identifier sibling-member property and event reads emit a symbol-level `References` edge.**
+- **Bare property and event references.** Bare-identifier reads, writes and event subscriptions now use the same symbol-level edge emitter as member-access expressions. This aligns dependency, dead-code and impact queries with compiler reference lookup.
 
 - **`INV-EXTRACT-EXTENSION-REDUCED-001` — extension-method canonical ids walk through `ReducedFrom` before `OriginalDefinition`.** Pre-fix, instance-style extension invocation `x.Foo()` bound to the REDUCED `IMethodSymbol` whose parameter list drops the explicit `this` receiver; the declaration path emitted the unreduced form. Every reduced-form call-site landed on a non-matching canonical id, so the declared extension method showed `directDependants:0` and could surface as a `dead_code` finding even when the workspace called it heavily — same defect class LB-INBOX-010 closed for generic methods, specialized to extension methods. Both producer-side (`GetMethodId`) and consumer-side (`BuildSymbolId`) now route through `if (method.ReducedFrom != null) method = method.ReducedFrom;` before `OriginalDefinition` canonicalization. Fix order matters: `ReducedFrom` first (recover explicit `this` receiver in `T` form), then `OriginalDefinition` (recover open-generic form for generic extensions). Pinned by four `RoslynExtractorTests` fixtures covering instance-style, static-style, generic, and chained-extension shapes. LB-TRACK-20260519-021 / F1a atom of the 2026-05-19 plan.
 
@@ -1030,19 +1069,19 @@ The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build t
 
 ### Added
 
-- **`INV-EXTRACT-CROSS-PARTIAL-RESOLUTION-001` — regression-guard fixtures pin cross-partial private method and field reference resolution.**
+- **`INV-EXTRACT-CROSS-PARTIAL-RESOLUTION-001` — regression-guard fixtures pin cross-partial private method and field reference resolution.** The 2026-05-15 correctness masterplan Stage 1 named cross-partial private invocation as a suspected gap. Empirical verification: the current extractor already resolves cross-partial calls correctly because both partial trees join the same Roslyn Compilation. The Roslyn semantic model walks the shared declaration set natively — no extractor change required. F1b authors two regression-guard fixtures (`ExtractEdges_CrossPartialPrivateMethodCall_EmitsCallsEdgeWithCanonicalId`, `ExtractEdges_CrossPartialPrivateFieldReference_EmitsReferencesEdge`) so a future walker rewrite cannot silently scope resolution to the current syntax tree. LB-TRACK-20260519-021-adjacent / F1b atom of the 2026-05-19 plan.
 
 - **`INV-DEADCODE-TRIAGE-002` — `sameClassConsumerCount` field on every `dead_code` finding plus `IncludeSameClassOnlyConsumers` query option.** F2 adds the wire-shape contract that lets a caller fold the same-class-private-member-read FP class with one bool check instead of cross-tool grep. Computed by walking the symbol's incoming edges and counting any edge whose `SourceId` resolves to a symbol with the same `ContainingType` as the finding. The underlying graph edges this field reads from are emitted by F1d (`INV-EXTRACT-PROPERTY-READ-001`) for properties/events; pre-F1d the field always reported 0 on private property findings. Pinned by `DeadCodeSameClassTests`.
 
 - **`INV-PORT-HEALTH-ANALYZER-SEAM-001` — `IPortHealthAnalyzer` Application-layer port.** F3a extracts the inline algorithm body from `ToolHandler.HandlePortHealth` (75 LOC) into `Lifeblood.Application.Ports.Right.IPortHealthAnalyzer` + `Lifeblood.Connectors.Mcp.LifebloodPortHealthAnalyzer`. ToolHandler routes through the injected port. Behavior is byte-equal to the pre-F3a inline body in this atom — composite/inherited traversal lands in F3b. Pinned by nine `PortHealthAnalyzerTests` fixtures plus a seam-discipline scan that refuses to find the inline algorithm tokens (`"vestigial"`, `liveCount++`, `var memberIds = new List<string>`) anywhere in `ToolHandler.cs`. Port count 26 → 27. LB-TRACK-20260519-022 / F3a atom of the 2026-05-19 plan.
 
-- **`INV-PORT-HEALTH-COMPOSITE-001` — `lifeblood_port_health` surfaces composite + inherited interface contract surface.**
+- **Composite port health.** `lifeblood_port_health` includes inherited interface members and reports direct, inherited and aggregate member counts plus composite-interface identity.
 
-- **`INV-AUTHORITY-COMPOSITE-001` — `lifeblood_authority_report` per-interface composite surface.**
+- **Composite authority reports.** Per-interface rows include inherited contract surface, direct/inherited counts and the inherited-interface list.
 
 - **`INV-AUTHORITY-PLANNING-COMPOSITION-001` — planning-verdict evidence fields on `authority_report`.** S7 adds `crossAssemblyConsumerCount` (distinct other modules with incoming edges into the type or its members — boundary-contract evidence), `sameAssemblyConsumerCount` (distinct same-module consumer symbols — adapter-shim evidence), and `hasSingleImplementer` (true/false for interface targets with exactly one source-defined implementer; null for non-interface targets — adapter-shim candidate when paired with high cross-assembly use). Verdict composition (`EvictableDebt` / `BoundaryContract` / `SceneDiscoveryContract` / `CompositeFacade` / `AdapterShimOnly` / `NeedsAudit`) is caller-owned per design — the tool exposes the evidence axes; the architecture plan stays in the agent's hands. LB-TRACK-20260518-019 / S7 atom of the 2026-05-19 plan.
 
-- **`INV-ENUM-COVERAGE-DISPATCH-TABLE-001` — `dispatchTableReferenceCount` field on every `enum_coverage` member row.**
+- **`INV-ENUM-COVERAGE-DISPATCH-TABLE-001` — `dispatchTableReferenceCount` field on every `enum_coverage` member row.** S4 adds a per-member reference counter populated when the member appears as a cell value in a static-table initializer detected by the same classifier `lifeblood_static_tables` uses. `producedCount == dispatchTableReferenceCount` reads as "only a routing key, never genuinely produced in app code" — collapses the dogfood audit ("how many values in this state-machine enum are produced only through dispatch tables?") to a single tool call. `isUnreferenced` semantics tighten: `isUnreferenced = true` iff `totalReferences == 0`. Pinned by `EnumCoverageDispatchTableTests`. LB-TRACK-20260515-014 / S4 atom of the 2026-05-19 plan.
 
 - **`INV-DIAGNOSE-FRESHNESS-001` — `analysisGeneration` monotonic counter on every read-side envelope.** S5 adds a project-wide counter incremented per full or incremental re-analyze, surfaced on every read-side response envelope so callers can detect cache/graph drift across multi-tool sessions. Pinned by `AnalysisGenerationCounterTests`.
 
@@ -1057,8 +1096,6 @@ The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build t
 ### Changed
 
 - **Status doc + DocsTests anchors refreshed.** `<!-- testCount: 1098 -->` (was 1011), invariant count 122 across 83 categories (was 101/63), self-analyze 3507/21115/363/0/0 (symbols/edges/types/violations/cycles). Tools / ports unchanged at 29 / 27.
-
-- **Tracker sweep (LB-TRACK 012-024 → Shipped).**
 
 ## [0.7.7] - 2026-05-16
 
@@ -1092,7 +1129,7 @@ First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based
 
 ### Fixed
 
-- **`INV-EXTRACT-STATIC-CTOR-ID-001` - explicit static constructors use `.cctor` canonical IDs**
+- **Static constructor identity.** Explicit static constructors use `.cctor` canonical IDs. Static initializer method-group references retain declarative ownership edges, and runtime-invoked constructors are not reported as unreferenced methods.
 
 ### Changed
 
@@ -1100,23 +1137,23 @@ First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based
 
 ### Added
 
-- **`docs/PLAYBOOK_CSHARP.md`**
+- **`docs/PLAYBOOK_CSHARP.md`** (`LB-INBOX-004` + `LB-INBOX-005` Wave W5). Closes the wedge-proof half of the post-v0.6.3 roadmap. The playbook documents seven concrete workflows for large C# / Roslyn / Unity workspaces (triage a breakage, audit module boundaries, safe rename, inspect blast radius, validate a snippet, recover from a merge conflict, find a dead method) with named tool calls, argument shapes, expected outputs, and an envelope cheat sheet mapping `confidence` bands to ship-or-investigate decisions.
 
 - **`INV-WIRE-CONTRACT-001` — wire contract pin + schema deprecation policy** (`LB-INBOX-003` Wave W4). First concrete pin: `ResponseEnvelopeWireShapeContractTests` reflects on `Lifeblood.Domain.Results.ResponseEnvelope` and asserts the v1 field set is exactly the six canonical fields with stable type names AND every field is `init`-only (mutation after construction is structurally blocked via reflection check for the `IsExternalInit` modreq). New `docs/SCHEMA_DEPRECATION_POLICY.md` names the rules every future contract change must follow: additive changes update the snapshot without a version bump; renames / removals / type changes are breaking and require shipping v2 alongside v1 with at least one minor release of overlap during which v1 responses carry a deprecation `Limitations[]` notice. Surfaces covered by the policy: `ResponseEnvelope`, `tools/list` input schemas, per-tool output JSON, graph JSON schema, canonical id format, parity diagnostic ID set. Per-tool `schemas/tools/v1/<tool>.json` snapshot files are explicitly named as a follow-up atom — the current ratchets pin via reflection / inline JSON assertions until those files land. INV body in `docs/invariants/mcp-protocol.md` ("Wire Contract" section).
 
 - **`INV-ANALYZE-SKIPPED-PROMINENCE-001` — staleness signals promote to envelope Limitations[] on threshold breach** (`LB-TRACK-20260515-x` Wave W3-A). Pre-fix, `ResponseEnvelope.StalenessSeconds` and `FilesChangedSinceAnalyze` were always on the wire but consumers had to compare them against unwritten thresholds to know whether to re-analyze. A 30-day-stale graph emitted the same envelope as a fresh one. New `StalenessPolicy` (`Application/Ports/Right/IResponseDecorator.cs`) carries two configurable thresholds — `StalenessSecondsWarnThreshold` (default 3600 s), `FilesChangedWarnThreshold` (default 10). `LifebloodResponseDecorator` appends explicit `Limitations[]` entries when either is exceeded, ordered AFTER the static per-tool limitations so consumers reading from index 0 still see tool-specific caveats. Composition root (`Server.Mcp.Program`) reads `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` / `LIFEBLOOD_FILES_CHANGED_THRESHOLD` from the environment at startup; missing or malformed values fall back to `StalenessPolicy.Default`. The unregistered-tool path also honors the policy. Pinned by `StalenessPolicyEnvelopeTests` (5 facts: fresh graph emits no extra limitation, staleness-seconds threshold appends entry, files-changed threshold appends entry, custom thresholds override defaults, unregistered tool still surfaces staleness limitation).
 
-- **`TestImpactRecallAnchorTests` — Lifeblood-self anchor for `lifeblood_test_impact` recall**
+- **Test-impact recall fixtures.** Type and field targets in the framework itself are pinned to their expected regression-test classes. Static recommendations do not establish external test execution.
 
 - **`INV-EXTRACT-SYNTHESIZED-CTOR-001` — synthesized `.cctor` / parameterless `.ctor()` surface as graph Symbols when types carry initializers** (`LB-TRACK-20260515-010` Wave W2-E). Honest correction of the W2-D "no new code needed" claim: end-to-end ratchet caught a real graph-build gap. Pre-fix, `RoslynEdgeExtractor` attributed field/property initializer edges to `ContainingType.StaticConstructors.FirstOrDefault()` (the synthesized `.cctor` IMethodSymbol). `GraphBuilder.Build` drops every edge whose source isn't a Symbol (line ~89, dangling-edge filter for external refs), and the symbol extractor never surfaced synthesized ctors — so every dispatch-table delegate target, every static-initializer enum/field reference silently disappeared from the graph despite correct extraction. New helper `RoslynSymbolExtractor.SurfaceSynthesizedInitializerConstructors` walks fields + properties for initializer syntax and emits Method-kind Symbols (`method:NS.T..cctor()` / `method:NS.T..ctor()`) for the matching IMethodSymbol whose `DeclaringSyntaxReferences` is empty. Symbols carry `Properties["synthesized"] = "true"`; `LifebloodDeadCodeAnalyzer` skips them after the regular `HasIncomingReference` check (CLR runtime always invokes `.cctor` on type init — inherently live regardless of static reachability, otherwise the surfacing would just shift the false-positive class one symbol over). Symmetric: instance `.ctor()` only surfaces when no user-declared parameterless ctor exists (matches Roslyn's synthesizer policy). Pinned by `DispatchTableLivenessRatchetTests` end-to-end ratchet asserting (a) delegate row method has ≥1 incoming graph edge, (b) `dead_code` does NOT flag it, (c) `dead_code` does NOT flag the synthesized `.cctor` itself. W1-C wall ratchet stays green — synthesized symbols carry no diagnostic surface.
 
-- **`INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001` — dispatch-table cells emit graph edges through existing identifier walkers**
+- **`INV-EXTRACT-DISPATCH-TABLE-COVERAGE-001` — dispatch-table cells emit graph edges through existing identifier walkers** (`LB-TRACK-20260515-010` Wave W2-D, closes the second half of `LB-INBOX-011`). Re-investigated as a no-yes-man pushback: the original LB-INBOX-011 proposal asked for a separate "static-table → graph-edge synthesizer" that would emit `References` from each static-table field to its cell-resolved symbols. Empirical re-probe showed the gap was already an instance of LB-INBOX-010 part 1 (target-typed `new(MethodGroup)` candidate handling) — once `INV-EXTRACT-METHOD-GROUP-CANDIDATE-001` ships in `RoslynEdgeExtractor`, every dispatch-table cell (method-group, enum-member, field-reference) emits its canonical edge through the same walker that handles non-table contexts. Method-group cells emit `Calls` from the synthesized `.cctor` (preserving the long-standing v0.6.4 semantic for the explicit `new Lazy<T>(Load)` case); enum-member and field-reference cells emit `References` via `ExtractMemberAccessEdge`. Wire-color choice is observationally identical at the live-ness layer because `dead_code` / `dependants` / `port_health` / `blast_radius` all consume both edge kinds. **No new synthesizer code** — INV body documents the contract so future audits do not re-propose a redundant layer. Pinned by `ExtractEdges_DispatchTableWithMethodGroupAndEnumCells_FullCoverage` (mixed-cell-kind dispatch-table fixture asserting all three cell classes emit their canonical edges from the `.cctor`).
 
-- **`INV-EXTRACT-STATIC-IMPLICIT-ARRAY-001` — implicit array initializers classify as Array container**
+- **`INV-EXTRACT-STATIC-IMPLICIT-ARRAY-001` — implicit array initializers classify as Array container** (`LB-TRACK-20260515-010` Wave W2-C, closes the first half of `LB-INBOX-011`). Pre-fix the extractor's `ClassifyContainer` only matched `IArrayCreationOperation`; the implicit form `static T[] X = { ... }` surfaces in Roslyn as `IArrayInitializerOperation` (no `Type`, element values directly on `.ElementValues`), so implicit array initializers (`static readonly float[] Weights = { 0.1f, 0.2f }`) were silently skipped. New explicit `IArrayInitializerOperation` branch in `ClassifyContainer` pulls element values from `op.ElementValues` and resolves the element type from the declaring member's `ITypeSymbol` (threaded into `ClassifyContainer` because the op itself carries no type metadata for the array variant). Container kind stays `Array` — same authoring intent. Operation-tree only; never regex, never syntax-text. Pinned by `GetStaticTables_StaticImplicitArrayField_DetectedAsArrayContainer` + `GetStaticTables_StaticImplicitArrayProperty_DetectedAsArrayContainer` (field + auto-property forms, primitive element-type round-trip).
 
-- **`INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001` — extractor edges always target the source-declared open-generic form**
+- **`INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001` — extractor edges always target the source-declared open-generic form** (`LB-TRACK-20260515-009` Wave W2-B, closes the second half of `LB-INBOX-010`). Pre-fix, `RoslynEdgeExtractor.GetMethodId` built the canonical id directly off whichever `IMethodSymbol` the caller passed in; for a call to a generic method via type-inferred arguments (e.g. `Helper.Pick(items, 5)` binding to `Pick<string>(string[], int)`), the resulting target id used the constructed parameter signature instead of the source-declared open-generic form, so `dependants()` / `dead_code` / `blast_radius` against the declared method returned zero. Empirical class: `ToolHandler.ApplyCap` was called 5× yet showed `directDependants=0`. Fix: `GetMethodId` routes through `(IMethodSymbol)method.OriginalDefinition` at entry; `ExtractCallEdge` is refactored to use `GetMethodId(target)` directly instead of an inline `BuildParamSignature(target)` that bypassed the discipline. Mirrors the same `OriginalDefinition` routing `RoslynCompilationHost.FindReferences` already applies on the consumer side so producer-side and consumer-side ids are byte-identical for the same logical method. Pinned by `ExtractEdges_GenericMethodCall_AttributesToOriginalDefinitionId`.
 
-- **`INV-EXTRACT-METHOD-GROUP-CANDIDATE-001` — target-typed `new(MethodGroup)` and other `CandidateSymbols`-bound method-group references now emit `Calls` edges**
+- **`INV-EXTRACT-METHOD-GROUP-CANDIDATE-001` — target-typed `new(MethodGroup)` and other `CandidateSymbols`-bound method-group references now emit `Calls` edges** (`LB-TRACK-20260515-009` Wave W2-A, closes the first half of `LB-INBOX-010`). Pre-fix, `RoslynEdgeExtractor.ExtractReferenceEdge` early-returned whenever `SymbolInfo.Symbol == null` — Roslyn binds method-group identifiers via `CandidateSymbols` until the outer type-inference context narrows the choice, so target-typed `new(MethodGroup)`, delegate-ctor arguments, and similar shapes silently produced zero edges. Empirical class: `BclReferenceLoader.References = new(Load)` and `RoslynCodeExecutor._cache = new(LoadHostBclReferences)` in Lifeblood self showed `find_references` hits but `dependants=0` on the target methods. New helper `RoslynEdgeExtractor.ResolveCandidateMethodGroup` accepts `CandidateReason.MemberGroup` and `CandidateReason.OverloadResolutionFailure` (the two shapes Roslyn surfaces while target-type inference is incomplete) and returns the first candidate; downstream extraction routes that symbol through the same emit paths as fully-bound symbols. The prior `[Fact(Skip="LB-INBOX-010 ...")]` regression pin (`ExtractEdges_StaticFieldInitializerMethodGroup_TargetTypedNew_AttributedToCctor`) is converted to a live ratchet; new fixture `ExtractEdges_TargetTypedNewMethodGroup_OverloadedMethod_PicksFirstCandidate` pins the overload-disambiguation contract.
 
 ### Changed
 
@@ -1128,7 +1165,7 @@ First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based
 
 - **`INV-DIAGNOSTIC-IVT-PARITY-001` — `<InternalsVisibleTo>` items synthesize friend-assembly attributes onto producer compilations** (`LB-TRACK-20260515-011` Wave W1-B). Pre-fix, a producer csproj declaring `<InternalsVisibleTo Include="Friend" />` emitted no friend-assembly metadata onto its Lifeblood-built PE — the SDK-style source scan skips `obj/`, so MSBuild's `GenerateAssemblyInfo`-generated `*.AssemblyInfo.cs` file never entered the compilation. Friend modules consuming the downgraded reference saw a PE with no IVT, and every internal access fired CS0122 (empirically 223 spurious findings on Lifeblood.Tests against the Adapters.CSharp surface while `dotnet build` was clean). New discovered module fact `ModuleInfo.InternalsVisibleTo: string[]` (Domain-layer port, zero Roslyn dep, default empty preserves pre-fix behavior). `RoslynModuleDiscovery.ParseProject` reads every `<InternalsVisibleTo Include="X" />` item-group entry (trim, distinct by ordinal, empty Includes drop). `Internal.ModuleCompilationBuilder.CreateCompilation` prepends a synthetic syntax tree at path `<InternalsVisibleTo>.cs` carrying one `[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("X")]` per declared target, parsed with the module's own `CSharpParseOptions` so downstream `AddSyntaxTrees` / `ReplaceSyntaxTree` calls do not throw "Inconsistent language versions" against modules declaring a non-default `<LangVersion>`. Modules that surface friend access through hand-authored `[assembly: InternalsVisibleTo]` attributes in source still compile correctly — their IVT flows through normal source discovery. No `obj/` widening (those artifacts are owned by `dotnet build`, not Lifeblood). Pinned by `InternalsVisibleToParityTests` (5 facts: single-item discovery, multi-item union + dedupe + empty-drop, no-items default empty, IVT attribute round-trips on producer compilation's `Assembly.GetAttributes()`, friend-named consumer reaching producer internals emits zero CS0122).
 
-- **`INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001` — assembly identity unification on every compilation reference set**
+- **`INV-DIAGNOSTIC-NUGET-BINDING-PARITY-001` — assembly identity unification on every compilation reference set** (`LB-TRACK-20260515-011` Wave W1-A). Pre-fix, a workspace whose NuGet closure overlapped simple-names with the SDK BCL ref pack made Roslyn emit `CS1701` / `CS1702` / `CS1705` once per consuming type-ref — empirically 7,537 spurious findings on Lifeblood's own test assembly while `dotnet build` was clean on the same compilation. New seam `Internal.MetadataReferenceDeduplicator.Deduplicate` collapses the reference set to one `MetadataReference` per assembly simple-name keeping the highest `AssemblyIdentity.Version`, mirroring MSBuild's `<AutoUnify>true</AutoUnify>` default. Called by `ModuleCompilationBuilder.CreateCompilation` immediately before `CSharpCompilation.Create`. Identity read via `AssemblyMetadata.GetModules()[0].GetMetadataReader().GetAssemblyDefinition()` — Roslyn's public primitive. Refs whose metadata cannot be parsed as an assembly (modules, native DLLs that escape the loader filter, in-memory refs without an emitted identity) pass through unchanged so the loader can still surface load failures as regular diagnostics. No per-name special case; no `CS1701` suppression via `<NoWarn>` (that would be a hotpatch under `INV-AUTONOMY-003`). Pinned by `MetadataReferenceDeduplicationTests` (6 facts: highest-version wins, order-independent, distinct names survive, empty input, unreadable identity passes through, end-to-end zero `CS1701` on a synthesized duplicate-identity compilation).
 
 ## [0.7.5] - 2026-05-14
 
@@ -1142,7 +1179,7 @@ Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 
 
 - **`INV-FLAG-COVERAGE-COMPOSITION-001` pinned** (`LB-TRACK-20260514-006`, doc atom — zero new tool code). The "does method M reference every enum-flag in row R's flag-cell?" join composes from `lifeblood_static_tables` (row side) + `lifeblood_dependencies` (method side) with client-side set-relation. Lifeblood MUST NOT ship a one-classification-per-(row,method) wire-shape using consumer-interpretation names (`admitted` / `admission` / `inconclusive` / `denied`) — those bake the consumer's *meaning* of "coverage" into Lifeblood's contract, when the relations (subset / partial / disjoint) are pure set-arithmetic over two flag-id sets the existing tools already emit. `lifeblood_dependencies` supersets `MethodReturnFlagIds` for three cases the v1.1 field nulls: cross-compilation targets (graph edges cross module boundaries), body-position references beyond `return` (inspection guards, switch arms, ternaries), transitive walks through helper-call delegation (caller follows the `Calls` edge if they need closure). Doc atom only: xmldoc `<remarks>` see-also on `StaticTableValue.MethodReturnFlagIds`, INV body in `docs/invariants/tools.md`. No new tool, no new port, no new test — composition rests on existing `INV-METHOD-FLAG-SUMMARY-001` (row side) + `EdgeCallSiteTests.Extract_FieldReference_AttachesCallSite` (method side `References`-edge pin).
 
-- **`StatusDoc_TestCount_MatchesDiscoveredCases` live-counting ratchet**
+- **`StatusDoc_TestCount_MatchesDiscoveredCases` live-counting ratchet** (`INV-DOCS-004`). Sibling to the existing `portCount` / `toolCount` ratchets in `DocsTests`. Reflects on the `Lifeblood.Tests` assembly, counts every concrete-class method carrying a `FactAttribute`-derived attribute (`[Fact]`, `[Theory]`, `[SkippableFact]`); each `[Theory]` is multiplied by its `[InlineData]` row count (fallback 1 when only `[MemberData]` / `[ClassData]` is present, since those expand at runtime via test-case generators). Matches xUnit discovery semantics — same number `dotnet test --list-tests` produces. Closes the silent-drift hole on the `<!-- testCount: N -->` STATUS.md anchor (pre-this commit the anchor was hint-only — it had drifted from 937 to live 946 unnoticed because no ratchet enforced it). Note: this ratchet is anchored to STATUS.md only; visible "N tests + 1 skipped" prose across README / DOGFOOD / architecture.html is still manually maintained — a cross-doc visible-prose ratchet for those surfaces is open work.
 
 ### Changed
 
@@ -1152,13 +1189,15 @@ Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 
 
 ## [0.7.4] - 2026-05-14
 
+Post-v0.7.3 wave + pre-release audit closure. Five new tool-facing capabilities (`test_impact`, `enum_coverage`, `cycles` taxonomy, `dead_code` triage fields, preprocessor-scope on `diagnose` / `compile_check` envelopes), four follow-on bug fixes from a 2026-05-14 fake-stuff audit (BFS seeding for File-target test impact, file-SCC partial-class cycle classification, `DefineConstants` threaded into `CSharpParseOptions`, semantic test-fixture detection in the tier classifier), a five-part Roslyn-faithfulness FOLLOWUP series shifting csproj-driven compilation facts from "parsed but ignored" to "parsed and threaded into Roslyn options" (`LangVersion` / `Nullable` / `NoWarn`) plus a Domain-layer path-classifier SSoT extraction collapsing three drifted bucket classifiers into one. **One release blocker caught by the pre-tag audit and fixed in the same wave: `compile_check` threw `ArgumentException: Inconsistent language versions (Parameter 'syntaxTrees')` on every workspace whose modules declared a non-default `<LangVersion>` — regression introduced by the FOLLOWUP-001 thread-through. Closed by threading module `CSharpParseOptions` through `RoslynCompilationHost.CompileCheckFile` + `CompileCheckSnippet` + `SnippetWrapper.Prepare`; pinned by `CompileCheckParseOptionsParityTests` (3 facts).** Plus a pre-release doc + comment sweep: doc tree rolled across `README.md` / `STATUS.md` / `ARCHITECTURE.md` / `TOOLS.md` / `DOGFOOD_FINDINGS.md` / `architecture.html` / `MCP_SETUP.md` / `UNITY.md` to reflect the new counts, `INV-PATHBUCKET-SHARED-001` authored (was referenced inline + across source + tests but had no own bullet), six-lego eternal-comment sweep across `src/` + `tests/` stripping Phase-X / Stage-N / dated "Added 2026-04-11" / finding-ID journey prose (~33 files, net ~70 LOC trimmed, every INV-ID + architectural rationale preserved), three Phase-named test files renamed (`AnalysisToolsPhase6Tests` → `AnalysisToolsTests`, `FindReferencesPhase4Tests` → `FindReferencesTests`, `ResolverPhase3Tests` → `ResolverCapabilityTests`). **Tests 776 → 896 + 1 skipped regression pin (+120, +1 skip). MCP tools 26 → 28** (+2: `lifeblood_enum_coverage`, `lifeblood_test_impact`). **Read-side tools 16 → 17, write-side tools 10 → 11. Invariants 80 / 43 categories → 87 / 50 categories.** Six new INVs pinned (`INV-DEADCODE-TRIAGE-001`, `INV-DIAGNOSTIC-ENVELOPE-DEFINES-001`, `INV-CYCLE-TAXONOMY-001`, `INV-ENUM-COVERAGE-001`, `INV-TEST-IMPACT-001`, `INV-PATHBUCKET-SHARED-001`). One open backlog item authored on this wave with a skipped regression pin ready to ratchet on close: `LB-INBOX-010` (target-typed `new(MethodGroup)` + generic-method canonical-id drift — `dead_code` / `dependants` miss usages that `find_references` correctly sees). Hexagonal as ever — every feature lands as port + adapter + handler trio with regression tests.
+
 ### Added
 
 - **`lifeblood_test_impact` MCP tool** (`INV-TEST-IMPACT-001`, `LB-TRACK-20260514-007`). Which test classes transitively depend on a target symbol or file. BFS over incoming non-Contains edges with per-symbol minimum-distance tracking; affected methods are classified test-vs-non-test via the extractor-recorded `Properties["attributes"]` set (`Test`, `TestCase`, `TestCaseSource`, `Theory`, `UnityTest`, `Fact`). Lifecycle attributes (`SetUp` / `OneTimeSetUp` / `TearDown` / `UnityTearDown`) are excluded — they participate in test execution but are not the assertion-bearing methods a caller wants enumerated. Test methods are folded by containing type; per-class `minDistance` mapped to confidence `Direct` (1) / `OneHop` (2) / `Transitive` (3+). Response carries `target`, `targetKind`, `totalTestMethodCount`, `directTestClassCount`, `affectedTestClassCount`, `affectedTestClasses[]` sorted by ascending distance then qualified name, plus `recommendedFilters[]` — pre-composed `FullyQualifiedName~<class>` strings the caller pastes into `dotnet test --filter`. Target disambiguation: a `target` starting with a canonical-id prefix routes through `ISymbolResolver`; otherwise treated as a file path with every symbol declared in the file becoming a multi-source BFS start. Lives in `Lifeblood.Analysis/TestImpactAnalyzer.cs` (pure graph read, no Roslyn compilation needed — Analysis layer reads Domain only per the hexagonal dependency rules, called directly from the composition root). Handler: `ToolHandler.HandleTestImpact`. Pinned by `TestImpactAnalyzerTests` (9 facts).
 
-- **`lifeblood_enum_coverage` MCP tool**
+- **`lifeblood_enum_coverage` MCP tool** (`INV-ENUM-COVERAGE-001`, `LB-TRACK-20260514-003`). Per-member reference coverage for an enum type — `produced` / `consumedComparison` / `consumedSwitch` / `other` counts classified by parent syntax, plus convenience flags `isUnproduced` (declared + referenced as a consumer but never assigned) and `isUnreferenced` (zero references). Walks every loaded compilation once and classifies each enum-member reference site via the parent chain: assignment RHS / return / yield / arrow body / argument / initializer → Produced; `==` / `!=` / `<` / `<=` / `>` / `>=` → ConsumedComparison; `case` label / `is`-pattern / constant-pattern / switch-expression arm → ConsumedSwitch. Top-level `unproducedCount` + `unreferencedCount` summarize the dogfood case ("which values in this state-machine enum are checked-for but never assigned?") off the top of the wire. `enumTypeId` accepts canonical, fully-qualified, or bare short name through the same resolver as every other type-id-taking tool. Port: `ICompilationHost.GetEnumCoverage`. Adapter: `RoslynCompilationHost.GetEnumCoverage` + private `EnumRefClass` taxonomy. Handler: `WriteToolHandler.HandleEnumCoverage`. Pinned by `EnumCoverageTests` (8 facts).
 
-- **`lifeblood_cycles` taxonomy**
+- **`lifeblood_cycles` taxonomy** (`INV-CYCLE-TAXONOMY-001`, `LB-TRACK-20260514-008`). Every detected SCC is classified into one of three triage buckets: `GeneratedOrStaticAnalysisArtifact` (build artifacts / source-generator output, never a refactor target — short-circuits ahead of every other signal), `PartialClassCluster` (every participating member resolves to the same enclosing type — intra-type mutual-recursion or partial-class spread), or `LikelyRealLoop` (cross-type / cross-module architectural-backlog cycles, the actual refactor surface). Implementation reuses the existing Tarjan SCC pass via `CircularDependencyDetector.DetectClassified` so cycle membership is byte-identical to the legacy `string[][]` shape — bucket is additive metadata. Wire-shape additive: response carries `descriptors[] { symbols, bucket }` and `bucketBreakdown { GeneratedOrStaticAnalysisArtifact, PartialClassCluster, LikelyRealLoop }` alongside the legacy `cycles[][]`; summarize mode adds `previewClassified[]`. Pre-fix the dogfood Unity workspace shipped 123 SCCs as a flat `string[][]` — the lion's share were partial-class clusters, not architectural loops. Pinned by `CycleTaxonomyTests` (8 facts).
 
 - **`lifeblood_dead_code` triage fields** (`INV-DEADCODE-TRIAGE-001`, `LB-TRACK-20260514-004`). Every finding now carries `directDependants` (incoming non-Contains edge count — always 0 for classic findings but on-wire as a forward-compatible signal for future relaxed-criteria modes), `bucket` (`Production` / `Test` / `Editor` / `Generated` — segment-aware path classification mirroring the `blast_radius groupBy=bucket` taxonomy), and `declarationOnly` (true iff `Symbol.IsAbstract` — deleting an abstract member is a public-contract change, not a routine cleanup). Response additionally carries `bucketBreakdown` alongside the existing `kindBreakdown` so a caller can fold the giant Editor / Generated tail without re-walking `findings[]`. Bucket precedence Generated → Test → Editor → Production: a fixture under `Tests/Editor/Foo.cs` classifies Test (defined by `Tests` root + filename) rather than Editor. Pinned by `DeadCodeTriageFieldsTests`.
 
@@ -1168,7 +1207,7 @@ Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 
 
 - **`SymbolPropertyKeys` writer↔reader parity test** (`LB-FOLLOWUP-20260514-004`). Pins the `Properties["attributes"]` / `Properties["baseType"]` / `Properties["classification"]` string-key contract between the writer (`RoslynSymbolExtractor`) and every reader (`UnityReachabilityAdapter`, `RoslynEdgeExtractor`, `LifebloodAuthorityReporter`, `TestImpactAnalyzer`). A typo on either side previously failed silently — the test asserts every writer key has at least one consumer and every consumer key matches a writer.
 
-- **`docs/audit/fake-stuff-2026-05-14.md`**
+- **`docs/audit/fake-stuff-2026-05-14.md`** — 353-line audit doc capturing the dogfood pass that produced the BUG-1..4 + FOLLOWUP-001..005 backlog. Eternal history of the audit.
 
 ### Fixed
 
@@ -1188,27 +1227,29 @@ Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 
 
 - **`docs/invariants/tools.md`**: six new INV bodies authored (DEADCODE-TRIAGE, ENUM-COVERAGE, TEST-IMPACT, CYCLE-TAXONOMY, DIAGNOSTIC-ENVELOPE-DEFINES, PATHBUCKET-SHARED).
 
-- **Eternal-prose scrub across generic docs**
+- **Generic public documentation.** Consumer-specific examples and private operational records are excluded from public documentation, including historical release notes.
 
 - **CI**: NuGet push step dropped from `publish.yml`; release-verify gates retained. Publishing is now opt-in manual instead of tag-driven, matching the "Claude commits, user tags + pushes" cadence.
 
 ## [0.7.3] - 2026-05-12
 
+Post-v0.7.2 polish wave from a field-report dogfood pass on a real-world Unity workspace (2026-05-11). One high-severity silent-data-loss bug fixed (cross-module edge drop under incremental analyze), three structured-wire-shape improvements landed (CallSite provenance on every expression-derived edge, type-scoped member resolution, `blast_radius` bucket / per-module grouping), plus an eternal-prose cleanup that generalized consumer-project examples across src + tests + shipped docs so Lifeblood reads as a generic Roslyn-semantic tool rather than coupled to one consumer. **Tests 751 → 776 (+25). MCP tools 25 → 26. Read-side tools 15 → 16. Eleven commits land the wave** (six feature/fix + one CLI + four polish — README lede, masterpolish contract truth, schema CallSite, final docs sweep). Every fix lands as a port + adapter + handler trio with regression tests; `INV-INCREMENTAL-XREF-001` + `INV-EDGE-CALLSITE-001` + `INV-RESOLVE-MEMBER-001` + `INV-BLAST-RADIUS-GROUP-001` pinned in the invariant tree. Hexagonal as ever.
+
 ### Fixed
 
-- **Cross-module edge drop under incremental analyze**
+- **Incremental cross-module references.** Downgraded metadata references persist in the analysis snapshot and are reused when unchanged dependencies are not recompiled. Incremental/full graph parity has regression coverage.
 
 ### Added
 
 - **`Edge.CallSite` structured provenance** (field-report 2026-05-11 P1). New domain type `Lifeblood.Domain.Graph.CallSite` with `FilePath` / `Line` / `Column` / `EndLine` / `EndColumn` / `ContainingSymbolId`, nullable on `Edge.CallSite` for edges with no single authoring location (module→module DependsOn, type→type Inherits without a surfaced clause node). `RoslynEdgeExtractor.BuildCallSite` populates from the originating Roslyn syntax node during extraction. `JsonGraphExporter` / `JsonGraphImporter` round-trip the new field so cached graphs preserve provenance across save/load. Pinned by `EdgeCallSiteTests.Extract_CallEdge_AttachesCallSiteWithFileLineColumn`, `Extract_FieldReference_AttachesCallSite`, `JsonGraph_RoundTripsCallSite`.
 
-- **`lifeblood_dependencies` / `lifeblood_dependants` wire surface**
+- **`lifeblood_dependencies` / `lifeblood_dependants` wire surface** (field-report 2026-05-11 P1 follow-on). New `IMcpGraphProvider.GetDependencyEdges` / `GetDependantEdges` return `EdgeDetail[]` (`OtherEndId`, `Kind`, nullable `CallSite`) alongside the legacy string-id `GetDependencies` / `GetDependants` methods. MCP handler `BuildEdgeWire` lifts each edge into `{ otherEndId, kind, callSite }` so a single call answers "where in source does X depend on Y?".
 
 - **`lifeblood_resolve_member` MCP tool** (field-report 2026-05-11 P1). Type-scoped member resolution with overload disambiguation. `typeName` accepts canonical `type:NS.T`, fully-qualified `NS.T`, or bare short name `T`; bare names dispatch through the short-name index and surface `AmbiguousContainingType` when more than one type carries the short name. `memberName` matches Method / Property / Field / Event members; `paramTypes[]` filters method overloads by parameter signature. Returns typed `outcome` (`Unique` / `MultipleMatches` / `NotFound` / `TypeNotFound` / `AmbiguousContainingType`), resolved containing-type id, every matching member with `kind` / `filePath` / `line` / `paramDisplay`. Use this instead of `lifeblood_resolve_short_name` when you know the containing type — scopes to ONE specific type instead of flattening every member sharing a global short name. Port: `ISymbolResolver.ResolveMember` + `MemberResolutionResult`. Adapter: `LifebloodSymbolResolver.ResolveMember` (mirrors Rule 4 short-name dispatch for bare type-name inputs). Pinned by `ResolveMemberTests` (12 cases covering every `ResolveMemberOutcome`).
 
 - **`lifeblood_blast_radius groupBy`** (field-report 2026-05-11 P1). Optional `groupBy=bucket|module|both` switches the response shape from a flat `affected[]` list to `byBucket` (Production / Test / Editor / Generated) and/or `byModule` (per-asmdef counts), each with optional per-group `preview[]` capped by `previewPerGroup` (default 5). Path-prefix bucketing (`Editor/`, `Tests/`, `.Generated.`) — no separate symbol-side metadata. Mutually exclusive with `summarize:true`. Closes the multi-megabyte-flat-list problem for transitive blasts on popular types: a caller asking "how much production code breaks if I touch X?" reads one number, not a megabyte. Pinned by `BlastRadiusGroupingTests`.
 
-- **CLI: `lifeblood verify --incremental --project <path>`**
+- **CLI: `lifeblood verify --incremental --project <path>`** — full-then-incremental analyze in one process, asserts identical `summary.edges` against `INV-INCREMENTAL-XREF-001`. Non-zero exit on drift so it's CI-wireable.
 
 - **CLI: `lifeblood export --project <path> --out <file>`** — writes the graph JSON to a file instead of stdout. Avoids the v0.7.2 PowerShell-redirect / UTF-16-BOM pitfall (`INV-JSON-IMPORT-BOM-001` was the pre-fix; `--out` removes the need to redirect at all). File writes route through the new `IFileSystem.OpenWrite` port for consistency with the existing read surface.
 
@@ -1216,7 +1257,7 @@ Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 
 
 ### Changed
 
-- **Eternal-prose cleanup across src + tests + shipped docs**
+- **Neutral examples.** Source comments, tests and documentation use synthetic identifiers and portable paths instead of consumer-project details.
 
 - **`lifeblood_dependencies` / `lifeblood_dependants` tool descriptions** updated to declare the new `callSite` wire field so callers can discover the shape from the schema without inspecting a response.
 
@@ -1225,6 +1266,8 @@ Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 
 - **`docs/TOOLS.md`** adds the `Resolve member` row, expands `Dependencies` / `Dependants` / `Blast radius` rows with the new wire fields.
 
 ## [0.7.2] - 2026-05-08
+
+This release improves Unity-shaped analysis, graph import, SDK selection and incremental shared-session behavior.
 
 ### Pre-tag review fixes (release-blockers)
 
@@ -1260,15 +1303,17 @@ The deeper class lesson: per-component coverage (helper test + regex test in iso
 
 ### Headline changes
 
-- **Enum-member extraction + resolver type-aware fallback**
+- **Enum members and type-aware resolution.** Enum members are emitted as field-kind children. Member fallback rejects substitutions on a different containing type or symbol kind, and nested declarations are extracted once.
 
-- **Caller-owned incremental scope policy**
+- **Caller-owned incremental scope policy** (`G1` dogfood / `INV-ANALYZE-FALLBACK-001`). `RoslynWorkspaceAnalyzer.IncrementalAnalyze` returned `(graph, count)` and silently widened to a full re-analyze when it detected drift it could not honor cheaply. Replaced with typed `IncrementalAnalyzeResult { Mode, Graph?, ChangedFileCount, Reason?, Detail? }` + `AnalysisConfig.AllowFullFallback` flag (default `false`). When the cheap path can't be honored cleanly the adapter now Rejects with a typed `FallbackReason` (`NoPriorAnalysis` / `ModuleSetChanged` / `ModuleDescriptorChanged`) and the caller decides whether to retry with widened scope. Wire shape: `mode` reports what the adapter DID (`full` / `incremental` / `incremental-noop` / `rejected`), `requestedMode` separately reports what the caller ASKED, `fallbackReason` + `fallbackDetail` populate alongside whenever the cheap path could not be honored. Rejection responses additionally carry `canRetryFull: true` and a `suggestedRetry: { incremental: true, allowFullFallback: true }` block so the agent's next move is self-documenting. Rejection is a NORMAL structured result, not a transport error. Internal best-effort callers (`MaybeRefreshIfStale`) opt into `AllowFullFallback=true` because their contract is "make state fresh."
 
-- **`SearchResult.MatchKind`**
+- **`SearchResult.MatchKind`** (`G2` dogfood / `INV-SEARCH-MATCHKIND-001`). The per-bucket scoring signal previously lived only in human-rendered `MatchSnippets` strings (`"name: …"` / `"qualifiedName: …"` / `"xmlDoc: …"`); callers wanting to filter by source had to parse those strings. Lifted to a typed `MatchKind` enum on `SearchResult` (`Name` / `QualifiedName` / `XmlDoc` / `Multiple`). Adapter-agnostic — future TS / Python search adapters reuse the same taxonomy. Snippet strings unchanged so existing renderers keep working; the structured field is purely additive.
 
-- **`authority_report` description broadened**
+- **Authority-report guidance.** Tool descriptions cover partial hosts, dispatchers, facades and ports with many dependants.
 
 ### Verification
+
+Regression verification covers exact member lookup and refusal of cross-type substitutions, using synthetic enum/struct fixtures.
 
 ### Added. Enum-member extraction (R2-3 Part A / INV-EXTRACT-ENUMMEMBER-001)
 
@@ -1279,6 +1324,10 @@ Latent dup fix surfaced by enum-member emission: `RoslynSymbolExtractor.Extract`
 Six new ratchet tests (`RoslynExtractorTests.ExtractSymbols_EnumMembers_*`): emitted-as-Field with `constantValue`, ID round-trip through `SymbolIds.Field` grammar, implicit autoincrement constants, explicit values, `[Flags]` bitfield resolution, nested enum parented to nested enum, xmldoc summary attached to member.
 
 ### Fixed. Resolver Rule 4 type-aware tightening (R2-3 Part B / INV-RESOLVER-007)
+
+Member-kind fallback requires the same containing-type short name and symbol kind. Rejected substitutions return `NotFound` with candidate suggestions; same-type namespace correction remains supported.
+
+Four new internal helpers exposed for testability: `TryParseMemberInput`, `ShortNameOf`, `StripTypePrefix`, `SymbolKindForPrefix`. Pinned by `ResolverTypeAwareFallbackTests` (28 tests covering parser theories, the dogfood case, same-short-type accept, cross-kind refuse, method cross-type refuse, exact-ID Rule 1 fast-path under enum-member presence, type-input passthrough, multi-candidate cross-type NotFound).
 
 ### Added. Typed IncrementalAnalyzeResult + caller-owned scope policy (G1 / INV-ANALYZE-FALLBACK-001)
 
@@ -1300,18 +1349,24 @@ New `MatchKind` enum on `Lifeblood.Application.Ports.Right`: `Name` / `Qualified
 
 ### Documentation. authority_report broadening (G4 dogfood)
 
+Authority-report documentation describes general structural use cases without consumer-specific examples.
+
 ### Added. Wave-end verification ratchets
 
 `WaveFunctionalVerificationTests` (4 tests):
-- `Wave_R2_3_DogfoodReproduction_FeatureFlagsAndSampleStateShareShortName` — exact reproduction of the user's R2-3 scenario; permanent regression ratchet for the silent-wrong-answer class.
+- `Wave_R2_3_DogfoodReproduction_FieldMaskAndBurstVoiceStateShareShortName` — exact reproduction of the user's R2-3 scenario; permanent regression ratchet for the silent-wrong-answer class.
 - `Wave_C3_WireShape_AllFiveStatesEndToEnd` + `Wave_C3_WireShape_RejectedAndFullFallback_ModuleSetDrift` — drives `GraphSession.Load` through every wire-shape state, parses actual JSON.
 - `Wave_C4_MatchKind_AllFourValuesAchievable` — confirms all four values reachable through real Roslyn extraction with xmldoc summaries.
 
+`All25ToolsSmokeTests` (24 tests): invokes every one of the 25 MCP tools through `ToolHandler.Handle` against a real Roslyn-analyzed workspace, including `lifeblood_execute` running real C# script (`return Graph.Symbols.Count;`). Catches the regression class "C2 / C4 broke a tool's dispatch via the resolver / search seam I didn't have eyes on."
+
 ## [0.7.1] - 2026-04-27
+
+This release adds bounded dead-code output and clarifies authority-report usage.
 
 ### Headline changes
 
-- **`dead_code` pagination**
+- **Dead-code pagination.** Responses include total counts, kind breakdown and truncation. Summary mode returns a bounded preview; full mode supports explicit result caps.
 
 - **Stale-claim sweep**: `docs/architecture.html` refreshed to current counts (22→25 tools, 22→26 ports, 539→664 tests, 58→65 invariants, 12R+10W→15R+10W). `lifeblood_dead_code` description refreshed to drop "under investigation for v0.6.4" wording and reflect the actual closed-FP-class history (v0.6.4 → v0.6.5 → v0.6.7 → v0.7.0/LB-FP-003). `docs/IMPROVEMENT_INBOX.md` active-roadmap entries (`LB-INBOX-001`, `LB-INBOX-003`) refreshed; the dated "review snapshot from v0.6.3" block stays frozen as historical record.
 
@@ -1327,7 +1382,9 @@ External reviewer flagged stale references to "22 tools / 22 ports / 539 tests /
 
 NuGet packages at v0.7.0 are immutable and unchanged — this is a doc-correctness pass, not a re-release. Test count unchanged: still 664 (LB-FR-024 below adds 3 more).
 
-### Added. dead_code summarize / kindBreakdown / pagination (LB-FR-024 / ExampleApp dogfood)
+### Added. dead_code summary and pagination
+
+`lifeblood_dead_code` supports bounded previews and kind breakdowns so callers can inspect large results without consuming the full findings array.
 
 - Every response now carries `count`, `kindBreakdown` (per-`SymbolKind` histogram), and `truncated` alongside the existing `findings[]` / `status` / `warning` fields.
 - `summarize:true` returns a compact response with `preview[]` (size capped by `maxResults`) instead of the full `findings[]` array, plus a `summarize:true` flag. Callers see the per-kind histogram + a small preview, then drill in via `includeKinds` if needed.
@@ -1339,21 +1396,23 @@ Test count: 661 → 664 (+3). 0 regressions.
 
 ## [0.7.0] - 2026-04-27
 
+This release adds invariant-tree discovery, parser forms, bounded cycle/context output and Unity reachability repairs.
+
 ### Headline changes
 
-- **`cycles` pagination**
+- **Cycle pagination.** `lifeblood_cycles` supports bounded previews and reports total count, symbol count, largest cycle and truncation.
 
-- **Invariant tree-walker + parser shapes C/D/E**
+- **Invariant discovery.** The parser supports forms A-E and discovers root instruction files plus the invariant Markdown tree.
 
-- **File-mode `compile_check`**
+- **File-mode compile checks.** A file is checked by replacing its syntax tree in its owning compilation, preserving references and sibling declarations.
 
-- **`context` smart-dynamic shaping**
+- **Context shaping.** Callers can select sections, request summaries and cap each result section.
 
-- **Dead-code Unity Editor reflection roster + type-via-child propagation**
+- **Unity Editor reachability.** Recognized Editor attributes, test fixtures, base types and reachable children inform advisory dead-code results.
 
-- **Repo reorg: invariants moved to `docs/invariants/` tree.**
+- **Invariant organization.** Root instructions route to domain pages under `docs/invariants/`.
 
-### Fixed. dead_code Unity Editor reflection roster + type-via-child propagation (LB-FP-003 / ExampleApp dogfood)
+### Fixed. Unity Editor reflection reachability
 
 `UnityReachabilityAdapter` was missing several Unity Editor reflection attributes — `[SettingsProvider]`, `[SettingsProviderGroup]`, `[Shortcut]`, `[OnOpenAsset]`, `[BurstCompile]`, `[MonoPInvokeCallback]`, plus the full NUnit fixture lifecycle (`SetUp` / `TearDown` / `OneTimeSetUp` / `OneTimeTearDown`, `TestCaseSource`, `TestFixtureSource`, `Theory`, `UnitySetUp`, `UnityTearDown`). Methods carrying any of these attributes are reflection-discovered by Unity / Burst / NUnit at runtime; without them in the entrypoint roster the dead-code analyzer surfaced their host types as false positives.
 
@@ -1361,7 +1420,9 @@ Also adds **type-via-child propagation**: a type is reachable if ANY of its dire
 
 Six new ratchet tests: `[SettingsProvider]`, `[Shortcut]`, `[BurstCompile]`, NUnit `[SetUp]`, type-with-entrypoint-child-is-reachable, type-with-no-entrypoint-children-still-not-reachable. Test count: 655 → 661 (+6). 0 regressions on the existing 15-test reachability suite.
 
-### Added. context smart-dynamic shaping (LB-FR-022 / ExampleApp dogfood)
+### Added. context shaping
+
+`lifeblood_context` supports section-specific limits and summaries to keep large result packs usable.
 
 **Per-section caps with sane defaults.** Five new optional ints: `maxFiles` (default 25), `maxBoundaries` (default 50), `maxHotspots` (default 20), `maxReadingOrder` (default 50), `maxMatrixEntries` (default 100). Each cap clips the section's array if the generator produced more; the response's new `truncated` map names every clipped section + its full pre-clip count so callers know what was hidden. `-1` means unlimited; `0` drops the section entirely.
 
@@ -1373,7 +1434,9 @@ The shaping happens in the handler — `AgentContextGenerator` itself stays pure
 
 Four new ratchet tests covering summarize-mode-drops-all-lists, sections-allowlist-drops-unlisted, per-section-cap-truncates-and-reports, negative-cap-allows-unlimited. Test count: 651 → 655 (+4). 0 regressions.
 
-### Fixed. compile_check filePath module-aware tree replacement (LB-BUG-019 / ExampleApp dogfood)
+### Fixed. file-mode compilation ownership
+
+`lifeblood_compile_check(filePath)` replaces the file in its resolved owning compilation instead of compiling it as an unrelated snippet.
 
 **New typed overload** `ICompilationHost.CompileCheck(CompileCheckRequest)`. The request carries `Code`, `FilePath`, and `ModuleName`; file-mode is selected by `FilePath` being non-null. The legacy string-based `CompileCheck(code, moduleName)` overload is preserved and now delegates to the typed path.
 
@@ -1384,6 +1447,8 @@ Four new ratchet tests covering summarize-mode-drops-all-lists, sections-allowli
 Six new ratchet tests covering owning-module resolution, override-code tree replacement, missing-file LB0002, pinned-module foreign-file rejection, override-introduces-error reporting, and snippet-mode unchanged. Test count: 645 → 651 (+6). 0 regressions.
 
 ### Changed. Invariants moved to docs/invariants/ tree (eat-our-own-dogfood)
+
+Architectural invariants live in domain pages, with root instructions providing routing and dependency rules.
 
 Tree layout (8 files + INDEX):
 
@@ -1401,7 +1466,9 @@ Self-tests still green: `LifebloodClaudeMdSelfTests` aggregates across CLAUDE.md
 
 Test count unchanged: 645 / 645. INV ids in tree: 68 unique (all formally-numbered rules preserved verbatim from the old CLAUDE.md; the 5 example IDs in INDEX/CLAUDE shape demos are inside `Shape X:` prefixed lines that the parser doesn't anchor on).
 
-### Added. invariant_check shape D + shape E (LB-BUG-018 / ExampleApp dogfood)
+### Added. invariant parser forms D and E
+
+The invariant parser accepts version-tagged and alternate bold declaration forms.
 
 **Shape D — parenthesized version tag.** A bullet with a version annotation between the bold close and the colon:
 ```
@@ -1421,9 +1488,16 @@ Try-order in `BuildInvariant`: shape B → shape D (more specific than A; checke
 
 Test count: 640 → 645 (+5). 0 regressions.
 
-### Added. invariant_check shape-C + dynamic source discovery (LB-BUG-017 / LB-FR-023 / ExampleApp dogfood)
+### Added. invariant parser form C and dynamic discovery
+
+Invariant discovery supports root instruction files and a routed invariant tree instead of one hardcoded source file.
+
+**Form C:** bare bold declarations such as `**INV-EXAMPLE-001: Title.** Body` are parsed alongside bullet-based declarations.
 
 **Dynamic source discovery (LB-FR-023 / no hardcoding).** `LifebloodInvariantProvider` now walks well-known repo conventions via `IFileSystem` instead of reading only `<root>/CLAUDE.md`:
+
+- Root sources: `<root>/CLAUDE.md` and `<root>/AGENTS.md`.
+- Routed sources: `<root>/docs/invariants/**/*.md`.
 
 Each discovered source is parsed with its own cache entry; results are aggregated. Per-id duplicate detection now spans the whole tree. The new `InvariantAudit.SourcePaths[]` reports every file that contributed; `SourcePath` returns the first source for back-compat. The conventions live in the adapter, NOT the port — a repo with a different layout supplies its own provider, reusing `ClaudeMdInvariantParser` + `InvariantParseCache<T>` without touching Application.
 
@@ -1431,15 +1505,23 @@ Five new ratchet tests in `ClaudeMdInvariantParserTests` covering shape C alone,
 
 Test count: 635 → 640 (+5). 0 regressions.
 
-### Added. cycles summarize / pagination (LB-FR-021 / ExampleApp dogfood)
+### Added. cycle summaries and pagination
+
+`lifeblood_cycles` supports summary previews and explicit result limits without changing the underlying cycle analysis.
+
+- Responses report total count, symbol count, largest cycle size and truncation independently of the returned preview.
 
 ## [0.6.7] - 2026-04-27
+
+This release adds authority reports, port health, cycle queries and method-body classification, with bounded diagnostics and Unity-aware reachability.
 
 ### Fixed. Resolver kind-correction (P1 / LB-BUG-002)
 
 `method:NS.Type.X` now resolves to a property / field / event named `X` on `NS.Type` when no method by that name exists. New `ResolveOutcome.KindCorrectedOnContainingType` plus a diagnostic explaining the correction. Type-scoped kind correction takes precedence over the global short-name fallback because the user already committed to a namespace; the more specific resolution is the honest answer. Method-by-that-name still wins when both a method and a same-named property exist on the type. Documented as `INV-RESOLVER-006`.
 
 ### Fixed. File-scoped diagnostics (P1 / LB-BUG-016)
+
+`lifeblood_diagnose(filePath)` restricts diagnostics to the requested file using the owning compilation and normalized path matching. The existing module-oriented form remains supported.
 
 ### Fixed. compile_check accepts filePath (P1 / LB-BUG-015)
 
@@ -1462,6 +1544,8 @@ Three regression tests against v0.6.5 confirmed prior walker work already closed
 Every read-side MCP tool response carries a top-level `envelope` field. The envelope tells callers HOW MUCH to trust a result and WHEN it was true: truth tier (Semantic / Derived / Heuristic / Inferred), confidence band (Proven / Advisory / Speculative), evidence-source string, wall-clock staleness in seconds, files-changed-since-analyze count, per-tool documented limitations.
 
 Pure-data record in Domain (`Lifeblood.Domain.Results.ResponseEnvelope` + `EnvelopeClassification`). Application port (`IResponseDecorator`) plus reference adapter (`LifebloodResponseDecorator`). Per-tool classification lives on `ToolDefinition.EnvelopeClassification` - registry IS the source. Composition root projects the registry into the decorator at startup; missing registrations fall through to the most-conservative envelope plus a `Limitations` entry naming the gap.
+
+Staleness math walks the loaded graph's `SymbolKind.File` symbols, mtime-stats each via `IFileSystem.GetLastWriteTimeUtc`, counts files newer than `GraphSession.AnalyzedAtUtc`. Per-call scan capped at 256 files (short-circuits as soon as drift is detected) to bound filesystem work on large workspaces.
 
 Wire-format note: `lifeblood_dependencies` and `lifeblood_dependants` previously returned a bare JSON array. They now return `{ envelope, symbolId, count, dependencies/dependants }`. Callers must read the named field instead of the top-level array.
 
@@ -1503,13 +1587,15 @@ Remaining limitations include structural cases (UI Toolkit `VisualElement` subcl
 
 ### Added. Authority report + forwarder classifier + port health + cycles (P5 / INV-AUTHORITY-001 + INV-FORWARDER-001 / LB-FR-018, LB-FR-014, LB-FR-020, LB-NICE-007)
 
+New read-side tools expose authority, port-health and cycle analysis. Method classification supports structural triage of hosts and dispatchers.
+
 - **`IAuthorityReporter`** (Application port) + **`LifebloodAuthorityReporter`** (Connectors.Mcp adapter). Single graph walk produces `implementedInterfaceCount`, `ownedPublicSurface` (public method/property/field count, nested types excluded), per-implemented-interface usage (member count + distinct consumers via `Calls` / `References` edges), and `forwarderRatio` (in [0.0, 1.0] or sentinel `-1.0` when no method has classification). Tool: **`lifeblood_authority_report`**, envelope tier: Derived / Proven.
 
-- **Method body classification**
+- **Method classification.** Source methods are classified by body shape to support structural triage; classification does not establish runtime cost.
 
 - **`lifeblood_port_health`** - walks an interface or class's `Contains` members, classifies each as live (>= 1 incoming non-Contains edge OR outgoing `Implements`) or dead. Returns `livenessPct` and a verdict: `healthy` (>=75%), `mixed` (>=25%), `vestigial` (<25%), or `empty`.
 
-- **`lifeblood_cycles`**
+- **Cycle queries.** `lifeblood_cycles` exposes the existing strongly connected component analysis.
 
 ### Added. Wire-shape clarifications (P6 / LB-OBSERVATION-001, LB-OBSERVATION-003)
 
@@ -1525,9 +1611,7 @@ Remaining limitations include structural cases (UI Toolkit `VisualElement` subcl
 
 - **`README.md`** + **`docs/STATUS.md`** + **`docs/ARCHITECTURE.md`** + **`docs/TOOLS.md`** + **`docs/UNITY.md`** + **`docs/MCP_SETUP.md`** + **`docs/DOGFOOD_FINDINGS.md`** updated to reflect 25 tools (15 read + 10 write), 26 ports, 70 invariants, 632 tests, 2,132 self-analysis symbols. All em-dashes replaced with prose hyphens.
 
-- **`docs/plans/ExampleApp-dogfood-polish-2026-04-26.md`**
-
-- **`smoke-mcp-p1-dogfood.ps1`**
+- **`smoke-mcp-p1-dogfood.ps1`** through **`smoke-mcp-p5-dogfood.ps1`** committed as repeatable end-to-end MCP smoke harnesses.
 
 ### Internal
 
@@ -1553,13 +1637,15 @@ Documented as **`INV-EXECUTE-001`** in CLAUDE.md.
 
 ### Added. Authority report + forwarder classifier + port health + cycles (P5 / LB-FR-018, LB-FR-014, LB-FR-020, LB-NICE-007)
 
+New read-side tools expose authority, port-health and cycle analysis. Method classification supports structural triage of hosts and dispatchers.
+
 - **`IAuthorityReporter`** (Application port) + **`LifebloodAuthorityReporter`** (Connectors.Mcp adapter). Single graph walk produces `implementedInterfaceCount`, `ownedPublicSurface` (public method/property/field count, nested types excluded), per-implemented-interface usage (member count + distinct consumers via `Calls`/`References` edges), and `forwarderRatio` (in [0.0, 1.0] or sentinel `-1.0` when no method has classification). Tool: **`lifeblood_authority_report`**, envelope: Derived / Proven.
 
-- **Method body classification**
+- **Method classification.** Source methods are classified by body shape to support structural triage; classification does not establish runtime cost.
 
 - **`lifeblood_port_health`** - walks an interface or class's `Contains` members, classifies each as live (≥ 1 incoming non-Contains edge OR outgoing `Implements`) or dead. Returns `livenessPct` and a verdict: `healthy` (≥75%), `mixed` (≥25%), `vestigial` (<25%), or `empty`.
 
-- **`lifeblood_cycles`**
+- **Cycle queries.** `lifeblood_cycles` exposes the existing strongly connected component analysis.
 
 Documented as **`INV-AUTHORITY-001`** + **`INV-FORWARDER-001`** in CLAUDE.md.
 
@@ -1567,7 +1653,7 @@ Documented as **`INV-AUTHORITY-001`** + **`INV-FORWARDER-001`** in CLAUDE.md.
 
 - **`changedSourceFiles`** + **`touchedGraphFiles`** added alongside the existing `changedFileCount` on `lifeblood_analyze` responses. Currently the same value; the surface is kept stable for future divergence (e.g. when graph-file churn is more than the .cs-file churn). Old `changedFileCount` field preserved for back-compat.
 
-- **`lifeblood_dependencies`**
+- **`lifeblood_dependencies`** description spells out where outgoing edges actually live: `Calls` edges live on the calling METHOD, `References` edges live on the referencing field/property/method body. A type-level dependencies query typically returns 0 because the type itself doesn't author calls. Closes the dogfood report's "0 outbound edges from type:X is confusing" finding.
 
 - **`lifeblood_analyze`** description includes a Unity note about new-`.cs`-without-`.meta` files (the incremental walker picks them up; a later full analyze will refresh symbol IDs if Unity assigns a different GUID).
 
@@ -1608,7 +1694,7 @@ Closes the three Roslyn extractor gaps that v0.6.4 left explicitly marked "by de
 
 - **`docs/ARCHITECTURE.md` Seam 4 wording.** Removed pre-release framing that referred to `INV-DEADCODE-001` "for the v0.6.4 investigation" - the v0.6.4 gap classes are now closed.
 
-- **Count refresh.**
+- **Count refresh.** Test count 557 → 569 across STATUS / README / ARCHITECTURE / DOGFOOD. Invariant count 58 → 63.
 
 ### Internal
 
@@ -1687,11 +1773,16 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
 
 ### Fixed. Resolver wrong-namespace short-name fallback (`INV-RESOLVER-005`)
 
-- **Two dogfood reports landed the same failure class.**
+- **Qualified-name correction.** Resolver fallback can recover a unique same-type symbol when the supplied namespace is wrong, without substituting an unrelated containing type.
 
 - **Two compounding bugs.** Rules 1-3 in `LifebloodSymbolResolver.Resolve` all failed because the input had a kind prefix and namespace dots, but rule 3's bare short-name lookup only fires when the input has neither prefix nor dots. And the fallback ranker scored the full canonical-shaped input string against every bare symbol name; Levenshtein closeness is `candidateLength - distance`, which biases toward long candidate names regardless of semantic similarity.
 
-- **Architectural fix**
+- **Architectural fix** in `LifebloodSymbolResolver`: one helper, one new rule, one ranker correction.
+  - `ExtractLikelyShortName(string)`: pure function. Strips kind prefix, strips method parameter list, returns the final dot-separated segment. Single source of truth used by both Rule 4 and the suggestion ranker.
+  - **Rule 4** (`ResolveOutcome.ShortNameFromQualifiedInput` and `AmbiguousShortNameFromQualifiedInput`). After rules 1-3 fail and the extracted short name is non-empty, look it up via `SemanticGraph.FindByShortName`. Single hit resolves with a diagnostic explaining the namespace correction. Multiple hits surface all candidates. Zero hits fall through to `NotFound` with an honest diagnostic.
+  - `SuggestNearMatchesInternal` passes the query through `ExtractLikelyShortName` before scoring. Literal short-name index hits land at `ShortNameHitScore = 1000`, deliberately above any reachable `ScoreCandidate` value, so real short-name matches always sort above fuzzy-ranking accidents.
+- Every one of the 10 read-side and write-side tools that route through `ISymbolResolver` inherits the fix automatically (`INV-RESOLVER-001`).
+- Pinned by `ResolverShortNameFallbackTests` (24 tests including both exact dogfood cases reproduced in synthetic graphs with bias-inducing noise symbols).
 
 ### Fixed. `lifeblood_compile_check` auto-wraps bare statement snippets
 
@@ -1703,7 +1794,7 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
 
 ### Fixed. `lifeblood_search` tokenized ranked-OR scoring
 
-- **The bug.**
+- **Search tokenization.** Multiword keyword queries are tokenized and ranked rather than treated as one literal substring.
 
 - **The fix.** The query is now an ordered list of tokens, not an opaque string. Split on whitespace, dedup case-insensitively, drop tokens below 3 chars to keep noise from saturating scores, fall back to the whole trimmed query as a single literal when every token is sub-threshold so "id" or "db" still work. Each surviving token is an independent scoring signal; scores OR-accumulate across fields and tokens. Per-field weights and the FQ vs. bare-name dedup semantics are preserved.
 - Pinned by 6 new regression tests in `SemanticSearchTests`.
@@ -1730,9 +1821,14 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
 
 - **Source of truth.** `CLAUDE.md` is parsed at runtime; no companion metadata file. Deliberate simplification of the original Phase 8 spike's Option C, eliminating drift between a prose source and a structured mirror. Phase 8C can still add a metadata companion later without breaking the contract.
 
-- **Works on any project.**
+- **Project-independent invariant discovery.** Projects without an instruction/invariant source return an empty audit.
 
-- **Regression pins**
+- **Regression pins**: 43 tests across four files.
+  - `ClaudeMdInvariantParserTests`: 17 tests covering both bullet shapes, block termination, duplicate detection, category inference, backtick-code-span-safe title extraction.
+  - `InvariantProviderAndHandlerTests`: 14 tests including provider direct tests, handler dispatch, and one end-to-end test via real `lifeblood_analyze` against a minimal Roslyn workspace.
+  - `LifebloodClaudeMdSelfTests`: 5 tests that parse Lifeblood's own `CLAUDE.md` and audit the invariant inventory (>= 50 invariants floor, every core category present, known stable ids resolve, no duplicates, no parse warnings).
+  - `InvariantParseCacheTests`: 7 tests pinning the generic cache against a fake `IFileSystem`: empty path, missing file, cache hit on unchanged timestamp, invalidation on timestamp change, parser-throws retry, concurrent reads.
+- Phase 8 spike published at `docs/plans/invariant-check-spike.md`.
 
 ### Added. MCP stdio-loop and ToolHandler search dispatch coverage
 
@@ -1745,7 +1841,7 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
 
 ### Known limitation. `lifeblood_dead_code` is experimental / advisory (`INV-DEADCODE-001`)
 
-- **Dogfood against ExampleApp**
+- **Reference extraction.** Method groups, source/metadata canonical identity and partial-type declarations are handled consistently across graph-based tools.
 
 - **Ship decision.** The tool is marked `[EXPERIMENTAL. ADVISORY ONLY]` in its description. Every response carries `status: "experimental"` plus a `warning` field listing the classes so agents cannot consume findings without seeing the caveat. `Handle_DeadCode_Response_IncludesExperimentalWarning` pins the caveat against future regression.
 
@@ -1862,6 +1958,14 @@ Three-seam framing after the BCL ownership fix, native usage reporting on every 
 
 ### Added. Native usage reporting on every analyze run (LB-INBOX-005)
 
+Every `lifeblood_analyze` response now carries a structured `usage` block
+with wall time, CPU time (total, user, kernel), peak working set, peak
+private bytes, GC collection counts per generation, host logical core
+count, and per-phase timings. No external measurement wrapper required.
+The feature is on by default in both CLI and MCP shapes; constructing
+`AnalyzeWorkspaceUseCase` without a probe still works and returns a null
+`Usage` field with zero overhead.
+
 - **`Lifeblood.Domain.Results.AnalysisUsage`** POCO with `WallTimeMs`,
   `CpuTimeTotalMs`, `CpuTimeUserMs`, `CpuTimeKernelMs`,
   `PeakWorkingSetBytes`, `PeakPrivateBytesBytes`, `HostLogicalCores`,
@@ -1919,7 +2023,10 @@ Three-seam framing after the BCL ownership fix, native usage reporting on every 
   `INV-USAGE-001`, `INV-USAGE-002`, `INV-USAGE-PORT-001`,
   `INV-USAGE-PORT-002`, `INV-USAGE-PROBE-001`, `INV-USAGE-PROBE-002`.
 
-#### Why this shipped instead of living in the improvement inbox
+#### Usage reporting
+
+Analyze responses include scoped usage measurements. Callers should measure
+their own workload rather than treating another workspace as a performance guarantee.
 
 ### Added. Plan v4 (three-seam framing for the post-BCL findings)
 
@@ -1981,7 +2088,11 @@ of five piecemeal patches.
 
 ### Fixed
 
-- **`find_references` / call-graph extraction silently returned 0 results for every method in any Unity / .NET Framework / Mono workspace.**
+- **`find_references` / call-graph extraction silently returned 0 results for every method in any Unity / .NET Framework / Mono workspace.** Type-only references (`type:Foo`) worked, method-level references (`method:Foo.Bar()`, `dependants`, call edges) returned empty. Three-layer root cause:
+  1. **Resolver silent fallback**: `RoslynWorkspaceManager.FindInCompilation` enumerated *all* methods on a type when no overload matched, returning `methods[0]`. So asking for a method that didn't exist returned an unrelated method's call sites. The wrong target then matched no nodes and the query came back empty.
+  2. **Display-string match across the source/metadata boundary**: `RoslynCompilationHost.FindReferences` compared `ISymbol.ToDisplayString()` against the resolved target. Different parameter formatters across source and metadata symbols (driven by Roslyn's default `CSharpErrorMessageFormat` and version drift) silently dropped legitimate call sites.
+  3. **BCL double-load** (the dominant cause): `ModuleCompilationBuilder.CreateCompilation` always prepended the host .NET 8 BCL bundle, even for modules that already shipped their own BCL via csproj `<Reference Include="netstandard|mscorlib|System.Runtime">` (Unity ships .NET Standard 2.1; .NET Framework / Mono ship mscorlib). Result: every System type existed in two assemblies. Roslyn emitted CS0433 (ambiguous type) and CS0518 (predefined type missing) on every System usage, the semantic model became unusable, `GetSymbolInfo` returned null at every call site, and every walker tool silently produced empty results.
+
 
   Fix:
   - **Layer 1 (resolver)**: kind-filtered, name-filtered, signature-strict member lookup with documented contract. Never silently substitute an unrelated member. Lenient escape valves (single overload, no signature given) are explicit.
@@ -2010,7 +2121,10 @@ of five piecemeal patches.
 
 ### Fixed
 
-- **CS0518 "System.Object is not defined" on multi-module workspaces**
+- **CS0518 "System.Object is not defined" on multi-module workspaces** (#1): `lifeblood_execute` failed on any code against workspaces with many modules. Three-layer root cause:
+  1. `ScriptOptions.Default` contains 25 "Unresolved" named references. Placeholders that never resolve to actual DLLs in a published app.
+  2. Adding `compilation.References` (target project's transitive deps) injected Unity's netstandard BCL stubs, conflicting with the host .NET 8 runtime.
+  3. Two competing `System.Object` definitions from different BCL flavors caused the script compiler to fail.
 
   Fix: Explicitly load the host .NET runtime's BCL assemblies from the runtime directory (17 core assemblies). Use `WithReferences` (replace) instead of `AddReferences` to drop the useless "Unresolved" defaults. Only add `CompilationReference` per project module. No transitive deps.
 
@@ -2076,7 +2190,7 @@ Release hygiene pass + per-module progress + large-project modes.
 
 - **Per-module progress reporting**: `lifeblood_analyze` emits progress marks per module via `IProgressSink`, so agents see which module is currently compiling during long analyses.
 
-- **Read-only streaming mode**: `lifeblood_analyze readOnly=true` uses streaming compilation (lower memory, ~4 GB vs ~7 GB on large projects). Write-side tools are unavailable in this mode; intended for large-project read-only analysis.
+- **Read-only streaming mode**: `lifeblood_analyze readOnly=true` uses streaming compilation (releasing compilation state after extraction). Write-side tools are unavailable in this mode; intended for large-project read-only analysis.
 
 - **Server GC tuning**: `<ServerGarbageCollection>true</ServerGarbageCollection>` in the build props for better steady-state behavior on long MCP sessions.
 
@@ -2084,7 +2198,7 @@ Release hygiene pass + per-module progress + large-project modes.
 
 ### Fixed
 
-- **Unity csproj filesystem scan hang**
+- **Unity csproj filesystem scan hang**: when an old-format csproj declared `<Compile Include>` items, the discoverer still performed a recursive filesystem scan of the project directory, which could unnecessarily scan large Unity directories. Now trusts the csproj `<Compile>` items and skips the recursive scan when they are present.
 
 - **Discovery merge**: filesystem scan now merges with csproj `<Compile Include>` items instead of choosing one or the other, so hybrid csproj layouts (some items declared, others implicit) produce the correct file set.
 
@@ -2133,7 +2247,7 @@ Incremental re-analyze, file-level impact, Unity bridge, built-in rule packs.
 
 ### Added
 
-- Expanded Unity project validation.
+- Expanded Unity project-descriptor and multi-module regression coverage.
 
 ## [0.2.1] - 2026-04-08
 
@@ -2141,7 +2255,7 @@ Incremental re-analyze, file-level impact, Unity bridge, built-in rule packs.
 
 - **Edge deduplication in GraphBuilder**: partial classes caused duplicate Overrides/Inherits/Implements edges. `Build()` now deduplicates all edges by `(sourceId, targetId, kind)`.
 
-- **Unity csproj support**: detect `<Compile Include>` items in old-format csproj. If present, use those instead of filesystem scan. Prevents 75-project recursive scan hang.
+- **Unity csproj support**: detect `<Compile Include>` items in old-format csproj. If present, use those instead of filesystem scan. Avoids unnecessary recursive scans.
 
 ## [0.2.0] - 2026-04-08
 
@@ -2205,6 +2319,12 @@ Bidirectional Roslyn, streaming compilation, 45-pass hardening, Python adapter.
 
 ### Changed
 
+- Port count: 10 → 14 (3 write-side + 1 blast radius).
+- Tests: 109 → 241.
+- Self-analysis: 634 symbols → 1057 edges, 888 edges → 2594.
+- CI: 4 parallel jobs (build, TypeScript adapter, Python adapter, dogfood).
+- Build: 0 warnings, 0 errors.
+
 ## [0.1.1] - 2026-04-08
 
 Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanner, 180 tests.
@@ -2250,6 +2370,8 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 ## [0.1.0] - 2026-04-07
 
+First public release. Framework is dogfood-verified and CI-green.
+
 ### Added
 
 - **Domain**: immutable semantic graph model (Symbol, Edge, Evidence, ConfidenceLevel, GraphBuilder, GraphValidator, GraphDocument).
@@ -2278,11 +2400,11 @@ Deep hardening pass. 10 bugs fixed, architecture granulated, AST security scanne
 
 - **Tests**: 109 xUnit tests.
 
-- **CI**
+- **CI**: 3 parallel jobs (build, TypeScript adapter, dogfood with cross-language proof).
 
 - **Adapter contribution guides**: Go, Python, Rust (contract and checklist, no implementation code).
 
-- **Documentation**
+- **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
 [Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.13...HEAD
 [0.7.13]: https://github.com/user-hash/Lifeblood/compare/v0.7.12...v0.7.13

@@ -6,12 +6,10 @@ namespace Lifeblood.Tests;
 /// INV-EXTRACT-STATIC-TABLES-001 ratchet — the static-table extractor
 /// is generic Roslyn semantic tooling and MUST NOT leak any
 /// consumer-domain vocabulary into its source. The forbidden list
-/// below curates project-specific identifiers from real-world
-/// consumer codebases that have no business in a generic extractor —
+/// below uses synthetic consumer-domain examples that have no business in a generic extractor —
 /// any match anywhere in the extractor or its DTOs fails the build.
-/// Add new tokens here whenever a new downstream consumer ships;
-/// removing tokens requires written justification because each was
-/// added in response to a real drift signal.
+/// Use synthetic domain examples here. Private consumer identifiers must not
+/// be copied into the regression guard itself.
 /// </summary>
 public class StaticTableNameLeakageTests
 {
@@ -28,15 +26,15 @@ public class StaticTableNameLeakageTests
     };
 
     /// <summary>
-    /// Curated consumer-domain identifiers. Drawn from real downstream
-    /// projects this tool has dogfooded against — every token here
+    /// Curated consumer-domain identifiers. Synthetic examples avoid reproducing private
+    /// consumer identifiers — every token here
     /// would betray that the extractor was specialised for one
     /// consumer's row shape. Case-insensitive match.
     /// </summary>
     private static readonly string[] ForbiddenTokens =
     {
         "ExampleApp",
-        "ExampleApp",
+        "CustomerDomain",
         "DomainCapability",
         "DomainFeature",
         "SampleKernel",

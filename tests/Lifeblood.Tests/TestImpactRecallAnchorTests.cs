@@ -9,21 +9,6 @@ namespace Lifeblood.Tests;
 /// Recall anchor for `lifeblood_test_impact` against Lifeblood self.
 /// Picks production targets with known test coverage and asserts the
 /// matching test fixture class shows up in the affected-classes list.
-/// Closes the W2-F gate from the v0.7.6 prep masterplan: now that the
-/// graph carries target-typed-`new(MethodGroup)` edges
-/// (`INV-EXTRACT-METHOD-GROUP-CANDIDATE-001`), generic-call
-/// canonical-id parity (`INV-EXTRACT-METHOD-ORIGINAL-DEFINITION-001`),
-/// and synthesized-ctor surfaces for initializer edges
-/// (`INV-EXTRACT-SYNTHESIZED-CTOR-001`), the read-side analyzer should
-/// resolve every recently-shipped Wave W1 + W2 fixture to its proper
-/// test class.
-///
-/// ExampleApp-side recall measurement is deferred to the v0.7.6 fresh-MCP
-/// redeploy gate per the v0.7.6 masterplan. An Advisory heuristic
-/// layer on top of `TestImpactAnalyzer` is NOT shipped in this wave —
-/// the user decision (2026-05-15) was to defer the Advisory layer
-/// until measurement against ExampleApp ratchets fires below 95% recall
-/// after the redeploy.
 /// </summary>
 public class TestImpactRecallAnchorTests
 {

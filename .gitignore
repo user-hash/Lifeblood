@@ -55,3 +55,5 @@ docs/IMPROVEMENT_INBOX.md
 
 # Local investigation output; maintained public docs contain the findings.
 /docs/investigations/
+/docs/plans/
+/docs/DOGFOOD_CODE_EXECUTION.md

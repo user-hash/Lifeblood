@@ -9,7 +9,7 @@ namespace Lifeblood.Adapters.Performance;
 
 /// <summary>
 /// Stateless adapter for the Lifeblood generic JSON/CSV capture contract and
-/// the structural Unity ProfilerRecorder receipt shape used by ExampleApp. It does
+/// structural Unity ProfilerRecorder receipts. It does
 /// not parse proprietary Unity .data files and never retains imported rows.
 /// </summary>
 public sealed partial class RuntimePerformanceEvidenceImporter : IPerformanceEvidenceImporter

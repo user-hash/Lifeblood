@@ -78,7 +78,7 @@ public sealed class RuntimePerformanceEvidenceTests
     {
         const string json = """
         {
-          "schema": "ExampleApp.mobile-performance-scenario@5",
+          "schema": "example.mobile-performance-scenario@5",
           "scenario": "baseline",
           "productName": "ExampleApp",
           "appVersion": "1.2.3",
@@ -120,7 +120,7 @@ public sealed class RuntimePerformanceEvidenceTests
         var capture = _importer.Import(new PerformanceEvidenceDocument("scenario-receipt.json", json, null, 100));
 
         Assert.Equal("UnityProfilerRecorderJson", capture.SourceFormat);
-        Assert.Equal("ExampleApp.mobile-performance-scenario@5", capture.SourceSchema);
+        Assert.Equal("example.mobile-performance-scenario@5", capture.SourceSchema);
         Assert.Equal("Handheld", capture.Device.DeviceClass);
         Assert.Equal(256, capture.Workload.AudioBufferFrames);
         Assert.StartsWith("unitywork_", capture.Workload.Fingerprint);

@@ -19,9 +19,7 @@ Beta in v0.7.7. First non-C# adapter for Lifeblood. Parses C code through `libcl
 The native-clang adapter is an **opt-in build target**. The executable is NOT bundled with the published NuGet packages (`Lifeblood.dll` / `Lifeblood.Server.Mcp.dll`); it ships as a separate `lifeblood-native-clang.exe` built from `adapters/native-clang/` via CMake + libclang. See `TOOLCHAIN.md` for the build recipe.
 
 11 `[SkippableFact]` ratchets pin the executable's contract:
-
 - **Default suite (no env var set)**: ratchets skip silently when the executable is absent. Suite reports `1180 passed + 11 skipped / 1191 total` — green.
-
 - **Opt-in audit (`LIFEBLOOD_REQUIRE_NATIVE_CLANG=1`)**: ratchets fail loudly when the executable is missing. This is a LOCAL / MANUAL audit gate, NOT a CI gate — no GitHub workflow sets this variable today (the executable requires LLVM + libclang on the runner, which is opt-in toolchain work consumers handle themselves). Set the env var on a host where the executable IS expected to be present (post-build) and the assertion failure is correct behavior when it is not.
 
 To build the executable for local opt-in audit: follow `TOOLCHAIN.md` (requires LLVM dev headers + libclang shared library + CMake + a C++ compiler). Built artifacts land at `artifacts/native-clang-build/lifeblood-native-clang.exe` — the path the ratchets look up.
@@ -60,6 +58,18 @@ Native-specific details live under `properties`, usually keyed `native.*`, so th
 ## Fixtures
 
 Nine fixture families pin the contract under `adapters/native-clang/test-fixtures/`. Four carry a checked-in `expected.graph.json` consumed by `NativeClangAdapterContractTests` (`tiny-c`, `direct-refs-c`, `callback-table-c`, and `profile-c` which has both `expected.audio.graph.json` and `expected.video.graph.json`). The other five are executable ratchets only, pinned by `NativeClangExecutableRatchetTests`: `multi-tu-c`, `cross-tu-c`, `partial-parse-c`, `warning-c`, `return-type-c`.
+
+| Fixture | Pins |
+|---------|------|
+| `tiny-c` | Smallest possible graph: file symbols, struct, two functions, one Calls edge, one References edge, call-site provenance. |
+| `direct-refs-c` | Enum types and members, typedef symbols, underlying-type references, struct field type references, global symbols, function-to-global references. |
+| `multi-tu-c` | Two translation units in the same workspace, shared header, stable IDs across TUs. |
+| `cross-tu-c` | Cross-TU function definitions and call resolution. |
+| `callback-table-c` | Static registration tables with function-pointer targets. Row plus cell facts surface on the graph. |
+| `profile-c` | Two compilation databases over the same source. `ENABLE_VIDEO=1` and `ENABLE_AUDIO=1` produce different graphs. Command-line defines surface on the module; macros surface as `field:macro:<name>` symbols. |
+| `partial-parse-c` | Extractor tolerates a translation unit with parse errors. Emits diagnostic health counts rather than failing closed. |
+| `warning-c` | Non-zero warning diagnostic health surfaces correctly. |
+| `return-type-c` | Return-type symbol pressure metrics; type-flow coverage per function. |
 
 Test classes: `NativeClangAdapterContractTests` and `NativeClangExecutableRatchetTests` under `tests/Lifeblood.Tests/`.
 
@@ -128,3 +138,5 @@ See [`adapters/native-clang/FFMPEG_SCOUT.md`](../adapters/native-clang/FFMPEG_SC
 A native-specific MCP tool would belong in a future native-aware connector, not in the existing Roslyn-shaped right side.
 
 ## Tracking
+
+The full rollout plan lives in [the native adapter guide](NATIVE_CLANG.md). The adapter-side technical README is [`adapters/native-clang/README.md`](../adapters/native-clang/README.md).

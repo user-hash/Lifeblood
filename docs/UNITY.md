@@ -91,12 +91,16 @@ receipts and capabilities; if compatible services are unavailable, ordinary
 retained full analysis or an allowed full fallback is required. Read-only input
 does not promise immediate OS-memory reclamation.
 
+Use live `usage`, shared-service/base counts and [STATUS](STATUS.md) for current
+memory evidence. One base can use several CPU cores and GC heaps. Private bytes,
+working set, cumulative allocations, rooted objects, garbage and free heap are
+different measurements. Current allocation fixes and sustained-retention gaps
+remain separately recorded; older workstation figures are not a memory budget.
+
 ## Lifecycle
 
 - **Domain reload:** The bridge disposes Unity's proxy before recompilation. The daemon and semantic base remain alive while another workspace client lease exists; the next Unity call reconnects.
-
 - **Editor quit:** Unity's proxy is disposed via `EditorApplication.quitting`; the daemon follows its lease-aware idle policy.
-
 - **Crash recovery:** Process exit or pipe closure marks the proxy broken. The next independent call starts a replacement proxy; a crashed daemon starts empty rather than replaying a possibly effectful request.
 
 ## Unity-Aware Reachability (`INV-UNITY-001`)
@@ -104,12 +108,12 @@ does not promise immediate OS-memory reclamation.
 Lifeblood detects Unity's framework dispatch automatically. `lifeblood_dead_code` does NOT flag:
 
 - **Unity Editor reflection attributes (full roster):** `RuntimeInitializeOnLoadMethod`, `InitializeOnLoad`, `InitializeOnLoadMethod`, `InitializeOnEnterPlayMode`, `DidReloadScripts`, `MenuItem`, `ContextMenu`, `ContextMenuItem`, `CustomEditor`, `CustomPropertyDrawer`, `PropertyDrawer`, `PostProcessBuild`, `PostProcessScene`, `ScriptedImporter`, `OnOpenAsset`, `SettingsProvider`, `SettingsProviderGroup`, `Shortcut`, `Preserve`. Plus native interop: `BurstCompile`, `MonoPInvokeCallback`. Plus the full NUnit / Unity Test Framework lifecycle: `Test`, `TestCase`, `TestCaseSource`, `TestFixture`, `TestFixtureSource`, `Theory`, `SetUp`, `TearDown`, `OneTimeSetUp`, `OneTimeTearDown`, `UnityTest`, `UnitySetUp`, `UnityTearDown`.
-
 - **MonoBehaviour magic methods:** `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`, `OnEnable`, `OnDisable`, `OnDestroy`, `Reset`, `OnValidate`, `OnGUI`, `OnTriggerEnter` and variants, `OnCollisionEnter` and variants, `OnAudioFilterRead`, `OnRenderImage`, `OnDrawGizmos` and variants, full Unity message catalog. Only flagged when the containing type's transitive inheritance chain reaches a Unity message-receiver root: `UnityEngine.MonoBehaviour`, `UnityEngine.ScriptableObject`, `UnityEditor.Editor`, `UnityEditor.EditorWindow`, `UnityEngine.StateMachineBehaviour`. The chain is Roslyn-resolved, so components deriving through metadata-only framework bases such as Unity UI `Graphic -> UIBehaviour -> MonoBehaviour` are covered without a hardcoded subclass list.
-
 - **Type-via-child propagation (`LB-FP-003`):** a type is reachable if ANY of its directly-contained members carries an entrypoint attribute. Closes the standard Unity pattern of `[SettingsProvider]` (or any other Unity reflection attr) on a static method inside a host type that otherwise has no incoming references — pre-fix the method became reachable while the host type surfaced as a dead candidate.
 
 The chain walk uses `Symbol.Properties["baseTypeChain"]` plus the older direct-base `Symbol.Properties["baseType"]` fallback (set by the C# extractor), so types that inherit directly or indirectly from `UnityEngine.MonoBehaviour` still resolve even though the engine DLL itself isn't analyzed source.
+
+Unity dead-code results remain advisory for reflection-based dispatch, unresolved assets and unrecognized lifecycle conventions.
 
 ## Asmdef Edits (`INV-UNITY-002`)
 

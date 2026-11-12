@@ -23,6 +23,10 @@ multiple processes, CPU cores and GC heaps.
 Keep raw captures, diagnostic output and session investigation journals outside
 the repository in the configured scratch location. Commit concise project docs,
 tests and reproduction commands; do not use GitHub as diagnostic storage.
+Historical notes and changelog entries are subject to the same privacy boundary. Keep consumer code, identifiers,
+measurements and machine-specific deployment records out of public material.
+Before a push, review the complete outgoing commit history and package inputs;
+a clean current tree does not clear earlier commits for publication.
 
 Current versions, verification and known limits belong in
 [STATUS](docs/STATUS.md) and [the tracking ledger](devmemory/lifeblood-tracking.md).
@@ -45,7 +49,8 @@ consumer language, references and defines still come from its own descriptors.
 Use environment observation and host validation receipts before choosing syntax.
 Consumer repositories, SDK locations and hardware are deployment inputs. Keep
 machine-specific paths and consumer assumptions out of product defaults and
-public setup commands; label local measurements with their tested environment.
+public setup commands. Retain private-workspace measurements outside the public
+repository.
 After coordinated cross-file/API changes, refresh the shared publication before
 checking dependent files: file batches overlay each file individually on the
 retained baseline. Use an explicit full analyze after a cross-module API change;

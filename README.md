@@ -223,20 +223,20 @@ and compiler level understanding.
 
 ---
 
-## Dogfooding
+## Verification
 
-Self-analysis (symbols, edges, modules, types, violations, cycles), discovered test cases, `[SkippableFact]` opt-in count, typed-invariant audit (total + category coverage, duplicates, parse warnings) — every metric is anchored in [`docs/STATUS.md`](docs/STATUS.md) and ratcheted against the live source by [`tests/Lifeblood.Tests/DocsTests.cs`](tests/Lifeblood.Tests/DocsTests.cs). Read each receipt's tested scope and remaining limitations.
+Current source counts are maintained in [Status](docs/STATUS.md). The
+[verification guide](docs/VERIFICATION.md) describes reproducible checks and
+their limits. Private workspace measurements and session records are not
+distributed with the source or packages.
 
 ---
 
 ## Roadmap
 
-- **Native Clang maturity**: move from focused-slice scout to whole-build coverage on FFmpeg-class C codebases (WSL + bear, MSYS2 + bear, or a project-specific compile-database generator). Tracked in [`docs/plans/native-clang-adapter-masterplan-2026-05-16.md`](docs/plans/native-clang-adapter-masterplan-2026-05-16.md).
-
+- **Native Clang maturity**: move from focused-slice scout to whole-build coverage on FFmpeg-class C codebases (WSL + bear, MSYS2 + bear, or a project-specific compile-database generator). Tracked in [the native adapter guide](docs/NATIVE_CLANG.md).
 - **C++ over libclang**: extend the native adapter past C to C++. Same boundary, additional Clang AST coverage (templates, classes, member functions).
-
 - **Community adapters**: contribution guides for [Go](adapters/go/) and [Rust](adapters/rust/). Contract and checklist ready, no implementation code yet.
-
 - **REST / LSP bridge**: expose the graph to IDE extensions and web services.
 
 ---
@@ -251,7 +251,7 @@ Self-analysis (symbols, edges, modules, types, violations, cycles), discovered t
 | [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, port interfaces, invariant tree |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
 | [Invariants tree](docs/invariants/INDEX.md) | Typed architectural invariants, queryable via `lifeblood_invariant_check` |
-| [Status](docs/STATUS.md) | Component table, test counts, self-analysis, production stats, memory profiles |
+| [Status](docs/STATUS.md) | Component table, source counts and supported capabilities |
 | [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
 | [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
 | [Release checklist](docs/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet Trusted Publishing (OIDC) flow |
@@ -263,7 +263,6 @@ Self-analysis (symbols, edges, modules, types, violations, cycles), discovered t
 
 - [LivingDocFramework](https://github.com/user-hash/LivingDocFramework) — the methodology that shaped the architecture
 - [Roslyn](https://github.com/dotnet/roslyn) — the C# compiler platform
-- [Case study](https://github.com/user-hash/LivingDocFramework/blob/main/docs/CASE_STUDY.md) — the 400k LOC Unity project where these ideas were proven
 
 ---
 

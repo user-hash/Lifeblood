@@ -146,7 +146,7 @@ public class InvariantProviderAndHandlerTests : IDisposable
     [Fact]
     public void Provider_Audit_DetectsCrossFileDuplicateWithProvenance()
     {
-        // The exact ExampleApp shape: the same id declared in CLAUDE.md AND
+        // The same id declared in CLAUDE.md AND
         // AGENTS.md. The old per-file-only path deduped this silently —
         // sum(sourceCounts) exceeded totalCount with no duplicate reported.
         File.WriteAllText(

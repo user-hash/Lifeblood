@@ -151,7 +151,7 @@ public class ResolverTypeAwareFallbackTests
     public void Resolve_FieldOnMissingContainingType_RefusesCrossTypeSubstitution()
     {
         // The user asks for FeatureFlags.AnimatedOffset. Only SampleState
-        // has a AnimatedOffset field in the graph. Pre-fix the resolver
+        // has an AnimatedOffset field in the graph. Pre-fix the resolver
         // silently substituted the unrelated field. INV-RESOLVER-007: refuse.
         var graph = Build(
             Type("type:NS.SampleState", "SampleState"),

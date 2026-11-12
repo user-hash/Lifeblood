@@ -18,11 +18,11 @@ public sealed class EvidenceBaselineDriftTests
             | Edges (Editor ∪ Player union) | **23,456** |
             | — Editor profile edges | 15,678 |
             | — Player profile edges | 14,567 |
-            | Modules | **100** |
+            | Modules | **3** |
             | Types | **123** |
             | Lifeblood `File` symbols | **45** |
             | Architecture violations | **0** |
-            | Cycles (SCC ≥ 2) | **138** |
+            | Cycles (SCC ≥ 2) | **4** |
             | Unique invariants | **2** |
             | Declared occurrences | **2** |
             | Duplicate declarations | **0** |

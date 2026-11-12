@@ -30,6 +30,8 @@ per connected client and one workspace daemon, as described below.
 
 **Lifecycle.** In ordinary stdio mode, the client spawns one `lifeblood-mcp` process and that process owns one initially empty session. The first call to `lifeblood_analyze` walks the project's csproj files, discovers modules, decides per-module BCL ownership from `<Reference>` elements, parses sources with Roslyn, builds the semantic graph, and retains the workspace and graph. Subsequent tools share that publication. Ordinary graph reads do not recompile; compile-check, source refresh and scoped secondary-profile analysis can construct or emit compilations. Lifeblood does not require an IDE round-trip for those operations.
 
+**Shared multi-agent mode.** For multiple agents attached to the same workspace, start `lifeblood-mcp` with `--shared` or set `LIFEBLOOD_SHARED_SESSION=1`. Each MCP client still gets a small stdio process, but that process is a persistent proxy to one canonical-workspace-keyed named-pipe daemon. The daemon owns the single latest semantic `GraphSession`: any attached agent may run `lifeblood_analyze`, identical concurrent requests coalesce, and every attached client observes the committed publication. The default key resolves to the nearest Git worktree root (falling back to the configured/process directory); use `--shared-key <path>` or `LIFEBLOOD_SHARED_SESSION_KEY` when launch directories cannot converge. `--shared-pipe` / `LIFEBLOOD_SHARED_PIPE_NAME` is diagnostic routing only and cannot bypass the typed protocol/build/workspace handshake. One persistent proxy connection owns one client lease and forwards matching MCP cancellation notifications while a request is active; cancelling or disconnecting one coalesced waiter does not cancel work still needed by another surviving waiter. A retried full analyze whose `WorkspaceAnalysisIdentity` already matches the current publication returns `publication.action:"reusedCurrent"` instead of publishing a duplicate generation. Disconnecting the last client does not discard the shared base by default; accepted maintenance drain or an explicitly configured idle-eviction policy cooperatively disposes the daemon-owned session. Bounded historical publications are graph-only, so the catalog never creates another Roslyn base. Integration fixtures cover client coalescing, cancellation, disconnected waiters, pinned batches, accepted changes, idle exit and recovery. Private stdio remains the one-line rollback path.
+
 **Memory.** Streaming compilation with downgrading compiles, extracts, then downgrades each module to a PE metadata reference, so only one full Roslyn `Compilation` is held at once on the streaming path. Metadata size depends on the module. Retained MCP sessions keep compilations in memory for write-side tools. With ordinary stdio, every MCP client has its own retained heap. With shared mode, those clients converge on one daemon-owned retained heap per workspace key. Historical catalog entries share immutable graph/analysis references and retain zero Roslyn services; pinned entries count toward the same hard bound. Use the `usage` block on every `lifeblood_analyze` response, `lifeblood_snapshots`, and the current receipts in [`STATUS.md`](STATUS.md) as the source of truth for a workspace's actual memory profile.
 
 **Tool availability and concurrency.** The read/write split is legacy retained-compilation compatibility metadata. The registry-owned `sessionRequirement`, `effect` and `sessionAccess` contracts drive actual availability and concurrency; snapshot reads derive from `Observe + SharedRead`. Use live `lifeblood_capabilities` for the running catalog, [`TOOLS.md`](TOOLS.md) for tool semantics and [`STATUS.md`](STATUS.md) for ratcheted counts instead of a second authored roster here.
@@ -72,6 +74,15 @@ dotnet pack src/Lifeblood.Server.Mcp -c Release -o /path/to/packages
 dotnet tool install Lifeblood.Server.Mcp --tool-path /path/to/tools --add-source /path/to/packages --version <exact-package-version>
 ```
 
+Use `dotnet tool update` for an existing tool directory. Keep the package and
+build outputs on the workspace's configured output drive. An already-running
+daemon continues executing its loaded build; replacing a package is not a live
+service upgrade. Coordinate the handover and verify existing consumers before
+calling a rollout complete. Build identity includes the compiled module MVID,
+so a repository Debug DLL is unsuitable as a moving shared-service deployment.
+The Lifeblood repo ships [`.mcp.json.example`](../.mcp.json.example) with the
+installed-tool form. Machine-specific `.mcp.json` remains gitignored.
+
 ### Verify the install
 
 ```bash
@@ -93,6 +104,18 @@ $workspace = (Resolve-Path ../MyProject).Path
   -SdkCommand (Get-Command dotnet -ErrorAction Stop).Source `
   -EnvironmentFile src/Example.cs
 ```
+
+Set the workspace and source-file examples to your project. Run the helper from
+the Lifeblood checkout. `-Command` names the installed
+MCP executable; `-RuntimeRoot` is optional when the executable already resolves its
+runtime. The helper sets `LIFEBLOOD_SHARED_DAEMON_AUTOSTART=0` only in its child,
+initializes one shared proxy, reads capabilities and the server catalog, and closes
+that proxy in `finally`. An optional `EnvironmentFile` observes that exact retained
+scope without diagnostics/compilation/refresh; older or compilation-free services
+report it unavailable, without a fallback scan. The default overall deadline is
+30 seconds (maximum 60), plus bounded owned-process cleanup. RPC frames are bounded
+to 4,194,304 UTF-16 characters. An absent or incompatible daemon returns unavailable
+JSON with exit code 1; no private session, daemon start, drain or analysis follows.
 
 The original top-level fields remain. The additive `doctor` object joins resolved
 PATH candidates, handshake/endpoint identity, live daemon/publication/base counts,
@@ -226,6 +249,23 @@ response already contains a successful canonical check.
 
 The server reads optional environment variables at startup. All have safe defaults; set them per deployment without a code change. Shared-session variables are honored by direct clients; the Unity bridge always supplies shared mode and its current project root. `LIFEBLOOD_MCP_COMMAND` is the bridge-only executable override.
 
+| Variable | Default | Effect |
+|---|---|---|
+| `LIFEBLOOD_TELEMETRY` | off | Opt-in operational telemetry. Set to `1`, `true`, `yes`, `on`, or `diagnostics` to emit .NET `ActivitySource` / `Meter` events (tool success/error, argument diagnostics, response-JSON cost, analyze result/fallback, analyze phase allocation, result truncation, invariant-parse cache outcomes). Any other value (or unset) uses the no-op sink. |
+| `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` | `3600` | Wall-clock age (seconds) past which a read-side response adds a staleness limitation to its truth envelope. |
+| `LIFEBLOOD_FILES_CHANGED_THRESHOLD` | `10` | File-churn count since the last analyze past which a read-side response adds a files-changed limitation to its truth envelope. |
+| `LIFEBLOOD_JSON_COMPAT` | `legacy` | Tool-argument compatibility mode: `legacy` accepts today's wire, `warn` accepts but emits `lifeblood.tool.arguments` telemetry for unknown/missing/type-mismatch/duplicate arguments, and `strict` rejects invalid tool arguments. In strict mode the MCP request parser also rejects duplicate JSON properties before binding (`INV-MCP-STRICT-JSON-001`, `INV-MCP-TOOL-ARG-CONTRACT-001`). |
+| `LIFEBLOOD_STRICT_JSON` | off | Backward-compatible strict alias used only when `LIFEBLOOD_JSON_COMPAT` is unset. Truthy values select the same strict behavior as `LIFEBLOOD_JSON_COMPAT=strict`. |
+| `LIFEBLOOD_SNAPSHOT_HISTORY_LIMIT` | `3` | Graph-only publications retained per session. `0` disables history; the Application hard maximum is `16`. Invalid/out-of-range values use `3`; pins consume the same bound. |
+| `LIFEBLOOD_SNAPSHOT_HISTORY_MAX_AGE_SECONDS` | `86400` | Unpinned history age before eviction. `0` disables age expiry; maximum accepted deployment value is one year. Invalid/out-of-range values use 24 hours. |
+| `LIFEBLOOD_SHARED_SESSION` | off | Truthy values make this process a stdio proxy to a workspace-keyed shared daemon instead of owning a private in-process `GraphSession`. Equivalent to passing `--shared`. |
+| `LIFEBLOOD_SHARED_SESSION_KEY` | nearest Git worktree root, else current working directory | Canonical root used to derive shared daemon identity. Set an explicit absolute workspace path when several agents launch outside the worktree but should share one scan. |
+| `LIFEBLOOD_SHARED_PIPE_NAME` | derived from key | Explicit named-pipe name. Use only when you need exact interop with a supervisor; otherwise prefer the key. |
+| `LIFEBLOOD_SHARED_DAEMON_AUTOSTART` | on | Set false only when an external supervisor owns the daemon lifecycle. A missing daemon then returns a recoverable proxy error and the proxy remains attached for a later replacement instead of spawning a detached process. |
+| `LIFEBLOOD_SHARED_IDLE_SECONDS` | disabled | Optional last-client idle interval before the daemon drains, disposes its retained session, releases pipe/mutex ownership, and exits. Unset or invalid values schedule no eviction; set a finite non-negative number only when the operator intentionally trades retained-graph availability for automatic memory reclamation. |
+| `LIFEBLOOD_SHARED_PROXY_TRACE` | unset | Optional diagnostic file receiving bounded proxy transport traces. Leave unset for normal operation; stdout remains JSON-RPC only. |
+| `LIFEBLOOD_MCP_COMMAND` | standard global-tool shim / `PATH` | Unity-bridge-only executable override. Supply the `lifeblood-mcp` executable path, not a DLL or argument string; the bridge appends shared mode and the Unity project key. |
+
 Malformed numeric values fall through to each setting's documented default; they never throw. The live capability surface — including which feature flags and telemetry events are active in the running server — is reported by the `lifeblood_capabilities` tool.
 
 ---
@@ -295,7 +335,6 @@ Or directly via `dotnet run`:
 Add to `claude_desktop_config.json`:
 
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
@@ -316,11 +355,8 @@ Add to `claude_desktop_config.json`:
 In Cursor settings, add an MCP server:
 
 - **Name**: `lifeblood`
-
 - **Command**: `lifeblood-mcp`
-
 - **Arguments**: `--shared`
-
 - **Transport**: `stdio`
 
 Or in `.cursor/mcp.json`:
@@ -429,9 +465,7 @@ Three pieces work together:
 Lifeblood runs **outside** Unity's `AppDomain`. Three consequences:
 
 - **No assembly conflicts.** Lifeblood uses its SDK-matched Roslyn build (current provenance in [STATUS](STATUS.md)). Unity ships its own compiler assemblies. Sidecar isolation keeps those assembly identities separate.
-
 - **No domain reload state loss.** When Unity recompiles, the bridge disposes only Unity's proxy. The semantic daemon stays alive while another workspace lease exists, and the next Unity call reconnects to the same publication.
-
 - **Editor stays responsive.** Lifeblood work runs in the shared daemon and every bridge tool uses Coplay's polling lifecycle, so Unity's synchronous gateway does not need to hold a cold call open.
 
 ### Setup (~3 minutes)
@@ -495,15 +529,12 @@ remains a successful transport response.
 ### Lifecycle
 
 - **Domain reload.** The bridge disposes Unity's proxy before recompilation. The daemon keeps its base while another client lease exists; the next Unity call reconnects.
-
 - **Unity quit.** Unity's proxy is disposed; the daemon retains the latest base unless an operator-configured idle policy or explicit maintenance drain ends it.
-
 - **Crash recovery.** Process exit or pipe closure marks the proxy broken. The next independent call connects a replacement; failed effectful requests are never replayed automatically. Tool duration is observed through polling rather than a Lifeblood-authored wall-clock deadline.
 
 ### When to use Unity bridge vs standalone CLI
 
 - **Use the bridge** when you want Lifeblood semantic queries available to an AI agent inside the Unity Editor, in the same connection as Coplay's scene/asset tools, with no separate MCP client wiring.
-
 - **Use a standalone client** (Claude Code, Cursor) connected directly to `lifeblood-mcp` when you want Lifeblood without the Unity Editor running, or when you want the lowest-latency path with no Coplay layer in between.
 
 You can run both at the same time. The canonical bridge always uses shared mode, so direct clients launched with `--shared` and the same workspace identity attach to that daemon-owned session. One analyze refreshes the graph every attached agent sees. Identity, workspace binding, client leases, idle drain, coalescing, cancellation, pinned batches and bounded graph-only history have qualified deployment receipts. Those checks do not establish sustained memory stability; current memory work and other limits remain explicit in [`STATUS.md`](STATUS.md). Keep private stdio available only as the rollback configuration.

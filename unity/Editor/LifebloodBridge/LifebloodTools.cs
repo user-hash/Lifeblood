@@ -261,7 +261,7 @@ namespace Lifeblood.UnityBridge
     {
         public sealed class Parameters : SnapshotReadParameters
         {
-            [ToolParameter("Relative file path (e.g. Assets/_Project/Scripts/SampleController/CompositeController.cs)")]
+            [ToolParameter("Relative file path (e.g. Assets/Scripts/ExampleController.cs)")]
             public string filePath { get; set; }
 
             [ToolParameter("Maximum results embedded in the response.", Required = false)]
