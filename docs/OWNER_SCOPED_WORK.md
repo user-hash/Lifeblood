@@ -113,6 +113,10 @@ For multiple agents using the same workspace:
    example, a newly added member in file A remains unavailable to file B's
    overlay until ordinary analysis incorporates A. Read the refresh receipt
    and re-evaluate new snapshot identity before retrying pinned work.
+   When a descriptor change requires full fallback, schedule that heavy work
+   outside consumer latency/audio timing qualification where possible. Record
+   any overlap as a measurement confound; source-byte stability alone does not
+   make concurrent workstation workloads comparable.
 
 This procedure reduces avoidable conflicts while preserving content and
 publication guards. It does not make overlapping edits automatically mergeable
