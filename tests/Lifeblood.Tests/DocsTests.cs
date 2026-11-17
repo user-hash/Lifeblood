@@ -243,7 +243,7 @@ public class DocsTests
   public void SharedTransportMaturity_MatchesCanonicalRolloutDocs()
   {
     var status = File.ReadAllText(Path.Combine(RepoRoot, "guides", "STATUS.md"));
-    var setup = File.ReadAllText(Path.Combine(RepoRoot, "docs", "MCP_SETUP.md"));
+    var setup = File.ReadAllText(Path.Combine(RepoRoot, "guides", "MCP_SETUP.md"));
     var example = File.ReadAllText(Path.Combine(RepoRoot, ".mcp.json.example"));
 
     Assert.Equal("recommended", ServerIdentity.SharedSessionTransportMaturity);
