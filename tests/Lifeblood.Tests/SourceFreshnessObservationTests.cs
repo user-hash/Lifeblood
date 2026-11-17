@@ -36,7 +36,7 @@ public sealed class SourceFreshnessObservationTests : IDisposable
         Assert.Contains("incomplete: 256/257", response.Freshness.Summary);
         Assert.Contains("Content not compared", response.Freshness.Summary);
         Assert.Contains("Confidence describes publication semantics, not current inputs", response.Freshness.Summary);
-        Assert.Contains(response.Limitations, l => l.Contains("Zero observed changes"));
+        Assert.DoesNotContain(response.Limitations, l => l.Contains("Source observation"));
         var complete = new LifebloodResponseDecorator().Decorate("lifeblood_lookup", new EnvelopeContext
         {
             AnalyzedAtUtc = analyzed, TrackedFilePaths = paths, FileSystem = _fs,
@@ -93,6 +93,22 @@ public sealed class SourceFreshnessObservationTests : IDisposable
         Assert.Equal(0, response.Freshness.CheckedFileCount);
         Assert.Equal(1, response.Freshness.UncheckedFileCount);
         Assert.Contains("unavailable: 0/1", response.Freshness.Summary);
+        Assert.Contains(response.Limitations, l => l.Contains("Source observation is unavailable"));
+    }
+
+    [Fact]
+    public void FailedObservation_WarnsEvenWhenOtherSourcesWereChecked()
+    {
+        var path = Path.Combine(_root, "Unchanged.cs");
+        File.WriteAllText(path, "class C { }");
+        var response = new LifebloodResponseDecorator().Decorate("lifeblood_lookup", new EnvelopeContext
+        {
+            AnalyzedAtUtc = DateTime.UtcNow,
+            TrackedFilePaths = new[] { path, "" }, FileSystem = _fs,
+        });
+        Assert.Equal("incomplete", response.Freshness!.Status);
+        Assert.Equal(1, response.Freshness.UnavailableFileCount);
+        Assert.Contains(response.Limitations, l => l.Contains("1 unavailable"));
     }
 
     [Fact]

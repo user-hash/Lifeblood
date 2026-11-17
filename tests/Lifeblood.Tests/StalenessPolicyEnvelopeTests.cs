@@ -177,7 +177,7 @@ public class StalenessPolicyEnvelopeTests
         Assert.Equal(1, envelope.Freshness.UncheckedFileCount);
         Assert.False(envelope.Freshness.ContentCompared);
         Assert.False(envelope.Freshness.InputInventoryRecaptured);
-        Assert.Contains(envelope.Limitations, limitation => limitation.Contains("incomplete"));
+        Assert.DoesNotContain(envelope.Limitations, limitation => limitation.Contains("Source observation"));
         Assert.Equal(!included, envelope.Limitations.Any(limitation => limitation.Contains("checkDrift:true")));
         if (included)
         {
@@ -186,6 +186,28 @@ public class StalenessPolicyEnvelopeTests
         }
         var later = decorator.Decorate(tool, new EnvelopeContext { AnalyzedAtUtc = System.DateTime.UtcNow.AddMinutes(-1) });
         Assert.Contains(later.Limitations, limitation => limitation.Contains("checkDrift:true"));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(25)]
+    public void Decorate_NormalSamplingCap_KeepsCoverageWithoutAddingAWarning(int scanLimit)
+    {
+        var analyzedAt = System.DateTime.UtcNow.AddMinutes(-1);
+        var fs = new CountingFs(analyzedAt.AddMinutes(-1));
+        var envelope = new LifebloodResponseDecorator(Classifications).Decorate("lifeblood_lookup", new EnvelopeContext
+        {
+            AnalyzedAtUtc = analyzedAt,
+            TrackedFilePaths = Enumerable.Range(0, 1000).Select(i => $"src/Unchanged{i}.cs").ToArray(),
+            FileSystem = fs, FileScanLimit = scanLimit,
+        });
+
+        Assert.Equal("incomplete", envelope.Freshness!.Status);
+        Assert.Equal(scanLimit, envelope.Freshness.CheckedFileCount);
+        Assert.Equal(1000 - scanLimit, envelope.Freshness.UncheckedFileCount);
+        Assert.False(envelope.Freshness.ContentCompared);
+        Assert.Equal(new[] { "Existing tool-specific caveat." }, envelope.Limitations);
+        Assert.Equal(scanLimit, fs.Calls);
     }
 
     private sealed class AlwaysFreshFs : Lifeblood.Application.Ports.Infrastructure.IFileSystem

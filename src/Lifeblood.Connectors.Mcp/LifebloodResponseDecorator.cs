@@ -192,8 +192,11 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
     {
         bool stalenessAboveThreshold = stalenessSeconds >= _stalenessPolicy.StalenessSecondsWarnThreshold;
         bool filesChangedAboveThreshold = filesChanged >= _stalenessPolicy.FilesChangedWarnThreshold;
-        bool incomplete = freshness.UncheckedFileCount > 0 || freshness.UnavailableFileCount > 0;
-        if (!stalenessAboveThreshold && !filesChangedAboveThreshold && !incomplete)
+        // The normal observation cap is coverage metadata, not an actionable
+        // warning. Failed observations and missing prerequisites still warn.
+        bool unavailable = freshness.UnavailableFileCount > 0
+            || (freshness.InventoryFileCount > 0 && freshness.Status == "unavailable");
+        if (!stalenessAboveThreshold && !filesChangedAboveThreshold && !unavailable)
             return baseLimitations;
 
         var merged = new System.Collections.Generic.List<string>(baseLimitations.Length + 2);
@@ -213,9 +216,9 @@ public sealed class LifebloodResponseDecorator : IResponseDecorator
                     ? $"{filesChanged} tracked file(s) have newer mtimes or are missing (threshold {_stalenessPolicy.FilesChangedWarnThreshold}). Mtime alone does not establish content drift. {guidance}"
                     : $"{filesChanged} tracked file(s) changed since analyze (threshold {_stalenessPolicy.FilesChangedWarnThreshold}) — re-run analyze for accurate edge/symbol coverage.");
         }
-        if (incomplete)
+        if (unavailable)
         {
-            merged.Add($"Source observation is incomplete: {freshness.CheckedFileCount}/{freshness.InventoryFileCount} graph source files checked, {freshness.UnavailableFileCount} unavailable. Zero observed changes does not establish current inputs. {guidance}");
+            merged.Add($"Source observation is unavailable or incomplete: {freshness.CheckedFileCount}/{freshness.InventoryFileCount} graph source files checked, {freshness.UnavailableFileCount} unavailable. Zero observed changes does not establish current inputs. {guidance}");
         }
         return merged.ToArray();
     }
