@@ -36,7 +36,8 @@ public sealed class SdkEvaluationProcessTests
             var windows = "$child = Start-Process -FilePath $env:ComSpec -ArgumentList '/d /c ping -n 60 127.0.0.1 >nul' -WindowStyle Hidden -PassThru; "
                 + $"[IO.File]::WriteAllText('{receipt.Replace("'", "''")}', \"$PID $($child.Id)\"); Start-Sleep -Seconds 60";
             var unix = $"sleep 60 & child=$!; printf '%s %s' $$ $child > '{receipt.Replace("'", "'\\''")}'; wait";
-            var failure = Assert.Throws<InvalidOperationException>(() => SdkProjectFactsReader.RunEvaluation(Shell(windows, unix), 3000));
+            // Include shell and child startup in the same 30-second budget as SDK evaluation.
+            var failure = Assert.Throws<InvalidOperationException>(() => SdkProjectFactsReader.RunEvaluation(Shell(windows, unix), 30_000));
             Assert.IsType<TimeoutException>(failure.InnerException);
             Assert.True(File.Exists(receipt), "The process tree must start before exercising its deadline.");
             foreach (var id in File.ReadAllText(receipt).Split(' ').Select(int.Parse))
