@@ -101,13 +101,13 @@ for reproducible checks and limits.
   preserves errors, evidence and compact file-scoped batch rows without changing
   the shared publication. Opaque/oversized results keep their original content.
   The Unity bridge accepts modern negotiation and legacy fallback. See
-  [qualification and format-cost measurements](guides/VERIFICATION.md).md).
+  [qualification and format-cost measurements](guides/VERIFICATION.md).
 
 - `lifeblood_diagnose mode:environment` observes one retained module/file's actual
   compiler options, parse scopes and bounded references without diagnostics or
   refresh. Snapshot descriptor/profile provenance distinguishes host compiler
   identity from target coverage and runtime compatibility. Source acceptance is
-  recorded in the [environment report](guides/VERIFICATION.md).md).
+  recorded in the [environment report](guides/VERIFICATION.md).
 
 - Lifeblood targets .NET 11 with Roslyn 5.12.0-1.26529.118 and C# 15 in the
   locally qualified builds; Unity's compiler remains independent. C# 14 qualification covers
