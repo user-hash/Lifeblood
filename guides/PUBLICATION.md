@@ -26,5 +26,11 @@ Review its result alongside a consumer-specific content scan and source/package
 checks. A passing mechanical check is not proof that arbitrary prose contains
 no confidential information, or that hosting caches have been erased.
 
+Check packaged binaries separately with
+`python tools/check-public-packages.py --commit <release-commit> <package.nupkg>`.
+The build and publisher run this check before uploading packages. Official
+builds normalize debug source paths; the package check rejects embedded machine
+workspace paths and excluded working records, and verifies the source commit.
+
 Prepare and inspect locally. Remote changes, workflow runs, tags and package
 publication remain separate operations requiring authorization.

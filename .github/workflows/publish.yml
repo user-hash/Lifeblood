@@ -51,6 +51,9 @@ jobs:
 
       - run: dotnet restore
 
+      - name: Check publication boundaries
+        run: python -m unittest discover -s tests -p 'test_public_*.py'
+
       - run: dotnet build --no-restore --configuration Release
 
       # Restore golden repo so WriteSideIntegrationTests can analyze it
@@ -87,6 +90,9 @@ jobs:
             fi
           done
           echo "Pack guard passed — all artifacts are pure semver."
+
+      - name: Check public package contents and source identity
+        run: python tools/check-public-packages.py --commit "$GITHUB_SHA" ./artifacts/*.nupkg
 
       - name: NuGet trusted-publish login (OIDC -> short-lived key)
         if: github.event_name == 'push'

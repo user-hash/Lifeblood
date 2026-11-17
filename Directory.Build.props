@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
     <!-- Keep implementation syntax within the semantic adapter's supported language. -->
     <LangVersion>15</LangVersion>
     <!-- Match the compiler shipped in SDK 11.0.100, including Workspaces and scripting. -->

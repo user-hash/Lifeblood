@@ -20,12 +20,16 @@ jobs:
             10.0.x
             8.0.x
       - run: dotnet restore
+      - name: Check publication boundaries
+        run: python -m unittest discover -s tests -p 'test_public_*.py'
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release --verbosity normal
       - name: Pack dotnet tools
         run: |
           dotnet pack src/Lifeblood.CLI/Lifeblood.CLI.csproj --configuration Release --output ./artifacts
           dotnet pack src/Lifeblood.Server.Mcp/Lifeblood.Server.Mcp.csproj --no-build --configuration Release --output ./artifacts
+      - name: Check public package contents and source identity
+        run: python tools/check-public-packages.py --commit "$GITHUB_SHA" ./artifacts/*.nupkg
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v4
         with:

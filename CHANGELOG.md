@@ -122,6 +122,10 @@ for reproducible checks and limits.
 
 ### Fixed
 
+- Official builds normalize debug source paths. Build and publication gates
+  inspect package payloads for machine workspace paths and working records,
+  and verify that package metadata identifies the release commit.
+
 - Normal freshness sampling no longer repeats its coverage limit as a warning
   on every response. Structured coverage stays explicit, and unavailable reads
   plus configured age/change warnings remain visible.
