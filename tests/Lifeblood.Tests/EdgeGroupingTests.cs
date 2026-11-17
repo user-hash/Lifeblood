@@ -1,6 +1,7 @@
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.PathClassification;
 using Xunit;
 
 namespace Lifeblood.Tests;
@@ -107,5 +108,58 @@ public class EdgeGroupingTests
         Assert.Equal(3, result.Edges.Length);
         Assert.Null(result.ByBucket);
         Assert.Null(result.ByModule);
+    }
+
+    [Theory]
+    [InlineData("src/Caller.cs", PathBucket.Production)]
+    [InlineData("Tests/CallerTests.cs", PathBucket.Test)]
+    [InlineData("src/Editor/Caller.cs", PathBucket.Editor)]
+    [InlineData("obj/Caller.g.cs", PathBucket.Generated)]
+    [InlineData("Packages/Library/Caller.cs", PathBucket.Vendored)]
+    [InlineData("ThirdParty/Editor/Caller.cs", PathBucket.Vendored)]
+    public void ClassifyEdges_CanonicalBuckets_PreserveCountsAndPreviews(string path, PathBucket bucket)
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Caller", Name = "Caller", Kind = SymbolKind.Type, FilePath = path })
+            .Build();
+        var edges = new[] { new EdgeDetail { OtherEndId = "type:Caller", Kind = EdgeKind.Calls } };
+
+        var result = _provider.ClassifyEdges(graph, edges,
+            new EdgeGroupOptions { GroupByBucket = true });
+
+        Assert.Single(result.Edges);
+        Assert.Equal(1, result.TotalBeforeFilter);
+        var group = Assert.Single(result.ByBucket!);
+        Assert.Equal(bucket.ToString(), group.Key);
+        Assert.Equal(1, group.Value.Count);
+        Assert.Equal(new[] { "type:Caller" }, group.Value.Preview);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void ClassifyEdges_VendoredAllowlist_PreservesFilteringAndPreviewLimit(int preview)
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "type:Vendor", Name = "Vendor", Kind = SymbolKind.Type, FilePath = "Vendor/Caller.cs" })
+            .AddSymbol(new Symbol { Id = "type:App", Name = "App", Kind = SymbolKind.Type, FilePath = "src/Caller.cs" })
+            .Build();
+        var edges = new[]
+        {
+            new EdgeDetail { OtherEndId = "type:Vendor", Kind = EdgeKind.Calls },
+            new EdgeDetail { OtherEndId = "type:App", Kind = EdgeKind.Calls },
+        };
+
+        var result = _provider.ClassifyEdges(graph, edges, new EdgeGroupOptions
+        {
+            GroupByBucket = true, IncludeBuckets = new[] { "vendored" }, PreviewPerGroup = preview,
+        });
+
+        Assert.Equal("type:Vendor", Assert.Single(result.Edges).OtherEndId);
+        Assert.Equal(2, result.TotalBeforeFilter);
+        var group = Assert.Single(result.ByBucket!);
+        Assert.Equal("Vendored", group.Key);
+        Assert.Equal(1, group.Value.Count);
+        Assert.Equal(preview, group.Value.Preview.Length);
     }
 }

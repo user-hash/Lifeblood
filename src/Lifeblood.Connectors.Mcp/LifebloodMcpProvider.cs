@@ -177,16 +177,11 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
         };
     }
 
-    /// <summary>The four canonical path buckets, pre-seeded empty so a bucket
+    /// <summary>The canonical path buckets, pre-seeded empty so a bucket
     /// with zero members is still indexable during the classification pass.</summary>
     private static Dictionary<string, List<string>> NewBucketLists() =>
-        new(StringComparer.Ordinal)
-        {
-            ["Production"] = new(),
-            ["Test"]       = new(),
-            ["Editor"]     = new(),
-            ["Generated"]  = new(),
-        };
+        Enum.GetNames<PathBucket>().ToDictionary(
+            bucket => bucket, _ => new List<string>(), StringComparer.Ordinal);
 
     /// <summary>
     /// Module resolver with a per-call memo: walk a symbol's Parent chain to its
@@ -238,10 +233,7 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
                 StringComparer.Ordinal);
 
     /// <summary>
-    /// Path-heuristic bucket classifier. Mirrors the conventions used by
-    /// <c>lifeblood_dead_code</c>'s test detector and extends them to
-    /// Editor + Generated so blast-radius triage stays consistent across
-    /// tools. Production = none of the special-case rules match.
+    /// Shared path classification for edge and blast-radius grouping.
     /// </summary>
     private static string ClassifyBucket(string filePath)
         => PathBucketClassifier.Classify(filePath).ToString();

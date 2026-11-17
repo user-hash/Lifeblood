@@ -5,6 +5,7 @@ using Lifeblood.Application.Ports.Right;
 using Lifeblood.Connectors.Mcp;
 using Lifeblood.Domain.Capabilities;
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.PathClassification;
 using Lifeblood.Domain.Results;
 using Xunit;
 
@@ -160,5 +161,32 @@ public class BlastRadiusGroupingTests : IDisposable
 
         Assert.True(groups.ByBucket.ContainsKey("Production"));
         Assert.Empty(groups.ByBucket["Production"].Preview);
+    }
+
+    [Theory]
+    [InlineData("src/Caller.cs", PathBucket.Production)]
+    [InlineData("Tests/CallerTests.cs", PathBucket.Test)]
+    [InlineData("src/Editor/Caller.cs", PathBucket.Editor)]
+    [InlineData("obj/Caller.g.cs", PathBucket.Generated)]
+    [InlineData("Packages/Library/Caller.cs", PathBucket.Vendored)]
+    [InlineData("ThirdParty/Editor/Caller.cs", PathBucket.Vendored)]
+    public void ClassifyBlastRadius_CanonicalBuckets_PreserveModuleAndPreview(string path, PathBucket bucket)
+    {
+        var graph = new GraphBuilder()
+            .AddSymbol(new Symbol { Id = "mod:Library", Name = "Library", Kind = SymbolKind.Module })
+            .AddSymbol(new Symbol { Id = "type:Target", Name = "Target", Kind = SymbolKind.Type, FilePath = "src/Target.cs" })
+            .AddSymbol(new Symbol { Id = "type:Caller", Name = "Caller", Kind = SymbolKind.Type, FilePath = path, ParentId = "mod:Library" })
+            .AddEdge(new Edge { SourceId = "type:Caller", TargetId = "type:Target", Kind = EdgeKind.References })
+            .Build();
+
+        var result = _provider.ClassifyBlastRadius(graph, "type:Target");
+
+        Assert.Equal(1, result.TotalAffected);
+        Assert.Equal(1, result.DirectDependants);
+        var group = Assert.Single(result.ByBucket);
+        Assert.Equal(bucket.ToString(), group.Key);
+        Assert.Equal(1, group.Value.Count);
+        Assert.Equal(new[] { "type:Caller" }, group.Value.Preview);
+        Assert.Equal(1, result.ByModule["Library"].Count);
     }
 }
