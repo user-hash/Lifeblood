@@ -7,10 +7,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Unreleased product changes are listed below. See [verification](guides/VERIFICATION.md)
+## [0.7.14] - 2026-11-17
+
+Product changes since 0.7.13 are listed below. See [verification](guides/VERIFICATION.md)
 for reproducible checks and limits.
 
 ### Added
+
+- Blast-radius queries accept explicit `stopAtSymbolIds` traversal boundaries.
+  Reached hub members remain affected; expansion stops there while independent
+  paths stay visible. A bounded traversal receipt qualifies scoped counts.
 
 - `lifeblood_duplicates` reports repeated complete executable token bodies with
   exact token comparison, canonical owners, profile/file/module scope and hard
@@ -115,6 +121,10 @@ for reproducible checks and limits.
   checkout tags from contaminating qualification and package provenance.
 
 ### Fixed
+
+- Normal freshness sampling no longer repeats its coverage limit as a warning
+  on every response. Structured coverage stays explicit, and unavailable reads
+  plus configured age/change warnings remain visible.
 
 - Bucket grouping accepts Vendored endpoints in dependency and blast-radius
   queries. Group initialization derives from the shared path-bucket taxonomy.
@@ -2413,7 +2423,8 @@ First public release. Framework is dogfood-verified and CI-green.
 
 - **Documentation**: architecture docs, 11 frozen ADRs, adapter guide, dogfood findings, CLAUDE.md.
 
-[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.13...HEAD
+[Unreleased]: https://github.com/user-hash/Lifeblood/compare/v0.7.14...HEAD
+[0.7.14]: https://github.com/user-hash/Lifeblood/compare/v0.7.13...v0.7.14
 [0.7.13]: https://github.com/user-hash/Lifeblood/compare/v0.7.12...v0.7.13
 [0.7.12]: https://github.com/user-hash/Lifeblood/compare/v0.7.11...v0.7.12
 [0.7.11]: https://github.com/user-hash/Lifeblood/compare/v0.7.10...v0.7.11

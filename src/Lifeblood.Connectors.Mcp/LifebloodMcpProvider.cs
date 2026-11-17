@@ -2,6 +2,7 @@ using Lifeblood.Application.Ports.Analysis;
 using Lifeblood.Application.Ports.Right;
 using Lifeblood.Domain.Graph;
 using Lifeblood.Domain.PathClassification;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Connectors.Mcp;
 
@@ -96,8 +97,12 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
 
     public BlastRadiusGroups ClassifyBlastRadius(
         SemanticGraph graph, string symbolId, int maxDepth = 10, int maxResults = 10)
+        => ClassifyBlastRadius(graph, _blastRadius.Analyze(graph, symbolId, maxDepth), maxResults);
+
+    public BlastRadiusGroups ClassifyBlastRadius(
+        SemanticGraph graph, BlastRadiusResult impact, int maxResults = 10)
     {
-        var affected = _blastRadius.Analyze(graph, symbolId, maxDepth).AffectedSymbolIds;
+        var affected = impact.AffectedSymbolIds;
 
         // Independent one-hop direct count (transitive can be 100x for popular types).
         // Counts DISTINCT source symbols, matching the contract that
@@ -105,7 +110,7 @@ public sealed class LifebloodMcpProvider : IMcpGraphProvider
         // edge kinds (e.g. a method that both Calls and References the target)
         // collapses to ONE direct dependant, not two.
         var directSources = new HashSet<string>(StringComparer.Ordinal);
-        foreach (int idx in graph.GetIncomingEdgeIndexes(symbolId))
+        foreach (int idx in graph.GetIncomingEdgeIndexes(impact.TargetSymbolId))
         {
             var edge = graph.Edges[idx];
             if (edge.Kind != EdgeKind.Contains) directSources.Add(edge.SourceId);

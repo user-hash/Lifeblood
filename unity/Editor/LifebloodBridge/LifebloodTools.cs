@@ -232,6 +232,9 @@ namespace Lifeblood.UnityBridge
             [ToolParameter("Symbol ID to analyze")]
             public string symbolId { get; set; }
 
+            [ToolParameter("Up to 32 symbols at which incoming expansion stops, including their owned members. Scoped counts carry a traversal receipt.", Required = false)]
+            public string[] stopAtSymbolIds { get; set; }
+
             [ToolParameter("Maximum traversal depth (default: 10)", Required = false)]
             public int? maxDepth { get; set; }
 

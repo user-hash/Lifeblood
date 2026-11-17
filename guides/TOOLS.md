@@ -470,9 +470,20 @@ Every read-side tool response ships a top-level `envelope` field (`INV-ENVELOPE-
 - `confidence`: `Proven` (deterministic), `Advisory` (correct most of the time, with documented FP classes), `Speculative` (ranked suggestions).
 - `stalenessSeconds`: wall-clock between the loaded graph's analyze time and now.
 - `filesChangedSinceAnalyze`: observed newer-mtime or missing paths within the bounded tracked parsed-source sample; not a complete content-drift count.
-- `freshness`: observation method, scope, timestamp and checked/unchecked/unavailable/missing/changed path counts. An incomplete sample with zero observed changes does not prove current input equality. Use `lifeblood_snapshots checkDrift:true` for canonical input recapture.
+- `freshness`: observation method, scope, timestamp and checked/unchecked/unavailable/missing/changed path counts. An incomplete sample with zero observed changes does not prove current input equality. The normal sampling cap does not add a duplicate limitations warning; failed observations and unavailable prerequisites still warn. Use `lifeblood_snapshots checkDrift:true` for canonical input recapture.
 - `limitations[]`: per-tool documented FP/FN classes (e.g. `lifeblood_dead_code` lists Unity reflection dispatch and runtime entry points).
 - `snapshotId` / `analysisGeneration`: exact publication identity and the human-friendly within-daemon generation used by this response.
 - `analysisIdentity`: bounded canonical workspace/spec/source/rule identity; use its `analysisKey` for equality/provenance and `snapshotId` for one exact publication.
 
 Errors deliberately do NOT carry envelopes. Per-tool classification lives on `ToolDefinition.EnvelopeClassification` in the registry, projected into `LifebloodResponseDecorator` at composition time. Adding a new read-side tool without a classification fails the registry ratchet test.
+
+## Scoped blast-radius traversal
+
+Use `stopAtSymbolIds` with up to 32 explicit hub/composition-root boundaries.
+Reached boundaries and their parent-owned members remain affected, but their
+incoming paths are not expanded. Independent paths remain visible. Flat,
+summarized and grouped responses use that same scoped set; direct counts stay
+one-hop counts. The `traversal` receipt reports resolved boundaries, stopped
+expansion count and bounded symbol IDs with explicit truncation. It does not
+claim an omitted-descendant count. Empty or omitted boundaries preserve ordinary
+traversal. See [impact and freshness](INTERPRETING_RESULTS.md).

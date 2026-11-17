@@ -22,6 +22,47 @@ public static class BlastRadiusAnalyzer
             new Queue<(string id, int depth)>(),
             new Dictionary<string, List<EdgeKind>>(StringComparer.Ordinal));
 
+    /// <summary>
+    /// Stop incoming traversal at the selected symbols or their parent-owned
+    /// descendants. Independent paths around a boundary remain traversable.
+    /// The original graph and the ordinary full-impact policy are unchanged.
+    /// </summary>
+    public static BlastRadiusTraversalResult AnalyzeWithinBoundaries(
+        SemanticGraph graph, string targetSymbolId, IReadOnlyCollection<string> stopAtSymbolIds, int maxDepth = 10)
+    {
+        var boundaries = new HashSet<string>(stopAtSymbolIds, StringComparer.Ordinal);
+        foreach (var id in boundaries)
+            if (graph.GetSymbol(id) == null)
+                throw new ArgumentException($"Traversal boundary does not exist: {id}", nameof(stopAtSymbolIds));
+        var membership = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var stoppedAt = new HashSet<string>(StringComparer.Ordinal);
+        var impact = AnalyzeCore(graph, targetSymbolId, maxDepth,
+            new HashSet<string>(StringComparer.Ordinal), new Queue<(string id, int depth)>(),
+            new Dictionary<string, List<EdgeKind>>(StringComparer.Ordinal),
+            id => IsWithinBoundary(graph, id, boundaries, membership), stoppedAt);
+        return new BlastRadiusTraversalResult
+        {
+            Impact = impact,
+            StoppedAtSymbolIds = stoppedAt.OrderBy(id => id, StringComparer.Ordinal).ToArray(),
+        };
+    }
+
+    private static bool IsWithinBoundary(SemanticGraph graph, string id,
+        HashSet<string> boundaries, Dictionary<string, bool> membership)
+    {
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        string? current = id;
+        bool result = false;
+        while (current != null && visited.Add(current))
+        {
+            if (boundaries.Contains(current)) { result = true; break; }
+            if (membership.TryGetValue(current, out result)) break;
+            current = graph.GetSymbol(current)?.ParentId;
+        }
+        foreach (var symbol in visited) membership[symbol] = result;
+        return result;
+    }
+
     internal static BlastRadiusResult[] AnalyzeMany(SemanticGraph graph, IEnumerable<string> targets, int maxDepth = 10)
     {
         var affected = new HashSet<string>(StringComparer.Ordinal);
@@ -32,7 +73,8 @@ public static class BlastRadiusAnalyzer
 
     private static BlastRadiusResult AnalyzeCore(SemanticGraph graph, string targetSymbolId, int maxDepth,
         HashSet<string> affected, Queue<(string id, int depth)> queue,
-        Dictionary<string, List<EdgeKind>> directEdgeKinds)
+        Dictionary<string, List<EdgeKind>> directEdgeKinds,
+        Func<string, bool>? stopExpansion = null, HashSet<string>? stoppedAt = null)
     {
         affected.Clear();
         queue.Clear();
@@ -56,6 +98,11 @@ public static class BlastRadiusAnalyzer
         {
             var (current, depth) = queue.Dequeue();
             if (depth >= maxDepth) continue;
+            if (stopExpansion?.Invoke(current) == true)
+            {
+                stoppedAt!.Add(current);
+                continue;
+            }
 
             foreach (int idx in graph.GetIncomingEdgeIndexes(current))
             {

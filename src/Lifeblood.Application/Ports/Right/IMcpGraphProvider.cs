@@ -1,4 +1,5 @@
 using Lifeblood.Domain.Graph;
+using Lifeblood.Domain.Results;
 
 namespace Lifeblood.Application.Ports.Right;
 
@@ -42,26 +43,22 @@ public interface IMcpGraphProvider
     /// <summary>
     /// Classify the blast-radius set of <paramref name="symbolId"/> into
     /// buckets and per-module groups so callers can triage by source kind
-    /// (production / test / editor / generated) or by module/asmdef.
+    /// (production / test / editor / generated / vendored) or by module/asmdef.
     /// A flat <c>affectedCount=221</c> is a warning; structured grouping
     /// makes it actionable. INV-BLAST-RADIUS-GROUP-001.
     ///
-    /// Classification heuristics are path-based and match the conventions
-    /// already used by <c>lifeblood_dead_code</c>:
-    /// <list type="bullet">
-    ///   <item><b>Test</b>: any path segment <c>/tests/</c>, or filename
-    ///         ending in <c>Tests.cs</c> / <c>Test.cs</c>.</item>
-    ///   <item><b>Editor</b>: any path segment <c>/Editor/</c> (Unity convention).</item>
-    ///   <item><b>Generated</b>: path segments <c>/obj/</c>, <c>/Generated/</c>,
-    ///         or files matching <c>*.Generated.cs</c> / <c>*.g.cs</c>.</item>
-    ///   <item><b>Production</b>: everything else.</item>
-    /// </list>
+    /// Path classification uses the shared <c>PathBucketClassifier</c>
+    /// taxonomy, including its precedence for generated and vendored sources.
     /// Module assignment walks each affected symbol's Parent chain to its
     /// containing Module symbol.
     /// </summary>
     /// <param name="maxResults">Cap on preview entries per bucket / module. 0 = no preview.</param>
     BlastRadiusGroups ClassifyBlastRadius(
         SemanticGraph graph, string symbolId, int maxDepth = 10, int maxResults = 10);
+
+    /// <summary>Group an already computed impact set without repeating traversal.</summary>
+    BlastRadiusGroups ClassifyBlastRadius(
+        SemanticGraph graph, BlastRadiusResult impact, int maxResults = 10);
 
     /// <summary>
     /// Filter and/or group a one-hop edge list (the result of
@@ -135,7 +132,7 @@ public sealed class EdgeGroupResult
 
 /// <summary>
 /// Grouped view of a blast-radius result. Buckets classify by path
-/// convention (Test / Editor / Generated / Production); module map groups
+/// convention (Test / Editor / Generated / Vendored / Production); module map groups
 /// by containing assembly/asmdef. Counts are always populated; previews
 /// are capped by the caller's <c>maxResults</c> argument.
 /// INV-BLAST-RADIUS-GROUP-001.
@@ -145,7 +142,7 @@ public sealed class BlastRadiusGroups
     /// <summary>Transitive affected count (sum across all buckets / modules).</summary>
     public required int TotalAffected { get; init; }
 
-    /// <summary>One-hop incoming non-Contains edge count.</summary>
+    /// <summary>Distinct one-hop sources of incoming non-Contains edges.</summary>
     public required int DirectDependants { get; init; }
 
     /// <summary>

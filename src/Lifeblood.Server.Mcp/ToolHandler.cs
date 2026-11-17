@@ -1381,12 +1381,48 @@ public sealed class ToolHandler
         var groupBy = (WriteToolHandler.GetString(args, "groupBy") ?? "none")
             .ToLowerInvariant();
 
+        const int boundaryLimit = 32;
+        var stopAt = new HashSet<string>(StringComparer.Ordinal);
+        if (args is { } input && input.TryGetProperty("stopAtSymbolIds", out var boundaries))
+        {
+            if (boundaries.ValueKind != JsonValueKind.Array || boundaries.GetArrayLength() > boundaryLimit)
+                return ErrorResult($"stopAtSymbolIds must be an array of at most {boundaryLimit} symbol IDs.");
+            foreach (var item in boundaries.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                    return ErrorResult("stopAtSymbolIds must contain non-empty symbol IDs.");
+                var boundary = _resolver.Resolve(_session.Graph!, item.GetString()!);
+                if (boundary.CanonicalId == null)
+                    return ErrorResult(boundary.Diagnostic ?? $"Traversal boundary not found: {item.GetString()}");
+                stopAt.Add(boundary.CanonicalId);
+            }
+        }
+        var scoped = stopAt.Count == 0 ? null : BlastRadiusAnalyzer.AnalyzeWithinBoundaries(
+            _session.Graph!, resolved.CanonicalId, stopAt, maxDepth);
+
+        McpToolResult Result(object payload)
+        {
+            var node = JsonSerializer.SerializeToNode(payload, JsonOpts)!.AsObject();
+            if (scoped != null)
+                node["traversal"] = JsonSerializer.SerializeToNode(new
+                {
+                    stopAtSymbolIds = stopAt.OrderBy(id => id, StringComparer.Ordinal).ToArray(),
+                    scopeLimited = scoped.StoppedAtSymbolIds.Length > 0,
+                    stoppedAtCount = scoped.StoppedAtSymbolIds.Length,
+                    stoppedAtSymbolIds = scoped.StoppedAtSymbolIds.Take(boundaryLimit).ToArray(),
+                    stoppedAtTruncated = scoped.StoppedAtSymbolIds.Length > boundaryLimit,
+                    limitation = "Counts describe the requested traversal scope. Paths beyond stopped expansions were not enumerated; stoppedAtCount is not an omitted-descendant count.",
+                }, JsonOpts);
+            return TextResult(WithEnvelope("lifeblood_blast_radius", node));
+        }
+
         if (groupBy == "bucket" || groupBy == "module" || groupBy == "both")
         {
             var groupPreview = WriteToolHandler.GetInt(args, "previewPerGroup") ?? 5;
             if (groupPreview < 0) groupPreview = 0;
-            var groups = _provider.ClassifyBlastRadius(
-                _session.Graph!, resolved.CanonicalId, maxDepth, groupPreview);
+            var groups = scoped == null
+                ? _provider.ClassifyBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth, groupPreview)
+                : _provider.ClassifyBlastRadius(_session.Graph!, scoped.Impact, groupPreview);
             if (groupBy == "bucket" || groupBy == "both")
             {
                 foreach (var kv in groups.ByBucket)
@@ -1404,7 +1440,7 @@ public sealed class ToolHandler
                 }
             }
 
-            return TextResult(WithEnvelope("lifeblood_blast_radius", new
+            return Result(new
             {
                 symbolId = resolved.CanonicalId,
                 maxDepth,
@@ -1425,7 +1461,7 @@ public sealed class ToolHandler
                         preview = kv.Value.Preview,
                     })
                     : null,
-            }));
+            });
         }
 
         // Direct (one-hop) dependants computed independently of the transitive
@@ -1433,7 +1469,8 @@ public sealed class ToolHandler
         // for popular types — callers need both to make the right decision.
         var directDependants = _provider.GetDependants(_session.Graph!, resolved.CanonicalId);
 
-        var affected = _provider.GetBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth);
+        var affected = scoped?.Impact.AffectedSymbolIds
+            ?? _provider.GetBlastRadius(_session.Graph!, resolved.CanonicalId, maxDepth);
         var truncated = affected.Length > maxResults;
         var preview = truncated ? affected.Take(maxResults).ToArray() : affected;
         if (truncated)
@@ -1441,7 +1478,7 @@ public sealed class ToolHandler
 
         if (summarize)
         {
-            return TextResult(WithEnvelope("lifeblood_blast_radius", new
+            return Result(new
             {
                 symbolId = resolved.CanonicalId,
                 maxDepth,
@@ -1450,10 +1487,10 @@ public sealed class ToolHandler
                 truncated,
                 preview,
                 summarize = true,
-            }));
+            });
         }
 
-        return TextResult(WithEnvelope("lifeblood_blast_radius", new
+        return Result(new
         {
             symbolId = resolved.CanonicalId,
             maxDepth,
@@ -1461,7 +1498,7 @@ public sealed class ToolHandler
             affectedCount = affected.Length,
             truncated,
             affected = preview,
-        }));
+        });
     }
 
     private McpToolResult HandleResolveShortName(JsonElement? args)

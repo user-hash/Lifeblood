@@ -14,6 +14,26 @@ the path buckets and owning modules, and compare `directDependants` with
 the counts. Production, Test, Editor, Generated and Vendored are distinct
 path buckets. Grouping does not change traversal or discard central types.
 
+To scope a change around an explicit hub, pass traversal boundaries:
+
+```json
+{"symbolId":"type:Example.Service","groupBy":"both","stopAtSymbolIds":["type:Example.CompositionRoot"]}
+```
+
+The selected symbols and their parent-owned members remain affected when reached,
+but their incoming edges are not expanded. Independent paths around a boundary
+remain traversable. Up to 32 boundary IDs are accepted and resolved through the
+normal symbol resolver. Omitting the option or passing an empty array preserves
+ordinary traversal and response shape.
+
+Scoped responses add `traversal`: the resolved boundaries, `scopeLimited`,
+`stoppedAtCount`, a list of at most 32 `stoppedAtSymbolIds`, and
+`stoppedAtTruncated`. The stop count measures reached symbols whose expansion
+stopped; it does not count omitted descendants. Scoped counts describe this
+chosen traversal scope, and the receipt states that limitation. Flat, summarized
+and grouped modes use the same scoped impact set and retain the true immediate
+dependant count.
+
 ## Which tests touch a type
 
 ```json
@@ -38,6 +58,11 @@ Ordinary MCP responses perform a bounded mtime/existence observation of up to
 256 parsed source paths. On a larger publication, `freshness.status:"incomplete"`
 and the checked/unchecked counts describe that sampling limit. Repeated
 incomplete status alone is not evidence that sources changed.
+
+The normal sampling cap does not append another `limitations` warning. Coverage
+and the absence of content verification remain explicit in `freshness` on every
+response. Failed observations and unavailable prerequisites still warn, while
+observed changes and publication age follow the configured warning thresholds.
 
 `driftObserved` reports a newer or missing source in that sample. Zero observed
 changes does not establish content equality, including when every path was

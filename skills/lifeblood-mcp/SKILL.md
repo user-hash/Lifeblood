@@ -61,6 +61,9 @@ Common fast paths:
 1. Identify the target using `resolve_short_name`, `resolve_member`, `symbol_at_position`, or source reading.
 2. Inspect the target with `lookup`, `documentation`, and direct file reads.
 3. Estimate risk with `blast_radius` for symbols or `file_impact` for files. Use grouping to separate Production, Test, Editor, Generated, and Vendored callers.
+   If composition-root expansion overwhelms the question, select explicit
+   `stopAtSymbolIds` and read the traversal receipt. Scoped counts do not
+   enumerate descendants beyond the selected boundaries.
 4. Find concrete edit sites with `dependants`, `dependencies`, `find_references`, or `partial_view`.
 5. Check applicable invariants with `invariant_check`; read the relevant `invariants/*.md` file before changing an area with pinned architecture rules.
 6. Make the code edit using the repo's normal editing tools.

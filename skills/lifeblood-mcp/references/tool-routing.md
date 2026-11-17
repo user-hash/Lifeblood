@@ -41,10 +41,10 @@ global inventory. Compilation-backed diagnosis is not admitted to read batches.
 |---|---|---|
 | "What does this symbol use?" | `lifeblood_dependencies` | Outgoing graph edges with call-site provenance when available. |
 | "Who uses this symbol?" | `lifeblood_dependants` | Incoming graph edges; group/filter by bucket or module for triage. |
-| "What breaks if I change this symbol?" | `lifeblood_blast_radius` | Use `groupBy:"both"` for production/test/module split. |
+| "What breaks if I change this symbol?" | `lifeblood_blast_radius` | Use `groupBy:"both"` for production/test/module split. For explicit hub boundaries use `stopAtSymbolIds`; read the scoped traversal receipt and stopped-symbol truncation. |
 | "What breaks if I change this file?" | `lifeblood_file_impact` | File-level impact derived from symbol edges. |
 | "Does this Unity asmdef declare its cross-module dependency?" | `lifeblood_asmdef_check` | Graph-only DirectOnly module boundary check; reports first offending edge/call site per source-target pair. |
-| "Which tests should I run?" | `lifeblood_test_impact` | Works on symbol ids or file paths; use recommended filters. |
+| "Which tests should I run?" | `lifeblood_test_impact` | Pass a symbol id or file path as `target`; returns fixture file paths, method names, distances and recommended class filters. Static impact does not establish executed coverage. |
 | "Are there dependency cycles?" | `lifeblood_cycles summarize:true` | Inspect `bucketBreakdown`; prioritize `LikelyRealLoop`. |
 
 ## Compiler And Edit Validation
