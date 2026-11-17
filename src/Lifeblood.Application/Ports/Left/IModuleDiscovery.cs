@@ -9,7 +9,7 @@ public interface IModuleDiscovery
 /// Where a module's base class library comes from. Decided at discovery time
 /// from csproj inspection and consumed at compilation time. Adapter-agnostic.
 ///
-/// See INV-BCL-001..INV-BCL-005 in <c>.claude/plans/bcl-ownership-fix.md</c>:
+/// See INV-BCL-001..INV-BCL-005 in <c>invariants/csharp-adapter.md</c>:
 ///   INV-BCL-001 — Single BCL per compilation. Two BCLs produces CS0433/CS0518
 ///                 errors on every System type, which silently breaks
 ///                 GetSymbolInfo at every call site, which silently returns
@@ -47,7 +47,7 @@ public enum BclOwnershipMode
 /// dependencies, or strictly the direct dependency list. Decided at discovery
 /// time from csproj inspection; consumed at compilation time. Adapter-agnostic.
 ///
-/// See INV-MODULE-REFS-001 in <c>docs/invariants/module-refs.md</c>:
+/// See INV-MODULE-REFS-001 in <c>invariants/csharp-adapter.md</c>:
 ///   INV-MODULE-REFS-001 — Reference closure mirrors the build tool that owns the csproj.
 ///     SDK-style MSBuild closes ProjectReference transitively (the default
 ///     for modern .NET projects). Old-format MSBuild 2003-schema csprojs

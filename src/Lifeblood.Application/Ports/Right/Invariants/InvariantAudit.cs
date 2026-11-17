@@ -63,7 +63,7 @@ public sealed class InvariantAudit
     /// <summary>
     /// Absolute path to the primary source file the audit was computed
     /// from. When the project uses an invariants tree (tree-style
-    /// <c>docs/invariants/**.md</c>) and the audit aggregates multiple
+    /// <c>invariants/**.md</c> or <c>docs/invariants/**.md</c>) and the audit aggregates multiple
     /// files, this is the first source in discovery order — the full
     /// list is in <see cref="SourcePaths"/>. Empty if no source could
     /// be located.
@@ -75,7 +75,7 @@ public sealed class InvariantAudit
     /// by <see cref="IInvariantProvider"/> discovery, NOT a hardcoded
     /// path list — the provider walks well-known repo conventions
     /// (project-root <c>CLAUDE.md</c>, <c>AGENTS.md</c>, and any
-    /// <c>docs/invariants/**.md</c> tree) and reports back what it
+    /// <c>invariants/**.md</c> or <c>docs/invariants/**.md</c> tree) and reports back what it
     /// actually found. Empty when no source could be located.
     /// </summary>
     public string[] SourcePaths { get; init; } = System.Array.Empty<string>();
@@ -125,7 +125,7 @@ public sealed class DuplicateInvariantId
 
     /// <summary>
     /// DEPRECATED (v1 compatibility only — slated for removal in the next
-    /// wire-contract version per <c>docs/SCHEMA_DEPRECATION_POLICY.md</c>).
+    /// wire-contract version per <c>guides/SCHEMA_DEPRECATION_POLICY.md</c>).
     /// File-blind 1-based line numbers of every occurrence. Retained
     /// because v1 froze this shape, but it cannot say WHICH file each line
     /// is in — which is exactly how cross-file duplicates went unreported.
