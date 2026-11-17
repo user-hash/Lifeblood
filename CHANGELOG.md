@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Unreleased product changes are listed below. See [verification](docs/VERIFICATION.md)
+Unreleased product changes are listed below. See [verification](guides/VERIFICATION.md)
 for reproducible checks and limits.
 
 ### Added
@@ -15,7 +15,7 @@ for reproducible checks and limits.
 - `lifeblood_duplicates` reports repeated complete executable token bodies with
   exact token comparison, canonical owners, profile/file/module scope and hard
   scan/result bounds. Results are advisory; matching syntax does not prove
-  equivalent behavior or safe deletion. See [qualification](docs/VERIFICATION.md).
+  equivalent behavior or safe deletion. See [qualification](guides/VERIFICATION.md).
 
 - Owner-scoped content receipts capture or verify an explicit file set without
   refreshing the publication. Guarded compile checks admit those exact bytes
@@ -23,9 +23,13 @@ for reproducible checks and limits.
   The Windows `apply-file` companion conditionally writes one existing target
   while checking the complete receipt scope. Overlapping changes require
   reconciliation; file receipts do not certify dependency freshness, merge edits
-  or reserve an Editor. See [the concurrent-work contract](docs/OWNER_SCOPED_WORK.md).
+  or reserve an Editor. See [the concurrent-work contract](guides/OWNER_SCOPED_WORK.md).
 
 ### Changed
+
+- Public product guides live in `guides/`, contributor contracts in `invariants/`.
+  Working records and local investigation tools are excluded from source exports.
+  The exporter checks the exact Git tree before writing an archive.
 
 - Removed private diagnostic journals and replaced consumer-specific examples
   with synthetic fixtures. Public-history review is required before publication.
@@ -38,13 +42,13 @@ for reproducible checks and limits.
   imported settings and SDK/compiler identity in an isolated MSBuild child.
   Content-authoritative import/SDK drift enters the existing fallback policy.
   Generated Unity descriptors keep their declared options. This does not add
-  complete MSBuild or multi-target-project conformance. See [SDK facts](docs/VERIFICATION.md).
+  complete MSBuild or multi-target-project conformance. See [SDK facts](guides/VERIFICATION.md).
 
 - Child SDK/ScriptHost processes have bounded pipe draining and termination;
   compile-check emission avoids an extra PE-buffer copy and private streaming
   work releases state under its existing lifecycle. Runtime Async remains
   disabled; upgrading the host does not by itself promise a speedup. See
-  [process, emission and async qualification](docs/VERIFICATION.md).
+  [process, emission and async qualification](guides/VERIFICATION.md).
 
 - Method-effect reports can join caller-reported native build/debug
   document identities from `runtimeEvidencePath` to SHA-1/SHA-256 of the same
@@ -52,7 +56,7 @@ for reproducible checks and limits.
   shared; missing, conflicting, mismatched and incomplete evidence remains
   explicit. No native artifact authentication, runtime/timing proof, second scan
   or retained base is implied. See
-  [native/source qualification](docs/VERIFICATION.md).
+  [native/source qualification](guides/VERIFICATION.md).
 
 - Compile checks now report the executing host compiler and index
   diagnostic location/phase attribution. Locationless owning-module emitter
@@ -61,7 +65,7 @@ for reproducible checks and limits.
   validation remains separate. Equivalent C#9 controls reproduce the reported
   CS0012 compiler difference under both Roslyn 5.9 and 5.12 versus Unity's 4.10;
   no project dependency or compiler fallback was added. See
-  [compiler validation](docs/VERIFICATION.md).
+  [compiler validation](guides/VERIFICATION.md).
 
 - `lifeblood_method_effects` exposes bounded operation/callback,
   deferred-body and supported direct/local transitive evidence with explicit
@@ -69,21 +73,21 @@ for reproducible checks and limits.
   and carry retained compiler-source checksums; read-modify-write access modes
   are explicit. The Unity wrapper and canonical/snapshot/batch lanes share the
   same operation port;
-  see [method-effect source qualification](docs/VERIFICATION.md).
+  see [method-effect source qualification](guides/VERIFICATION.md).
 
 - Source-qualified operation facts now preserve dynamic/pointer call occurrences,
   callback local/event binding, conditional receivers and explicit dispatch kind.
   Opaque callable keys distinguish deferred/nested bodies across declaration
   schemas without changing graph addresses or retaining another semantic base.
   The same bounded facts are available through the method-effect report. See
-  [callback assessment and source qualification](docs/VERIFICATION.md).
+  [callback assessment and source qualification](guides/VERIFICATION.md).
 
 - The attach-only inspection helper now joins CLI/runtime/Roslyn, SDK probe,
   live daemon/publication and server-catalog receipts. Caller-provided client and
   Unity bridge observations remain separate from live server facts. Identity
   subprocesses have bounded output/deadlines and owned cleanup; no analysis,
   daemon start or global runtime/PATH change is used. See
-  [doctor qualification](docs/VERIFICATION.md).
+  [doctor qualification](guides/VERIFICATION.md).
 
 - MCP connections may negotiate structured tool results independently of v1/v2
   declaration IDs. Modern dual output preserves existing text consumers;
@@ -91,13 +95,13 @@ for reproducible checks and limits.
   preserves errors, evidence and compact file-scoped batch rows without changing
   the shared publication. Opaque/oversized results keep their original content.
   The Unity bridge accepts modern negotiation and legacy fallback. See
-  [qualification and format-cost measurements](docs/VERIFICATION.md).md).
+  [qualification and format-cost measurements](guides/VERIFICATION.md).md).
 
 - `lifeblood_diagnose mode:environment` observes one retained module/file's actual
   compiler options, parse scopes and bounded references without diagnostics or
   refresh. Snapshot descriptor/profile provenance distinguishes host compiler
   identity from target coverage and runtime compatibility. Source acceptance is
-  recorded in the [environment report](docs/VERIFICATION.md).md).
+  recorded in the [environment report](guides/VERIFICATION.md).md).
 
 - Lifeblood targets .NET 11 with Roslyn 5.12.0-1.26529.118 and C# 15 in the
   locally qualified builds; Unity's compiler remains independent. C# 14 qualification covers
@@ -112,24 +116,27 @@ for reproducible checks and limits.
 
 ### Fixed
 
+- Bucket grouping accepts Vendored endpoints in dependency and blast-radius
+  queries. Group initialization derives from the shared path-bucket taxonomy.
+
 - Clean build/release workflows let CLI packaging produce its `any` and
   `win-x64` outputs instead of assuming a RID-neutral solution build supplied
   them. The previous `pack --no-build` command fails on a clean checkout; see
-  [reproduction and CI qualification](docs/VERIFICATION.md).
+  [reproduction and CI qualification](guides/VERIFICATION.md).
 - User-defined operator and conversion edges follow compiler-bound operations,
   including checked/lifted, increment/compound and implicit conversions.
   Instance/static-abstract declaration flags and enclosing callable ownership
   remain accurate. Built-in arithmetic does not invent a method edge. See
-  [operator qualification](docs/VERIFICATION.md).
+  [operator qualification](guides/VERIFICATION.md).
 - Strict MCP parsing uses native duplicate-property and unknown-envelope-member
   rejection through the production generated context. Nested opaque JSON is
   checked, tool arguments retain binder ownership, and malformed input preserves
   the existing JSON-RPC parse-error contract. The benchmark now exercises that
-  parser directly; PipeReader remains experimental. See [parser qualification](docs/VERIFICATION.md).
+  parser directly; PipeReader remains experimental. See [parser qualification](guides/VERIFICATION.md).
 - Tree-local canonical-ID memoization and compiler-bound reference candidate
   filtering remove repeated formatting/binding work without changing complete
   graph results or reference locations. Input-identity and service-construction
-  phases use the existing telemetry authority. See [controlled comparisons](docs/VERIFICATION.md).
+  phases use the existing telemetry authority. See [controlled comparisons](guides/VERIFICATION.md).
 
 - Compilation passes share canonical symbol-ID strings within that pass using
   Roslyn symbol equality, reducing duplicate formatting storage within the
@@ -138,10 +145,10 @@ for reproducible checks and limits.
   a bare PATH host, and confirms child exit after a timeout. Its tests now fail
   on broken ScriptHost build prerequisites and prove actual script-body entry
   and termination. This does not switch ordinary MCP execution to isolation.
-  See [host qualification](docs/VERIFICATION.md).
+  See [host qualification](guides/VERIFICATION.md).
 - Extension declarations retain a valid graph name through the C#15 analysis
   pipeline while preserving declaration IDs and edges. Exact package and real
-  native/Unity checks are recorded in [local acceptance](docs/VERIFICATION.md).
+  native/Unity checks are recorded in [local acceptance](guides/VERIFICATION.md).
 - Measured duplicate blast-radius explanation strings, per-edge profile-count
   enumerators and repeated package-path classification allocations now share
   storage or traversal work within their existing request/pass boundaries.
@@ -152,7 +159,7 @@ for reproducible checks and limits.
   define receipts describe the actual parse scope; module/project diagnostics
   union all selected trees. Both valid before-fix regressions and the guarded
   empty-capture handler path are qualified in the
-  [input-contract report](docs/VERIFICATION.md).md).
+  [input-contract report](guides/VERIFICATION.md).md).
 
 - Automatic compile refresh exposes outcome, mode, publication IDs, first
   observed input trigger and source-work summary. Full fallback publishes its
@@ -841,7 +848,7 @@ verifiable. The sections below list every public change since v0.7.12.
 This release is mostly about **honesty and resilience**: when something goes wrong,
 the server now tells you *what* and *where* instead of collapsing into an opaque error.
 Several fixes came directly from dogfooding against a large Unity codebase. Full
-test and self-analysis counts: see [`docs/STATUS.md`](docs/STATUS.md) (truth-receipt SSoT).
+test and self-analysis counts: see [`guides/STATUS.md`](guides/STATUS.md) (truth-receipt SSoT).
 
 ### Fixes that change what you see when things break
 
@@ -931,7 +938,7 @@ test and self-analysis counts: see [`docs/STATUS.md`](docs/STATUS.md) (truth-rec
 
 ### Documentation
 
-- Brought the public doc surface to 1:1 with code for release prep: tool count corrected to 31 across `README.md`, `docs/MCP_SETUP.md`, `docs/TOOLS.md` (added the missing `lifeblood_assignment_coverage` row + the `Capabilities` / `Assignment Coverage` entries in the README tool table); documented the four server environment variables (`LIFEBLOOD_TELEMETRY`, `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` default `3600`, `LIFEBLOOD_FILES_CHANGED_THRESHOLD` default `10`, `LIFEBLOOD_STRICT_JSON`) in `docs/MCP_SETUP.md`; completed the `docs/ARCHITECTURE.md` port-interface list (now all 30, adding `IDefineProfileResolver`, `ITelemetryOperation`, `IPortHealthAnalyzer`); and removed a drifted read-side tool count from `INV-PORT-HEALTH-ANALYZER-SEAM-001`.
+- Brought the public doc surface to 1:1 with code for release prep: tool count corrected to 31 across `README.md`, `guides/MCP_SETUP.md`, `guides/TOOLS.md` (added the missing `lifeblood_assignment_coverage` row + the `Capabilities` / `Assignment Coverage` entries in the README tool table); documented the four server environment variables (`LIFEBLOOD_TELEMETRY`, `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` default `3600`, `LIFEBLOOD_FILES_CHANGED_THRESHOLD` default `10`, `LIFEBLOOD_STRICT_JSON`) in `guides/MCP_SETUP.md`; completed the `guides/ARCHITECTURE.md` port-interface list (now all 30, adding `IDefineProfileResolver`, `ITelemetryOperation`, `IPortHealthAnalyzer`); and removed a drifted read-side tool count from `INV-PORT-HEALTH-ANALYZER-SEAM-001`.
 
 ## [0.7.9] - 2026-05-24
 
@@ -956,7 +963,7 @@ unchanged). INVs 149 → 150 across 98 → 99 categories (one new:
 public-surface anchors aligned to live source via the existing
 `DocsTests.Anchor_MatchesLiveSource` ratchet.
 
-This release adds multi-profile analysis, assignment coverage, opt-in reflection-based test recommendations and focused response shaping. Current source counts are maintained in [STATUS](docs/STATUS.md).
+This release adds multi-profile analysis, assignment coverage, opt-in reflection-based test recommendations and focused response shaping. Current source counts are maintained in [STATUS](guides/STATUS.md).
 
 ### Added
 
@@ -964,7 +971,7 @@ This release adds multi-profile analysis, assignment coverage, opt-in reflection
 
 - **Reflection test recommendations.** `lifeblood_test_impact(includeReflectionHeuristic:true)` adds opt-in source-text evidence for reflection and source-inspection tests, separately from graph-proven impact.
 
-- **`INV-DOCS-005` + `INV-DOCS-006` + `INV-DOCS-007` invariant + skipped-count ratchets** (Wave 1 Atom 1.5 + reviewer pass). Closes the drift class where `docs/STATUS.md` prose ("122 typed invariants across 83 categories", "zero skipped") silently outlived the live invariant tree + test discovery. Sibling to the existing `portCount` / `toolCount` / `testCount` ratchets. New STATUS.md HTML anchors: `<!-- invariantCount: N -->`, `<!-- invariantCategoryCount: N -->`, `<!-- skippedCount: N -->`. `DocsTests` adds `StatusDoc_InvariantCount_MatchesLiveAudit` + `StatusDoc_InvariantCategoryCount_MatchesLiveAudit` + `StatusDoc_SkippedCount_MatchesLiveDiscovery` + `StatusDoc_VisibleSkippedCount_MatchesHiddenAnchor` — any future rename / addition / removal of an invariant or `[SkippableFact]` fails the ratchet unless the STATUS.md anchor moves in the same commit.
+- **`INV-DOCS-005` + `INV-DOCS-006` + `INV-DOCS-007` invariant + skipped-count ratchets** (Wave 1 Atom 1.5 + reviewer pass). Closes the drift class where `guides/STATUS.md` prose ("122 typed invariants across 83 categories", "zero skipped") silently outlived the live invariant tree + test discovery. Sibling to the existing `portCount` / `toolCount` / `testCount` ratchets. New STATUS.md HTML anchors: `<!-- invariantCount: N -->`, `<!-- invariantCategoryCount: N -->`, `<!-- skippedCount: N -->`. `DocsTests` adds `StatusDoc_InvariantCount_MatchesLiveAudit` + `StatusDoc_InvariantCategoryCount_MatchesLiveAudit` + `StatusDoc_SkippedCount_MatchesLiveDiscovery` + `StatusDoc_VisibleSkippedCount_MatchesHiddenAnchor` — any future rename / addition / removal of an invariant or `[SkippableFact]` fails the ratchet unless the STATUS.md anchor moves in the same commit.
 
 ### Added
 
@@ -976,7 +983,7 @@ This release adds multi-profile analysis, assignment coverage, opt-in reflection
 
 - **`incremental-noop` response zeros out modules/types/files/violations/cycles** (external review pass 2026-05-24). `GraphSession.LoadIncremental` passed `analysis:null` into `BuildLoadResult` on the no-change incremental path; the summary block fell back to 0 for every analysis-derived metric because the `analysis?.X ?? 0` chains had nothing to read. Graph is unchanged on noop so the prior `_session.Analysis` is still valid — noop now reuses it and surfaces real counts. The wire-shape difference between "no changes" and "no graph loaded" stops being indistinguishable to summary-readers.
 
-- **Stale self-analyze numbers across public docs** (reviewer pass 2026-05-24). `docs/STATUS.md` line 45 self-analysis block + `docs/architecture.html` line 378 footer cited 3,506 symbols / 21,113 edges — the pre-Wave-3-4 baseline. Refreshed to live 3,628 symbols / 21,663 edges / 377 types alongside the existing 0 violations / 0 cycles.
+- **Stale self-analyze numbers across public docs** (reviewer pass 2026-05-24). `guides/STATUS.md` line 45 self-analysis block + `guides/architecture.html` line 378 footer cited 3,506 symbols / 21,113 edges — the pre-Wave-3-4 baseline. Refreshed to live 3,628 symbols / 21,663 edges / 377 types alongside the existing 0 violations / 0 cycles.
 
 - **"Zero skipped" prose lies** across STATUS.md line 3 + README.md line 149 + architecture.html line 207. Actual test suite carries 37 `[SkippableFact]` declarations (native-clang lane, etc.) — 11 of those skip at runtime under default CI env, the rest pass when their gate is satisfied. Refreshed prose to surface the DECLARED `[SkippableFact]` count (mechanical, env-independent) rather than the runtime outcome (env-dependent on `LIFEBLOOD_REQUIRE_NATIVE_CLANG` etc.). The new `INV-DOCS-007` ratchet pins the declared count.
 
@@ -1025,17 +1032,17 @@ Graph dependency tools can query the union of committed define profiles or narro
 
 - **6.E** IOperation-walking tools (enum_coverage / static_tables / assignment_coverage) surface `analyzedUnderProfile` + `profileScope`; peak RAM stays at single-profile baseline (`INV-MULTI-DEFINE-IOP-001`)
 
-Total scope: **7 new INVs** pinned in `docs/invariants/architecture.md` + **29 new tests** across 4 test files (`MultiProfileAnalyzeTests`, `UnityDefineProfileResolverTests`, `MultiProfileWireShapeTests`, `MultiProfileIOpScopeTests`) + 2 new Adapter files + 2 new Domain helpers + 1 new Application port + 1 new Adapter resolver. Wire shape additions are 100% additive — single-profile back-compat is byte-stable.
+Total scope: **7 new INVs** pinned in `guides/invariants/architecture.md` + **29 new tests** across 4 test files (`MultiProfileAnalyzeTests`, `UnityDefineProfileResolverTests`, `MultiProfileWireShapeTests`, `MultiProfileIOpScopeTests`) + 2 new Adapter files + 2 new Domain helpers + 1 new Application port + 1 new Adapter resolver. Wire shape additions are 100% additive — single-profile back-compat is byte-stable.
 
 Tests 1155 / 1155 Debug green (filter `!~NativeClang`); zero skipped. STATUS anchors: 142 invariants across 96 categories, 28 ports, 30 MCP tools.
 
 ### Release readiness note: native-clang opt-in lane
 
-The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build target**, not a bundled artifact. The C# core packages (`Lifeblood`, `Lifeblood.Server.Mcp`) do NOT carry `lifeblood-native-clang.exe` and do NOT depend on LLVM. Consumers who need C-language analysis build the executable from `adapters/native-clang/` via CMake + libclang per `docs/TOOLCHAIN.md`. The 11 `[SkippableFact]` ratchets in `tests/Lifeblood.Tests/NativeClangExecutableRatchetTests*.cs` skip silently when the executable is absent (default suite green at `1180 passed + 11 skipped / 1191 total`) and fail loudly when `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` is set on a host where the executable IS expected to be present — this is a LOCAL / MANUAL audit gate (no GitHub workflow sets the env var; LLVM toolchain on the runner is opt-in consumer work), not a release-blocker. Default suite live count `1217 passed + 11 skipped / 1228 total`. Full opt-in execution requires the consumer's own LLVM toolchain. See `docs/NATIVE_CLANG.md` § "Opt-in execution lane" for the build recipe; `docs/RELEASE.md` step 5 documents both skip categories the release gate accepts.
+The native-clang adapter (`adapters/native-clang/`) ships as an **opt-in build target**, not a bundled artifact. The C# core packages (`Lifeblood`, `Lifeblood.Server.Mcp`) do NOT carry `lifeblood-native-clang.exe` and do NOT depend on LLVM. Consumers who need C-language analysis build the executable from `adapters/native-clang/` via CMake + libclang per `guides/TOOLCHAIN.md`. The 11 `[SkippableFact]` ratchets in `tests/Lifeblood.Tests/NativeClangExecutableRatchetTests*.cs` skip silently when the executable is absent (default suite green at `1180 passed + 11 skipped / 1191 total`) and fail loudly when `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` is set on a host where the executable IS expected to be present — this is a LOCAL / MANUAL audit gate (no GitHub workflow sets the env var; LLVM toolchain on the runner is opt-in consumer work), not a release-blocker. Default suite live count `1217 passed + 11 skipped / 1228 total`. Full opt-in execution requires the consumer's own LLVM toolchain. See `guides/NATIVE_CLANG.md` § "Opt-in execution lane" for the build recipe; `guides/RELEASE.md` step 5 documents both skip categories the release gate accepts.
 
 ### Wave 6 plan reference (2026-05-24)
 
-The Wave 6 architectural plan that drove the chain landed at `docs/plans/multi-define-union-l-lim-001-plan-2026-05-24.md` — six-phase rollout (6.A port + default resolver, 6.B multi-profile compile, 6.C Unity-aware adapter, 6.D wire shape, 6.E per-IOperation policy, 6.F live dogfood closure). The plan was tightened during 6.A–6.C: the original 5-profile vocabulary collapsed to the 2-profile MVP (Editor + Player) after empirical proof that platform-target defines are already in the Editor baseline; the Editor-discriminator axis (UNITY_EDITOR / UNITY_EDITOR_WIN / etc.) is the only load-bearing distinguisher for the L-LIM-001 trap. `Edge.Profiles[]` is omitted on single-profile back-compat (not empty-array) so the wire shape stays byte-stable for callers who don't opt into `defineProfiles`.
+The Wave 6 architectural plan that drove the chain landed at `guides/plans/multi-define-union-l-lim-001-plan-2026-05-24.md` — six-phase rollout (6.A port + default resolver, 6.B multi-profile compile, 6.C Unity-aware adapter, 6.D wire shape, 6.E per-IOperation policy, 6.F live dogfood closure). The plan was tightened during 6.A–6.C: the original 5-profile vocabulary collapsed to the 2-profile MVP (Editor + Player) after empirical proof that platform-target defines are already in the Editor baseline; the Editor-discriminator axis (UNITY_EDITOR / UNITY_EDITOR_WIN / etc.) is the only load-bearing distinguisher for the L-LIM-001 trap. `Edge.Profiles[]` is omitted on single-profile back-compat (not empty-array) so the wire shape stays byte-stable for callers who don't opt into `defineProfiles`.
 
 ### Wave 5: Stage 0 dogfood follow-through (2026-05-24)
 
@@ -1049,7 +1056,7 @@ The Wave 6 architectural plan that drove the chain landed at `docs/plans/multi-d
 
 ## [0.7.8] - 2026-05-19
 
-The 2026-05-19 two-phase hardening plan (`<plan-file>`) lands its Phase-1 trust-hardening atoms (F0..F3f + S4..S8a), four native-clang adapter refactors, three execute-robustness fixes surfaced by Unity IL2CPP dogfood, and one dogfood-derived extractor fix (F1d) that corrected property-edge extraction. Twelve new typed invariants land in `docs/invariants/csharp-adapter.md` + `docs/invariants/tools.md`; the canonical-symbol-identity chain (F1a/b/c), the composite-port intelligence chain (F3a..f), the diagnose-freshness envelope (S5/S5b), the advisory-limitations envelope (S6), the planning-verdict evidence (S7), and the adapter-thinning seam (S8a) all ship together. Lifeblood self-analysis: **3,506 symbols, 21,113 edges, 11 modules, 363 types, 0 violations, 0 cycles. 1,098 tests, zero skipped. 122 typed invariants across 83 categories.**
+The 2026-05-19 two-phase hardening plan (`<plan-file>`) lands its Phase-1 trust-hardening atoms (F0..F3f + S4..S8a), four native-clang adapter refactors, three execute-robustness fixes surfaced by Unity IL2CPP dogfood, and one dogfood-derived extractor fix (F1d) that corrected property-edge extraction. Twelve new typed invariants land in `guides/invariants/csharp-adapter.md` + `guides/invariants/tools.md`; the canonical-symbol-identity chain (F1a/b/c), the composite-port intelligence chain (F3a..f), the diagnose-freshness envelope (S5/S5b), the advisory-limitations envelope (S6), the planning-verdict evidence (S7), and the adapter-thinning seam (S8a) all ship together. Lifeblood self-analysis: **3,506 symbols, 21,113 edges, 11 modules, 363 types, 0 violations, 0 cycles. 1,098 tests, zero skipped. 122 typed invariants across 83 categories.**
 
 ### Fixed
 
@@ -1107,23 +1114,23 @@ First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based
 
 - **FFmpeg scout workflow** at `adapters/native-clang/tools/ffmpeg-scout/`. Repeatable PowerShell harness (`Prepare-FfmpegScout.ps1` plus module scripts) that clones FFmpeg, configures a minimal LLVM-clang build, generates a focused `compile_commands.json` for a representative file slice, and runs the extractor end-to-end. First real-world result on 2026-05-16 against a 5-file slice (`libavfilter/allfilters.c`, `libavcodec/allcodecs.c`, `libavformat/allformats.c`, `libavutil/pixdesc.c`, `libswscale/utils.c`): 9264 symbols, 1067 methods, 14494 Lifeblood-imported edges, 0 architecture violations, 1 likely real cycle in libswscale context initialization. Workflow and limits documented in `adapters/native-clang/FFMPEG_SCOUT.md`. The scout is explicit reconnaissance, not whole-build coverage. Full-build paths (WSL with bear, MSYS2 with bear, project-specific compile-database generator) are named as the next maturity step.
 
-- **`docs/NATIVE_CLANG.md` dedicated capability page.** Scope, build, fixtures, scout workflow, what works today, what is deferred. Single entry point for downstream readers asking how the C support actually works.
+- **`guides/NATIVE_CLANG.md` dedicated capability page.** Scope, build, fixtures, scout workflow, what works today, what is deferred. Single entry point for downstream readers asking how the C support actually works.
 
-- **`docs/RELEASE.md` eternal pre-tag checklist.** Closes the operator gap that shipped v0.7.6 with three red CI workflows. `dotnet test -c Release` exit 0, every `## [X.Y.Z]` heading paired with a matching `[X.Y.Z]:` link reference, and `[Unreleased]` rebased to the new tag are non-negotiable pre-tag steps. Force-moving a published tag to recover from a missed step is explicitly refused. The recovery is always a next-patch release.
+- **`guides/RELEASE.md` eternal pre-tag checklist.** Closes the operator gap that shipped v0.7.6 with three red CI workflows. `dotnet test -c Release` exit 0, every `## [X.Y.Z]` heading paired with a matching `[X.Y.Z]:` link reference, and `[Unreleased]` rebased to the new tag are non-negotiable pre-tag steps. Force-moving a published tag to recover from a missed step is explicitly refused. The recovery is always a next-patch release.
 
 ### Fixed
 
-- **`INV-CHANGELOG-001` link-reference drift caught at v0.7.6.** `CHANGELOG.md` shipped a `## [0.7.6]` heading without a matching `[0.7.6]: https://.../compare/v0.7.5...v0.7.6` link reference. `DocsTests.Changelog_EveryHeadingHasLinkReference` failed at the release commit, the tag was pushed anyway, and all three tag-triggered CI workflows (`Build & Test`, `CI`, `Release Verification`) went red on origin. The v0.7.6 tag is left as-is on origin because force-moving a published tag is a destructive operation on shared history. The missing link reference is restored as part of this release. The eternal mechanism lives in `docs/RELEASE.md`. The ratchet was already in place and did its job.
+- **`INV-CHANGELOG-001` link-reference drift caught at v0.7.6.** `CHANGELOG.md` shipped a `## [0.7.6]` heading without a matching `[0.7.6]: https://.../compare/v0.7.5...v0.7.6` link reference. `DocsTests.Changelog_EveryHeadingHasLinkReference` failed at the release commit, the tag was pushed anyway, and all three tag-triggered CI workflows (`Build & Test`, `CI`, `Release Verification`) went red on origin. The v0.7.6 tag is left as-is on origin because force-moving a published tag is a destructive operation on shared history. The missing link reference is restored as part of this release. The eternal mechanism lives in `guides/RELEASE.md`. The ratchet was already in place and did its job.
 
 - **Role-distinct reference edges preserved through graph synthesis** . Edges that share `(sourceId, targetId, kind)` but differ on role payload were being collapsed during graph construction. The de-dup key now incorporates the role-identity component so semantically different references survive into the imported graph. Sibling refactor  extracts file-edge derivation from `GraphBuilder` into `Lifeblood.Domain/Graph/FileEdgeDeriver.cs` so the file-edge contract is testable in isolation.
 
 ### Changed
 
-- **Test discovery refresh: 1011 tests, zero skipped.** Native-clang track adds contract and executable-ratchet coverage. Graph-layer changes add `GraphBuilderTests` and `GraphValidatorTests` for role-edge identity. `docs/STATUS.md` `<!-- testCount: 1011 -->` anchor and visible prose re-ratcheted by `DocsTests`.
+- **Test discovery refresh: 1011 tests, zero skipped.** Native-clang track adds contract and executable-ratchet coverage. Graph-layer changes add `GraphBuilderTests` and `GraphValidatorTests` for role-edge identity. `guides/STATUS.md` `<!-- testCount: 1011 -->` anchor and visible prose re-ratcheted by `DocsTests`.
 
-- **`docs/ADAPTERS.md` native-clang section** moved from "planned" to current beta scope (libclang extractor, fixtures, FFmpeg scout, external JSON boundary preserved).
+- **`guides/ADAPTERS.md` native-clang section** moved from "planned" to current beta scope (libclang extractor, fixtures, FFmpeg scout, external JSON boundary preserved).
 
-- **`README.md`, `docs/ARCHITECTURE.md`, `docs/architecture.html`, and `CLAUDE.md`** updated to list the native-clang adapter alongside the existing C#, TypeScript, and Python surfaces. Language coverage prose, ASCII diagrams, assembly tables, and project trees all carry the new adapter.
+- **`README.md`, `guides/ARCHITECTURE.md`, `guides/architecture.html`, and `CLAUDE.md`** updated to list the native-clang adapter alongside the existing C#, TypeScript, and Python surfaces. Language coverage prose, ASCII diagrams, assembly tables, and project trees all carry the new adapter.
 
 ## [0.7.6] - 2026-05-15
 
@@ -1137,9 +1144,9 @@ First non-C# adapter ships as beta. `adapters/native-clang/` is a libclang-based
 
 ### Added
 
-- **`docs/PLAYBOOK_CSHARP.md`** (`LB-INBOX-004` + `LB-INBOX-005` Wave W5). Closes the wedge-proof half of the post-v0.6.3 roadmap. The playbook documents seven concrete workflows for large C# / Roslyn / Unity workspaces (triage a breakage, audit module boundaries, safe rename, inspect blast radius, validate a snippet, recover from a merge conflict, find a dead method) with named tool calls, argument shapes, expected outputs, and an envelope cheat sheet mapping `confidence` bands to ship-or-investigate decisions.
+- **`guides/PLAYBOOK_CSHARP.md`** (`LB-INBOX-004` + `LB-INBOX-005` Wave W5). Closes the wedge-proof half of the post-v0.6.3 roadmap. The playbook documents seven concrete workflows for large C# / Roslyn / Unity workspaces (triage a breakage, audit module boundaries, safe rename, inspect blast radius, validate a snippet, recover from a merge conflict, find a dead method) with named tool calls, argument shapes, expected outputs, and an envelope cheat sheet mapping `confidence` bands to ship-or-investigate decisions.
 
-- **`INV-WIRE-CONTRACT-001` — wire contract pin + schema deprecation policy** (`LB-INBOX-003` Wave W4). First concrete pin: `ResponseEnvelopeWireShapeContractTests` reflects on `Lifeblood.Domain.Results.ResponseEnvelope` and asserts the v1 field set is exactly the six canonical fields with stable type names AND every field is `init`-only (mutation after construction is structurally blocked via reflection check for the `IsExternalInit` modreq). New `docs/SCHEMA_DEPRECATION_POLICY.md` names the rules every future contract change must follow: additive changes update the snapshot without a version bump; renames / removals / type changes are breaking and require shipping v2 alongside v1 with at least one minor release of overlap during which v1 responses carry a deprecation `Limitations[]` notice. Surfaces covered by the policy: `ResponseEnvelope`, `tools/list` input schemas, per-tool output JSON, graph JSON schema, canonical id format, parity diagnostic ID set. Per-tool `schemas/tools/v1/<tool>.json` snapshot files are explicitly named as a follow-up atom — the current ratchets pin via reflection / inline JSON assertions until those files land. INV body in `docs/invariants/mcp-protocol.md` ("Wire Contract" section).
+- **`INV-WIRE-CONTRACT-001` — wire contract pin + schema deprecation policy** (`LB-INBOX-003` Wave W4). First concrete pin: `ResponseEnvelopeWireShapeContractTests` reflects on `Lifeblood.Domain.Results.ResponseEnvelope` and asserts the v1 field set is exactly the six canonical fields with stable type names AND every field is `init`-only (mutation after construction is structurally blocked via reflection check for the `IsExternalInit` modreq). New `guides/SCHEMA_DEPRECATION_POLICY.md` names the rules every future contract change must follow: additive changes update the snapshot without a version bump; renames / removals / type changes are breaking and require shipping v2 alongside v1 with at least one minor release of overlap during which v1 responses carry a deprecation `Limitations[]` notice. Surfaces covered by the policy: `ResponseEnvelope`, `tools/list` input schemas, per-tool output JSON, graph JSON schema, canonical id format, parity diagnostic ID set. Per-tool `schemas/tools/v1/<tool>.json` snapshot files are explicitly named as a follow-up atom — the current ratchets pin via reflection / inline JSON assertions until those files land. INV body in `guides/invariants/mcp-protocol.md` ("Wire Contract" section).
 
 - **`INV-ANALYZE-SKIPPED-PROMINENCE-001` — staleness signals promote to envelope Limitations[] on threshold breach** (`LB-TRACK-20260515-x` Wave W3-A). Pre-fix, `ResponseEnvelope.StalenessSeconds` and `FilesChangedSinceAnalyze` were always on the wire but consumers had to compare them against unwritten thresholds to know whether to re-analyze. A 30-day-stale graph emitted the same envelope as a fresh one. New `StalenessPolicy` (`Application/Ports/Right/IResponseDecorator.cs`) carries two configurable thresholds — `StalenessSecondsWarnThreshold` (default 3600 s), `FilesChangedWarnThreshold` (default 10). `LifebloodResponseDecorator` appends explicit `Limitations[]` entries when either is exceeded, ordered AFTER the static per-tool limitations so consumers reading from index 0 still see tool-specific caveats. Composition root (`Server.Mcp.Program`) reads `LIFEBLOOD_STALENESS_SECONDS_THRESHOLD` / `LIFEBLOOD_FILES_CHANGED_THRESHOLD` from the environment at startup; missing or malformed values fall back to `StalenessPolicy.Default`. The unregistered-tool path also honors the policy. Pinned by `StalenessPolicyEnvelopeTests` (5 facts: fresh graph emits no extra limitation, staleness-seconds threshold appends entry, files-changed threshold appends entry, custom thresholds override defaults, unregistered tool still surfaces staleness limitation).
 
@@ -1177,13 +1184,13 @@ Post-v0.7.4 wave landing one new MCP tool (`lifeblood_static_tables`) with v1.1 
 
 - **`lifeblood_static_tables` v1.1: `MethodReturnFlagIds[]?` on `MethodGroup` cells** (`INV-METHOD-FLAG-SUMMARY-001`, `LB-TRACK-20260514-005-v1.1`). Additive enrichment on the `MethodGroup` cell kind. When the delegate target carries a source declaration in the cell site's compilation AND at least one return position resolves to an enum-flag value (single enum-const reference or `|`-composed binary-op tree of enum-const leaves), the cell carries the deduplicated, ordinal-sorted union of those flag-member ids on `Value.MethodReturnFlagIds`. Multi-return-path methods union across paths. Computed returns silently skip for that path — mixed bodies surface the classified subset rather than dropping all information. Null in four load-bearing cases: target has no `DeclaringSyntaxReferences` (compiled-metadata BCL), target's syntax tree not in site compilation (cross-compilation enrichment deferred), body has no walkable `IOperation` tree, every return-position classification falls back to `Computed`. `ReturnFlagCollector` overrides `VisitAnonymousFunction` / `VisitLocalFunction` to prevent nested-lambda returns bleeding through. Wire-shape additive — existing callers reading only `MethodGroupId` stay byte-stable. Pinned by `StaticTableExtractorTests` (7 new facts + 1 augmented null-pin on the existing MethodGroup-cell test).
 
-- **`INV-FLAG-COVERAGE-COMPOSITION-001` pinned** (`LB-TRACK-20260514-006`, doc atom — zero new tool code). The "does method M reference every enum-flag in row R's flag-cell?" join composes from `lifeblood_static_tables` (row side) + `lifeblood_dependencies` (method side) with client-side set-relation. Lifeblood MUST NOT ship a one-classification-per-(row,method) wire-shape using consumer-interpretation names (`admitted` / `admission` / `inconclusive` / `denied`) — those bake the consumer's *meaning* of "coverage" into Lifeblood's contract, when the relations (subset / partial / disjoint) are pure set-arithmetic over two flag-id sets the existing tools already emit. `lifeblood_dependencies` supersets `MethodReturnFlagIds` for three cases the v1.1 field nulls: cross-compilation targets (graph edges cross module boundaries), body-position references beyond `return` (inspection guards, switch arms, ternaries), transitive walks through helper-call delegation (caller follows the `Calls` edge if they need closure). Doc atom only: xmldoc `<remarks>` see-also on `StaticTableValue.MethodReturnFlagIds`, INV body in `docs/invariants/tools.md`. No new tool, no new port, no new test — composition rests on existing `INV-METHOD-FLAG-SUMMARY-001` (row side) + `EdgeCallSiteTests.Extract_FieldReference_AttachesCallSite` (method side `References`-edge pin).
+- **`INV-FLAG-COVERAGE-COMPOSITION-001` pinned** (`LB-TRACK-20260514-006`, doc atom — zero new tool code). The "does method M reference every enum-flag in row R's flag-cell?" join composes from `lifeblood_static_tables` (row side) + `lifeblood_dependencies` (method side) with client-side set-relation. Lifeblood MUST NOT ship a one-classification-per-(row,method) wire-shape using consumer-interpretation names (`admitted` / `admission` / `inconclusive` / `denied`) — those bake the consumer's *meaning* of "coverage" into Lifeblood's contract, when the relations (subset / partial / disjoint) are pure set-arithmetic over two flag-id sets the existing tools already emit. `lifeblood_dependencies` supersets `MethodReturnFlagIds` for three cases the v1.1 field nulls: cross-compilation targets (graph edges cross module boundaries), body-position references beyond `return` (inspection guards, switch arms, ternaries), transitive walks through helper-call delegation (caller follows the `Calls` edge if they need closure). Doc atom only: xmldoc `<remarks>` see-also on `StaticTableValue.MethodReturnFlagIds`, INV body in `guides/invariants/tools.md`. No new tool, no new port, no new test — composition rests on existing `INV-METHOD-FLAG-SUMMARY-001` (row side) + `EdgeCallSiteTests.Extract_FieldReference_AttachesCallSite` (method side `References`-edge pin).
 
 - **`StatusDoc_TestCount_MatchesDiscoveredCases` live-counting ratchet** (`INV-DOCS-004`). Sibling to the existing `portCount` / `toolCount` ratchets in `DocsTests`. Reflects on the `Lifeblood.Tests` assembly, counts every concrete-class method carrying a `FactAttribute`-derived attribute (`[Fact]`, `[Theory]`, `[SkippableFact]`); each `[Theory]` is multiplied by its `[InlineData]` row count (fallback 1 when only `[MemberData]` / `[ClassData]` is present, since those expand at runtime via test-case generators). Matches xUnit discovery semantics — same number `dotnet test --list-tests` produces. Closes the silent-drift hole on the `<!-- testCount: N -->` STATUS.md anchor (pre-this commit the anchor was hint-only — it had drifted from 937 to live 946 unnoticed because no ratchet enforced it). Note: this ratchet is anchored to STATUS.md only; visible "N tests + 1 skipped" prose across README / DOGFOOD / architecture.html is still manually maintained — a cross-doc visible-prose ratchet for those surfaces is open work.
 
 ### Changed
 
-- **Pre-tag doc-truth audit** . Eight live-truth counter callsites refreshed across `README.md`, `docs/STATUS.md`, `docs/ARCHITECTURE.md`, `docs/TOOLS.md`, `docs/architecture.html`, `docs/DOGFOOD_FINDINGS.md` — invariant counts (87 / 50 categories → 90 / 52 categories, including four older callsites at 80 / 65 that prior sweeps walked past), self-analysis numbers (2,755 / 13,778 → 2,926 / 14,502), MCP tool count discrepancy in DOGFOOD_FINDINGS (28 / 17R+11W → 29 / 17R+12W), version label ("preparing v0.7.4" → "post-v0.7.4"). CHANGELOG historical entries, IMPROVEMENT_INBOX dated SHIPPED snapshots, and DOGFOOD_FINDINGS pre-v0.7.4 session blocks preserved verbatim — regression-trace catalogue.
+- **Pre-tag doc-truth audit** . Eight live-truth counter callsites refreshed across `README.md`, `guides/STATUS.md`, `guides/ARCHITECTURE.md`, `guides/TOOLS.md`, `guides/architecture.html`, `guides/DOGFOOD_FINDINGS.md` — invariant counts (87 / 50 categories → 90 / 52 categories, including four older callsites at 80 / 65 that prior sweeps walked past), self-analysis numbers (2,755 / 13,778 → 2,926 / 14,502), MCP tool count discrepancy in DOGFOOD_FINDINGS (28 / 17R+11W → 29 / 17R+12W), version label ("preparing v0.7.4" → "post-v0.7.4"). CHANGELOG historical entries, IMPROVEMENT_INBOX dated SHIPPED snapshots, and DOGFOOD_FINDINGS pre-v0.7.4 session blocks preserved verbatim — regression-trace catalogue.
 
 - **Eternal-comment policy enforcement** . `INV-WORK-009` — stripped a `(v0.6.7)` version parenthetical from `ToolHandler.cs:592` dead-code-warning code comment. Load-bearing `INV-DEADCODE-001` + `INV-ENVELOPE-001` references preserved. Tool-description version-history narrative in `ToolRegistry.cs` left intact — that text ships to MCP clients and helps callers set expectations on which FP classes are already closed (different audience than internal comments, different policy).
 
@@ -1207,7 +1214,7 @@ Post-v0.7.3 wave + pre-release audit closure. Five new tool-facing capabilities 
 
 - **`SymbolPropertyKeys` writer↔reader parity test** (`LB-FOLLOWUP-20260514-004`). Pins the `Properties["attributes"]` / `Properties["baseType"]` / `Properties["classification"]` string-key contract between the writer (`RoslynSymbolExtractor`) and every reader (`UnityReachabilityAdapter`, `RoslynEdgeExtractor`, `LifebloodAuthorityReporter`, `TestImpactAnalyzer`). A typo on either side previously failed silently — the test asserts every writer key has at least one consumer and every consumer key matches a writer.
 
-- **`docs/audit/fake-stuff-2026-05-14.md`** — 353-line audit doc capturing the dogfood pass that produced the BUG-1..4 + FOLLOWUP-001..005 backlog. Eternal history of the audit.
+- **`guides/audit/fake-stuff-2026-05-14.md`** — 353-line audit doc capturing the dogfood pass that produced the BUG-1..4 + FOLLOWUP-001..005 backlog. Eternal history of the audit.
 
 ### Fixed
 
@@ -1221,11 +1228,11 @@ Post-v0.7.3 wave + pre-release audit closure. Five new tool-facing capabilities 
 
 ### Changed
 
-- **`docs/STATUS.md` counts**: 776 → 893 tests; tool count stable at 28, port count stable at 26 (descriptions updated to mention the new tools + new INVs).
+- **`guides/STATUS.md` counts**: 776 → 893 tests; tool count stable at 28, port count stable at 26 (descriptions updated to mention the new tools + new INVs).
 
-- **`docs/invariants/csharp-adapter.md`**: `LangVersion` / `Nullable` / `NoWarn` / `DefineConstants` moved from `INV-COMPFACT-001`'s "future additions" example list to a "shipped via FOLLOWUP-001..003 + BUG-2" cross-reference. The compilation-facts pattern is now exemplified by five live facts, not two.
+- **`guides/invariants/csharp-adapter.md`**: `LangVersion` / `Nullable` / `NoWarn` / `DefineConstants` moved from `INV-COMPFACT-001`'s "future additions" example list to a "shipped via FOLLOWUP-001..003 + BUG-2" cross-reference. The compilation-facts pattern is now exemplified by five live facts, not two.
 
-- **`docs/invariants/tools.md`**: six new INV bodies authored (DEADCODE-TRIAGE, ENUM-COVERAGE, TEST-IMPACT, CYCLE-TAXONOMY, DIAGNOSTIC-ENVELOPE-DEFINES, PATHBUCKET-SHARED).
+- **`guides/invariants/tools.md`**: six new INV bodies authored (DEADCODE-TRIAGE, ENUM-COVERAGE, TEST-IMPACT, CYCLE-TAXONOMY, DIAGNOSTIC-ENVELOPE-DEFINES, PATHBUCKET-SHARED).
 
 - **Generic public documentation.** Consumer-specific examples and private operational records are excluded from public documentation, including historical release notes.
 
@@ -1261,9 +1268,9 @@ Post-v0.7.2 polish wave from a field-report dogfood pass on a real-world Unity w
 
 - **`lifeblood_dependencies` / `lifeblood_dependants` tool descriptions** updated to declare the new `callSite` wire field so callers can discover the shape from the schema without inspecting a response.
 
-- **`docs/STATUS.md`** counts: 751 → 776 tests, 25 → 26 MCP tools, 15 → 16 read-side tools.
+- **`guides/STATUS.md`** counts: 751 → 776 tests, 25 → 26 MCP tools, 15 → 16 read-side tools.
 
-- **`docs/TOOLS.md`** adds the `Resolve member` row, expands `Dependencies` / `Dependants` / `Blast radius` rows with the new wire fields.
+- **`guides/TOOLS.md`** adds the `Resolve member` row, expands `Dependencies` / `Dependants` / `Blast radius` rows with the new wire fields.
 
 ## [0.7.2] - 2026-05-08
 
@@ -1293,9 +1300,9 @@ The deeper class lesson: per-component coverage (helper test + regex test in iso
 
 ### Pre-tag review polish
 
-- **Stale `mode:'full-fallback'` references in 5 sites** (FBT1). The wire mode for the widened-to-full path was refactored to `mode:"full"` + `requestedMode:"incremental"` mid-wave, but the doc/comment sweep missed five sites: `ToolRegistry.cs:123` analyze tool description, `docs/invariants/pipeline.md` (the INV body), `docs/STATUS.md`, `docs/DOGFOOD_FINDINGS.md`, and a doc-comment in `IncrementalAnalyzeResult.cs`. All swept.
+- **Stale `mode:'full-fallback'` references in 5 sites** (FBT1). The wire mode for the widened-to-full path was refactored to `mode:"full"` + `requestedMode:"incremental"` mid-wave, but the doc/comment sweep missed five sites: `ToolRegistry.cs:123` analyze tool description, `guides/invariants/pipeline.md` (the INV body), `guides/STATUS.md`, `guides/DOGFOOD_FINDINGS.md`, and a doc-comment in `IncrementalAnalyzeResult.cs`. All swept.
 
-- **`docs/STATUS.md` self-analysis code-block had stale counts** (FBT2). Lines 44-50 quoted `Symbols: 2,191 / Edges: 10,194 / Files: 150` — pre-wave numbers, plus a `Files :` row that the CLI doesn't actually print (CLI emits Symbols/Edges/Modules/Types only). Refreshed to current numbers and removed the phantom row.
+- **`guides/STATUS.md` self-analysis code-block had stale counts** (FBT2). Lines 44-50 quoted `Symbols: 2,191 / Edges: 10,194 / Files: 150` — pre-wave numbers, plus a `Files :` row that the CLI doesn't actually print (CLI emits Symbols/Edges/Modules/Types only). Refreshed to current numbers and removed the phantom row.
 
 - **`lifeblood --help` returned "Unknown command"** (FBT3). The CLI switch only recognized `analyze` / `context` / `export`; help arms (`--help`, `-h`, `/?`, `help`) hit the unknown-command branch and exited 1 with a misleading error. Fix: added a `RunHelp` arm that prints the banner + usage and exits 0.
 
@@ -1368,17 +1375,17 @@ This release adds bounded dead-code output and clarifies authority-report usage.
 
 - **Dead-code pagination.** Responses include total counts, kind breakdown and truncation. Summary mode returns a bounded preview; full mode supports explicit result caps.
 
-- **Stale-claim sweep**: `docs/architecture.html` refreshed to current counts (22→25 tools, 22→26 ports, 539→664 tests, 58→65 invariants, 12R+10W→15R+10W). `lifeblood_dead_code` description refreshed to drop "under investigation for v0.6.4" wording and reflect the actual closed-FP-class history (v0.6.4 → v0.6.5 → v0.6.7 → v0.7.0/LB-FP-003). `docs/IMPROVEMENT_INBOX.md` active-roadmap entries (`LB-INBOX-001`, `LB-INBOX-003`) refreshed; the dated "review snapshot from v0.6.3" block stays frozen as historical record.
+- **Stale-claim sweep**: `guides/architecture.html` refreshed to current counts (22→25 tools, 22→26 ports, 539→664 tests, 58→65 invariants, 12R+10W→15R+10W). `lifeblood_dead_code` description refreshed to drop "under investigation for v0.6.4" wording and reflect the actual closed-FP-class history (v0.6.4 → v0.6.5 → v0.6.7 → v0.7.0/LB-FP-003). `guides/IMPROVEMENT_INBOX.md` active-roadmap entries (`LB-INBOX-001`, `LB-INBOX-003`) refreshed; the dated "review snapshot from v0.6.3" block stays frozen as historical record.
 
 ### Documentation. Stale-claim sweep (post-v0.7.0 review fold-in)
 
 External reviewer flagged stale references to "22 tools / 22 ports / 539 tests / 58 invariants / 12R+10W" + "under investigation for v0.6.4" wording. Most of the surface was already current at v0.7.0 (README, STATUS, TOOLS, ARCHITECTURE, UNITY, DOGFOOD_FINDINGS); two real misses cleaned here:
 
-- **`docs/architecture.html`** — full refresh: 22→25 tools, 22→26 ports, 539→664 tests, 58→65 invariants, 12R+10W→15R+10W, 1863→2191 self symbols, 5777→10194 self edges, 235→264 self types. Adds pills for truth envelope + Unity reachability. Adapter section gains `LifebloodAuthorityReporter`, `LifebloodResponseDecorator`, `UnityReachabilityAdapter`, `UnityAssemblyResolver` cards.
+- **`guides/architecture.html`** — full refresh: 22→25 tools, 22→26 ports, 539→664 tests, 58→65 invariants, 12R+10W→15R+10W, 1863→2191 self symbols, 5777→10194 self edges, 235→264 self types. Adds pills for truth envelope + Unity reachability. Adapter section gains `LifebloodAuthorityReporter`, `LifebloodResponseDecorator`, `UnityReachabilityAdapter`, `UnityAssemblyResolver` cards.
 
 - **`lifeblood_dead_code` description** — refreshed in `ToolRegistry.cs` to drop the "v0.6.4 under investigation" wording and reflect the actual closed-FP-class history (v0.6.4 → v0.6.5 → v0.6.7 → v0.7.0 / LB-FP-003) + remaining advisory limitations.
 
-- **`docs/IMPROVEMENT_INBOX.md`** — `LB-INBOX-001` + `LB-INBOX-003` active-roadmap entries refreshed from "22 tools / 22 ports" to "25 tools / 26 ports". The historical "review snapshot from v0.6.3, 2026-04-11" block stays frozen as dated record.
+- **`guides/IMPROVEMENT_INBOX.md`** — `LB-INBOX-001` + `LB-INBOX-003` active-roadmap entries refreshed from "22 tools / 22 ports" to "25 tools / 26 ports". The historical "review snapshot from v0.6.3, 2026-04-11" block stays frozen as dated record.
 
 NuGet packages at v0.7.0 are immutable and unchanged — this is a doc-correctness pass, not a re-release. Test count unchanged: still 664 (LB-FR-024 below adds 3 more).
 
@@ -1410,7 +1417,7 @@ This release adds invariant-tree discovery, parser forms, bounded cycle/context 
 
 - **Unity Editor reachability.** Recognized Editor attributes, test fixtures, base types and reachable children inform advisory dead-code results.
 
-- **Invariant organization.** Root instructions route to domain pages under `docs/invariants/`.
+- **Invariant organization.** Root instructions route to domain pages under `guides/invariants/`.
 
 ### Fixed. Unity Editor reflection reachability
 
@@ -1446,21 +1453,21 @@ Four new ratchet tests covering summarize-mode-drops-all-lists, sections-allowli
 
 Six new ratchet tests covering owning-module resolution, override-code tree replacement, missing-file LB0002, pinned-module foreign-file rejection, override-introduces-error reporting, and snippet-mode unchanged. Test count: 645 → 651 (+6). 0 regressions.
 
-### Changed. Invariants moved to docs/invariants/ tree (eat-our-own-dogfood)
+### Changed. Invariants moved to guides/invariants/ tree (eat-our-own-dogfood)
 
 Architectural invariants live in domain pages, with root instructions providing routing and dependency rules.
 
 Tree layout (8 files + INDEX):
 
-- `docs/invariants/INDEX.md` — master pointer + the five recognised authoring shapes (A/B/C/D/E)
-- `docs/invariants/architecture.md` — DOMAIN, APP, GRAPH, ADAPT, CONN, ANALYSIS, TEST, PIPE, SCRIPTHOST, COMPROOT
-- `docs/invariants/resolver.md` — RESOLVER 1-6
-- `docs/invariants/csharp-adapter.md` — CANONICAL, VIEW 1-3, BCL 1-5, COMPFACT 1-3, full symbol-ID grammar
-- `docs/invariants/pipeline.md` — STREAM 1-5, FILE-EDGE, INCR
-- `docs/invariants/usage.md` — USAGE 1-2, USAGE-PORT 1-2, USAGE-PROBE 1-2
-- `docs/invariants/mcp-protocol.md` — MCP 1-3, TOOLREG, ENVELOPE
-- `docs/invariants/tools.md` — DEADCODE, INVARIANT, AUTHORITY, FORWARDER, EXECUTE, UNITY 1-2, FINDIMPL
-- `docs/invariants/governance.md` — DOCS, CHANGELOG, TESTDISC
+- `guides/invariants/INDEX.md` — master pointer + the five recognised authoring shapes (A/B/C/D/E)
+- `guides/invariants/architecture.md` — DOMAIN, APP, GRAPH, ADAPT, CONN, ANALYSIS, TEST, PIPE, SCRIPTHOST, COMPROOT
+- `guides/invariants/resolver.md` — RESOLVER 1-6
+- `guides/invariants/csharp-adapter.md` — CANONICAL, VIEW 1-3, BCL 1-5, COMPFACT 1-3, full symbol-ID grammar
+- `guides/invariants/pipeline.md` — STREAM 1-5, FILE-EDGE, INCR
+- `guides/invariants/usage.md` — USAGE 1-2, USAGE-PORT 1-2, USAGE-PROBE 1-2
+- `guides/invariants/mcp-protocol.md` — MCP 1-3, TOOLREG, ENVELOPE
+- `guides/invariants/tools.md` — DEADCODE, INVARIANT, AUTHORITY, FORWARDER, EXECUTE, UNITY 1-2, FINDIMPL
+- `guides/invariants/governance.md` — DOCS, CHANGELOG, TESTDISC
 
 Self-tests still green: `LifebloodClaudeMdSelfTests` aggregates across CLAUDE.md + AGENTS.md (none) + the new tree, asserts TotalCount ≥ 50, required categories present (DOMAIN, GRAPH, MCP, RESOLVER, CANONICAL, BCL), known stable IDs resolvable (INV-CANONICAL-001, INV-RESOLVER-001, INV-RESOLVER-005, INV-BCL-001, INV-MCP-001, INV-TOOLREG-001), 0 duplicates, 0 parse warnings.
 
@@ -1497,7 +1504,7 @@ Invariant discovery supports root instruction files and a routed invariant tree 
 **Dynamic source discovery (LB-FR-023 / no hardcoding).** `LifebloodInvariantProvider` now walks well-known repo conventions via `IFileSystem` instead of reading only `<root>/CLAUDE.md`:
 
 - Root sources: `<root>/CLAUDE.md` and `<root>/AGENTS.md`.
-- Routed sources: `<root>/docs/invariants/**/*.md`.
+- Routed sources: `<root>/guides/invariants/**/*.md`.
 
 Each discovered source is parsed with its own cache entry; results are aggregated. Per-id duplicate detection now spans the whole tree. The new `InvariantAudit.SourcePaths[]` reports every file that contributed; `SourcePath` returns the first source for back-compat. The conventions live in the adapter, NOT the port — a repo with a different layout supplies its own provider, reusing `ClaudeMdInvariantParser` + `InvariantParseCache<T>` without touching Application.
 
@@ -1609,7 +1616,7 @@ New read-side tools expose authority, port-health and cycle analysis. Method cla
 
 - **`CLAUDE.md`** adds `INV-RESOLVER-006`, `INV-ENVELOPE-001`, `INV-UNITY-001`, `INV-UNITY-002`, `INV-EXECUTE-001`, `INV-AUTHORITY-001`, `INV-FORWARDER-001`. 70 typed invariants total.
 
-- **`README.md`** + **`docs/STATUS.md`** + **`docs/ARCHITECTURE.md`** + **`docs/TOOLS.md`** + **`docs/UNITY.md`** + **`docs/MCP_SETUP.md`** + **`docs/DOGFOOD_FINDINGS.md`** updated to reflect 25 tools (15 read + 10 write), 26 ports, 70 invariants, 632 tests, 2,132 self-analysis symbols. All em-dashes replaced with prose hyphens.
+- **`README.md`** + **`guides/STATUS.md`** + **`guides/ARCHITECTURE.md`** + **`guides/TOOLS.md`** + **`guides/UNITY.md`** + **`guides/MCP_SETUP.md`** + **`guides/DOGFOOD_FINDINGS.md`** updated to reflect 25 tools (15 read + 10 write), 26 ports, 70 invariants, 632 tests, 2,132 self-analysis symbols. All em-dashes replaced with prose hyphens.
 
 - **`smoke-mcp-p1-dogfood.ps1`** through **`smoke-mcp-p5-dogfood.ps1`** committed as repeatable end-to-end MCP smoke harnesses.
 
@@ -1686,13 +1693,13 @@ Closes the three Roslyn extractor gaps that v0.6.4 left explicitly marked "by de
 
 ### Documentation
 
-- **`CLAUDE.md` trim.** 556 → 402 lines (~20% smaller) without dropping any invariant rule. Stale `## 17 MCP Tools` heading removed (actual: 22, authoritative source `docs/STATUS.md` + `ToolRegistry.cs`). Port Interfaces section compressed to a directory-layout pointer. Verbose evidence narratives trimmed on `INV-RESOLVER-005`, `INV-CANONICAL-001`, `INV-MCP-003`, `INV-TOOLREG-001`, `INV-DEADCODE-001`, `INV-FINDIMPL-001`, `INV-USAGE-*`, `INV-BCL-001..005`, `INV-TESTDISC-001`, `INV-INVARIANT-001`. `INV-DEADCODE-001` updated to document the three new closed FP classes.
+- **`CLAUDE.md` trim.** 556 → 402 lines (~20% smaller) without dropping any invariant rule. Stale `## 17 MCP Tools` heading removed (actual: 22, authoritative source `guides/STATUS.md` + `ToolRegistry.cs`). Port Interfaces section compressed to a directory-layout pointer. Verbose evidence narratives trimmed on `INV-RESOLVER-005`, `INV-CANONICAL-001`, `INV-MCP-003`, `INV-TOOLREG-001`, `INV-DEADCODE-001`, `INV-FINDIMPL-001`, `INV-USAGE-*`, `INV-BCL-001..005`, `INV-TESTDISC-001`, `INV-INVARIANT-001`. `INV-DEADCODE-001` updated to document the three new closed FP classes.
 
-- **`docs/IMPROVEMENT_INBOX.md` hygiene.** Deleted the "Shipped since v0.6.0" block and the `LB-INBOX-007` RESOLVED block per the file's own "when the fix ships, delete the entry" rule. Resolved the `LB-INBOX-001..005` id collision between shipped-history entries and phase entries. Rewrote `LB-INBOX-002` Phase 2 to reflect current state.
+- **`guides/IMPROVEMENT_INBOX.md` hygiene.** Deleted the "Shipped since v0.6.0" block and the `LB-INBOX-007` RESOLVED block per the file's own "when the fix ships, delete the entry" rule. Resolved the `LB-INBOX-001..005` id collision between shipped-history entries and phase entries. Rewrote `LB-INBOX-002` Phase 2 to reflect current state.
 
-- **Self-analysis sample refreshed.** `docs/STATUS.md` self-analysis block showed pre-v0.6.4 numbers (1834 symbols / 5708 edges / 235 types / 57 invariants); updated to post-v0.6.4 values (1887 / 8223 / 238 / 63).
+- **Self-analysis sample refreshed.** `guides/STATUS.md` self-analysis block showed pre-v0.6.4 numbers (1834 symbols / 5708 edges / 235 types / 57 invariants); updated to post-v0.6.4 values (1887 / 8223 / 238 / 63).
 
-- **`docs/ARCHITECTURE.md` Seam 4 wording.** Removed pre-release framing that referred to `INV-DEADCODE-001` "for the v0.6.4 investigation" - the v0.6.4 gap classes are now closed.
+- **`guides/ARCHITECTURE.md` Seam 4 wording.** Removed pre-release framing that referred to `INV-DEADCODE-001` "for the v0.6.4 investigation" - the v0.6.4 gap classes are now closed.
 
 - **Count refresh.** Test count 557 → 569 across STATUS / README / ARCHITECTURE / DOGFOOD. Invariant count 58 → 63.
 
@@ -1737,7 +1744,7 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
 - fix(write): `compile_check` auto-wraps statement snippets for library modules
 - fix(resolver): wrong-namespace inputs resolve via trailing short-name segment (`INV-RESOLVER-005`)
 - feat(invariants): `lifeblood_invariant_check` (Phase 8)
-- docs(plans): publish Phase 8 design spike under `docs/plans/`
+- docs(plans): publish Phase 8 design spike under `guides/plans/`
 
 ### Added. Resolver, extraction, and view hardening (phases 0-4)
 
@@ -1828,7 +1835,7 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
   - `InvariantProviderAndHandlerTests`: 14 tests including provider direct tests, handler dispatch, and one end-to-end test via real `lifeblood_analyze` against a minimal Roslyn workspace.
   - `LifebloodClaudeMdSelfTests`: 5 tests that parse Lifeblood's own `CLAUDE.md` and audit the invariant inventory (>= 50 invariants floor, every core category present, known stable ids resolve, no duplicates, no parse warnings).
   - `InvariantParseCacheTests`: 7 tests pinning the generic cache against a fake `IFileSystem`: empty path, missing file, cache hit on unchanged timestamp, invalidation on timestamp change, parser-throws retry, concurrent reads.
-- Phase 8 spike published at `docs/plans/invariant-check-spike.md`.
+- Phase 8 spike published at `guides/plans/invariant-check-spike.md`.
 
 ### Added. MCP stdio-loop and ToolHandler search dispatch coverage
 
@@ -1861,9 +1868,9 @@ One release covering the full 12-commit span from `v0.6.1` through Phase 8. Adds
 
 - **`Lifeblood.Connectors.Mcp.csproj`** gains `InternalsVisibleTo Lifeblood.Tests`, matching the convention `Lifeblood.Adapters.CSharp.csproj` already uses.
 
-- **docs/STATUS.md ratchets updated**: `portCount: 17 to 22`, `toolCount: 18 to 22`, `testCount: 362 to 539`.
+- **guides/STATUS.md ratchets updated**: `portCount: 17 to 22`, `toolCount: 18 to 22`, `testCount: 362 to 539`.
 
-- **Release-wide documentation sweep.** `README.md`, `docs/TOOLS.md`, `docs/ARCHITECTURE.md`, `docs/STATUS.md`, `docs/architecture.html`, and this `CHANGELOG.md` are rewritten to reflect 22 tools, 22 ports, the new invariant-check tool, the compile_check auto-wrap, the resolver wrong-namespace fallback, the search tokenization, and the dead_code experimental caveat.
+- **Release-wide documentation sweep.** `README.md`, `guides/TOOLS.md`, `guides/ARCHITECTURE.md`, `guides/STATUS.md`, `guides/architecture.html`, and this `CHANGELOG.md` are rewritten to reflect 22 tools, 22 ports, the new invariant-check tool, the compile_check auto-wrap, the resolver wrong-namespace fallback, the search tokenization, and the dead_code experimental caveat.
 
 ### Invariants registered in CLAUDE.md
 
@@ -1922,15 +1929,15 @@ Credibility pass after the v0.6.0 release. Closes an MCP-spec interoperability g
 ### Added. Documentation ratchet
 
 - **New `DocsTests.cs`** with three ratchet tests pinning `INV-DOCS-001` and `INV-CHANGELOG-001`:
-  - `StatusDoc_PortCount_MatchesApplicationPortsDeclarations`. Parses the `<!-- portCount: N -->` HTML comment in `docs/STATUS.md`, counts `public interface I*` declarations under `src/Lifeblood.Application/Ports`, asserts the two match. Single source of truth is the HTML comment.
+  - `StatusDoc_PortCount_MatchesApplicationPortsDeclarations`. Parses the `<!-- portCount: N -->` HTML comment in `guides/STATUS.md`, counts `public interface I*` declarations under `src/Lifeblood.Application/Ports`, asserts the two match. Single source of truth is the HTML comment.
   - `StatusDoc_ToolCount_MatchesToolRegistryLiterals`. Parses `<!-- toolCount: N -->`, counts `Name = "lifeblood_*"` literals in `ToolRegistry.cs`, asserts the two match.
   - `Changelog_EveryHeadingHasLinkReference`. Parses every `## [X.Y.Z]` heading and every `[X.Y.Z]: ...` link reference, asserts bijection. Pins the bug class where v0.6.0 shipped with stale link refs.
 
 ### Changed
 
-- **Port count corrected: 14 → 17** (not `14 → 15` as the v0.6.0 entry claimed). The v0.6.0 release added three port interfaces (`IUsageProbe`, `IUsageCapture`, `ISymbolResolver`) on top of the 14 that existed at v0.5.1. The previous "15" count was counting the usage probe pair as one port unit; the `StatusDoc_PortCount` ratchet counts declared interfaces, which is the accurate semantic. Docs across `README.md`, `docs/STATUS.md`, `docs/ARCHITECTURE.md`, `docs/architecture.html`, and this CHANGELOG have been synced.
+- **Port count corrected: 14 → 17** (not `14 → 15` as the v0.6.0 entry claimed). The v0.6.0 release added three port interfaces (`IUsageProbe`, `IUsageCapture`, `ISymbolResolver`) on top of the 14 that existed at v0.5.1. The previous "15" count was counting the usage probe pair as one port unit; the `StatusDoc_PortCount` ratchet counts declared interfaces, which is the accurate semantic. Docs across `README.md`, `guides/STATUS.md`, `guides/ARCHITECTURE.md`, `guides/architecture.html`, and this CHANGELOG have been synced.
 
-- **`docs/architecture.html` stats pill updated**: `1376 symbols, 3822 edges` → `1379 symbols, 3830 edges` (live counts after the v0.6.0 additions). Test count pill updated to `362 tests`.
+- **`guides/architecture.html` stats pill updated**: `1376 symbols, 3822 edges` → `1379 symbols, 3830 edges` (live counts after the v0.6.0 additions). Test count pill updated to `362 tests`.
 
 - **Program.cs** is now a ~70-line composition root. Reduced by ~100 LOC after the `McpDispatcher` extraction.
 
@@ -1947,7 +1954,7 @@ Credibility pass after the v0.6.0 release. Closes an MCP-spec interoperability g
 - `INV-TOOLREG-001`. Every `McpToolInfo` declares its `Availability` explicitly via the required init-only property. The `GetTools(hasCompilationState)` guard filters on `Availability`, never on tool name prefixes. Adding a new tool without setting `Availability` is a compile error.
 - `INV-SCRIPTHOST-001`. `Lifeblood.ScriptHost` has zero `ProjectReference`. Ratchet-tested.
 - `INV-COMPROOT-001`. Composition roots (`Lifeblood.CLI`, `Lifeblood.Server.Mcp`) reference only the allowlist `{Domain, Application, Analysis, Adapters.CSharp, Adapters.JsonGraph, Connectors.ContextPack, Connectors.Mcp}`. Ratchet-tested via `ArchitectureInvariantTests.CompositionRootAllowedModules`.
-- `INV-DOCS-001`. `docs/STATUS.md` port and tool counts match the repository. Pinned via HTML comments as single source of truth and `DocsTests` as ratchet.
+- `INV-DOCS-001`. `guides/STATUS.md` port and tool counts match the repository. Pinned via HTML comments as single source of truth and `DocsTests` as ratchet.
 - `INV-CHANGELOG-001`. Every `## [X.Y.Z]` heading in `CHANGELOG.md` has a corresponding link reference. Ratchet-tested.
 - `INV-TEST-001`. Tests never silently early-return on precondition failure. Missing preconditions turn into explicit `Skip.IfNot(condition, reason)` calls via `Xunit.SkippableFact`. Real failures (presence-but-broken) turn into loud `Assert.True` / `Assert.Fail`. The `TryAnalyze(out) ⇒ bool` silent-return pattern is forbidden.
 - `INV-FINDIMPL-001`. `FindImplementations` compares candidates via canonical Lifeblood symbol IDs (`BuildSymbolId`), never via `ToDisplayString()` or `SymbolEqualityComparer.Default`. The canonical-ID comparison is the same strategy `FindReferences` uses, closing the display-string-for-matching bug class across the whole write-side read surface.

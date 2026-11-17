@@ -29,7 +29,7 @@ GameObjects, and assets.
 Roslyn is the primary engine. A beta libclang adapter covers C, while TypeScript
 and Python ship as standalone JSON emitting adapters. Any language can integrate
 by producing the universal graph format. Live tool, port, invariant, test, and
-self analysis counts are maintained in [`docs/STATUS.md`](docs/STATUS.md).
+self analysis counts are maintained in [`guides/STATUS.md`](guides/STATUS.md).
 
 ---
 
@@ -46,7 +46,7 @@ Build from source with the [.NET 11 SDK](https://dotnet.microsoft.com/download/d
 The Windows CLI package carries its runtime; the portable CLI and MCP host use
 .NET 11. The host's Roslyn supports C# 15 while analyzed projects retain their
 own language version, references and define profiles. See
-[current build and verification details](docs/STATUS.md); the commands above
+[current build and verification details](guides/STATUS.md); the commands above
 install published packages rather than an unpublished local development build.
 
 ### Connect to Claude Code, Cursor, or any MCP client
@@ -64,7 +64,7 @@ Add to your project's `.mcp.json`:
 }
 ```
 
-Shared mode gives same-workspace agents one latest semantic/Roslyn base. See the [MCP Setup Guide](docs/MCP_SETUP.md) for lifecycle details, Claude Desktop, VS Code, Cursor, raw stdio configs, and the private-process rollback form.
+Shared mode gives same-workspace agents one latest semantic/Roslyn base. See the [MCP Setup Guide](guides/MCP_SETUP.md) for lifecycle details, Claude Desktop, VS Code, Cursor, raw stdio configs, and the private-process rollback form.
 
 ### Use
 
@@ -84,10 +84,10 @@ lifeblood_execute code="typeof(MyApp.Foo).GetMethods()"  → run C# against your
 After the first analysis, use `incremental: true` to reuse unchanged work.
 Inspect the returned mode and refresh receipt: descriptor changes may require
 a full fallback. Pin snapshot/generation when several reads must describe the
-same publication. [Owner-scoped work](docs/OWNER_SCOPED_WORK.md) provides exact
+same publication. [Owner-scoped work](guides/OWNER_SCOPED_WORK.md) provides exact
 file-byte receipts and guarded compile admission for concurrent edits.
 
-For several agents, follow the [concurrent-work procedure](docs/OWNER_SCOPED_WORK.md#concurrent-work-contract):
+For several agents, follow the [concurrent-work procedure](guides/OWNER_SCOPED_WORK.md#concurrent-work-contract):
 capture an explicit scope, use conditional application, reconcile overlaps,
 and refresh the shared publication after coordinated API changes. Individual
 compile-check overlays do not jointly install a multi-file edit. Agents reuse
@@ -95,7 +95,7 @@ the MCP base; standalone CLI analysis remains a separate batch workflow.
 
 Current C# 15 acceptance covers unions, closed hierarchies, extension indexers,
 conditional indexer binding, collection arguments and labeled loop jumps through
-validated graph analysis and host emit. See the [language/pipeline acceptance](docs/VERIFICATION.md)
+validated graph analysis and host emit. See the [language/pipeline acceptance](guides/VERIFICATION.md)
 for tested shapes and limits. Runtime Async remains disabled in production after
 measurement; the runtime upgrade alone is not a performance claim.
 
@@ -134,7 +134,7 @@ JSON graph     ──┤  │   evidence / trust)    │  └──  Context pac
   adapters
 ```
 
-Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface**: read side + write side (live counts in [`docs/STATUS.md`](docs/STATUS.md)). Representative groups are below; [`docs/TOOLS.md`](docs/TOOLS.md) owns the complete roster.
+Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface**: read side + write side (live counts in [`guides/STATUS.md`](guides/STATUS.md)). Representative groups are below; [`guides/TOOLS.md`](guides/TOOLS.md) owns the complete roster.
 
 | | Tools |
 |---|---|
@@ -144,7 +144,7 @@ Connect an MCP client. Load a project. The AI agent gets the **MCP tool surface*
 
 Every read-side tool that takes a `symbolId` routes through one resolver (canonical id, truncated method form, bare short name, kind correction, wrong-namespace fallback). Every successful read-side response carries a typed truth envelope: truth tier, confidence band, evidence source, staleness, per-tool limitations.
 
-[Full tool reference](docs/TOOLS.md) · [What's new](CHANGELOG.md)
+[Full tool reference](guides/TOOLS.md) · [What's new](CHANGELOG.md)
 
 ---
 
@@ -163,7 +163,7 @@ Python            ──┤       ↑                     ├──  CLI / CI
 JSON graph        ──┘    Analysis (optional)      └
 ```
 
-All port interfaces wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), the [typed-invariant tree under `docs/invariants/`](docs/invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](docs/ARCHITECTURE_DECISIONS.md). Live counts: [`docs/STATUS.md`](docs/STATUS.md).
+All port interfaces wired. Boundaries enforced by [architecture invariant tests](tests/Lifeblood.Tests/ArchitectureInvariantTests.cs), the [typed-invariant tree under `invariants/`](invariants/INDEX.md) (queryable via `lifeblood_invariant_check`), and [11 frozen ADRs](guides/ARCHITECTURE_DECISIONS.md). Live counts: [`guides/STATUS.md`](guides/STATUS.md).
 
 Source-control provenance is a separate infrastructure boundary: one neutral
 receipt and Application port are implemented by `Lifeblood.Adapters.Git` and
@@ -171,9 +171,7 @@ captured for analyze once at request admission and consumed by invariant evidenc
 plus release ratchets. Language adapters and MCP handlers do not launch Git or
 own competing dirty-state models.
 
-![Architecture Diagram](docs/architecture-screenshot.png)
-
-[Full architecture](docs/ARCHITECTURE.md) · [Interactive diagram](docs/architecture.html)
+[Full architecture](guides/ARCHITECTURE.md)
 
 ---
 
@@ -187,7 +185,7 @@ own competing dirty-state models.
 | **Python** | Standalone `ast` module. Zero dependencies. | Structural |
 | **Any language** | Output JSON conforming to `schemas/graph.schema.json`. | Varies |
 
-[Adapter guide](docs/ADAPTERS.md) · [Native C capability](docs/NATIVE_CLANG.md)
+[Adapter guide](guides/ADAPTERS.md) · [Native C capability](guides/NATIVE_CLANG.md)
 
 ---
 
@@ -219,14 +217,14 @@ Unity MCP controls scenes, GameObjects, assets, and the Editor. Lifeblood
 explains the code and its relationships. Together they give agents both control
 and compiler level understanding.
 
-[Unity setup guide](docs/UNITY.md)
+[Unity setup guide](guides/UNITY.md)
 
 ---
 
 ## Verification
 
-Current source counts are maintained in [Status](docs/STATUS.md). The
-[verification guide](docs/VERIFICATION.md) describes reproducible checks and
+Current source counts are maintained in [Status](guides/STATUS.md). The
+[verification guide](guides/VERIFICATION.md) describes reproducible checks and
 their limits. Private workspace measurements and session records are not
 distributed with the source or packages.
 
@@ -234,7 +232,7 @@ distributed with the source or packages.
 
 ## Roadmap
 
-- **Native Clang maturity**: move from focused-slice scout to whole-build coverage on FFmpeg-class C codebases (WSL + bear, MSYS2 + bear, or a project-specific compile-database generator). Tracked in [the native adapter guide](docs/NATIVE_CLANG.md).
+- **Native Clang maturity**: move from focused-slice scout to whole-build coverage on FFmpeg-class C codebases (WSL + bear, MSYS2 + bear, or a project-specific compile-database generator). Tracked in [the native adapter guide](guides/NATIVE_CLANG.md).
 - **C++ over libclang**: extend the native adapter past C to C++. Same boundary, additional Clang AST coverage (templates, classes, member functions).
 - **Community adapters**: contribution guides for [Go](adapters/go/) and [Rust](adapters/rust/). Contract and checklist ready, no implementation code yet.
 - **REST / LSP bridge**: expose the graph to IDE extensions and web services.
@@ -245,16 +243,18 @@ distributed with the source or packages.
 
 | Page | Description |
 |------|-------------|
-| [Tools](docs/TOOLS.md) | Every MCP tool — symbol ID format, incremental usage, dead_code caveats, file-mode compile_check, smart-dynamic context shaping |
-| [MCP Setup](docs/MCP_SETUP.md) | Copy-paste configs for Claude Code, Cursor, VS Code, Claude Desktop, Unity |
-| [Unity Integration](docs/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
-| [Architecture](docs/ARCHITECTURE.md) | Hexagonal structure, dependency flow, port interfaces, invariant tree |
-| [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
-| [Invariants tree](docs/invariants/INDEX.md) | Typed architectural invariants, queryable via `lifeblood_invariant_check` |
-| [Status](docs/STATUS.md) | Component table, source counts and supported capabilities |
-| [Adapters](docs/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
-| [Native C support](docs/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
-| [Release checklist](docs/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet Trusted Publishing (OIDC) flow |
+| [Tools](guides/TOOLS.md) | Every MCP tool — symbol ID format, incremental usage, dead_code caveats, file-mode compile_check, smart-dynamic context shaping |
+| [MCP Setup](guides/MCP_SETUP.md) | Copy-paste configs for Claude Code, Cursor, VS Code, Claude Desktop, Unity |
+| [Unity Integration](guides/UNITY.md) | Sidecar architecture, setup, Unity reachability + Editor reflection roster, file-mode compile_check |
+| [Architecture](guides/ARCHITECTURE.md) | Hexagonal structure, dependency flow, port interfaces, invariant tree |
+| [Architecture Decisions](guides/ARCHITECTURE_DECISIONS.md) | 11 frozen ADRs |
+| [Invariants tree](invariants/INDEX.md) | Typed architectural invariants, queryable via `lifeblood_invariant_check` |
+| [Status](guides/STATUS.md) | Component table, source counts and supported capabilities |
+| [Adapters](guides/ADAPTERS.md) | How to build a language adapter (13-item checklist) |
+| [Native C support](guides/NATIVE_CLANG.md) | libclang-based C extractor: scope, build, fixtures, FFmpeg scout, what works, what is deferred |
+| [Release checklist](guides/RELEASE.md) | Eternal pre-tag gate: tests green, CHANGELOG link refs, doc anchors current, NuGet Trusted Publishing (OIDC) flow |
+| [Interpreting results](guides/INTERPRETING_RESULTS.md) | Impact counts, test file lookup and bounded freshness observations |
+| [Public source boundary](guides/PUBLICATION.md) | Product documentation, private working records and checked source exports |
 | [CHANGELOG](CHANGELOG.md) | Every release — additions, fixes, known limitations |
 
 ---

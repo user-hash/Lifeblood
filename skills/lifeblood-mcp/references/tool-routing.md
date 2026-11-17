@@ -1,6 +1,6 @@
 # Lifeblood Tool Routing
 
-Use this file as a compact decision map. For complete current semantics, prefer the repository docs: `docs/TOOLS.md`, `docs/MCP_SETUP.md`, `docs/UNITY.md`, and live `lifeblood_capabilities`.
+Use this file as a compact decision map. For complete current semantics, prefer the repository docs: `guides/TOOLS.md`, `guides/MCP_SETUP.md`, `guides/UNITY.md`, and live `lifeblood_capabilities`.
 
 ## Startup And State
 
@@ -53,7 +53,7 @@ global inventory. Compilation-backed diagnosis is not admitted to read batches.
 |---|---|---|
 | Check one edited file | `lifeblood_compile_check filePath:"..."` | Auto-refreshes by default; inspect `refresh` for its outcome and trigger. Pass `expectedFileScope` plus optional expected publication identity for exact captured-byte admission; guarded checks disable refresh. Read `validation` for host compiler/emit and diagnostic location/phase scope; it does not validate a Unity/Player build or establish which edit introduced a module error. Batches expose `staleRefresh.receipt`. |
 | Check snippet feasibility | `lifeblood_compile_check code:"..."` | Good before adding API calls or experimenting with syntax. |
-| Build a generated DSP/math probe | Contract/source inspection -> `lifeblood_compile_check` -> consumer test runner | Follow workflow 8 in `docs/PLAYBOOK_CSHARP.md`. Derive cases from one consumer-owned range/contract authority; Lifeblood verifies structure but does not execute audio or numerical output tests. |
+| Build a generated DSP/math probe | Contract/source inspection -> `lifeblood_compile_check` -> consumer test runner | Follow workflow 8 in `guides/PLAYBOOK_CSHARP.md`. Derive cases from one consumer-owned range/contract authority; Lifeblood verifies structure but does not execute audio or numerical output tests. |
 | Get project/module/file diagnostics | `lifeblood_diagnose` | Use file scope first to avoid drowning in existing project warnings. |
 | Inspect effective compiler options | `lifeblood_diagnose(mode:"environment", filePath:...)` | One explicit file/module; compact mode omits defines but preserves counts. Actual retained options, bounded references and snapshot descriptor/profile provenance; no refresh or runtime qualification. |
 | Find exact source references | `lifeblood_find_references` | Compiler-backed write-side operation; honors retained profile limitations. |
@@ -68,7 +68,7 @@ For conditional existing-file application on Windows, use the standalone
 raw bytes. It checks the entire scope while holding sharing locks through one
 target write and returns the post-edit receipt. Obtain project source admission
 first; separate verify-then-write does not prevent races. See
-`docs/OWNER_SCOPED_WORK.md` for bounds, failure handling and exclusions.
+`guides/OWNER_SCOPED_WORK.md` for bounds, failure handling and exclusions.
 
 After coordinated cross-file/API edits, analyze the accepted changes before
 checking dependent files. `compile_check(filePaths:...)` overlays each file on

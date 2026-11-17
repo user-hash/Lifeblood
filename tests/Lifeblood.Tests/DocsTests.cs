@@ -13,7 +13,7 @@ namespace Lifeblood.Tests;
 /// <summary>
 /// Ratchet tests that keep docs honest. Doc numbers drift silently if nobody
 /// enforces them. Every number these tests cover derives from a single source
-/// of truth in docs/STATUS.md (HTML comments like <!-- portCount: 17 -->), and
+/// of truth in guides/STATUS.md (HTML comments like <!-- portCount: 17 -->), and
 /// the tests assert the comment matches the live repository state.
 ///
 /// Architecture: ONE table — <see cref="Anchors"/> — declares every
@@ -147,11 +147,10 @@ public class DocsTests
   public static IEnumerable<object[]> NonStatusSurfaces => new[]
   {
     new object[] { "README.md" },
-    new object[] { Path.Combine("docs", "ARCHITECTURE.md") },
-    new object[] { Path.Combine("docs", "architecture.html") },
-    new object[] { Path.Combine("docs", "TOOLS.md") },
-    new object[] { Path.Combine("docs", "MCP_SETUP.md") },
-    new object[] { Path.Combine("docs", "UNITY.md") },
+    new object[] { Path.Combine("guides", "ARCHITECTURE.md") },
+    new object[] { Path.Combine("guides", "TOOLS.md") },
+    new object[] { Path.Combine("guides", "MCP_SETUP.md") },
+    new object[] { Path.Combine("guides", "UNITY.md") },
   };
 
   public static IEnumerable<object[]> SurfaceAnchorPairs =>
@@ -179,7 +178,7 @@ public class DocsTests
 
     var live = entry.Live();
     Assert.True(declared == live,
-      $"docs/STATUS.md declares {anchorName}={declared} but live source ({entry.FailHint}) reports {live}. " +
+      $"guides/STATUS.md declares {anchorName}={declared} but live source ({entry.FailHint}) reports {live}. " +
       "Update the HTML comment in STATUS.md to the live count, or restore/remove the source artefact that caused the drift.");
   }
 
@@ -194,7 +193,7 @@ public class DocsTests
     var entry = Anchors.Single(a => a.Name == anchorName);
     if (entry.VisiblePattern == null) return;
 
-    var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+    var statusPath = Path.Combine(RepoRoot, "guides", "STATUS.md");
     var status = File.ReadAllText(statusPath);
     var declared = ReadStatusAnchor(anchorName);
 
@@ -204,7 +203,7 @@ public class DocsTests
       if (visible == declared) continue;
       if (visible < entry.VisibleMin || visible > entry.VisibleMax) continue;
       Assert.Fail(
-        $"docs/STATUS.md visible \"{match.Value}\" does not match its own anchor {anchorName}={declared}. " +
+        $"guides/STATUS.md visible \"{match.Value}\" does not match its own anchor {anchorName}={declared}. " +
         "Update the visible prose, or the hidden anchor — they MUST agree inside STATUS.md.");
     }
   }
@@ -233,7 +232,7 @@ public class DocsTests
       if (visible < entry.VisibleMin || visible > entry.VisibleMax) continue;
       Assert.Fail(
         $"{surfaceRelPath}: visible \"{match.Value}\" does not match STATUS.md anchor {anchorName}={declared}. " +
-        "Update the prose, the anchor, or (preferred) strip the count and link to docs/STATUS.md — STATUS.md is the single source of truth.");
+        "Update the prose, the anchor, or (preferred) strip the count and link to guides/STATUS.md — STATUS.md is the single source of truth.");
     }
   }
 
@@ -243,7 +242,7 @@ public class DocsTests
   [Fact]
   public void SharedTransportMaturity_MatchesCanonicalRolloutDocs()
   {
-    var status = File.ReadAllText(Path.Combine(RepoRoot, "docs", "STATUS.md"));
+    var status = File.ReadAllText(Path.Combine(RepoRoot, "guides", "STATUS.md"));
     var setup = File.ReadAllText(Path.Combine(RepoRoot, "docs", "MCP_SETUP.md"));
     var example = File.ReadAllText(Path.Combine(RepoRoot, ".mcp.json.example"));
 
@@ -338,7 +337,7 @@ public class DocsTests
   [Fact]
   public void StatusDoc_VisibleReadWriteSplit_MatchesRegistryAvailability()
   {
-    var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+    var statusPath = Path.Combine(RepoRoot, "guides", "STATUS.md");
     var status = File.ReadAllText(statusPath);
 
     var definitions = ToolRegistry.GetDefinitions();
@@ -351,7 +350,7 @@ public class DocsTests
       var r = int.Parse(m.Groups[1].Value);
       var w = int.Parse(m.Groups[2].Value);
       Assert.True(r == liveRead && w == liveWrite,
-        $"docs/STATUS.md has visible \"{m.Value}\" but registry has {liveRead} read + {liveWrite} write.");
+        $"guides/STATUS.md has visible \"{m.Value}\" but registry has {liveRead} read + {liveWrite} write.");
     }
   }
 
@@ -496,10 +495,10 @@ public class DocsTests
 
   private static int ReadStatusAnchor(string name)
   {
-    var statusPath = Path.Combine(RepoRoot, "docs", "STATUS.md");
+    var statusPath = Path.Combine(RepoRoot, "guides", "STATUS.md");
     var status = File.ReadAllText(statusPath);
     var match = Regex.Match(status, $@"<!--\s*{Regex.Escape(name)}:\s*(\d+)\s*-->");
-    Assert.True(match.Success, $"docs/STATUS.md must declare <!-- {name}: N -->.");
+    Assert.True(match.Success, $"guides/STATUS.md must declare <!-- {name}: N -->.");
     return int.Parse(match.Groups[1].Value);
   }
 

@@ -29,13 +29,13 @@ Before a push, review the complete outgoing commit history and package inputs;
 a clean current tree does not clear earlier commits for publication.
 
 Current versions, verification and known limits belong in
-[STATUS](docs/STATUS.md) and [the tracking ledger](devmemory/lifeblood-tracking.md).
+[STATUS](guides/STATUS.md). Working ledgers and investigation notes stay local.
 Keep README, setup/tool guides, this instruction file, the MCP skill/routing and
 GitHub workflows consistent when behavior changes. Follow
-[the release checklist](docs/RELEASE.md) for release preparation; local green
+[the release checklist](guides/RELEASE.md) for release preparation; local green
 checks do not establish remote CI or publication readiness.
 
-For concurrent edits, follow [owner-scoped work](docs/OWNER_SCOPED_WORK.md):
+For concurrent edits, follow [owner-scoped work](guides/OWNER_SCOPED_WORK.md):
 capture the intended files, conditionally apply supported existing-file writes,
 and compile the returned bytes against an explicitly accepted publication.
 Reconcile overlapping-content conflicts before retrying. File receipts do not
@@ -91,7 +91,7 @@ adapters/python                 # Standalone ast module. Zero dependencies. Self
 adapters/native-clang           # libclang-based C extractor (beta, v0.7.7). Reads compile_commands.json, emits graph.json. Hexagonal: LLVM stays outside core.
 ```
 
-External adapters emit `graph.json` conforming to `schemas/graph.schema.json`. Lifeblood ingests through `JsonGraphImporter`. See `docs/NATIVE_CLANG.md` for the C capability page and `docs/ADAPTERS.md` for the adapter-building guide.
+External adapters emit `graph.json` conforming to `schemas/graph.schema.json`. Lifeblood ingests through `JsonGraphImporter`. See `guides/NATIVE_CLANG.md` for the C capability page and `guides/ADAPTERS.md` for the adapter-building guide.
 
 ## Dependency Rules
 
@@ -142,18 +142,18 @@ Lifeblood.Domain
 
 ## Invariants
 
-Architectural invariants live under [`docs/invariants/`](docs/invariants/INDEX.md), one file per domain. Read the specific file before touching that area. The tree-walker behind `lifeblood_invariant_check` aggregates `<root>/CLAUDE.md` + `<root>/AGENTS.md` + every `*.md` under `docs/invariants/` so every rule is callable by id from the MCP tool.
+Architectural invariants live under [`invariants/`](invariants/INDEX.md), one file per domain. Read the specific file before touching that area. The tree-walker behind `lifeblood_invariant_check` aggregates `<root>/CLAUDE.md` + `<root>/AGENTS.md` + every `*.md` under `invariants/` so every rule is callable by id from the MCP tool.
 
 | Domain | File |
 |--------|------|
-| Hexagonal core (Domain purity, App layer, Graph, Adapters, Connectors, Analysis, Testing, Pipeline, ScriptHost, composition-root allowlist) | [architecture.md](docs/invariants/architecture.md) |
-| Identifier resolution (`ISymbolResolver`, partial-type unification, kind correction) | [resolver.md](docs/invariants/resolver.md) |
-| C# adapter (canonical IDs, semantic view, BCL ownership, csproj facts, symbol-ID grammar) | [csharp-adapter.md](docs/invariants/csharp-adapter.md) |
-| Pipeline (streaming compilation, file-edge derivation, incremental analyze) | [pipeline.md](docs/invariants/pipeline.md) |
-| Usage reporting (timings, memory, GC, phases) | [usage.md](docs/invariants/usage.md) |
-| MCP protocol (wire format, tool registry, response envelope) | [mcp-protocol.md](docs/invariants/mcp-protocol.md) |
-| Tool semantics (dead-code, invariant introspection, authority report, forwarder classifier, execute robustness, Unity reachability, find-implementations) | [tools.md](docs/invariants/tools.md) |
-| Governance (STATUS counts, CHANGELOG link refs, test-pattern rules) | [governance.md](docs/invariants/governance.md) |
+| Hexagonal core (Domain purity, App layer, Graph, Adapters, Connectors, Analysis, Testing, Pipeline, ScriptHost, composition-root allowlist) | [architecture.md](invariants/architecture.md) |
+| Identifier resolution (`ISymbolResolver`, partial-type unification, kind correction) | [resolver.md](invariants/resolver.md) |
+| C# adapter (canonical IDs, semantic view, BCL ownership, csproj facts, symbol-ID grammar) | [csharp-adapter.md](invariants/csharp-adapter.md) |
+| Pipeline (streaming compilation, file-edge derivation, incremental analyze) | [pipeline.md](invariants/pipeline.md) |
+| Usage reporting (timings, memory, GC, phases) | [usage.md](invariants/usage.md) |
+| MCP protocol (wire format, tool registry, response envelope) | [mcp-protocol.md](invariants/mcp-protocol.md) |
+| Tool semantics (dead-code, invariant introspection, authority report, forwarder classifier, execute robustness, Unity reachability, find-implementations) | [tools.md](invariants/tools.md) |
+| Governance (STATUS counts, CHANGELOG link refs, test-pattern rules) | [governance.md](invariants/governance.md) |
 
 Authoring shapes recognised by the parser (any of these works for a new invariant):
 ```
@@ -166,7 +166,7 @@ Shape E:  - **INV-ANIM-1:** body...                            (colon inside bol
 
 ## Port Interfaces
 
-All ports live under `src/Lifeblood.Application/Ports/`. The directory layout is the contract: `Ports/Left/` (language adapters: `IWorkspaceAnalyzer`, `IModuleDiscovery`, `ICompilationHost`, `ICodeExecutor`, `IWorkspaceRefactoring`), `Ports/Right/` (AI connectors: `IAgentContextGenerator`, `IMcpGraphProvider`, `IInstructionFileGenerator`, `ISymbolResolver`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IPartialViewBuilder`, `Invariants/IInvariantProvider`, `IAuthorityReporter`, `IPortHealthAnalyzer`, `IUnityReachabilityProvider`, `IRuntimeAssemblyResolver`, `IResponseDecorator`), `Ports/GraphIO/` (`IGraphImporter`, `IGraphExporter`), `Ports/Analysis/` (`IRuleProvider`, `IBlastRadiusProvider`), `Ports/Infrastructure/` (`IFileSystem`, `IUsageProbe`, `IUsageCapture`, `ISourceControlSnapshotProvider`). Total count pinned by `docs/STATUS.md` `<!-- portCount -->` ratchet.
+All ports live under `src/Lifeblood.Application/Ports/`. The directory layout is the contract: `Ports/Left/` (language adapters: `IWorkspaceAnalyzer`, `IModuleDiscovery`, `ICompilationHost`, `ICodeExecutor`, `IWorkspaceRefactoring`), `Ports/Right/` (AI connectors: `IAgentContextGenerator`, `IMcpGraphProvider`, `IInstructionFileGenerator`, `ISymbolResolver`, `ISemanticSearchProvider`, `IDeadCodeAnalyzer`, `IPartialViewBuilder`, `Invariants/IInvariantProvider`, `IAuthorityReporter`, `IPortHealthAnalyzer`, `IUnityReachabilityProvider`, `IRuntimeAssemblyResolver`, `IResponseDecorator`), `Ports/GraphIO/` (`IGraphImporter`, `IGraphExporter`), `Ports/Analysis/` (`IRuleProvider`, `IBlastRadiusProvider`), `Ports/Infrastructure/` (`IFileSystem`, `IUsageProbe`, `IUsageCapture`, `ISourceControlSnapshotProvider`). Total count pinned by `guides/STATUS.md` `<!-- portCount -->` ratchet.
 
 ## Serialization Naming
 
@@ -207,11 +207,11 @@ Rule: JSON serializers should use `System.Text.Json` with `JsonNamingPolicy.Came
 4. **New AI connector** → `Lifeblood.Connectors.{Name}/`.
 5. **New CLI command** → `Lifeblood.CLI/`.
 6. **New use case** → `Lifeblood.Application/UseCases/`.
-7. **New invariant** → `docs/invariants/<domain>.md`. Use any of shapes A–E. Add a row to the index in this file if a new domain file is created.
+7. **New invariant** → `invariants/<domain>.md`. Use any of shapes A–E. Add a row to the index in this file if a new domain file is created.
 
 ## MCP Tools
 
-Canonical count and per-tool detail live in `docs/STATUS.md` (ratchet-pinned by `DocsTests`) and `docs/TOOLS.md`. `ToolRegistry.cs` is the code-level source of truth.
+Canonical count and per-tool detail live in `guides/STATUS.md` (ratchet-pinned by `DocsTests`) and `guides/TOOLS.md`. `ToolRegistry.cs` is the code-level source of truth.
 
 ## What NOT to Do
 
@@ -222,4 +222,4 @@ Canonical count and per-tool detail live in `docs/STATUS.md` (ratchet-pinned by 
 - Do not hardcode file extensions or syntax patterns in Domain.
 - Do not require adapters to be written in C#. JSON is the universal protocol.
 - Do not add "AI features" to the graph model. The graph is pure data. AI consumption happens in connectors.
-- Do not duplicate invariant text in this file. Every numbered `INV-XXX-NNN` rule lives in `docs/invariants/`. This file points at it.
+- Do not duplicate invariant text in this file. Every numbered `INV-XXX-NNN` rule lives in `invariants/`. This file points at it.

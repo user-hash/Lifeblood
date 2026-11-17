@@ -4,8 +4,8 @@ How to drive Lifeblood end-to-end on the workloads it was built for —
 serious .NET / Unity codebases where AI agents and human reviewers need
 compiler-grounded answers instead of grep guesses.
 
-This is the operator-facing complement to `docs/STATUS.md` (architecture
-truth) and `docs/TOOLS.md` (the tool reference). Read this when you have
+This is the operator-facing complement to `guides/STATUS.md` (architecture
+truth) and `guides/TOOLS.md` (the tool reference). Read this when you have
 a task and want to know which Lifeblood tool to reach for.
 
 Every workflow below names:
@@ -46,7 +46,8 @@ touches the failing surface.
    current input identity is needed, and refresh a changed publication before
    relying on its dependencies.
 5. For each affected module, call `lifeblood_test_impact` with the same
-   `symbolId` to get the `recommendedFilters[]` — paste-ready
+   symbol id as `target` to get test class file paths and the
+   `recommendedFilters[]` — paste-ready
    `FullyQualifiedName~<class>` strings for `dotnet test --filter`. Run
    that filter and record its covered scope. Passing selected tests does not
    establish that all other behavior is unaffected. Investigate failures with
@@ -64,7 +65,7 @@ the boundary will survive.
    inbound pressure. The two together describe the module's full
    coupling surface.
 3. For Unity-shaped workspaces, `lifeblood_invariant_check` reads any
-   `CLAUDE.md` / `AGENTS.md` / `docs/invariants/**.md` tree in the
+   `CLAUDE.md` / `AGENTS.md` / `invariants/**.md` tree in the
    repo. Run `lifeblood_invariant_check` to surface every INV the
    repo declared; if the module owns an INV (`INV-XYZ-001`), the
    audit names the file location for a focused read.
@@ -277,9 +278,9 @@ authorities.
 
 ## What this playbook does NOT cover
 
-- Lifeblood's full tool reference is in `docs/TOOLS.md` — read that for
+- Lifeblood's full tool reference is in `guides/TOOLS.md` — read that for
   every flag, every cell-kind, every option.
-- The architectural invariants live in `docs/invariants/**.md`; every
+- The architectural invariants live in `invariants/**.md`; every
   tool's behavior is pinned by at least one INV.
-- The deprecation policy for wire shapes is `docs/SCHEMA_DEPRECATION_POLICY.md`.
+- The deprecation policy for wire shapes is `guides/SCHEMA_DEPRECATION_POLICY.md`.
 - The full release history is `CHANGELOG.md`.

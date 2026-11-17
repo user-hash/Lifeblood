@@ -29,7 +29,8 @@ namespace Lifeblood.Connectors.Mcp;
 ///   <item><c>&lt;projectRoot&gt;/AGENTS.md</c> — the agent-instruction
 ///     companion convention used by some repos alongside or in place of
 ///     CLAUDE.md.</item>
-///   <item><c>&lt;projectRoot&gt;/docs/invariants/**.md</c> — the
+///   <item><c>&lt;projectRoot&gt;/invariants/**.md</c> and
+///     <c>&lt;projectRoot&gt;/docs/invariants/**.md</c> — the
 ///     invariants-tree convention for projects that have outgrown a
 ///     single-file authoring layout (hot-rules-stay/tree-everything-else).</item>
 /// </list>
@@ -77,6 +78,7 @@ public sealed class LifebloodInvariantProvider : IInvariantProvider
     /// </summary>
     private static readonly string[] RootTreeDirConventions =
     {
+        "invariants",
         Path.Combine("docs", "invariants"),
     };
 

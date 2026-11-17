@@ -24,7 +24,7 @@ Prefer Lifeblood answers over text search when correctness depends on compiler k
 4. Treat read-side `envelope` metadata as part of the answer. Staleness, changed files, confidence, and limitations can change whether an answer is safe to act on.
 5. When parallel investigation lanes must revisit an older publication, use `lifeblood_snapshots` to inspect or pin the bounded graph-only catalog and pass its `snapshotId` to graph reads. Historical selections do not provide live source or Roslyn services; omit `snapshotId` for those tools.
 
-For concurrent source edits, read `docs/OWNER_SCOPED_WORK.md`. Use explicit
+For concurrent source edits, read `guides/OWNER_SCOPED_WORK.md`. Use explicit
 owner-scoped receipts and supported conditional writes, reconcile overlaps,
 and refresh retained dependencies after coordinated API changes. Use an explicit
 full analyze for cross-module API changes; incremental analysis does not cascade
@@ -47,7 +47,7 @@ Common fast paths:
 - For Unity/old-format asmdef compile-direction checks: `lifeblood_asmdef_check summarize:true` after a fresh analyze.
 - For architecture rules: `lifeblood_invariant_check mode:"audit"` or `id:"INV-..."`, then read the cited invariant file.
 - For a generated DSP/math probe: route through workflow 8 in
-  `docs/PLAYBOOK_CSHARP.md`. Derive parameterized cases from the consumer's one
+  `guides/PLAYBOOK_CSHARP.md`. Derive parameterized cases from the consumer's one
   range/contract authority, inspect that authority with `contract_audit`,
   `static_tables`, or source-backed lookup as appropriate, compile-check the
   resulting test file, then run it in the consumer's test framework. Lifeblood
@@ -62,7 +62,7 @@ Common fast paths:
 2. Inspect the target with `lookup`, `documentation`, and direct file reads.
 3. Estimate risk with `blast_radius` for symbols or `file_impact` for files. Use grouping to separate Production, Test, Editor, Generated, and Vendored callers.
 4. Find concrete edit sites with `dependants`, `dependencies`, `find_references`, or `partial_view`.
-5. Check applicable invariants with `invariant_check`; read the relevant `docs/invariants/*.md` file before changing an area with pinned architecture rules.
+5. Check applicable invariants with `invariant_check`; read the relevant `invariants/*.md` file before changing an area with pinned architecture rules.
 6. Make the code edit using the repo's normal editing tools.
 7. Validate with `compile_check filePath`, targeted tests from `test_impact`, and the repository's test command when risk warrants it.
 
@@ -80,7 +80,7 @@ Use the Unity bridge tools when working inside Unity MCP, but keep the same sema
 
 - Do not cite stale docs as live truth when `lifeblood_capabilities` or schemas disagree.
 - The host compiler/language version does not upgrade the analyzed project's language or target runtime. Host emit is separate from a Unity/Player/Burst build; inspect `validation` and run the consumer's appropriate build/tests.
-- Current .NET/Roslyn/C# qualification is recorded in `docs/STATUS.md`. Observe the consumer's effective options with `diagnose(mode:"environment")`; do not raise its language version just because the host supports C# 15. Runtime Async remains disabled in production after measured qualification; re-evaluate it only with comparable workloads.
+- Current .NET/Roslyn/C# qualification is recorded in `guides/STATUS.md`. Observe the consumer's effective options with `diagnose(mode:"environment")`; do not raise its language version just because the host supports C# 15. Runtime Async remains disabled in production after measured qualification; re-evaluate it only with comparable workloads.
 - Shared semantic-base counts are ownership evidence, not a CPU-core, GC-heap or process-memory count. Bound diagnostic captures and distinguish allocations, rooted objects, unreachable garbage, free heap and native/runtime memory before proposing a retention fix.
 - Do not treat heuristic/advisory tools as deletion authority by themselves.
 - Do not use write-side tools after `readOnly:true` analysis unless the server reports they are available; recover with a full retained analyze when needed.

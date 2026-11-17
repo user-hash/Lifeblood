@@ -51,7 +51,7 @@ public class DotNetLaneScriptTests
         Assert.Contains("semantic-self-analyze", script);
         Assert.Contains("semanticComparison", script);
         Assert.Contains("matchesStatusAnchors", script);
-        Assert.Contains("docs/STATUS.md selfAnalyze* anchors from the production lane", script);
+        Assert.Contains("guides/STATUS.md selfAnalyze* anchors from the production lane", script);
     }
 
     [Fact]

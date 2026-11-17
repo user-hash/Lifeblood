@@ -261,7 +261,7 @@ and nested constructed arguments; tuple labels and dynamic annotations normalize
 to their underlying declaration types. Exact lookup uses the same formatter to
 validate candidates. The MCP composition root selects v2 for one shared C#
 publication; each connection selects v1 predecessor projection or v2 addresses
-under [schema deprecation policy](../SCHEMA_DEPRECATION_POLICY.md). CLI and
+under [schema deprecation policy](../guides/SCHEMA_DEPRECATION_POLICY.md). CLI and
 library defaults remain v1 for compatibility.
 
 Lifeblood symbol IDs are stable identifiers produced by `Lifeblood.Adapters.CSharp.Internal.SymbolIds`

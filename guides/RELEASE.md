@@ -13,11 +13,19 @@ repository's publishing contract.
 
 Source of truth for related ratchets:
 
-- `INV-CHANGELOG-001`. Every `## [X.Y.Z]` heading needs a matching `[X.Y.Z]:` link reference (`docs/invariants/governance.md`).
+- `INV-CHANGELOG-001`. Every `## [X.Y.Z]` heading needs a matching `[X.Y.Z]:` link reference (`invariants/governance.md`).
 - `INV-CHANGELOG-LATEST-TAG-001`. The latest reachable stable tag owns a
   historical section/reference and the `[Unreleased]` comparison base.
-- `INV-DOCS-001`. `docs/STATUS.md` port, tool, and test count anchors match live repo state.
+- `INV-DOCS-001`. `guides/STATUS.md` port, tool, and test count anchors match live repo state.
 - `Lifeblood.Tests.DocsTests` owns these ratchets.
+
+## Public source review
+
+Follow [the public source boundary](PUBLICATION.md) before preparing a tag.
+Review the exact tree with `python tools/prepare-public-source.py --check` and
+run `python -m unittest discover -s tests -p test_public_source.py`. Check source
+archives and package contents separately. A safe current tree does not clear
+old branches, tags, cached objects or previously published packages.
 
 ## Pre-tag steps
 
@@ -25,7 +33,7 @@ Run these in order on the release commit before tagging.
 
 1. **All release commits are on the release branch.** No work-in-progress on disk. Confirm with `git status` (clean) and `git log --oneline <prev-tag>..HEAD` (every commit intended for the release is present, nothing extra).
 
-2. **CHANGELOG entry exists and is honest.** `CHANGELOG.md` carries a `## [X.Y.Z] - YYYY-MM-DD` heading describing what landed since the previous tag. Section uses `Added`, `Changed`, `Fixed`, `Removed` per Keep a Changelog. Describes shipped work, not intent. Pending items belong in the tracking ledger (`devmemory/lifeblood-tracking.md`) or a plan, not in a release note.
+2. **CHANGELOG entry exists and is honest.** `CHANGELOG.md` carries a `## [X.Y.Z] - YYYY-MM-DD` heading describing what landed since the previous tag. Section uses `Added`, `Changed`, `Fixed`, `Removed` per Keep a Changelog. Describes shipped work, not intent. Pending items belong in local working records, not in a release note.
 
 3. **CHANGELOG link references are complete.** Two link refs at the bottom of `CHANGELOG.md` are mandatory:
 
@@ -46,13 +54,13 @@ Run these in order on the release commit before tagging.
    checkouts therefore use `fetch-depth: 0`; a shallow checkout is not an
    acceptable substitute for release-history truth.
 
-4. **`docs/STATUS.md` anchors match live repo state.** Hidden HTML comments declare the live counts:
+4. **`guides/STATUS.md` anchors match live repo state.** Hidden HTML comments declare the live counts:
 
    ```
    <!-- portCount: N --><!-- testCount: N --><!-- toolCount: N -->
    ```
 
-   Live truth: `public interface I*` declarations under `src/Lifeblood.Application/Ports` (ports), `Name = "lifeblood_*"` literals in `ToolRegistry.cs` (tools), xUnit-discovered test cases in `Lifeblood.Tests.dll` (tests). Visible prose in `docs/STATUS.md` must match the anchor.
+   Live truth: `public interface I*` declarations under `src/Lifeblood.Application/Ports` (ports), `Name = "lifeblood_*"` literals in `ToolRegistry.cs` (tools), xUnit-discovered test cases in `Lifeblood.Tests.dll` (tests). Visible prose in `guides/STATUS.md` must match the anchor.
 
 5. **Full test suite green.**
 
@@ -64,7 +72,7 @@ Run these in order on the release commit before tagging.
    - **Regression-pin skips**: documented by an open `LB-INBOX-*` reference in the `Skip = "..."` attribute argument. Used while a fix is being staged; the skip retires the moment the underlying extractor / handler / wire-shape lands.
    - **Toolchain-gated `[SkippableFact]` skips**: the native-clang lane (`NativeClangExecutableRatchetTests*`) gates on `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` plus a built executable on disk. Default CI hosts skip these silently (LLVM + libclang are opt-in consumer toolchain work, not shipped with the C# core). The release gate accepts these skips because the build pipeline does not own that toolchain.
 
-   A red `dotnet test` blocks the release. The fix is to land another commit, not to skip the test or to amend the release note. To gate native-clang explicitly before a release, set `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` on a host that has the executable at `artifacts/native-clang-build/lifeblood-native-clang.exe` (see `docs/NATIVE_CLANG.md` § "Opt-in execution lane") and re-run step 5; the suite then fails loudly when the executable is missing.
+   A red `dotnet test` blocks the release. The fix is to land another commit, not to skip the test or to amend the release note. To gate native-clang explicitly before a release, set `LIFEBLOOD_REQUIRE_NATIVE_CLANG=1` on a host that has the executable at `artifacts/native-clang-build/lifeblood-native-clang.exe` (see `guides/NATIVE_CLANG.md` § "Opt-in execution lane") and re-run step 5; the suite then fails loudly when the executable is missing.
 
 6. **Self-analyze green.**
 
@@ -77,13 +85,12 @@ Run these in order on the release commit before tagging.
 7. **Architectural maps current.** When the release touches public surface (new adapter, new MCP tool, new port, new invariant domain), the following are updated in the same commit set:
 
    - `README.md`. Language coverage line, ASCII diagrams, adapter table, docs table.
-   - `docs/STATUS.md`. Component row and visible prose.
-   - `docs/ADAPTERS.md`. Adapter section for new adapters.
-   - `docs/ARCHITECTURE.md`. Left-side diagram, assembly table, capability section.
-   - `docs/architecture.html`. Pills, left-column items, legend.
+   - `guides/STATUS.md`. Component row and visible prose.
+   - `guides/ADAPTERS.md`. Adapter section for new adapters.
+   - `guides/ARCHITECTURE.md`. Left-side diagram, assembly table, capability section.
    - `CLAUDE.md`. Project tree and dependency rules for new projects.
-   - `docs/invariants/<domain>.md`. New INVs in the appropriate domain file.
-   - `docs/invariants/INDEX.md`. New domain row if a new file was created.
+   - `invariants/<domain>.md`. New INVs in the appropriate domain file.
+   - `invariants/INDEX.md`. New domain row if a new file was created.
 
 8. **Instructions, consumers and GitHub describe the release candidate.**
    Reconcile `CLAUDE.md`, any local `AGENTS.md` entry point, the public

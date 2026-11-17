@@ -35,4 +35,4 @@ With rust-analyzer:
 
 ## Getting Started
 
-See [docs/ADAPTERS.md](../../docs/ADAPTERS.md) for the full guide.
+See [guides/ADAPTERS.md](../../guides/ADAPTERS.md) for the full guide.

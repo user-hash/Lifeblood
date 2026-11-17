@@ -80,7 +80,7 @@ function Match-Long([string]$Text, [string]$Pattern) {
 }
 
 function Read-StatusAnchors([string]$RepoRoot) {
-    $statusPath = Join-Path $RepoRoot "docs/STATUS.md"
+    $statusPath = Join-Path $RepoRoot "guides/STATUS.md"
     $text = Get-Content -LiteralPath $statusPath -Raw
     $anchors = [ordered]@{}
 
@@ -164,7 +164,7 @@ function New-SemanticComparison($StatusAnchors, $Actual) {
     )
 
     return [ordered]@{
-        baseline = "docs/STATUS.md selfAnalyze* anchors from the production lane"
+        baseline = "guides/STATUS.md selfAnalyze* anchors from the production lane"
         checks = $checks
         matchesStatusAnchors = (-not ($checks | Where-Object { -not $_.matches }))
     }
@@ -176,7 +176,7 @@ function New-TestComparison($StatusAnchors, $Summary) {
     )
 
     return [ordered]@{
-        baseline = "docs/STATUS.md testCount anchor from the production lane"
+        baseline = "guides/STATUS.md testCount anchor from the production lane"
         checks = $checks
         matchesStatusAnchors = (-not ($checks | Where-Object { -not $_.matches }))
     }

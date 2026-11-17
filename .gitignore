@@ -36,26 +36,15 @@ adapters/typescript/dist/
 __pycache__/
 *.egg-info/
 
-# Internal docs (not for public repo)
-docs/MASTERPLAN.md
-docs/MASTERPLAN_CHAT_ADDITIONS.md
-docs/AUDIT_HOLES.md
-.planning/
-
-# Local MCP config (machine-specific paths). Use .mcp.json.example as the template.
+# Private working records and machine configuration.
+/docs/
+/devmemory/
+/.codex/
+/.planning/
+/.claude/
 .mcp.json
 
-# Working notes / session plans (kept on disk, not published)
-.claude/
-
-# Dev-internal process notes - kept local, not published
-docs/audit/
-docs/DOGFOOD_FINDINGS.md
-docs/IMPROVEMENT_INBOX.md
-
-# Local investigation output; maintained public docs contain the findings.
-/docs/investigations/
-/docs/plans/
-/docs/DOGFOOD_CODE_EXECUTION.md
-/docs/case-studies/
-/docs/VISION_KNOWLEDGE_ARCHITECTURE.md
+# Local deployment tooling and source exports.
+redeploy-watcher.ps1
+redeploy_log.txt
+Lifeblood-src.zip

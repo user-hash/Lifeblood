@@ -32,7 +32,7 @@ for exact-commit CI and final package acceptance.
 - Ordinary MCP execution runs in process. The optional isolated executor needs
   a caller-provided ScriptHost and is not a security sandbox.
 - Extended shared-service memory stability and several integration checks remain
-  open in [the product backlog](../devmemory/lifeblood-tracking.md).
+  open; source-test success does not establish extended deployment qualification.
 
 Raw captures, private-workspace measurements, RPC transcripts, local package
 manifests and session journals are retained outside the repository.

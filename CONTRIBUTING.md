@@ -15,7 +15,7 @@ Lifeblood is an open hexagonal framework. Contributions plug into well-defined r
 
 ## Building a Language Adapter
 
-See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the full guide. Two paths:
+See [guides/ADAPTERS.md](guides/ADAPTERS.md) for the full guide. Two paths:
 
 1. **JSON adapter** (any language): output `graph.json` conforming to `schemas/graph.schema.json`
 2. **C# adapter** (in-process): implement `IWorkspaceAnalyzer`
@@ -34,11 +34,11 @@ These are non-negotiable and enforced by tests:
 - Every edge carries `Evidence` (kind, adapter, confidence level)
 - Output is deterministic. Same input produces the same graph.
 
-See [docs/ARCHITECTURE_DECISIONS.md](docs/ARCHITECTURE_DECISIONS.md) for the 11 frozen ADRs.
+See [guides/ARCHITECTURE_DECISIONS.md](guides/ARCHITECTURE_DECISIONS.md) for the 11 frozen ADRs.
 
 ## Code Style
 
-- .NET 8, C# 12, nullable enabled
+- .NET 11 SDK selected by `global.json`, C# 15, nullable enabled
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`
 - Tests in `tests/Lifeblood.Tests/` using xUnit
 

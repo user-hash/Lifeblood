@@ -158,7 +158,7 @@ public static class ServerIdentity
                 },
                 toolSchemaVersion = "v1",
                 schemaSnapshotPath = BuildRepoPath(repoRoot, "schemas", "tools", "v1"),
-                statusDocAnchorPath = BuildRepoPath(repoRoot, "docs", "STATUS.md"),
+                statusDocAnchorPath = BuildRepoPath(repoRoot, "guides", "STATUS.md"),
             },
             session = new
             {
@@ -259,7 +259,7 @@ public static class ServerIdentity
             },
             contract = new
             {
-                statusDocAnchorPath = BuildRepoPath(serverRepoRoot, "docs", "STATUS.md"),
+                statusDocAnchorPath = BuildRepoPath(serverRepoRoot, "guides", "STATUS.md"),
             },
             doNotCite = SessionLocalDoNotCiteFields,
         };
@@ -324,7 +324,7 @@ public static class ServerIdentity
         receipt["parseWarnings"] = audit.ParseWarnings;
         receipt["contract"] = new
             {
-                statusDocAnchorPath = BuildRepoPath(serverRepoRoot, "docs", "STATUS.md"),
+                statusDocAnchorPath = BuildRepoPath(serverRepoRoot, "guides", "STATUS.md"),
             };
         receipt["doNotCite"] = SessionLocalDoNotCiteFields;
         return receipt;

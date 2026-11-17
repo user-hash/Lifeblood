@@ -19,6 +19,8 @@ public class DocLinkIntegrityTests
     {
         ".git", "bin", "obj", "node_modules", "artifacts", "publish-staging",
         "dist", ".claude", "TestResults", ".vs",
+        "docs", "devmemory", ".codex", ".planning", "tmp", "dist-shared",
+        "local-nupkg", "nupkg-local",
     };
 
     [Fact]
@@ -44,7 +46,8 @@ public class DocLinkIntegrityTests
                 if (pathPart.Length == 0) continue; // pure anchor like (#foo)
 
                 var resolved = Path.GetFullPath(Path.Combine(dir, pathPart));
-                if (!File.Exists(resolved) && !Directory.Exists(resolved))
+                if (IsUnderSkippedDir(resolved, root)
+                    || (!File.Exists(resolved) && !Directory.Exists(resolved)))
                 {
                     var rel = Path.GetRelativePath(root, md).Replace('\\', '/');
                     broken.Add($"{rel} -> {raw}");

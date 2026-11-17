@@ -4,7 +4,7 @@
 
 This adapter translates C projects into Lifeblood's universal semantic graph using `libclang` as the parser and semantic engine. C++ coverage is on the roadmap; the same boundary will extend with additional Clang AST handling.
 
-See [`docs/NATIVE_CLANG.md`](../../docs/NATIVE_CLANG.md) for the capability page meant for downstream readers. This file remains the deep technical reference for adapter contributors.
+See [`guides/NATIVE_CLANG.md`](../../guides/NATIVE_CLANG.md) for the capability page meant for downstream readers. This file remains the deep technical reference for adapter contributors.
 
 ## Why This Exists
 
@@ -75,7 +75,7 @@ The native adapter uses the existing Lifeblood graph kinds:
 Native-specific details live in `properties`, usually under a `native.*` key.
 
 See the full
-[Native Clang stage plan](../../docs/NATIVE_CLANG.md).
+[Native Clang stage plan](../../guides/NATIVE_CLANG.md).
 
 ## Stage 1 Prerequisites
 

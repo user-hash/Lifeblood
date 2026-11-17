@@ -148,7 +148,7 @@ likely real cycle in libswscale context initialization. Whole-build coverage
 requires one of WSL with bear, MSYS2 with bear, or a project-specific
 compile-database generator and is named as the next maturity step.
 
-See [`docs/NATIVE_CLANG.md`](NATIVE_CLANG.md) for the dedicated capability
+See [`guides/NATIVE_CLANG.md`](NATIVE_CLANG.md) for the dedicated capability
 page. The [Native Clang stage plan](NATIVE_CLANG.md)
 tracks the rollout.
 

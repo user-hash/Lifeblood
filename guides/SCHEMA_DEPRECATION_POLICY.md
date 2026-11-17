@@ -5,7 +5,7 @@ shapes, the response envelope, the graph JSON schema) without breaking
 external integrators silently.
 
 Tracked as **INV-WIRE-CONTRACT-001** (canonical pin in
-`docs/invariants/mcp-protocol.md` once a future commit lifts this policy
+`invariants/mcp-protocol.md` once a future commit lifts this policy
 into the invariant tree; the policy file itself stays as the
 human-readable rulebook).
 
@@ -133,7 +133,7 @@ that.
 
 ## Invariant ratchets and this policy
 
-Lifeblood ships every contract as a typed INV in `docs/invariants/`
+Lifeblood ships every contract as a typed INV in `invariants/`
 with a pinned test. The deprecation policy applies to anything an
 external integrator can observe at the wire — not to internal
 invariants that have no external surface. If an INV pin is only

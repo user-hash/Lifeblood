@@ -12,10 +12,4 @@ OUTPUT="${1:-$SCRIPT_DIR/Lifeblood-src.zip}"
 
 cd "$SCRIPT_DIR"
 
-# Use git archive for tracked files only (clean, no build artifacts)
-git archive --format=zip --prefix=Lifeblood/ HEAD \
-  -o "$OUTPUT"
-
-SIZE=$(du -h "$OUTPUT" | cut -f1)
-echo "Exported: $OUTPUT ($SIZE)"
-echo "Contains only tracked source files from HEAD — no bin/, obj/, node_modules/, or artifacts."
+python tools/prepare-public-source.py --revision HEAD --output "$OUTPUT"
